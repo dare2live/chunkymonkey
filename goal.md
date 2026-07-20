@@ -6,7 +6,7 @@
 
 ## 当前 objective
 
-按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + **120** 交易日名义 K accepted `20260116`–`20260717`；ST 同窗 + 额外 `20260720`；**manual sync 已拆时钟门**——`trigger_mode=manual` 开市可拉今日，consumer/`available_at` 仍 `same_day_at 18:00`；live `20260720` manual 已越过 window，provider `zero_rows` fail-closed，尚未 accepted；仍禁 mass backfill）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（120d shadow remeasure：PIT vs unfiltered **120/120 diverge**；`cutover_allowed=false`）。**E0 FIXED（gate+mirror off）**。**E = measured reject / no-gain（120d checkpointed）**：窗 `20260116`–`20260717` purged WF（3 folds）B0−38%/B1−51%/B2−2.2% 全 `reject`；B4 `inconclusive`（event_days=11 但 fraction≈9%<25%）；均 `claimable=false`；artifacts=`data/lineage/phase_e_experiment_verdicts/`；**无 StrategyRelease**。**Phase C PARTIAL（writer+PIT+full-universe accept；未 cutover / 未 complete）**：
+按 MASTER 建立可审计沪深判断链。**Phase A 代码完整**（A1–A5 FIXED）；**A3 data-plane PARTIAL**（calendar + **120** 交易日名义 K accepted `20260116`–`20260717`；ST 同窗 + 额外 `20260720`；**manual sync 已拆时钟门**——`trigger_mode=manual` 开市可拉今日，consumer/`available_at` 仍 `same_day_at 18:00`；live `20260720` manual 已越过 window，provider `zero_rows` fail-closed，尚未 accepted；仍禁 mass backfill）。**B-ext FIXED（诚实化；数值未切）**。**B-pit PARTIAL**（120d shadow：MATCH baseline=membership_restricted_proxy **120/120 MATCH**；unfiltered 仅作 semantic delta；`cutover_allowed=false`）。**E0 FIXED（gate+mirror off）**。**E = measured reject / no-gain（120d checkpointed）**：窗 `20260116`–`20260717` purged WF（3 folds）B0−38%/B1−51%/B2−2.2% 全 `reject`；B4 `inconclusive`（event_days=11 但 fraction≈9%<25%）；均 `claimable=false`；artifacts=`data/lineage/phase_e_experiment_verdicts/`；**无 StrategyRelease**。**Phase C PARTIAL（writer+PIT+full-universe accept；未 cutover / 未 complete）**：
   `tier12_publish_contract` + `tier12_publish_writer` +
   `tier12_publish_accept` + `tier12_project_universe` + typed
   `config/tier12_publish.yaml` + `tier12_nominal_canary`。Writer：PIT 截断 →
@@ -29,8 +29,9 @@
   **D PARTIAL（scaffold）**：`research_runtime` DatasetSnapshot→PIT→
   ExperimentVerdict；E 复用；**未** D complete / Release / Optuna。
   下一刀= `20260720` provider 有行后 sync+accept **或** 显式 opt-in
-  C consumer cutover（强证据）**或** stop；禁 Optuna/松门/B-pit cutover/
-  margin thaw/mass backfill。
+  C consumer cutover（强证据）**或** B-pit mart 切读（MATCH 已证 + 独立
+  gate，现仍 false）**或** stop；禁 Optuna/松门/擅翻 cutover/margin thaw/
+  mass backfill。
 
 已拍板：多源=契约可换 adapter（**目标态**）；首策略包=`institution_follow`；边做边测。Tier0 未闭合前禁止寻优、生产候选、cutover、自动跑批。
 
@@ -86,10 +87,12 @@
   population READY；margin 冻结。禁 mass backfill/解冻/擅自 cutover。
 - **B-ext FIXED（诚实化）** scope + shadow + sentiment sidecar + 前端 UNTRUSTED；
   mart 数值未改、`cutover_allowed=false`。残余=B-pit 数值切读。
-- **B-pit PARTIAL** 120d shadow remeasure（K∩ST）：match=0/diverge=120；
-  frontier `20260717` project≈0.08445 vs unfiltered≈0.09638；
-  `cutover_allowed=false`（match alone 亦不放行）。Artifacts=
-  `data/lineage/b_pit_breadth_shadow/`（细节见 ledger）。**未**接 mart。
+- **B-pit PARTIAL** 120d shadow contract tightened（K∩ST）：
+  MATCH=project ≡ membership_restricted_proxy → **120/120 MATCH**；
+  frontier `20260717` project=proxy≈0.08445；unfiltered≈0.09638 为预期
+  semantic delta（ST+board 外 533 行）；`cutover_allowed=false`（MATCH
+  alone 亦不放行）。Artifacts=`data/lineage/b_pit_breadth_shadow/`。
+  **未**接 mart。
 - **C PARTIAL** full-universe accept `20260717`（4989=4989）+ consumer gate
   + B1/pulse read wire；`cutover_allowed=false`；opt-in hash 已填未翻。
   **未** claim complete / Release。细节见 ledger。
@@ -100,8 +103,8 @@
   B4 `inconclusive`；均 `claimable=false`；artifacts=
   `data/lineage/phase_e_experiment_verdicts/`。form/qfq max=`20260716`。
   **Next**：`20260720` provider 有行后 sync+accept **或** opt-in C cutover
-  （强证据）**或** stop。B-pit 仍 diverge；cutover false。
-  **禁** Optuna/松门/B-pit cutover/margin thaw/mass backfill/Release。
+  （强证据）**或** B-pit mart 切读（需 MATCH+独立 gate，现仍 false）**或** stop。
+  **禁** Optuna/松门/擅翻 cutover/margin thaw/mass backfill/Release。
   **F–H** 见 MASTER。
 
 ## 边做边测

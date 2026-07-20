@@ -1567,3 +1567,31 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Status**: B-pit PARTIAL (remeasured; still diverge). **Did not**:
   flip B-pit/C cutover; StrategyRelease; Optuna; E gate loosen; margin
   thaw; mass backfill.
+
+### 2026-07-20 — B-pit shadow contract fix (MATCH baseline, no cutover)
+
+- Wall-clock: Mon 2026-07-20 ~15:12 Asia/Shanghai (in-session).
+- **Root cause (live `20260717`)**: prior MATCH compared project_universe_pit
+  to accepted-canonical **unfiltered** (5522 bars). PIT membership=4989
+  (ex_st=209, ex_board=324); outside=533 (BJ≈327 + ST-ish SH/SZ). Outside
+  adv/dec≈0.223 vs project≈0.084 → unfiltered≈0.096. Filtering bars to
+  membership then recomputing unfiltered **exactly equals** project
+  (`match_in_membership_vs_project=True`). So 120/120 "diverge" was a
+  **false forever-red** from wrong compare pair, not a PIT compute bug.
+- **Fix**: shadow MATCH baseline → `membership_restricted_proxy`; keep
+  unfiltered as `semantic_delta_vs_unfiltered` only. `cutover_allowed`
+  still hard-false even on full MATCH.
+- Code: `compare_baseline_vs_project_universe_breadth` +
+  `measure_breadth_shadow_day` membership proxy path;
+  `test_project_universe_breadth` (10 passed); persist script notes.
+- Live remeasure `20260116`–`20260717` (120d):
+  - match_day_count=**120** / diverge=**0** / error=0
+  - `ratios_match_all=true`; mean/max abs delta=0
+  - frontier project=proxy≈0.08445; semantic_delta_vs_unfiltered≈0.01194
+  - `cutover_allowed=false`
+- Artifacts refreshed: `data/lineage/b_pit_breadth_shadow/{manifest,summary}.json`
+- Optional one-shot daily `20260720` → still provider `zero_rows` /
+  `daily_provider_fetch_failed`; accepted daily max still `20260717`.
+- **Status**: B-pit PARTIAL (shadow MATCH proven; mart cutover still
+  blocked). **Did not**: B-pit/C cutover; StrategyRelease; Optuna; E
+  loosen; margin thaw; mass backfill.

@@ -4,17 +4,28 @@
   "days": [
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.7970642201834862,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.7975109317188026,
+        "legacy_adv_dec_ratio": 0.7970642201834862,
         "project_adv_dec_ratio": 0.7970642201834862,
-        "ratio_delta": 0.00044671153531639085,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260116"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.7970642201834862,
+        "adv_n": 2172,
+        "dec_n": 2725,
+        "flat_n": 100,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4997
       },
       "project": {
         "adv_dec_ratio": 0.7970642201834862,
@@ -28,6 +39,7 @@
         "row_count_used": 4997,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.00044671153531639085,
       "trade_date": "20260116",
       "unfiltered": {
         "adv_dec_ratio": 0.7975109317188026,
@@ -40,17 +52,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 2.0751408891671885,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.9294310722100656,
+        "legacy_adv_dec_ratio": 2.0751408891671885,
         "project_adv_dec_ratio": 2.0751408891671885,
-        "ratio_delta": -0.14570981695712293,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260119"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 2.0751408891671885,
+        "adv_n": 3314,
+        "dec_n": 1597,
+        "flat_n": 88,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4999
       },
       "project": {
         "adv_dec_ratio": 2.0751408891671885,
@@ -64,6 +87,7 @@
         "row_count_used": 4999,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.14570981695712293,
       "trade_date": "20260119",
       "unfiltered": {
         "adv_dec_ratio": 1.9294310722100656,
@@ -76,17 +100,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.7352732434350603,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.7198581560283688,
+        "legacy_adv_dec_ratio": 0.7352732434350603,
         "project_adv_dec_ratio": 0.7352732434350603,
-        "ratio_delta": -0.015415087406691508,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260120"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.7352732434350603,
+        "adv_n": 2072,
+        "dec_n": 2818,
+        "flat_n": 113,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5003
       },
       "project": {
         "adv_dec_ratio": 0.7352732434350603,
@@ -100,6 +135,7 @@
         "row_count_used": 5003,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.015415087406691508,
       "trade_date": "20260120",
       "unfiltered": {
         "adv_dec_ratio": 0.7198581560283688,
@@ -112,17 +148,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.4521518987341773,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.409194355939918,
+        "legacy_adv_dec_ratio": 1.4521518987341773,
         "project_adv_dec_ratio": 1.4521518987341773,
-        "ratio_delta": -0.04295754279425923,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260121"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.4521518987341773,
+        "adv_n": 2868,
+        "dec_n": 1975,
+        "flat_n": 158,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5001
       },
       "project": {
         "adv_dec_ratio": 1.4521518987341773,
@@ -136,6 +183,7 @@
         "row_count_used": 5001,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.04295754279425923,
       "trade_date": "20260121",
       "unfiltered": {
         "adv_dec_ratio": 1.409194355939918,
@@ -148,17 +196,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.9637023593466425,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.0129431626336522,
+        "legacy_adv_dec_ratio": 1.9637023593466425,
         "project_adv_dec_ratio": 1.9637023593466425,
-        "ratio_delta": 0.04924080328700975,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260122"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.9637023593466425,
+        "adv_n": 3246,
+        "dec_n": 1653,
+        "flat_n": 101,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5000
       },
       "project": {
         "adv_dec_ratio": 1.9637023593466425,
@@ -172,6 +231,7 @@
         "row_count_used": 5000,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.04924080328700975,
       "trade_date": "20260122",
       "unfiltered": {
         "adv_dec_ratio": 2.0129431626336522,
@@ -184,17 +244,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 2.8064012490241996,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.835251798561151,
+        "legacy_adv_dec_ratio": 2.8064012490241996,
         "project_adv_dec_ratio": 2.8064012490241996,
-        "ratio_delta": 0.02885054953695132,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260123"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 2.8064012490241996,
+        "adv_n": 3595,
+        "dec_n": 1281,
+        "flat_n": 125,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5001
       },
       "project": {
         "adv_dec_ratio": 2.8064012490241996,
@@ -208,6 +279,7 @@
         "row_count_used": 5001,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.02885054953695132,
       "trade_date": "20260123",
       "unfiltered": {
         "adv_dec_ratio": 2.835251798561151,
@@ -220,17 +292,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.4247608002319513,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.4253513656854946,
+        "legacy_adv_dec_ratio": 0.4247608002319513,
         "project_adv_dec_ratio": 0.4247608002319513,
-        "ratio_delta": 0.0005905654535433014,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260126"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.4247608002319513,
+        "adv_n": 1465,
+        "dec_n": 3449,
+        "flat_n": 84,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4998
       },
       "project": {
         "adv_dec_ratio": 0.4247608002319513,
@@ -244,6 +327,7 @@
         "row_count_used": 4998,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.0005905654535433014,
       "trade_date": "20260126",
       "unfiltered": {
         "adv_dec_ratio": 0.4253513656854946,
@@ -256,17 +340,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.5723411050782498,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.5581933989577301,
+        "legacy_adv_dec_ratio": 0.5723411050782498,
         "project_adv_dec_ratio": 0.5723411050782498,
-        "ratio_delta": -0.014147706120519632,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260127"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.5723411050782498,
+        "adv_n": 1792,
+        "dec_n": 3131,
+        "flat_n": 75,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4998
       },
       "project": {
         "adv_dec_ratio": 0.5723411050782498,
@@ -280,6 +375,7 @@
         "row_count_used": 4998,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.014147706120519632,
       "trade_date": "20260127",
       "unfiltered": {
         "adv_dec_ratio": 0.5581933989577301,
@@ -292,17 +388,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.48118036735922914,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.47774725274725277,
+        "legacy_adv_dec_ratio": 0.48118036735922914,
         "project_adv_dec_ratio": 0.48118036735922914,
-        "ratio_delta": -0.0034331146119763734,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260128"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.48118036735922914,
+        "adv_n": 1598,
+        "dec_n": 3321,
+        "flat_n": 79,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4998
       },
       "project": {
         "adv_dec_ratio": 0.48118036735922914,
@@ -316,6 +423,7 @@
         "row_count_used": 4998,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.0034331146119763734,
       "trade_date": "20260128",
       "unfiltered": {
         "adv_dec_ratio": 0.47774725274725277,
@@ -328,17 +436,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.5173160173160173,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.5056085249579361,
+        "legacy_adv_dec_ratio": 0.5173160173160173,
         "project_adv_dec_ratio": 0.5173160173160173,
-        "ratio_delta": -0.011707492358081217,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260129"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.5173160173160173,
+        "adv_n": 1673,
+        "dec_n": 3234,
+        "flat_n": 92,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4999
       },
       "project": {
         "adv_dec_ratio": 0.5173160173160173,
@@ -352,6 +471,7 @@
         "row_count_used": 4999,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.011707492358081217,
       "trade_date": "20260129",
       "unfiltered": {
         "adv_dec_ratio": 0.5056085249579361,
@@ -364,17 +484,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.8616495629038389,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.8470303867403315,
+        "legacy_adv_dec_ratio": 0.8616495629038389,
         "project_adv_dec_ratio": 0.8616495629038389,
-        "ratio_delta": -0.014619176163507386,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260130"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.8616495629038389,
+        "adv_n": 2267,
+        "dec_n": 2631,
+        "flat_n": 100,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4998
       },
       "project": {
         "adv_dec_ratio": 0.8616495629038389,
@@ -388,6 +519,7 @@
         "row_count_used": 4998,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.014619176163507386,
       "trade_date": "20260130",
       "unfiltered": {
         "adv_dec_ratio": 0.8470303867403315,
@@ -400,17 +532,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.16129032258064516,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.16573516766981944,
+        "legacy_adv_dec_ratio": 0.16129032258064516,
         "project_adv_dec_ratio": 0.16129032258064516,
-        "ratio_delta": 0.004444845089174282,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260202"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.16129032258064516,
+        "adv_n": 690,
+        "dec_n": 4278,
+        "flat_n": 32,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5000
       },
       "project": {
         "adv_dec_ratio": 0.16129032258064516,
@@ -424,6 +567,7 @@
         "row_count_used": 5000,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.004444845089174282,
       "trade_date": "20260202",
       "unfiltered": {
         "adv_dec_ratio": 0.16573516766981944,
@@ -436,17 +580,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 9.745098039215685,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 9.12781954887218,
+        "legacy_adv_dec_ratio": 9.745098039215685,
         "project_adv_dec_ratio": 9.745098039215685,
-        "ratio_delta": -0.6172784903435051,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260203"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 9.745098039215685,
+        "adv_n": 4473,
+        "dec_n": 459,
+        "flat_n": 69,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5001
       },
       "project": {
         "adv_dec_ratio": 9.745098039215685,
@@ -460,6 +615,7 @@
         "row_count_used": 5001,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.6172784903435051,
       "trade_date": "20260203",
       "unfiltered": {
         "adv_dec_ratio": 9.12781954887218,
@@ -472,17 +628,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.6102591221575886,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.5276995305164318,
+        "legacy_adv_dec_ratio": 1.6102591221575886,
         "project_adv_dec_ratio": 1.6102591221575886,
-        "ratio_delta": -0.08255959164115678,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260204"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.6102591221575886,
+        "adv_n": 3045,
+        "dec_n": 1891,
+        "flat_n": 67,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5003
       },
       "project": {
         "adv_dec_ratio": 1.6102591221575886,
@@ -496,6 +663,7 @@
         "row_count_used": 5003,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.08255959164115678,
       "trade_date": "20260204",
       "unfiltered": {
         "adv_dec_ratio": 1.5276995305164318,
@@ -508,17 +676,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.4465501924785312,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.43506318902930896,
+        "legacy_adv_dec_ratio": 0.4465501924785312,
         "project_adv_dec_ratio": 0.4465501924785312,
-        "ratio_delta": -0.011487003449222266,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260205"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.4465501924785312,
+        "adv_n": 1508,
+        "dec_n": 3377,
+        "flat_n": 118,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5003
       },
       "project": {
         "adv_dec_ratio": 0.4465501924785312,
@@ -532,6 +711,7 @@
         "row_count_used": 5003,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.011487003449222266,
       "trade_date": "20260205",
       "unfiltered": {
         "adv_dec_ratio": 0.43506318902930896,
@@ -544,17 +724,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.0485027414592998,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.0780392156862746,
+        "legacy_adv_dec_ratio": 1.0485027414592998,
         "project_adv_dec_ratio": 1.0485027414592998,
-        "ratio_delta": 0.029536474226974807,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260206"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.0485027414592998,
+        "adv_n": 2486,
+        "dec_n": 2371,
+        "flat_n": 145,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5002
       },
       "project": {
         "adv_dec_ratio": 1.0485027414592998,
@@ -568,6 +759,7 @@
         "row_count_used": 5002,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.029536474226974807,
       "trade_date": "20260206",
       "unfiltered": {
         "adv_dec_ratio": 1.0780392156862746,
@@ -580,17 +772,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 6.431372549019608,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 6.076416337285902,
+        "legacy_adv_dec_ratio": 6.431372549019608,
         "project_adv_dec_ratio": 6.431372549019608,
-        "ratio_delta": -0.35495621173370573,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260209"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 6.431372549019608,
+        "adv_n": 4264,
+        "dec_n": 663,
+        "flat_n": 74,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5001
       },
       "project": {
         "adv_dec_ratio": 6.431372549019608,
@@ -604,6 +807,7 @@
         "row_count_used": 5001,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.35495621173370573,
       "trade_date": "20260209",
       "unfiltered": {
         "adv_dec_ratio": 6.076416337285902,
@@ -616,17 +820,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.7465091299677766,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.7017263427109974,
+        "legacy_adv_dec_ratio": 0.7465091299677766,
         "project_adv_dec_ratio": 0.7465091299677766,
-        "ratio_delta": -0.0447827872567792,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260210"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.7465091299677766,
+        "adv_n": 2085,
+        "dec_n": 2793,
+        "flat_n": 127,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5005
       },
       "project": {
         "adv_dec_ratio": 0.7465091299677766,
@@ -640,6 +855,7 @@
         "row_count_used": 5005,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.0447827872567792,
       "trade_date": "20260210",
       "unfiltered": {
         "adv_dec_ratio": 0.7017263427109974,
@@ -652,17 +868,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.6480978260869565,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.6325208269052761,
+        "legacy_adv_dec_ratio": 0.6480978260869565,
         "project_adv_dec_ratio": 0.6480978260869565,
-        "ratio_delta": -0.015576999181680429,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260211"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.6480978260869565,
+        "adv_n": 1908,
+        "dec_n": 2944,
+        "flat_n": 154,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5006
       },
       "project": {
         "adv_dec_ratio": 0.6480978260869565,
@@ -676,6 +903,7 @@
         "row_count_used": 5006,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.015576999181680429,
       "trade_date": "20260211",
       "unfiltered": {
         "adv_dec_ratio": 0.6325208269052761,
@@ -688,17 +916,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.6552649228705567,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.6426829268292683,
+        "legacy_adv_dec_ratio": 0.6552649228705567,
         "project_adv_dec_ratio": 0.6552649228705567,
-        "ratio_delta": -0.012581996041288401,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260212"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.6552649228705567,
+        "adv_n": 1954,
+        "dec_n": 2982,
+        "flat_n": 71,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5007
       },
       "project": {
         "adv_dec_ratio": 0.6552649228705567,
@@ -712,6 +951,7 @@
         "row_count_used": 5007,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.012581996041288401,
       "trade_date": "20260212",
       "unfiltered": {
         "adv_dec_ratio": 0.6426829268292683,
@@ -724,17 +964,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.37374301675977656,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.40219378427787933,
+        "legacy_adv_dec_ratio": 0.37374301675977656,
         "project_adv_dec_ratio": 0.37374301675977656,
-        "ratio_delta": 0.02845076751810277,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260213"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.37374301675977656,
+        "adv_n": 1338,
+        "dec_n": 3580,
+        "flat_n": 87,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5005
       },
       "project": {
         "adv_dec_ratio": 0.37374301675977656,
@@ -748,6 +999,7 @@
         "row_count_used": 5005,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.02845076751810277,
       "trade_date": "20260213",
       "unfiltered": {
         "adv_dec_ratio": 0.40219378427787933,
@@ -760,17 +1012,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 2.8168469860896446,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.8778735632183907,
+        "legacy_adv_dec_ratio": 2.8168469860896446,
         "project_adv_dec_ratio": 2.8168469860896446,
-        "ratio_delta": 0.06102657712874615,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260224"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 2.8168469860896446,
+        "adv_n": 3645,
+        "dec_n": 1294,
+        "flat_n": 67,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5006
       },
       "project": {
         "adv_dec_ratio": 2.8168469860896446,
@@ -784,6 +1047,7 @@
         "row_count_used": 5006,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.06102657712874615,
       "trade_date": "20260224",
       "unfiltered": {
         "adv_dec_ratio": 2.8778735632183907,
@@ -796,17 +1060,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 2.263157894736842,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.329397141081417,
+        "legacy_adv_dec_ratio": 2.263157894736842,
         "project_adv_dec_ratio": 2.263157894736842,
-        "ratio_delta": 0.0662392463445749,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260225"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 2.263157894736842,
+        "adv_n": 3397,
+        "dec_n": 1501,
+        "flat_n": 105,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5003
       },
       "project": {
         "adv_dec_ratio": 2.263157894736842,
@@ -820,6 +1095,7 @@
         "row_count_used": 5003,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.0662392463445749,
       "trade_date": "20260225",
       "unfiltered": {
         "adv_dec_ratio": 2.329397141081417,
@@ -832,17 +1108,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.8962446767324816,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.8658536585365854,
+        "legacy_adv_dec_ratio": 0.8962446767324816,
         "project_adv_dec_ratio": 0.8962446767324816,
-        "ratio_delta": -0.03039101819589629,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260226"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.8962446767324816,
+        "adv_n": 2315,
+        "dec_n": 2583,
+        "flat_n": 105,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5003
       },
       "project": {
         "adv_dec_ratio": 0.8962446767324816,
@@ -856,6 +1143,7 @@
         "row_count_used": 5003,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.03039101819589629,
       "trade_date": "20260226",
       "unfiltered": {
         "adv_dec_ratio": 0.8658536585365854,
@@ -868,17 +1156,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.655247417074497,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.5817214700193423,
+        "legacy_adv_dec_ratio": 1.655247417074497,
         "project_adv_dec_ratio": 1.655247417074497,
-        "ratio_delta": -0.0735259470551548,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260227"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.655247417074497,
+        "adv_n": 3044,
+        "dec_n": 1839,
+        "flat_n": 122,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5005
       },
       "project": {
         "adv_dec_ratio": 1.655247417074497,
@@ -892,6 +1191,7 @@
         "row_count_used": 5005,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.0735259470551548,
       "trade_date": "20260227",
       "unfiltered": {
         "adv_dec_ratio": 1.5817214700193423,
@@ -904,17 +1204,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.2744795682343871,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.2666978047641289,
+        "legacy_adv_dec_ratio": 0.2744795682343871,
         "project_adv_dec_ratio": 0.2744795682343871,
-        "ratio_delta": -0.007781763470258163,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260302"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.2744795682343871,
+        "adv_n": 1068,
+        "dec_n": 3891,
+        "flat_n": 44,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5003
       },
       "project": {
         "adv_dec_ratio": 0.2744795682343871,
@@ -928,6 +1239,7 @@
         "row_count_used": 5003,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.007781763470258163,
       "trade_date": "20260302",
       "unfiltered": {
         "adv_dec_ratio": 0.2666978047641289,
@@ -940,17 +1252,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.12072841726618705,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.133763261909715,
+        "legacy_adv_dec_ratio": 0.12072841726618705,
         "project_adv_dec_ratio": 0.12072841726618705,
-        "ratio_delta": 0.013034844643527943,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260303"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.12072841726618705,
+        "adv_n": 537,
+        "dec_n": 4448,
+        "flat_n": 19,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5004
       },
       "project": {
         "adv_dec_ratio": 0.12072841726618705,
@@ -964,6 +1287,7 @@
         "row_count_used": 5004,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.013034844643527943,
       "trade_date": "20260303",
       "unfiltered": {
         "adv_dec_ratio": 0.133763261909715,
@@ -976,17 +1300,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.45869114598756294,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.4793956043956044,
+        "legacy_adv_dec_ratio": 0.45869114598756294,
         "project_adv_dec_ratio": 0.45869114598756294,
-        "ratio_delta": 0.02070445840804147,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260304"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.45869114598756294,
+        "adv_n": 1549,
+        "dec_n": 3377,
+        "flat_n": 78,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5004
       },
       "project": {
         "adv_dec_ratio": 0.45869114598756294,
@@ -1000,6 +1335,7 @@
         "row_count_used": 5004,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.02070445840804147,
       "trade_date": "20260304",
       "unfiltered": {
         "adv_dec_ratio": 0.4793956043956044,
@@ -1012,17 +1348,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 3.1119465329991645,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 3.1232771822358347,
+        "legacy_adv_dec_ratio": 3.1119465329991645,
         "project_adv_dec_ratio": 3.1119465329991645,
-        "ratio_delta": 0.011330649236670265,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260305"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 3.1119465329991645,
+        "adv_n": 3725,
+        "dec_n": 1197,
+        "flat_n": 83,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5005
       },
       "project": {
         "adv_dec_ratio": 3.1119465329991645,
@@ -1036,6 +1383,7 @@
         "row_count_used": 5005,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.011330649236670265,
       "trade_date": "20260305",
       "unfiltered": {
         "adv_dec_ratio": 3.1232771822358347,
@@ -1048,17 +1396,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 3.8692232055063913,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 3.6915077989601386,
+        "legacy_adv_dec_ratio": 3.8692232055063913,
         "project_adv_dec_ratio": 3.8692232055063913,
-        "ratio_delta": -0.17771540654625273,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260306"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 3.8692232055063913,
+        "adv_n": 3935,
+        "dec_n": 1017,
+        "flat_n": 54,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5006
       },
       "project": {
         "adv_dec_ratio": 3.8692232055063913,
@@ -1072,6 +1431,7 @@
         "row_count_used": 5006,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.17771540654625273,
       "trade_date": "20260306",
       "unfiltered": {
         "adv_dec_ratio": 3.6915077989601386,
@@ -1084,17 +1444,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.3668425437378506,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.3589808274470232,
+        "legacy_adv_dec_ratio": 0.3668425437378506,
         "project_adv_dec_ratio": 0.3668425437378506,
-        "ratio_delta": -0.00786171629082738,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260309"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.3668425437378506,
+        "adv_n": 1321,
+        "dec_n": 3601,
+        "flat_n": 87,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5009
       },
       "project": {
         "adv_dec_ratio": 0.3668425437378506,
@@ -1108,6 +1479,7 @@
         "row_count_used": 5009,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.00786171629082738,
       "trade_date": "20260309",
       "unfiltered": {
         "adv_dec_ratio": 0.3589808274470232,
@@ -1120,17 +1492,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 5.45740498034076,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 5.3364705882352945,
+        "legacy_adv_dec_ratio": 5.45740498034076,
         "project_adv_dec_ratio": 5.45740498034076,
-        "ratio_delta": -0.12093439210546553,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260310"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 5.45740498034076,
+        "adv_n": 4164,
+        "dec_n": 763,
+        "flat_n": 81,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5008
       },
       "project": {
         "adv_dec_ratio": 5.45740498034076,
@@ -1144,6 +1527,7 @@
         "row_count_used": 5008,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.12093439210546553,
       "trade_date": "20260310",
       "unfiltered": {
         "adv_dec_ratio": 5.3364705882352945,
@@ -1156,17 +1540,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.599803664921466,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.6272838002436053,
+        "legacy_adv_dec_ratio": 0.599803664921466,
         "project_adv_dec_ratio": 0.599803664921466,
-        "ratio_delta": 0.027480135322139332,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260311"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.599803664921466,
+        "adv_n": 1833,
+        "dec_n": 3056,
+        "flat_n": 121,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5010
       },
       "project": {
         "adv_dec_ratio": 0.599803664921466,
@@ -1180,6 +1575,7 @@
         "row_count_used": 5010,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.027480135322139332,
       "trade_date": "20260311",
       "unfiltered": {
         "adv_dec_ratio": 0.6272838002436053,
@@ -1192,17 +1588,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.40250855188141393,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.38376573336758285,
+        "legacy_adv_dec_ratio": 0.40250855188141393,
         "project_adv_dec_ratio": 0.40250855188141393,
-        "ratio_delta": -0.018742818513831083,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260312"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.40250855188141393,
+        "adv_n": 1412,
+        "dec_n": 3508,
+        "flat_n": 90,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5010
       },
       "project": {
         "adv_dec_ratio": 0.40250855188141393,
@@ -1216,6 +1623,7 @@
         "row_count_used": 5010,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.018742818513831083,
       "trade_date": "20260312",
       "unfiltered": {
         "adv_dec_ratio": 0.38376573336758285,
@@ -1228,17 +1636,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.3905359179019384,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.39237199582027166,
+        "legacy_adv_dec_ratio": 0.3905359179019384,
         "project_adv_dec_ratio": 0.3905359179019384,
-        "ratio_delta": 0.0018360779183332343,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260313"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.3905359179019384,
+        "adv_n": 1370,
+        "dec_n": 3508,
+        "flat_n": 132,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5010
       },
       "project": {
         "adv_dec_ratio": 0.3905359179019384,
@@ -1252,6 +1671,7 @@
         "row_count_used": 5010,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.0018360779183332343,
       "trade_date": "20260313",
       "unfiltered": {
         "adv_dec_ratio": 0.39237199582027166,
@@ -1264,17 +1684,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.193620844564241,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.1399358460304732,
+        "legacy_adv_dec_ratio": 1.193620844564241,
         "project_adv_dec_ratio": 1.193620844564241,
-        "ratio_delta": -0.053684998533767736,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260316"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.193620844564241,
+        "adv_n": 2657,
+        "dec_n": 2226,
+        "flat_n": 127,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5010
       },
       "project": {
         "adv_dec_ratio": 1.193620844564241,
@@ -1288,6 +1719,7 @@
         "row_count_used": 5010,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.053684998533767736,
       "trade_date": "20260316",
       "unfiltered": {
         "adv_dec_ratio": 1.1399358460304732,
@@ -1300,17 +1732,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.18659942363112392,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.19092710856639505,
+        "legacy_adv_dec_ratio": 0.18659942363112392,
         "project_adv_dec_ratio": 0.18659942363112392,
-        "ratio_delta": 0.004327684935271137,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260317"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.18659942363112392,
+        "adv_n": 777,
+        "dec_n": 4164,
+        "flat_n": 67,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5008
       },
       "project": {
         "adv_dec_ratio": 0.18659942363112392,
@@ -1324,6 +1767,7 @@
         "row_count_used": 5008,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.004327684935271137,
       "trade_date": "20260317",
       "unfiltered": {
         "adv_dec_ratio": 0.19092710856639505,
@@ -1336,17 +1780,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 2.095537397862979,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.9410158383397051,
+        "legacy_adv_dec_ratio": 2.095537397862979,
         "project_adv_dec_ratio": 2.095537397862979,
-        "ratio_delta": -0.15452155952327407,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260318"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 2.095537397862979,
+        "adv_n": 3334,
+        "dec_n": 1591,
+        "flat_n": 83,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5008
       },
       "project": {
         "adv_dec_ratio": 2.095537397862979,
@@ -1360,6 +1815,7 @@
         "row_count_used": 5008,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.15452155952327407,
       "trade_date": "20260318",
       "unfiltered": {
         "adv_dec_ratio": 1.9410158383397051,
@@ -1372,17 +1828,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.10154525386313466,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.10191725529767912,
+        "legacy_adv_dec_ratio": 0.10154525386313466,
         "project_adv_dec_ratio": 0.10154525386313466,
-        "ratio_delta": 0.0003720014345444528,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260319"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.10154525386313466,
+        "adv_n": 460,
+        "dec_n": 4530,
+        "flat_n": 18,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5008
       },
       "project": {
         "adv_dec_ratio": 0.10154525386313466,
@@ -1396,6 +1863,7 @@
         "row_count_used": 5008,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.0003720014345444528,
       "trade_date": "20260319",
       "unfiltered": {
         "adv_dec_ratio": 0.10191725529767912,
@@ -1408,17 +1876,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.1329243353783231,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.13832010029251984,
+        "legacy_adv_dec_ratio": 0.1329243353783231,
         "project_adv_dec_ratio": 0.1329243353783231,
-        "ratio_delta": 0.005395764914196743,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260320"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.1329243353783231,
+        "adv_n": 585,
+        "dec_n": 4401,
+        "flat_n": 23,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5009
       },
       "project": {
         "adv_dec_ratio": 0.1329243353783231,
@@ -1432,6 +1911,7 @@
         "row_count_used": 5009,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.005395764914196743,
       "trade_date": "20260320",
       "unfiltered": {
         "adv_dec_ratio": 0.13832010029251984,
@@ -1444,17 +1924,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.05815182913935293,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.05897138437741686,
+        "legacy_adv_dec_ratio": 0.05815182913935293,
         "project_adv_dec_ratio": 0.05815182913935293,
-        "ratio_delta": 0.0008195552380639362,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260323"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.05815182913935293,
+        "adv_n": 275,
+        "dec_n": 4729,
+        "flat_n": 6,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5010
       },
       "project": {
         "adv_dec_ratio": 0.05815182913935293,
@@ -1468,6 +1959,7 @@
         "row_count_used": 5010,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.0008195552380639362,
       "trade_date": "20260323",
       "unfiltered": {
         "adv_dec_ratio": 0.05897138437741686,
@@ -1480,17 +1972,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 17.488888888888887,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 15.610942249240122,
+        "legacy_adv_dec_ratio": 17.488888888888887,
         "project_adv_dec_ratio": 17.488888888888887,
-        "ratio_delta": -1.8779466396487656,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260324"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 17.488888888888887,
+        "adv_n": 4722,
+        "dec_n": 270,
+        "flat_n": 15,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5007
       },
       "project": {
         "adv_dec_ratio": 17.488888888888887,
@@ -1504,6 +2007,7 @@
         "row_count_used": 5007,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -1.8779466396487656,
       "trade_date": "20260324",
       "unfiltered": {
         "adv_dec_ratio": 15.610942249240122,
@@ -1516,17 +2020,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 8.991951710261569,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 8.70357142857143,
+        "legacy_adv_dec_ratio": 8.991951710261569,
         "project_adv_dec_ratio": 8.991951710261569,
-        "ratio_delta": -0.28838028169013974,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260325"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 8.991951710261569,
+        "adv_n": 4469,
+        "dec_n": 497,
+        "flat_n": 43,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5009
       },
       "project": {
         "adv_dec_ratio": 8.991951710261569,
@@ -1540,6 +2055,7 @@
         "row_count_used": 5009,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.28838028169013974,
       "trade_date": "20260325",
       "unfiltered": {
         "adv_dec_ratio": 8.70357142857143,
@@ -1552,17 +2068,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.19902912621359223,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.20387269085243712,
+        "legacy_adv_dec_ratio": 0.19902912621359223,
         "project_adv_dec_ratio": 0.19902912621359223,
-        "ratio_delta": 0.004843564638844888,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260326"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.19902912621359223,
+        "adv_n": 820,
+        "dec_n": 4120,
+        "flat_n": 67,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5007
       },
       "project": {
         "adv_dec_ratio": 0.19902912621359223,
@@ -1576,6 +2103,7 @@
         "row_count_used": 5007,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.004843564638844888,
       "trade_date": "20260326",
       "unfiltered": {
         "adv_dec_ratio": 0.20387269085243712,
@@ -1588,17 +2116,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 4.38411316648531,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 4.041938490214353,
+        "legacy_adv_dec_ratio": 4.38411316648531,
         "project_adv_dec_ratio": 4.38411316648531,
-        "ratio_delta": -0.34217467627095743,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260327"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 4.38411316648531,
+        "adv_n": 4029,
+        "dec_n": 919,
+        "flat_n": 56,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5004
       },
       "project": {
         "adv_dec_ratio": 4.38411316648531,
@@ -1612,6 +2151,7 @@
         "row_count_used": 5004,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.34217467627095743,
       "trade_date": "20260327",
       "unfiltered": {
         "adv_dec_ratio": 4.041938490214353,
@@ -1624,17 +2164,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.259619842373667,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.1639610389610389,
+        "legacy_adv_dec_ratio": 1.259619842373667,
         "project_adv_dec_ratio": 1.259619842373667,
-        "ratio_delta": -0.09565880341262822,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260330"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.259619842373667,
+        "adv_n": 2717,
+        "dec_n": 2157,
+        "flat_n": 128,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5002
       },
       "project": {
         "adv_dec_ratio": 1.259619842373667,
@@ -1648,6 +2199,7 @@
         "row_count_used": 5002,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.09565880341262822,
       "trade_date": "20260330",
       "unfiltered": {
         "adv_dec_ratio": 1.1639610389610389,
@@ -1660,17 +2212,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.21349421324796847,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.23092736409319323,
+        "legacy_adv_dec_ratio": 0.21349421324796847,
         "project_adv_dec_ratio": 0.21349421324796847,
-        "ratio_delta": 0.01743315084522476,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260331"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.21349421324796847,
+        "adv_n": 867,
+        "dec_n": 4061,
+        "flat_n": 78,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5006
       },
       "project": {
         "adv_dec_ratio": 0.21349421324796847,
@@ -1684,6 +2247,7 @@
         "row_count_used": 5006,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.01743315084522476,
       "trade_date": "20260331",
       "unfiltered": {
         "adv_dec_ratio": 0.23092736409319323,
@@ -1696,17 +2260,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 5.147684605757196,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 5.067643742953777,
+        "legacy_adv_dec_ratio": 5.147684605757196,
         "project_adv_dec_ratio": 5.147684605757196,
-        "ratio_delta": -0.08004086280341927,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260401"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 5.147684605757196,
+        "adv_n": 4113,
+        "dec_n": 799,
+        "flat_n": 96,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5008
       },
       "project": {
         "adv_dec_ratio": 5.147684605757196,
@@ -1720,6 +2295,7 @@
         "row_count_used": 5008,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.08004086280341927,
       "trade_date": "20260401",
       "unfiltered": {
         "adv_dec_ratio": 5.067643742953777,
@@ -1732,17 +2308,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.21044921875,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.24029237094563727,
+        "legacy_adv_dec_ratio": 0.21044921875,
         "project_adv_dec_ratio": 0.21044921875,
-        "ratio_delta": 0.029843152195637268,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260402"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.21044921875,
+        "adv_n": 862,
+        "dec_n": 4096,
+        "flat_n": 50,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5008
       },
       "project": {
         "adv_dec_ratio": 0.21044921875,
@@ -1756,6 +2343,7 @@
         "row_count_used": 5008,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.029843152195637268,
       "trade_date": "20260402",
       "unfiltered": {
         "adv_dec_ratio": 0.24029237094563727,
@@ -1768,17 +2356,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.15520037062775074,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.15086388537715972,
+        "legacy_adv_dec_ratio": 0.15520037062775074,
         "project_adv_dec_ratio": 0.15520037062775074,
-        "ratio_delta": -0.004336485250591021,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260403"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.15520037062775074,
+        "adv_n": 670,
+        "dec_n": 4317,
+        "flat_n": 21,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5008
       },
       "project": {
         "adv_dec_ratio": 0.15520037062775074,
@@ -1792,6 +2391,7 @@
         "row_count_used": 5008,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.004336485250591021,
       "trade_date": "20260403",
       "unfiltered": {
         "adv_dec_ratio": 0.15086388537715972,
@@ -1804,17 +2404,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 3.010551948051948,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.7889200561009817,
+        "legacy_adv_dec_ratio": 3.010551948051948,
         "project_adv_dec_ratio": 3.010551948051948,
-        "ratio_delta": -0.22163189195096633,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260407"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 3.010551948051948,
+        "adv_n": 3709,
+        "dec_n": 1232,
+        "flat_n": 66,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5007
       },
       "project": {
         "adv_dec_ratio": 3.010551948051948,
@@ -1828,6 +2439,7 @@
         "row_count_used": 5007,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.22163189195096633,
       "trade_date": "20260407",
       "unfiltered": {
         "adv_dec_ratio": 2.7889200561009817,
@@ -1840,17 +2452,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 17.711610486891384,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 17.18936877076412,
+        "legacy_adv_dec_ratio": 17.711610486891384,
         "project_adv_dec_ratio": 17.711610486891384,
-        "ratio_delta": -0.5222417161272652,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260408"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 17.711610486891384,
+        "adv_n": 4729,
+        "dec_n": 267,
+        "flat_n": 14,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5010
       },
       "project": {
         "adv_dec_ratio": 17.711610486891384,
@@ -1864,6 +2487,7 @@
         "row_count_used": 5010,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.5222417161272652,
       "trade_date": "20260408",
       "unfiltered": {
         "adv_dec_ratio": 17.18936877076412,
@@ -1876,17 +2500,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.2686414708886619,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.26517794836008374,
+        "legacy_adv_dec_ratio": 0.2686414708886619,
         "project_adv_dec_ratio": 0.2686414708886619,
-        "ratio_delta": -0.003463522528578178,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260409"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.2686414708886619,
+        "adv_n": 1052,
+        "dec_n": 3916,
+        "flat_n": 43,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5011
       },
       "project": {
         "adv_dec_ratio": 0.2686414708886619,
@@ -1900,6 +2535,7 @@
         "row_count_used": 5011,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.003463522528578178,
       "trade_date": "20260409",
       "unfiltered": {
         "adv_dec_ratio": 0.26517794836008374,
@@ -1912,17 +2548,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 2.722095671981777,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.8468146027201144,
+        "legacy_adv_dec_ratio": 2.722095671981777,
         "project_adv_dec_ratio": 2.722095671981777,
-        "ratio_delta": 0.12471893073833762,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260410"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 2.722095671981777,
+        "adv_n": 3585,
+        "dec_n": 1317,
+        "flat_n": 112,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5014
       },
       "project": {
         "adv_dec_ratio": 2.722095671981777,
@@ -1936,6 +2583,7 @@
         "row_count_used": 5014,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.12471893073833762,
       "trade_date": "20260410",
       "unfiltered": {
         "adv_dec_ratio": 2.8468146027201144,
@@ -1948,17 +2596,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.8181478715459298,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.8033783783783783,
+        "legacy_adv_dec_ratio": 0.8181478715459298,
         "project_adv_dec_ratio": 0.8181478715459298,
-        "ratio_delta": -0.014769493167551495,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260413"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.8181478715459298,
+        "adv_n": 2191,
+        "dec_n": 2678,
+        "flat_n": 144,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5013
       },
       "project": {
         "adv_dec_ratio": 0.8181478715459298,
@@ -1972,6 +2631,7 @@
         "row_count_used": 5013,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.014769493167551495,
       "trade_date": "20260413",
       "unfiltered": {
         "adv_dec_ratio": 0.8033783783783783,
@@ -1984,17 +2644,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 2.377345378735233,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.335633626097867,
+        "legacy_adv_dec_ratio": 2.377345378735233,
         "project_adv_dec_ratio": 2.377345378735233,
-        "ratio_delta": -0.04171175263736604,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260414"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 2.377345378735233,
+        "adv_n": 3421,
+        "dec_n": 1439,
+        "flat_n": 154,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5014
       },
       "project": {
         "adv_dec_ratio": 2.377345378735233,
@@ -2008,6 +2679,7 @@
         "row_count_used": 5014,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.04171175263736604,
       "trade_date": "20260414",
       "unfiltered": {
         "adv_dec_ratio": 2.335633626097867,
@@ -2020,17 +2692,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.49695863746958635,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.519909630048009,
+        "legacy_adv_dec_ratio": 0.49695863746958635,
         "project_adv_dec_ratio": 0.49695863746958635,
-        "ratio_delta": 0.022950992578422702,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260415"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.49695863746958635,
+        "adv_n": 1634,
+        "dec_n": 3288,
+        "flat_n": 91,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5013
       },
       "project": {
         "adv_dec_ratio": 0.49695863746958635,
@@ -2044,6 +2727,7 @@
         "row_count_used": 5013,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.022950992578422702,
       "trade_date": "20260415",
       "unfiltered": {
         "adv_dec_ratio": 0.519909630048009,
@@ -2056,17 +2740,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 4.1210855949895615,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 4.004664179104478,
+        "legacy_adv_dec_ratio": 4.1210855949895615,
         "project_adv_dec_ratio": 4.1210855949895615,
-        "ratio_delta": -0.11642141588508359,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260416"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 4.1210855949895615,
+        "adv_n": 3948,
+        "dec_n": 958,
+        "flat_n": 110,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5016
       },
       "project": {
         "adv_dec_ratio": 4.1210855949895615,
@@ -2080,6 +2775,7 @@
         "row_count_used": 5016,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.11642141588508359,
       "trade_date": "20260416",
       "unfiltered": {
         "adv_dec_ratio": 4.004664179104478,
@@ -2092,17 +2788,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.698961937716263,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.8024112525117214,
+        "legacy_adv_dec_ratio": 0.698961937716263,
         "project_adv_dec_ratio": 0.698961937716263,
-        "ratio_delta": 0.10344931479545838,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260417"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.698961937716263,
+        "adv_n": 2020,
+        "dec_n": 2890,
+        "flat_n": 108,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5018
       },
       "project": {
         "adv_dec_ratio": 0.698961937716263,
@@ -2116,6 +2823,7 @@
         "row_count_used": 5018,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.10344931479545838,
       "trade_date": "20260417",
       "unfiltered": {
         "adv_dec_ratio": 0.8024112525117214,
@@ -2128,17 +2836,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.7892016082711086,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.804004214963119,
+        "legacy_adv_dec_ratio": 1.7892016082711086,
         "project_adv_dec_ratio": 1.7892016082711086,
-        "ratio_delta": 0.01480260669201039,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260420"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.7892016082711086,
+        "adv_n": 3115,
+        "dec_n": 1741,
+        "flat_n": 159,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5015
       },
       "project": {
         "adv_dec_ratio": 1.7892016082711086,
@@ -2152,6 +2871,7 @@
         "row_count_used": 5015,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.01480260669201039,
       "trade_date": "20260420",
       "unfiltered": {
         "adv_dec_ratio": 1.804004214963119,
@@ -2164,17 +2884,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.6026771139405811,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.5678904428904429,
+        "legacy_adv_dec_ratio": 0.6026771139405811,
         "project_adv_dec_ratio": 0.6026771139405811,
-        "ratio_delta": -0.03478667105013822,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260421"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.6026771139405811,
+        "adv_n": 1846,
+        "dec_n": 3063,
+        "flat_n": 109,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5018
       },
       "project": {
         "adv_dec_ratio": 0.6026771139405811,
@@ -2188,6 +2919,7 @@
         "row_count_used": 5018,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.03478667105013822,
       "trade_date": "20260421",
       "unfiltered": {
         "adv_dec_ratio": 0.5678904428904429,
@@ -2200,17 +2932,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.1368006993006994,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.200164406083025,
+        "legacy_adv_dec_ratio": 1.1368006993006994,
         "project_adv_dec_ratio": 1.1368006993006994,
-        "ratio_delta": 0.06336370678232561,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260422"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.1368006993006994,
+        "adv_n": 2601,
+        "dec_n": 2288,
+        "flat_n": 125,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5014
       },
       "project": {
         "adv_dec_ratio": 1.1368006993006994,
@@ -2224,6 +2967,7 @@
         "row_count_used": 5014,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.06336370678232561,
       "trade_date": "20260422",
       "unfiltered": {
         "adv_dec_ratio": 1.200164406083025,
@@ -2236,17 +2980,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.34397163120567376,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.3261402648357038,
+        "legacy_adv_dec_ratio": 0.34397163120567376,
         "project_adv_dec_ratio": 0.34397163120567376,
-        "ratio_delta": -0.01783136636996996,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260423"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.34397163120567376,
+        "adv_n": 1261,
+        "dec_n": 3666,
+        "flat_n": 83,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5010
       },
       "project": {
         "adv_dec_ratio": 0.34397163120567376,
@@ -2260,6 +3015,7 @@
         "row_count_used": 5010,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.01783136636996996,
       "trade_date": "20260423",
       "unfiltered": {
         "adv_dec_ratio": 0.3261402648357038,
@@ -2272,17 +3028,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.635,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.6073985680190931,
+        "legacy_adv_dec_ratio": 0.635,
         "project_adv_dec_ratio": 0.635,
-        "ratio_delta": -0.02760143198090692,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260424"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.635,
+        "adv_n": 1905,
+        "dec_n": 3000,
+        "flat_n": 103,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5008
       },
       "project": {
         "adv_dec_ratio": 0.635,
@@ -2296,6 +3063,7 @@
         "row_count_used": 5008,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.02760143198090692,
       "trade_date": "20260424",
       "unfiltered": {
         "adv_dec_ratio": 0.6073985680190931,
@@ -2308,17 +3076,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.7050716648291069,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.5600950118764845,
+        "legacy_adv_dec_ratio": 1.7050716648291069,
         "project_adv_dec_ratio": 1.7050716648291069,
-        "ratio_delta": -0.1449766529526224,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260427"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.7050716648291069,
+        "adv_n": 3093,
+        "dec_n": 1814,
+        "flat_n": 94,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 5001
       },
       "project": {
         "adv_dec_ratio": 1.7050716648291069,
@@ -2332,6 +3111,7 @@
         "row_count_used": 5001,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.1449766529526224,
       "trade_date": "20260427",
       "unfiltered": {
         "adv_dec_ratio": 1.5600950118764845,
@@ -2344,17 +3124,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.48314606741573035,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.46116241173275396,
+        "legacy_adv_dec_ratio": 0.48314606741573035,
         "project_adv_dec_ratio": 0.48314606741573035,
-        "ratio_delta": -0.02198365568297639,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260428"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.48314606741573035,
+        "adv_n": 1591,
+        "dec_n": 3293,
+        "flat_n": 107,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4991
       },
       "project": {
         "adv_dec_ratio": 0.48314606741573035,
@@ -2368,6 +3159,7 @@
         "row_count_used": 4991,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.02198365568297639,
       "trade_date": "20260428",
       "unfiltered": {
         "adv_dec_ratio": 0.46116241173275396,
@@ -2380,17 +3172,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 2.8892430278884462,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.8317890235210266,
+        "legacy_adv_dec_ratio": 2.8892430278884462,
         "project_adv_dec_ratio": 2.8892430278884462,
-        "ratio_delta": -0.05745400436741965,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260429"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 2.8892430278884462,
+        "adv_n": 3626,
+        "dec_n": 1255,
+        "flat_n": 79,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4960
       },
       "project": {
         "adv_dec_ratio": 2.8892430278884462,
@@ -2404,6 +3207,7 @@
         "row_count_used": 4960,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.05745400436741965,
       "trade_date": "20260429",
       "unfiltered": {
         "adv_dec_ratio": 2.8317890235210266,
@@ -2416,17 +3220,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.1489077128845298,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.169443315725315,
+        "legacy_adv_dec_ratio": 1.1489077128845298,
         "project_adv_dec_ratio": 1.1489077128845298,
-        "ratio_delta": 0.02053560284078526,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260430"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.1489077128845298,
+        "adv_n": 2577,
+        "dec_n": 2243,
+        "flat_n": 113,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4933
       },
       "project": {
         "adv_dec_ratio": 1.1489077128845298,
@@ -2440,6 +3255,7 @@
         "row_count_used": 4933,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.02053560284078526,
       "trade_date": "20260430",
       "unfiltered": {
         "adv_dec_ratio": 1.169443315725315,
@@ -2452,17 +3268,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 2.829635499207607,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.6241565452091766,
+        "legacy_adv_dec_ratio": 2.829635499207607,
         "project_adv_dec_ratio": 2.829635499207607,
-        "ratio_delta": -0.2054789539984303,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260506"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 2.829635499207607,
+        "adv_n": 3571,
+        "dec_n": 1262,
+        "flat_n": 99,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4932
       },
       "project": {
         "adv_dec_ratio": 2.829635499207607,
@@ -2476,6 +3303,7 @@
         "row_count_used": 4932,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.2054789539984303,
       "trade_date": "20260506",
       "unfiltered": {
         "adv_dec_ratio": 2.6241565452091766,
@@ -2488,17 +3316,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.8726076555023923,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.9213973799126638,
+        "legacy_adv_dec_ratio": 1.8726076555023923,
         "project_adv_dec_ratio": 1.8726076555023923,
-        "ratio_delta": 0.04878972441027152,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260507"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.8726076555023923,
+        "adv_n": 3131,
+        "dec_n": 1672,
+        "flat_n": 131,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4934
       },
       "project": {
         "adv_dec_ratio": 1.8726076555023923,
@@ -2512,6 +3351,7 @@
         "row_count_used": 4934,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.04878972441027152,
       "trade_date": "20260507",
       "unfiltered": {
         "adv_dec_ratio": 1.9213973799126638,
@@ -2524,17 +3364,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.9802102659245517,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.1047453703703702,
+        "legacy_adv_dec_ratio": 1.9802102659245517,
         "project_adv_dec_ratio": 1.9802102659245517,
-        "ratio_delta": 0.1245351044458185,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260508"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.9802102659245517,
+        "adv_n": 3202,
+        "dec_n": 1617,
+        "flat_n": 115,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4934
       },
       "project": {
         "adv_dec_ratio": 1.9802102659245517,
@@ -2548,6 +3399,7 @@
         "row_count_used": 4934,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.1245351044458185,
       "trade_date": "20260508",
       "unfiltered": {
         "adv_dec_ratio": 2.1047453703703702,
@@ -2560,17 +3412,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.5241090146750524,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.3939258597588209,
+        "legacy_adv_dec_ratio": 1.5241090146750524,
         "project_adv_dec_ratio": 1.5241090146750524,
-        "ratio_delta": -0.13018315491623156,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260511"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.5241090146750524,
+        "adv_n": 2908,
+        "dec_n": 1908,
+        "flat_n": 118,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4934
       },
       "project": {
         "adv_dec_ratio": 1.5241090146750524,
@@ -2584,6 +3447,7 @@
         "row_count_used": 4934,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.13018315491623156,
       "trade_date": "20260511",
       "unfiltered": {
         "adv_dec_ratio": 1.3939258597588209,
@@ -2596,17 +3460,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.31244958322129607,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.3406620553359684,
+        "legacy_adv_dec_ratio": 0.31244958322129607,
         "project_adv_dec_ratio": 0.31244958322129607,
-        "ratio_delta": 0.028212472114672316,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260512"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.31244958322129607,
+        "adv_n": 1162,
+        "dec_n": 3719,
+        "flat_n": 52,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4933
       },
       "project": {
         "adv_dec_ratio": 0.31244958322129607,
@@ -2620,6 +3495,7 @@
         "row_count_used": 4933,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.028212472114672316,
       "trade_date": "20260512",
       "unfiltered": {
         "adv_dec_ratio": 0.3406620553359684,
@@ -2632,17 +3508,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.5254593175853017,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.506560449859419,
+        "legacy_adv_dec_ratio": 1.5254593175853017,
         "project_adv_dec_ratio": 1.5254593175853017,
-        "ratio_delta": -0.018898867725882784,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260513"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.5254593175853017,
+        "adv_n": 2906,
+        "dec_n": 1905,
+        "flat_n": 127,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4938
       },
       "project": {
         "adv_dec_ratio": 1.5254593175853017,
@@ -2656,6 +3543,7 @@
         "row_count_used": 4938,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.018898867725882784,
       "trade_date": "20260513",
       "unfiltered": {
         "adv_dec_ratio": 1.506560449859419,
@@ -2668,17 +3556,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.23465521596362718,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.23865967631638932,
+        "legacy_adv_dec_ratio": 0.23465521596362718,
         "project_adv_dec_ratio": 0.23465521596362718,
-        "ratio_delta": 0.00400446035276214,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260514"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.23465521596362718,
+        "adv_n": 929,
+        "dec_n": 3959,
+        "flat_n": 50,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4938
       },
       "project": {
         "adv_dec_ratio": 0.23465521596362718,
@@ -2692,6 +3591,7 @@
         "row_count_used": 4938,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.00400446035276214,
       "trade_date": "20260514",
       "unfiltered": {
         "adv_dec_ratio": 0.23865967631638932,
@@ -2704,17 +3604,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.48743872549019607,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.5066964285714286,
+        "legacy_adv_dec_ratio": 0.48743872549019607,
         "project_adv_dec_ratio": 0.48743872549019607,
-        "ratio_delta": 0.019257703081232536,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260515"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.48743872549019607,
+        "adv_n": 1591,
+        "dec_n": 3264,
+        "flat_n": 85,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4940
       },
       "project": {
         "adv_dec_ratio": 0.48743872549019607,
@@ -2728,6 +3639,7 @@
         "row_count_used": 4940,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.019257703081232536,
       "trade_date": "20260515",
       "unfiltered": {
         "adv_dec_ratio": 0.5066964285714286,
@@ -2740,17 +3652,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.8613785136696188,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.7908757908757909,
+        "legacy_adv_dec_ratio": 0.8613785136696188,
         "project_adv_dec_ratio": 0.8613785136696188,
-        "ratio_delta": -0.07050272279382797,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260518"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.8613785136696188,
+        "adv_n": 2237,
+        "dec_n": 2597,
+        "flat_n": 109,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4943
       },
       "project": {
         "adv_dec_ratio": 0.8613785136696188,
@@ -2764,6 +3687,7 @@
         "row_count_used": 4943,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.07050272279382797,
       "trade_date": "20260518",
       "unfiltered": {
         "adv_dec_ratio": 0.7908757908757909,
@@ -2776,17 +3700,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.949390243902439,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.0338218714768885,
+        "legacy_adv_dec_ratio": 1.949390243902439,
         "project_adv_dec_ratio": 1.949390243902439,
-        "ratio_delta": 0.08443162757444944,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260519"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.949390243902439,
+        "adv_n": 3197,
+        "dec_n": 1640,
+        "flat_n": 106,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4943
       },
       "project": {
         "adv_dec_ratio": 1.949390243902439,
@@ -2800,6 +3735,7 @@
         "row_count_used": 4943,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.08443162757444944,
       "trade_date": "20260519",
       "unfiltered": {
         "adv_dec_ratio": 2.0338218714768885,
@@ -2812,17 +3748,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.4485511531638084,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.4305993690851735,
+        "legacy_adv_dec_ratio": 0.4485511531638084,
         "project_adv_dec_ratio": 0.4485511531638084,
-        "ratio_delta": -0.017951784078634903,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260520"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.4485511531638084,
+        "adv_n": 1517,
+        "dec_n": 3382,
+        "flat_n": 49,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4948
       },
       "project": {
         "adv_dec_ratio": 0.4485511531638084,
@@ -2836,6 +3783,7 @@
         "row_count_used": 4948,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.017951784078634903,
       "trade_date": "20260520",
       "unfiltered": {
         "adv_dec_ratio": 0.4305993690851735,
@@ -2848,17 +3796,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.14922933208780945,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.14561072700607583,
+        "legacy_adv_dec_ratio": 0.14922933208780945,
         "project_adv_dec_ratio": 0.14922933208780945,
-        "ratio_delta": -0.003618605081733617,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260521"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.14922933208780945,
+        "adv_n": 639,
+        "dec_n": 4282,
+        "flat_n": 30,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4951
       },
       "project": {
         "adv_dec_ratio": 0.14922933208780945,
@@ -2872,6 +3831,7 @@
         "row_count_used": 4951,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.003618605081733617,
       "trade_date": "20260521",
       "unfiltered": {
         "adv_dec_ratio": 0.14561072700607583,
@@ -2884,17 +3844,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 2.809897879025923,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.788805970149254,
+        "legacy_adv_dec_ratio": 2.809897879025923,
         "project_adv_dec_ratio": 2.809897879025923,
-        "ratio_delta": -0.02109190887666923,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260522"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 2.809897879025923,
+        "adv_n": 3577,
+        "dec_n": 1273,
+        "flat_n": 104,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4954
       },
       "project": {
         "adv_dec_ratio": 2.809897879025923,
@@ -2908,6 +3879,7 @@
         "row_count_used": 4954,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.02109190887666923,
       "trade_date": "20260522",
       "unfiltered": {
         "adv_dec_ratio": 2.788805970149254,
@@ -2920,17 +3892,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.7160493827160493,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.7127016129032258,
+        "legacy_adv_dec_ratio": 0.7160493827160493,
         "project_adv_dec_ratio": 0.7160493827160493,
-        "ratio_delta": -0.0033477698128235867,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260525"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.7160493827160493,
+        "adv_n": 2030,
+        "dec_n": 2835,
+        "flat_n": 89,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4954
       },
       "project": {
         "adv_dec_ratio": 0.7160493827160493,
@@ -2944,6 +3927,7 @@
         "row_count_used": 4954,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.0033477698128235867,
       "trade_date": "20260525",
       "unfiltered": {
         "adv_dec_ratio": 0.7127016129032258,
@@ -2956,17 +3940,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.3430296377607025,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.34479139333508263,
+        "legacy_adv_dec_ratio": 0.3430296377607025,
         "project_adv_dec_ratio": 0.3430296377607025,
-        "ratio_delta": 0.0017617555743801305,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260526"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.3430296377607025,
+        "adv_n": 1250,
+        "dec_n": 3644,
+        "flat_n": 60,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4954
       },
       "project": {
         "adv_dec_ratio": 0.3430296377607025,
@@ -2980,6 +3975,7 @@
         "row_count_used": 4954,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.0017617555743801305,
       "trade_date": "20260526",
       "unfiltered": {
         "adv_dec_ratio": 0.34479139333508263,
@@ -2992,17 +3988,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.21476178721303382,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.22193211488250653,
+        "legacy_adv_dec_ratio": 0.21476178721303382,
         "project_adv_dec_ratio": 0.21476178721303382,
-        "ratio_delta": 0.007170327669472704,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260527"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.21476178721303382,
+        "adv_n": 870,
+        "dec_n": 4051,
+        "flat_n": 34,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4955
       },
       "project": {
         "adv_dec_ratio": 0.21476178721303382,
@@ -3016,6 +4023,7 @@
         "row_count_used": 4955,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.007170327669472704,
       "trade_date": "20260527",
       "unfiltered": {
         "adv_dec_ratio": 0.22193211488250653,
@@ -3028,17 +4036,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.1414677276746241,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.1839724256785868,
+        "legacy_adv_dec_ratio": 1.1414677276746241,
         "project_adv_dec_ratio": 1.1414677276746241,
-        "ratio_delta": 0.042504698003962726,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260528"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.1414677276746241,
+        "adv_n": 2582,
+        "dec_n": 2262,
+        "flat_n": 111,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4955
       },
       "project": {
         "adv_dec_ratio": 1.1414677276746241,
@@ -3052,6 +4071,7 @@
         "row_count_used": 4955,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.042504698003962726,
       "trade_date": "20260528",
       "unfiltered": {
         "adv_dec_ratio": 1.1839724256785868,
@@ -3064,17 +4084,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.3827683615819209,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.3937908496732026,
+        "legacy_adv_dec_ratio": 0.3827683615819209,
         "project_adv_dec_ratio": 0.3827683615819209,
-        "ratio_delta": 0.011022488091281701,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260529"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.3827683615819209,
+        "adv_n": 1355,
+        "dec_n": 3540,
+        "flat_n": 60,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4955
       },
       "project": {
         "adv_dec_ratio": 0.3827683615819209,
@@ -3088,6 +4119,7 @@
         "row_count_used": 4955,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.011022488091281701,
       "trade_date": "20260529",
       "unfiltered": {
         "adv_dec_ratio": 0.3937908496732026,
@@ -3100,17 +4132,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 2.0963476070528966,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.1565377532228363,
+        "legacy_adv_dec_ratio": 2.0963476070528966,
         "project_adv_dec_ratio": 2.0963476070528966,
-        "ratio_delta": 0.06019014616993967,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260601"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 2.0963476070528966,
+        "adv_n": 3329,
+        "dec_n": 1588,
+        "flat_n": 42,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4959
       },
       "project": {
         "adv_dec_ratio": 2.0963476070528966,
@@ -3124,6 +4167,7 @@
         "row_count_used": 4959,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.06019014616993967,
       "trade_date": "20260601",
       "unfiltered": {
         "adv_dec_ratio": 2.1565377532228363,
@@ -3136,17 +4180,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.3441273326015368,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.3669160876536611,
+        "legacy_adv_dec_ratio": 0.3441273326015368,
         "project_adv_dec_ratio": 0.3441273326015368,
-        "ratio_delta": 0.022788755052124354,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260602"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.3441273326015368,
+        "adv_n": 1254,
+        "dec_n": 3644,
+        "flat_n": 64,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4962
       },
       "project": {
         "adv_dec_ratio": 0.3441273326015368,
@@ -3160,6 +4215,7 @@
         "row_count_used": 4962,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.022788755052124354,
       "trade_date": "20260602",
       "unfiltered": {
         "adv_dec_ratio": 0.3669160876536611,
@@ -3172,17 +4228,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.48439866707058465,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.4718714121699196,
+        "legacy_adv_dec_ratio": 0.48439866707058465,
         "project_adv_dec_ratio": 0.48439866707058465,
-        "ratio_delta": -0.01252725490066503,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260603"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.48439866707058465,
+        "adv_n": 1599,
+        "dec_n": 3301,
+        "flat_n": 66,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4966
       },
       "project": {
         "adv_dec_ratio": 0.48439866707058465,
@@ -3196,6 +4263,7 @@
         "row_count_used": 4966,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.01252725490066503,
       "trade_date": "20260603",
       "unfiltered": {
         "adv_dec_ratio": 0.4718714121699196,
@@ -3208,17 +4276,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.3432469304229195,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.33566796368352786,
+        "legacy_adv_dec_ratio": 0.3432469304229195,
         "project_adv_dec_ratio": 0.3432469304229195,
-        "ratio_delta": -0.007578966739391624,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260604"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.3432469304229195,
+        "adv_n": 1258,
+        "dec_n": 3665,
+        "flat_n": 43,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4966
       },
       "project": {
         "adv_dec_ratio": 0.3432469304229195,
@@ -3232,6 +4311,7 @@
         "row_count_used": 4966,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.007578966739391624,
       "trade_date": "20260604",
       "unfiltered": {
         "adv_dec_ratio": 0.33566796368352786,
@@ -3244,17 +4324,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.456016177957533,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.4261119081779052,
+        "legacy_adv_dec_ratio": 1.456016177957533,
         "project_adv_dec_ratio": 1.456016177957533,
-        "ratio_delta": -0.02990426977962768,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260605"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.456016177957533,
+        "adv_n": 2880,
+        "dec_n": 1978,
+        "flat_n": 110,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4968
       },
       "project": {
         "adv_dec_ratio": 1.456016177957533,
@@ -3268,6 +4359,7 @@
         "row_count_used": 4968,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.02990426977962768,
       "trade_date": "20260605",
       "unfiltered": {
         "adv_dec_ratio": 1.4261119081779052,
@@ -3280,17 +4372,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.1433518005540166,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.14735209395080878,
+        "legacy_adv_dec_ratio": 0.1433518005540166,
         "project_adv_dec_ratio": 0.1433518005540166,
-        "ratio_delta": 0.0040002933967921706,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260608"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.1433518005540166,
+        "adv_n": 621,
+        "dec_n": 4332,
+        "flat_n": 17,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4970
       },
       "project": {
         "adv_dec_ratio": 0.1433518005540166,
@@ -3304,6 +4407,7 @@
         "row_count_used": 4970,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.0040002933967921706,
       "trade_date": "20260608",
       "unfiltered": {
         "adv_dec_ratio": 0.14735209395080878,
@@ -3316,17 +4420,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.8069565217391304,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.745928338762215,
+        "legacy_adv_dec_ratio": 1.8069565217391304,
         "project_adv_dec_ratio": 1.8069565217391304,
-        "ratio_delta": -0.06102818297691526,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260609"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.8069565217391304,
+        "adv_n": 3117,
+        "dec_n": 1725,
+        "flat_n": 127,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4969
       },
       "project": {
         "adv_dec_ratio": 1.8069565217391304,
@@ -3340,6 +4455,7 @@
         "row_count_used": 4969,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.06102818297691526,
       "trade_date": "20260609",
       "unfiltered": {
         "adv_dec_ratio": 1.745928338762215,
@@ -3352,17 +4468,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.43438781487990624,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.42171016102165465,
+        "legacy_adv_dec_ratio": 0.43438781487990624,
         "project_adv_dec_ratio": 0.43438781487990624,
-        "ratio_delta": -0.012677653858251592,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260610"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.43438781487990624,
+        "adv_n": 1483,
+        "dec_n": 3414,
+        "flat_n": 71,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4968
       },
       "project": {
         "adv_dec_ratio": 0.43438781487990624,
@@ -3376,6 +4503,7 @@
         "row_count_used": 4968,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.012677653858251592,
       "trade_date": "20260610",
       "unfiltered": {
         "adv_dec_ratio": 0.42171016102165465,
@@ -3388,17 +4516,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.35827098919368244,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.35727537768354095,
+        "legacy_adv_dec_ratio": 0.35827098919368244,
         "project_adv_dec_ratio": 0.35827098919368244,
-        "ratio_delta": -0.000995611510141492,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260611"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.35827098919368244,
+        "adv_n": 1293,
+        "dec_n": 3609,
+        "flat_n": 67,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4969
       },
       "project": {
         "adv_dec_ratio": 0.35827098919368244,
@@ -3412,6 +4551,7 @@
         "row_count_used": 4969,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.000995611510141492,
       "trade_date": "20260611",
       "unfiltered": {
         "adv_dec_ratio": 0.35727537768354095,
@@ -3424,17 +4564,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 2.6567386448250185,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.624203821656051,
+        "legacy_adv_dec_ratio": 2.6567386448250185,
         "project_adv_dec_ratio": 2.6567386448250185,
-        "ratio_delta": -0.03253482316896772,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260612"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 2.6567386448250185,
+        "adv_n": 3568,
+        "dec_n": 1343,
+        "flat_n": 60,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4971
       },
       "project": {
         "adv_dec_ratio": 2.6567386448250185,
@@ -3448,6 +4599,7 @@
         "row_count_used": 4971,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.03253482316896772,
       "trade_date": "20260612",
       "unfiltered": {
         "adv_dec_ratio": 2.624203821656051,
@@ -3460,17 +4612,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 2.6656626506024095,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.6181299072091364,
+        "legacy_adv_dec_ratio": 2.6656626506024095,
         "project_adv_dec_ratio": 2.6656626506024095,
-        "ratio_delta": -0.04753274339327307,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260615"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 2.6656626506024095,
+        "adv_n": 3540,
+        "dec_n": 1328,
+        "flat_n": 104,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4972
       },
       "project": {
         "adv_dec_ratio": 2.6656626506024095,
@@ -3484,6 +4647,7 @@
         "row_count_used": 4972,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.04753274339327307,
       "trade_date": "20260615",
       "unfiltered": {
         "adv_dec_ratio": 2.6181299072091364,
@@ -3496,17 +4660,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.0464824120603016,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.0640194489465153,
+        "legacy_adv_dec_ratio": 1.0464824120603016,
         "project_adv_dec_ratio": 1.0464824120603016,
-        "ratio_delta": 0.017537036886213775,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260616"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.0464824120603016,
+        "adv_n": 2499,
+        "dec_n": 2388,
+        "flat_n": 89,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4976
       },
       "project": {
         "adv_dec_ratio": 1.0464824120603016,
@@ -3520,6 +4695,7 @@
         "row_count_used": 4976,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.017537036886213775,
       "trade_date": "20260616",
       "unfiltered": {
         "adv_dec_ratio": 1.0640194489465153,
@@ -3532,17 +4708,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.4591715976331361,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.4495774647887324,
+        "legacy_adv_dec_ratio": 0.4591715976331361,
         "project_adv_dec_ratio": 0.4591715976331361,
-        "ratio_delta": -0.009594132844403691,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260617"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.4591715976331361,
+        "adv_n": 1552,
+        "dec_n": 3380,
+        "flat_n": 41,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4973
       },
       "project": {
         "adv_dec_ratio": 0.4591715976331361,
@@ -3556,6 +4743,7 @@
         "row_count_used": 4973,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.009594132844403691,
       "trade_date": "20260617",
       "unfiltered": {
         "adv_dec_ratio": 0.4495774647887324,
@@ -3568,17 +4756,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.638767994643455,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.624124761298536,
+        "legacy_adv_dec_ratio": 0.638767994643455,
         "project_adv_dec_ratio": 0.638767994643455,
-        "ratio_delta": -0.014643233344919016,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260618"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.638767994643455,
+        "adv_n": 1908,
+        "dec_n": 2987,
+        "flat_n": 81,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4976
       },
       "project": {
         "adv_dec_ratio": 0.638767994643455,
@@ -3592,6 +4791,7 @@
         "row_count_used": 4976,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.014643233344919016,
       "trade_date": "20260618",
       "unfiltered": {
         "adv_dec_ratio": 0.624124761298536,
@@ -3604,17 +4804,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.19170049616599,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.1325757575757576,
+        "legacy_adv_dec_ratio": 1.19170049616599,
         "project_adv_dec_ratio": 1.19170049616599,
-        "ratio_delta": -0.059124738590232484,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260622"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.19170049616599,
+        "adv_n": 2642,
+        "dec_n": 2217,
+        "flat_n": 120,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4979
       },
       "project": {
         "adv_dec_ratio": 1.19170049616599,
@@ -3628,6 +4839,7 @@
         "row_count_used": 4979,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.059124738590232484,
       "trade_date": "20260622",
       "unfiltered": {
         "adv_dec_ratio": 1.1325757575757576,
@@ -3640,17 +4852,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.9741935483870968,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.000392464678179,
+        "legacy_adv_dec_ratio": 0.9741935483870968,
         "project_adv_dec_ratio": 0.9741935483870968,
-        "ratio_delta": 0.026198916291082175,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260623"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.9741935483870968,
+        "adv_n": 2416,
+        "dec_n": 2480,
+        "flat_n": 85,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4981
       },
       "project": {
         "adv_dec_ratio": 0.9741935483870968,
@@ -3664,6 +4887,7 @@
         "row_count_used": 4981,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.026198916291082175,
       "trade_date": "20260623",
       "unfiltered": {
         "adv_dec_ratio": 1.000392464678179,
@@ -3676,17 +4900,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.3749652294853964,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.3667728237791932,
+        "legacy_adv_dec_ratio": 0.3749652294853964,
         "project_adv_dec_ratio": 0.3749652294853964,
-        "ratio_delta": -0.00819240570620322,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260624"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.3749652294853964,
+        "adv_n": 1348,
+        "dec_n": 3595,
+        "flat_n": 38,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4981
       },
       "project": {
         "adv_dec_ratio": 0.3749652294853964,
@@ -3700,6 +4935,7 @@
         "row_count_used": 4981,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.00819240570620322,
       "trade_date": "20260624",
       "unfiltered": {
         "adv_dec_ratio": 0.3667728237791932,
@@ -3712,17 +4948,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.3134487350199734,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.30431472081218275,
+        "legacy_adv_dec_ratio": 0.3134487350199734,
         "project_adv_dec_ratio": 0.3134487350199734,
-        "ratio_delta": -0.009134014207790642,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260625"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.3134487350199734,
+        "adv_n": 1177,
+        "dec_n": 3755,
+        "flat_n": 50,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4982
       },
       "project": {
         "adv_dec_ratio": 0.3134487350199734,
@@ -3736,6 +4983,7 @@
         "row_count_used": 4982,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.009134014207790642,
       "trade_date": "20260625",
       "unfiltered": {
         "adv_dec_ratio": 0.30431472081218275,
@@ -3748,17 +4996,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.15843669553007256,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.17205279927173417,
+        "legacy_adv_dec_ratio": 0.15843669553007256,
         "project_adv_dec_ratio": 0.15843669553007256,
-        "ratio_delta": 0.013616103741661612,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260626"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.15843669553007256,
+        "adv_n": 677,
+        "dec_n": 4273,
+        "flat_n": 35,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4985
       },
       "project": {
         "adv_dec_ratio": 0.15843669553007256,
@@ -3772,6 +5031,7 @@
         "row_count_used": 4985,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.013616103741661612,
       "trade_date": "20260626",
       "unfiltered": {
         "adv_dec_ratio": 0.17205279927173417,
@@ -3784,17 +5044,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.909197651663405,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.8899219040535515,
+        "legacy_adv_dec_ratio": 0.909197651663405,
         "project_adv_dec_ratio": 0.909197651663405,
-        "ratio_delta": -0.01927574760985351,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260629"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.909197651663405,
+        "adv_n": 2323,
+        "dec_n": 2555,
+        "flat_n": 103,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4981
       },
       "project": {
         "adv_dec_ratio": 0.909197651663405,
@@ -3808,6 +5079,7 @@
         "row_count_used": 4981,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.01927574760985351,
       "trade_date": "20260629",
       "unfiltered": {
         "adv_dec_ratio": 0.8899219040535515,
@@ -3820,17 +5092,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.3124115148655027,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.319090909090909,
+        "legacy_adv_dec_ratio": 1.3124115148655027,
         "project_adv_dec_ratio": 1.3124115148655027,
-        "ratio_delta": 0.006679394225406421,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260630"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.3124115148655027,
+        "adv_n": 2781,
+        "dec_n": 2119,
+        "flat_n": 78,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4978
       },
       "project": {
         "adv_dec_ratio": 1.3124115148655027,
@@ -3844,6 +5127,7 @@
         "row_count_used": 4978,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.006679394225406421,
       "trade_date": "20260630",
       "unfiltered": {
         "adv_dec_ratio": 1.319090909090909,
@@ -3856,17 +5140,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 3.5772432932469935,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 3.642342342342342,
+        "legacy_adv_dec_ratio": 3.5772432932469935,
         "project_adv_dec_ratio": 3.5772432932469935,
-        "ratio_delta": 0.0650990490953487,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260701"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 3.5772432932469935,
+        "adv_n": 3867,
+        "dec_n": 1081,
+        "flat_n": 35,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4983
       },
       "project": {
         "adv_dec_ratio": 3.5772432932469935,
@@ -3880,6 +5175,7 @@
         "row_count_used": 4983,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.0650990490953487,
       "trade_date": "20260701",
       "unfiltered": {
         "adv_dec_ratio": 3.642342342342342,
@@ -3892,17 +5188,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.670442842430484,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.7150592216582065,
+        "legacy_adv_dec_ratio": 0.670442842430484,
         "project_adv_dec_ratio": 0.670442842430484,
-        "ratio_delta": 0.044616379227722436,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260702"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.670442842430484,
+        "adv_n": 1953,
+        "dec_n": 2913,
+        "flat_n": 122,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4988
       },
       "project": {
         "adv_dec_ratio": 0.670442842430484,
@@ -3916,6 +5223,7 @@
         "row_count_used": 4988,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.044616379227722436,
       "trade_date": "20260702",
       "unfiltered": {
         "adv_dec_ratio": 0.7150592216582065,
@@ -3928,17 +5236,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 2.1752910737386806,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.226641414141414,
+        "legacy_adv_dec_ratio": 2.1752910737386806,
         "project_adv_dec_ratio": 2.1752910737386806,
-        "ratio_delta": 0.05135034040273334,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260703"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 2.1752910737386806,
+        "adv_n": 3363,
+        "dec_n": 1546,
+        "flat_n": 79,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4988
       },
       "project": {
         "adv_dec_ratio": 2.1752910737386806,
@@ -3952,6 +5271,7 @@
         "row_count_used": 4988,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.05135034040273334,
       "trade_date": "20260703",
       "unfiltered": {
         "adv_dec_ratio": 2.226641414141414,
@@ -3964,17 +5284,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.5605481198215424,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.5543014032946919,
+        "legacy_adv_dec_ratio": 0.5605481198215424,
         "project_adv_dec_ratio": 0.5605481198215424,
-        "ratio_delta": -0.006246716526850493,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260706"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.5605481198215424,
+        "adv_n": 1759,
+        "dec_n": 3138,
+        "flat_n": 92,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4989
       },
       "project": {
         "adv_dec_ratio": 0.5605481198215424,
@@ -3988,6 +5319,7 @@
         "row_count_used": 4989,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.006246716526850493,
       "trade_date": "20260706",
       "unfiltered": {
         "adv_dec_ratio": 0.5543014032946919,
@@ -4000,17 +5332,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.14229885057471264,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.14090407938257993,
+        "legacy_adv_dec_ratio": 0.14229885057471264,
         "project_adv_dec_ratio": 0.14229885057471264,
-        "ratio_delta": -0.0013947711921327155,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260707"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.14229885057471264,
+        "adv_n": 619,
+        "dec_n": 4350,
+        "flat_n": 18,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4987
       },
       "project": {
         "adv_dec_ratio": 0.14229885057471264,
@@ -4024,6 +5367,7 @@
         "row_count_used": 4987,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.0013947711921327155,
       "trade_date": "20260707",
       "unfiltered": {
         "adv_dec_ratio": 0.14090407938257993,
@@ -4036,17 +5380,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.4002877697841727,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.4203166226912929,
+        "legacy_adv_dec_ratio": 0.4002877697841727,
         "project_adv_dec_ratio": 0.4002877697841727,
-        "ratio_delta": 0.020028852907120198,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260708"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.4002877697841727,
+        "adv_n": 1391,
+        "dec_n": 3475,
+        "flat_n": 121,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4987
       },
       "project": {
         "adv_dec_ratio": 0.4002877697841727,
@@ -4060,6 +5415,7 @@
         "row_count_used": 4987,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.020028852907120198,
       "trade_date": "20260708",
       "unfiltered": {
         "adv_dec_ratio": 0.4203166226912929,
@@ -4072,17 +5428,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.8981264637002342,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.860803324099723,
+        "legacy_adv_dec_ratio": 0.8981264637002342,
         "project_adv_dec_ratio": 0.8981264637002342,
-        "ratio_delta": -0.037323139600511146,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260709"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.8981264637002342,
+        "adv_n": 2301,
+        "dec_n": 2562,
+        "flat_n": 124,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4987
       },
       "project": {
         "adv_dec_ratio": 0.8981264637002342,
@@ -4096,6 +5463,7 @@
         "row_count_used": 4987,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.037323139600511146,
       "trade_date": "20260709",
       "unfiltered": {
         "adv_dec_ratio": 0.860803324099723,
@@ -4108,17 +5476,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 2.1801162040025823,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 2.2479141835518472,
+        "legacy_adv_dec_ratio": 2.1801162040025823,
         "project_adv_dec_ratio": 2.1801162040025823,
-        "ratio_delta": 0.06779797954926492,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260710"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 2.1801162040025823,
+        "adv_n": 3377,
+        "dec_n": 1549,
+        "flat_n": 60,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4986
       },
       "project": {
         "adv_dec_ratio": 2.1801162040025823,
@@ -4132,6 +5511,7 @@
         "row_count_used": 4986,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.06779797954926492,
       "trade_date": "20260710",
       "unfiltered": {
         "adv_dec_ratio": 2.2479141835518472,
@@ -4144,17 +5524,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.17691759677036334,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.17104420243433696,
+        "legacy_adv_dec_ratio": 0.17691759677036334,
         "project_adv_dec_ratio": 0.17691759677036334,
-        "ratio_delta": -0.005873394336026377,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260713"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.17691759677036334,
+        "adv_n": 745,
+        "dec_n": 4211,
+        "flat_n": 34,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4990
       },
       "project": {
         "adv_dec_ratio": 0.17691759677036334,
@@ -4168,6 +5559,7 @@
         "row_count_used": 4990,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.005873394336026377,
       "trade_date": "20260713",
       "unfiltered": {
         "adv_dec_ratio": 0.17104420243433696,
@@ -4180,17 +5572,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 3.297909407665505,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 3.376904570970329,
+        "legacy_adv_dec_ratio": 3.297909407665505,
         "project_adv_dec_ratio": 3.297909407665505,
-        "ratio_delta": 0.07899516330482381,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260714"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 3.297909407665505,
+        "adv_n": 3786,
+        "dec_n": 1148,
+        "flat_n": 56,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4990
       },
       "project": {
         "adv_dec_ratio": 3.297909407665505,
@@ -4204,6 +5607,7 @@
         "row_count_used": 4990,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.07899516330482381,
       "trade_date": "20260714",
       "unfiltered": {
         "adv_dec_ratio": 3.376904570970329,
@@ -4216,17 +5620,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 1.6758957654723128,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 1.5972354623450906,
+        "legacy_adv_dec_ratio": 1.6758957654723128,
         "project_adv_dec_ratio": 1.6758957654723128,
-        "ratio_delta": -0.07866030312722216,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260715"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 1.6758957654723128,
+        "adv_n": 3087,
+        "dec_n": 1842,
+        "flat_n": 61,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4990
       },
       "project": {
         "adv_dec_ratio": 1.6758957654723128,
@@ -4240,6 +5655,7 @@
         "row_count_used": 4990,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": -0.07866030312722216,
       "trade_date": "20260715",
       "unfiltered": {
         "adv_dec_ratio": 1.5972354623450906,
@@ -4252,17 +5668,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.856104094910065,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.8734708144005593,
+        "legacy_adv_dec_ratio": 0.856104094910065,
         "project_adv_dec_ratio": 0.856104094910065,
-        "ratio_delta": 0.017366719490494287,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260716"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.856104094910065,
+        "adv_n": 2237,
+        "dec_n": 2613,
+        "flat_n": 139,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4989
       },
       "project": {
         "adv_dec_ratio": 0.856104094910065,
@@ -4276,6 +5703,7 @@
         "row_count_used": 4989,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.017366719490494287,
       "trade_date": "20260716",
       "unfiltered": {
         "adv_dec_ratio": 0.8734708144005593,
@@ -4288,17 +5716,28 @@
     },
     {
       "compare": {
+        "baseline_adv_dec_ratio": 0.08444541675782105,
+        "baseline_kind": "membership_restricted_proxy",
         "cutover_allowed": false,
         "issues": [
           "breadth_shadow_compare_only",
           "cutover_requires_accepted_live_partitions_and_gate",
-          "legacy_raw_ratio_diverges_from_project_universe"
+          "match_baseline=membership_restricted_proxy"
         ],
-        "legacy_adv_dec_ratio": 0.09638072385522896,
+        "legacy_adv_dec_ratio": 0.08444541675782105,
         "project_adv_dec_ratio": 0.08444541675782105,
-        "ratio_delta": 0.011935307097407907,
-        "ratios_match": false,
+        "ratio_delta": 0.0,
+        "ratios_match": true,
         "trade_date": "20260717"
+      },
+      "match_baseline_kind": "membership_restricted_proxy",
+      "membership_proxy": {
+        "adv_dec_ratio": 0.08444541675782105,
+        "adv_n": 386,
+        "dec_n": 4571,
+        "flat_n": 32,
+        "population_kind": "membership_restricted_proxy",
+        "row_count_used": 4989
       },
       "project": {
         "adv_dec_ratio": 0.08444541675782105,
@@ -4312,6 +5751,7 @@
         "row_count_used": 4989,
         "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
       },
+      "semantic_delta_vs_unfiltered": 0.011935307097407907,
       "trade_date": "20260717",
       "unfiltered": {
         "adv_dec_ratio": 0.09638072385522896,
@@ -4323,20 +5763,32 @@
       }
     }
   ],
+  "diagnostic_proxy_kind": "accepted_canonical_unfiltered",
   "eligible_day_count_requested": 120,
   "frontier": {
     "compare": {
+      "baseline_adv_dec_ratio": 0.08444541675782105,
+      "baseline_kind": "membership_restricted_proxy",
       "cutover_allowed": false,
       "issues": [
         "breadth_shadow_compare_only",
         "cutover_requires_accepted_live_partitions_and_gate",
-        "legacy_raw_ratio_diverges_from_project_universe"
+        "match_baseline=membership_restricted_proxy"
       ],
-      "legacy_adv_dec_ratio": 0.09638072385522896,
+      "legacy_adv_dec_ratio": 0.08444541675782105,
       "project_adv_dec_ratio": 0.08444541675782105,
-      "ratio_delta": 0.011935307097407907,
-      "ratios_match": false,
+      "ratio_delta": 0.0,
+      "ratios_match": true,
       "trade_date": "20260717"
+    },
+    "match_baseline_kind": "membership_restricted_proxy",
+    "membership_proxy": {
+      "adv_dec_ratio": 0.08444541675782105,
+      "adv_n": 386,
+      "dec_n": 4571,
+      "flat_n": 32,
+      "population_kind": "membership_restricted_proxy",
+      "row_count_used": 4989
     },
     "project": {
       "adv_dec_ratio": 0.08444541675782105,
@@ -4350,6 +5802,7 @@
       "row_count_used": 4989,
       "universe_policy_hash": "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
     },
+    "semantic_delta_vs_unfiltered": 0.011935307097407907,
     "trade_date": "20260717",
     "unfiltered": {
       "adv_dec_ratio": 0.09638072385522896,
@@ -4361,10 +5814,13 @@
     }
   },
   "frontier_day": "20260717",
-  "generated_at": "2026-07-20T07:04:04.049376+00:00",
+  "generated_at": "2026-07-20T07:12:09.430889+00:00",
   "kind": "b_pit_breadth_shadow_remeasure",
   "legacy_proxy_kind": "accepted_canonical_unfiltered",
+  "match_baseline_kind": "membership_restricted_proxy",
   "notes": [
+    "MATCH = project_universe_pit ≡ membership_restricted_proxy",
+    "unfiltered vs PIT is expected semantic delta (not MATCH fail)",
     "B-pit PARTIAL until cutover gate with MATCH+strong evidence",
     "pulse mart not required for this shadow path",
     "ST-only day 20260720 excluded (no K partition)"
@@ -4375,20 +5831,19 @@
   "window": {
     "cutover_allowed": false,
     "day_count": 120,
-    "diverge_day_count": 120,
+    "diverge_day_count": 0,
     "error_day_count": 0,
     "frontier_day": "20260717",
     "issues": [
       "breadth_shadow_window_remeasure_only",
       "cutover_requires_accepted_live_partitions_and_gate",
-      "match_alone_insufficient_for_cutover",
-      "window_ratios_diverge_or_errors"
+      "match_alone_insufficient_for_cutover"
     ],
     "kind": "b_pit_breadth_shadow_window",
-    "match_day_count": 0,
-    "max_abs_ratio_delta": 1.8779466396487656,
-    "mean_abs_ratio_delta": 0.0708921613600321,
-    "ratios_match_all": false,
+    "match_day_count": 120,
+    "max_abs_ratio_delta": 0.0,
+    "mean_abs_ratio_delta": 0.0,
+    "ratios_match_all": true,
     "window_end": "20260717",
     "window_start": "20260116"
   }

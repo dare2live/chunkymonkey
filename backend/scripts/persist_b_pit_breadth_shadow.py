@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Persist B-pit breadth shadow remeasure (project_universe_pit vs unfiltered).
+"""Persist B-pit breadth shadow remeasure (project vs membership proxy).
+
+MATCH baseline is membership-restricted bars recomputed independently — not
+full accepted-canonical unfiltered (ST/BSE/excluded-board rows make that
+ratio diverge by definition). Unfiltered remains a diagnostic semantic delta.
 
 Read-only over accepted K∩ST partitions. Never flips mart/consumer cutover.
 ``cutover_allowed`` stays false even if every day MATCH — match alone is not
@@ -121,6 +125,8 @@ def remeasure_window(
             "kind": "b_pit_breadth_shadow_remeasure",
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "population_kind_formal": "project_universe_pit",
+            "match_baseline_kind": "membership_restricted_proxy",
+            "diagnostic_proxy_kind": "accepted_canonical_unfiltered",
             "legacy_proxy_kind": "accepted_canonical_unfiltered",
             "universe_policy_id": pol.policy_id,
             "universe_policy_hash": pol.config_hash,
@@ -139,6 +145,8 @@ def remeasure_window(
             "frontier": frontier.as_dict() if frontier else None,
             "days": list(window.days),
             "notes": [
+                "MATCH = project_universe_pit ≡ membership_restricted_proxy",
+                "unfiltered vs PIT is expected semantic delta (not MATCH fail)",
                 "B-pit PARTIAL until cutover gate with MATCH+strong evidence",
                 "pulse mart not required for this shadow path",
                 "ST-only day 20260720 excluded (no K partition)",
@@ -163,16 +171,17 @@ def main() -> int:
     payload = remeasure_window(start=args.start, end=args.end)
     out_dir = Path(args.out_dir)
     _write_json(out_dir / "manifest.json", payload)
+    frontier = payload.get("frontier") or {}
     summary = {
         "kind": payload["kind"],
         "generated_at": payload["generated_at"],
         "cutover_allowed": False,
+        "match_baseline_kind": payload.get("match_baseline_kind"),
         "window": payload["window"],
         "frontier_day": payload["frontier_day"],
-        "frontier_compare": (
-            (payload.get("frontier") or {}).get("compare")
-            if payload.get("frontier")
-            else None
+        "frontier_compare": frontier.get("compare"),
+        "frontier_semantic_delta_vs_unfiltered": frontier.get(
+            "semantic_delta_vs_unfiltered"
         ),
         "artifact": str((out_dir / "manifest.json").relative_to(REPO)),
     }

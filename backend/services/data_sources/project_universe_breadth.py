@@ -148,20 +148,33 @@ def refuse_legacy_raw_daily_as_project_universe_breadth(
 
 @dataclass(frozen=True)
 class BreadthShadowCompareReport:
-    """Read-only legacy vs project-universe breadth delta — never authorizes cutover."""
+    """Read-only baseline vs project-universe breadth — never authorizes cutover.
+
+    MATCH baseline for B-pit shadow is ``membership_restricted_proxy`` (same
+    bars filtered to ``ObservationMembership``), not full unfiltered canonical.
+    Unfiltered vs PIT remains a diagnostic semantic delta only.
+    """
 
     trade_date: str
-    legacy_adv_dec_ratio: float | None
+    baseline_kind: str
+    baseline_adv_dec_ratio: float | None
     project_adv_dec_ratio: float | None
     ratio_delta: float | None
     ratios_match: bool
     cutover_allowed: bool
     issues: tuple[str, ...]
 
+    @property
+    def legacy_adv_dec_ratio(self) -> float | None:
+        """Compat alias — baseline ratio under the active shadow contract."""
+        return self.baseline_adv_dec_ratio
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "trade_date": self.trade_date,
-            "legacy_adv_dec_ratio": self.legacy_adv_dec_ratio,
+            "baseline_kind": self.baseline_kind,
+            "baseline_adv_dec_ratio": self.baseline_adv_dec_ratio,
+            "legacy_adv_dec_ratio": self.baseline_adv_dec_ratio,
             "project_adv_dec_ratio": self.project_adv_dec_ratio,
             "ratio_delta": self.ratio_delta,
             "ratios_match": self.ratios_match,
@@ -170,47 +183,70 @@ class BreadthShadowCompareReport:
         }
 
 
-def compare_legacy_vs_project_universe_breadth(
+def compare_baseline_vs_project_universe_breadth(
     *,
     trade_date: str,
-    legacy_adv_dec_ratio: float | None,
+    baseline_adv_dec_ratio: float | None,
     project: ProjectUniverseBreadthReport,
+    baseline_kind: str = "membership_restricted_proxy",
 ) -> BreadthShadowCompareReport:
-    """Shadow-compare raw/legacy ratio to project-universe breadth.
+    """Shadow-compare a typed baseline ratio to project-universe breadth.
 
     Matching ratios alone never set ``cutover_allowed`` — serve cutover needs
     accepted live partitions + explicit gate evidence beyond this helper.
     """
 
     day = str(trade_date or "").replace("-", "")
+    kind = str(baseline_kind or "membership_restricted_proxy")
     issues = [
         "breadth_shadow_compare_only",
         "cutover_requires_accepted_live_partitions_and_gate",
+        f"match_baseline={kind}",
     ]
     proj = project.adv_dec_ratio
-    if legacy_adv_dec_ratio is None or proj is None:
+    if baseline_adv_dec_ratio is None or proj is None:
         issues.append("ratio_unavailable_for_compare")
         return BreadthShadowCompareReport(
             trade_date=day,
-            legacy_adv_dec_ratio=legacy_adv_dec_ratio,
+            baseline_kind=kind,
+            baseline_adv_dec_ratio=baseline_adv_dec_ratio,
             project_adv_dec_ratio=proj,
             ratio_delta=None,
             ratios_match=False,
             cutover_allowed=False,
             issues=tuple(issues),
         )
-    delta = float(legacy_adv_dec_ratio) - float(proj)
+    delta = float(baseline_adv_dec_ratio) - float(proj)
     match = abs(delta) <= 1e-9
     if not match:
-        issues.append("legacy_raw_ratio_diverges_from_project_universe")
+        issues.append("baseline_ratio_diverges_from_project_universe")
+        if kind in {"legacy_raw", "accepted_canonical_unfiltered_proxy"}:
+            issues.append("legacy_raw_ratio_diverges_from_project_universe")
     return BreadthShadowCompareReport(
         trade_date=day,
-        legacy_adv_dec_ratio=float(legacy_adv_dec_ratio),
+        baseline_kind=kind,
+        baseline_adv_dec_ratio=float(baseline_adv_dec_ratio),
         project_adv_dec_ratio=float(proj),
         ratio_delta=delta,
         ratios_match=match,
         cutover_allowed=False,
         issues=tuple(issues),
+    )
+
+
+def compare_legacy_vs_project_universe_breadth(
+    *,
+    trade_date: str,
+    legacy_adv_dec_ratio: float | None,
+    project: ProjectUniverseBreadthReport,
+) -> BreadthShadowCompareReport:
+    """Compat wrapper: treat caller ratio as an untyped legacy/unfiltered baseline."""
+
+    return compare_baseline_vs_project_universe_breadth(
+        trade_date=trade_date,
+        baseline_adv_dec_ratio=legacy_adv_dec_ratio,
+        project=project,
+        baseline_kind="legacy_raw",
     )
 
 
@@ -262,18 +298,45 @@ def unfiltered_breadth_from_rows(
     )
 
 
+def _rows_in_membership(
+    membership: ObservationMembership,
+    rows: Sequence[Mapping[str, Any]],
+) -> list[Mapping[str, Any]]:
+    wanted = set(membership.ts_codes)
+    out: list[Mapping[str, Any]] = []
+    for row in rows:
+        code = str(row.get("ts_code") or "").strip()
+        if code and code in wanted:
+            out.append(row)
+    return out
+
+
 @dataclass(frozen=True)
 class BreadthShadowDayMeasure:
+    """One-day shadow: MATCH = project ≡ membership-restricted proxy.
+
+    ``unfiltered`` is diagnostic only — ST/BSE/excluded-board rows make it
+    diverge from project_universe_pit by definition, not as a bug signal.
+    """
+
     trade_date: str
     project: ProjectUniverseBreadthReport
+    membership_proxy: UnfilteredBreadthCounts
     unfiltered: UnfilteredBreadthCounts
     compare: BreadthShadowCompareReport
+    semantic_delta_vs_unfiltered: float | None
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "trade_date": self.trade_date,
+            "match_baseline_kind": "membership_restricted_proxy",
             "project": self.project.as_dict(),
+            "membership_proxy": {
+                **self.membership_proxy.as_dict(),
+                "population_kind": "membership_restricted_proxy",
+            },
             "unfiltered": self.unfiltered.as_dict(),
+            "semantic_delta_vs_unfiltered": self.semantic_delta_vs_unfiltered,
             "compare": self.compare.as_dict(),
         }
 
@@ -283,20 +346,33 @@ def measure_breadth_shadow_day(
     *,
     rows: Sequence[Mapping[str, Any]],
 ) -> BreadthShadowDayMeasure:
-    """One-day PIT vs unfiltered accepted-canonical shadow (cutover stays false)."""
+    """One-day PIT self-consistency shadow (cutover stays false).
+
+    MATCH compares project_universe_pit to an independent unfiltered count over
+    the same membership-restricted bars. Full accepted-canonical unfiltered is
+    retained only as ``semantic_delta_vs_unfiltered`` (expected to differ).
+    """
 
     project = compute_project_universe_breadth(membership, rows=rows)
+    membership_rows = _rows_in_membership(membership, rows)
+    membership_proxy = unfiltered_breadth_from_rows(membership_rows)
     unfiltered = unfiltered_breadth_from_rows(rows)
-    compare = compare_legacy_vs_project_universe_breadth(
+    compare = compare_baseline_vs_project_universe_breadth(
         trade_date=project.observation_date,
-        legacy_adv_dec_ratio=unfiltered.adv_dec_ratio,
+        baseline_adv_dec_ratio=membership_proxy.adv_dec_ratio,
         project=project,
+        baseline_kind="membership_restricted_proxy",
     )
+    semantic_delta: float | None = None
+    if unfiltered.adv_dec_ratio is not None and project.adv_dec_ratio is not None:
+        semantic_delta = float(unfiltered.adv_dec_ratio) - float(project.adv_dec_ratio)
     return BreadthShadowDayMeasure(
         trade_date=project.observation_date,
         project=project,
+        membership_proxy=membership_proxy,
         unfiltered=unfiltered,
         compare=compare,
+        semantic_delta_vs_unfiltered=semantic_delta,
     )
 
 
@@ -418,6 +494,7 @@ __all__ = [
     "ProjectUniverseBreadthUnavailable",
     "UnfilteredBreadthCounts",
     "aggregate_breadth_shadow_window",
+    "compare_baseline_vs_project_universe_breadth",
     "compare_legacy_vs_project_universe_breadth",
     "compute_project_universe_breadth",
     "measure_breadth_shadow_day",
