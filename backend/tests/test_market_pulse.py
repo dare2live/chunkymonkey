@@ -82,6 +82,8 @@ CREATE TABLE tr.raw_tushare_limit_list_d (
     open_times BIGINT, first_time TEXT);
 CREATE TABLE tr.raw_tushare_daily (
     ts_code TEXT, trade_date TEXT, pct_chg DOUBLE);
+CREATE TABLE tr.canonical_nominal_ohlcv_daily (
+    trade_date DATE, ts_code TEXT, pct_chg DOUBLE);
 CREATE TABLE tr.raw_tushare_moneyflow_mkt_dc (
     trade_date TEXT, net_amount DOUBLE);
 CREATE TABLE tr.raw_tushare_dc_member (

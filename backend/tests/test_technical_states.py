@@ -411,6 +411,8 @@ CREATE TABLE mkt.price_kline_qfq_tushare (
     code TEXT, date TEXT, open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE,
     volume DOUBLE, amount DOUBLE);
 CREATE TABLE tr.raw_tushare_daily (ts_code TEXT, trade_date TEXT, close DOUBLE);
+CREATE TABLE tr.canonical_nominal_ohlcv_daily (
+    trade_date DATE, ts_code TEXT, close DOUBLE);
 CREATE TABLE tr.raw_tushare_stk_limit (ts_code TEXT, trade_date TEXT, up_limit DOUBLE, down_limit DOUBLE);
 CREATE TABLE tr.raw_tushare_index_daily (ts_code TEXT, trade_date TEXT, close DOUBLE);
 CREATE TABLE ref.dim_trading_calendar (trade_date TEXT, is_trading INTEGER);

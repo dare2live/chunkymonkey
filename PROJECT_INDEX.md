@@ -22,7 +22,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；calendar + **120** 交易日名义 K accepted（`20260116`–`20260717`）；ST 同窗+`20260720`；manual sync `trigger_mode` 已拆：开市可拉今日，consumer/`available_at` 仍 `same_day_at 18:00`；`20260720` 尚未 accepted（provider zero_rows）。残余=provider-ready re-sync + form/qfq lag；无 mass fetch / cutover |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；名义 K + ST accepted 至 `20260720`；manual sync `trigger_mode` 已拆：开市可拉今日，consumer/`available_at` 仍 `same_day_at 18:00`；form/qfq/segments/pulse 分析面经 canonical∪raw 已追到 `20260720`（legacy raw daily 仍停 `20260716`，formal 不写 raw）；margin 仍 frozen；无 mass fetch / cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `technical_states/`, `segments.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `market_pulse_tier12_read.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py` | 多轴状态可复用；C accept 分 `publish_scope=canary|project_universe`；`resolve_tier12_production_read` + B1/pulse 接线（默认 LEGACY→`fact_stock_form_daily`）；`expected_config_hash` 已填；cutover yaml 仍 false；legacy form bridge=NOT_PUBLISHABLE |
 | T2 market sensing | `market_pulse.py`, `market_pulse_tier12_read.py`, `market_pulse_b_pit_read.py`, `b_pit_mart_cutover.py`, `project_universe_breadth.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；sentiment 旁路 `tier12_production_read` + `b_pit_mart_production_read`；B-pit shadow MATCH 120/120；mart cutover gate 默认 false；C envelope 可 project_universe scope；consumer cutover 默认 false |
@@ -35,8 +35,8 @@ AGENTS.md
 
 | Area | Role |
 |---|---|
-| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表 + frozen margin evidence；accepted calendar generation + **120d** `20260116`–`20260717` nominal OHLCV + ST（ST 另含 `20260720`）landing/canonical/accepted_partition 已发表 |
-| `data/market.duckdb` | K 线 serving/派生数据；qfq 不等于名义成交价真相 |
+| `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表 + frozen margin evidence；accepted calendar generation + nominal OHLCV/ST landing/canonical/accepted_partition 至 `20260720`；legacy `raw_tushare_daily` 仍停 `20260716`（formal 不写） |
+| `data/market.duckdb` | K 线 serving/派生数据；qfq=`canonical∪raw`×adj 分析面（max `2026-07-20`），不等于名义成交价真相 |
 | `data/reference.duckdb` | 交易日历、身份/reference 数据 |
 | `data/smartmoney.duckdb` | 当前 mart、profiles、ops/control evidence |
 | `data/feature_store.duckdb` | 特征面；使用前必须有当前 consumer 和契约 |
@@ -72,7 +72,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | K accepted 至 `20260720`（daily 5524 行 + ST 209 行）；form/qfq 分析面仍卡 `20260716`（raw/adj wall + margin frozen）；禁 mass backfill | B-pit mart/cutover 仍禁；分析读面滞后 accepted frontier |
+| P0 | K accepted + form/qfq/segments/pulse 至 `20260720`；legacy raw daily 仍 `20260716`（预期）；`index_dailybasic` 短窗 min_rows 拒写；margin frozen（rzrqye 新日 NULL）；禁 mass backfill | B-pit mart/cutover 仍禁；两融列诚实 unknown；估值水位可能 stale |
 | P0 | E 120d checkpointed measured reject/no-gain；C full-universe accept `20260717`（4989=4989；cutover 默认 false）；D FIXED（runtime-owned measured offline + persist）；B-pit 120d shadow **120/120 MATCH** + mart cutover gate FIXED（默认 false；pulse/B2 已接线；未切读）；C/B-pit readiness **READY_FOR_OWNER_OPT_IN**（`cutover_allowed` 仍 false；认证 `data/lineage/c_b_pit_cutover_readiness.json`）；enrichment 历史仍 field-level PARTIAL | 下一刀 owner 显式 yaml opt-in C/B-pit cutover **或** stop（非 Optuna / 非松门 / 非 mass backfill / 非擅翻 cutover / 非 StrategyRelease） |
 | P0 | qfq serving surface has placeholder lineage and is used too broadly | Research reproducibility and execution price semantics are ambiguous |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |

@@ -92,6 +92,29 @@ logger = logging.getLogger(__name__)
 
 _CFG_PATH = Path(__file__).resolve().parent.parent / "config" / "market_pulse.yaml"
 
+# Formal daily never writes legacy raw. Prefer accepted canonical; raw fills
+# only dates absent from canonical (pre-canary history / compatibility).
+# Columns used by market breadth / missing-day detection only (not full OHLCV).
+_NOMINAL_DAILY_SQL = """
+(
+    SELECT
+        c.ts_code,
+        strftime(c.trade_date, '%Y%m%d') AS trade_date,
+        c.pct_chg
+    FROM tr.canonical_nominal_ohlcv_daily c
+    UNION ALL
+    SELECT
+        r.ts_code, r.trade_date, r.pct_chg
+    FROM tr.raw_tushare_daily r
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM tr.canonical_nominal_ohlcv_daily c
+        WHERE c.ts_code = r.ts_code
+          AND strftime(c.trade_date, '%Y%m%d') = r.trade_date
+    )
+)
+"""
+
 # chain 标识就是 taxonomy namespace；行业层级与概念多标签不可共享一个值域。
 CHAIN_DC_INDUSTRY = "dc_industry"
 CHAIN_DC_CONCEPT = "dc_concept"
@@ -416,7 +439,7 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
         SELECT seg.sw_l1 AS sector_name, d.trade_date,
                COUNT(*) FILTER (WHERE d.pct_chg > 0) AS up_num,
                COUNT(*) FILTER (WHERE d.pct_chg < 0) AS down_num
-        FROM tr.raw_tushare_daily d
+        FROM {_NOMINAL_DAILY_SQL} d
         JOIN dim_stock_segment_daily seg
           ON seg.stock_code = substr(d.ts_code, 1, 6) AND seg.trade_date = d.trade_date
         WHERE d.trade_date >= {sw_start} AND seg.sw_l1 IS NOT NULL
@@ -542,13 +565,13 @@ def _market_sql(
     sector_table_sql = _sector_table_identifier(sector_table)
     return f"""
     WITH days AS (
-        SELECT DISTINCT trade_date FROM tr.raw_tushare_daily WHERE trade_date >= {mkt_start}
+        SELECT DISTINCT trade_date FROM {_NOMINAL_DAILY_SQL} WHERE trade_date >= {mkt_start}
     ),
     breadth AS (
         SELECT trade_date,
                COUNT(*) FILTER (WHERE pct_chg > 0) AS adv_n,
                COUNT(*) FILTER (WHERE pct_chg < 0) AS dec_n
-        FROM tr.raw_tushare_daily GROUP BY 1
+        FROM {_NOMINAL_DAILY_SQL} GROUP BY 1
     ),
     limits0 AS (
         -- 情绪周期族 (源口径契约: limit_list_d 官方不含 ST)。源在场缺组 = 真 0 (COALESCE);
@@ -977,8 +1000,8 @@ def _validate_rebuild_tables(
             SELECT 1 FROM {_MARKET_REBUILD_TABLE}
             GROUP BY trade_date HAVING COUNT(*) > 1
         )""").fetchone()[0]
-    expected_market_days = con.execute("""
-        SELECT COUNT(DISTINCT trade_date) FROM tr.raw_tushare_daily
+    expected_market_days = con.execute(f"""
+        SELECT COUNT(DISTINCT trade_date) FROM {_NOMINAL_DAILY_SQL}
         WHERE trade_date >= ?""", [str(cfg["data_start_market"])]).fetchone()[0]
     if null_market_keys or duplicate_market_grains or m_rows != expected_market_days:
         raise RuntimeError(
@@ -1393,7 +1416,7 @@ def build_latest(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]
             sector_rows = int(r[0]) if r else 0
 
         mkt_missing = _missing_dates(con, f"""
-            SELECT DISTINCT trade_date FROM tr.raw_tushare_daily
+            SELECT DISTINCT trade_date FROM {_NOMINAL_DAILY_SQL}
             WHERE trade_date >= ? AND trade_date NOT IN (
                 SELECT DISTINCT trade_date FROM {MARKET_TABLE})
             ORDER BY 1""", [str(cfg["data_start_market"])])

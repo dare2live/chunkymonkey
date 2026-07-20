@@ -12,7 +12,7 @@ def run_clean(ctx: PipelineContext) -> None:
     ctx.log("=== ② 清洗 CLEAN (L0→L1 复权归一+校验) ===")
 
     # Step 2.96: 构建 qfq 派生分析面 (price_kline_qfq_tushare)
-    # raw_tushare_daily × adj_factor → qfq; latest-adj rebase 须全量 (DuckDB CTAS 秒级)。
+    # (accepted canonical ∪ legacy raw) × adj_factor → qfq; latest-adj rebase 须全量。
     if not ctx.skip_sync and not ctx.dry:
         ctx.run_script("backend/scripts/build_price_kline_qfq_tushare.py",
                        degraded_msg="qfq analysis/serving build 失败 — 研究读面将 stale")

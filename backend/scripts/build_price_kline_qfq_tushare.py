@@ -5,7 +5,9 @@ latest-factor full-history rewrite remains a Tier0 lineage/PIT migration item.
 
 daily_update Step 2.96 每日 CREATE TABLE AS 全量重建 price_kline_qfq_tushare (market.duckdb),
 v_price_kline_qfq 视图 FROM 本表 = 当前 qfq analysis/serving 兼容读面；不等于 execution truth。
-前复权 (qfq rebased to latest): qfq = raw × adj_factor / adj_factor_latest_per_stock。
+前复权 (qfq rebased to latest): qfq = nominal × adj_factor / adj_factor_latest_per_stock。
+  nominal = accepted canonical_nominal_ohlcv_daily (preferred) ∪ legacy raw_tushare_daily
+  (raw fills only dates not present in accepted canonical; formal daily never writes legacy raw).
   返回 (收益) = qfq[t]/qfq[t-1] = 含分红总收益 (PIT: f[t] 除权日即知)。
   单位: volume 手×100=股, amount 千元×1000=元 (2026-06-22 切主源时对齐旧 tdxhub 口径, 消费方按此约定)。
 历史: 原版含 vs tdxhub 重叠期收益对账 (2026-06-22 切主源一次性核证, max_diff 0.03% PASS 后 repoint);
@@ -27,13 +29,37 @@ TUSHARE_DB = str(REPO / "data" / "tushare_raw.duckdb")  # rule-compliance: ok ev
 TARGET = "price_kline_qfq_tushare"
 START = "20190101"  # rule-compliance: ok evidence=raw_tushare_daily 实测起点 2019-01-02 (全量回测窗起点)
 
+# Accepted canonical wins on overlap; legacy raw fills pre-canary history only.
+_NOMINAL_SOURCE_CTE = f"""
+nominal AS (
+    SELECT
+        c.ts_code,
+        strftime(c.trade_date, '%Y%m%d') AS trade_date,
+        c.open, c.high, c.low, c.close, c.vol, c.amount
+    FROM tr.canonical_nominal_ohlcv_daily c
+    WHERE c.trade_date >= DATE '2019-01-01'
+    UNION ALL
+    SELECT
+        r.ts_code, r.trade_date, r.open, r.high, r.low, r.close, r.vol, r.amount
+    FROM tr.raw_tushare_daily r
+    WHERE r.trade_date >= '{START}'
+      AND NOT EXISTS (
+          SELECT 1
+          FROM tr.canonical_nominal_ohlcv_daily c
+          WHERE c.ts_code = r.ts_code
+            AND strftime(c.trade_date, '%Y%m%d') = r.trade_date
+      )
+)
+"""
+
 
 def build(conn) -> int:
     conn.execute(f"ATTACH IF NOT EXISTS '{TUSHARE_DB}' AS tr (READ_ONLY)")
     conn.execute(f"DROP TABLE IF EXISTS {TARGET}")
     conn.execute(f"""
         CREATE TABLE {TARGET} AS
-        WITH latest AS (
+        WITH {_NOMINAL_SOURCE_CTE},
+        latest AS (
             SELECT ts_code, adj_factor AS f_latest FROM (
                 SELECT ts_code, adj_factor,
                        ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) rn
@@ -48,7 +74,7 @@ def build(conn) -> int:
             d.close * a.adj_factor / l.f_latest AS close,
             d.vol * 100.0 AS volume,      -- 手 -> 股 (对齐 tdxhub)
             d.amount * 1000.0 AS amount   -- 千元 -> 元 (对齐 tdxhub)
-        FROM tr.raw_tushare_daily d
+        FROM nominal d
         JOIN tr.raw_tushare_adj_factor a ON d.ts_code = a.ts_code AND d.trade_date = a.trade_date
         JOIN latest l ON d.ts_code = l.ts_code
         WHERE d.trade_date >= '{START}' AND d.close > 0 AND a.adj_factor > 0 AND l.f_latest > 0

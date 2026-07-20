@@ -1956,3 +1956,43 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   StrategyRelease; margin thaw; mass backfill; silent cutover.
 - **Next**: owner explicit yaml opt-in **or** stop / agent-OS shadow
   residuals.
+
+### 2026-07-20 — A→H data knife: form/qfq (+ derived) catch-up through 20260720
+
+- Wall-clock: Mon 2026-07-20 ~20:05 Asia/Shanghai (in-session).
+- eng_gov §15: manual sync; no sync `gh run watch`; calendar binds; ≤40d
+  (gap = trading days `20260717`+`20260720` only); no multi-year backfill.
+- Accepted daily frontier already `20260720` (formal path; never writes
+  legacy `raw_tushare_daily`). Prior form/qfq wall was raw max=`20260716`.
+- Manual sync (`trigger_mode=manual`) for analysis/derived feeders through
+  `20260720` (2 batches each unless noted):
+  - `adj_factor` rows=11082 ok
+  - `daily_basic` rows=11046 ok
+  - `stk_limit` rows=15398 ok
+  - pulse upstream: `sw_daily`/`moneyflow_ind_dc`/`dc_index`/`moneyflow`/
+    `moneyflow_mkt_dc`/`limit_list_d`/`top_list`/`top_inst`/`limit_cpt_list` ok
+  - `index_dailybasic` **fail-closed**: by_ts_code window post_filter_rows=2
+    < min_rows=1100 → 0 rows written (mkt_pe/turnover may stay stale)
+  - **Did not** sync/thaw formal `margin` (still accepted max=`20260716`; ban)
+- Derived builder unblock (formal daily forbids legacy raw write):
+  - qfq builder: nominal = accepted `canonical_nominal_ohlcv_daily` preferred
+    ∪ legacy `raw_tushare_daily` fill for non-canonical dates
+  - form `_SRC_TEMP_SQL`: `COALESCE(raw, canonical)` close + stk_limit join
+    by code/date (no raw dependency)
+  - market_pulse breadth/missing-days: same nominal preference
+- Live rebuild evidence:
+  - qfq `price_kline_qfq_tushare` max=`2026-07-20` rows=8,402,928 codes=5762
+    sanity PASS
+  - `fact_stock_form_daily` max=`20260720` (added_days=2, rows=10231)
+  - `dim_stock_segment_daily` max=`20260720` (added_days=2)
+  - `mart_market_pulse_daily` / sector pulse max=`20260720`
+    (dc/sw/market added_days=2)
+  - legacy `raw_tushare_daily` still max=`20260716` (expected; not a writer)
+- Tests: `test_build_price_kline_qfq_tushare` + market_pulse + technical_states
+  63 passed; CI wires new test file.
+- **Did not**: edit cutover yaml / `research_runtime*` (peer-owned); flip
+  B-pit/C `cutover_allowed`; Optuna; E loosen; StrategyRelease; margin thaw;
+  mass backfill.
+- **Status**: FIXED for form/qfq/segments/pulse through accepted daily
+  frontier `20260720`. Residual: `index_dailybasic` sync min_rows gate;
+  margin frozen → pulse rzrqye NULL on new days (honest unknown).

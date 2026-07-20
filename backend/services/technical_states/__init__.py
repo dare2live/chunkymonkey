@@ -14,8 +14,10 @@
   config/technical_states.yaml  轴判据/cell映射/突破参数/涨跌停 proxy — 理论锚定取整值 (H6)
 
 产物表 (契约 §5): smartmoney.fact_stock_form_daily (Type A 确定性 PIT 重排, 每日 process 步跑)。
-上游: market.price_kline_qfq_tushare (当前派生分析输入；非名义成交真相) + tushare_raw.raw_tushare_daily/raw_tushare_stk_limit
-  (原始价空间触板判定) + tushare_raw.raw_tushare_index_daily (RS 基准) +
+上游: market.price_kline_qfq_tushare (当前派生分析输入；非名义成交真相) +
+  tushare_raw.raw_tushare_daily ∪ canonical_nominal_ohlcv_daily / raw_tushare_stk_limit
+  (原始价空间触板判定; formal daily 不写 legacy raw 时走 accepted canonical) +
+  tushare_raw.raw_tushare_index_daily (RS 基准) +
   reference.dim_trading_calendar (周期闭合真相源, H1) + smartmoney.dim_stock_segment_daily
   (Tier1 context: rv_pctile/vol_regime 列 — 先跑 segments 再跑本模块)。
 入口: rebuild_all (全量) / build_latest (幂等增量)。形态 = 结构层非 alpha (F1 裁决), 无买卖暗示。
@@ -205,13 +207,15 @@ def _row_tuple(code: str, k: str, r: dict) -> tuple:
 _SRC_TEMP_SQL = """
 CREATE OR REPLACE TEMP TABLE _b2_src AS
 SELECT k.code, k.date, k.open, k.high, k.low, k.close, k.volume,
-       rd.close AS raw_close, sl.up_limit, sl.down_limit,
+       COALESCE(rd.close, can.close) AS raw_close, sl.up_limit, sl.down_limit,
        seg.rv_pctile, seg.vol_regime
 FROM mkt.price_kline_qfq_tushare k
 LEFT JOIN tr.raw_tushare_daily rd
   ON substr(rd.ts_code, 1, 6) = k.code AND rd.trade_date = replace(k.date, '-', '')
+LEFT JOIN tr.canonical_nominal_ohlcv_daily can
+  ON substr(can.ts_code, 1, 6) = k.code AND can.trade_date = CAST(k.date AS DATE)
 LEFT JOIN tr.raw_tushare_stk_limit sl
-  ON sl.ts_code = rd.ts_code AND sl.trade_date = rd.trade_date
+  ON substr(sl.ts_code, 1, 6) = k.code AND sl.trade_date = replace(k.date, '-', '')
 LEFT JOIN dim_stock_segment_daily seg
   ON seg.stock_code = k.code AND seg.trade_date = replace(k.date, '-', '')
 WHERE k.date >= ?

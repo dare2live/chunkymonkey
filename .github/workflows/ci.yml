@@ -105,6 +105,7 @@ jobs:
             tests/scripts/test_build_agent_board.py \
             tests/scripts/test_agent_boot.py \
             tests/scripts/test_persist_phase_d_experiment_runs.py \
+            tests/scripts/test_build_price_kline_qfq_tushare.py \
             -p no:cacheprovider --tb=short -q || exit 1
 
       - name: Population and calendar static gates
