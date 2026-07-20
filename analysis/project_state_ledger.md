@@ -1302,3 +1302,32 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   does not upgrade continuity non-READY → READY.
 - **Next**: accepted publish path for Tier1/2 **or** next eligible daily
   single-day sync **or** stop.
+
+### 2026-07-20 — Phase C accepted publish path (TDD)
+
+- Added `backend/services/tier12_publish_accept.py` + TDD
+  `test_tier12_publish_accept.py` (8/8) +
+  `persist_tier12_accepted_publish.py`. Config:
+  `allow_consumer_cutover: false` (hard-ignored if flipped).
+- Accept gates (fail-closed): require writer
+  `WRITTEN_UNPUBLISHED` + all attestations `PUBLISHABLE_SCAFFOLD`;
+  reject missing lineage, forged `published=true` without accept,
+  PIT-poisoned outputs (`available_at` > decision_date), empty stocks,
+  smoke-summary upgrade attempts.
+- Happy path: atomic `accepted_{day}.json` (temp+replace) with immutable
+  lineage (`definition_version`, `config_hash`, `input_snapshot_id`,
+  `available_at`, `content_hash`, `batch_id`); `published=true` only
+  after success; `cutover_allowed=false` always.
+- Live canary accept from `batch_20260717.json` →
+  `data/lineage/tier12_publish_batches/accepted_20260717.json`
+  (stock_row_count=20; content_hash=
+  `f4e227fa35a4deaa2ea8ef50bfbf1974186c2eaf4cd3cb57a013f1dcd9c7ff9e`;
+  dataset_ids=`tier12_stock_state`+`tier12_market_context`).
+- Daily `20260720` still not synced this slice (wall-clock before
+  same_day 18:00 CST; frontier remains `20260717`).
+- **Did not**: consumer cutover, full-universe publish-complete, B-pit
+  mart switch, Optuna, E gate loosen, StrategyRelease, margin thaw,
+  mass backfill. Canary accept ≠ full-universe claim.
+- **Next**: explicit consumer cutover gate (default false) **or**
+  full-universe Tier1/2 accept **or** next eligible daily single-day
+  **or** stop.

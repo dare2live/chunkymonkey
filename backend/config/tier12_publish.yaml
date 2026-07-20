@@ -4,14 +4,17 @@
 # Scope: lineage-bearing StockStateDaily / MarketContextPublishEnvelope emission
 #        with PIT truncation (available_at <= decision_date).
 # Hard gates:
-#   - allow_published stays false until accepted_partition path exists
-#   - missing lineage / missing available_at fail closed
+#   - writer allow_published stays false (writer never publishes)
+#   - accept path sets published=true only after WRITTEN_UNPUBLISHED +
+#     PUBLISHABLE_SCAFFOLD gates; smoke summaries cannot be upgraded
+#   - allow_consumer_cutover stays false (hard gate; consumers do not cut over)
+#   - missing lineage / missing available_at / PIT poison fail closed
 #   - not StrategyRelease; not B-pit mart cutover; not Optuna
 
 meta:
   version: 1
   phase: C
-  notes: "writer emits WRITTEN_UNPUBLISHED only; published=false always"
+  notes: "writer=WRITTEN_UNPUBLISHED; accept=ACCEPTED published=true cutover=false"
 
 stock_state:
   definition_version: stock_state_stage_pattern_v0
@@ -39,4 +42,6 @@ market_context:
 publish:
   # Scaffold/writer hard gate — flipping this must NOT publish.
   allow_published: false
+  # Accept path hard gate — flipping this must NOT cut over consumers.
+  allow_consumer_cutover: false
   artifact_dir: data/lineage/tier12_publish_batches

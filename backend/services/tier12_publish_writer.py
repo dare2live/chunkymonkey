@@ -6,7 +6,8 @@ are excluded. Missing ``available_at`` or typed lineage config fails closed.
 
 This writer never marks ``published=True`` / accepted_partition / StrategyRelease
 — even if config ``allow_published`` is flipped. Status stays
-``WRITTEN_UNPUBLISHED`` until a separately proven accept path exists.
+``WRITTEN_UNPUBLISHED``; use ``tier12_publish_accept.accept_tier12_batch`` for
+the separate accepted-publish boundary.
 """
 from __future__ import annotations
 
