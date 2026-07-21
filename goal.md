@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-21（**S1–S6 FIXED**；**S7 PARTIAL** stronger — inventory **29/46 ssot**；**§15 knife-merge adoption started**；**E0 PARTIAL** land-only CLI + provider land `stk_holdertrade`+`holders_top10`；`org_holding` provider land **BLOCKED**；accepted daily **`20190102`→`20260720`**（1829d）；ST **`20220104`→`20260720`**（1099d；asymmetric ST raw floor））
+> 更新：2026-07-21（**S1–S6 FIXED**；**S7 PARTIAL** — inventory **29/46 ssot**；serve/multi-consumer knife **verified BLOCKED**（无 leaf publication → 0 cut；gate 防 pulse-aggregate theater）；**§15 knife-merge adoption started**；**E0 PARTIAL** land-only CLI + provider land `stk_holdertrade`+`holders_top10`；`org_holding` provider land **BLOCKED**；accepted daily **`20190102`→`20260720`**（1829d）；ST **`20220104`→`20260720`**（1099d；asymmetric ST raw floor））
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -47,10 +47,10 @@
 - **Accepted window（local-raw chunked）**：daily **`20190102`→`20260720`（1829d）**；ST **`20220104`→`20260720`（1099d）** — ST raw floor，asymmetric；holdout `20250601` in-window
 - **S5 derive FIXED**：`chunkyctl derive qfq|form --from-accepted` + `derive_runtime`（canonical-only nominal；零 acquire/fused publish；不进 accept 事务）
 - **S6 serve FIXED**：`market_pulse_serve_read` 经 DataAccess registry+resolver 承接 drill/members/margin L0 leaf；router 零 `# serve-exempt:` / 零内联 raw；D5 全绿；form/sentiment 仍 production_read
-- **S7 PARTIAL（stronger）**：derive + form library + pipeline clean/process 默认 accepted-only；daily expand 闭合 2019；qfq from-accepted **8,402,928** 行；**inventory 32→29 ssot**（+3 compatibility）：`top_list`→mart pulse；`daily_basic`→`dim_stock_segment_daily`；`stk_limit`→`fact_stock_form_daily`；valuation DataAccess→dim；prior pulse/SW/identity/adj still compatibility；**hard-stop stay ssot（typed）**：dc_member / moneyflow drill L0 / `limit_list_d` / `top_inst`/`index_daily` multi-consumer / `suspend_d`/`margin_detail` BLOCKED / ~16 sync_orphan|serve_l0_declared → **不升 FIXED**
+- **S7 PARTIAL**：derive + form library + pipeline clean/process 默认 accepted-only；daily expand 闭合 2019；qfq from-accepted **8,402,928** 行；**inventory 29 ssot / 1 fill / 16 compatibility** of 46（prior cuts: top_list/daily_basic/stk_limit + pulse builders）；**serve/multi-consumer knife verified BLOCKED（0 cut）**：`limit_list_d`/`moneyflow`/`moneyflow_dc` serve leaf；`dc_member` no DC PIT；`top_inst`/`index_daily` multi-consumer — mart aggregates ≠ leaf grain；gate now rejects serve_l0_leaf/multi_consumer COMPAT without DataAccess→non-raw publication；**hard-stop stay ssot（typed）**：上述六表 + `suspend_d`/`margin_detail` BLOCKED + ~16 sync_orphan|serve_l0_declared → **不升 FIXED**
 - **§15 adoption started**：knife-merge + `chunkyctl pre-knife` + agent-boot reminder；E/F **paused**；禁令不变
 - **E0 PARTIAL（stronger）**：disclosure S1/S2 CLI 齐：`--land-only|--land-then-accept --from-local-raw`（三域）+ provider land without `--from-local-raw` for **`stk_holdertrade`**（by_ann_date）+ **`holders_top10`**（miaoxiang by `UPDATE_DATE`/notice_date；~10–120 行/日；≤40d；禁 mass dump；首日失败即停）+ `--accept-from-landing --batch-id`；**`org_holding` provider land BLOCKED**（by-period ~830k/期；无 NOTICE_DATE；仍 `--from-local-raw`）；live accepted holders **13** / stk **6** / org **2**；DatasetSnapshot 未改写；E/F remeasure 仍 paused
-- **近端 focus**：S7 续刀（dc_member PIT if ever；serve-leaf mart-mirror；sync_orphan sunset evidence）或 E0 residual（org by-date faucet if ever；org full-universe；mass legacy accept）；**不**开 E/F remeasure / G/H/Release
+- **近端 focus**：S7 下一刀 = **build** stock-day flow/limit publication（brick B2）或 DC membership PIT（B1）或 index/seat accepted plane — **不**把 pulse mart 当 leaf COMPAT；或 E0 residual；**不**开 E/F remeasure / G/H/Release
 - **护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d+禁 mass backfill/第二 DB/plugin bus；§15 不放宽 L3/Rule10
 
 A→H 降为地图；细节以重评文 §4、§9 为准。

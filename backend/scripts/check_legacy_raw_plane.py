@@ -12,6 +12,9 @@ Checks:
   6. derive_input / identity_cache: role=compatibility + non-raw
      publication_surface.
   7. ``raw_tushare_daily`` must be role=fill (derive fill, not SSOT).
+  8. serve_l0_leaf / multi_consumer: compatibility only when DataAccess
+     already redirects to a non-raw publication_surface (forbids pulse-
+     aggregate theater while drill/paper still need leaf grain).
 
 Run: PYTHONPATH=backend python backend/scripts/check_legacy_raw_plane.py
 """
@@ -42,6 +45,20 @@ FORMAL_DOMAIN_RAW_TABLES: dict[str, str] = {
 MEMBERSHIP_ENTITY_BY_RAW: dict[str, str] = {
     "raw_tushare_dc_member": "dc_member",
     "raw_tushare_index_member_all": "index_member_all",
+}
+
+# Serve leaf / multi-consumer: compatibility only when DataAccess already
+# redirects to a non-raw publication surface (stock-day mart / accepted /
+# seat plane). Pattern-B pulse_flow_builder (DataAccess stays on raw) is
+# forbidden here — drill/paper/rebuild still need leaf grain.
+SERVE_LEAF_ENTITY_BY_RAW: dict[str, str] = {
+    "raw_tushare_limit_list_d": "limit_list_d",
+    "raw_tushare_moneyflow": "moneyflow",
+    "raw_tushare_moneyflow_dc": "moneyflow_dc",
+}
+MULTI_CONSUMER_ENTITY_BY_RAW: dict[str, str] = {
+    "raw_tushare_index_daily": "index_daily",
+    "raw_tushare_top_inst": "top_inst",
 }
 
 
@@ -220,6 +237,47 @@ def collect_violations() -> list[str]:
                 viol.append(
                     f"{table}: {meta.get('kind')} requires non-raw "
                     f"publication_surface ≠ raw table"
+                )
+            continue
+
+        if meta.get("kind") in ("serve_l0_leaf", "multi_consumer"):
+            role = meta.get("role")
+            if role == "ssot":
+                continue
+            if role != "compatibility":
+                viol.append(
+                    f"{table}: {meta.get('kind')} role must be ssot|compatibility "
+                    f"(got {role!r})"
+                )
+                continue
+            surface = meta.get("publication_surface")
+            if (
+                not isinstance(surface, str)
+                or not surface
+                or surface == table
+                or surface.startswith("raw_")
+            ):
+                viol.append(
+                    f"{table}: {meta.get('kind')} compatibility requires non-raw "
+                    f"publication_surface (no alias / pulse-aggregate theater)"
+                )
+                continue
+            entity_map = (
+                SERVE_LEAF_ENTITY_BY_RAW
+                if meta.get("kind") == "serve_l0_leaf"
+                else MULTI_CONSUMER_ENTITY_BY_RAW
+            )
+            entity = entity_map.get(table)
+            if entity is None:
+                viol.append(
+                    f"{table}: {meta.get('kind')} missing entity mapping in gate"
+                )
+                continue
+            ent_table = data_access_entity_table(entity)
+            if ent_table != surface:
+                viol.append(
+                    f"{table}: data_access entity {entity!r} table must be "
+                    f"{surface!r} before role=compatibility (got {ent_table!r})"
                 )
 
     return viol

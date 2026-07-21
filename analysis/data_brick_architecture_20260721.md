@@ -241,7 +241,7 @@ flowchart TB
 
 | 域 | Gap | 下一刀 |
 |---|---|---|
-| **S7 legacy plane** | 29/46 ssot；dc_member；moneyflow drill L0 | 逐域 formal\|sunset；禁盲删 |
+| **S7 legacy plane** | 29/46 ssot；serve/multi-consumer **verified BLOCKED**（0 cut）；dc_member；moneyflow drill L0 | next = **build** B1 PIT / B2 stock-day publication；禁 pulse-mart theater |
 | **E0 disclosure** | org provider land **BLOCKED**；accepted 窗窄 | org by-date faucet 或 stay local-raw |
 | **L2 qfq lineage** | placeholder batch_id / UNION 残留 | manifest 补齐或 UNTRUSTED |
 | **L3 brick registry** | FeatureBlock 分散在脚本 | 收编为 contract + hash（无新 DB） |

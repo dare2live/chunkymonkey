@@ -2699,6 +2699,27 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual**：29 ssot as typed map；E0 org；E/F paused。
 - **Status**: **PARTIAL**（S7 stronger；not FIXED）。
 
+### 2026-07-21 — S7 serve/multi-consumer probe (29→29) + gate lock
+
+- Wall-clock: Tue 2026-07-21 ~15:07–15:40 Asia/Shanghai.
+- **Knife**（§15；priority six；finish-as-honest；E/F paused）：
+  1. Probed `limit_list_d` / `moneyflow` / `moneyflow_dc` / `dc_member` /
+     `top_inst` / `index_daily` for DataAccess→mart/accepted COMPAT.
+  2. **Verdict 0 cut**：serve drill still needs stock-day leaf grain；mart_*
+     are aggregates only；dc_member has no honest PIT；`top_inst` seat ≠
+     `fact_inst_episode`；`index_daily` close series not in mart.
+  3. Gate：`serve_l0_leaf` / `multi_consumer` COMPAT requires DataAccess
+     redirect to non-raw `publication_surface`（forbids pulse-aggregate theater）.
+  4. Notes + board/goal：verified 2026-07-21 unblock conditions；next = **build**
+     B2 stock-day publication / B1 DC PIT / index|seat plane.
+- Inventory：**29→29 ssot** / 1 fill / 16 compatibility of 46.
+- Evidence：`check_legacy_raw_plane` ssot=29；targeted S7 pytest green；
+  `pre-knife s7-serve-multi-consumer` OK.
+- **Did not**：fake COMPAT；blind delete raw；stock-flow mart-mirror build；
+  E/F remeasure.
+- **Residual**：same 29 typed hard-stops；E0 org；E/F paused.
+- **Status**: **PARTIAL**（honest wall；not FIXED）。
+
 ### 2026-07-21 — DB storage hygiene reclaim (local data plane)
 
 - Wall-clock: Tue 2026-07-21 ~11:01 Asia/Shanghai (compact/delete) + commit session.

@@ -4645,6 +4645,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_legacy_raw_plane.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_index_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/institution_profile.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_index_daily"
@@ -4867,6 +4873,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_legacy_raw_plane.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_limit_list_d"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/market_pulse.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_limit_list_d"
@@ -4874,6 +4886,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/market_pulse_serve_read.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_limit_list_d"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_limit_list_d"
     },
@@ -5107,6 +5125,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_legacy_raw_plane.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_moneyflow"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/lineage/model.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow"
@@ -5173,6 +5197,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_legacy_raw_plane.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_moneyflow_dc"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/market_pulse.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow_dc"
@@ -5180,6 +5210,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/market_pulse_serve_read.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_moneyflow_dc"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow_dc"
     },
@@ -5653,6 +5689,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_legacy_raw_plane.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_top_inst"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/institution_profile.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_top_inst"
@@ -5827,6 +5869,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_dc_industry_pit"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/segments.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.v_dc_industry_pit"
@@ -5935,8 +5983,8 @@
     }
   ],
   "meta": {
-    "edge_count": 938,
-    "generated_at": "2026-07-21T06:59:42.751061+00:00",
+    "edge_count": 946,
+    "generated_at": "2026-07-21T07:18:22.160069+00:00",
     "node_count": 375,
     "version": 2
   },

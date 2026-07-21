@@ -13,6 +13,8 @@
 #   - every sync_registry raw_tushare_* target_table classified
 #   - every data_access entity table raw_* classified
 #   - formal_domain tables must not be role=ssot; write must be forbidden
+#   - serve_l0_leaf / multi_consumer: compatibility only after DataAccess
+#     redirects to a non-raw publication_surface (no pulse-aggregate theater)
 #
 # Ban: mass delete of years of raw; mass backfill; second DB; Optuna/Release flip.
 
@@ -92,7 +94,7 @@ tables:
   raw_tushare_dc_member:
     role: ssot
     kind: membership_l0
-    note: "S7 hard-stop: DataAccess/serve leaf + pulse builder; dim_stock_dc_* = current-snapshot only; no DC membership PIT"
+    note: "S7 hard-stop verified 2026-07-21: serve /members+/drill + pulse; dim_stock_dc_*=current-snapshot; v_dc_industry_pit retired fake PIT (no out_date); unblock=real DC membership PIT then DataAccess redirect"
 
   raw_tushare_dividend:
     role: ssot
@@ -137,7 +139,7 @@ tables:
   raw_tushare_index_daily:
     role: ssot
     kind: multi_consumer
-    note: "S7 hard-stop: pulse RS + technical_states bench + institution_profile alpha + paper_portfolio; no index accepted plane"
+    note: "S7 hard-stop verified 2026-07-21: pulse RS + technical_states + institution_profile + paper_portfolio need close series; mart has rs_* only (no bench close); unblock=accepted/fact index plane + DataAccess redirect"
 
   raw_tushare_index_dailybasic:
     role: compatibility
@@ -165,7 +167,7 @@ tables:
   raw_tushare_limit_list_d:
     role: ssot
     kind: serve_l0_leaf
-    note: "S7 hard-stop: serve drill L0 leaf + pulse builder; stock-level limit detail has no mart-mirror"
+    note: "S7 hard-stop verified 2026-07-21: serve drill joins stock-day limit_times; mart_* holds aggregates only; unblock=stock-day limit publication + DataAccess redirect (not pulse-aggregate COMPAT)"
 
   raw_tushare_margin:
     role: compatibility
@@ -181,12 +183,12 @@ tables:
   raw_tushare_moneyflow:
     role: ssot
     kind: serve_l0_leaf
-    note: "S7 hard-stop: serve drill L0 leaf (stock flow); no mart-mirror"
+    note: "S7 hard-stop verified 2026-07-21: serve SW drill leaf needs stock-day net_mf_amount; design keeps stock regime on-the-fly (no mart mirror); unblock=stock-day flow publication + DataAccess redirect"
 
   raw_tushare_moneyflow_dc:
     role: ssot
     kind: serve_l0_leaf
-    note: "S7 hard-stop: serve drill L0 leaf (DC stock flow); no mart-mirror"
+    note: "S7 hard-stop verified 2026-07-21: serve DC drill leaf needs stock-day net_amount; sector mart inflow_breadth is aggregate only; unblock=stock-day DC flow publication + DataAccess redirect"
 
   raw_tushare_moneyflow_hsgt:
     role: ssot
@@ -271,7 +273,7 @@ tables:
   raw_tushare_top_inst:
     role: ssot
     kind: multi_consumer
-    note: "S7 hard-stop: pulse builder + institution_profile fact_inst_episode truth; no single formal inst-seat publication"
+    note: "S7 hard-stop verified 2026-07-21: pulse lhb_inst_net aggregate + institution_profile seat-window rebuild; fact_inst_episode grain≠seat; mart_market_pulse_daily aggregate≠seat; unblock=formal seat plane OR drop seat consumer"
 
   raw_tushare_top_list:
     role: compatibility

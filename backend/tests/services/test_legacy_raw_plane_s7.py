@@ -195,7 +195,7 @@ def test_s7_derive_runtime_still_bans_acquire_imports() -> None:
 
 
 def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
-    """S7 knife: top_list + daily_basic + stk_limit → ssot 32→29."""
+    """S7 inventory holds at 29 ssot after serve/multi-consumer probe (no fake cut)."""
 
     mod = _load_check_mod()
     counts = mod.role_counts()
@@ -203,6 +203,102 @@ def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
     assert counts["fill"] == 1, counts
     assert counts["compatibility"] == 16, counts
     assert sum(counts.values()) == 46, counts
+
+
+def test_s7_serve_multi_consumer_priority_stay_ssot() -> None:
+    """Priority serve/multi-consumer tables: no honest COMPAT without leaf publication."""
+
+    from services.data_access.spec import load_registry
+
+    mod = _load_check_mod()
+    inv = mod._load_yaml(mod.INVENTORY_YAML)
+    reg = load_registry()
+    expected = {
+        "raw_tushare_limit_list_d": ("serve_l0_leaf", "limit_list_d"),
+        "raw_tushare_moneyflow": ("serve_l0_leaf", "moneyflow"),
+        "raw_tushare_moneyflow_dc": ("serve_l0_leaf", "moneyflow_dc"),
+        "raw_tushare_dc_member": ("membership_l0", "dc_member"),
+        "raw_tushare_top_inst": ("multi_consumer", "top_inst"),
+        "raw_tushare_index_daily": ("multi_consumer", "index_daily"),
+    }
+    for table, (kind, entity) in expected.items():
+        meta = inv["tables"][table]
+        assert meta["role"] == "ssot", table
+        assert meta.get("kind") == kind, table
+        assert "verified 2026-07-21" in (meta.get("note") or ""), table
+        ent = reg.entity(entity)
+        assert ent.table == table, (entity, ent.table)
+
+
+def test_s7_gate_rejects_serve_leaf_compat_without_data_access_redirect(
+    tmp_path, monkeypatch
+) -> None:
+    """Forbid pulse-aggregate theater: serve_l0_leaf COMPAT needs DataAccess redirect."""
+
+    mod = _load_check_mod()
+    inv = tmp_path / "legacy_raw_plane.yaml"
+    inv.write_text(
+        "version: 1\n"
+        "membership_l0_entities: [dc_member, index_member_all]\n"
+        "tables:\n"
+        "  raw_tushare_daily:\n"
+        "    role: fill\n"
+        "    formal_domain: daily\n"
+        "    write: forbidden\n"
+        "  raw_tushare_stock_st:\n"
+        "    role: compatibility\n"
+        "    formal_domain: stock_st\n"
+        "    write: forbidden\n"
+        "  raw_tushare_trade_cal:\n"
+        "    role: compatibility\n"
+        "    formal_domain: trade_cal\n"
+        "    write: forbidden\n"
+        "  raw_tushare_margin:\n"
+        "    role: compatibility\n"
+        "    formal_domain: margin\n"
+        "    write: forbidden\n"
+        "  raw_tushare_moneyflow:\n"
+        "    role: compatibility\n"
+        "    kind: serve_l0_leaf\n"
+        "    publication_surface: mart_sector_pulse_daily\n"
+        "  raw_tushare_dc_member:\n"
+        "    role: ssot\n"
+        "    kind: membership_l0\n"
+        "  raw_tushare_index_member_all:\n"
+        "    role: compatibility\n"
+        "    kind: membership_l0\n"
+        "    publication_surface: v_sw_industry_pit\n",
+        encoding="utf-8",
+    )
+    reg = tmp_path / "sync_registry.yaml"
+    reg.write_text(
+        "domains:\n"
+        "  daily: {target_table: raw_tushare_daily}\n"
+        "  stock_st: {target_table: raw_tushare_stock_st}\n"
+        "  trade_cal: {target_table: raw_tushare_trade_cal}\n"
+        "  margin: {target_table: raw_tushare_margin}\n"
+        "  moneyflow: {target_table: raw_tushare_moneyflow}\n"
+        "  dc_member: {target_table: raw_tushare_dc_member}\n"
+        "  index_member_all: {target_table: raw_tushare_index_member_all}\n",
+        encoding="utf-8",
+    )
+    da = tmp_path / "data_access.yaml"
+    da.write_text(
+        "entities:\n"
+        "  moneyflow: {table: raw_tushare_moneyflow, layer: L0}\n"
+        "  dc_member: {table: raw_tushare_dc_member, layer: L0}\n"
+        "  index_member_all: {table: v_sw_industry_pit, layer: L1}\n"
+        "  daily: {table: raw_tushare_daily, layer: L0}\n"
+        "  margin: {table: raw_tushare_margin, layer: L0}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "INVENTORY_YAML", inv)
+    monkeypatch.setattr(mod, "SYNC_REGISTRY_YAML", reg)
+    monkeypatch.setattr(mod, "DATA_ACCESS_YAML", da)
+    viol = mod.collect_violations()
+    assert any(
+        "raw_tushare_moneyflow" in v and "data_access entity" in v for v in viol
+    ), viol
 
 
 def test_s7_sw_membership_publication_is_pit_view() -> None:
