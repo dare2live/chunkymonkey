@@ -4,6 +4,7 @@ Strangler surfaces (caller-only composition; not a second dragon):
 - S1 land-only via runtime ``capture_and_land_*``
 - S2 accept-from-landing via runtime ``accept_*_from_landing`` (zero fetch)
 - ``land_then_accept_*`` = S1 then S2 in the caller
+- S4 acquire modes (``security_day_acquire``) feed land only; accept stays separate
 - local legacy-raw materializer = explicit acquire→landing with lineage
 
 Production ``sync_runner`` default path calls :func:`land_then_accept_authorized_security_day`
@@ -15,6 +16,9 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
 from typing import Any
 
+from services.data_sources.security_day_acquire import (
+    ACQUIRE_MODE_LOCAL_LEGACY_RAW,
+)
 from services.data_sources.security_day_capture import (
     build_security_day_landing_batch,
 )
@@ -87,7 +91,7 @@ def materialize_security_day_landing_from_legacy_raw_rows(
         rows=batch.rows,
         request={
             **dict(batch.request),
-            "acquire_mode": "local_legacy_raw_materialize",
+            "acquire_mode": ACQUIRE_MODE_LOCAL_LEGACY_RAW,
             "lineage_note": str(lineage_note),
             "compatibility_table": domain_spec.compatibility_table,
         },

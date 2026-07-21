@@ -60,6 +60,7 @@ paths:
 - tests/services/test_population_scope.py
 - tests/services/test_sync_execution_policy.py
 - tests/services/test_security_day_transport_modularity.py
+- tests/services/test_security_day_acquire_s4.py
 - tests/services/test_runtime_limits.py
 - tests/scripts/test_check_universe_filter.py
 - tests/scripts/test_check_calendar_usage.py

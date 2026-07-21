@@ -1888,7 +1888,21 @@ def _publish_security_day_accepted_partition(
         return _fetch_with_retry(adapter, spec, request)
 
     from services.data_sources.nominal_ohlcv_runtime import NominalOhlcvRuntimeError
+    from services.data_sources.security_day_acquire import (
+        ACQUIRE_MODE_PROVIDER_TUSHARE,
+        resolve_security_day_acquire,
+    )
     from services.data_sources.stock_st_runtime import StockStRuntimeError
+
+    acquired = resolve_security_day_acquire(
+        ACQUIRE_MODE_PROVIDER_TUSHARE,
+        domain,
+        trade_date=partition,
+        fetch_rows=_fetch_rows,
+    )
+
+    def _acquired_rows(_params: Mapping[str, Any]):
+        return list(acquired.rows)
 
     if domain == "daily":
         from services.data_sources.nominal_ohlcv_contract import (
@@ -1902,7 +1916,7 @@ def _publish_security_day_accepted_partition(
             conn,
             contract,
             trade_date=partition,
-            fetch_rows=_fetch_rows,
+            fetch_rows=_acquired_rows,
             bootstrap=True,
         )
     elif domain == "stock_st":
@@ -1915,7 +1929,7 @@ def _publish_security_day_accepted_partition(
             conn,
             contract,
             trade_date=partition,
-            fetch_rows=_fetch_rows,
+            fetch_rows=_acquired_rows,
             bootstrap=True,
         )
     else:
@@ -1941,6 +1955,7 @@ def _publish_security_day_accepted_partition(
                 "error": str(exc)[:500],
                 "publication": publication,
                 "transport": "land_then_accept",
+                "acquire_mode": acquired.acquire_mode,
             }
     finally:
         conn.close()
@@ -1958,6 +1973,7 @@ def _publish_security_day_accepted_partition(
         "rejection_code": outcome.rejection_code,
         "publication": publication,
         "transport": "land_then_accept",
+        "acquire_mode": acquired.acquire_mode,
         "eligible_end": eligibility.eligible_end,
         "eligibility_reason": eligibility.reason,
     }
@@ -2051,6 +2067,12 @@ def _land_security_day_partition(
     partition = operation_window.effective_end or trade_date
     conn = _target_conn(spec)
     try:
+        from services.data_sources.security_day_acquire import (
+            ACQUIRE_MODE_LOCAL_LEGACY_RAW,
+            ACQUIRE_MODE_PROVIDER_TUSHARE,
+            resolve_security_day_acquire,
+        )
+
         if from_local_raw:
             from services.data_sources.security_day_transport import (
                 materialize_security_day_landing_from_legacy_raw_rows,
@@ -2060,52 +2082,22 @@ def _land_security_day_partition(
                 from services.data_sources.nominal_ohlcv_contract import (
                     nominal_ohlcv_contract_for_spec,
                 )
-                from services.data_sources.nominal_ohlcv_schema import DOMAIN as OHLCV_DOMAIN
 
                 contract = nominal_ohlcv_contract_for_spec(spec)
-                raw_table = OHLCV_DOMAIN.compatibility_table
-                provider_fields = OHLCV_DOMAIN.provider_fields
             elif domain == "stock_st":
                 from services.data_sources.stock_st_contract import stock_st_contract_for_spec
-                from services.data_sources.stock_st_schema import DOMAIN as ST_DOMAIN
 
                 contract = stock_st_contract_for_spec(spec)
-                raw_table = ST_DOMAIN.compatibility_table
-                provider_fields = ST_DOMAIN.provider_fields
             else:
                 raise SyncWindowError(
                     f"from-local-raw unsupported domain={domain}"
                 )
-            cols = ", ".join(provider_fields)
-            raw_rows = [
-                dict(zip(provider_fields, row, strict=True))
-                for row in conn.execute(
-                    f"SELECT {cols} FROM {raw_table} WHERE trade_date = ?",
-                    [partition],
-                ).fetchall()
-            ]
-            if not raw_rows:
-                return {
-                    "domain": domain,
-                    "status": "error",
-                    "batches": 0,
-                    "rows": 0,
-                    "failed_batches": 1,
-                    "error": f"local_raw_empty trade_date={partition} table={raw_table}",
-                    "publication": "land_only_from_local_raw",
-                    "transport": "land_only",
-                }
-            observed = datetime.now(timezone.utc)
             try:
-                batch = materialize_security_day_landing_from_legacy_raw_rows(
+                acquired = resolve_security_day_acquire(
+                    ACQUIRE_MODE_LOCAL_LEGACY_RAW,
                     domain,
-                    conn,
-                    contract,
                     trade_date=partition,
-                    raw_rows=raw_rows,
-                    observed_at=observed,
-                    bootstrap=True,
-                    lineage_note=f"cli_from_local_raw:{raw_table}",
+                    conn=conn,
                 )
             except SecurityDayError as exc:
                 return {
@@ -2117,17 +2109,58 @@ def _land_security_day_partition(
                     "error": str(exc)[:500],
                     "publication": "land_only_from_local_raw",
                     "transport": "land_only",
+                    "acquire_mode": ACQUIRE_MODE_LOCAL_LEGACY_RAW,
+                }
+            if not acquired.rows:
+                return {
+                    "domain": domain,
+                    "status": "error",
+                    "batches": 0,
+                    "rows": 0,
+                    "failed_batches": 1,
+                    "error": (
+                        f"local_raw_empty trade_date={partition} "
+                        f"table={acquired.source_ref}"
+                    ),
+                    "publication": "land_only_from_local_raw",
+                    "transport": "land_only",
+                    "acquire_mode": acquired.acquire_mode,
+                }
+            observed = datetime.now(timezone.utc)
+            try:
+                batch = materialize_security_day_landing_from_legacy_raw_rows(
+                    domain,
+                    conn,
+                    contract,
+                    trade_date=partition,
+                    raw_rows=acquired.rows,
+                    observed_at=observed,
+                    bootstrap=True,
+                    lineage_note=acquired.lineage_note,
+                )
+            except SecurityDayError as exc:
+                return {
+                    "domain": domain,
+                    "status": "error",
+                    "batches": 0,
+                    "rows": 0,
+                    "failed_batches": 1,
+                    "error": str(exc)[:500],
+                    "publication": "land_only_from_local_raw",
+                    "transport": "land_only",
+                    "acquire_mode": acquired.acquire_mode,
                 }
             return {
                 "domain": domain,
                 "status": "ok",
                 "batches": 1,
-                "rows": len(raw_rows),
+                "rows": len(acquired.rows),
                 "failed_batches": 0,
                 "batch_id": batch.batch_id,
                 "partition_value": batch.partition_value,
                 "publication": "land_only_from_local_raw",
                 "transport": "land_only",
+                "acquire_mode": acquired.acquire_mode,
                 "eligible_end": eligibility.eligible_end,
                 "eligibility_reason": eligibility.reason,
             }
@@ -2143,6 +2176,16 @@ def _land_security_day_partition(
         from services.data_sources.stock_st_runtime import StockStRuntimeError
 
         try:
+            acquired = resolve_security_day_acquire(
+                ACQUIRE_MODE_PROVIDER_TUSHARE,
+                domain,
+                trade_date=partition,
+                fetch_rows=_fetch_rows,
+            )
+
+            def _acquired_rows(_params: Mapping[str, Any]):
+                return list(acquired.rows)
+
             if domain == "daily":
                 from services.data_sources.nominal_ohlcv_contract import (
                     nominal_ohlcv_contract_for_spec,
@@ -2155,7 +2198,7 @@ def _land_security_day_partition(
                     conn,
                     nominal_ohlcv_contract_for_spec(spec),
                     trade_date=partition,
-                    fetch_rows=_fetch_rows,
+                    fetch_rows=_acquired_rows,
                     bootstrap=True,
                 )
                 publication = "land_only_nominal_ohlcv"
@@ -2169,7 +2212,7 @@ def _land_security_day_partition(
                     conn,
                     stock_st_contract_for_spec(spec),
                     trade_date=partition,
-                    fetch_rows=_fetch_rows,
+                    fetch_rows=_acquired_rows,
                     bootstrap=True,
                 )
                 publication = "land_only_stock_st"
@@ -2191,6 +2234,7 @@ def _land_security_day_partition(
                 "error": str(exc)[:500],
                 "publication": "land_only",
                 "transport": "land_only",
+                "acquire_mode": ACQUIRE_MODE_PROVIDER_TUSHARE,
             }
     finally:
         conn.close()
@@ -2205,6 +2249,7 @@ def _land_security_day_partition(
         "partition_value": batch.partition_value,
         "publication": publication,
         "transport": "land_only",
+        "acquire_mode": ACQUIRE_MODE_PROVIDER_TUSHARE,
         "eligible_end": eligibility.eligible_end,
         "eligibility_reason": eligibility.reason,
     }
