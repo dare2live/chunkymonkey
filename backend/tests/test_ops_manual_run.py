@@ -115,3 +115,42 @@ def test_current_activity_prefers_latest_phase_over_prior_fail(tmp_path, monkeyp
     assert "正在: ① 获取 ACQUIRE" in act["summary"]
     assert payload["alert_summary"] and "PREFLIGHT BLOCK" in payload["alert_summary"]
     assert "ACQUIRE" in (act["progress_line"] or "")
+
+
+def test_pipeline_stage_jobs_registered_for_capability_e():
+    """Independent stage cards must call real chunkyctl pipeline/derive jobs."""
+    for job in (
+        "pipeline_acquire",
+        "pipeline_clean",
+        "pipeline_process",
+        "pipeline_store",
+        "derive_qfq",
+    ):
+        assert job in ops_manual_run.MANUAL_JOBS
+        argv = ops_manual_run.MANUAL_JOBS[job]["argv"]
+        assert argv[0].endswith("chunkyctl") or "chunkyctl" in str(argv[0])
+
+
+def test_pipeline_nodes_catalog_marks_parameterized_s1_s2_disabled(monkeypatch):
+    monkeypatch.setattr(
+        ops_manual_run,
+        "writer_lock_status",
+        lambda: SimpleNamespace(busy=False, owner=None, owner_pid=None),
+    )
+    monkeypatch.setattr(ops_manual_run, "_is_running", lambda _spec: False)
+
+    payload = ops_manual_run.pipeline_nodes()
+    assert payload["primary_job"] == "daily_update"
+    by_id = {n["id"]: n for n in payload["nodes"]}
+
+    assert by_id["acquire"]["runnable"] is True
+    assert by_id["acquire"]["job"] == "pipeline_acquire"
+    assert by_id["acquire"]["status"]["job"] == "pipeline_acquire"
+
+    assert by_id["land_accept"]["runnable"] is False
+    assert by_id["land_accept"]["status"] is None
+    assert "batch-id" in (by_id["land_accept"]["disabled_reason"] or "")
+
+    assert by_id["preflight"]["runnable"] is False
+    assert by_id["derive"]["job"] == "derive_qfq"
+    assert by_id["store"]["runnable"] is True

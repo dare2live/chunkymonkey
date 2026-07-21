@@ -1025,6 +1025,134 @@ select:focus {
   color: var(--text);
 }
 
+/* Capability E: modular pipeline step cards */
+.ops-step-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.ops-step-item {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  flex: 1 1 200px;
+  min-width: 180px;
+  max-width: 280px;
+}
+
+.ops-step-arrow {
+  display: none;
+  align-self: center;
+  color: var(--text-faint);
+  font-size: 14px;
+}
+
+@media (min-width: 1100px) {
+  .ops-step-item {
+    flex: 0 1 auto;
+    max-width: 220px;
+  }
+  .ops-step-item .ops-step-arrow {
+    display: block;
+  }
+  .ops-step-item:first-child .ops-step-arrow {
+    display: none;
+  }
+}
+
+.ops-step-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  background: var(--bg-panel-2);
+}
+
+.ops-step-running {
+  border-color: rgba(59, 102, 212, 0.45);
+  background: rgba(59, 102, 212, 0.06);
+}
+
+.ops-step-ok {
+  border-color: rgba(46, 125, 50, 0.35);
+}
+
+.ops-step-alert {
+  border-color: rgba(160, 106, 0, 0.45);
+  background: rgba(160, 106, 0, 0.07);
+}
+
+.ops-step-disabled {
+  opacity: 0.78;
+}
+
+.ops-step-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ops-step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ops-step-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.ops-step-badge-running {
+  color: var(--accent);
+  background: rgba(59, 102, 212, 0.12);
+}
+
+.ops-step-badge-ok {
+  color: #2e7d32;
+  background: rgba(46, 125, 50, 0.1);
+}
+
+.ops-step-badge-alert {
+  color: #a06a00;
+  background: rgba(160, 106, 0, 0.12);
+}
+
+.ops-step-desc {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+
+.ops-step-activity {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text);
+  word-break: break-word;
+  min-height: 2.7em;
+}
+
+.ops-step-meta {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.ops-step-actions {
+  margin-top: auto;
+  padding-top: 4px;
+}
+
 /* ── 股票档案 MVP (`#/stock/:code`) — keep separate from workbench step cards ── */
 
 .dossier-page .dossier-head {

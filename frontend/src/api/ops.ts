@@ -34,6 +34,22 @@ export interface OpsJobRunResp {
   pid: number;
 }
 
+/** Capability E step-card node from GET /api/v3/ops/pipeline/nodes */
+export interface PipelineNode {
+  id: string;
+  label: string;
+  description: string;
+  job: string | null;
+  runnable: boolean;
+  disabled_reason: string | null;
+  status: OpsJobStatus | null;
+}
+
+export interface PipelineNodesResp {
+  primary_job: string;
+  nodes: PipelineNode[];
+}
+
 export function fetchOpsJob(job: string): Promise<OpsJobStatus> {
   return apiGet<OpsJobStatus>(`/api/v3/ops/jobs/${encodeURIComponent(job)}`);
 }
@@ -42,10 +58,39 @@ export function runOpsJob(job: string): Promise<OpsJobRunResp> {
   return apiPost<OpsJobRunResp>(`/api/v3/ops/jobs/${encodeURIComponent(job)}/run`);
 }
 
+export function fetchPipelineNodes(): Promise<PipelineNodesResp> {
+  return apiGet<PipelineNodesResp>("/api/v3/ops/pipeline/nodes");
+}
+
 /** True while flock or process hint says the chain is still alive. */
 export function jobLooksActive(s: OpsJobStatus | null | undefined): boolean {
   if (!s) return false;
   return Boolean(s.writer_busy || s.process_hint_running || s.running);
+}
+
+/** Per-node activity: prefer this job's process hint (writer_busy is global flock). */
+export function nodeLooksActive(s: OpsJobStatus | null | undefined): boolean {
+  if (!s) return false;
+  return Boolean(s.process_hint_running);
+}
+
+export function nodeCardTone(
+  node: PipelineNode,
+): "idle" | "running" | "ok" | "alert" | "disabled" {
+  if (!node.runnable) return "disabled";
+  const s = node.status;
+  if (!s) return "idle";
+  if (nodeLooksActive(s)) return "running";
+  const act = deriveActivityFallback({
+    ...s,
+    // Avoid painting every card "running" from global writer flock.
+    writer_busy: false,
+    running: false,
+  });
+  if (act?.phase === "alert" || s.alert_summary) return "alert";
+  if (act?.phase === "fail") return "alert";
+  if (s.log_mtime != null && act && act.phase !== "idle") return "ok";
+  return "idle";
 }
 
 /** Fallback when older API has no current_activity — parse log_tail locally. */

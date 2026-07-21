@@ -1,21 +1,27 @@
 /** 工作台 — 手动 ops 触发面（ops_manual_run「前端按钮面板」）。
- *  当前只接线「数据更新」→ POST /api/v3/ops/jobs/daily_update/run + 状态轮询。
- *  多 tab / 资金流决策辅助 / 模块化 step cards (Capability E) backlog 另开，不在本页堆产品面。
- *  本页只保证 one-click 运行时可观测：当前阶段 / 最近进度行 / 日志时间 / 告警原因。 */
+ *  Tab「一键更新」= daily_update 主路径 + current_activity 可观测性。
+ *  Tab「分步节点」= Capability E step cards（真实 pipeline/derive jobs；无 safe API 则 disabled+reason）。
+ *  不堆资金流决策面；不发明第二编排 DAG。 */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/client";
 import {
   deriveActivityFallback,
   fetchOpsJob,
+  fetchPipelineNodes,
   formatLogMtime,
   jobLooksActive,
+  nodeCardTone,
+  nodeLooksActive,
   runOpsJob,
   type OpsJobStatus,
+  type PipelineNode,
 } from "../api/ops";
 import { Card } from "../components/Card";
 
 const DAILY_UPDATE_JOB = "daily_update";
 const POLL_MS = 2500;
+
+type WorkbenchTab = "oneclick" | "steps";
 
 function activeAlertNames(flags: Record<string, boolean> | undefined): string[] {
   if (!flags) return [];
@@ -38,19 +44,41 @@ function statusLabel(s: OpsJobStatus | null): string {
   return "空闲";
 }
 
+function toneLabel(tone: ReturnType<typeof nodeCardTone>): string {
+  switch (tone) {
+    case "running":
+      return "running";
+    case "ok":
+      return "ok";
+    case "alert":
+      return "alert";
+    case "disabled":
+      return "disabled";
+    default:
+      return "idle";
+  }
+}
+
 export function WorkbenchPage() {
+  const [tab, setTab] = useState<WorkbenchTab>("oneclick");
   const [status, setStatus] = useState<OpsJobStatus | null>(null);
+  const [nodes, setNodes] = useState<PipelineNode[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
+  const [triggeringJob, setTriggeringJob] = useState<string | null>(null);
   const [polledAt, setPolledAt] = useState<number | null>(null);
   const pollRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const s = await fetchOpsJob(DAILY_UPDATE_JOB);
+      const [s, catalog] = await Promise.all([
+        fetchOpsJob(DAILY_UPDATE_JOB),
+        fetchPipelineNodes(),
+      ]);
       setStatus(s);
+      setNodes(catalog.nodes ?? []);
       setPolledAt(Date.now());
       setLoadError(null);
       return s;
@@ -65,9 +93,11 @@ export function WorkbenchPage() {
     void refresh();
   }, [refresh]);
 
+  const anyNodeActive = nodes.some((n) => nodeLooksActive(n.status));
+  const chainActive = jobLooksActive(status) || anyNodeActive;
+
   useEffect(() => {
-    const active = jobLooksActive(status);
-    if (!active) {
+    if (!chainActive) {
       if (pollRef.current != null) {
         window.clearInterval(pollRef.current);
         pollRef.current = null;
@@ -84,10 +114,11 @@ export function WorkbenchPage() {
         pollRef.current = null;
       }
     };
-  }, [status, refresh]);
+  }, [chainActive, refresh]);
 
-  const onRun = async () => {
+  const onRunDaily = async () => {
     setTriggering(true);
+    setTriggeringJob(DAILY_UPDATE_JOB);
     setActionError(null);
     setActionMsg(null);
     try {
@@ -103,10 +134,34 @@ export function WorkbenchPage() {
       await refresh();
     } finally {
       setTriggering(false);
+      setTriggeringJob(null);
     }
   };
 
-  const busy = triggering || jobLooksActive(status);
+  const onRunNode = async (job: string) => {
+    setTriggering(true);
+    setTriggeringJob(job);
+    setActionError(null);
+    setActionMsg(null);
+    try {
+      const resp = await runOpsJob(job);
+      setActionMsg(`节点 ${job} 已受理 pid=${resp.pid}`);
+      await refresh();
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setActionError(e.message);
+      } else {
+        setActionError(e instanceof Error ? e.message : String(e));
+      }
+      await refresh();
+    } finally {
+      setTriggering(false);
+      setTriggeringJob(null);
+    }
+  };
+
+  const busy = triggering || chainActive;
+  const writerBusy = Boolean(status?.writer_busy);
   const alerts = activeAlertNames(status?.alert_flags);
   const tail = status?.log_tail ?? [];
   const activity = deriveActivityFallback(status);
@@ -121,15 +176,36 @@ export function WorkbenchPage() {
         <div>
           <h1>工作台</h1>
           <p className="state-hint" style={{ textAlign: "left", padding: "4px 0 0" }}>
-            手动触发数据底座链（preflight → 获取 → 清洗/派生 → 加工 → 存储）。不自动调度。
+            手动触发数据底座链。一键全链优先；卡住时用分步节点独立重跑（真实 CLI/API，无假阶段）。
           </p>
         </div>
         <div className="mark-ctl">
           {actionMsg && <span className="mark-msg">{actionMsg}</span>}
-          <button className="btn btn-primary" onClick={() => void onRun()} disabled={busy}>
-            {triggering ? "提交中…" : jobLooksActive(status) ? "更新进行中…" : "数据更新"}
+          <button className="btn btn-primary" onClick={() => void onRunDaily()} disabled={busy}>
+            {triggering && triggeringJob === DAILY_UPDATE_JOB
+              ? "提交中…"
+              : chainActive
+                ? "更新进行中…"
+                : "数据更新"}
           </button>
         </div>
+      </div>
+
+      <div className="tab-group" style={{ marginBottom: 12 }}>
+        <button
+          type="button"
+          className={`btn tab${tab === "oneclick" ? " active" : ""}`}
+          onClick={() => setTab("oneclick")}
+        >
+          一键更新
+        </button>
+        <button
+          type="button"
+          className={`btn tab${tab === "steps" ? " active" : ""}`}
+          onClick={() => setTab("steps")}
+        >
+          分步节点
+        </button>
       </div>
 
       {loadError && (
@@ -138,7 +214,7 @@ export function WorkbenchPage() {
       {actionError && (
         <div className="banner-warn">触发失败: {actionError}</div>
       )}
-      {blocking && !jobLooksActive(status) && (
+      {blocking && !jobLooksActive(status) && tab === "oneclick" && (
         <div className="banner-warn">
           阻断 / 告警: {blocking}
           {alerts.length > 0
@@ -146,71 +222,165 @@ export function WorkbenchPage() {
             : null}
         </div>
       )}
-      {blocking && jobLooksActive(status) && (
+      {blocking && jobLooksActive(status) && tab === "oneclick" && (
         <div className="banner-info">
           注意: 仍有历史 ALERT flag（{blocking}）。当前链已在跑；成功结束通常会自清。
         </div>
       )}
 
-      <Card
-        title="数据更新"
-        extra={<span className="mono">{statusLabel(status)}</span>}
-      >
-        <div
-          className={
-            jobLooksActive(status)
-              ? "ops-activity ops-activity-live"
-              : blocking
-                ? "ops-activity ops-activity-alert"
-                : "ops-activity"
+      {tab === "oneclick" ? (
+        <Card
+          title="数据更新"
+          extra={<span className="mono">{statusLabel(status)}</span>}
+        >
+          <div
+            className={
+              jobLooksActive(status)
+                ? "ops-activity ops-activity-live"
+                : blocking
+                  ? "ops-activity ops-activity-alert"
+                  : "ops-activity"
+            }
+          >
+            <div className="ops-activity-label">当前活动</div>
+            <div className="ops-activity-summary">{activity?.summary ?? "—"}</div>
+            {activity?.progress_line && (
+              <div className="ops-activity-progress mono">{activity.progress_line}</div>
+            )}
+            <div className="ops-activity-meta mono">
+              阶段={activity?.phase_label ?? "—"}
+              {" · "}
+              日志更新={formatLogMtime(status?.log_mtime ?? null)}
+              {activity?.log_age_s != null ? `（${Math.floor(activity.log_age_s)}s 前）` : ""}
+              {" · "}
+              轮询={polledAt ? new Date(polledAt).toLocaleTimeString("zh-CN", { hour12: false }) : "—"}
+              {status?.owner ? ` · writer=${status.owner}` : ""}
+              {status?.owner_pid != null ? ` pid=${status.owner_pid}` : ""}
+            </div>
+          </div>
+
+          <div className="kpi-grid" style={{ marginBottom: 10 }}>
+            <div className="kpi">
+              <label>任务</label>
+              <b className="mono">{status?.job ?? DAILY_UPDATE_JOB}</b>
+            </div>
+            <div className="kpi">
+              <label>说明</label>
+              <b>{status?.label ?? "—"}</b>
+            </div>
+            <div className="kpi">
+              <label>日志</label>
+              <b className="mono" style={{ fontSize: 11 }}>
+                {status?.log_path ?? "—"}
+              </b>
+            </div>
+          </div>
+
+          <div className="ops-log-head">
+            <span>最近日志尾</span>
+            <button className="btn" onClick={() => void refresh()} disabled={triggering}>
+              刷新状态
+            </button>
+          </div>
+          {tail.length === 0 ? (
+            <div className="state-hint">尚无日志（未跑过或日志文件不存在）</div>
+          ) : (
+            <pre className="ops-log-tail mono">{tail.join("\n")}</pre>
+          )}
+        </Card>
+      ) : (
+        <Card
+          title="模块化分步节点"
+          extra={
+            <button className="btn" onClick={() => void refresh()} disabled={triggering}>
+              刷新
+            </button>
           }
         >
-          <div className="ops-activity-label">当前活动</div>
-          <div className="ops-activity-summary">{activity?.summary ?? "—"}</div>
-          {activity?.progress_line && (
-            <div className="ops-activity-progress mono">{activity.progress_line}</div>
+          <p className="state-hint" style={{ textAlign: "left", padding: "0 0 10px" }}>
+            对齐真实 `chunkyctl pipeline|derive`；S1/S2 需域与日期参数，按钮禁用并给出原因。任意 writer
+            占用时独立运行会 409。
+          </p>
+          <div className="ops-step-flow">
+            {nodes.map((node, idx) => {
+              const tone = nodeCardTone(node);
+              const act = deriveActivityFallback(
+                node.status
+                  ? {
+                      ...node.status,
+                      writer_busy: false,
+                      running: false,
+                    }
+                  : null,
+              );
+              const nodeBusy = nodeLooksActive(node.status);
+              const canRun =
+                node.runnable &&
+                Boolean(node.job) &&
+                !busy &&
+                !writerBusy;
+              return (
+                <div key={node.id} className="ops-step-item">
+                  {idx > 0 && <div className="ops-step-arrow" aria-hidden="true">→</div>}
+                  <div className={`ops-step-card ops-step-${tone}`}>
+                    <div className="ops-step-head">
+                      <span className="ops-step-title">{node.label}</span>
+                      <span className={`ops-step-badge ops-step-badge-${tone}`}>
+                        {toneLabel(tone)}
+                      </span>
+                    </div>
+                    <div className="ops-step-desc">{node.description}</div>
+                    <div className="ops-step-activity mono">
+                      {node.runnable
+                        ? act?.summary ?? "空闲 · 尚无日志"
+                        : node.disabled_reason ?? "不可独立运行"}
+                    </div>
+                    <div className="ops-step-meta mono">
+                      {node.job ? `job=${node.job}` : "job=—"}
+                      {node.status?.log_mtime != null
+                        ? ` · 最近 ${formatLogMtime(node.status.log_mtime)}`
+                        : ""}
+                      {nodeBusy && node.status?.owner
+                        ? ` · writer=${node.status.owner}`
+                        : ""}
+                    </div>
+                    <div className="ops-step-actions">
+                      {node.runnable && node.job ? (
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={!canRun}
+                          title={
+                            !canRun
+                              ? writerBusy || busy
+                                ? "writer 占用或任务进行中"
+                                : undefined
+                              : `POST /api/v3/ops/jobs/${node.job}/run`
+                          }
+                          onClick={() => void onRunNode(node.job!)}
+                        >
+                          {triggeringJob === node.job
+                            ? "提交中…"
+                            : nodeBusy
+                              ? "运行中…"
+                              : "独立运行"}
+                        </button>
+                      ) : (
+                        <button type="button" className="btn" disabled title={node.disabled_reason ?? undefined}>
+                          不可运行
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {nodes.length === 0 && (
+            <div className="state-hint">节点目录未加载（API 需含 GET /api/v3/ops/pipeline/nodes）</div>
           )}
-          <div className="ops-activity-meta mono">
-            阶段={activity?.phase_label ?? "—"}
-            {" · "}
-            日志更新={formatLogMtime(status?.log_mtime ?? null)}
-            {activity?.log_age_s != null ? `（${Math.floor(activity.log_age_s)}s 前）` : ""}
-            {" · "}
-            轮询={polledAt ? new Date(polledAt).toLocaleTimeString("zh-CN", { hour12: false }) : "—"}
-            {status?.owner ? ` · writer=${status.owner}` : ""}
-            {status?.owner_pid != null ? ` pid=${status.owner_pid}` : ""}
-          </div>
-        </div>
-
-        <div className="kpi-grid" style={{ marginBottom: 10 }}>
-          <div className="kpi">
-            <label>任务</label>
-            <b className="mono">{status?.job ?? DAILY_UPDATE_JOB}</b>
-          </div>
-          <div className="kpi">
-            <label>说明</label>
-            <b>{status?.label ?? "—"}</b>
-          </div>
-          <div className="kpi">
-            <label>日志</label>
-            <b className="mono" style={{ fontSize: 11 }}>
-              {status?.log_path ?? "—"}
-            </b>
-          </div>
-        </div>
-
-        <div className="ops-log-head">
-          <span>最近日志尾</span>
-          <button className="btn" onClick={() => void refresh()} disabled={triggering}>
-            刷新状态
-          </button>
-        </div>
-        {tail.length === 0 ? (
-          <div className="state-hint">尚无日志（未跑过或日志文件不存在）</div>
-        ) : (
-          <pre className="ops-log-tail mono">{tail.join("\n")}</pre>
-        )}
-      </Card>
+        </Card>
+      )}
     </div>
   );
 }
