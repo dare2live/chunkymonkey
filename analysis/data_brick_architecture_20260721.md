@@ -244,7 +244,7 @@ flowchart TB
 | **S7 legacy plane** | **near-FIXED / stronger PARTIAL**：23/46 ssot = typed hard-stop wall only（2 blocked + 7 serve_l0_declared + 14 sync_orphan）；B1+B2 priority done | no fake COMPAT；next only with new publication/sunset evidence；else E0 |
 | **E0 disclosure** | org provider land **BLOCKED**；holders **17** / stk **27** accepted（local-raw empty_skip + row_seq fix） | org stay local-raw；no by-date invent |
 | **L2 qfq lineage** | placeholder batch_id / UNION 残留 | manifest 补齐或 UNTRUSTED |
-| **L3 brick registry** | FeatureBlock 分散在脚本 | 收编为 contract + hash（无新 DB） |
+| **L3 brick registry** | FeatureBlock 分散在脚本 → **PARTIAL** first knife：`brick_registry.yaml` + hop/raw/orphan gate + doctor | deepen Type-B/feature_store + qfq lineage；不假 FIXED |
 | **Blocked datasets** | stk_limit/daily_basic/suspend_d/margin_detail | 诚实无 publication；不 fake PIT |
 
 ### 7.3 有序 strangler（与 plan_reeval / db_layering 一致）
@@ -255,7 +255,7 @@ flowchart TB
 | **B2** | S7 flow/limit L0 | limit+moneyflow(+dc)+index_daily+top_inst → fact_* **FIXED**（priority serve/multi-consumer） | raw → compatibility |
 | **B3** | S7 长尾 ssot | residual wall **documented**（23 typed hard-stops）；禁假 COMPAT | owner publication/sunset 才再动；否则 stay near-FIXED |
 | **B4** | E0 residual | org / mass accept 策略 | NONCONFORMING 隔离 |
-| **B5** | L3 registry | FeatureBlock/brick manifest 与 lineage 对齐 | doctor 报告 orphan brick |
+| **B5** | L3 registry | FeatureBlock/brick manifest 与 lineage 对齐 | **PARTIAL**：doctor 报告 orphan；gate 绿；qfq/Type-B residual |
 | **B6** | R1 E/F remeasure | **仅** S7 达 owner 阈值 + scheduled | 同 protocol；禁 Optuna |
 
 **明确不做**：新开 A→H 主线；greenfield 变量平台；按层拆 DuckDB；E/F 与 S7 并行抢刀。

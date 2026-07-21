@@ -1,0 +1,161 @@
+# Brick registry (L2 primitives / L3 FeatureBlocks) — B5 strangler
+#
+# Authority: analysis/data_brick_architecture_20260721.md
+# Gate: backend/scripts/check_brick_registry.py (+ moth claim + doctor section)
+#
+# Orthogonal to legacy data_layers.yaml:
+#   - data_layers L2_feature / L3_model = wiped physical Type-B vocab (compatibility)
+#   - THIS file = brick-architecture L0–L3 semantic layers (L2=primitive, L3=composite)
+#
+# Rules:
+#   - L2 depends_on ⊆ L1/L0 reference_nodes | other L2 bricks (never L3/L4)
+#   - L3 feature_blocks: max_composite_hops along L3 chain (default 2)
+#   - no silent raw_* / raw_tushare_* depends_on (allow_raw_bypass only with evidence)
+#   - every FEATURE_BLOCK_ID in backend/services must appear under feature_blocks
+#
+# First knife = structure + enforcement; lineage completeness for qfq remains PARTIAL.
+
+version: 1
+max_composite_hops: 2
+
+reference_nodes:
+  accepted_nominal_ohlcv_daily:
+    layer: L1
+    kind: accepted_canonical
+  accepted_stock_st_daily:
+    layer: L1
+    kind: accepted_canonical
+  DatasetSnapshot.holders_top10:
+    layer: L1
+    kind: snapshot_binding
+  canonical_top10_float_holders_period:
+    layer: L1
+    kind: accepted_canonical
+  # adj_factor consumed by qfq derive; still L1-ish vendor fact, not an L2 brick yet
+  adj_factor:
+    layer: L1
+    kind: corporate_action_factor
+
+bricks:
+  price_kline_qfq_tushare:
+    layer: L2
+    kind: primitive
+    depends_on: [accepted_nominal_ohlcv_daily, adj_factor]
+    outputs: [price_kline_qfq_tushare, kline_qfq]
+    owners:
+      - backend/scripts/build_price_kline_qfq_tushare.py
+    config_hash: derive_qfq_from_accepted_v1
+    availability_axis: available_at
+    status: partial
+    notes: "S5/S7 derive --from-accepted; L2 qfq lineage placeholder batch_id residual known"
+
+  fact_stock_form_daily:
+    layer: L2
+    kind: primitive
+    depends_on: [accepted_nominal_ohlcv_daily]
+    outputs: [fact_stock_form_daily]
+    owners:
+      - backend/services/technical_states
+    config_hash: technical_states_form_from_accepted_v1
+    availability_axis: available_at
+    status: declared
+    notes: "S5 derive form; Type A axes; no direction claim"
+
+  # Distinct brick_id from L3 feature_block stock_state_stage_pattern_v1
+  # (same definition_version string is OK; node ids must not collide across layers).
+  tier1_stock_state_stage_pattern_v1:
+    layer: L2
+    kind: primitive
+    depends_on: [accepted_nominal_ohlcv_daily, fact_stock_form_daily]
+    outputs: [StockStateDaily, stock_state_stage, pattern_event]
+    owners:
+      - backend/config/tier12_publish.yaml
+    config_hash: "184d82ed71a15d61768ce001250b8de86efa1aa0e5ae742bfdf5619d5c24fdd4"
+    availability_axis: available_at
+    status: declared
+    notes: "Tier1 base publish (L2); definition_version=stock_state_stage_pattern_v1"
+
+  MarketContextSnapshot:
+    layer: L2
+    kind: primitive
+    depends_on: [accepted_nominal_ohlcv_daily]
+    outputs: [MarketContextSnapshot, market_risk_on, project_board_adv_dec_ratio]
+    owners:
+      - backend/config/tier12_publish.yaml
+    config_hash: market_sensing_project_breadth_v0
+    availability_axis: available_at
+    status: declared
+    notes: "Tier2 base publish (L2); B2 FeatureBlock composes this snapshot"
+
+  # Declared Type-B / pulse composites kept thin (no hop inflation in first knife)
+  mart_market_pulse_daily:
+    layer: L2
+    kind: primitive
+    depends_on: [accepted_nominal_ohlcv_daily, fact_stock_form_daily]
+    outputs: [mart_market_pulse_daily]
+    owners:
+      - backend/services/market_pulse.py
+    config_hash: market_pulse_daily_v2
+    availability_axis: available_at
+    status: partial
+    notes: "display/Type-A mart; registered as L2 serve primitive pending deeper L3 split"
+
+feature_blocks:
+  stock_state_stage_pattern_v0:
+    layer: L3
+    kind: feature_block
+    depends_on:
+      - accepted_nominal_ohlcv_daily
+      - accepted_stock_st_daily
+      - fact_stock_form_daily
+    outputs: [stock_state_stage, pattern_event]
+    owners:
+      - backend/services/institution_follow_b1.py
+    config_hash: trend_up_or_breakout_v0
+    availability_axis: decision_time_visible_only
+    status: declared
+    notes: "institution_follow B1 FeatureBlock (legacy v0 definition)"
+
+  stock_state_stage_pattern_v1:
+    layer: L3
+    kind: feature_block
+    depends_on:
+      - accepted_nominal_ohlcv_daily
+      - fact_stock_form_daily
+    outputs: [stock_state_stage, pattern_event]
+    owners:
+      - backend/services/main_rally_b1.py
+    config_hash: trend_up_or_breakout_v1
+    availability_axis: decision_time_visible_only
+    status: declared
+    notes: "main_rally B1 FeatureBlock; consumes L2 form (+ Tier1 publish path)"
+
+  market_sensing_project_breadth_v0:
+    layer: L3
+    kind: feature_block
+    depends_on:
+      - accepted_nominal_ohlcv_daily
+      - MarketContextSnapshot
+    outputs: [market_risk_on, project_board_adv_dec_ratio]
+    owners:
+      - backend/services/institution_follow_b2.py
+      - backend/services/main_rally_b2.py
+    config_hash: risk_on_adv_dec_ratio_ge_1_v0
+    availability_axis: decision_time_eod_available_at_required
+    status: declared
+    notes: "B2 FeatureBlock; L3 over L2 MarketContextSnapshot (1 hop)"
+
+  institution_event_holders_disclosure_v0:
+    layer: L3
+    kind: feature_block
+    depends_on:
+      - accepted_nominal_ohlcv_daily
+      - DatasetSnapshot.holders_top10
+      - canonical_top10_float_holders_period
+    outputs: [disclosure_event_eligible, institution_increase_score]
+    owners:
+      - backend/services/institution_follow_b4.py
+    config_hash: increase_event_day_chase3_v0
+    availability_axis: notice_date_and_available_at_required_null_excluded
+    status: declared
+    notes: "B4 FeatureBlock; L1 disclosure inputs (E0 PARTIAL)"

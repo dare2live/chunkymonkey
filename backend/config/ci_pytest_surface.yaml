@@ -64,6 +64,7 @@ paths:
 - tests/services/test_security_day_acquire_s4.py
 - tests/services/test_derive_runtime_s5.py
 - tests/services/test_legacy_raw_plane_s7.py
+- tests/services/test_brick_registry_b5.py
 - tests/services/test_stock_limit_publish_b2.py
 - tests/services/test_stock_moneyflow_publish_b2.py
 - tests/services/test_index_daily_publish_b2.py

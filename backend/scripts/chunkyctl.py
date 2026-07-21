@@ -8,6 +8,7 @@ This surface intentionally stays small. It exposes the live manual-only Tier0/op
   4. population_contract  — typed scope/policy static contract
   5. population_readiness — accepted calendar/Kline/ST live evidence (独立阻断)
   6. data_health          — data_health_snapshot.py --dry-run (表新鲜度/红黄绿)
+  7. brick_registry       — L2/L3 FeatureBlock hop/raw/orphan (B5 strangler)
 Retired commands are fail-closed compatibility names, not dormant workflows or future promises.
 """
 from __future__ import annotations
@@ -414,6 +415,46 @@ def _moth_gate(repo: Path) -> dict[str, Any]:
     return {"name": "tooling_gate", "verdict": verdict, "returncode": r["returncode"]}
 
 
+def _brick_registry_section(result: dict[str, Any]) -> dict[str, Any]:
+    """B5: doctor reports orphan FeatureBlocks / hop-raw violations (static gate)."""
+
+    report = _json_from_stdout(result)
+    shape_ok = bool(
+        report is not None
+        and isinstance(report.get("orphan_feature_blocks"), list)
+        and isinstance(report.get("violations"), list)
+        and report.get("verdict") in {"PASS", "FAIL"}
+    )
+    passed = bool(
+        shape_ok
+        and result.get("returncode") == 0
+        and report.get("verdict") == "PASS"
+        and not report.get("violations")
+    )
+    section: dict[str, Any] = {
+        "name": "brick_registry",
+        "verdict": "PASS" if passed else "FAIL",
+        "returncode": result.get("returncode"),
+        "orphan_feature_blocks": (
+            None if report is None else report.get("orphan_feature_blocks")
+        ),
+        "l2_count": None if report is None else report.get("l2_count"),
+        "l3_count": None if report is None else report.get("l3_count"),
+        "violations": None if report is None else report.get("violations"),
+    }
+    if not passed:
+        if not shape_ok:
+            if result.get("returncode") not in (0, None) and report is None:
+                section["error"] = "brick-registry process returned non-zero"
+            elif report is None:
+                section["error"] = "brick-registry output is not a JSON object"
+            else:
+                section["error"] = "brick-registry report has invalid shape"
+        else:
+            section["error"] = "brick-registry has orphan bricks or hop/raw violations"
+    return section
+
+
 def run_doctor(args: argparse.Namespace) -> int:
     repo = Path(args.repo).expanduser().resolve()
     sections: list[dict[str, Any]] = []
@@ -429,11 +470,16 @@ def run_doctor(args: argparse.Namespace) -> int:
     dh = _run_command([sys.executable, "backend/scripts/data_health_snapshot.py",                # 6. 数据新鲜度
                        "--dry-run", "--format", "json"], cwd=repo)
     sections.append(_data_health_section(dh))
+    br = _run_command(                                                          # 7. B5 brick registry
+        [sys.executable, "backend/scripts/check_brick_registry.py", "--json"],
+        cwd=repo,
+    )
+    sections.append(_brick_registry_section(br))
     verdict = _aggregate_verdict(sections)
     report = {"command": "doctor", "verdict": verdict, "sections": sections,
-              "note": "当前权威快检聚合 6 个独立 gate: moth/automation/alert/"
-                      "population_contract/population_readiness/data_health；"
-                      "静态契约 PASS 不升级 live readiness"}
+              "note": "当前权威快检聚合 7 个独立 gate: moth/automation/alert/"
+                      "population_contract/population_readiness/data_health/"
+                      "brick_registry；静态契约 PASS 不升级 live readiness"}
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if verdict != "FAIL" else 1
 
@@ -454,7 +500,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command")
     d = sub.add_parser(
         "doctor",
-        help="健康检查 (moth/automation/alert/population contract+readiness/data_health)",
+        help="健康检查 (moth/automation/alert/population/data_health/brick_registry)",
     )
     d.add_argument("--repo", default=".")
     d.add_argument("--fast", action="store_true")              # wrapper 已 strip; 防直调残留不崩

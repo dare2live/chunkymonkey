@@ -2921,3 +2921,22 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   S7 hard-stop wall；next foundation knife = brick L2/L3 registry if E0 org
   stays blocked；E/F paused.
 - **Status**: **PARTIAL**（E0 stronger；org still BLOCKED；not FIXED）.
+
+### 2026-07-21 — B5 brick registry PARTIAL (L2/L3 FeatureBlock strangler)
+
+- Wall-clock: Tue 2026-07-21 ~17:50–19:00 Asia/Shanghai.
+- **B5 first knife**（§15；authority=`data_brick_architecture_20260721.md`）：
+  1. Inventory：FeatureBlocks in `backend/services` = 4 ids
+     (`stock_state_stage_pattern_v0/v1`, `market_sensing_project_breadth_v0`,
+     `institution_event_holders_disclosure_v0`); L2 primitives = qfq/form/
+     Tier1·Tier2 publish/pulse; orthogonal to wiped `data_layers` L2_feature/L3_model.
+  2. Manifest：`backend/config/brick_registry.yaml` (reference_nodes + bricks +
+     feature_blocks; `max_composite_hops=2`; config_hash + availability_axis).
+  3. Gate：`services/brick_registry.py` + `check_brick_registry.py` —
+     silent `raw_*` bypass FAIL；L2↛L3；L3 hop >2 FAIL；orphan FEATURE_BLOCK_ID FAIL.
+  4. Doctor section `brick_registry` reports orphans；moth claim
+     `brick-registry-l2-l3`；CI surface `test_brick_registry_b5.py`.
+- **Did not**：Optuna；E/F remeasure；org invent；S7 fake FIXED；new DB/plugin bus.
+- **Residual**：qfq lineage placeholder；Type-B/feature_store deep registration；
+  org BLOCKED；S7 hard-stop wall. Label **PARTIAL**（structure landed；not FIXED）.
+- **Status**: **PARTIAL**.

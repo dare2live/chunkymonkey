@@ -162,6 +162,11 @@ assertions:
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_legacy_raw_plane.py >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
+  - id: brick-registry-l2-l3
+    claim: "B5 brick registry 门全绿：L2 primitives vs L3 FeatureBlocks 已登记；禁 silent raw bypass；L3 max_composite_hops≤2；backend/services FEATURE_BLOCK_ID 无 orphan。owner=backend/scripts/check_brick_registry.py + brick_registry.yaml；权威=analysis/data_brick_architecture_20260721.md"
+    type: shell
+    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_brick_registry.py >/dev/null 2>&1 && echo 0 || echo 1"]
+    expect: {op: "<=", value: 0}
   - id: calendar-usage-clean
     claim: "交易日历静态强制门全绿：导入 calendar 不再豁免整文件，空扫描失败关闭；B1 wall-clock 当最新交易日、B2/B3 SQL wall-clock cutoff 均阻断，显式 evidence 仅豁免具体合法行。owner=backend/scripts/check_calendar_usage.py"
     type: shell
