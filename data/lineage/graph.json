@@ -607,6 +607,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/routers/stock_dossier.py",
+      "kind": "consume",
+      "src": "table:feature_store.fact_inst_episode"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/institution_profile.py",
       "kind": "consume",
       "src": "table:feature_store.fact_inst_episode"
@@ -626,6 +632,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_institution_profile_api.py",
+      "kind": "consume",
+      "src": "table:feature_store.fact_inst_episode"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_stock_dossier_api.py",
       "kind": "consume",
       "src": "table:feature_store.fact_inst_episode"
     },
@@ -6925,8 +6937,8 @@
     }
   ],
   "meta": {
-    "edge_count": 1103,
-    "generated_at": "2026-07-21T15:23:20.549059+00:00",
+    "edge_count": 1105,
+    "generated_at": "2026-07-21T15:31:08.018500+00:00",
     "node_count": 404,
     "version": 2
   },

@@ -67,6 +67,56 @@ def _institution_profile_holders(conn, holder_norms: list[str]) -> set[str]:
         return set()
 
 
+def _load_holder_episodes(conn, code: str, holder_norms: list[str]) -> dict[str, dict[str, Any]]:
+    """This-stock investment episodes per holder (2F deepen; product surface).
+
+    Reads ``fs.fact_inst_episode`` (holder × stock state machine over disclosure
+    periods). Product dossier legitimately shows "战绩截至今天" for manual choice
+    (institution_profile.py §读侧). Returns keyed by holder_name_norm the most
+    recent episode on this stock: 建仓期 / 状态 / 加减仓次数 / 收益 (measured only
+    for closed episodes; unknown otherwise — never fake PnL for holding legs).
+
+    Holding days honesty: closed → disclosure period-boundary calendar days
+    (open→close); holding → open→today (as-of), flagged as disclosure-anchored,
+    not true intraperiod entry/exit.
+    """
+    names = [n for n in {h for h in holder_norms if h}]
+    if not names:
+        return {}
+    try:
+        placeholders = ",".join(["?"] * len(names))
+        rows = conn.execute(
+            f"""
+            SELECT holder, open_date, close_date, status, n_adds, n_trims,
+                   ret_c1, alpha_c1, seeded, is_passive
+            FROM fs.fact_inst_episode
+            WHERE stock = ? AND holder IN ({placeholders})
+            QUALIFY ROW_NUMBER() OVER (
+                PARTITION BY holder ORDER BY open_date DESC
+            ) = 1
+            """,
+            [code, *names],
+        ).fetchall()
+    except Exception:  # noqa: BLE001 — feature_store absent → no episode overlay
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    cols = [
+        "holder", "open_date", "close_date", "status", "n_adds", "n_trims",
+        "ret_c1", "alpha_c1", "seeded", "is_passive",
+    ]
+    for row in rows:
+        d = dict(zip(cols, row))
+        holder = str(d.pop("holder"))
+        is_closed = d.get("status") == "closed"
+        # Only closed + measured episodes carry a return; never invent PnL.
+        d["return_measured"] = bool(is_closed and d.get("ret_c1") is not None)
+        if not d["return_measured"]:
+            d["ret_c1"] = None
+            d["alpha_c1"] = None
+        out[holder] = d
+    return out
+
+
 def _norm_code(code: str) -> str:
     c = (code or "").strip()
     if len(c) == 6 and c.isdigit():
@@ -379,13 +429,20 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
 
     # 机构档案 honesty: deep-link only when a profile row truly exists (~54% coverage).
     profiled = _institution_profile_holders(conn, holder_norms)
+    # 2F deepen: this-stock episode overlay (建仓期/状态/加减仓/收益 — measured only).
+    episodes = _load_holder_episodes(conn, code, holder_norms)
     n_with_profile = 0
+    n_with_episode = 0
     for d in out_rows:
         hn = d.get("holder_name_norm") or d.get("holder_name")
         has_profile = bool(hn) and str(hn) in profiled
         d["has_institution_profile"] = has_profile
         if has_profile:
             n_with_profile += 1
+        ep = episodes.get(str(hn)) if hn else None
+        d["episode"] = ep
+        if ep:
+            n_with_episode += 1
     n_holders = len(out_rows)
     coverage = round(n_with_profile / n_holders, 4) if n_holders else None
 
@@ -413,6 +470,14 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
             "note": (
                 "deep-link 机构档案 only when has_institution_profile=true; "
                 "population coverage ~54% (audit §2.1) — absent ≠ no institution"
+            ),
+        },
+        "episode_overlay": {
+            "holders_with_episode": n_with_episode,
+            "note": (
+                "this-stock episode (建仓期/状态/加减仓); 收益 measured only for "
+                "closed episodes (ret_c1/alpha_c1) — holding legs stay unknown, "
+                "never faked; disclosure-anchored days, not intraperiod truth"
             ),
         },
         "gaps": gaps,

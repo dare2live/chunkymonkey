@@ -673,6 +673,16 @@ td.holder-name.clickable:hover {
   background: rgba(59, 102, 212, 0.07);
 }
 
+.btn.tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tab-soon {
+  font-size: 0.75em;
+  opacity: 0.7;
+}
+
 input,
 select {
   background: var(--bg-panel);

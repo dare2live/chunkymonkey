@@ -52,6 +52,20 @@ export interface StockHolderRow {
   return_pct: number | null;
   holding_cycle_days: number | null;
   has_institution_profile?: boolean;
+  episode?: HolderEpisode | null;
+}
+
+export interface HolderEpisode {
+  open_date: string | null;
+  close_date: string | null;
+  status: string | null;
+  n_adds: number | null;
+  n_trims: number | null;
+  ret_c1: number | null;
+  alpha_c1: number | null;
+  seeded: boolean | null;
+  is_passive: boolean | null;
+  return_measured: boolean;
 }
 
 export interface InstitutionProfileCoverage {
@@ -81,6 +95,7 @@ export interface StockDossierResponse {
     source: string | null;
     rows: StockHolderRow[];
     institution_profile?: InstitutionProfileCoverage;
+    episode_overlay?: { holders_with_episode: number; note: string };
     gaps: string[];
   };
   gaps: string[];

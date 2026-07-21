@@ -10,12 +10,14 @@ import { Card, FetchGate } from "../components/Card";
 import { fmtInt, fmtPct } from "../format";
 import { useFetch } from "../hooks/useFetch";
 
-type TabKey = "overview" | "form" | "holders";
+type TabKey = "overview" | "form" | "holders" | "moneyflow" | "intersection";
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "overview", label: "概况" },
-  { key: "form", label: "形态·阶段" },
-  { key: "holders", label: "股东" },
+const TABS: { key: TabKey; label: string; enabled: boolean; soon?: string }[] = [
+  { key: "overview", label: "概况", enabled: true },
+  { key: "form", label: "形态·阶段", enabled: true },
+  { key: "holders", label: "股东", enabled: true },
+  { key: "moneyflow", label: "资金", enabled: false, soon: "3A 资金流决策辅助" },
+  { key: "intersection", label: "交集", enabled: false, soon: "4D 交集最强股" },
 ];
 
 function industryLine(d: StockDossierResponse): string {
@@ -135,50 +137,70 @@ function HoldersPanel(props: { d: StockDossierResponse }) {
               <th>变化</th>
               <th>变动股数</th>
               <th>连续期数≈</th>
-              <th>收益</th>
+              <th>本股建仓/状态</th>
+              <th>加减仓</th>
+              <th>收益(α)</th>
             </tr>
           </thead>
           <tbody>
-            {h.rows.map((r) => (
-              <tr key={`${r.holder_rank}-${r.holder_name}`}>
-                <td className="mono">{r.holder_rank ?? "—"}</td>
-                <td>
-                  {r.holder_name_norm || r.holder_name ? (
-                    r.has_institution_profile ? (
-                      <Link
-                        className="holder-name clickable"
-                        to={`/institutions/${encodeURIComponent(
-                          r.holder_name_norm || r.holder_name || "",
-                        )}`}
-                      >
-                        {r.holder_name}
-                      </Link>
+            {h.rows.map((r) => {
+              const ep = r.episode;
+              return (
+                <tr key={`${r.holder_rank}-${r.holder_name}`}>
+                  <td className="mono">{r.holder_rank ?? "—"}</td>
+                  <td>
+                    {r.holder_name_norm || r.holder_name ? (
+                      r.has_institution_profile ? (
+                        <Link
+                          className="holder-name clickable"
+                          to={`/institutions/${encodeURIComponent(
+                            r.holder_name_norm || r.holder_name || "",
+                          )}`}
+                        >
+                          {r.holder_name}
+                        </Link>
+                      ) : (
+                        <span className="holder-name" title="无机构档案（覆盖~54%）— 不做假链接">
+                          {r.holder_name}
+                        </span>
+                      )
                     ) : (
-                      <span className="holder-name" title="无机构档案（覆盖~54%）— 不做假链接">
-                        {r.holder_name}
-                      </span>
-                    )
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td>{r.holder_type ?? "—"}</td>
-                <td className="mono">
-                  {r.hold_ratio_float == null ? "—" : `${r.hold_ratio_float.toFixed(2)}%`}
-                </td>
-                <td>{r.change_status ?? "—"}</td>
-                <td className="mono">{r.hold_change_num == null ? "—" : fmtInt(r.hold_change_num)}</td>
-                <td className="mono">{r.approx_periods_present ?? "—"}</td>
-                <td className="muted" title="未接 episode×价格引擎">
-                  {r.return_pct == null ? "未知" : fmtPct(r.return_pct)}
-                </td>
-              </tr>
-            ))}
+                      "—"
+                    )}
+                  </td>
+                  <td>{r.holder_type ?? "—"}</td>
+                  <td className="mono">
+                    {r.hold_ratio_float == null ? "—" : `${r.hold_ratio_float.toFixed(2)}%`}
+                  </td>
+                  <td>{r.change_status ?? "—"}</td>
+                  <td className="mono">{r.hold_change_num == null ? "—" : fmtInt(r.hold_change_num)}</td>
+                  <td className="mono">{r.approx_periods_present ?? "—"}</td>
+                  <td className="mono" title="来自 fact_inst_episode（本股披露期状态机）">
+                    {ep?.open_date ? `${ep.open_date} · ${ep.status ?? "—"}` : "—"}
+                  </td>
+                  <td className="mono">
+                    {ep ? `+${ep.n_adds ?? 0}/-${ep.n_trims ?? 0}` : "—"}
+                  </td>
+                  <td
+                    className="muted"
+                    title="仅已了结(closed)且可测 episode 有收益；持有中/未测=未知，不假填"
+                  >
+                    {ep?.return_measured && ep.alpha_c1 != null
+                      ? fmtPct(ep.alpha_c1)
+                      : ep
+                        ? "持有中/未测"
+                        : "未知"}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
       <p className="muted dossier-note">
-        持仓周期仅启发式连续披露期数；收益/持有天数引擎未接 — 宁缺勿假填 0。
+        连续期数为启发式披露期数；本股建仓/状态/加减仓来自机构 episode 状态机；收益(α)仅对已了结且可测
+        episode 显示，持有中或未测标未知 — 宁缺勿假填 0。
+        {h.episode_overlay && `（本期 ${h.episode_overlay.holders_with_episode}/${h.rows.length} 位有 episode）`}
       </p>
     </>
   );
@@ -244,9 +266,12 @@ export function StockDossierPage() {
             key={t.key}
             type="button"
             className={`btn tab${tab === t.key ? " active" : ""}`}
-            onClick={() => setTab(t.key)}
+            onClick={() => t.enabled && setTab(t.key)}
+            disabled={!t.enabled}
+            title={t.enabled ? undefined : `即将：${t.soon}`}
           >
             {t.label}
+            {!t.enabled && <span className="tab-soon"> · 即将</span>}
           </button>
         ))}
       </div>
@@ -256,7 +281,13 @@ export function StockDossierPage() {
           {(d) => {
             if (tab === "overview") return <OverviewPanel d={d} />;
             if (tab === "form") return <FormPanel d={d} />;
-            return <HoldersPanel d={d} />;
+            if (tab === "holders") return <HoldersPanel d={d} />;
+            const soon = TABS.find((t) => t.key === tab)?.soon;
+            return (
+              <div className="state-hint">
+                {soon} — 排期见 product_plan_reeval_stock_dossier_20260721。数据未就绪前不展示假信号。
+              </div>
+            );
           }}
         </FetchGate>
       </Card>

@@ -187,3 +187,39 @@ def test_dossier_institution_profile_honesty():
     assert prof["coverage"] == 0.5
     assert "institution_profile_partial_no_deep_link_when_absent" in body["holders"]["gaps"]
     assert body["lineage"]["institution_profile_coverage"]["coverage"] == 0.5
+
+
+def test_dossier_episode_overlay_measured_only():
+    """2F deepen: this-stock episode cycle/return; return measured only for closed."""
+    con = _fixture_conn()
+    con.execute("ATTACH ':memory:' AS fs")
+    con.execute(
+        """
+        CREATE TABLE fs.fact_inst_episode (
+            holder VARCHAR, stock VARCHAR, open_date VARCHAR, close_date VARCHAR,
+            status VARCHAR, n_adds INTEGER, n_trims INTEGER,
+            ret_c1 DOUBLE, alpha_c1 DOUBLE, seeded BOOLEAN, is_passive BOOLEAN
+        )
+        """
+    )
+    con.execute(
+        """
+        INSERT INTO fs.fact_inst_episode VALUES
+        ('机构甲','600519','20240331','20250331','closed',2,1,0.30,0.12,FALSE,FALSE),
+        ('机构乙','600519','20260331',NULL,'holding',0,0,0.99,0.99,FALSE,FALSE)
+        """
+    )
+    client = _client(con)
+    body = client.get("/api/v3/stock/600519/dossier").json()
+    rows = {r["holder_name_norm"]: r for r in body["holders"]["rows"]}
+    jia = rows["机构甲"]["episode"]
+    assert jia["status"] == "closed"
+    assert jia["return_measured"] is True
+    assert jia["alpha_c1"] == 0.12
+    yi = rows["机构乙"]["episode"]
+    assert yi["status"] == "holding"
+    # holding leg PnL must never be surfaced even if a stale ret_c1 exists
+    assert yi["return_measured"] is False
+    assert yi["ret_c1"] is None
+    assert yi["alpha_c1"] is None
+    assert body["holders"]["episode_overlay"]["holders_with_episode"] == 2
