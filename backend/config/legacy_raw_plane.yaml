@@ -275,9 +275,10 @@ tables:
     note: "S7 hard-stop: sync residual; dead_groups partial; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_top_inst:
-    role: ssot
+    role: compatibility
     kind: multi_consumer
-    note: "S7 hard-stop verified 2026-07-21: pulse lhb_inst_net aggregate + institution_profile seat-window rebuild; fact_inst_episode grain≠seat; mart_market_pulse_daily aggregate≠seat; unblock=formal seat plane OR drop seat consumer"
+    publication_surface: fact_top_inst_seat_daily
+    note: "B2 2026-07-21: fact_top_inst_seat_daily owns seat grain (trade_date×ts_code×exalter×side; available_at+lineage); DataAccess top_inst redirected; raw = rebuild input residual; consumers pulse lhb_inst_net + institution_profile C3"
 
   raw_tushare_top_list:
     role: compatibility

@@ -46,6 +46,7 @@ MART_GRAINS: list[tuple[str, str, list[str]]] = [
     ("smartmoney", "fact_stock_limit_daily", ["trade_date", "ts_code", "limit"]),     # services/stock_limit_publish.py brick B2
     ("smartmoney", "fact_stock_moneyflow_daily", ["trade_date", "ts_code"]),          # services/stock_moneyflow_publish.py brick B2
     ("smartmoney", "fact_stock_moneyflow_dc_daily", ["trade_date", "ts_code"]),       # services/stock_moneyflow_publish.py brick B2
+    ("smartmoney", "fact_top_inst_seat_daily", ["trade_date", "ts_code", "exalter", "side"]),  # services/top_inst_seat_publish.py brick B2
     ("smartmoney", "mart_sector_pulse_daily", ["chain", "sector_code", "trade_date"]),
     # services/market_pulse.py B4/v3 — chain 就是 taxonomy namespace。东财行业与东财概念
     # 分别写入 dc_industry/dc_concept；content_type 只保留供应商原标签作证据，不再参与身份或 grain。

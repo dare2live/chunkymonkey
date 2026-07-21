@@ -112,8 +112,9 @@ CREATE TABLE tr.raw_tushare_index_dailybasic (
     ts_code TEXT, trade_date TEXT, pe_ttm DOUBLE, turnover_rate_f DOUBLE);
 CREATE TABLE tr.raw_tushare_top_list (
     trade_date TEXT, ts_code TEXT, name TEXT, reason TEXT);
-CREATE TABLE tr.raw_tushare_top_inst (
-    trade_date TEXT, ts_code TEXT, exalter TEXT, side TEXT, net_buy DOUBLE);
+CREATE TABLE fact_top_inst_seat_daily (
+    trade_date TEXT, ts_code TEXT, exalter TEXT, side TEXT, net_buy DOUBLE,
+    available_at TIMESTAMPTZ, source_table TEXT, built_at TIMESTAMPTZ);
 CREATE TABLE tr.raw_tushare_limit_cpt_list (
     trade_date TEXT, ts_code TEXT, name TEXT, days BIGINT, up_stat TEXT,
     cons_nums TEXT, up_nums BIGINT, pct_chg DOUBLE, "rank" BIGINT);
@@ -297,16 +298,26 @@ def _fixture_conn():
     ])
     # v2 龙虎榜: 600001 两个上榜理由 (家数只算 1) + 600002 → lhb_count=2;
     # top_inst 同席位买/卖双榜重复行 (net_buy 同额) 去重后 100 + (-30) = 70
+    # B2: pulse reads fact_top_inst_seat_daily (DataAccess redirect).
     c.executemany("INSERT INTO tr.raw_tushare_top_list VALUES (?, ?, ?, ?)", [
         (D[0], "600001.SH", "甲", "日涨幅偏离值达到7%"),
         (D[0], "600001.SH", "甲", "日振幅值达到15%"),
         (D[0], "600002.SZ", "乙", "日涨幅偏离值达到7%"),
     ])
-    c.executemany("INSERT INTO tr.raw_tushare_top_inst VALUES (?, ?, ?, ?, ?)", [
-        (D[0], "600001.SH", "席位甲", "0", 100.0),
-        (D[0], "600001.SH", "席位甲", "1", 100.0),
-        (D[0], "600001.SH", "席位乙", "0", -30.0),
-    ])
+    c.executemany(
+        "INSERT INTO fact_top_inst_seat_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (D[0], "600001.SH", "席位甲", "0", 100.0,
+             "2026-07-17 18:00:00+08:00", "raw_tushare_top_inst",
+             "2026-07-17 18:00:00+08:00"),
+            (D[0], "600001.SH", "席位甲", "1", 100.0,
+             "2026-07-17 18:00:00+08:00", "raw_tushare_top_inst",
+             "2026-07-17 18:00:00+08:00"),
+            (D[0], "600001.SH", "席位乙", "0", -30.0,
+             "2026-07-17 18:00:00+08:00", "raw_tushare_top_inst",
+             "2026-07-17 18:00:00+08:00"),
+        ],
+    )
     # v2 最强板块 (limit_cpt_list, TI 码独立卡): 仅 D0 有榜
     c.executemany("INSERT INTO tr.raw_tushare_limit_cpt_list VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [
         (D[0], "885700.TI", "军工", 1, "3天3板", "2", 13, 0.6693, 1),

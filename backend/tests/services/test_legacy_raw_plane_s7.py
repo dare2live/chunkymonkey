@@ -195,13 +195,13 @@ def test_s7_derive_runtime_still_bans_acquire_imports() -> None:
 
 
 def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
-    """S7 inventory after B2 index_daily publication: 25 ssot / 20 compatibility."""
+    """S7 inventory after B2 top_inst seat publication: 24 ssot / 21 compatibility."""
 
     mod = _load_check_mod()
     counts = mod.role_counts()
-    assert counts["ssot"] == 25, counts
+    assert counts["ssot"] == 24, counts
     assert counts["fill"] == 1, counts
-    assert counts["compatibility"] == 20, counts
+    assert counts["compatibility"] == 21, counts
     assert sum(counts.values()) == 46, counts
 
 
@@ -259,8 +259,26 @@ def test_s7_index_daily_publication_is_fact_index_daily() -> None:
     assert ent.code_input == "ts_passthrough"
 
 
+def test_s7_top_inst_seat_publication_is_fact_top_inst_seat_daily() -> None:
+    """B2: top_inst multi_consumer → fact_top_inst_seat_daily; raw = compatibility."""
+
+    from services.data_access.spec import load_registry
+
+    mod = _load_check_mod()
+    inv = mod._load_yaml(mod.INVENTORY_YAML)
+    meta = inv["tables"]["raw_tushare_top_inst"]
+    assert meta["role"] == "compatibility"
+    assert meta.get("kind") == "multi_consumer"
+    assert meta.get("publication_surface") == "fact_top_inst_seat_daily"
+    ent = load_registry().entity("top_inst")
+    assert ent.db == "smartmoney"
+    assert ent.table == "fact_top_inst_seat_daily"
+    assert "side" in ent.columns
+    assert "exalter" in ent.columns
+
+
 def test_s7_serve_multi_consumer_priority_stay_ssot() -> None:
-    """Remaining priority serve/multi-consumer tables stay ssot until leaf publication."""
+    """Remaining priority membership_l0 stay ssot until honest DC PIT."""
 
     from services.data_access.spec import load_registry
 
@@ -269,7 +287,6 @@ def test_s7_serve_multi_consumer_priority_stay_ssot() -> None:
     reg = load_registry()
     expected = {
         "raw_tushare_dc_member": ("membership_l0", "dc_member"),
-        "raw_tushare_top_inst": ("multi_consumer", "top_inst"),
     }
     for table, (kind, entity) in expected.items():
         meta = inv["tables"][table]

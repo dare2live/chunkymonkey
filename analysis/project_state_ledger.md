@@ -2811,3 +2811,21 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Did not**: mass-delete archive; second DB; touch accepted/live tables.
 - **Status**: hygiene reclaim **FIXED** (local); residual optional
   `experiment_store` tiny free blocks.
+
+### 2026-07-21 — B2 top_inst → fact_top_inst_seat_daily (S7 multi_consumer)
+
+- Knife: honest seat-grain publication (trade_date × ts_code × exalter × side).
+- Why not redirect: `fact_inst_episode` / `mart_market_pulse_daily` are aggregates
+  ≠ seat; consumers need seat rows (pulse DISTINCT net_buy; inst C3 LHB).
+- Shipped:
+  1. `services/top_inst_seat_publish.py` + `scripts/publish_fact_top_inst_seat_daily.py`
+  2. available_at = trade_date 18:00 Asia/Shanghai; lineage source_table+built_at
+  3. DataAccess `top_inst` → smartmoney `fact_top_inst_seat_daily`
+  4. Inventory `raw_tushare_top_inst` ssot→compatibility
+- Live: **1039982** rows；`20190102`→`20260720`；1829d；grain dups=0.
+- Inventory：**25→24 ssot** / 1 fill / **20→21 compatibility** of 46.
+- Evidence: `check_legacy_raw_plane` ssot=24；TDD `test_top_inst_seat_publish_b2`
+  + legacy/pulse/index/limit/moneyflow green；`pre-knife top_inst_seat_plane` OK.
+- **Did not**: fake dc_member PIT；E/F remeasure；auto-wire publish into sync.
+- **Residual**: dc_member no DC PIT；E0 org；E/F paused.
+- **Status**: **PARTIAL**（B2 seat plane done；S7 not FIXED — dc_member remains）.

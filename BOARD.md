@@ -2,7 +2,7 @@
 
 > 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。
 > **Projection only** — not an enforcement input. Cutover / readiness / PIT gates still resolve from yaml + code resolvers + accepted partitions.
-> Snapshot: 2026-07-21T08:26:25Z
+> Snapshot: 2026-07-21T08:41:13Z
 
 ## Track
 
@@ -43,7 +43,7 @@
 
 ## Next (projection — goal.md wins on order)
 
-- S7 next: B1 DC membership PIT or top_inst seat plane — inventory 25/46 ssot (B2 limit+moneyflow(+dc)+index_daily COMPAT)
+- S7 next: B1 DC membership PIT — inventory 24/46 ssot (B2 limit+moneyflow(+dc)+index_daily+top_inst seat COMPAT)
 - E0 disclosure residual: org_holding provider land BLOCKED; expand stk/holders accept
 - §15 adoption verify: commits/knife ≤1.5; async CI; pre-knife before L3
 - E/F same-protocol remeasure paused (not near-term; F0–F3 protocol-complete)

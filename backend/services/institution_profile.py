@@ -63,7 +63,8 @@ def _tr_entity(entity: str) -> str:
     """Resolve DataAccess physical table for feature_store SQL.
 
     ``tushare_raw`` entities live on the READ_ONLY ``tr`` attach;
-    ``smartmoney`` publication entities (B2 fact_index_daily) on ``sm``.
+    ``smartmoney`` publication entities (B2 fact_index_daily /
+    fact_top_inst_seat_daily) on ``sm``.
     """
     ent = _access_reg().entity(entity)
     if ent.db == "tushare_raw":

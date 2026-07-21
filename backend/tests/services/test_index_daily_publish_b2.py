@@ -178,8 +178,8 @@ def test_legacy_plane_index_daily_is_compatibility() -> None:
     assert meta["publication_surface"] == "fact_index_daily"
     assert mod.collect_violations() == []
     counts = mod.role_counts()
-    assert counts["ssot"] == 25
-    assert counts["compatibility"] == 20
+    assert counts["ssot"] == 24
+    assert counts["compatibility"] == 21
 
 
 def test_consumers_resolve_index_daily_off_raw_leaf(monkeypatch) -> None:
@@ -197,6 +197,8 @@ def test_consumers_resolve_index_daily_off_raw_leaf(monkeypatch) -> None:
     assert mp._tr_entity("index_daily") == "fact_index_daily"
     assert ip._tr_entity("index_daily") == "sm.fact_index_daily"
     assert ts._index_daily_rel() == "fact_index_daily"
-    # still-raw multi-consumer stays on tr.
-    assert mp._tr_entity("top_inst").startswith("tr.raw_")
-    assert ip._tr_entity("top_inst").startswith("tr.raw_")
+    # B2 seat plane also off raw.
+    assert mp._tr_entity("top_inst") == "fact_top_inst_seat_daily"
+    assert ip._tr_entity("top_inst") == "sm.fact_top_inst_seat_daily"
+    # dc_member still ssot on raw (no fake PIT).
+    assert mp._tr_entity("dc_member").startswith("tr.raw_")

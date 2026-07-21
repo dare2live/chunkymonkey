@@ -229,16 +229,21 @@ entities:
     available_after: eod
 
   top_inst:
-    # 龙虎榜机构席位 (exalter 席位名 + 净买; 机构席位 LIKE '机构' 消费侧过滤)
-    db: tushare_raw
-    table: raw_tushare_top_inst
-    layer: L0
+    # B2 seat-grain LHB publication (S7 multi_consumer strangler).
+    # Publication = fact_top_inst_seat_daily (smartmoney); raw_tushare_top_inst = rebuild input.
+    # Grain = trade_date × ts_code × exalter × side; available_at = trade_date 18:00 Asia/Shanghai.
+    # Consumers: market_pulse lhb_inst_net + institution_profile C3 LHB.
+    # Not episode/mart aggregate; not DC membership PIT.
+    db: smartmoney
+    table: fact_top_inst_seat_daily
+    layer: L1
     code_col: ts_code
     asof_col: trade_date
     asof_format: yyyymmdd
-    columns: [ts_code, trade_date, net_buy, exalter]
+    columns: [trade_date, ts_code, exalter, side, net_buy, available_at]
     vendor: tushare
-    available_after: eod
+    available_after: "18:00"
+    compute_fn: publish_fact_top_inst_seat_daily
 
   holders_top10:
     # 十大流通股东 (事实类桶 — 股东名册该谁是谁, 与源无关)。2026-07-02 正名 holders_tdx→holders_top10 (水龙头契约: 事实类禁 vendor 名; 0 代码消费方零成本)。

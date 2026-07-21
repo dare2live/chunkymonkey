@@ -143,9 +143,10 @@ Acquire 边界（owner 2026-07-21；MASTER §5.1）：formal daily/ST = 全市�
 | S4 acquire swappable | **FIXED** | `security_day_acquire` modes `provider_tushare`/`local_legacy_raw_materialize`；land+default sync via resolve；accept 零 acquire；TDD `test_security_day_acquire_s4.py` |
 | S5 derive | **FIXED** | `chunkyctl derive qfq|form --from-accepted`；`derive_runtime`；form/qfq canonical-only nominal；TDD `test_derive_runtime_s5.py`；零 acquire |
 | S6 serve | **FIXED** | `market_pulse_serve_read` + DataAccess entities；router 零 `# serve-exempt:`；D5 OK |
-| S7 legacy raw plane | **PARTIAL** | derive+form+pipeline clean 默认 accepted-only；daily accepted `20190102`→`20260720`；inventory **25/46 ssot**（B2 `limit_list_d`+`moneyflow`+`moneyflow_dc`+`index_daily` → fact_*；prior: SW→PIT；pulse builders→mart；daily_basic→dim；stk_limit→form；stock_basic→dim；adj→qfq）；dc_member/top_inst still ssot |
+| S7 legacy raw plane | **PARTIAL** | derive+form+pipeline clean 默认 accepted-only；daily accepted `20190102`→`20260720`；inventory **24/46 ssot**（B2 `limit_list_d`+`moneyflow`+`moneyflow_dc`+`index_daily`+`top_inst` → fact_*；prior: SW→PIT；pulse builders→mart；daily_basic→dim；stk_limit→form；stock_basic→dim；adj→qfq）；dc_member still ssot |
 
-Residual owner：S7 续（B1 DC PIT / index|seat plane；禁把 pulse mart 当 leaf COMPAT；禁盲删 raw）；ST 不可对称扩至 2019。
+
+Residual owner：S7 续（B1 DC PIT；禁把 pulse mart 当 leaf COMPAT；禁盲删 raw）；ST 不可对称扩至 2019。
 Live expand evidence（2026-07-21）：accepted daily **`20190102`→`20260720`（1829d）**；ST **`20220104`→`20260720`（1099d）**（asymmetric）。
 E0 note（2026-07-21）：`stk_holdertrade` + `holders_top10` provider land CLI shipped（by_ann_date / by_notice_date）；`org_holding` provider land **BLOCKED**（by-period ~830k；仍 local-raw）。
-Next verification：S7 B1 DC PIT or index/seat plane；或 E0 org residual；E/F same-protocol remeasure when scheduled（window unblocked）。
+Next verification：S7 B1 DC PIT；或 E0 org residual；E/F same-protocol remeasure when scheduled（window unblocked）。
