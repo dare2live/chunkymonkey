@@ -127,16 +127,17 @@ chunkyctl sync / daily_update → sync_runner.run_domain(daily|stock_st)
 
 ## 8. Label
 
-**FIXED**（2026-07-21）— S1–S3 transport strangler **运营路径 shipped**（CLI + default sync caller-only + TDD + moth）。
+**FIXED**（2026-07-21）— S1–S4 transport strangler **运营路径 shipped**（CLI + default sync caller-only + swappable land acquire + TDD + moth）。
 
 | 切片 | 状态 | 证据 |
 |---|---|---|
 | S1 | **FIXED** | `capture_and_land_*`；`--land-only`；红测不写 canonical |
 | S2 | **FIXED** | `accept_*_from_landing`；`--accept-from-landing`；零 `_adapter`/auth |
-| local-raw acquire→landing | **FIXED** | `--from-local-raw` + `materialize_security_day_landing_from_legacy_raw_rows`；live `20260115` |
+| local-raw acquire→landing | **FIXED** | `--from-local-raw` + `materialize_security_day_landing_from_legacy_raw_rows` |
 | thin land→accept | **FIXED** | `--land-then-accept` / `land_then_accept_authorized_security_day` |
-| S3 sync caller-only | **FIXED** | default `_publish_*` → land→accept；`sync_runner` 无 `capture_and_publish_*`；moth fan-in = runtime defs + tests only |
+| S3 sync caller-only | **FIXED** | default `_publish_*` → land→accept；`sync_runner` 无 `capture_and_publish_*` |
+| S4 acquire swappable | **FIXED** | `security_day_acquire` modes `provider_tushare`/`local_legacy_raw_materialize`；land+default sync via resolve；accept 零 acquire；TDD `test_security_day_acquire_s4.py` |
 
-Residual owner：S4–S6 按需；S7 legacy `raw_tushare_*`；optional further chunked expand（raw ST≥`20220104`）。
-Live expand evidence（2026-07-21）：accepted daily+ST min→`20241121`（402d；7×≤40d local-raw）。
-Next verification：S4 adapter swap；E/F same-protocol remeasure on expanded window.
+Residual owner：S5–S6 按需；S7 legacy `raw_tushare_*`；optional daily-only expand `<20220104`（ST floor）。
+Live expand evidence（2026-07-21）：accepted daily+ST **`20220104`→`20260720`（1099d）**.
+Next verification：S5 derive CLI；E/F same-protocol remeasure when scheduled（window unblocked）。

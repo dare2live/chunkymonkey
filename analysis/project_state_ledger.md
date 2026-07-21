@@ -2374,3 +2374,26 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual**：optional further expand (raw ST from `20220104`)；S4–S6；E0；
   E/F same-protocol remeasure now unblocked on window length.
 - **Status**: **FIXED**（expand slice；S3 already FIXED same session）。
+
+### 2026-07-21 — S4 acquire swappable + expand to ST raw floor
+
+- Wall-clock: Tue 2026-07-21 ~08:40–09:00 Asia/Shanghai (in-session).
+- **S4 FIXED（daily/ST land acquire boundary）**：
+  - New `backend/services/data_sources/security_day_acquire.py` with
+    `resolve_security_day_acquire` modes `provider_tushare` |
+    `local_legacy_raw_materialize`.
+  - `_land_security_day_partition` + default
+    `_publish_security_day_accepted_partition` route through acquire before
+    land / land→accept；S2 accept path never calls acquire（TDD）.
+  - Does **not** revive retired multi-source fallback registry / plugin bus.
+  - Evidence：`backend/tests/services/test_security_day_acquire_s4.py` +
+    existing transport modularity suite（17 passed）.
+- **Expand**：continued ≤40d `--land-then-accept --from-local-raw` chunks
+  from prior min `20241121` → joint accepted
+  **min=`20220104` max=`20260720` n=1099**（ST local-raw floor；daily raw
+  still to `20190102` for optional asymmetric further expand）.
+- **Did not**：E/F strategy experiments；Optuna/Release/cutover 翻；mass dump；
+  second DB；S5/S6 full.
+- **Residual**：optional daily-only pre-`20220104`；S5 derive CLI；S6 serve；
+  S7 legacy raw；E0；E/F remeasure when owner schedules（window unblocked）.
+- **Status**: **FIXED**（S4 + expand-to-ST-floor）。

@@ -344,3 +344,14 @@ Live 焊点（evidence pack §2.7 复核）：
 - Covers full calendar-`2025` trading days in-window + late-`2024` flank；
   no provider fetch；no mass dump；stop was session pacing not a hard blocker
   (raw still supports further back).
+
+### Amend 2026-07-21 — S4 acquire FIXED + expand to ST floor
+
+- **S4 FIXED**（thin→complete for daily/ST land boundary）：
+  `security_day_acquire.resolve_security_day_acquire` with
+  `provider_tushare` + `local_legacy_raw_materialize`；land + default sync
+  acquire-first；accept zero-acquire；TDD green；no fallback registry revival.
+- Further chunked local-raw expand：accepted daily+ST
+  **`20220104`→`20260720`（1099d）** = ST raw floor（safe joint left edge）.
+- E/F same-protocol remeasure **window-unblocked**（not executed this session）.
+- Next strangler knives：S5 derive / S6 serve；optional daily-only pre-2022.
