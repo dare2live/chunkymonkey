@@ -366,13 +366,42 @@ def test_land_from_legacy_empty_partition_fails_closed(conn) -> None:
         )
 
 
-def test_sync_runner_disclosure_land_only_holders_requires_from_local_raw() -> None:
-    """holders/org land without local-raw fail-closed (no by_ts_code provider land)."""
+def test_sync_runner_disclosure_land_only_org_requires_from_local_raw() -> None:
+    """org_holding provider land BLOCKED (by-period mass; no by-date faucet)."""
 
     from argparse import Namespace
 
     from services.data_sources import sync_runner as sr
     from services.data_sources.availability import SyncWindowError
+
+    args = Namespace(
+        land_only=True,
+        accept_from_landing=False,
+        land_then_accept=False,
+        from_local_raw=False,
+        drain=False,
+        backfill=False,
+        resume=False,
+        all_due=False,
+        domain="org_holding",
+        batch_id=None,
+        start="20260715",
+        end="20260715",
+        max_dates=None,
+        trigger_mode="manual",
+    )
+    with pytest.raises(SyncWindowError, match="from-local-raw"):
+        sr._preflight_disclosure_cli_shape(args, transport="land_only")
+
+
+def test_sync_runner_disclosure_land_only_holders_allows_provider() -> None:
+    """holders_top10 provider land-only preflight (by_notice_date; no mass dump)."""
+
+    from argparse import Namespace
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from services.data_sources import sync_runner as sr
 
     args = Namespace(
         land_only=True,
@@ -390,8 +419,11 @@ def test_sync_runner_disclosure_land_only_holders_requires_from_local_raw() -> N
         max_dates=None,
         trigger_mode="manual",
     )
-    with pytest.raises(SyncWindowError, match="from-local-raw"):
-        sr._preflight_disclosure_cli_shape(args, transport="land_only")
+    sr._preflight_disclosure_cli_shape(
+        args,
+        transport="land_only",
+        now=datetime(2026, 7, 20, 12, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
 
 
 def test_sync_runner_disclosure_land_only_stk_allows_provider() -> None:
@@ -463,18 +495,57 @@ def test_land_from_provider_stk_does_not_write_canonical(conn) -> None:
     )
 
 
-def test_land_from_provider_holders_fails_without_inject(conn) -> None:
+def test_land_from_provider_holders_does_not_write_canonical(conn) -> None:
+    """S1 holders provider land: landing only; inject fetch; no canonical."""
+
+    from services.data_sources.disclosure_transport import (
+        land_disclosure_partition_from_provider,
+    )
+
+    row = _holders_row()
+    batch = land_disclosure_partition_from_provider(
+        "holders_top10",
+        conn,
+        partition=PARTITION_HOLDERS,
+        observed_at=OBSERVED_HOLDERS,
+        fetch_rows=lambda _domain, _part: [row],
+    )
+    assert batch.batch_id.startswith(f"holders_top10:{PARTITION_HOLDERS}:")
+    status = conn.execute(
+        "SELECT status FROM ingest_batch WHERE batch_id = ?",
+        [batch.batch_id],
+    ).fetchone()[0]
+    assert status == "LANDED"
+    assert (
+        conn.execute(
+            f"SELECT COUNT(*) FROM {HOLDERS_CANONICAL} WHERE notice_date = ?",
+            [PARTITION_HOLDERS],
+        ).fetchone()[0]
+        == 0
+    )
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM accepted_partition WHERE dataset_id = ?",
+            [HOLDERS_DATASET],
+        ).fetchone()[0]
+        == 0
+    )
+
+
+def test_land_from_provider_org_fails_without_inject(conn) -> None:
+    """org_holding has no safe by-date provider land (by-period ~830k mass)."""
+
     from services.data_sources.disclosure_transport import (
         DisclosureTransportError,
         land_disclosure_partition_from_provider,
     )
 
-    with pytest.raises(DisclosureTransportError, match="from-local-raw"):
+    with pytest.raises(DisclosureTransportError, match="from-local-raw|by-date|period"):
         land_disclosure_partition_from_provider(
-            "holders_top10",
+            "org_holding",
             conn,
-            partition=PARTITION_HOLDERS,
-            observed_at=OBSERVED_HOLDERS,
+            partition=PARTITION_ORG,
+            observed_at=OBSERVED_ORG,
         )
 
 

@@ -4,15 +4,16 @@ Strangler surfaces (caller-only composition; not a second dragon):
 - S1 land-only via :func:`land_disclosure_partition_from_rows`,
   :func:`land_disclosure_partition_from_legacy` (local legacy), or
   :func:`land_disclosure_partition_from_provider` (bounded provider;
-  currently ``stk_holdertrade`` by_ann_date full-market only)
+  ``stk_holdertrade`` by_ann_date + ``holders_top10`` by_notice_date)
 - S2 accept-from-landing via :func:`accept_disclosure_from_landing` (zero fetch)
 - :func:`land_then_accept_disclosure_partition` = S1 then S2 in the caller
 
 Production ``disclosure_dual_write`` uses land_then_accept. Fused
 ``publish_accepted_*`` helpers remain thin aliases for older callers/tests.
 CLI: ``--land-only --from-local-raw`` (all three) or ``--land-only`` provider
-for ``stk_holdertrade`` only (≤40d; no mass dump). holders/org remain
-local-raw for land CLI (by_ts_code/period = non-formal acquire contrast).
+for ``stk_holdertrade`` / ``holders_top10`` (≤40d; no mass dump).
+``org_holding`` remains local-raw (by-period ~830k/period = mass; no
+by-calendar-date faucet; BLOCKED for provider land).
 Domains: holders_top10 (miaoxiang), org_holding (miaoxiang),
 stk_holdertrade (tushare).
 """
@@ -28,7 +29,10 @@ DISCLOSURE_TRANSPORT_DOMAINS = frozenset(
     {"holders_top10", "org_holding", "stk_holdertrade"}
 )
 # Full-market-by-date provider land (formal-shaped acquire). Not by_ts_code.
-DISCLOSURE_PROVIDER_LAND_DOMAINS = frozenset({"stk_holdertrade"})
+# org_holding excluded: by-period full-market ~830k rows = mass dump ban.
+DISCLOSURE_PROVIDER_LAND_DOMAINS = frozenset(
+    {"stk_holdertrade", "holders_top10"}
+)
 
 
 class DisclosureTransportError(RuntimeError):
@@ -188,10 +192,13 @@ def fetch_disclosure_provider_partition_rows(
 ) -> list[dict[str, Any]]:
     """Fetch provider-shaped rows for one disclosure partition (no land/accept).
 
-    Default path: ``stk_holdertrade`` = full-market by ``ann_date`` (tushare).
-    holders_top10 / org_holding have no full-market-by-date faucet here
-    (by_ts_code / period = non-formal contrast); inject ``fetch_rows`` for tests
-    or use local-raw land.
+    Default paths (formal-shaped full-market-by-date):
+    - ``stk_holdertrade`` = tushare by ``ann_date``
+    - ``holders_top10`` = miaoxiang by ``UPDATE_DATE`` (= notice_date)
+
+    ``org_holding`` BLOCKED: aif10 ``RPT_MAIN_ORGHOLDDETAIL`` is by-period
+    full-market (~830k rows/period; no NOTICE_DATE) — mass dump, not ≤40d
+    by-date. Inject ``fetch_rows`` for tests or use local-raw land.
     """
 
     if domain not in DISCLOSURE_TRANSPORT_DOMAINS:
@@ -203,6 +210,12 @@ def fetch_disclosure_provider_partition_rows(
     if fetch_rows is not None:
         return [dict(row) for row in (fetch_rows(domain, part) or ())]
     if domain not in DISCLOSURE_PROVIDER_LAND_DOMAINS:
+        if domain == "org_holding":
+            raise DisclosureTransportError(
+                "domain=org_holding has no safe by-date provider land "
+                "(aif10 by-period ~830k rows/period; no NOTICE_DATE); "
+                "use --from-local-raw"
+            )
         raise DisclosureTransportError(
             f"domain={domain} has no full-market-by-date provider land; "
             "use --from-local-raw (by_ts_code/period acquire is non-formal)"
@@ -213,6 +226,10 @@ def fetch_disclosure_provider_partition_rows(
         adapter = _adapter("tushare")
         raw = adapter.fetch_raw("stk_holdertrade", ann_date=part) or ()
         return [dict(row) for row in raw]
+    if domain == "holders_top10":
+        from services.holders_aif10 import fetch_holders_top10_by_notice_date
+
+        return list(fetch_holders_top10_by_notice_date(part))
     raise DisclosureTransportError(
         f"domain={domain} provider land not wired"
     )
@@ -242,6 +259,22 @@ def land_disclosure_partition_from_provider(
         raise DisclosureTransportError(
             f"domain={domain} no provider rows for partition={part}"
         )
+    if domain == "holders_top10":
+        request = {
+            "api": "RPT_F10_EH_FREEHOLDERS",
+            "notice_date": part,
+            "source": "miaoxiang",
+            "acquire_mode": "provider",
+        }
+    elif domain == "stk_holdertrade":
+        request = {
+            "api": "stk_holdertrade",
+            "ann_date": part,
+            "source": "tushare",
+            "acquire_mode": "provider",
+        }
+    else:
+        request = {"partition": part, "acquire_mode": "provider"}
     return land_disclosure_partition_from_rows(
         domain,
         conn,
@@ -250,7 +283,7 @@ def land_disclosure_partition_from_provider(
         observed_at=observed_at,
         available_at=available_at,
         batch_id=batch_id,
-        request={"ann_date": part, "acquire_mode": "provider"},
+        request=request,
         bootstrap=bootstrap,
     )
 

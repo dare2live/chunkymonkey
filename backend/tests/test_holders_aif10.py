@@ -8,7 +8,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.holders_aif10 import (  # noqa: E402
-    _parse_change, _share_class, _clean, _derive_exits, DEFAULT_START_PERIOD,
+    _parse_change,
+    _share_class,
+    _clean,
+    _derive_exits,
+    fetch_holders_top10_by_notice_date,
+    DEFAULT_START_PERIOD,
 )
 
 
@@ -97,3 +102,51 @@ def test_derive_exits_no_exit_when_stable():
         _raw("600388.SH", "600388", "2026-06-08", "A机构", 1, 100, "不变"),
     ], start_period=DEFAULT_START_PERIOD)
     assert _derive_exits(base) == []
+
+
+def test_fetch_holders_top10_by_notice_date_maps_provider_shape(monkeypatch):
+    """E0 formal acquire: full-market by UPDATE_DATE → provider land rows."""
+
+    import types
+
+    captured: dict = {}
+
+    def fake_fetch_all_pages(report, **kwargs):
+        captured["report"] = report
+        captured["filters"] = list(kwargs.get("extra_filters") or [])
+        return [
+            _raw(
+                "600388.SH",
+                "600388",
+                "2026-03-31",
+                "A机构",
+                1,
+                100,
+                "不变",
+                upd="2026-07-17",
+            ),
+            # Wrong-day row must be dropped after clean.
+            _raw(
+                "000001.SZ",
+                "000001",
+                "2026-03-31",
+                "B机构",
+                1,
+                50,
+                "不变",
+                upd="2026-07-16",
+            ),
+        ]
+
+    fake_mod = types.ModuleType("aif10_scraper")
+    fake_mod.fetch_all_pages = fake_fetch_all_pages
+    fake_mod.default_client = object()
+    monkeypatch.setitem(sys.modules, "aif10_scraper", fake_mod)
+
+    rows = fetch_holders_top10_by_notice_date("20260717")
+    assert captured["report"] == "RPT_F10_EH_FREEHOLDERS"
+    assert captured["filters"] == ["(UPDATE_DATE='2026-07-17')"]
+    assert len(rows) == 1
+    assert rows[0]["stock_code"] == "600388"
+    assert rows[0]["notice_date"] == "20260717"
+    assert rows[0]["is_exit_row"] is False

@@ -2126,9 +2126,10 @@ def land_disclosure_partition_from_provider_batch(
     if domain not in DISCLOSURE_PROVIDER_LAND_DOMAINS:
         raise SyncWindowError(
             f"disclosure provider land supports only "
-            f"{sorted(DISCLOSURE_PROVIDER_LAND_DOMAINS)}; "
+            f"{sorted(DISCLOSURE_PROVIDER_LAND_DOMAINS)} "
+            "(by_ann_date|by_notice_date full-market); "
             f"domain={domain} requires --from-local-raw "
-            "(by_ts_code/period = non-formal acquire)"
+            "(org_holding by-period mass / no by-date faucet = BLOCKED)"
         )
     part = "".join(ch for ch in str(partition or "") if ch.isdigit())[:8]
     if len(part) != 8:
@@ -2238,8 +2239,9 @@ def _preflight_disclosure_cli_shape(
                 "disclosure --land-only/--land-then-accept without "
                 "--from-local-raw supports only "
                 f"{sorted(DISCLOSURE_PROVIDER_LAND_DOMAINS)} "
-                "(by_ann_date full-market); holders_top10/org_holding "
-                "require --from-local-raw (by_ts_code/period = non-formal)"
+                "(by_ann_date|by_notice_date full-market); "
+                "org_holding requires --from-local-raw "
+                "(by-period mass / no by-date faucet = BLOCKED)"
             )
     if args.start is None or args.end is None:
         raise SyncWindowError(

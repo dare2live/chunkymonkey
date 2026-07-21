@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-21（**S1–S6 FIXED**；**S7 PARTIAL**；**E0 PARTIAL** land-only CLI + provider land `stk_holdertrade` + bounded broaden；accepted daily **`20190102`→`20260720`**（1829d）；ST **`20220104`→`20260720`**（1099d；asymmetric ST raw floor））
+> 更新：2026-07-21（**S1–S6 FIXED**；**S7 PARTIAL**；**E0 PARTIAL** land-only CLI + provider land `stk_holdertrade`+`holders_top10`；`org_holding` provider land **BLOCKED**；accepted daily **`20190102`→`20260720`**（1829d）；ST **`20220104`→`20260720`**（1099d；asymmetric ST raw floor））
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -45,8 +45,8 @@
 - **S5 derive FIXED**：`chunkyctl derive qfq|form --from-accepted` + `derive_runtime`（canonical-only nominal；零 acquire/fused publish；不进 accept 事务）
 - **S6 serve FIXED**：`market_pulse_serve_read` 经 DataAccess registry+resolver 承接 drill/members/margin L0 leaf；router 零 `# serve-exempt:` / 零内联 raw；D5 全绿；form/sentiment 仍 production_read
 - **S7 PARTIAL**：derive + form library + pipeline clean/process 默认 accepted-only（`--allow-legacy-fill` / `from_accepted=False` 逃生）；daily-only expand 闭合 2019 缺口；qfq from-accepted 实测 **8,402,928** 行 = 原 fill 面；`legacy_raw_plane.yaml` inventory **仍 41 ssot / 1 fill / 4 compatibility**（未 meaningfully shrink → 不升 FIXED）；membership L0 诚实 ssot
-- **E0 PARTIAL（stronger）**：disclosure S1/S2 CLI 齐：`--land-only|--land-then-accept --from-local-raw`（三域）+ **`stk_holdertrade` provider land** without `--from-local-raw`（by_ann_date 全市场；≤40d；禁 mass dump；首日失败即停）+ `--accept-from-landing --batch-id`；holders/org land CLI 仍 `--from-local-raw`（by_ts_code/period = 非 formal）；live accepted holders **13** / stk **6** / org **2**；DatasetSnapshot 未改写；E/F remeasure 仍 paused
-- **近端 focus**：S7 续刀（membership L0 / 单域 formal|sunset）或 E0 residual（org/holders provider land 若有全市场 by-date 水龙头；org full-universe；mass legacy accept）；**不**开 E/F remeasure / G/H/Release
+- **E0 PARTIAL（stronger）**：disclosure S1/S2 CLI 齐：`--land-only|--land-then-accept --from-local-raw`（三域）+ provider land without `--from-local-raw` for **`stk_holdertrade`**（by_ann_date）+ **`holders_top10`**（miaoxiang by `UPDATE_DATE`/notice_date；~10–120 行/日；≤40d；禁 mass dump；首日失败即停）+ `--accept-from-landing --batch-id`；**`org_holding` provider land BLOCKED**（by-period ~830k/期；无 NOTICE_DATE；仍 `--from-local-raw`）；live accepted holders **13** / stk **6** / org **2**；DatasetSnapshot 未改写；E/F remeasure 仍 paused
+- **近端 focus**：S7 续刀（membership L0 / 单域 formal|sunset）或 E0 residual（org by-date faucet if ever exists；org full-universe；mass legacy accept）；**不**开 E/F remeasure / G/H/Release
 - **护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d+禁 mass backfill/第二 DB/plugin bus
 
 A→H 降为地图；细节以重评文 §4、§9 为准。

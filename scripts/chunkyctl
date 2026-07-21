@@ -28,9 +28,9 @@ Usage:
   scripts/chunkyctl sync --domain daily|stock_st --accept-from-landing --batch-id BATCH
   scripts/chunkyctl sync --domain holders_top10|org_holding|stk_holdertrade --accept-from-landing --batch-id BATCH
   scripts/chunkyctl sync --domain holders_top10|org_holding|stk_holdertrade --land-only --from-local-raw --start YYYYMMDD --end YYYYMMDD
-  scripts/chunkyctl sync --domain stk_holdertrade --land-only --start YYYYMMDD --end YYYYMMDD
+  scripts/chunkyctl sync --domain holders_top10|stk_holdertrade --land-only --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl sync --domain holders_top10|org_holding|stk_holdertrade --land-then-accept --from-local-raw --start YYYYMMDD --end YYYYMMDD
-  scripts/chunkyctl sync --domain stk_holdertrade --land-then-accept --start YYYYMMDD --end YYYYMMDD
+  scripts/chunkyctl sync --domain holders_top10|stk_holdertrade --land-then-accept --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl sync --domain daily|stock_st --land-then-accept [--from-local-raw] --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl map [--check]
   scripts/chunkyctl derive qfq|form [--from-accepted|--allow-legacy-fill] [--rebuild|--check-only]
@@ -62,10 +62,11 @@ Notes:
                 --land-only/--land-then-accept --from-local-raw --start/--end
                 (≤40 calendar days; local legacy acquire) and
                 --accept-from-landing --batch-id (zero fetch).
-                stk_holdertrade also supports provider --land-only/--land-then-accept
-                without --from-local-raw (by_ann_date full-market; ≤40d; no mass dump).
-                holders/org land CLI stays --from-local-raw (by_ts_code/period =
-                non-formal acquire contrast).
+                holders_top10|stk_holdertrade also support provider
+                --land-only/--land-then-accept without --from-local-raw
+                (by_notice_date|by_ann_date full-market; ≤40d; no mass dump).
+                org_holding land CLI stays --from-local-raw (by-period ~830k
+                mass / no by-date faucet = BLOCKED for provider land).
   derive      = S5/S7 qfq/form rebuild independent of acquire/accept; default = accepted-only
                 nominal (no legacy raw_tushare_daily fill). --allow-legacy-fill = authorized
                 pre-accepted UNION escape (pipeline clean/form library also default accepted-only).

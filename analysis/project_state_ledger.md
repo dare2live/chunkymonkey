@@ -2595,6 +2595,29 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   E/F paused.
 - **Status**: **PARTIAL**（E0 stronger — provider land for stk_holdertrade）.
 
+### 2026-07-21 — E0 PARTIAL: holders_top10 provider land; org_holding BLOCKED
+
+- Wall-clock: Tue 2026-07-21 ~13:30 Asia/Shanghai (in-session).
+- **E0 residual knife**：provider land without `--from-local-raw` for
+  **holders_top10** (same modular S1/S2 as stk_holdertrade).
+  1. Live faucet evidence: miaoxiang `RPT_F10_EH_FREEHOLDERS` +
+     `(UPDATE_DATE='YYYY-MM-DD')` → full-market by notice_date;
+     measured 20260717=120 / 20260715=70 / 20260711=60 / 20260619=10 rows
+     (not mass). `holders_aif10.fetch_holders_top10_by_notice_date`.
+  2. `DISCLOSURE_PROVIDER_LAND_DOMAINS={stk_holdertrade, holders_top10}`.
+  3. CLI：`chunkyctl sync --domain holders_top10 --land-only|--land-then-accept
+     --start/--end` (no `--from-local-raw`; ≤40d; stop-on-first-fail).
+  4. **org_holding BLOCKED** with evidence: `RPT_MAIN_ORGHOLDDETAIL` is
+     by-period full-market (~830k rows/417 pages; no NOTICE_DATE) — mass dump
+     ban; keep `--from-local-raw`. Fail-closed error cites BLOCKED reason.
+  5. TDD：`test_disclosure_transport_e0` 19 passed +
+     `test_fetch_holders_top10_by_notice_date_maps_provider_shape`.
+- **Did not**：org provider land；mass legacy accept；org full-universe；
+  DatasetSnapshot rewrite；E/F remeasure；Optuna/Release/cutover flip.
+- **Residual**：org by-date faucet (if ever) or local-raw only；mass/org-full
+  accept；S7 membership L0 / ssot long-tail；E/F paused.
+- **Status**: **PARTIAL**（E0 provider land stk+holders；org BLOCKED）.
+
 ### 2026-07-21 — DB storage hygiene reclaim (local data plane)
 
 - Wall-clock: Tue 2026-07-21 ~11:01 Asia/Shanghai (compact/delete) + commit session.

@@ -145,5 +145,5 @@ Acquire 边界（owner 2026-07-21；MASTER §5.1）：formal daily/ST = 全市�
 
 Residual owner：S7 续（membership L0 / 单域 formal|sunset；禁盲删 raw）；ST 不可对称扩至 2019。
 Live expand evidence（2026-07-21）：accepted daily **`20190102`→`20260720`（1829d）**；ST **`20220104`→`20260720`（1099d）**（asymmetric）。
-E0 note（2026-07-21）：`stk_holdertrade` provider land CLI shipped（by_ann_date）；holders/org land CLI 仍 local-raw。
-Next verification：S7 next knife（ssot shrink）或 E0 holders/org provider residual；E/F same-protocol remeasure when scheduled（window unblocked）。
+E0 note（2026-07-21）：`stk_holdertrade` + `holders_top10` provider land CLI shipped（by_ann_date / by_notice_date）；`org_holding` provider land **BLOCKED**（by-period ~830k；仍 local-raw）。
+Next verification：S7 next knife（ssot shrink）或 E0 org residual（by-date faucet if ever / mass accept）；E/F same-protocol remeasure when scheduled（window unblocked）。

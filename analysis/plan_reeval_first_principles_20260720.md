@@ -454,3 +454,15 @@ Live 焊点（evidence pack §2.7 复核）：
 - holders/org remain `--from-local-raw` (by_ts_code/period = non-formal).
 - Residual：holders/org provider faucet；mass/org-full accept；S7；E/F paused.
 - Label：**E0 PARTIAL** (provider land partial; not FIXED).
+
+### Amend 2026-07-21 — E0 provider land (holders_top10) + org BLOCKED
+
+- Shipped `--land-only|--land-then-accept` **without** `--from-local-raw` for
+  `holders_top10` (miaoxiang `RPT_F10_EH_FREEHOLDERS` by `UPDATE_DATE` =
+  notice_date; full-market; measured ~10–120 rows/day; ≤40d; TDD green).
+- `org_holding` **BLOCKED** for provider land: aif10
+  `RPT_MAIN_ORGHOLDDETAIL` is by-period full-market (~830k rows/period; no
+  NOTICE_DATE) — mass dump, not by-calendar-date. Keep `--from-local-raw`.
+- Residual：org provider faucet (needs by-date or stays local-raw)；mass/org-full
+  accept；S7；E/F paused.
+- Label：**E0 PARTIAL** (provider land stk+holders; org BLOCKED; not FIXED).

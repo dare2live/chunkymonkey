@@ -402,6 +402,37 @@ def sync_holders_aif10(
     }
 
 
+def fetch_holders_top10_by_notice_date(notice_date: str) -> list[dict]:
+    """Full-market by UPDATE_DATE (= notice_date). Formal-shaped acquire for E0 land.
+
+    Evidence 2026-07-21: ``RPT_F10_EH_FREEHOLDERS`` +
+    ``(UPDATE_DATE='YYYY-MM-DD')`` returns ~10–120 provider rows/day
+    (not mass). Preserves provider response (incl. BSE); no universe exclude.
+    Exit rows are process-derived elsewhere — land path returns raw clean only
+    (``is_exit_row=False``). Contrasts by_ts_code per-stock sync.
+    """
+    digits = "".join(ch for ch in str(notice_date or "") if ch.isdigit())
+    if len(digits) < 8:
+        raise ValueError(f"notice_date must be YYYYMMDD; got {notice_date!r}")
+    part = digits[:8]
+    try:
+        datetime.strptime(part, "%Y%m%d")
+    except ValueError as exc:
+        raise ValueError(f"notice_date must be YYYYMMDD; got {notice_date!r}") from exc
+    iso = f"{part[:4]}-{part[4:6]}-{part[6:8]}"
+    from aif10_scraper import default_client, fetch_all_pages
+
+    raw = fetch_all_pages(
+        REPORT_FREE,
+        page_size=PAGE_SIZE,
+        max_pages=0,
+        extra_filters=[f"(UPDATE_DATE='{iso}')"],
+        client=default_client,
+    ) or []
+    cleaned = _clean(raw, start_period=DEFAULT_START_PERIOD)
+    return [row for row in cleaned if row.get("notice_date") == part]
+
+
 def _affected_stocks_since(client, since_date: str) -> list[str]:
     """市场级按披露日 UPDATE_DATE>=since 拉, 返回近期有新披露的股票代码 (日常增量)."""
     codes: set[str] = set()
