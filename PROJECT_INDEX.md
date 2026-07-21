@@ -62,7 +62,7 @@ AGENTS.md
 | Doc governance | `PYTHONPATH=backend python backend/scripts/check_doc_governance.py` |
 | Doc drift | `PYTHONPATH=backend python backend/scripts/check_doc_drift.py --check` |
 | Live continuity | `PYTHONPATH=backend python backend/scripts/check_continuity_integrity.py` (`FAIL` 直接非零) |
-| Local reviewed commit | `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"`（WP1：L1/L2/L3；政策=`backend/config/commit_tiers.yaml`；L2/L3 跑与 CI 同面 pytest=`backend/config/ci_pytest_surface.yaml` via `run_ci_pytest.py`；含 Phase F `test_main_rally_b0/b1/b2`） |
+| Local reviewed commit | `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"`（WP1：L1/L2/L3；政策=`backend/config/commit_tiers.yaml`；L2/L3 跑与 CI 同面 pytest=`backend/config/ci_pytest_surface.yaml` via `run_ci_pytest.py` — **~985 cases = 1 `ci_pytest` gate**，非 985 独立门；全库 ~1903 cases / 90 optional 文件不 block；gate 分层见 `analysis/gate_redesign_occams_20260721.md`） |
 | Tier1/2 full-universe accept (manual) | `PYTHONPATH=backend python backend/scripts/persist_tier12_full_universe_accept.py --decision-date YYYYMMDD`；cutover-aware（ON 时要求 resolver ACCEPTED_CUTOVER；永不翻 yaml）；form enrich 经 `load_form_rows_exact_day` |
 | Phase D ExperimentRun persist (idempotent) | `PYTHONPATH=backend python backend/scripts/persist_phase_d_experiment_runs.py [--force]`；b0_bound + runtime-owned measured_offline；claimable 恒 false |
 | Phase F main_rally F0+F1+F2 persist | `PYTHONPATH=backend python backend/scripts/persist_phase_f_experiment_verdicts.py [--freeze] [--force]`；snapshot + B0+B1 verdicts under `data/lineage/phase_f_experiment_verdicts/`（`b0.json`,`b1.json`,`manifest.json`）；≠ StrategyRelease |

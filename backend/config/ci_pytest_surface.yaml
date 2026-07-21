@@ -1,5 +1,10 @@
 # Single source of truth for the offline CI pytest surface.
 #
+# Semantics (not gate count): ~985 pytest cases run inside ONE `ci_pytest` gate
+# (L2/L3 safe_commit + CI). Full repo ~1903 cases; 90 files / ~918 cases are
+# ci_test_optional and do NOT block commit. Gate-layer map + blocking/nightly
+# redesign proposal: analysis/gate_redesign_occams_20260721.md
+#
 # Owner: this file + backend/scripts/run_ci_pytest.py. Consumed IDENTICALLY by:
 #   - .github/workflows/ci.yml ("Run offline tests" step)
 #   - scripts/safe_commit.sh (L2/L3 gate "ci_pytest")

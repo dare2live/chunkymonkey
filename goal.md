@@ -13,6 +13,7 @@
 > **DB 存储卫生（free-block / archive 机制 + 2026-07-21 reclaim）**：`analysis/db_storage_hygiene_20260721.md`
 > **吞吐瓶颈诊断（墙钟 vs 真相门；§15 adoption）**：`analysis/throughput_bottleneck_diagnosis_20260721.md`
 > **§15 效率复测（measured validation）**：`analysis/process_efficiency_validation_20260721.md`
+> **Gate 栈 Occam 重设计（985 tests ≠ gates；blocking/nightly 提案）**：`analysis/gate_redesign_occams_20260721.md`
 > **地基阶段重评（近端排序 authority）**：`analysis/foundation_phase_reeval_20260721.md`
 > **§15-VERIFY 证据（F8 PASS）**：`analysis/section15_verify_20260721.md`
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
