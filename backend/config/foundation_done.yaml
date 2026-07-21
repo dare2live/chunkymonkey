@@ -1,0 +1,74 @@
+# Foundation-done aggregate gate (F1–F10)
+#
+# Authority: analysis/foundation_phase_reeval_20260721.md §3
+# Owner script: backend/scripts/check_foundation_done.py
+# Doctor section + moth claim + offline tests wire this file.
+#
+# Semantics:
+#   - Real gaps → FAIL (fail-closed)
+#   - Typed walls (S7 23 hard-stop / org BLOCKED / Type-B enrichment defer)
+#     are PASS when the wall is honestly maintained — they must NOT block
+#     foundation-phase closure incorrectly
+#   - F8 §15 behavior stays PARTIAL until §15-VERIFY measures
+#     commits/knife ≤1.5 on 3 consecutive L3 foundation knives
+#   - Aggregate gate exit 0 for PASS|PARTIAL; exit 1 only on FAIL
+#   - phase_closure_ready (E/F may schedule) requires every criterion PASS
+
+version: 1
+authority: analysis/foundation_phase_reeval_20260721.md
+
+# S7 typed hard-stop wall (F2) — counts are the wall, not residual debt
+s7_ssot_wall:
+  ssot: 23
+  fill: 1
+  compatibility: 22
+  kinds:
+    sync_orphan: 14
+    serve_l0_declared: 7
+    blocked_no_publication: 2
+
+# E0 accept breadth (F6)
+e0_breadth:
+  holders_dataset_id: tier0.disclosure.top10_float_holders_period
+  stk_dataset_id: tier0.disclosure.stock_holder_trade_announcement
+  daily_dataset_id: tier0.market_data.nominal_ohlcv_daily
+  org_dataset_id: tier0.disclosure.org_holding_detail_period
+  holders_db: smartmoney
+  stk_db: tushare_raw
+  daily_db: tushare_raw
+  org_db: smartmoney
+  min_holders_daily_overlap: 120
+  # org stays local-raw BLOCKED; partition count may stay tiny
+  org_max_partitions_when_blocked: 8
+
+# B5 / qfq (F4) — Type-B enrichment defer is a typed wall, not F4 FAIL
+b5:
+  qfq_brick_id: price_kline_qfq_tushare
+  qfq_trust: LINEAGE_OK
+  qfq_db: market
+  qfq_table: price_kline_qfq_tushare
+  type_b_defer_codes:
+    - enrichment_projection_partial
+
+# §15 behavior (F8) — PARTIAL until §15-VERIFY updates this block
+section_15:
+  status: PARTIAL
+  reason: awaiting_section15_verify_three_l3_knives
+  max_commits_per_knife: 1.5
+  required_consecutive_l3_knives: 3
+  # When status=PASS, evidence.knives must list ≥3 knives with commits + pre_knife
+  evidence:
+    knives: []
+
+# Strategy track pause (F9) — substrings that must remain in goal.md
+strategy_pause:
+  goal_must_contain:
+    - "E/F remeasure paused"
+    - "Optuna"
+    - "StrategyRelease"
+
+# Dual-track (F10)
+dual_track:
+  retire_notes: data/lineage/legacy_retire_notes.md
+  must_contain:
+    - "residual = NONE"

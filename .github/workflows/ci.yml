@@ -77,6 +77,8 @@ jobs:
           PYTHONPATH=backend python backend/scripts/check_universe_filter.py \
             --skip-live-readiness --format json
           PYTHONPATH=backend python backend/scripts/check_calendar_usage.py --strict
+          # FND-GATE offline: skip live F4/F6 DuckDB probes; F8 PARTIAL exit 0.
+          PYTHONPATH=backend python backend/scripts/check_foundation_done.py --skip-live
 
       - name: Smoke import
         run: |

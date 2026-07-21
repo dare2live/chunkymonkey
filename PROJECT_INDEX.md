@@ -2,9 +2,9 @@
 
 > 状态：live navigation，非规则 owner
 > 更新：2026-07-21
-> 当前目标看 `goal.md`（**foundation solidify ~91% vs scheme** — `analysis/foundation_phase_reeval_20260721.md`；S1–S6 FIXED；S7 near-FIXED 23/46 typed wall；**E0-HIST/F6 PASS** holders152/126d + stk194/161d；org BLOCKED；Type-B **defer**；§15 behavior PARTIAL；策略 paused；`BOARD.md`；`scripts/chunkyctl agent-boot`）。
+> 当前目标看 `goal.md`（**foundation solidify ~91% vs scheme** — `analysis/foundation_phase_reeval_20260721.md`；S1–S6 FIXED；S7 near-FIXED 23/46 typed wall；**E0-HIST/F6 PASS**；**FND-GATE FIXED**；org BLOCKED；Type-B **defer**；§15 behavior PARTIAL；策略 paused；`BOARD.md`；`scripts/chunkyctl agent-boot`）。
 > 架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口与 writer 清单看 `FEATURE_MAP.md` 和 CodeGraph。
-> 生成状态板：`PYTHONPATH=backend python backend/scripts/build_agent_board.py`（勿手改 BOARD.md；Next 投影跟 `goal.md` foundation solidify：FND-GATE→§15，非 A→H/E/F）。
+> 生成状态板：`PYTHONPATH=backend python backend/scripts/build_agent_board.py`（勿手改 BOARD.md；Next 投影跟 `goal.md` foundation solidify：§15-VERIFY，非 A→H/E/F）。
 
 ## 1. Authority
 
@@ -143,7 +143,7 @@ accept 路径跳过 provider auth / acquire；disclosure 三域同 land/accept f
 org provider land BLOCKED）。S5 derive（FIXED）+ S7 near-FIXED / stronger PARTIAL：
 `chunkyctl derive qfq|form` + form library + pipeline clean/process 默认
 accepted-only；`--allow-legacy-fill` 逃生；daily accepted `20190102`→`20260720`
-（ST asymmetric `20220104`）；`legacy_raw_plane.yaml` + gate（**23/46 ssot** typed hard-stop wall；B1+B2 done；本阶段不再开 S7 刀）；§15 `pre-knife`。近端：**FND-GATE** → **§15-VERIFY**（见 `foundation_phase_reeval_20260721.md`；E0-HIST/F6 PASS）。
+（ST asymmetric `20220104`）；`legacy_raw_plane.yaml` + gate（**23/46 ssot** typed hard-stop wall；B1+B2 done；本阶段不再开 S7 刀）；§15 `pre-knife`；`check_foundation_done.py` FND-GATE。近端：**§15-VERIFY**（见 `foundation_phase_reeval_20260721.md`；E0-HIST/F6 + FND-GATE PASS）。
 S6 serve（FIXED）：
 `market_pulse_serve_read` + DataAccess entities；router 零 `# serve-exempt:`；D5 全绿。
 `observation_population.py` 的 default

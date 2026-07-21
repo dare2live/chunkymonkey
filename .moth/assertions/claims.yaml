@@ -167,6 +167,11 @@ assertions:
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_brick_registry.py >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
+  - id: foundation-done-f1-f10
+    claim: "FND-GATE foundation-done F1–F10 聚合门：真实缺口 FAIL；S7 23 ssot typed hard-stop / org BLOCKED / Type-B enrichment defer 为诚实墙 PASS；F8 §15 可为 PARTIAL 且 exit0（不误挡 foundation phase closure 机器门）。owner=backend/scripts/check_foundation_done.py + foundation_done.yaml；权威=analysis/foundation_phase_reeval_20260721.md §3"
+    type: shell
+    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_foundation_done.py >/dev/null 2>&1 && echo 0 || echo 1"]
+    expect: {op: "<=", value: 0}
   - id: calendar-usage-clean
     claim: "交易日历静态强制门全绿：导入 calendar 不再豁免整文件，空扫描失败关闭；B1 wall-clock 当最新交易日、B2/B3 SQL wall-clock cutoff 均阻断，显式 evidence 仅豁免具体合法行。owner=backend/scripts/check_calendar_usage.py"
     type: shell

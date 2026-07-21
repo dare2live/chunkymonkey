@@ -93,7 +93,7 @@
 |---|---|
 | **E0 accept 历史广度** | **F6 PASS**（holders 126d overlap ≥120；stk 同步）— 相对 daily 1829d 仍可 chunked 续扩，**非** foundation-done blocker |
 | **§15 行为 adoption** | 59 micro-commit 窗口 vs 1 knife-merge 示范 — **undershot** |
-| **Foundation-done 机器门** | 分散在多个 gate；缺 **单一 checklist 出口** |
+| **Foundation-done 机器门** | **FIXED**（`check_foundation_done.py`；F8 PARTIAL 仍挡 `phase_closure_ready`） |
 | **org_holding** | 方案允许 BLOCKED + local-raw；**非 undershot**（诚实 blocked） |
 
 ### 2.3 Type-B enrichment：in-scheme 还是 scope creep？
@@ -150,10 +150,11 @@
 
 | 序 | 刀 | 内容 | 退出 | 不在此刀 |
 |---:|---|---|---|---|
-| **1** | **FND-GATE** | foundation-done checklist 脚本或 ledger 检查点（F1–F10 聚合） | 单命令/report 绿 | 新 domain publication |
-| **2** | **§15-VERIFY** | 下 2–3 个 L3 刀强制 knife-merge + `pre-knife`；process_efficiency 复测 | F8 PASS | 放宽 L3/Rule10/PIT |
+| **1** | **§15-VERIFY** | 下 2–3 个 L3 刀强制 knife-merge + `pre-knife`；process_efficiency 复测；更新 `foundation_done.yaml` §15 evidence | F8 PASS → `phase_closure_ready` | 放宽 L3/Rule10/PIT |
 
-**已完成**：**E0-HIST** — holders/stk local-raw chunked ≤40d empty_skip → F6 PASS（2026-07-21）。
+**已完成**：
+- **E0-HIST** — holders/stk local-raw chunked ≤40d empty_skip → F6 PASS（2026-07-21）。
+- **FND-GATE** — `backend/scripts/check_foundation_done.py` + `foundation_done.yaml`；doctor/moth/CI；typed walls PASS；F8 PARTIAL exit 0（2026-07-21）。
 
 ### 5.1 S7 23 orphans — 怎么办？
 
@@ -208,7 +209,7 @@
 |---|---|
 | **FOUNDATION_VS_SCHEME** | **~85%** |
 | **NEAR_TERM_TRACK** | foundation solidify（strategy paused） |
-| **NEXT_3** | E0-HIST → FND-GATE → §15-VERIFY |
+| **NEXT_3** | §15-VERIFY（E0-HIST + FND-GATE done） |
 | **S7_23** | typed wall；非近端刀 |
 | **TYPE_B** | registry in-scheme；enrichment **defer** |
 | **ORG** | BLOCKED maintained |

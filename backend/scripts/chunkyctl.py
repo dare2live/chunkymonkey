@@ -9,6 +9,7 @@ This surface intentionally stays small. It exposes the live manual-only Tier0/op
   5. population_readiness — accepted calendar/Kline/ST live evidence (独立阻断)
   6. data_health          — data_health_snapshot.py --dry-run (表新鲜度/红黄绿)
   7. brick_registry       — L2/L3 FeatureBlock hop/raw/orphan (B5 strangler)
+  8. foundation_done      — F1–F10 aggregate (FND-GATE); PARTIAL→WARN (e.g. F8 §15)
 Retired commands are fail-closed compatibility names, not dormant workflows or future promises.
 """
 from __future__ import annotations
@@ -462,6 +463,45 @@ def _brick_registry_section(result: dict[str, Any]) -> dict[str, Any]:
     return section
 
 
+def _foundation_done_section(result: dict[str, Any]) -> dict[str, Any]:
+    """FND-GATE: PARTIAL (typed walls / F8 §15) → WARN so doctor stays non-FAIL."""
+
+    report = _json_from_stdout(result)
+    shape_ok = bool(
+        report is not None
+        and report.get("gate") == "foundation_done"
+        and report.get("verdict") in {"PASS", "PARTIAL", "FAIL"}
+        and isinstance(report.get("criteria"), list)
+        and isinstance(report.get("phase_closure_ready"), bool)
+    )
+    reported = None if report is None else str(report.get("verdict"))
+    if not shape_ok or result.get("returncode") not in (0, 1):
+        verdict = "FAIL"
+    elif reported == "FAIL" or result.get("returncode") == 1:
+        verdict = "FAIL"
+    elif reported == "PARTIAL":
+        verdict = "WARN"
+    else:
+        verdict = "PASS"
+
+    section: dict[str, Any] = {
+        "name": "foundation_done",
+        "verdict": verdict,
+        "returncode": result.get("returncode"),
+        "gate_verdict": reported,
+        "phase_closure_ready": (
+            None if report is None else report.get("phase_closure_ready")
+        ),
+        "summary": None if report is None else report.get("summary"),
+    }
+    if verdict == "FAIL":
+        if not shape_ok:
+            section["error"] = "foundation-done report missing or invalid shape"
+        else:
+            section["error"] = "foundation-done has FAIL criteria (real gaps)"
+    return section
+
+
 def run_doctor(args: argparse.Namespace) -> int:
     repo = Path(args.repo).expanduser().resolve()
     sections: list[dict[str, Any]] = []
@@ -482,11 +522,17 @@ def run_doctor(args: argparse.Namespace) -> int:
         cwd=repo,
     )
     sections.append(_brick_registry_section(br))
+    fd = _run_command(                                                          # 8. FND-GATE F1–F10
+        [sys.executable, "backend/scripts/check_foundation_done.py", "--json"],
+        cwd=repo,
+    )
+    sections.append(_foundation_done_section(fd))
     verdict = _aggregate_verdict(sections)
     report = {"command": "doctor", "verdict": verdict, "sections": sections,
-              "note": "当前权威快检聚合 7 个独立 gate: moth/automation/alert/"
+              "note": "当前权威快检聚合 8 个独立 gate: moth/automation/alert/"
                       "population_contract/population_readiness/data_health/"
-                      "brick_registry；静态契约 PASS 不升级 live readiness"}
+                      "brick_registry/foundation_done；PARTIAL foundation → WARN；"
+                      "静态契约 PASS 不升级 live readiness"}
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if verdict != "FAIL" else 1
 
@@ -507,7 +553,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command")
     d = sub.add_parser(
         "doctor",
-        help="健康检查 (moth/automation/alert/population/data_health/brick_registry)",
+        help="健康检查 (moth/automation/alert/population/data_health/brick_registry/foundation_done)",
     )
     d.add_argument("--repo", default=".")
     d.add_argument("--fast", action="store_true")              # wrapper 已 strip; 防直调残留不崩

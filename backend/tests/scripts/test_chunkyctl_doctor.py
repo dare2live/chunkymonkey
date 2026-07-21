@@ -59,6 +59,46 @@ def test_aggregate_verdict_fail_priority():
     assert chunkyctl._aggregate_verdict([{"verdict": "WARN", "returncode": 127}]) == "WARN"
 
 
+def test_foundation_done_section_maps_partial_to_warn():
+    """F8 PARTIAL must not FAIL doctor; typed as WARN at section level."""
+    section = chunkyctl._foundation_done_section(
+        {
+            "returncode": 0,
+            "stdout": json.dumps(
+                {
+                    "gate": "foundation_done",
+                    "verdict": "PARTIAL",
+                    "phase_closure_ready": False,
+                    "criteria": [{"id": "F8", "verdict": "PARTIAL"}],
+                    "summary": {"PASS": 9, "PARTIAL": 1, "FAIL": 0},
+                }
+            ),
+        }
+    )
+    assert section["name"] == "foundation_done"
+    assert section["verdict"] == "WARN"
+    assert section["gate_verdict"] == "PARTIAL"
+    assert section["phase_closure_ready"] is False
+
+
+def test_foundation_done_section_fails_closed_on_fail_verdict():
+    section = chunkyctl._foundation_done_section(
+        {
+            "returncode": 1,
+            "stdout": json.dumps(
+                {
+                    "gate": "foundation_done",
+                    "verdict": "FAIL",
+                    "phase_closure_ready": False,
+                    "criteria": [],
+                    "summary": {"PASS": 0, "PARTIAL": 0, "FAIL": 1},
+                }
+            ),
+        }
+    )
+    assert section["verdict"] == "FAIL"
+
+
 @pytest.mark.parametrize(
     ("result", "error"),
     [
@@ -228,7 +268,13 @@ def test_doctor_blocks_when_automation_surface_fails(tmp_path, monkeypatch, caps
                     '"orphan_type_b_tables":[],"violations":[],'
                     '"l2_count":1,"l3_count":1,"type_b_count":1}'
                     if any("check_brick_registry.py" in part for part in command)
-                    else '{"verdict":"PASS","summary":{"total":1}}'
+                    else (
+                        '{"gate":"foundation_done","verdict":"PARTIAL",'
+                        '"phase_closure_ready":false,"criteria":[],'
+                        '"summary":{"PASS":9,"PARTIAL":1,"FAIL":0}}'
+                        if any("check_foundation_done.py" in part for part in command)
+                        else '{"verdict":"PASS","summary":{"total":1}}'
+                    )
                 )
             ),
             "stderr": "",
@@ -248,6 +294,7 @@ def test_doctor_blocks_when_automation_surface_fails(tmp_path, monkeypatch, caps
         "population_readiness",
         "data_health",
         "brick_registry",
+        "foundation_done",
     ]
 
 

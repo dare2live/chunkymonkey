@@ -3039,3 +3039,22 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   chunked history optional, not foundation-done blocker. Next：**FND-GATE** →
   **§15-VERIFY**.
 - **Status**: **FIXED** (E0-HIST / F6) / org still **BLOCKED**.
+
+### 2026-07-21 — FND-GATE FIXED: foundation-done F1–F10 aggregate
+
+- Wall-clock: Tue 2026-07-21 ~19:00–19:30 Asia/Shanghai.
+- Tip base: `4f7a13af0`. Authority: `foundation_phase_reeval_20260721.md` §3.
+- **Knife FND-GATE**（§15；pre-knife `fnd-gate` OK；no E/F；no S7 fake COMPAT；
+  no org invent；no Type-B enrichment）：
+  1. `backend/config/foundation_done.yaml` — thresholds + typed walls + F8 PARTIAL.
+  2. `backend/scripts/check_foundation_done.py` — F1–F10 aggregate；exit 0 on
+     PASS|PARTIAL；`phase_closure_ready` only when all PASS.
+  3. Wire：doctor section（PARTIAL→WARN）、moth claim `foundation-done-f1-f10`、
+     CI `--skip-live` + `ci_pytest_surface` tests.
+- **Live score**：F1–F7/F9–F10 **PASS**；F8 **PARTIAL**（await §15-VERIFY）；
+  holders overlap 126；stk 161；ssot=23 kinds 14/7/2；qfq `missing_lineage=0`.
+- **Typed walls（not FAIL）**：S7 23 hard-stop；org BLOCKED；Type-B
+  `enrichment_projection_partial` defer.
+- **Did not**：E/F remeasure；§15 behavior close；S7 COMPAT；org invent.
+- **Next**：**§15-VERIFY**.
+- **Status**: **FIXED** (FND-GATE) / F8 still **PARTIAL**.
