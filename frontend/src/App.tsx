@@ -4,7 +4,7 @@ import { InstitutionDetailPage } from "./pages/InstitutionDetailPage";
 import { InstitutionsPage } from "./pages/InstitutionsPage";
 import { MarketPage } from "./pages/MarketPage";
 import { PaperPage } from "./pages/PaperPage";
-import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { WorkbenchPage } from "./pages/WorkbenchPage";
 
 // HashRouter: 无需服务端 history fallback, vite preview / 任意静态托管直接可用
 export function App() {
@@ -16,7 +16,7 @@ export function App() {
           <Route path="/institutions" element={<InstitutionsPage />} />
           <Route path="/institutions/:holder" element={<InstitutionDetailPage />} />
           <Route path="/paper" element={<PaperPage />} />
-          <Route path="/workbench" element={<PlaceholderPage title="工作台" />} />
+          <Route path="/workbench" element={<WorkbenchPage />} />
           <Route path="/market" element={<MarketPage />} />
           <Route path="*" element={<Navigate to="/institutions" replace />} />
         </Route>

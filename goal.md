@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-21（**foundation phase_closure_ready**；FND-GATE PASS；S1–S6 FIXED；S7 near-FIXED；E0-HIST FIXED；org BLOCKED；daily/ST/pulse 前沿 **`20260721`**；`daily_update` margin 预检 **FIXED** — `analysis/foundation_daily_update_unblock_20260721.md`；UI 按钮 residual；产品决策辅助 **scheduled** — `analysis/product_decision_assist_backlog_20260721.md`）
+> 更新：2026-07-21（**foundation phase_closure_ready**；FND-GATE PASS；S1–S6 FIXED；S7 near-FIXED；E0-HIST FIXED；org BLOCKED；daily/ST/pulse 前沿 **`20260721`**；`daily_update` margin 预检 + 编排器 + **UI「数据更新」** **FIXED** — `analysis/foundation_daily_update_unblock_20260721.md`；产品决策辅助 **scheduled** — `analysis/product_decision_assist_backlog_20260721.md`）
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -17,7 +17,7 @@
 > **地基阶段重评（近端排序 authority）**：`analysis/foundation_phase_reeval_20260721.md`
 > **§15-VERIFY 证据（F8 PASS）**：`analysis/section15_verify_20260721.md`
 > **地基 E2E（UI 更新路径 20260721）**：`analysis/foundation_e2e_frontend_update_20260721.md` — 初判 PARTIAL（UI 缺按钮 + margin 预检死锁）；后续 unblock 见下
-> **地基 daily_update 解阻（20260721）**：`analysis/foundation_daily_update_unblock_20260721.md` — margin=`on_demand`+frozen；formal daily/ST 编排器 land_then_accept；DC/pulse 已至 `20260721`；**UI 按钮 residual**
+> **地基 daily_update 解阻（20260721）**：`analysis/foundation_daily_update_unblock_20260721.md` — margin=`on_demand`+frozen；formal daily/ST 编排器 land_then_accept；DC/pulse 已至 `20260721`；工作台「数据更新」**FIXED**
 > **产品决策辅助 backlog（scheduled，未开）**：`analysis/product_decision_assist_backlog_20260721.md` — A 资金流决策辅助；B 形态/阶段选股面；C 页内多 tab；D 交集最强股；硬门=地基 E2E 后；禁融结论进 Tier0
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 
@@ -37,7 +37,7 @@
 - **Dual-track 复核（2026-07-20 续作）**：`rg`+人工复查 `routers`/`services`/`scripts`/前端 API，residual **NONE**——无新旁路可删/退役；既有 resolver 边界（`resolve_tier12_production_read`、`resolve_b_pit_mart_production_read`）仍是唯一读路径。证据见 `data/lineage/legacy_retire_notes.md`「2026-07-20 re-audit」。
 - **Accept frontier 复核（2026-07-20）**：当时墙钟仍 `2026-07-20`，`20260721` `operation_window_blocked`——已过时。
 - **Accept frontier 复核（2026-07-21 E2E）**：收盘后模块化 `land_then_accept` 单日增量 daily/ST **`20260721` accepted**；当时 UI/`daily_update` 因缺按钮 + margin `scope_blocked` 预检 **FAIL**。
-- **daily_update 解阻（2026-07-21 follow-up）**：margin 预检 **FIXED**（`on_demand`+frozen，禁 thaw）；编排器 formal daily/ST catchup **FIXED**；DC/pulse **`20260721`**；**UI 按钮 residual**（`a84e0867e` / `8bcc37dad`；证据 `foundation_daily_update_unblock_20260721.md`）。
+- **daily_update 解阻（2026-07-21 follow-up）**：margin 预检 **FIXED**（`on_demand`+frozen，禁 thaw）；编排器 formal daily/ST catchup **FIXED**；DC/pulse **`20260721`**；工作台「数据更新」**FIXED**（`#/workbench` → `POST /api/v3/ops/jobs/daily_update/run` + 状态/日志尾；证据 `foundation_daily_update_unblock_20260721.md` Knife 4）。
 - **F 更长窗 / S7 daily expand**：accepted daily **`20190102`→`20260721`**；ST **`20220104`→`20260721`**。E/F remeasure 仍 paused。
 
 启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。

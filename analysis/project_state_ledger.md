@@ -3106,4 +3106,11 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   `8bcc37dad` (orchestrator formal daily/ST latest-eligible land_then_accept / skip-if-accepted).
 - Proof: `ensure_pipeline_sync_ready` PASS domains=42; formal plan skip for `20260721`;
   DC+moneyflow+limit_cpt catchup → pulse `flow_board`/`strongest` **`20260721`**.
-- Residual: edge React「数据更新」button still unwired; full 42-domain acquire wall-clock not re-run.
+- Residual (at unblock): edge React「数据更新」button still unwired; full 42-domain acquire wall-clock not re-run.
+
+### 2026-07-21 — wire frontend 数据更新 button
+
+- Evidence: `analysis/foundation_daily_update_unblock_20260721.md` Knife 4 (**FIXED** UI path wiring).
+- Workbench `#/workbench` enabled;「数据更新」→ `POST /api/v3/ops/jobs/daily_update/run`;
+  polls `GET .../jobs/daily_update` for writer/process/alert/log_tail.
+- Honest residual: full 42-domain `daily_update` wall-clock acquire still not re-proven after unblock.

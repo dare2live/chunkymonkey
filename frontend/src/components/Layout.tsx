@@ -3,7 +3,7 @@ import { NavLink, Outlet } from "react-router-dom";
 const NAV_ITEMS = [
   { to: "/institutions", label: "机构档案", enabled: true },
   { to: "/paper", label: "观察账本", enabled: true },
-  { to: "/workbench", label: "工作台", enabled: false },
+  { to: "/workbench", label: "工作台", enabled: true },
   { to: "/market", label: "市场感知", enabled: true },
 ];
 

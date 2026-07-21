@@ -953,3 +953,29 @@ select:focus {
   background: rgba(160, 106, 0, 0.12);
   color: #a06a00;
 }
+
+/* 工作台 ops 日志尾（daily_update 状态卡） */
+.ops-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.ops-log-tail {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+  line-height: 1.45;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  color: var(--text);
+}
