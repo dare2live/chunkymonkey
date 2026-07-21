@@ -246,8 +246,46 @@ entities:
     code_input: ts_from_plain   # con_code 存 ts_code 格式(600519.SH); 列名非'ts_code'故默认推断失效, 显式声明
     asof_col: trade_date
     asof_format: yyyymmdd
-    columns: [con_code, ts_code, trade_date]
+    columns: [con_code, ts_code, trade_date, name]
     vendor: eastmoney_via_tushare
+    available_after: eod
+
+  index_member_all:
+    # 申万三级成分 (展示 drill/members; PIT 特征侧另走 sw_industry / v_sw_industry_pit)
+    db: tushare_raw
+    table: raw_tushare_index_member_all
+    layer: L0
+    code_col: ts_code
+    code_input: ts_passthrough
+    asof_col: in_date
+    asof_format: yyyymmdd
+    columns: [l1_code, l1_name, l2_code, l2_name, l3_code, l3_name, ts_code, name, in_date, out_date, is_new]
+    vendor: shenwan
+    available_after: eod
+
+  daily:
+    # 名义日线 (事实类; drill 叶 pct_chg JOIN; 执行真相另见 accepted canonical)
+    db: tushare_raw
+    table: raw_tushare_daily
+    layer: L0
+    code_col: ts_code
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [ts_code, trade_date, pct_chg]
+    vendor: tushare
+    available_after: eod
+
+  margin:
+    # 两融交易所余额 (B-ext pulse shadow 探针; 非 project_universe 广度真相)
+    db: tushare_raw
+    table: raw_tushare_margin
+    layer: L0
+    code_col: exchange_id
+    code_input: ts_passthrough
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [trade_date, exchange_id, rzrqye]
+    vendor: tushare
     available_after: eod
 
   dc_index:
@@ -272,7 +310,7 @@ entities:
     code_input: ts_passthrough
     asof_col: trade_date
     asof_format: yyyymmdd
-    columns: [trade_date, ts_code, limit]
+    columns: [trade_date, ts_code, limit, limit_times]
     vendor: tushare
     available_after: eod
 

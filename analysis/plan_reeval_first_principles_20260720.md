@@ -365,3 +365,11 @@ Live 焊点（evidence pack §2.7 复核）：
   `market_pulse` drill/members exempt-tracked；form/sentiment already
   production_read；dual-track residual still NONE.
 - Residual：S6 drill DataAccess migration；S7 legacy raw；E0；E/F remeasure.
+
+### Amend 2026-07-21 — S6 FIXED
+
+- **S6 FIXED**：`market_pulse_serve_read` (DataAccess registry + resolver) owns
+  drill/members/margin L0 leaf；`routers/market_pulse` 零 `# serve-exempt:`；
+  D5 live forbids router exempts；TDD
+  `test_market_pulse_serve_read_s6` + pulse API + serve-layer doors green.
+- Residual：S7 legacy `raw_tushare_*`；E0；E/F remeasure（Strategy E/F paused）。

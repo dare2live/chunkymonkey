@@ -2427,3 +2427,21 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual**：S6 drill/members → DataAccess；S7 legacy `raw_tushare_*`；
   optional daily-only pre-`20220104`；E0；E/F remeasure when scheduled.
 - **Status**: **FIXED**（S5）/ **PARTIAL**（S6）。
+
+### 2026-07-21 — S6 FIXED (pulse serve-read / drop router exempts)
+
+- Wall-clock: Tue 2026-07-21 ~09:30 Asia/Shanghai (in-session).
+- **S6 FIXED**：`services/market_pulse_serve_read.py` owns drill/members/margin
+  L0 leaf via DataAccess registry entities
+  (`dc_member`/`index_member_all`/`moneyflow`/`moneyflow_dc`/`limit_list_d`/
+  `daily`/`margin`) + `resolver` ATTACH；`routers/market_pulse.py` thinned —
+  zero `# serve-exempt:` / zero inline raw；D5 live test forbids exempts on all
+  routers. Form/sentiment remain production_read. Evidence：
+  `test_market_pulse_serve_read_s6.py` + `test_check_serve_read_layer` +
+  `test_market_pulse_api` 31 passed；`check_serve_read_layer` D1–D5 OK.
+- **Did not**：S7 legacy raw strangler；mart-mirror membership/flow；E/F
+  remeasure；Optuna/Release/cutover flip；re-fuse acquire→accept.
+- **Residual**：S7 legacy `raw_tushare_*` surface（serve leaf still L0 entity
+  tables, not accepted canonical）；optional daily-only pre-`20220104`；E0；
+  E/F remeasure when scheduled. **Router serve-exempt list: EMPTY**.
+- **Status**: **FIXED**（S6）。

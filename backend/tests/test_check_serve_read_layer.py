@@ -125,5 +125,12 @@ def test_router_no_ad_hoc_raw_red_green_on_injection(tmp_path, monkeypatch):
 
 
 def test_router_no_ad_hoc_raw_live_surface_green():
-    """Live routers: market_pulse grandfathered via serve-exempt; others clean."""
+    """Live routers: no ad-hoc raw; S6 drops serve-exempt grandfathering."""
     assert mod.door_router_no_ad_hoc_raw() == []
+    for p in sorted(mod.ROUTERS_DIR.glob("*.py")):
+        if p.name.startswith("_"):
+            continue
+        text = p.read_text(encoding="utf-8")
+        assert "# serve-exempt:" not in text, (
+            f"{p.name}: serve-exempt residual — migrate to DataAccess/serve_read"
+        )

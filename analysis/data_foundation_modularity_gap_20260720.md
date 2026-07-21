@@ -138,8 +138,8 @@ chunkyctl sync / daily_update → sync_runner.run_domain(daily|stock_st)
 | S3 sync caller-only | **FIXED** | default `_publish_*` → land→accept；`sync_runner` 无 `capture_and_publish_*` |
 | S4 acquire swappable | **FIXED** | `security_day_acquire` modes `provider_tushare`/`local_legacy_raw_materialize`；land+default sync via resolve；accept 零 acquire；TDD `test_security_day_acquire_s4.py` |
 | S5 derive | **FIXED** | `chunkyctl derive qfq|form --from-accepted`；`derive_runtime`；form/qfq canonical-only nominal；TDD `test_derive_runtime_s5.py`；零 acquire |
-| S6 serve | **PARTIAL** | SERVE D5 `door_router_no_ad_hoc_raw`；`market_pulse` drill/members `# serve-exempt:` residual |
+| S6 serve | **FIXED** | `market_pulse_serve_read` + DataAccess entities；router 零 `# serve-exempt:`；D5 OK |
 
-Residual owner：S6 drill→DataAccess；S7 legacy `raw_tushare_*`；optional daily-only expand `<20220104`（ST floor）。
+Residual owner：S7 legacy `raw_tushare_*`；optional daily-only expand `<20220104`（ST floor）。
 Live expand evidence（2026-07-21）：accepted daily+ST **`20220104`→`20260720`（1099d）**.
-Next verification：S6 drill migration；E/F same-protocol remeasure when scheduled（window unblocked）。
+Next verification：S7 strangler knives；E/F same-protocol remeasure when scheduled（window unblocked）。

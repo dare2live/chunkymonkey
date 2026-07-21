@@ -141,8 +141,8 @@ default sync → acquire → `land_then_accept_authorized_security_day`；fused
 accept 路径跳过 provider auth / acquire）。S5 derive（FIXED）：
 `chunkyctl derive qfq|form --from-accepted` 只读
 `canonical_nominal_ohlcv_daily`（无 legacy raw fill；不进 accept；零 acquire）。
-S6 serve（PARTIAL）：SERVE D5 扫 routers 禁新内联 raw；`market_pulse`
-drill/members `# serve-exempt:` residual。
+S6 serve（FIXED）：`market_pulse_serve_read` + DataAccess entities；router 零
+`# serve-exempt:`；D5 全绿。
 `observation_population.py` 的 default
 readiness 经 `resolve_eligible_observation_date`（accepted calendar ∩ K/ST
 `availability_policy`）评 frontier，不索要周末/节假 calendar-today 分区。

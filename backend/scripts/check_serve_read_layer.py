@@ -24,8 +24,9 @@ scope="只迁 dossier")。dossier.py 已随 2026-06-28 纯数据平台重建永�
                             追不到声明源=FAIL (可追溯=确定性走链)
   D4 feature-from-l2      : backend/scripts 0 个 experiment_/analyze_ 因子 runner
                             (L2-bypass 向量关闭: 实验只能在 sandbox, 按 README 读 L2 panel 不绕 L0 重算)
-  D5 router-no-ad-hoc-raw : backend/routers/ 禁止新增内联 raw_* 读 (S6 serve 边界);
-                            既有 drill/members residual 须带 ``# serve-exempt:`` 理由
+  D5 router-no-ad-hoc-raw : backend/routers/ 禁止内联 raw_* 读 (S6 serve 边界);
+                            若有诚实 NONCONFORMING 残差须带 ``# serve-exempt:`` 理由
+                            (S6 FIXED 后 live routers 应为零豁免)
 
 跑: PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py
 """
@@ -158,9 +159,9 @@ def door_feature_from_l2() -> list[str]:
 def door_router_no_ad_hoc_raw() -> list[str]:
     """D5 (S6): routers must not introduce new ad-hoc raw_* SELECTs.
 
-    Grandfathered residuals require an explicit ``# serve-exempt:`` rationale in-file
-    (same token as D1). Form/sentiment production_read paths are already resolver-bound;
-    drill/members leaf raw is the tracked residual.
+    Honest NONCONFORMING residuals (if any) require an explicit ``# serve-exempt:``
+    rationale in-file (same token as D1). S6 FIXED: live routers should have zero
+    exempts — drill/members/margin leaf lives in ``market_pulse_serve_read``.
     """
     if not ROUTERS_DIR.is_dir():
         return ["backend/routers/ missing"]
