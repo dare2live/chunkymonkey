@@ -243,8 +243,8 @@ flowchart TB
 |---|---|---|
 | **S7 legacy plane** | **near-FIXED / stronger PARTIAL**：23/46 ssot = typed hard-stop wall only（2 blocked + 7 serve_l0_declared + 14 sync_orphan）；B1+B2 priority done | no fake COMPAT；next only with new publication/sunset evidence；else E0 |
 | **E0 disclosure** | org provider land **BLOCKED**；holders **17** / stk **27** accepted（local-raw empty_skip + row_seq fix） | org stay local-raw；no by-date invent |
-| **L2 qfq lineage** | typed PARTIAL in brick registry（缺 physical batch_id/`factor_as_of`；latest-factor rewrite；read COALESCE placeholders） | physical lineage columns 或诚实 UNTRUSTED 读面；禁假 FIXED |
-| **L3 brick registry** | **stronger PARTIAL**：FeatureBlock + Type-B/feature_store edge + hop/raw/orphan/partial_reasons gate | qfq physical lineage residual；不假 FIXED |
+| **L2 qfq lineage** | **FIXED**：physical `batch_id`/`ingested_at`/`factor_as_of` on rebuild；view passthrough；no COALESCE placeholders；method=latest-factor rebase typed | live populate on next `derive qfq`；pin batch_id for reproducibility；not execution truth |
+| **L3 brick registry** | **PARTIAL**：FeatureBlock + Type-B/feature_store + hop/raw/orphan/partial_reasons gate；qfq lineage FIXED | residual = `institution_profile_edge` enrichment PARTIAL；不假 FIXED |
 | **Blocked datasets** | stk_limit/daily_basic/suspend_d/margin_detail | 诚实无 publication；不 fake PIT |
 
 ### 7.3 有序 strangler（与 plan_reeval / db_layering 一致）
@@ -255,7 +255,7 @@ flowchart TB
 | **B2** | S7 flow/limit L0 | limit+moneyflow(+dc)+index_daily+top_inst → fact_* **FIXED**（priority serve/multi-consumer） | raw → compatibility |
 | **B3** | S7 长尾 ssot | residual wall **documented**（23 typed hard-stops）；禁假 COMPAT | owner publication/sunset 才再动；否则 stay near-FIXED |
 | **B4** | E0 residual | org / mass accept 策略 | NONCONFORMING 隔离 |
-| **B5** | L3 registry | FeatureBlock/brick manifest 与 lineage 对齐 | **stronger PARTIAL**：Type-B edge + qfq typed PARTIAL；gate 绿；physical lineage residual |
+| **B5** | L3 registry | FeatureBlock/brick manifest 与 lineage 对齐 | **PARTIAL**：qfq lineage **FIXED**；residual Type-B enrichment PARTIAL；gate 绿 |
 | **B6** | R1 E/F remeasure | **仅** S7 达 owner 阈值 + scheduled | 同 protocol；禁 Optuna |
 
 **明确不做**：新开 A→H 主线；greenfield 变量平台；按层拆 DuckDB；E/F 与 S7 并行抢刀。

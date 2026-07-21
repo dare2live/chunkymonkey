@@ -45,8 +45,7 @@ def _next_knives(*, b_on: bool, c_on: bool) -> list[str]:
     knives = [
         "S7 near-FIXED / stronger PARTIAL: inventory 23/46 ssot = typed hard-stop "
         "wall (2 blocked + 7 serve_l0_declared + 14 sync_orphan); no fake COMPAT",
-        "B5 brick registry PARTIAL: L2/L3 manifest + orphan/hop/raw gate shipped; "
-        "residual = qfq physical lineage columns (or honest UNTRUSTED read); Type-B registered (no fake FIXED)",
+        "B5 brick registry PARTIAL: L2/L3 + Type-B gate shipped; qfq physical lineage FIXED; residual = Type-B enrichment PARTIAL only (no fake FIXED)",
         "E0 disclosure residual: org_holding provider land BLOCKED; holders 17 / "
         "stk 27 accepted; org stay local-raw (no by-date invent)",
         "§15 adoption verify: commits/knife ≤1.5; async CI; pre-knife before L3",

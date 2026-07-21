@@ -310,7 +310,7 @@ def test_b5_discover_type_b_tables_from_data_layers() -> None:
         assert expected in found
 
 
-def test_b5_live_registry_covers_type_b_and_typed_qfq_partial() -> None:
+def test_b5_live_registry_covers_type_b_and_qfq_physical_lineage() -> None:
     br = _load_service_mod()
     reg = br.load_registry()
     assert "institution_profile_edge_v0" in reg.feature_blocks
@@ -322,12 +322,21 @@ def test_b5_live_registry_covers_type_b_and_typed_qfq_partial() -> None:
     assert inst.store == "feature_store"
     assert rally.store == "feature_store"
     assert rally.config_hash == "v2_20260702"
+    # Type-B enrichment residual keeps B5 PARTIAL overall; qfq lineage itself FIXED.
+    assert inst.status == "partial"
+    assert any(r.code == "enrichment_projection_partial" for r in inst.partial_reasons)
     qfq = reg.bricks["price_kline_qfq_tushare"]
-    assert qfq.status == "partial"
-    assert qfq.partial_reasons
-    assert any(r.code == "missing_physical_lineage_columns" for r in qfq.partial_reasons)
+    assert qfq.status == "declared"
+    assert qfq.partial_reasons == ()
     assert qfq.lineage is not None
-    assert qfq.lineage.get("trust") == "PARTIAL"
+    assert qfq.lineage.get("trust") == "LINEAGE_OK"
+    assert set(qfq.lineage.get("physical_lineage_columns") or []) == {
+        "batch_id",
+        "ingested_at",
+        "factor_as_of",
+    }
+    assert qfq.lineage.get("read_placeholders") in (None, [], ())
+    assert qfq.lineage.get("not_execution_truth") is True
     assert br.orphan_type_b_tables(reg, repo=REPO) == []
 
 

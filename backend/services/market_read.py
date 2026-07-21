@@ -12,6 +12,14 @@ ANALYSIS_KLINE_QFQ_RELATION = KLINE_DAILY_QFQ_POLICY.analysis_relation or "marke
 DEFAULT_KLINE_DAILY_QFQ_COLUMNS = (
     "code", "date", "open", "high", "low", "close", "volume", "amount", "factor",
 )
+LINEAGE_KLINE_DAILY_QFQ_COLUMNS = (
+    "source_name",
+    "source_tier",
+    "is_fallback",
+    "batch_id",
+    "ingested_at",
+    "factor_as_of",
+)
 
 
 def get_analysis_kline_qfq_relation(schema: Optional[str] = None) -> str:
@@ -26,11 +34,16 @@ def analysis_kline_daily_qfq_sql(
     columns: Iterable[str] = DEFAULT_KLINE_DAILY_QFQ_COLUMNS,
     include_source_lineage: bool = False,
 ) -> str:
-    """Return the qfq SELECT used by analytical jobs; never an execution-price contract."""
+    """Return the qfq SELECT used by analytical jobs; never an execution-price contract.
+
+    When ``include_source_lineage=True``, select physical/view lineage columns
+    without COALESCE placeholders (missing values stay NULL — fail-closed honesty).
+    """
     relation = relation or ANALYSIS_KLINE_QFQ_RELATION
     allowed = {
         "code", "date", "open", "high", "low", "close", "volume", "amount", "factor",
         "freq", "adjust",
+        *LINEAGE_KLINE_DAILY_QFQ_COLUMNS,
     }
     selected = []
     for column in columns:
@@ -38,11 +51,9 @@ def analysis_kline_daily_qfq_sql(
             raise ValueError(f"unsupported qfq analysis column: {column}")
         selected.append(column)
     if include_source_lineage:
-        selected.extend([
-            "COALESCE(source_name, 'unknown') AS source_name",
-            "COALESCE(source_tier, 99)::SMALLINT AS source_tier",
-            "COALESCE(is_fallback, FALSE) AS is_fallback",
-        ])
+        for column in LINEAGE_KLINE_DAILY_QFQ_COLUMNS:
+            if column not in selected:
+                selected.append(column)
     select_sql = ", ".join(selected)
     return (
         f"SELECT {select_sql}\n"
@@ -56,6 +67,7 @@ __all__ = [
     "ANALYSIS_KLINE_QFQ_VIEW_DDL",
     "DEFAULT_KLINE_DAILY_QFQ_COLUMNS",
     "KLINE_DAILY_QFQ_POLICY",
+    "LINEAGE_KLINE_DAILY_QFQ_COLUMNS",
     "analysis_kline_daily_qfq_sql",
     "get_analysis_kline_qfq_relation",
 ]

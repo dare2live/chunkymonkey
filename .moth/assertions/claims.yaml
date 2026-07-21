@@ -147,7 +147,7 @@ assertions:
     query: "SELECT count(*) FROM fact_top10_holder_period WHERE report_date LIKE '%-%'"
     expect: {op: "==", value: 0}
   - id: qfq-serving-tushare-only
-    claim: "v_price_kline_qfq 当前 serving view 只含 tushare 派生行；此断言不把 qfq 认证为 nominal canonical 或 execution truth，factor/batch/as-of 血缘仍是 Tier0 迁移缺口"
+    claim: "v_price_kline_qfq 当前 serving view 只含 tushare 派生行；qfq 非 nominal/execution truth；physical lineage=batch_id/ingested_at/factor_as_of on rebuild (latest-factor rebase method typed; pin batch_id for reproducibility)"
     type: duckdb_sql
     database: data/market.duckdb
     query: "SELECT count(*) FROM v_price_kline_qfq WHERE source_name <> 'tushare'"

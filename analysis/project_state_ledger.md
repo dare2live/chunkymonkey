@@ -2959,3 +2959,23 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual**：qfq physical lineage columns（or honest UNTRUSTED read）；org BLOCKED；
   S7 hard-stop wall. Label **stronger PARTIAL**（not FIXED）.
 - **Status**: **PARTIAL**（stronger）.
+
+### 2026-07-21 — B5 qfq physical lineage FIXED
+
+- Wall-clock: Tue 2026-07-21 ~18:10–19:10 Asia/Shanghai.
+- **Knife**（§15；tip `e87574a5a` → this commit）：close qfq lineage residual without
+  fake UNTRUSTED / fake S7 FIXED.
+  1. `build_price_kline_qfq_tushare.build` CTAS writes `batch_id` / `ingested_at` /
+     `factor_as_of` (latest adj_factor trade_date per stock).
+  2. `market_schema` shell+migrate+view passthrough；`analysis_kline_daily_qfq_sql`
+     drops COALESCE placeholders (NULL stays NULL).
+  3. Brick `price_kline_qfq_tushare`: `status=declared`, `lineage.trust=LINEAGE_OK`,
+     `physical_lineage_columns=[batch_id,ingested_at,factor_as_of]`；method note keeps
+     latest-factor rewrite as typed method (pin batch_id), not PARTIAL defect.
+- Evidence：`test_build_price_kline_qfq_tushare` + `test_market_db_canonical_kline` +
+  `test_brick_registry_b5`；`check_brick_registry` PASS.
+- **Did not**：Optuna；E/F；org invent；S7 fake FIXED；mass live rebuild in-knife.
+- **Residual**：B5 overall **PARTIAL** (`institution_profile_edge` enrichment)；
+  live market.duckdb populates lineage on next `derive qfq`；S7 hard-stop wall；
+  org BLOCKED. Label **qfq FIXED** / **B5 PARTIAL**.
+- **Status**: **FIXED** (qfq lineage) / **PARTIAL** (B5 overall).

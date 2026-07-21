@@ -15,8 +15,8 @@
 #   - every data_layers tables:* → L2_feature must appear in some outputs (Type-B deep reg)
 #   - status=partial requires typed partial_reasons; type_b_edge requires store=feature_store
 #
-# Deepen knife = Type-B/feature_store registration + qfq typed PARTIAL lineage.
-# Not FIXED: qfq physical lineage columns still absent; inst profile enrichment PARTIAL.
+# qfq physical lineage FIXED (batch_id/ingested_at/factor_as_of on rebuild).
+# B5 overall still PARTIAL: institution_profile_edge enrichment_projection_partial.
 
 version: 1
 max_composite_hops: 2
@@ -47,32 +47,25 @@ bricks:
     outputs: [price_kline_qfq_tushare, kline_qfq]
     owners:
       - backend/scripts/build_price_kline_qfq_tushare.py
-    config_hash: derive_qfq_from_accepted_v1
+    config_hash: derive_qfq_from_accepted_v2_lineage
     availability_axis: available_at
-    status: partial
-    partial_reasons:
-      - code: missing_physical_lineage_columns
-        detail: >-
-          price_kline_qfq_tushare is full CTAS rebuild with no batch_id /
-          ingested_at / factor_as_of columns on the physical table.
-      - code: latest_factor_full_history_rewrite
-        detail: >-
-          qfq = nominal × adj_factor / adj_factor_latest_per_stock; historical
-          levels rewrite when latest factor changes (Tier0 lineage/PIT migration).
-      - code: read_surface_placeholder_lineage
-        detail: >-
-          analysis_kline_daily_qfq_sql(include_source_lineage=True) COALESCE
-          source_name/source_tier/is_fallback placeholders; columns absent on table.
+    status: declared
     lineage:
       method: latest_factor_rebase_qfq
       as_of_policy: rebuild_snapshot_latest_adj_factor_per_stock
       nominal_source: accepted_canonical_nominal_ohlcv_daily
       factor_source: raw_tushare_adj_factor
-      physical_lineage_columns: []
-      read_placeholders: [source_name, source_tier, is_fallback]
-      trust: PARTIAL
+      physical_lineage_columns: [batch_id, ingested_at, factor_as_of]
+      read_placeholders: []
+      trust: LINEAGE_OK
       not_execution_truth: true
-    notes: "S5/S7 derive --from-accepted; typed PARTIAL lineage (not UNTRUSTED, not FIXED)"
+      method_note: >-
+        Historical OHLC levels rewrite on each full rebuild when latest
+        adj_factor changes; pin batch_id/factor_as_of for reproducibility.
+        Method is typed, not a missing-lineage defect.
+    notes: >-
+      S5/S7 derive --from-accepted; physical lineage on rebuild path;
+      not execution truth; B5 residual = Type-B enrichment PARTIAL only
 
   fact_stock_form_daily:
     layer: L2

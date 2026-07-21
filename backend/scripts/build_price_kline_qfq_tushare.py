@@ -1,7 +1,9 @@
 """Build the current TuShare qfq analysis series and run post-build sanity checks.
 
-This output is a derived serving/research input. It is not nominal execution-price truth and its
-latest-factor full-history rewrite remains a Tier0 lineage/PIT migration item.
+This output is a derived serving/research input. It is not nominal execution-price truth.
+Method = latest-factor rebase qfq; each full rebuild stamps batch_id / ingested_at /
+factor_as_of so consumers can pin a rebuild snapshot (historical levels rewrite when
+latest adj_factor changes — typed method, not missing lineage).
 
 daily_update Step 2.96 每日 CREATE TABLE AS 全量重建 price_kline_qfq_tushare (market.duckdb),
 v_price_kline_qfq 视图 FROM 本表 = 当前 qfq analysis/serving 兼容读面；不等于 execution truth。
@@ -18,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -74,7 +77,30 @@ def nominal_source_cte(*, from_accepted: bool = True) -> str:
     return _NOMINAL_SOURCE_CTE
 
 
-def build(conn, *, from_accepted: bool = True) -> int:
+def _default_batch_id(*, from_accepted: bool, ingested_at: str) -> str:
+    mode = "from_accepted" if from_accepted else "legacy_fill"
+    stamp = (
+        ingested_at.replace("-", "")
+        .replace(":", "")
+        .replace("T", "")
+        .replace("Z", "")
+    )
+    return f"qfq:{stamp}:{mode}"
+
+
+def build(
+    conn,
+    *,
+    from_accepted: bool = True,
+    batch_id: str | None = None,
+    ingested_at: str | None = None,
+) -> int:
+    built_at = ingested_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    bid = batch_id or _default_batch_id(from_accepted=from_accepted, ingested_at=built_at)
+    # Escape single quotes for SQL string literals (batch ids are controlled).
+    bid_sql = bid.replace("'", "''")
+    built_sql = built_at.replace("'", "''")
+
     conn.execute(f"ATTACH IF NOT EXISTS '{TUSHARE_DB}' AS tr (READ_ONLY)")
     conn.execute(f"DROP TABLE IF EXISTS {TARGET}")
     nominal_cte = nominal_source_cte(from_accepted=from_accepted)
@@ -82,8 +108,8 @@ def build(conn, *, from_accepted: bool = True) -> int:
         CREATE TABLE {TARGET} AS
         WITH {nominal_cte},
         latest AS (
-            SELECT ts_code, adj_factor AS f_latest FROM (
-                SELECT ts_code, adj_factor,
+            SELECT ts_code, adj_factor AS f_latest, trade_date AS factor_as_of_ymd FROM (
+                SELECT ts_code, adj_factor, trade_date,
                        ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) rn
                 FROM tr.raw_tushare_adj_factor) WHERE rn = 1
         )
@@ -95,7 +121,13 @@ def build(conn, *, from_accepted: bool = True) -> int:
             d.low   * a.adj_factor / l.f_latest AS low,
             d.close * a.adj_factor / l.f_latest AS close,
             d.vol * 100.0 AS volume,      -- 手 -> 股 (对齐 tdxhub)
-            d.amount * 1000.0 AS amount   -- 千元 -> 元 (对齐 tdxhub)
+            d.amount * 1000.0 AS amount,  -- 千元 -> 元 (对齐 tdxhub)
+            '{bid_sql}' AS batch_id,
+            CAST('{built_sql}' AS TIMESTAMP) AS ingested_at,
+            substr(replace(CAST(l.factor_as_of_ymd AS VARCHAR), '-', ''), 1, 4)||'-'
+              ||substr(replace(CAST(l.factor_as_of_ymd AS VARCHAR), '-', ''), 5, 2)||'-'
+              ||substr(replace(CAST(l.factor_as_of_ymd AS VARCHAR), '-', ''), 7, 2)
+              AS factor_as_of
         FROM nominal d
         JOIN tr.raw_tushare_adj_factor a ON d.ts_code = a.ts_code AND d.trade_date = a.trade_date
         JOIN latest l ON d.ts_code = l.ts_code
@@ -119,17 +151,26 @@ def cross_check(conn) -> dict:
 
     原版=vs tdxhub v_price_kline_qfq 重叠期收益对账 (切主源一次性核证); tdxhub 退役后
     视图 FROM 本表自身 → self-join 恒 diff=0 恒 PASS = 永真式死闸。改为真自检:
-    行数/覆盖不缩水 + 无非法价格行 (视图 WHERE 会过滤坏行, 此处查源表侧防静默丢数)。
+    行数/覆盖不缩水 + 无非法价格行 (视图 WHERE 会过滤坏行, 此处查源表侧防静默丢数)
+    + physical lineage 非空 (batch_id/ingested_at/factor_as_of).
     """
     row = conn.execute(f"""
         SELECT count(*)                                        AS n_rows,
                count(DISTINCT code)                            AS n_codes,
                max(date)                                       AS max_date,
                sum(CASE WHEN close IS NULL OR close <= 0
-                         OR high < low THEN 1 ELSE 0 END)      AS n_bad_price
+                         OR high < low THEN 1 ELSE 0 END)      AS n_bad_price,
+               sum(CASE WHEN batch_id IS NULL OR ingested_at IS NULL
+                         OR factor_as_of IS NULL THEN 1 ELSE 0 END) AS n_missing_lineage
         FROM {TARGET}
     """).fetchone()
-    return {"n_rows": row[0], "n_codes": row[1], "max_date": row[2], "n_bad_price": row[3]}
+    return {
+        "n_rows": row[0],
+        "n_codes": row[1],
+        "max_date": row[2],
+        "n_bad_price": row[3],
+        "n_missing_lineage": row[4],
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -156,20 +197,35 @@ def main(argv: list[str] | None = None) -> int:
         if not args.check_only:
             n = build(conn, from_accepted=from_accepted)
             mode_name = "from_accepted" if from_accepted else "canonical_plus_legacy_fill"
-            r = conn.execute(f"SELECT min(date),max(date),count(DISTINCT code) FROM {TARGET}").fetchone()
+            r = conn.execute(
+                f"SELECT min(date),max(date),count(DISTINCT code), "
+                f"count(DISTINCT batch_id), min(factor_as_of), max(factor_as_of) "
+                f"FROM {TARGET}"
+            ).fetchone()
             print(
-                f"[build] {TARGET}: {n:,} 行 | {r[0]}~{r[1]} | {r[2]} 股 | mode={mode_name}",
+                f"[build] {TARGET}: {n:,} 行 | {r[0]}~{r[1]} | {r[2]} 股 | "
+                f"mode={mode_name} | batches={r[3]} | factor_as_of={r[4]}~{r[5]}",
                 flush=True,
             )
         cc = cross_check(conn)
         conn.execute("CHECKPOINT")
     finally:
         conn.close()
-    print(f"[sanity] {TARGET}: rows={cc['n_rows']:,} codes={cc['n_codes']:,} "
-          f"max_date={cc['max_date']} bad_price={cc['n_bad_price']:,}")
+    print(
+        f"[sanity] {TARGET}: rows={cc['n_rows']:,} codes={cc['n_codes']:,} "
+        f"max_date={cc['max_date']} bad_price={cc['n_bad_price']:,} "
+        f"missing_lineage={cc['n_missing_lineage']:,}"
+    )
     min_rows = MIN_ROWS_FROM_ACCEPTED if from_accepted else MIN_ROWS
-    ok = cc["n_rows"] >= min_rows and cc["n_codes"] >= MIN_CODES and cc["n_bad_price"] == 0
-    print(f"[verdict] {'PASS 自完整性检查通过' if ok else 'REVIEW 行数/覆盖缩水或含非法价格行, 先查再消费'}")
+    ok = (
+        cc["n_rows"] >= min_rows
+        and cc["n_codes"] >= MIN_CODES
+        and cc["n_bad_price"] == 0
+        and cc["n_missing_lineage"] == 0
+    )
+    print(
+        f"[verdict] {'PASS 自完整性检查通过' if ok else 'REVIEW 行数/覆盖缩水或含非法价格/缺 lineage, 先查再消费'}"
+    )
     return 0 if ok else 2
 
 

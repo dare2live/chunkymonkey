@@ -30,7 +30,7 @@ CREATE TABLE price_kline (
 """
 
 
-# tushare qfq 主表 (2026-06-22 起 v_price_kline_qfq 唯一来源; 只存 OHLCV, 视图合成其余列)
+# tushare qfq 主表: OHLCV + physical lineage (batch_id/ingested_at/factor_as_of)
 PRICE_KLINE_QFQ_TUSHARE_DDL = """
 CREATE TABLE price_kline_qfq_tushare (
     code   TEXT NOT NULL,
@@ -41,9 +41,16 @@ CREATE TABLE price_kline_qfq_tushare (
     close  REAL,
     volume REAL,
     amount REAL,
+    batch_id TEXT,
+    ingested_at TIMESTAMP,
+    factor_as_of TEXT,
     PRIMARY KEY (code, date)
 );
 """
+
+_LINEAGE = (
+    "batch_id, ingested_at, factor_as_of"
+)
 
 
 def _setup(conn):
@@ -59,8 +66,11 @@ def test_analysis_kline_reads_tushare_only_ignores_tdxhub_and_akshare():
     try:
         _setup(conn)
         conn.execute(
-            "INSERT INTO price_kline_qfq_tushare VALUES "
-            "('000001', '2026-05-04', 10, 11, 9, 10.5, 1000, 10500)"
+            "INSERT INTO price_kline_qfq_tushare "
+            "(code, date, open, high, low, close, volume, amount, "
+            f"{_LINEAGE}) VALUES "
+            "('000001', '2026-05-04', 10, 11, 9, 10.5, 1000, 10500, "
+            "'qfq:test:from_accepted', TIMESTAMP '2026-07-21 10:00:00', '2026-05-05')"
         )
         # akshare 行存在但应被视图忽略 (tushare-only)
         conn.execute(
@@ -70,13 +80,24 @@ def test_analysis_kline_reads_tushare_only_ignores_tdxhub_and_akshare():
         )
 
         rows = conn.execute(
-            "SELECT code, date, close, factor, source_name, source_tier, is_fallback "
+            "SELECT code, date, close, factor, source_name, source_tier, is_fallback, "
+            "batch_id, factor_as_of "
             "FROM v_price_kline_qfq ORDER BY date"
         ).fetchall()
 
-        # 只有 tushare 行; tdxhub 同键被忽略 (不取其 99 值); akshare 另一天不进视图
+        # 只有 tushare 行; physical lineage passthrough; akshare 另一天不进视图
         assert [tuple(r) for r in rows] == [
-            ("000001", "2026-05-04", 10.5, 1.0, "tushare", 1, False),
+            (
+                "000001",
+                "2026-05-04",
+                10.5,
+                1.0,
+                "tushare",
+                1,
+                False,
+                "qfq:test:from_accepted",
+                "2026-05-05",
+            ),
         ]
     finally:
         conn.close()
@@ -89,7 +110,8 @@ def test_analysis_kline_excludes_invalid_price_rows_no_fallback():
         _setup(conn)
         # 非法 tushare 行 (close NULL)
         conn.execute(
-            "INSERT INTO price_kline_qfq_tushare VALUES "
+            "INSERT INTO price_kline_qfq_tushare "
+            "(code, date, open, high, low, close, volume, amount) VALUES "
             "('000001', '2026-05-04', NULL, NULL, NULL, NULL, NULL, NULL)"
         )
         # akshare 有合法行但不应被当兜底
@@ -113,7 +135,8 @@ def test_analysis_kline_excludes_invalid_volume_amount():
     try:
         _setup(conn)
         conn.execute(
-            "INSERT INTO price_kline_qfq_tushare VALUES "
+            "INSERT INTO price_kline_qfq_tushare "
+            "(code, date, open, high, low, close, volume, amount) VALUES "
             "('000001', '2026-05-04', 10, 11, 9, 10.5, 5.877471754111438e-39, 5.877471754111438e-39)"
         )
         n = conn.execute("SELECT COUNT(*) FROM v_price_kline_qfq").fetchone()[0]
@@ -129,7 +152,8 @@ def test_analysis_kline_excludes_invalid_ohlc_consistency():
         _setup(conn)
         # high(8) < low(10) 不自洽
         conn.execute(
-            "INSERT INTO price_kline_qfq_tushare VALUES "
+            "INSERT INTO price_kline_qfq_tushare "
+            "(code, date, open, high, low, close, volume, amount) VALUES "
             "('000001', '2026-05-04', 9, 8, 10, 9.5, 1000, 9500)"
         )
         n = conn.execute("SELECT COUNT(*) FROM v_price_kline_qfq").fetchone()[0]
@@ -154,9 +178,14 @@ def test_analysis_daily_qfq_sql_uses_single_policy_relation_and_optional_lineage
 
     assert "FROM market.v_price_kline_qfq" in sql
     assert "factor" in sql
-    assert "COALESCE(source_name, 'unknown') AS source_name" in sql
-    assert "COALESCE(source_tier, 99)::SMALLINT AS source_tier" in sql
-    assert "COALESCE(is_fallback, FALSE) AS is_fallback" in sql
+    # No COALESCE placeholders — physical/view columns selected honestly.
+    assert "COALESCE(" not in sql
+    assert "source_name" in sql
+    assert "source_tier" in sql
+    assert "is_fallback" in sql
+    assert "batch_id" in sql
+    assert "ingested_at" in sql
+    assert "factor_as_of" in sql
 
 
 # test_upsert_price_rows_rejects_non_allowlist_source_governance_v1 已删 (2026-06-29 批3a 回归清:
