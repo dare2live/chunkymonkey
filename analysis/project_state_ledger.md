@@ -2552,3 +2552,23 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   E/F paused. Not full E0 FIXED（research cutover / institution_follow still
   gated）.
 - **Status**: **PARTIAL**（E0 stronger）.
+
+### 2026-07-21 — Docs: formal acquire ≠ universe eligibility (owner align)
+
+- Wall-clock: Tue 2026-07-21 ~11:00 Asia/Shanghai (in-session).
+- Owner confirmed hard rules written into authority (edit-in-place, no sprawl):
+  1. Formal daily/stock_st acquire = full-market by `trade_date` (`raw_evidence`);
+     **not** exclude-then-fetch.
+  2. ST = accepted daily membership evidence at `traded_on_observation_date` /
+     universe read — **not** an acquire exclusion-list item.
+  3. BSE / 三板 / similar: landing may contain; filter via `universe_rules` /
+     population read — not acquire blacklist.
+  4. Delist: primarily no nominal K on observation day — not acquire blacklists.
+  5. Contrast: some `by_ts_code` legacy domains may pre-filter — non-formal path.
+- Touched: `docs/MASTER_TOPLEVEL_DESIGN.md` §5.1 (owner);
+  `goal.md` 已裁决; `analysis/plan_reeval_first_principles_20260720.md` §3.4;
+  `analysis/data_foundation_modularity_gap_20260720.md` §5 note;
+  `backend/config/universe_rules.yaml` header comment; BOARD regenerated.
+- **Did not**: code path change; E0/S7 advance; mass fetch; Optuna/Release.
+- **Status**: docs **FIXED** (authority aligned); program residuals unchanged
+  (E0 provider land; S7 membership L0 / ssot long-tail; E/F paused).

@@ -150,6 +150,20 @@ reason 与 policy hash 写入证据。三类 scope 不得混用：
   停牌、已终止交易或尚未上市因 t 日无 K 线而排除；股票后来退市不得反向删除其过去实际交易日。
   “退市整理期仍交易也排除”是更强的 temporal-status 语义，只有新增 PIT 身份/status 真相源后才可声称。
 
+**Formal acquire vs universe eligibility（owner 硬裁决）**：
+
+1. Formal **daily / stock_st** acquire = **全市场按 `trade_date` 拉**（`batch_mode=by_trade_date` →
+   `raw_evidence` landing）。**禁止** exclude-then-fetch：不得先用 ST/BSE/三板/退市名单裁股票池再请求。
+2. **ST** 是 accepted **日级 membership 证据**（`stock_st` partition），在
+   `traded_on_observation_date` / universe read 应用；**不是** acquire 排除名单项。
+3. **BSE / 新老三板 / 同类非池对象**：landing **可以含**；经 `universe_rules` /
+   population read（board include/exclude + eligibility）过滤进项目池——**不是** acquire blacklist。
+4. **退市**：主路径是观察日 **无名义 K** → 当日 `traded_on_observation_date` 不合格；
+   **不是** acquire 黑名单删历史。后来退市不得反向抹掉过去实际交易日。
+5. **对比（非 formal 路径）**：部分 legacy `by_ts_code` / `by_code_list` 域可对代码清单预过滤后逐码请求——
+   那是供应商接口形状或 legacy 成本路径，**不得** retroactively 定义 formal daily/ST 的 acquire 契约，
+   也不得把「名单预筛」宣称为项目 universe 真相。
+
 该日级门的 accepted 证据契约在实现前必须同时满足：calendar 使用不可变全量 generation 并从 contract
 重算 t 的开放性与 cutoff；nominal Kline/ST 使用 t 日 accepted partition；三者由同一 read-only DB/
 registry snapshot 的 trusted loader 读取并复算 canonical/projection hash、grain 唯一性、正向完整性和

@@ -94,6 +94,8 @@ chunkyctl sync / daily_update → sync_runner.run_domain(daily|stock_st)
 
 目标态：**模块各有边界与入口；`chunkyctl sync` / `daily_update` = 编排器（caller-only），按序触发；本地 raw/替代源只进 acquire→landing；accepted 为项目真相；派生/计算/展示不回写 acquire。**
 
+Acquire 边界（owner 2026-07-21；MASTER §5.1）：formal daily/ST = 全市场 by `trade_date`（`raw_evidence`），禁 exclude-then-fetch；ST/BSE/三板/退市资格在 `universe_rules` / `traded_on_observation_date` 读侧，不在 acquire 黑名单。部分 `by_ts_code` legacy 预筛 = 非 formal。
+
 | # | 切片 | 退出条件 | 禁做 |
 |---:|---|---|---|
 | **S0** | 本笔记 + goal 指针（立法） | 已入 git | 不改 runner |

@@ -71,6 +71,8 @@ A→H 降为地图；细节以重评文 §4、§9 为准。
 
 架构硬决定摘要：积木=`module+data+config+contract+evidence`；landing 保留供应商响应；日历与 universe 同级硬门；名义 OHLCV=成交真相；一数据集一 writer；`manual_only`；静态 PASS≠`live_readiness`。完整条文见 `docs/MASTER_TOPLEVEL_DESIGN.md`。
 
+**Formal daily/ST acquire（owner 2026-07-21）**：acquire = 全市场按 `trade_date`（`raw_evidence`），**禁止** exclude-then-fetch。ST = accepted 日级 membership，在 `traded_on_observation_date` / universe read 应用，**不是** acquire 排除名单。BSE/三板等 landing 可含，经 `universe_rules`/population 过滤。退市主路径 = 观察日无名义 K（非 acquire 黑名单）。部分 `by_ts_code` legacy 预筛 = 非 formal 路径，不得定义 daily/ST acquire。Owner：`docs/MASTER_TOPLEVEL_DESIGN.md` §5.1。
+
 **Product 系统 + Agent-OS 演进裁决（owner，针对 Fable5 提案）**：后续演进 = **strangler + 聚焦**，非 greenfield 重写。仅三把杠杆：(1) 单一读 SSOT 经 resolver（禁旁路直读）；(2) 本地 L2/L3 pytest = CI test-list 唯一 SSOT；(3) god-seam strangler，按 blast radius 分步收编，不整体推倒。
 
 手动 sync：`trigger_mode=manual` 不受 `same_day_at 18:00` 挡；自动更新与 consumer `available_at` 仍受 clock；交易日历对两者硬约束。

@@ -76,9 +76,17 @@ ChunkyMonkey 不是「多源 ETL 平台」也不是「策略工厂」。第一�
 - `manual` sync 可跳过 `same_day_at` 拉数，但 consumer **`available_at = max(observed, publication_cutoff)`** 不变（MASTER §3.1 transport sync authorization）。
 - 模块化 **不能** 用「先落库再补 available_at」绕过；否则 Tier1/2/策略 consumer 会读到决策时点不可用数据 → **系统作废结论**（plan 死亡线 #1）。
 
-### 3.4 Universe ≠ vendor dump
+### 3.4 Universe ≠ vendor dump（acquire ≠ eligibility）
 
 `traded_on_observation_date` = calendar ∩ 当日 nominal K ∩ venue/board ∩ 当日 ST——**不是** TuShare 返回全集。换源（S4）只换 adapter→landing；**canonical writer 与 universe resolver 不变**。过早做 S4 而不做 S2 → 换源仍要改 dragon。
+
+Owner 硬裁决（与 MASTER §5.1 对齐，2026-07-21）：
+
+1. Formal **daily / stock_st** acquire = **全市场 by `trade_date`** → `raw_evidence` landing；**禁止** exclude-then-fetch。
+2. **ST** = accepted 日级 membership 证据；在 universe / `traded_on_observation_date` **读时**应用——**不是** acquire 排除名单。
+3. **BSE / 三板** 等：landing 可含；经 `universe_rules` / population read 过滤——**不是** acquire blacklist。
+4. **退市**：主路径 = 观察日无名义 K → 当日不合格；非 acquire 黑名单；后来退市不改写历史资格。
+5. **对比**：部分 `by_ts_code` legacy 域可预筛代码清单——**非 formal** 路径，不得反定义 daily/ST acquire。
 
 ### 3.5 可换源的真实成本
 
@@ -431,3 +439,10 @@ Live 焊点（evidence pack §2.7 复核）：
 - Residual：provider land path；mass/org-full accept；authorized DatasetSnapshot
   re-freeze after E/F remeasure；S7 ssot long-tail；E/F paused.
 - Label：**E0 PARTIAL**（stronger — CLI complete for local-raw；not full E0 FIXED）.
+
+### Amend 2026-07-21 — Formal acquire ≠ universe eligibility (docs)
+
+- Owner hard rules written into MASTER §5.1 + goal 已裁决 + §3.4 above.
+- Formal daily/ST: full-market by trade_date; ST/BSE/delist at population read;
+  `by_ts_code` pre-filter = non-formal contrast only.
+- No transport code change this amend; next knife remains E0 residual or S7.
