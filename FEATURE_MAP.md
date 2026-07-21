@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-22 00:07
+> Snapshot: 2026-07-22 00:30
 
 ## 1. 入口面
 
@@ -34,6 +34,7 @@
 | ops_manual_run | `/api/v3/ops` | 4 |
 | paper_portfolio | `/api/v3/paper` | 5 |
 | stock_dossier | `/api/v3/stock` | 1 |
+| stock_screener | `/api/v3/screener` | 2 |
 
 端点全列表在 json (`routes` 键)。
 
@@ -170,15 +171,15 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,924 | calls 边 10,597 | imports 边 3,021 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,005 | calls 边 10,680 | imports 边 3,042 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 65 |
+| services.duck_adapter | 66 |
 | services.data_sources | 26 |
-| services.universe | 20 |
+| services.universe | 21 |
 | services.data_sources.security_day_partition | 19 |
 | services.data_sources.accepted_schema | 18 |
 | services.institution_follow_b0_measure | 18 |
@@ -190,15 +191,15 @@
 | services.source_watermarks | 13 |
 | services.data_sources.calendar_schema | 12 |
 | services.tier12_publish_writer | 12 |
-| services.data_sources.contracts | 11 |
+| services.data_access | 11 |
 
 ### 跨文件 fan-in 最高的文件 (近似口径: 唯一定义名 + caller 实际 import 目标模块双过滤)
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 30 |
+| backend/services/duck_adapter.py | 31 |
 | backend/services/institution_follow_edge_gates.py | 17 |
-| backend/services/universe.py | 16 |
+| backend/services/universe.py | 17 |
 | backend/services/source_watermarks.py | 13 |
 | backend/services/data_sources/disclosure_boundaries.py | 11 |
 | backend/services/database_manifest.py | 11 |
@@ -226,7 +227,7 @@
 
 ## 5. 概览
 
-- chunkyctl 子命令 8 | launchd 任务 0 | router 6 (端点 26)
+- chunkyctl 子命令 8 | launchd 任务 0 | router 7 (端点 28)
 - sync_registry 数据域 47
 - 产表 34 (多 writer 12)
 

@@ -1211,6 +1211,21 @@ select:focus {
 .assist-disclaimer {
   margin-top: 0.5rem;
 }
+.screener-filter-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0.35rem 0;
+}
+.screener-filter-label {
+  flex: 0 0 auto;
+  width: 2.4rem;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.screener-filter-row .assist-filters {
+  margin: 0;
+}
 .dossier-tabs {
   margin-bottom: 10px;
 }

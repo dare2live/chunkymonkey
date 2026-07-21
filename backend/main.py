@@ -145,6 +145,11 @@ app.include_router(stock_dossier_router, prefix="/api/v3/stock", tags=["stock_do
 from routers.decision_assist import router as decision_assist_router
 app.include_router(decision_assist_router, prefix="/api/v3/decision", tags=["decision_assist"])
 
+# Cap 5B 形态/阶段选股面（Tier3/product）：读 fact_stock_form_daily，与档案 F 同一 Tier1 积木；
+# 纯过滤面，无评分/排序模型；禁 Optuna/StrategyRelease。
+from routers.stock_screener import router as stock_screener_router
+app.include_router(stock_screener_router, prefix="/api/v3/screener", tags=["stock_screener"])
+
 # (退役 routers: market_perception/bestchoice/perception_legacy/signals_v2 等 2026-06-14~28 删, 详 ledger + git史)
 
 # 设置选项相关的API (比如开启/关闭功能模块)

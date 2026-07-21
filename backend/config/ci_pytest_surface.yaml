@@ -99,6 +99,7 @@ blocking_paths:
 - tests/test_stock_dossier_api.py
 - tests/test_moneyflow_assist.py
 - tests/test_decision_intersection.py
+- tests/test_stock_screener.py
 nightly_paths:
 - tests/services/test_main_rally_b0.py
 - tests/services/test_main_rally_b1.py

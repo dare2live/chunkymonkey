@@ -1669,6 +1669,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_stock_screener.py",
+      "kind": "consume",
+      "src": "table:reference.dim_trading_calendar"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_technical_states.py",
       "kind": "consume",
       "src": "table:reference.dim_trading_calendar"
@@ -2839,6 +2845,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/stock_screener.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_form_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_form_daily"
@@ -2851,7 +2863,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/main.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_form_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/routers/stock_dossier.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_form_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/routers/stock_screener.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_form_daily"
     },
@@ -2912,6 +2936,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/rally_gt.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_form_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/stock_screener.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_form_daily"
     },
@@ -2984,6 +3014,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_stock_dossier_api.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_form_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_stock_screener.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_form_daily"
     },
@@ -3433,6 +3469,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/stock_screener.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_top10_holder_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_disclosure_boundaries.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_top10_holder_period"
@@ -3464,6 +3506,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_stock_dossier_api.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_top10_holder_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_stock_screener.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_top10_holder_period"
     },
@@ -7027,9 +7075,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1120,
-    "generated_at": "2026-07-21T16:13:27.250209+00:00",
-    "node_count": 409,
+    "edge_count": 1128,
+    "generated_at": "2026-07-21T16:30:35.186281+00:00",
+    "node_count": 413,
     "version": 2
   },
   "nodes": [
@@ -7156,6 +7204,14 @@
     {
       "attrs": {
         "ctype": "config",
+        "path": "backend/config/stock_screener.yaml"
+      },
+      "id": "consumer:backend/config/stock_screener.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
         "path": "backend/config/sync_registry.yaml"
       },
       "id": "consumer:backend/config/sync_registry.yaml",
@@ -7215,6 +7271,14 @@
         "path": "backend/routers/stock_dossier.py"
       },
       "id": "consumer:backend/routers/stock_dossier.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "router",
+        "path": "backend/routers/stock_screener.py"
+      },
+      "id": "consumer:backend/routers/stock_screener.py",
       "kind": "consumer"
     },
     {
@@ -8148,6 +8212,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/stock_screener.py"
+      },
+      "id": "consumer:backend/services/stock_screener.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/technical_states/__init__.py"
       },
       "id": "consumer:backend/services/technical_states/__init__.py",
@@ -8871,6 +8943,14 @@
         "path": "backend/tests/test_stock_dossier_api.py"
       },
       "id": "consumer:backend/tests/test_stock_dossier_api.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/test_stock_screener.py"
+      },
+      "id": "consumer:backend/tests/test_stock_screener.py",
       "kind": "consumer"
     },
     {

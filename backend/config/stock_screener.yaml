@@ -1,0 +1,22 @@
+version: 1
+surface_version: stock_screener_form_stage_v0
+disclaimer: "形态/阶段为 Tier1 观察态标签（fact_stock_form_daily 同一口径，与股票档案「形态·阶段」tab 一致）；非预测，不构成买卖建议；未经 B0→B5 策略验证。"
+sla_max_lag_calendar_days: 1
+default_limit: 50
+max_limit: 200
+max_options_per_facet: 30
+axis_pos_zh:
+  low: 低位
+  mid: 中位
+  high: 高位
+axis_trend_zh:
+  up: 上行
+  down: 下行
+  flat: 横盘
+axis_purity_zh:
+  trending: 结构干净
+  choppy: 结构嘈杂
+axis_vol_zh:
+  heavy: 放量
+  shrink: 缩量
+  normal: 常量

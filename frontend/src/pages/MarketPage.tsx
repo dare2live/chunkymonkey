@@ -42,6 +42,15 @@ import type {
   RotationSector,
   SentimentPoint,
 } from "../api/pulse";
+import {
+  fetchScreenerFormStage,
+  fetchScreenerOptions,
+  type ScreenerAxisPos,
+  type ScreenerAxisPurity,
+  type ScreenerAxisTrend,
+  type ScreenerAxisVol,
+  type ScreenerRow,
+} from "../api/screener";
 import { Card, FetchGate } from "../components/Card";
 import { EChart } from "../components/EChart";
 import { fmtDate, fmtInt, fmtNum } from "../format";
@@ -1645,6 +1654,201 @@ function IntersectionPanel() {
   );
 }
 
+// ── Cap 5B：形态/阶段选股面（同一 Tier1 积木 fact_stock_form_daily，与档案 F 一致；
+//    纯过滤面，无评分/排序模型，禁 Optuna/StrategyRelease） ──────────────────
+
+const AXIS_POS_TABS: { key: ScreenerAxisPos; label: string }[] = [
+  { key: "low", label: "低位" },
+  { key: "mid", label: "中位" },
+  { key: "high", label: "高位" },
+];
+const AXIS_TREND_TABS: { key: ScreenerAxisTrend; label: string }[] = [
+  { key: "up", label: "上行" },
+  { key: "down", label: "下行" },
+  { key: "flat", label: "横盘" },
+];
+const AXIS_PURITY_TABS: { key: ScreenerAxisPurity; label: string }[] = [
+  { key: "trending", label: "结构干净" },
+  { key: "choppy", label: "结构嘈杂" },
+];
+const AXIS_VOL_TABS: { key: ScreenerAxisVol; label: string }[] = [
+  { key: "heavy", label: "放量" },
+  { key: "shrink", label: "缩量" },
+  { key: "normal", label: "常量" },
+];
+
+function AxisFilterRow<T extends string>(props: {
+  label: string;
+  tabs: { key: T; label: string }[];
+  value: T | null;
+  onChange: (v: T | null) => void;
+}) {
+  return (
+    <div className="screener-filter-row">
+      <span className="screener-filter-label">{props.label}</span>
+      <div className="tab-group assist-filters">
+        <button
+          type="button"
+          className={`btn tab${props.value === null ? " active" : ""}`}
+          onClick={() => props.onChange(null)}
+        >
+          不限
+        </button>
+        {props.tabs.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            className={`btn tab${props.value === t.key ? " active" : ""}`}
+            onClick={() => props.onChange(props.value === t.key ? null : t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ScreenerRowCard({ row, onOpen }: { row: ScreenerRow; onOpen: (code: string) => void }) {
+  return (
+    <div className="table-wrap">
+      <table className="data-table">
+        <tbody>
+          <tr className="clickable" title="点击查看该股档案" onClick={() => onOpen(row.stock_code)}>
+            <td>
+              <b>{row.stock_name ?? "—"}</b>
+              <span className="mono muted"> {row.stock_code}</span>
+            </td>
+            <td className="muted">
+              {row.form_name ?? "—"}
+              {row.form_sub ? `（${row.form_sub}）` : ""}
+              {row.is_breakout_event ? <span className="badge-breakout">突破</span> : null}
+            </td>
+            <td className="muted">
+              {[row.axis_pos_zh, row.axis_trend_zh, row.axis_purity_zh, row.axis_vol_zh]
+                .filter(Boolean)
+                .join(" · ") || "—"}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="assist-conclusion">{row.why}</p>
+    </div>
+  );
+}
+
+function ScreenerPanel() {
+  const navigate = useNavigate();
+  const optionsState = useFetch(fetchScreenerOptions, []);
+  const [formNames, setFormNames] = useState<string[]>([]);
+  const [axisPos, setAxisPos] = useState<ScreenerAxisPos | null>(null);
+  const [axisTrend, setAxisTrend] = useState<ScreenerAxisTrend | null>(null);
+  const [axisPurity, setAxisPurity] = useState<ScreenerAxisPurity | null>(null);
+  const [axisVol, setAxisVol] = useState<ScreenerAxisVol | null>(null);
+  const [breakoutOnly, setBreakoutOnly] = useState(false);
+
+  const resultState = useFetch(
+    () =>
+      fetchScreenerFormStage({
+        formNames,
+        axisPos: axisPos ?? undefined,
+        axisTrend: axisTrend ?? undefined,
+        axisPurity: axisPurity ?? undefined,
+        axisVol: axisVol ?? undefined,
+        isBreakoutEvent: breakoutOnly ? true : undefined,
+        limit: 50,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [formNames.join(","), axisPos, axisTrend, axisPurity, axisVol, breakoutOnly],
+  );
+
+  const formOptions = optionsState.data?.facets.form_name ?? [];
+
+  return (
+    <div className="assist-panel">
+      <p className="page-desc assist-disclaimer">
+        形态/阶段选股面：与股票档案「形态·阶段」同一 Tier1 积木（fact_stock_form_daily），
+        纯过滤展示 — 不评分、不排序打分、未经 B0→B5 策略验证，非买卖建议。
+      </p>
+      <div className="screener-filter-row">
+        <span className="screener-filter-label">形态</span>
+        <div className="tab-group assist-filters">
+          {formOptions.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`btn tab${formNames.includes(opt.value) ? " active" : ""}`}
+              onClick={() =>
+                setFormNames((prev) =>
+                  prev.includes(opt.value)
+                    ? prev.filter((v) => v !== opt.value)
+                    : [...prev, opt.value],
+                )
+              }
+            >
+              {opt.label} <span className="mono muted">{opt.count}</span>
+            </button>
+          ))}
+          {formOptions.length === 0 && <span className="muted">暂无可选形态</span>}
+        </div>
+      </div>
+      <AxisFilterRow label="位置" tabs={AXIS_POS_TABS} value={axisPos} onChange={setAxisPos} />
+      <AxisFilterRow label="趋势" tabs={AXIS_TREND_TABS} value={axisTrend} onChange={setAxisTrend} />
+      <AxisFilterRow label="结构" tabs={AXIS_PURITY_TABS} value={axisPurity} onChange={setAxisPurity} />
+      <AxisFilterRow label="量能" tabs={AXIS_VOL_TABS} value={axisVol} onChange={setAxisVol} />
+      <div className="screener-filter-row">
+        <span className="screener-filter-label">突破</span>
+        <div className="tab-group assist-filters">
+          <button
+            type="button"
+            className={`btn tab${!breakoutOnly ? " active" : ""}`}
+            onClick={() => setBreakoutOnly(false)}
+          >
+            不限
+          </button>
+          <button
+            type="button"
+            className={`btn tab${breakoutOnly ? " active" : ""}`}
+            onClick={() => setBreakoutOnly(true)}
+          >
+            仅突破日
+          </button>
+        </div>
+      </div>
+      <Card
+        title="选股结果（最多 50 条）"
+        extra={
+          resultState.data?.as_of ? (
+            <span className="muted mono">as-of {fmtDate(resultState.data.as_of)}</span>
+          ) : null
+        }
+      >
+        {resultState.data?.status === "stale" ? (
+          <div className="state-hint">
+            形态/阶段数据过期（{resultState.data.reason}）— 不展示假新鲜结果，等待下一轮更新。
+          </div>
+        ) : (
+          <FetchGate
+            state={resultState}
+            empty={(d) => d.rows.length === 0}
+            emptyHint="当前筛选条件下无匹配个股（诚实空态，非故障）"
+          >
+            {(d) => (
+              <>
+                {d.rows.map((r) => (
+                  <ScreenerRowCard key={r.stock_code} row={r} onOpen={(code) => navigate(`/stock/${code}`)} />
+                ))}
+                {d.truncated && <p className="muted dossier-note">结果已截断至 50 条，请细化筛选条件。</p>}
+                <p className="muted dossier-note">{d.disclaimer}</p>
+              </>
+            )}
+          </FetchGate>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 function SensingPanel() {
   return (
     <>
@@ -1678,6 +1882,7 @@ const MARKET_PAGE_TABS = [
   { key: "sensing", label: "市场感知" },
   { key: "assist", label: "资金决策辅助" },
   { key: "intersection", label: "交集最强" },
+  { key: "screener", label: "形态/阶段选股" },
 ] as const;
 type MarketPageTab = (typeof MARKET_PAGE_TABS)[number]["key"];
 
@@ -1701,6 +1906,7 @@ export function MarketPage() {
       {pageTab === "sensing" && <SensingPanel />}
       {pageTab === "assist" && <MoneyflowAssistPanel />}
       {pageTab === "intersection" && <IntersectionPanel />}
+      {pageTab === "screener" && <ScreenerPanel />}
     </div>
   );
 }
