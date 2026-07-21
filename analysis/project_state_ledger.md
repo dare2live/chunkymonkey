@@ -2979,3 +2979,23 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   live market.duckdb populates lineage on next `derive qfq`；S7 hard-stop wall；
   org BLOCKED. Label **qfq FIXED** / **B5 PARTIAL**.
 - **Status**: **FIXED** (qfq lineage) / **PARTIAL** (B5 overall).
+
+### 2026-07-21 — qfq live derive from-accepted (lineage populate)
+
+- Wall-clock: Tue 2026-07-21 ~18:28 Asia/Shanghai.
+- Command：`chunkyctl derive qfq --from-accepted`（manual_only；tip `d1a4e66a9` code path）.
+- Result：`8,402,928` rows | `2019-01-02`→`2026-07-20` | `5762` codes |
+  `mode=from_accepted` | `batches=1` | `factor_as_of=2019-06-20`→`2026-07-20` |
+  sanity `missing_lineage=0` | verdict **PASS** | wall-clock **real 6.45s**
+  (user 16.36 / sys 1.48).
+- Live verify：physical columns `batch_id`/`ingested_at`/`factor_as_of` present；
+  `COUNT(*)=COUNT(batch_id)=COUNT(ingested_at)=COUNT(factor_as_of)=8402928`；
+  sample batch_id `qfq:20260721102831:from_accepted`.
+- **Type-B knife decision**：no safe thin knife. `institution_profile_edge_v0`
+  remains `enrichment_projection_partial` — rebuild still
+  `canonical_spine_legacy_enrichment_projection`；holders canary thin
+  (accepted notice **17** / periods **30** / rows **1144**；`hold_change_num`
+  nulls **157**). Closing would need broader E0 holders historical enrichment
+  (not org invent / not E/F). Residual documented；stop.
+- **Did not**：Optuna；E/F；org invent；S7 fake FIXED；B5 fake FIXED.
+- **Status**: **FIXED** (qfq live lineage populate) / **PARTIAL** (B5 overall).

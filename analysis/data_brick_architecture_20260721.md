@@ -243,8 +243,8 @@ flowchart TB
 |---|---|---|
 | **S7 legacy plane** | **near-FIXED / stronger PARTIAL**：23/46 ssot = typed hard-stop wall only（2 blocked + 7 serve_l0_declared + 14 sync_orphan）；B1+B2 priority done | no fake COMPAT；next only with new publication/sunset evidence；else E0 |
 | **E0 disclosure** | org provider land **BLOCKED**；holders **17** / stk **27** accepted（local-raw empty_skip + row_seq fix） | org stay local-raw；no by-date invent |
-| **L2 qfq lineage** | **FIXED**：physical `batch_id`/`ingested_at`/`factor_as_of` on rebuild；view passthrough；no COALESCE placeholders；method=latest-factor rebase typed | live populate on next `derive qfq`；pin batch_id for reproducibility；not execution truth |
-| **L3 brick registry** | **PARTIAL**：FeatureBlock + Type-B/feature_store + hop/raw/orphan/partial_reasons gate；qfq lineage FIXED | residual = `institution_profile_edge` enrichment PARTIAL；不假 FIXED |
+| **L2 qfq lineage** | **FIXED**：physical `batch_id`/`ingested_at`/`factor_as_of` on rebuild；view passthrough；no COALESCE placeholders；method=latest-factor rebase typed；live `derive qfq --from-accepted` populated 8,402,928 / `missing_lineage=0` / 6.45s | pin batch_id for reproducibility；not execution truth |
+| **L3 brick registry** | **PARTIAL**：FeatureBlock + Type-B/feature_store + hop/raw/orphan/partial_reasons gate；qfq lineage FIXED + live populate | residual = `institution_profile_edge` enrichment PARTIAL（no thin knife；holders canary）；不假 FIXED |
 | **Blocked datasets** | stk_limit/daily_basic/suspend_d/margin_detail | 诚实无 publication；不 fake PIT |
 
 ### 7.3 有序 strangler（与 plan_reeval / db_layering 一致）
