@@ -8,7 +8,7 @@
 
 ## 0. 一句话裁决
 
-**相对既定方案（transport strangler S1–S7 + brick L0–L3 + E0 + DB 逻辑分层），数据地基约 **~84% 闭合**——S1–S6 与 S7 可行动项已 shipped；S7 余 **23/46 ssot** 为 **typed hard-stop 墙**（非未完成清单）；近端唯一缺口 = **E0 accept 广度** + **§15 行为 adoption** + **foundation-done 机器门**。Type-B enrichment **defer**（registry 在方案内；enrichment 刀序超前）。策略轨 **paused**。
+**相对既定方案（transport strangler S1–S7 + brick L0–L3 + E0 + DB 逻辑分层），数据地基约 **~91% 闭合**——S1–S6 与 S7 可行动项已 shipped；S7 余 **23/46 ssot** 为 **typed hard-stop 墙**（非未完成清单）；**E0-HIST/F6 PASS**；近端缺口 = **§15 行为 adoption** + **foundation-done 机器门**。Type-B enrichment **defer**（registry 在方案内；enrichment 刀序超前）。策略轨 **paused**。
 
 ---
 
@@ -50,7 +50,7 @@
 |---|---|---|
 | S1/S2 模块化 CLI（三域） | `--land-only` / `--accept-from-landing` / `--land-then-accept` | — |
 | provider land（bounded） | `stk_holdertrade` + `holders_top10` shipped | **`org_holding` provider land BLOCKED**（by-period ~830k；无 NOTICE_DATE） |
-| accept 广度 | holders **17** / stk **27** / org **2** 日 | **undershot**：相对 daily **1829d** 极薄；需 local-raw chunked 续扩（非 mass dump） |
+| accept 广度 | holders **152** / stk **194** / org **2** 日；holders **126** trading-day overlap daily | **F6 PASS**（≥120）；org 维持 local-raw BLOCKED；可继续自然 chunked 扩但非近端 blocker |
 | empty_skip + grain | holders `row_seq` renumber；empty_skip continues | — |
 
 ### 1.4 Brick L0–L3（data_brick_architecture）
@@ -91,7 +91,7 @@
 
 | 项 | 判定 |
 |---|---|
-| **E0 accept 历史广度** | holders/stk 日数 vs daily 1829d — **主 undershot** |
+| **E0 accept 历史广度** | **F6 PASS**（holders 126d overlap ≥120；stk 同步）— 相对 daily 1829d 仍可 chunked 续扩，**非** foundation-done blocker |
 | **§15 行为 adoption** | 59 micro-commit 窗口 vs 1 knife-merge 示范 — **undershot** |
 | **Foundation-done 机器门** | 分散在多个 gate；缺 **单一 checklist 出口** |
 | **org_holding** | 方案允许 BLOCKED + local-raw；**非 undershot**（诚实 blocked） |
@@ -123,7 +123,7 @@
 | F9 | 策略轨 | E/F/G/H **未**开；frontier honest（`operation_window_blocked` 非落后） |
 | F10 | dual-track | residual **NONE**（re-audit 或 moth claim） |
 
-**当前计分**：F1–F5 **PASS**；F6 **FAIL**（17/27 日）；F8 **PARTIAL**；F9–F10 **PASS**。
+**当前计分**：F1–F6 **PASS**；F7 **PASS**（org BLOCKED 维持）；F8 **PARTIAL**；F9–F10 **PASS**。
 
 ---
 
@@ -133,14 +133,14 @@
 |---|---:|---:|---:|
 | S1–S6 transport | 35% | 100% | 35.0 |
 | S7 legacy（含 hard-stop 墙） | 20% | 90%（priority path done；23=墙非债） | 18.0 |
-| E0 disclosure | 20% | 55%（CLI+provider；accept 薄） | 11.0 |
+| E0 disclosure | 20% | 85%（CLI+provider；F6 accept 广度 PASS；org BLOCKED） | 17.0 |
 | B5 L2/L3 registry + qfq | 10% | 90%（enrichment defer） | 9.0 |
 | DB/brick 文档 authority | 5% | 100% | 5.0 |
 | §15 process adoption | 5% | 40% | 2.0 |
 | Acquire/universe 立法 | 5% | 100% | 5.0 |
-| **合计** | **100%** | | **~85%** |
+| **合计** | **100%** | | **~91%** |
 
-**读法**：~85% = **方案内地基**；不是 Tier0「全 repo 零 legacy raw」——那需要 owner 对 23 域 publication/sunset 裁决，**超出本阶段定义**。
+**读法**：~91% = **方案内地基**；不是 Tier0「全 repo 零 legacy raw」——那需要 owner 对 23 域 publication/sunset 裁决，**超出本阶段定义**。
 
 ---
 
@@ -150,9 +150,10 @@
 
 | 序 | 刀 | 内容 | 退出 | 不在此刀 |
 |---:|---|---|---|---|
-| **1** | **E0-HIST** | holders_top10 + stk_holdertrade **local-raw chunked** 续扩（empty_skip；≤40d）；自然 sync 养窗 | F6 阈值或 owner 书面阈值 | org provider invent；mass dump |
-| **2** | **FND-GATE** | foundation-done checklist 脚本或 ledger 检查点（F1–F10 聚合） | 单命令/report 绿 | 新 domain publication |
-| **3** | **§15-VERIFY** | 下 2–3 个 L3 刀强制 knife-merge + `pre-knife`；process_efficiency 复测 | F8 PASS | 放宽 L3/Rule10/PIT |
+| **1** | **FND-GATE** | foundation-done checklist 脚本或 ledger 检查点（F1–F10 聚合） | 单命令/report 绿 | 新 domain publication |
+| **2** | **§15-VERIFY** | 下 2–3 个 L3 刀强制 knife-merge + `pre-knife`；process_efficiency 复测 | F8 PASS | 放宽 L3/Rule10/PIT |
+
+**已完成**：**E0-HIST** — holders/stk local-raw chunked ≤40d empty_skip → F6 PASS（2026-07-21）。
 
 ### 5.1 S7 23 orphans — 怎么办？
 

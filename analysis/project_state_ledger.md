@@ -3012,3 +3012,30 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   org provider invent.
 - Gates live：`check_legacy_raw_plane` ssot=23；`check_brick_registry` PASS.
 - **Status**: **REPOSITIONED** (near-term sequencing).
+
+### 2026-07-21 — E0-HIST FIXED (F6 PASS): holders+stk local-raw chunked broaden
+
+- Wall-clock: Tue 2026-07-21 ~18:50–19:10 Asia/Shanghai.
+- Tip base: `7e9233968`. Authority: `foundation_phase_reeval_20260721.md` + `goal.md`.
+- **Knife E0-HIST**（§15；pre-knife `e0-hist` OK；no org invent；no S7 fake COMPAT；
+  no Type-B enrichment；E/F paused）：
+  1. Chunked `--land-then-accept --from-local-raw` ≤40 calendar d；`empty_skip`
+     continues on no-legacy-row days.
+  2. Holders windows covering `20251020`→`20260430` (+ prior smoke `20260501`–
+     `20260507`) plus kept recent canary through `20260717`.
+  3. Stk windows covering `20251020`→`20260517` plus kept recent through
+     `20260715`.
+- **Before → after**（accepted_partition）：
+  - holders_top10：**17** (`20260508`→`20260717`；1144 rows) → **152**
+    (`20251020`→`20260717`；199182 rows)；**trading-day overlap daily = 126**
+    (≥120 → **F6 PASS**).
+  - stk_holdertrade：**27** (`20260518`→`20260715`；749 rows) → **194**
+    (`20251020`→`20260715`；7285 rows)；overlap daily = **161**.
+  - org_holding：**2** unchanged (`20190430`/`20260430`)；provider land still
+    **BLOCKED**.
+- **Did not**：org by-date/provider invent；mass dump；S7 COMPAT；Type-B
+  enrichment；E/F remeasure；Optuna/Release/cutover.
+- **Residual vs F6**：none (PASS). Residual vs daily 1829d span：further
+  chunked history optional, not foundation-done blocker. Next：**FND-GATE** →
+  **§15-VERIFY**.
+- **Status**: **FIXED** (E0-HIST / F6) / org still **BLOCKED**.
