@@ -108,6 +108,14 @@ was skipped or silently deferred without a written reason.
 | Dossier axis-label dict (`clean`/`mixed`/`light` unused values) | 2F (pre-existing) | Out of this mandate's scope; documented, not silently patched |
 | Optional intersection badge on dossier F header | 4D (plan §3.5 "later") | Explicitly deferred by the plan itself, not a gap |
 
+### Closeout residual completed (this follow-up)
+
+Peer successor found schedule authority tables still saying `scheduled`/`later` after
+code + closeout had shipped. **Docs-only sync** applied to
+`product_plan_reeval_stock_dossier_20260721.md` §0/§2/§6/§7 and
+`product_decision_assist_backlog_20260721.md` §7/§8/§9 so A–F / 0r statuses match
+live SHAs. No code change; verification = 4D+5B tests still **18 passed**.
+
 ## Guardrails held (no violations this session)
 
 - Optuna / StrategyRelease / mass org / margin thaw: **not touched**.

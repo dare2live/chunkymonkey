@@ -1,10 +1,11 @@
 # Product decision-assist backlog (2026-07-21)
 
-> 状态：evidence-only / **scheduled product backlog**（未开刀；非 owner contract）
+> 状态：evidence-only / **capability definitions**（A–F defs still valid; near-term knives **CLOSED**)
 > Owner asks captured 2026-07-21（+ C/D follow-up same day）. Sequencing hard-gated on foundation E2E.
 > Layer authority: `analysis/data_brick_architecture_20260721.md` (L0–L3) + MASTER Tier0–4.
 > Foundation dependency evidence: `analysis/foundation_e2e_frontend_update_20260721.md` (PARTIAL) → unblock+click follow-ups FIXED/PARTIAL.
-> **Phase-order authority (2026-07-21 full re-eval):** `analysis/product_plan_reeval_stock_dossier_20260721.md` — supersedes §7; defs A–E here + **F 股票档案**; E = DONE subset.
+> **Phase-order authority:** `analysis/product_plan_reeval_stock_dossier_20260721.md` — supersedes §7; defs A–E here + **F 股票档案**.
+> **Execution closeout:** `analysis/product_plan_execution_closeout_20260721.md` (0r.5b→5B FIXED subsets).
 
 ## 1. Problem / north star
 
@@ -97,34 +98,31 @@ Gate: **after** data-foundation E2E verify/optimize. Peer evidence may still be 
 | 0r.1–0r.3 | 沪深A whitelist; BJ sensing serve; continuity dual-path | **FIXED** (`6afea30fc` / `foundation_bj_dualpath_ashare_whitelist_20260721.md`) |
 | 0r.4 | Drain share_float / ths_hot | **PARTIAL** — share_float FIXED; ths_hot availability-window residual |
 | 0r.5 | Holders lineage audit | **PARTIAL DONE** — `holders_stock_dossier_lineage_audit_20260721.md` (do not re-audit) |
-| 0r.5b | Holders WM/SLA + split ops counters + 机构档案 honesty | **scheduled** — **next** (re-eval §1.2) |
+| 0r.5b | Holders WM/SLA + split ops counters + 机构档案 honesty | **FIXED** (`387eb79b5`) |
 | 1E | **Capability E** step cards | **DONE** (`799b7412d`) — do not revert |
-| 2F | **Capability F** 股票档案 MVP | **PARTIAL**; next product deepen after 0r.5b; no fake 机构 deep-link (~54%) |
-| 3A/3C | Moneyflow assist + tabbed UX | **scheduled after 2F** |
-| 4D | 交集最强股 | **scheduled / deferred** |
-| 5B | 形态/阶段选股面 | **later** |
+| 2F | **Capability F** 股票档案 MVP | **FIXED** subset (`50817db0f`); 机构 deep-link still honesty-gated |
+| 3A/3C | Moneyflow assist + tabbed UX | **FIXED** subset (`4f70adc08`) |
+| 4D | 交集最强股 | **FIXED** subset (`a959baf06`) — DC 行业∩概念; sw_industry residual |
+| 5B | 形态/阶段选股面 | **FIXED** subset (`8fb0192f9`) — plain filter; no score/rank |
 
 Parallel research (E/F remeasure) remains **owner-scheduled** and orthogonal; this backlog does **not** open it.
 
 ## 8. Explicit NON-goals now
 
-- Implement frontend moneyflow decision UI, tabs, strongest-intersection UI, or form/stage selection UI
-- Open Optuna / StrategyRelease / loosen holdout / claim production candidate
-- Type-B enrichment (stays deferred to institution-follow timing per prior decisions) — schedule-only mentions OK
+- Re-open Optuna / StrategyRelease / loosen holdout / claim production candidate
+- Type-B enrichment (stays deferred to institution-follow timing per prior decisions)
 - Fuse display conclusions into Tier0 accepted truth or rewrite landing as “labels”
 - Fake relative ratios, behavior labels, or intersection “strongest” scores when denominator/coverage/freshness is unknown
 - Greenfield rewrite of pulse / market sensing; strangler + resolver SSOT only
 - Mass backfill / margin thaw / org invent / S7 fake COMPAT
+- Revert Cap E / silently drop documented residuals (sw_industry 3-chain, screener cutover-with-F)
 
 ## 9. Schedule summary (for operators)
 
-- **Next knives:** **0r.5b** (holders WM/SLA + ops counters + 机构 honesty) → **2F** dossier deepen → **3A/3C** → **4D** → **5B**.
+- **Mandate closed:** 0r.5b → 2F → 3A/3C → 4D → 5B all **FIXED** subsets (closeout `product_plan_execution_closeout_20260721.md`).
 - **0r.1–0r.3 FIXED** (`6afea30fc`); **0r.4 PARTIAL** (ths_hot window residual only).
-- **A lands after** foundation moneyflow + serve freshness + multi-horizon contracts are honest (sensing HS-A serve already FIXED).
-- **C lands with** early decision-assist UI (same post-foundation gate as A UI) — tabs-within-page, not one long flatten.
-- **D lands after A conclusions** (preferred), or **parallel** once intersection inputs exist and pulse/strongest lag is owned — decision-assist, not raw dump.
-- **E shipped** (2026-07-21 subset: workbench 分步节点 + pipeline/derive jobs; S1/S2 still CLI-parameterized / disabled in UI) — **do not revert**.
-- **B lands later** as a selection-strategy surface, after form/stage publish is a stable dependency — not in the near-term knife queue.
+- **A/C FIXED** (`4f70adc08`); **D FIXED** (`a959baf06`); **B FIXED** (`8fb0192f9`); **E shipped** (`799b7412d`) — **do not revert**.
+- **Next** = owner-scheduled residuals only (ths_hot / sw_industry rollup / screener+F cutover / E/F remeasure).
 - **Stays deferred until owner opens:** Optuna, StrategyRelease, holdout loosen, Type-B enrichment, E/F remeasure (unless separately scheduled).
 
-Label: **SCHEDULED** — residual owner = product/decision-assist; foundation 0r.1–0r.3 closed; next = 0r.5b → 2F.
+Label: **CLOSED** — residual owner = next explicit schedule; foundation 0r.1–0r.3 closed; product A–F mandate subsets shipped.

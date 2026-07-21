@@ -18,7 +18,7 @@
 > **地基 E2E（UI 更新路径 20260721）**：`analysis/foundation_e2e_frontend_update_20260721.md` — 初判 PARTIAL（UI 缺按钮 + margin 预检死锁）；后续 unblock 见下
 > **地基 daily_update 解阻（20260721）**：`analysis/foundation_daily_update_unblock_20260721.md` — margin=`on_demand`+frozen；formal daily/ST 编排器 land_then_accept；DC/pulse 已至 `20260721`；工作台「数据更新」**FIXED**
 > **产品决策辅助 backlog（defs；E=DONE）**：`analysis/product_decision_assist_backlog_20260721.md` — A 资金流；**B 形态/阶段选股 FIXED 子集** — `analysis/capability_b_stock_screener_20260721.md`；C tabs；**D 交集最强 FIXED 子集** — `analysis/capability_d_intersection_strongest_20260721.md`；**E step cards FIXED** — `analysis/capability_e_pipeline_step_cards_20260721.md`；**F 股票档案**
-> **产品全量排期权威（20260721 重评）**：`analysis/product_plan_reeval_stock_dossier_20260721.md` — **YES 整体调序**：0r.1–0r.3 **FIXED** + 0r.4 **PARTIAL**（ths_hot；证据 `foundation_bj_dualpath_ashare_whitelist_20260721.md` / `6afea30fc`）→ **0r.5b** → E done → **F 档案 MVP** → A/C → D → B；市场感知只沪深A serve；holders 审计 `holders_stock_dossier_lineage_audit_20260721.md`（勿重审）
+> **产品全量排期权威（20260721 重评）**：`analysis/product_plan_reeval_stock_dossier_20260721.md` — **CLOSED**：0r.1–0r.3 **FIXED** + 0r.4 **PARTIAL**（ths_hot）+ 0r.5b→5B **FIXED** subsets（见 closeout）；市场感知只沪深A serve；holders 审计 `holders_stock_dossier_lineage_audit_20260721.md`（勿重审）
 > **地基 BJ/dual-path/沪深A（20260721）**：`analysis/foundation_bj_dualpath_ashare_whitelist_20260721.md` — serve whitelist + formal continuity + share_float **FIXED**；ths_hot **PARTIAL**
 > **地基 UI 点击跟跑（20260721 晚）**：`analysis/foundation_daily_update_ui_click_20260721.md` — workbench 可观测性（current_activity）+ org incremental skip；click DONE degraded；RCA `foundation_daily_update_degraded_rca_20260721.md`
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`

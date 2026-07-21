@@ -21,7 +21,9 @@ After foundation E2E → unblock → UI click (PARTIAL/degraded) and Cap E step 
 New spine: **foundation truth knives (whitelist / BJ / continuity / holders lineage)** → **sensing serve only 沪深A** →
 **股票档案 F MVP** → **A moneyflow assist + C tabs** → **D 交集最强** → **B 形态/阶段选股面**.
 Cap E stays shipped; do not rebuild workbench into dossier files.
-**Next knives:** **0r.5b** (holders WM/SLA + ops counters + 机构 honesty) → **2F** deepen.
+**Execution closeout:** mandate 0r.5b→5B **FIXED** subsets — see
+`analysis/product_plan_execution_closeout_20260721.md`. **Next** = owner-scheduled
+residuals only (ths_hot / sw_industry 3-chain / screener cutover with F / E/F remeasure).
 
 | Question | Answer |
 |---|---|
@@ -29,10 +31,11 @@ Cap E stays shipped; do not rebuild workbench into dossier files.
 | Cap E still a near-term knife? | **No** — DONE subset; residual = parameterized S1/S2 UI only |
 | 0r.1–0r.4 (whitelist / BJ / continuity / drain)? | **FIXED** subset (`6afea30fc`); `ths_hot` residual **PARTIAL** — not greenwashed |
 | Accept BJ in accepted raw_evidence as project pool? | **No** — landing/raw may keep BJ by design; **serve** = 沪深A whitelist |
-| Holders audit / next foundation product knife? | **0r.5 PARTIAL**; next = **0r.5b** then **2F** |
+| Holders audit / next foundation product knife? | **0r.5 PARTIAL**; **0r.5b FIXED** (`387eb79b5`); **2F FIXED** subset (`50817db0f`) |
 | Optuna / StrategyRelease / E/F remeasure? | **No** unless owner schedules |
 | Fuse product labels into Tier0? | **No** |
 | Sample holders PASS ⇒ full dossier readiness? | **No** — see §1.2 |
+| 0r.5b→5B product mandate closed? | **Yes** — closeout `9b1a0eb90` (+ status-sync knife) |
 
 ---
 
@@ -95,16 +98,16 @@ Also binding: **市场感知只沪深A** (whitelist serve path **FIXED** at `6af
 | **0r.3** | **Continuity dual-path** + daily/ST watermark honesty | degraded RCA #3/#4 | **FIXED** (`6afea30fc`) — formal accepted frontier |
 | **0r.4** | Drain knives: `share_float` normalize; `ths_hot` empty | degraded RCA #1 | **PARTIAL** — share_float **FIXED**; ths_hot window residual |
 | **0r.5** | **Holders lineage audit** (association + process + serve) | formal parse ≠ coverage | **PARTIAL DONE** — audit landed; follow-ons §1.2 |
-| **0r.5b** | Formal holders WM/SLA + split ops counters + 机构档案 honesty | 0r.5 audit | **scheduled** — **next foundation knife** |
+| **0r.5b** | Formal holders WM/SLA + split ops counters + 机构档案 honesty | 0r.5 audit | **FIXED** (`387eb79b5`) |
 | **1E** | Cap E step cards | click-proof + activity | **DONE** (`799b7412d`) |
-| **2F** | **股票档案 MVP** `#/stock/:code` | 0r.1 code-gate; 0r.5 join PASS; streak FIXED | **PARTIAL** — next product deepen after 0r.5b; no fake 机构 deep-link |
-| **3A** | Moneyflow decision assist (API + relative denom + taxonomy) | 0r enough that moneyflow bricks/serve honest; sensing A-only | **scheduled** |
-| **3C** | Tabbed UX | rides **2F** + early **3A** | **scheduled** (dossier tabs already seed C) |
-| **4D** | 交集最强股 | after A conclusions **or** parallel once intersection inputs + freshness owned | **scheduled / deferred** |
-| **5B** | 形态/阶段 **选股策略** surface | after F proves display; Tier1 publish stable | **later** |
+| **2F** | **股票档案 MVP** `#/stock/:code` | 0r.1 code-gate; 0r.5 join PASS; streak FIXED | **FIXED** subset (`50817db0f`) — episode cycle/returns + C-light tabs; 机构 deep-link still honesty-gated |
+| **3A** | Moneyflow decision assist (API + relative denom + taxonomy) | 0r enough that moneyflow bricks/serve honest; sensing A-only | **FIXED** subset (`4f70adc08`) |
+| **3C** | Tabbed UX | rides **2F** + early **3A** | **FIXED** subset (`4f70adc08` + dossier tabs) |
+| **4D** | 交集最强股 | after A conclusions **or** parallel once intersection inputs + freshness owned | **FIXED** subset (`a959baf06`) — DC 行业∩概念; sw_industry residual |
+| **5B** | 形态/阶段 **选股策略** surface | after F proves display; Tier1 publish stable | **FIXED** subset (`8fb0192f9`) — filter surface; no score/rank |
 | — | E/F remeasure / Optuna / StrategyRelease | owner schedule only | **paused / banned** |
 
-**Next:** **0r.5b** then **2F** deepen. Cap E stays shipped (do not revert). **2F** may deepen UX on ~98% stock↔holders↔form join; must **not** claim 机构档案 deep-link until 0r.5b honesty. `ths_hot` residual ≠ reopen 0r.1–0r.3.
+**Next:** owner-scheduled residuals only (see closeout residual ledger). Cap E stays shipped (do not revert). `ths_hot` residual ≠ reopen 0r.1–0r.3. Mandate closeout: `product_plan_execution_closeout_20260721.md`.
 **Dropped default:** old A-first moneyflow stack before dossier/whitelist.
 
 ---
@@ -212,10 +215,10 @@ NON-goal: second orchestrator DAG; fake-runnable S1/S2 without params.
 
 | Track | Owns | Avoid |
 |---|---|---|
-| Foundation peer | 0r.1–0r.4 **FIXED** subset (`6afea30fc`); residual `ths_hot`; next **0r.5b** | dossier UI / Cap E revert |
-| Holders audit peer | 0r.5 lineage/association/process/serve evidence | fake dossier greens |
+| Foundation peer | 0r.1–0r.3 **FIXED** (`6afea30fc`); 0r.4 **PARTIAL** (`ths_hot`); 0r.5b **FIXED** (`387eb79b5`) | Cap E revert; fake COMPAT |
+| Holders audit peer | 0r.5 lineage evidence (**勿重审**); 0r.5b honesty shipped | invent 机构 deep-link |
 | Cap E | workbench / ops nodes — **done** | dossier routes; do not revert |
-| Product / dossier | this schedule, `#/stock/:code`, **2F** deepen after 0r.5b, then A/C/D/B | Cap E revert |
+| Product / dossier | 2F/3A/3C/4D/5B **FIXED** subsets; next = owner residual schedule | Cap E revert; Optuna/Release |
 
 ---
 
@@ -226,10 +229,14 @@ NON-goal: second orchestrator DAG; fake-runnable S1/S2 without params.
 | Cap E | **FIXED** subset |
 | 0r.1–0r.3 whitelist / BJ serve / continuity | **FIXED** (`6afea30fc`) |
 | 0r.4 drain | **PARTIAL** (share_float FIXED; ths_hot window residual) |
-| Holders lineage audit | **PARTIAL** (parse+F-join PASS; profile/WM/counters follow) |
-| F dossier stub | **PARTIAL** (HS-A gate + streak FIXED; PnL/机构 deep-link later) |
-| Schedule doc (this file) | **SCHEDULED authority** — next **0r.5b → 2F** |
-| A/B/C/D | **SCHEDULED** per §2 |
+| Holders lineage audit | **PARTIAL DONE** (0r.5); follow-ons in **0r.5b FIXED** |
+| 0r.5b WM/SLA + ops + 机构 honesty | **FIXED** (`387eb79b5`) |
+| F dossier / 2F deepen | **FIXED** subset (`50817db0f`) |
+| 3A+3C moneyflow + tabs | **FIXED** subset (`4f70adc08`) |
+| 4D 交集最强 | **FIXED** subset (`a959baf06`) |
+| 5B 形态/阶段选股 | **FIXED** subset (`8fb0192f9`) |
+| Schedule doc (this file) | **CLOSED authority** — closeout `product_plan_execution_closeout_20260721.md` |
+| A/B/C/D/E/F (mandate scope) | **FIXED** subsets per §2 + closeout |
 
 ---
 
