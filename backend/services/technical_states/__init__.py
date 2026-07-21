@@ -243,7 +243,11 @@ WHERE k.date >= ?
 
 
 def src_temp_sql(*, from_accepted: bool = False) -> str:
-    """Return form source SQL; ``from_accepted`` skips legacy raw daily fill (S5)."""
+    """Return form source SQL; ``from_accepted`` skips legacy raw daily fill.
+
+    Library default stays fill-compatible for pipeline/tests; S7
+    ``chunkyctl derive form`` defaults to ``from_accepted=True`` via derive_runtime.
+    """
 
     if from_accepted:
         return _SRC_TEMP_SQL_FROM_ACCEPTED
@@ -302,7 +306,7 @@ def rebuild_all(
 ) -> dict[str, Any]:
     """全量重建 fact_stock_form_daily (data_start 起)。conn=None 自管连接并 ATTACH mkt/tr/ref;
     注入 conn (测试) 时调用方负责 mkt./tr./ref. 与 dim_stock_segment_daily 可解析。
-    ``from_accepted`` (S5): nominal close from canonical only — no legacy raw daily fill.
+    ``from_accepted`` (S5/S7 derive path): nominal close from canonical only.
     """
     cfg = cfg or load_config()
     own = conn is None
@@ -347,7 +351,7 @@ def build_latest(
 
     切片 = 交易日历回溯 incremental_lookback_days (覆盖月线 warmup + context/突破前序需求),
     特征窗口全在切片内 → 增量行与全量重建逐 bit 一致 (确定性, 单测证伪门)。
-    ``from_accepted`` (S5): nominal close from canonical only — no legacy raw daily fill.
+    ``from_accepted`` (S5/S7 derive path): nominal close from canonical only.
     """
     cfg = cfg or load_config()
     own = conn is None

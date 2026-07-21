@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-21（**S1–S6 FIXED**；accepted daily/ST **`20220104`→`20260720`**（1099d；ST raw floor））
+> 更新：2026-07-21（**S1–S6 FIXED**；**S7 PARTIAL**；accepted daily/ST **`20220104`→`20260720`**（1099d；ST raw floor））
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -12,7 +12,7 @@
 
 ## 当前 objective
 
-**轨道 = transport strangler S1–S6**（owner 2026-07-20 第一原理重评）。模块化诉求（acquire≠accept≠derive≠serve；sync=caller-only；acquire 可换源）**S1–S6 FIXED**——见重评文 §2–§3 / modularity gap §8。A→H 骨架保留为**后置研究地图**；近端 residual = S7 legacy raw + optional daily-only 再向 2019 扩；不是 E/F remeasure。Agent-OS WP0–WP4 已闭合；WP6 仪式影子期仍开放。
+**轨道 = transport strangler S1–S7**（owner 2026-07-20 第一原理重评）。模块化诉求（acquire≠accept≠derive≠serve；sync=caller-only；acquire 可换源）**S1–S6 FIXED**；**S7 PARTIAL**（derive 默认 accepted-only + legacy raw 清单门）——见重评文 §2–§3 / modularity gap §8。A→H 骨架保留为**后置研究地图**；近端 residual = S7 续 strangler（pipeline fill escape / membership L0 / 多数 raw SSOT）+ optional daily-only 再向 2019 扩；不是 E/F remeasure。Agent-OS WP0–WP4 已闭合；WP6 仪式影子期仍开放。
 
 已落地硬事实（勿回滚）：
 - C + B-pit **`cutover_allowed=true`**（commit `b38e9ac5`）→ resolver `ACCEPTED_CUTOVER` / `MART_CUTOVER`
@@ -42,7 +42,8 @@
 - **Accepted window（local-raw chunked）**：daily+ST **`20220104`→`20260720`（1099d）** — ST raw floor；holdout `20250601` in-window；optional daily-only further back to raw min `20190102`（ST 不可对称）
 - **S5 derive FIXED**：`chunkyctl derive qfq|form --from-accepted` + `derive_runtime`（canonical-only nominal；零 acquire/fused publish；不进 accept 事务）；default qfq/form 仍可 canonical∪legacy fill
 - **S6 serve FIXED**：`market_pulse_serve_read` 经 DataAccess registry+resolver 承接 drill/members/margin L0 leaf；router 零 `# serve-exempt:` / 零内联 raw；D5 全绿；form/sentiment 仍 production_read
-- **近端 focus**：legacy `raw_tushare_*` = S7；**研究轨** E0 → E/F 同 protocol remeasure（窗已扩；本 session 不跑）；不开 G/H/Release 抢跑
+- **S7 PARTIAL**：`chunkyctl derive` 默认 `--from-accepted`（`--allow-legacy-fill` 逃生）；`legacy_raw_plane.yaml` + `check_legacy_raw_plane` 分类 SSOT/fill/compatibility；pipeline clean **显式** `--allow-legacy-fill`（保 2019–2021 qfq）；membership L0 (`dc_member`/`index_member_all`) 诚实 ssot
+- **近端 focus**：S7 续刀（日落 pipeline fill / 单域 formal 或 sunset；禁盲删 raw）；**研究轨** E0 → E/F 同 protocol remeasure（窗已扩；本 session 不跑）；不开 G/H/Release 抢跑
 - **护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d+禁 mass backfill/第二 DB/plugin bus
 
 A→H 降为地图；细节以重评文 §4、§9 为准。

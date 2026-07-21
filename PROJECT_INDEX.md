@@ -1,8 +1,8 @@
 # PROJECT_INDEX — Current Project Map
 
 > 状态：live navigation，非规则 owner
-> 更新：2026-07-20
-> 当前目标看 `goal.md`（A→H 已恢复；C/B-pit cutover ON；`BOARD.md`；启动 `scripts/chunkyctl agent-boot`）。
+> 更新：2026-07-21
+> 当前目标看 `goal.md`（S1–S6 FIXED；S7 PARTIAL；C/B-pit cutover ON；`BOARD.md`；启动 `scripts/chunkyctl agent-boot`）。
 > 架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口与 writer 清单看 `FEATURE_MAP.md` 和 CodeGraph。
 > 生成状态板：`PYTHONPATH=backend python backend/scripts/build_agent_board.py`（勿手改 BOARD.md；snapshot 时间戳非 trade_date；Next 菜单随 cutover yaml 投影）。
 
@@ -22,7 +22,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；名义 K + ST accepted `20220104`→`20260720`（1099d；ST raw floor；chunked ≤40d local-raw land→accept）；**S1–S4 transport FIXED**：default sync = acquire→caller-only land→accept；`security_day_acquire` modes `provider_tushare`/`local_legacy_raw_materialize`；CLI `--land-only` / `--accept-from-landing` / `--land-then-accept` + `--from-local-raw`；fused `capture_and_publish_*` test-only；manual sync `trigger_mode` 已拆；form/qfq/segments/pulse 分析面经 canonical∪raw 已追到 `20260720`（legacy raw daily 仍停 `20260716`，formal 不写 raw）；margin 仍 frozen；无 mass fetch / cutover |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；名义 K + ST accepted `20220104`→`20260720`（1099d；ST raw floor；chunked ≤40d local-raw land→accept）；**S1–S6 FIXED / S7 PARTIAL**：default sync = acquire→caller-only land→accept；`security_day_acquire`；CLI land/accept/derive；`chunkyctl derive` 默认 `--from-accepted`（`--allow-legacy-fill` 逃生）；`legacy_raw_plane.yaml`+gate；pipeline clean 显式 fill 保 2019–2021；membership L0 仍 raw ssot；form/qfq/segments/pulse 至 `20260720`（legacy raw daily 仍停 `20260716`，formal 不写 raw）；margin 仍 frozen；无 mass fetch / cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `technical_states/`, `segments.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `market_pulse_tier12_read.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py` | 多轴状态可复用；C accept 分 `publish_scope=canary|project_universe`；`resolve_tier12_production_read` + B1/pulse 接线；**cutover yaml=true** → ACCEPTED_CUTOVER；**form enrich v1**（`stock_state_stage_pattern_v1`，exact-day `fact_stock_form_daily` → `form_name`/`axis_pos`；writer `axis_trend` 不覆盖）；re-accept `20260717`=4989 + `20260720`=4991；无 accept 日仍 fail-closed→LEGACY/`fact_stock_form_daily`；persist 可在 cutover-ON 下重跑（不回翻 yaml） |
 | T2 market sensing | `market_pulse.py`, `market_pulse_tier12_read.py`, `market_pulse_b_pit_read.py`, `b_pit_mart_cutover.py`, `project_universe_breadth.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；sentiment 旁路 `tier12_production_read` + `b_pit_mart_production_read`；B-pit shadow MATCH 120/120；**mart cutover=true（owner opt-in 2026-07-20）→ MART_CUTOVER（project_universe_pit）**；C envelope 可 project_universe scope；窗外/无 shadow 日仍 fail-closed→legacy；drill form 单轨 production-read（无 legacy JOIN+accepted 双写） |
@@ -36,7 +36,7 @@ AGENTS.md
 | Area | Role |
 |---|---|
 | `data/tushare_raw.duckdb` | TuShare legacy `raw_tushare_*` compatibility 表 + frozen margin evidence；accepted calendar generation + nominal OHLCV/ST landing/canonical/accepted_partition `20241121`→`20260720`（402d）；legacy `raw_tushare_daily` 仍停 `20260716`（formal 不写；local-raw materialize → landing 另路径） |
-| `data/market.duckdb` | K 线 serving/派生数据；qfq=`canonical∪raw`×adj 分析面（max `2026-07-20`），不等于名义成交价真相 |
+| `data/market.duckdb` | K 线 serving/派生数据；qfq 分析面 max `2026-07-20`（derive 默认 accepted-only；pipeline clean 可 `--allow-legacy-fill`）；≠名义成交价真相 |
 | `data/reference.duckdb` | 交易日历、身份/reference 数据 |
 | `data/smartmoney.duckdb` | 当前 mart、profiles、ops/control evidence |
 | `data/feature_store.duckdb` | 特征面；使用前必须有当前 consumer 和契约 |
@@ -138,11 +138,10 @@ default sync → acquire → `land_then_accept_authorized_security_day`；fused
 `capture_and_publish_authorized_*_partition` **test-only**。CLI：
 `chunkyctl sync --domain daily|stock_st`（default land→accept）以及
 `--land-only|--accept-from-landing|--land-then-accept`（可选 `--from-local-raw`；
-accept 路径跳过 provider auth / acquire）。S5 derive（FIXED）：
-`chunkyctl derive qfq|form --from-accepted` 只读
-`canonical_nominal_ohlcv_daily`（无 legacy raw fill；不进 accept；零 acquire）。
-S6 serve（FIXED）：`market_pulse_serve_read` + DataAccess entities；router 零
-`# serve-exempt:`；D5 全绿。
+accept 路径跳过 provider auth / acquire）。S5 derive（FIXED）+ S7 PARTIAL：
+`chunkyctl derive qfq|form` 默认 accepted-only；`--allow-legacy-fill` 逃生；
+`legacy_raw_plane.yaml` + `check_legacy_raw_plane.py`。S6 serve（FIXED）：
+`market_pulse_serve_read` + DataAccess entities；router 零 `# serve-exempt:`；D5 全绿。
 `observation_population.py` 的 default
 readiness 经 `resolve_eligible_observation_date`（accepted calendar ∩ K/ST
 `availability_policy`）评 frontier，不索要周末/节假 calendar-today 分区。

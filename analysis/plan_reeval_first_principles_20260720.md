@@ -373,3 +373,16 @@ Live 焊点（evidence pack §2.7 复核）：
   D5 live forbids router exempts；TDD
   `test_market_pulse_serve_read_s6` + pulse API + serve-layer doors green.
 - Residual：S7 legacy `raw_tushare_*`；E0；E/F remeasure（Strategy E/F paused）。
+
+### Amend 2026-07-21 — S7 PARTIAL (derive default + inventory gate)
+
+- **S7 PARTIAL**：`chunkyctl derive` / `derive_runtime` 默认
+  `from_accepted=True`；`--allow-legacy-fill` 显式逃生；pipeline clean 保留
+  显式 fill（2019–2021 qfq）；`legacy_raw_plane.yaml` +
+  `check_legacy_raw_plane.py` 全量分类 sync_registry + data_access L0 raw；
+  formal daily/ST/calendar/margin ≠ ssot；membership L0 诚实 ssot；
+  moth `legacy-raw-plane-inventory`；TDD `test_legacy_raw_plane_s7.py`.
+- **Did not**：盲删 raw；mass backfill；日落全部 SSOT 域；pipeline form fill；
+  Optuna/Release/cutover；E/F remeasure.
+- Residual：pipeline `--allow-legacy-fill`；membership/flow L0 SSOT；多数
+  sync_registry raw 仍 ssot；E0；E/F paused.

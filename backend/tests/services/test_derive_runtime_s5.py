@@ -65,3 +65,4 @@ def test_s5_chunkyctl_exposes_derive_command() -> None:
     assert "derive)" in wrapper or 'derive)' in wrapper
     assert "chunkyctl derive" in wrapper
     assert "from-accepted" in wrapper
+    assert "allow-legacy-fill" in wrapper

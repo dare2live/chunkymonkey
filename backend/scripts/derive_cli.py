@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""chunkyctl derive — S5 independent qfq/form rebuild (no acquire/accept)."""
+"""chunkyctl derive — S5/S7 independent qfq/form rebuild (no acquire/accept)."""
 from __future__ import annotations
 
 import argparse
@@ -16,8 +16,9 @@ from services.derive_runtime import DERIVE_TARGETS, run_derive  # noqa: E402
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=(
-            "S5 derive: rebuild qfq or form from accepted/canonical inputs. "
-            "Independent of acquire; does not run inside accept."
+            "S5/S7 derive: rebuild qfq or form from accepted/canonical inputs "
+            "(default). Independent of acquire; does not run inside accept. "
+            "Use --allow-legacy-fill only for authorized pre-accepted history."
         )
     )
     ap.add_argument(
@@ -25,10 +26,16 @@ def main(argv: list[str] | None = None) -> int:
         choices=sorted(DERIVE_TARGETS),
         help="derive target: qfq (price_kline_qfq_tushare) or form (fact_stock_form_daily)",
     )
-    ap.add_argument(
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument(
         "--from-accepted",
         action="store_true",
-        help="S5: nominal from accepted canonical only (no legacy raw_tushare_daily fill)",
+        help="S7 default path: nominal from accepted canonical only (explicit no-op ok)",
+    )
+    mode.add_argument(
+        "--allow-legacy-fill",
+        action="store_true",
+        help="S7 escape: canonical ∪ legacy raw_tushare_daily fill (pre-accepted history)",
     )
     ap.add_argument(
         "--rebuild",
@@ -45,10 +52,12 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--rebuild applies to form only")
     if args.target == "form" and args.check_only:
         ap.error("--check-only applies to qfq only")
+    # Default = from_accepted (S7). Only --allow-legacy-fill opts out.
+    from_accepted = not bool(args.allow_legacy_fill)
     try:
         result = run_derive(
             args.target,
-            from_accepted=bool(args.from_accepted),
+            from_accepted=from_accepted,
             rebuild=bool(args.rebuild),
             check_only=bool(args.check_only),
         )

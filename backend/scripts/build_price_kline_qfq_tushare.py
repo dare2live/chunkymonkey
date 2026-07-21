@@ -6,7 +6,8 @@ latest-factor full-history rewrite remains a Tier0 lineage/PIT migration item.
 daily_update Step 2.96 每日 CREATE TABLE AS 全量重建 price_kline_qfq_tushare (market.duckdb),
 v_price_kline_qfq 视图 FROM 本表 = 当前 qfq analysis/serving 兼容读面；不等于 execution truth。
 前复权 (qfq rebased to latest): qfq = nominal × adj_factor / adj_factor_latest_per_stock。
-  nominal = accepted canonical_nominal_ohlcv_daily (preferred) ∪ legacy raw_tushare_daily
+  nominal (S7 default): accepted canonical_nominal_ohlcv_daily only.
+  nominal (--allow-legacy-fill): canonical ∪ legacy raw_tushare_daily
   (raw fills only dates not present in accepted canonical; formal daily never writes legacy raw).
   返回 (收益) = qfq[t]/qfq[t-1] = 含分红总收益 (PIT: f[t] 除权日即知)。
   单位: volume 手×100=股, amount 千元×1000=元 (2026-06-22 切主源时对齐旧 tdxhub 口径, 消费方按此约定)。
@@ -65,15 +66,15 @@ nominal AS (
 """
 
 
-def nominal_source_cte(*, from_accepted: bool = False) -> str:
-    """Return nominal CTE; ``from_accepted`` skips legacy raw fill (S5)."""
+def nominal_source_cte(*, from_accepted: bool = True) -> str:
+    """Return nominal CTE; default skips legacy raw fill (S7)."""
 
     if from_accepted:
         return _NOMINAL_SOURCE_CTE_FROM_ACCEPTED
     return _NOMINAL_SOURCE_CTE
 
 
-def build(conn, *, from_accepted: bool = False) -> int:
+def build(conn, *, from_accepted: bool = True) -> int:
     conn.execute(f"ATTACH IF NOT EXISTS '{TUSHARE_DB}' AS tr (READ_ONLY)")
     conn.execute(f"DROP TABLE IF EXISTS {TARGET}")
     nominal_cte = nominal_source_cte(from_accepted=from_accepted)
@@ -107,6 +108,8 @@ def build(conn, *, from_accepted: bool = False) -> int:
 
 # measured: 2026-07-02 实测基线 8,319,172 行 / 5,431 股; floor 留 ~10% 缓冲防日常波动误报
 MIN_ROWS = 7_500_000
+# S7 from-accepted: accepted window 20220104→20260720 measured ~5.54M rows / 5716 codes
+MIN_ROWS_FROM_ACCEPTED = 5_000_000
 MIN_CODES = 5_000
 
 
@@ -131,23 +134,30 @@ def cross_check(conn) -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check-only", action="store_true")  # rule-compliance: ok evidence=只对账不重建
-    ap.add_argument(
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument(
         "--from-accepted",
         action="store_true",
         help=(
-            "S5: rebuild qfq from accepted canonical_nominal_ohlcv_daily only "
+            "S7 default: rebuild qfq from accepted canonical_nominal_ohlcv_daily only "
             "(no legacy raw_tushare_daily fill). Does not run inside accept."
         ),
     )
+    mode.add_argument(
+        "--allow-legacy-fill",
+        action="store_true",
+        help="S7 escape: canonical ∪ legacy raw_tushare_daily fill (pre-accepted history)",
+    )
     args = ap.parse_args(argv)
+    from_accepted = not bool(args.allow_legacy_fill)
     conn = connect(MARKET_DB, read_only=False)
     try:
         if not args.check_only:
-            n = build(conn, from_accepted=bool(args.from_accepted))
-            mode = "from_accepted" if args.from_accepted else "canonical_plus_legacy_fill"
+            n = build(conn, from_accepted=from_accepted)
+            mode_name = "from_accepted" if from_accepted else "canonical_plus_legacy_fill"
             r = conn.execute(f"SELECT min(date),max(date),count(DISTINCT code) FROM {TARGET}").fetchone()
             print(
-                f"[build] {TARGET}: {n:,} 行 | {r[0]}~{r[1]} | {r[2]} 股 | mode={mode}",
+                f"[build] {TARGET}: {n:,} 行 | {r[0]}~{r[1]} | {r[2]} 股 | mode={mode_name}",
                 flush=True,
             )
         cc = cross_check(conn)
@@ -156,7 +166,8 @@ def main(argv: list[str] | None = None) -> int:
         conn.close()
     print(f"[sanity] {TARGET}: rows={cc['n_rows']:,} codes={cc['n_codes']:,} "
           f"max_date={cc['max_date']} bad_price={cc['n_bad_price']:,}")
-    ok = cc["n_rows"] >= MIN_ROWS and cc["n_codes"] >= MIN_CODES and cc["n_bad_price"] == 0
+    min_rows = MIN_ROWS_FROM_ACCEPTED if from_accepted else MIN_ROWS
+    ok = cc["n_rows"] >= min_rows and cc["n_codes"] >= MIN_CODES and cc["n_bad_price"] == 0
     print(f"[verdict] {'PASS 自完整性检查通过' if ok else 'REVIEW 行数/覆盖缩水或含非法价格行, 先查再消费'}")
     return 0 if ok else 2
 

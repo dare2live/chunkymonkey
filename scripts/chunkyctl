@@ -28,7 +28,7 @@ Usage:
   scripts/chunkyctl sync --domain daily|stock_st --accept-from-landing --batch-id BATCH
   scripts/chunkyctl sync --domain daily|stock_st --land-then-accept [--from-local-raw] --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl map [--check]
-  scripts/chunkyctl derive qfq|form [--from-accepted] [--rebuild|--check-only]
+  scripts/chunkyctl derive qfq|form [--from-accepted|--allow-legacy-fill] [--rebuild|--check-only]
   scripts/chunkyctl pipeline acquire|clean|process|store [--force]
   scripts/chunkyctl lineage build | impact <table> | provenance <table> | dead | show <table>
 
@@ -38,8 +38,9 @@ Examples:
   scripts/chunkyctl sync --domain daily --start 20260708 --end 20260717
   scripts/chunkyctl sync --domain daily --land-only --from-local-raw --start 20260115 --end 20260115
   scripts/chunkyctl sync --domain daily --accept-from-landing --batch-id 'daily:20260115:...'
-  scripts/chunkyctl derive qfq --from-accepted
-  scripts/chunkyctl derive form --from-accepted --rebuild
+  scripts/chunkyctl derive qfq
+  scripts/chunkyctl derive form --rebuild
+  scripts/chunkyctl derive qfq --allow-legacy-fill
 
 Notes:
   agent-boot  = one-page session-start context: git + moth summary + codegraph status + generated board; read-only projection.
@@ -52,9 +53,11 @@ Notes:
                 S1 --land-only / S2 --accept-from-landing / thin --land-then-accept are independent
                 of the legacy fused fetch→accept path; --from-local-raw materializes landing from
                 local raw_tushare_* (never SELECT raw INSERT canonical). Accept path skips provider auth.
-  derive      = S5 qfq/form rebuild independent of acquire/accept; --from-accepted = canonical-only
-                nominal (no legacy raw_tushare_daily fill). form --rebuild = full rebuild_all;
-                qfq --check-only = sanity without rebuild. Not inside accept transaction.
+  derive      = S5/S7 qfq/form rebuild independent of acquire/accept; default = accepted-only
+                nominal (no legacy raw_tushare_daily fill). --allow-legacy-fill = authorized
+                pre-accepted UNION escape (pipeline clean uses this for 2019–2021 history).
+                form --rebuild = full rebuild_all; qfq --check-only = sanity without rebuild.
+                Not inside accept transaction.
   map         = regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only.
   pipeline    = manually run one declared data stage; full manual chain remains daily_update.sh.
   lineage     = generated dependency projection; impact <table> audits fan-in before delete/migrate.

@@ -1,8 +1,12 @@
-"""S5 derive surface — qfq/form rebuild independent of acquire/accept.
+"""S5/S7 derive surface — qfq/form rebuild independent of acquire/accept.
 
 Public boundary for ``chunkyctl derive``. Reads accepted canonical (+ authorized
 adj_factor / stk_limit inputs) and writes derived analysis tables. Never calls
 provider fetch, land, or accept fused helpers.
+
+S7: default ``from_accepted=True`` (canonical-only nominal). Legacy
+``raw_tushare_daily`` fill requires explicit ``from_accepted=False`` /
+``--allow-legacy-fill`` (pipeline clean keeps that escape for 2019–2021 history).
 """
 from __future__ import annotations
 
@@ -19,11 +23,15 @@ _QFQ_SCRIPT = _REPO / "backend" / "scripts" / "build_price_kline_qfq_tushare.py"
 def run_derive(
     target: str,
     *,
-    from_accepted: bool = False,
+    from_accepted: bool = True,
     rebuild: bool = False,
     check_only: bool = False,
 ) -> dict[str, Any]:
-    """Run one derive target. Raises ValueError for unknown targets."""
+    """Run one derive target. Raises ValueError for unknown targets.
+
+    Default ``from_accepted=True`` (S7). Pass ``from_accepted=False`` only for
+    authorized legacy fill (pre-accepted history).
+    """
 
     name = str(target or "").strip().lower()
     if name not in DERIVE_TARGETS:

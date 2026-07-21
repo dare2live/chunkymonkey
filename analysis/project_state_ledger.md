@@ -2445,3 +2445,28 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   tables, not accepted canonical）；optional daily-only pre-`20220104`；E0；
   E/F remeasure when scheduled. **Router serve-exempt list: EMPTY**.
 - **Status**: **FIXED**（S6）。
+
+### 2026-07-21 — S7 PARTIAL (derive default + legacy raw inventory)
+
+- Wall-clock: Tue 2026-07-21 ~09:50 Asia/Shanghai (in-session).
+- **Scope evidence**：formal daily never writes `raw_tushare_daily`；qfq/form
+  had default UNION/COALESCE fill；membership L0 (`dc_member`/
+  `index_member_all`) + most pulse/flow tables remain raw SSOT；canonical
+  measured 5.54M rows `20220104`→`20260720` vs raw/qfq ~8.4M from 2019.
+- **S7 PARTIAL**：
+  1. `chunkyctl derive` / `derive_runtime` default `from_accepted=True`；
+     `--allow-legacy-fill` escape；qfq `MIN_ROWS_FROM_ACCEPTED=5_000_000`.
+  2. `backend/config/legacy_raw_plane.yaml` classifies all 46 sync_registry
+     `raw_tushare_*` + data_access L0 raw as ssot|fill|compatibility；
+     formal daily/ST/calendar/margin write=forbidden and ≠ssot；
+     `raw_tushare_daily` role=fill；membership L0 honest ssot.
+  3. `check_legacy_raw_plane.py` + moth `legacy-raw-plane-inventory`；
+     pipeline clean **explicit** `--allow-legacy-fill` (keeps 2019–2021).
+  Evidence：`test_legacy_raw_plane_s7.py` + derive/qfq suites 20 passed；
+  `check_legacy_raw_plane` OK.
+- **Did not**：delete raw history；mass backfill；sunset all SSOT domains；
+  flip pipeline form fill；Optuna/Release/cutover；E/F remeasure.
+- **Residual**：pipeline clean fill escape；membership/flow L0 SSOT；most
+  sync_registry raw still ssot until per-domain formal|sunset；optional
+  daily-only pre-`20220104`；E0；E/F paused.
+- **Status**: **PARTIAL**（S7）.

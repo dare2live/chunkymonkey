@@ -1,0 +1,190 @@
+# S7 legacy raw_tushare_* parallel-plane inventory (strangler, not greenfield).
+#
+# Roles (honest; do not upgrade without evidence):
+#   ssot          — production still treats this raw table as truth; no formal
+#                   accepted plane owns the fact for consumers named here.
+#   fill          — authorized UNION/COALESCE fill behind accepted/canonical
+#                   for derive only; never publication SSOT; write may be forbidden.
+#   compatibility — table may exist for historical / local-raw materialize /
+#                   serve-leaf lag; formal (or dual-write) plane owns publication.
+#   retired       — purged or must not be written/read as truth.
+#
+# Gate: backend/scripts/check_legacy_raw_plane.py
+#   - every sync_registry raw_tushare_* target_table classified
+#   - every data_access entity table raw_* classified
+#   - formal_domain tables must not be role=ssot; write must be forbidden
+#
+# Ban: mass delete of years of raw; mass backfill; second DB; Optuna/Release flip.
+
+version: 1
+
+roles:
+  ssot: "Production truth surface until a formal accepted plane replaces it."
+  fill: "Derive-only fill behind accepted/canonical; not publication SSOT."
+  compatibility: "Lag/compat surface; formal or dual-write plane owns publication."
+  retired: "Must not be written or treated as truth."
+
+# Membership L0 entities (S6 serve leaf still registry→raw; no mart-mirror yet).
+membership_l0_entities:
+  - dc_member
+  - index_member_all
+
+tables:
+  raw_tushare_adj_factor:
+    role: ssot
+    note: "qfq corporate-action input; no formal adj plane yet"
+
+  raw_tushare_balancesheet:
+    role: ssot
+
+  raw_tushare_block_trade:
+    role: ssot
+
+  raw_tushare_cyq_perf:
+    role: ssot
+
+  raw_tushare_daily:
+    role: fill
+    formal_domain: daily
+    write: forbidden
+    note: "S7 derive default=from-accepted; pipeline clean may --allow-legacy-fill for 2019–2021"
+
+  raw_tushare_daily_basic:
+    role: ssot
+
+  raw_tushare_daily_info:
+    role: ssot
+
+  raw_tushare_dc_daily:
+    role: ssot
+
+  raw_tushare_dc_index:
+    role: ssot
+
+  raw_tushare_dc_member:
+    role: ssot
+    kind: membership_l0
+    note: "data_access entity dc_member; S6 serve leaf; no formal membership plane"
+
+  raw_tushare_dividend:
+    role: ssot
+
+  raw_tushare_express:
+    role: ssot
+
+  raw_tushare_fina_indicator:
+    role: ssot
+
+  raw_tushare_fina_mainbz:
+    role: ssot
+
+  raw_tushare_forecast:
+    role: ssot
+
+  raw_tushare_hm_detail:
+    role: ssot
+
+  raw_tushare_hm_list:
+    role: ssot
+
+  raw_tushare_income:
+    role: ssot
+
+  raw_tushare_index_daily:
+    role: ssot
+
+  raw_tushare_index_dailybasic:
+    role: ssot
+
+  raw_tushare_index_member_all:
+    role: ssot
+    kind: membership_l0
+    note: "data_access entity index_member_all; S6 serve leaf; SW components"
+
+  raw_tushare_kpl_list:
+    role: ssot
+
+  raw_tushare_limit_cpt_list:
+    role: ssot
+
+  raw_tushare_limit_list_d:
+    role: ssot
+
+  raw_tushare_margin:
+    role: compatibility
+    formal_domain: margin
+    write: forbidden
+    note: "formal exchange margin accept owns publication; serve L0 entity still points here"
+
+  raw_tushare_margin_detail:
+    role: ssot
+    note: "stock-level margin detail; not the formal exchange aggregate plane"
+
+  raw_tushare_moneyflow:
+    role: ssot
+
+  raw_tushare_moneyflow_dc:
+    role: ssot
+
+  raw_tushare_moneyflow_hsgt:
+    role: ssot
+
+  raw_tushare_moneyflow_ind_dc:
+    role: ssot
+
+  raw_tushare_moneyflow_mkt_dc:
+    role: ssot
+
+  raw_tushare_report_rc:
+    role: ssot
+
+  raw_tushare_share_float:
+    role: ssot
+
+  raw_tushare_stk_factor_pro:
+    role: ssot
+
+  raw_tushare_stk_holdernumber:
+    role: ssot
+
+  raw_tushare_stk_holdertrade:
+    role: compatibility
+    note: "E0 formal land/canonical exists; legacy raw residual until full cutover"
+
+  raw_tushare_stk_limit:
+    role: ssot
+    note: "form/limit touch input; separate from nominal daily formal plane"
+
+  raw_tushare_stk_surv:
+    role: ssot
+
+  raw_tushare_stock_basic:
+    role: ssot
+    note: "identity/name cache; not historical tradeability truth"
+
+  raw_tushare_stock_st:
+    role: compatibility
+    formal_domain: stock_st
+    write: forbidden
+    note: "formal ST accept owns publication; local-raw materialize only"
+
+  raw_tushare_suspend_d:
+    role: ssot
+
+  raw_tushare_sw_daily:
+    role: ssot
+
+  raw_tushare_ths_hot:
+    role: ssot
+
+  raw_tushare_top_inst:
+    role: ssot
+
+  raw_tushare_top_list:
+    role: ssot
+
+  raw_tushare_trade_cal:
+    role: compatibility
+    formal_domain: trade_cal
+    write: forbidden
+    note: "formal calendar accept owns publication; calendar_builder may still read raw→dim"
