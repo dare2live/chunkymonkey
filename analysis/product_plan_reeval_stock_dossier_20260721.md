@@ -6,6 +6,8 @@
 > Layer authority: brick L0–L4 + MASTER Tier0–4. Conclusions = Tier3/product — **never** fused into Tier0.
 > Cap E shipped evidence: `analysis/capability_e_pipeline_step_cards_20260721.md` (`799b7412d`).
 > Holders lineage audit: `analysis/holders_stock_dossier_lineage_audit_20260721.md` (`624d50c87`) — **PARTIAL**; do not re-audit.
+> Foundation 0r.1–0r.4: `analysis/foundation_bj_dualpath_ashare_whitelist_20260721.md` (`6afea30fc`) —
+> whitelist/BJ sensing/continuity/share_float **FIXED**; `ths_hot` **PARTIAL** (availability window).
 > Foundation click/unblock/RCA: `foundation_daily_update_unblock_20260721.md`,
 > `foundation_daily_update_ui_click_20260721.md`, `foundation_daily_update_degraded_rca_20260721.md`.
 
@@ -19,12 +21,15 @@ After foundation E2E → unblock → UI click (PARTIAL/degraded) and Cap E step 
 New spine: **foundation truth knives (whitelist / BJ / continuity / holders lineage)** → **sensing serve only 沪深A** →
 **股票档案 F MVP** → **A moneyflow assist + C tabs** → **D 交集最强** → **B 形态/阶段选股面**.
 Cap E stays shipped; do not rebuild workbench into dossier files.
+**Next knives:** **0r.5b** (holders WM/SLA + ops counters + 机构 honesty) → **2F** deepen.
 
 | Question | Answer |
 |---|---|
 | Re-adjust after click-proof + Cap E + degradations? | **Yes** |
 | Cap E still a near-term knife? | **No** — DONE subset; residual = parameterized S1/S2 UI only |
-| Accept degradations as known forever? | **No** — BJ/B-share/dual-path still **in-flight**; holders audit **PARTIAL** with typed next knives |
+| 0r.1–0r.4 (whitelist / BJ / continuity / drain)? | **FIXED** subset (`6afea30fc`); `ths_hot` residual **PARTIAL** — not greenwashed |
+| Accept BJ in accepted raw_evidence as project pool? | **No** — landing/raw may keep BJ by design; **serve** = 沪深A whitelist |
+| Holders audit / next foundation product knife? | **0r.5 PARTIAL**; next = **0r.5b** then **2F** |
 | Optuna / StrategyRelease / E/F remeasure? | **No** unless owner schedules |
 | Fuse product labels into Tier0? | **No** |
 | Sample holders PASS ⇒ full dossier readiness? | **No** — see §1.2 |
@@ -41,13 +46,14 @@ Cap E stays shipped; do not rebuild workbench into dossier files.
 | UI「数据更新」+ progress「正在:…」 | **FIXED** | workbench one-click + `current_activity` |
 | Cap **E** step cards (一键 + 分步) | **DONE** | `799b7412d`; residual S1/S2 parameterized disabled+reason |
 | Click wall-clock | **PARTIAL** / degraded rc=1 | 4 degradations RCA’d — not greenwashed |
-| BJ leak into qfq / accepted nominal | **in flight** | ~327 `92x` extras; stop BJ accept **or** explicit publication |
-| B-share / exclusion fail on sensing | **in flight** | market sensing showed B shares; adopt **沪深A whitelist at correct layer** (peer) |
-| Continuity dual-path (raw lag vs accepted) | **in flight** | teach continuity/watermark formal frontier — **not** accept-as-known |
+| BJ / B-share sensing leak (qfq / pulse) | **FIXED** | root cause: `apply_universe_serve_filter` never wired after A4; wired at serve (`6afea30fc`) |
+| BJ in accepted `raw_evidence` | **by design** | landing may keep BJ; project **serve** filters — not universe invent |
+| Continuity dual-path (raw lag vs accepted) | **FIXED** | continuity/SLA judge **formal accepted frontier** (`6afea30fc`) |
 | Holders formal land→accept parse | **FIXED** (full plane) | canonical **218,444** rows null/bad=0 |
 | Holders **lineage / association / process·serve** | **PARTIAL** audit DONE | see §1.2 — consume, don't re-audit |
 | Dossier period streak / Δ plane | **FIXED** | canonical-only streak (was fact-lag bug) |
-| Drain `share_float` / `ths_hot` | **in flight** | bare BJ-like codes fail-closed; ths_hot same-day empty typed |
+| Drain `share_float` bare BJ normalize | **FIXED** | e.g. `874075` → `874075.BJ`; shape gate not loosened |
+| Drain `ths_hot` same-day empty | **PARTIAL** | availability window (`available_after=22:30`); not parse bug — residual drain |
 
 ### 1.2 Holders audit fold-in (peer DONE — facts only)
 
@@ -76,7 +82,7 @@ Source: `analysis/holders_stock_dossier_lineage_audit_20260721.md`.
 | **E** | 分步操作台 | **Shipped** — one-click primary + independent stage/derive buttons; S1/S2 param UI residual |
 | **F** | 股票档案 (+股东) | Basic; **阶段**; **形态**; holders; 持仓周期; 变化; 收益; clever IA; **verify associations + lineage + process/serve** (not sample-only) |
 
-Also binding: **市场感知只沪深A** (whitelist; fix broken exclusion root cause first — peer foundation).
+Also binding: **市场感知只沪深A** (whitelist serve path **FIXED** at `6afea30fc`; BJ may still land in accepted raw by design).
 
 ---
 
@@ -84,21 +90,21 @@ Also binding: **市场感知只沪深A** (whitelist; fix broken exclusion root c
 
 | Phase | Work | Depends on | Status |
 |---:|---|---|---|
-| **0r.1** | **沪深A whitelist** at correct serve/sensing layer (+ exclusion RCA) | live evidence B shares leaked | **in flight** (peer foundation) |
-| **0r.2** | **BJ leak** stop (or explicit publication) + audit wording | degraded RCA #2 | **in flight** |
-| **0r.3** | **Continuity dual-path** + daily/ST watermark honesty | degraded RCA #3/#4 | **in flight** — **not** accept-as-known |
-| **0r.4** | Drain knives: `share_float` normalize/quarantine; `ths_hot` known_empty | degraded RCA #1 | **scheduled / in flight** |
+| **0r.1** | **沪深A whitelist** at correct serve/sensing layer (+ exclusion RCA) | live evidence B shares leaked | **FIXED** (`6afea30fc`) — wired `apply_universe_serve_filter` |
+| **0r.2** | **BJ sensing leak** stop at serve (+ audit wording) | degraded RCA #2 | **FIXED** (`6afea30fc`) — raw BJ land OK by design |
+| **0r.3** | **Continuity dual-path** + daily/ST watermark honesty | degraded RCA #3/#4 | **FIXED** (`6afea30fc`) — formal accepted frontier |
+| **0r.4** | Drain knives: `share_float` normalize; `ths_hot` empty | degraded RCA #1 | **PARTIAL** — share_float **FIXED**; ths_hot window residual |
 | **0r.5** | **Holders lineage audit** (association + process + serve) | formal parse ≠ coverage | **PARTIAL DONE** — audit landed; follow-ons §1.2 |
-| **0r.5b** | Formal holders WM/SLA + split ops counters + 机构档案 honesty | 0r.5 audit | **scheduled** (next knives) |
+| **0r.5b** | Formal holders WM/SLA + split ops counters + 机构档案 honesty | 0r.5 audit | **scheduled** — **next foundation knife** |
 | **1E** | Cap E step cards | click-proof + activity | **DONE** (`799b7412d`) |
-| **2F** | **股票档案 MVP** `#/stock/:code` | 0r.1 code-gate; 0r.5 join PASS; streak FIXED | **PARTIAL** — deepen PnL/cycle; no fake 机构 deep-link |
+| **2F** | **股票档案 MVP** `#/stock/:code` | 0r.1 code-gate; 0r.5 join PASS; streak FIXED | **PARTIAL** — next product deepen after 0r.5b; no fake 机构 deep-link |
 | **3A** | Moneyflow decision assist (API + relative denom + taxonomy) | 0r enough that moneyflow bricks/serve honest; sensing A-only | **scheduled** |
 | **3C** | Tabbed UX | rides **2F** + early **3A** | **scheduled** (dossier tabs already seed C) |
 | **4D** | 交集最强股 | after A conclusions **or** parallel once intersection inputs + freshness owned | **scheduled / deferred** |
 | **5B** | 形态/阶段 **选股策略** surface | after F proves display; Tier1 publish stable | **later** |
 | — | E/F remeasure / Optuna / StrategyRelease | owner schedule only | **paused / banned** |
 
-**Parallelism:** 0r.1–0r.4 may run parallel when moth proves non-overlap. **2F** may deepen UX on ~98% stock↔holders↔form join **now**; must **not** claim 机构档案 deep-link until 0r.5b honesty. Cap E stays shipped.
+**Next:** **0r.5b** then **2F** deepen. Cap E stays shipped (do not revert). **2F** may deepen UX on ~98% stock↔holders↔form join; must **not** claim 机构档案 deep-link until 0r.5b honesty. `ths_hot` residual ≠ reopen 0r.1–0r.3.
 **Dropped default:** old A-first moneyflow stack before dossier/whitelist.
 
 ---
@@ -206,10 +212,10 @@ NON-goal: second orchestrator DAG; fake-runnable S1/S2 without params.
 
 | Track | Owns | Avoid |
 |---|---|---|
-| Foundation peer | 0r.1–0r.4 whitelist/BJ/continuity/drain | dossier UI files |
+| Foundation peer | 0r.1–0r.4 **FIXED** subset (`6afea30fc`); residual `ths_hot`; next **0r.5b** | dossier UI / Cap E revert |
 | Holders audit peer | 0r.5 lineage/association/process/serve evidence | fake dossier greens |
-| Cap E | workbench / ops nodes — **done** | dossier routes |
-| Product / dossier | this schedule, `#/stock/:code`, F deepen, then A/C/D/B | Cap E revert |
+| Cap E | workbench / ops nodes — **done** | dossier routes; do not revert |
+| Product / dossier | this schedule, `#/stock/:code`, **2F** deepen after 0r.5b, then A/C/D/B | Cap E revert |
 
 ---
 
@@ -218,9 +224,11 @@ NON-goal: second orchestrator DAG; fake-runnable S1/S2 without params.
 | Deliverable | Label |
 |---|---|
 | Cap E | **FIXED** subset |
+| 0r.1–0r.3 whitelist / BJ serve / continuity | **FIXED** (`6afea30fc`) |
+| 0r.4 drain | **PARTIAL** (share_float FIXED; ths_hot window residual) |
 | Holders lineage audit | **PARTIAL** (parse+F-join PASS; profile/WM/counters follow) |
 | F dossier stub | **PARTIAL** (HS-A gate + streak FIXED; PnL/机构 deep-link later) |
-| Schedule doc (this file) | **SCHEDULED authority** |
+| Schedule doc (this file) | **SCHEDULED authority** — next **0r.5b → 2F** |
 | A/B/C/D | **SCHEDULED** per §2 |
 
 ---
@@ -230,6 +238,7 @@ NON-goal: second orchestrator DAG; fake-runnable S1/S2 without params.
 - Capability defs: `analysis/product_decision_assist_backlog_20260721.md`
 - Cap E: `analysis/capability_e_pipeline_step_cards_20260721.md`
 - Holders lineage audit: `analysis/holders_stock_dossier_lineage_audit_20260721.md`
+- 0r.1–0r.4 foundation knife: `analysis/foundation_bj_dualpath_ashare_whitelist_20260721.md` (`6afea30fc`)
 - Degraded RCA: `analysis/foundation_daily_update_degraded_rca_20260721.md`
 - Controller: `goal.md`
 - Universe policy: `backend/config/universe_rules.yaml` (60/00/30/68)

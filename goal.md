@@ -18,7 +18,8 @@
 > **地基 E2E（UI 更新路径 20260721）**：`analysis/foundation_e2e_frontend_update_20260721.md` — 初判 PARTIAL（UI 缺按钮 + margin 预检死锁）；后续 unblock 见下
 > **地基 daily_update 解阻（20260721）**：`analysis/foundation_daily_update_unblock_20260721.md` — margin=`on_demand`+frozen；formal daily/ST 编排器 land_then_accept；DC/pulse 已至 `20260721`；工作台「数据更新」**FIXED**
 > **产品决策辅助 backlog（defs；E=DONE）**：`analysis/product_decision_assist_backlog_20260721.md` — A 资金流；B 形态/阶段选股；C tabs；D 交集最强；**E step cards FIXED** — `analysis/capability_e_pipeline_step_cards_20260721.md`；**F 股票档案**
-> **产品全量排期权威（20260721 重评）**：`analysis/product_plan_reeval_stock_dossier_20260721.md` — **YES 整体调序**：0r（沪深A白名单/BJ/continuity/**holders 0r.5 PARTIAL**→0r.5b）→ E done → **F 档案 MVP** → A/C → D → B；市场感知只沪深A；holders 审计 `holders_stock_dossier_lineage_audit_20260721.md`（勿重审）
+> **产品全量排期权威（20260721 重评）**：`analysis/product_plan_reeval_stock_dossier_20260721.md` — **YES 整体调序**：0r.1–0r.3 **FIXED** + 0r.4 **PARTIAL**（ths_hot；证据 `foundation_bj_dualpath_ashare_whitelist_20260721.md` / `6afea30fc`）→ **0r.5b** → E done → **F 档案 MVP** → A/C → D → B；市场感知只沪深A serve；holders 审计 `holders_stock_dossier_lineage_audit_20260721.md`（勿重审）
+> **地基 BJ/dual-path/沪深A（20260721）**：`analysis/foundation_bj_dualpath_ashare_whitelist_20260721.md` — serve whitelist + formal continuity + share_float **FIXED**；ths_hot **PARTIAL**
 > **地基 UI 点击跟跑（20260721 晚）**：`analysis/foundation_daily_update_ui_click_20260721.md` — workbench 可观测性（current_activity）+ org incremental skip；click DONE degraded；RCA `foundation_daily_update_degraded_rca_20260721.md`
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 
@@ -41,6 +42,7 @@
 - **daily_update 解阻（2026-07-21 follow-up）**：margin 预检 **FIXED**（`on_demand`+frozen，禁 thaw）；编排器 formal daily/ST catchup **FIXED**；DC/pulse **`20260721`**；工作台「数据更新」**FIXED**（`#/workbench` → `POST /api/v3/ops/jobs/daily_update/run` + 状态/日志尾；证据 `foundation_daily_update_unblock_20260721.md` Knife 4）。
 - **工作台可观测性（2026-07-21 晚）**：运行中展示 `current_activity`（阶段/进度行/日志时间/告警原因），不再只显示「更新中」；证据见 `foundation_daily_update_ui_click_20260721.md`。
 - **Capability E（2026-07-21）**：**FIXED 子集** — workbench「分步节点」step cards + `GET /api/v3/ops/pipeline/nodes`；可独立跑 `pipeline_acquire|clean|process|store` + `derive_qfq`；预检/S1·S2 参数化路径 disabled+reason；一键「数据更新」仍主路径。证据 `capability_e_pipeline_step_cards_20260721.md`。
+- **0r.1–0r.4 foundation（2026-07-21）**：**FIXED 子集** — 沪深A serve whitelist（根因：`apply_universe_serve_filter` A4 后未接线）+ formal continuity/SLA + share_float bare BJ normalize；**ths_hot PARTIAL**（发布窗）；BJ 可仍进 accepted raw_evidence（by design），项目 serve 过滤。证据 `foundation_bj_dualpath_ashare_whitelist_20260721.md` (`6afea30fc`)。
 - **F 更长窗 / S7 daily expand**：accepted daily **`20190102`→`20260721`**；ST **`20220104`→`20260721`**。E/F remeasure 仍 paused。
 
 启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。
@@ -63,11 +65,11 @@
 - **FND-GATE FIXED** — `backend/scripts/check_foundation_done.py` + `backend/config/foundation_done.yaml`；doctor/moth/CI wired；typed walls（S7 23 / org BLOCKED / Type-B defer）PASS
 - **§15-VERIFY / F8 PASS** — 连续 3 L3 刀 e0-hist→fnd-gate→section15-verify；commits/knife=1.0；pre-knife 全 true；证据 `analysis/section15_verify_20260721.md`
 
-**近端 focus**：product schedule authority = `analysis/product_plan_reeval_stock_dossier_20260721.md`。Foundation **0r.1–0r.4 in flight**（沪深A whitelist / BJ / continuity dual-path / drain）— **禁止** accept-as-known。**0r.5 holders lineage audit = PARTIAL DONE**（canonical parse 218,444 PASS；stock↔holders↔form ~98%；机构档案 ~54%；ops「76/987k」= rewrite amp，净新增 ~30码/380行；下一刀 0r.5b = WM/SLA + 拆 ops 计数 + 机构 honesty）— 证据 `holders_stock_dossier_lineage_audit_20260721.md`，**勿重审**。Cap E **DONE**。下一产品刀 = **F 股票档案** deepen（禁假 机构 deep-link）+ A/C。仍禁 Type-B enrichment / S7 假 COMPAT / 擅自 E/F remeasure / G/H/Release / org invent。
+**近端 focus**：product schedule authority = `analysis/product_plan_reeval_stock_dossier_20260721.md`。Foundation **0r.1–0r.3 FIXED** + **0r.4 PARTIAL**（ths_hot 发布窗 residual；证据 `foundation_bj_dualpath_ashare_whitelist_20260721.md` / `6afea30fc`）。**0r.5 holders lineage audit = PARTIAL DONE**（canonical parse 218,444 PASS；stock↔holders↔form ~98%；机构档案 ~54%；ops「76/987k」= rewrite amp，净新增 ~30码/380行）— 证据 `holders_stock_dossier_lineage_audit_20260721.md`，**勿重审**。Cap E **DONE**（禁 revert）。**下一刀 = 0r.5b**（WM/SLA + 拆 ops 计数 + 机构 honesty）→ **2F 股票档案** deepen（禁假 机构 deep-link）+ A/C。仍禁 Type-B enrichment / S7 假 COMPAT / 擅自 E/F remeasure / G/H/Release / org invent。
 
-**Deferred product（顺序已重评）**：0r.1–0r.4 + 0r.5b → E done → **F 股票档案** → A/C → D → B。Defs 见 backlog；排期见 `product_plan_reeval_stock_dossier_20260721.md`。禁 Optuna/Release/松 holdout；结论=Tier3/产品面，不融进 Tier0。
+**Deferred product（顺序已重评）**：0r.5b → E done → **F 股票档案** → A/C → D → B（0r.1–0r.3 已 FIXED；0r.4 ths_hot residual 不挡）。Defs 见 backlog；排期见 `product_plan_reeval_stock_dossier_20260721.md`。禁 Optuna/Release/松 holdout；结论=Tier3/产品面，不融进 Tier0。
 
-**护栏**：frontier=`20260721`（含 pulse sector/flow/strongest）；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；org BLOCKED 维持；**org/period 域 manual update = incremental-only**（见下裁决）；margin 禁 thaw；**市场感知/档案 serve = 沪深A 白名单**（peer 修排除失效）。
+**护栏**：frontier=`20260721`（含 pulse sector/flow/strongest）；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；org BLOCKED 维持；**org/period 域 manual update = incremental-only**（见下裁决）；margin 禁 thaw；**市场感知/档案 serve = 沪深A 白名单**（`6afea30fc` serve filter **FIXED**）。
 
 A→H 仍为后置地图；E/F remeasure **仅** owner schedule 后开。
 

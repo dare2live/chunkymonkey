@@ -64,7 +64,7 @@ Not a display-only pulse card. Intended surface:
 - Per-stock decision-assist archive: basic; **阶段**; **形态**; holders; 持仓周期; 变化; 收益.
 - Clever IA (tabs C-seed; observation sentence; not dashboard soup).
 - **Must** verify associations + lineage + process/serve (peer audit) — **not** sample-only greens.
-- Serve gate: **沪深A whitelist** (same policy as sensing after 0r.1).
+- Serve gate: **沪深A whitelist** (same policy as sensing; **FIXED** at serve `6afea30fc`).
 - Stub: `#/stock/:code` + `GET /api/v3/stock/{code}/dossier` — **PARTIAL** (HS-A gate + canonical streak FIXED; stock↔holders↔form ~98%; **机构档案 ~54% honesty** before deep UX). Full schedule + audit fold-in: re-eval doc §1.2 / §2.
 
 ## 6. Dependencies on foundation (must be true first)
@@ -94,11 +94,12 @@ Gate: **after** data-foundation E2E verify/optimize. Peer evidence may still be 
 | Phase | Work | Status |
 |---:|---|---|
 | 0 | Foundation E2E verify / optimize | **operable** — unblock+click FIXED/PARTIAL |
-| 0r.1–0r.4 | 沪深A whitelist; BJ leak; continuity dual-path; drain share_float/ths_hot | **in flight** — **not** accept-as-known |
+| 0r.1–0r.3 | 沪深A whitelist; BJ sensing serve; continuity dual-path | **FIXED** (`6afea30fc` / `foundation_bj_dualpath_ashare_whitelist_20260721.md`) |
+| 0r.4 | Drain share_float / ths_hot | **PARTIAL** — share_float FIXED; ths_hot availability-window residual |
 | 0r.5 | Holders lineage audit | **PARTIAL DONE** — `holders_stock_dossier_lineage_audit_20260721.md` (do not re-audit) |
-| 0r.5b | Holders WM/SLA + split ops counters + 机构档案 honesty | **scheduled** (re-eval §1.2) |
-| 1E | **Capability E** step cards | **DONE** (`799b7412d`) |
-| 2F | **Capability F** 股票档案 MVP | **PARTIAL**; HS-A gate + streak FIXED; deepen PnL/cycle; no fake 机构 deep-link (~54%) |
+| 0r.5b | Holders WM/SLA + split ops counters + 机构档案 honesty | **scheduled** — **next** (re-eval §1.2) |
+| 1E | **Capability E** step cards | **DONE** (`799b7412d`) — do not revert |
+| 2F | **Capability F** 股票档案 MVP | **PARTIAL**; next product deepen after 0r.5b; no fake 机构 deep-link (~54%) |
 | 3A/3C | Moneyflow assist + tabbed UX | **scheduled after 2F** |
 | 4D | 交集最强股 | **scheduled / deferred** |
 | 5B | 形态/阶段选股面 | **later** |
@@ -117,11 +118,13 @@ Parallel research (E/F remeasure) remains **owner-scheduled** and orthogonal; th
 
 ## 9. Schedule summary (for operators)
 
-- **A lands after** foundation E2E is verified/optimized enough that accepted moneyflow + serve freshness + multi-horizon contracts are honest.
+- **Next knives:** **0r.5b** (holders WM/SLA + ops counters + 机构 honesty) → **2F** dossier deepen → **3A/3C** → **4D** → **5B**.
+- **0r.1–0r.3 FIXED** (`6afea30fc`); **0r.4 PARTIAL** (ths_hot window residual only).
+- **A lands after** foundation moneyflow + serve freshness + multi-horizon contracts are honest (sensing HS-A serve already FIXED).
 - **C lands with** early decision-assist UI (same post-foundation gate as A UI) — tabs-within-page, not one long flatten.
 - **D lands after A conclusions** (preferred), or **parallel** once intersection inputs exist and pulse/strongest lag is owned — decision-assist, not raw dump.
-- **E lands after** foundation one-click click-proof + current-activity observability; prefer ride near **C tabs** as ops stepper — independent stage buttons, not a second orchestrator. **(2026-07-21 shipped subset: workbench 分步节点 + pipeline/derive jobs; S1/S2 still CLI-parameterized / disabled in UI.)**
+- **E shipped** (2026-07-21 subset: workbench 分步节点 + pipeline/derive jobs; S1/S2 still CLI-parameterized / disabled in UI) — **do not revert**.
 - **B lands later** as a selection-strategy surface, after form/stage publish is a stable dependency — not in the near-term knife queue.
 - **Stays deferred until owner opens:** Optuna, StrategyRelease, holdout loosen, Type-B enrichment, E/F remeasure (unless separately scheduled).
 
-Label: **SCHEDULED** — residual owner = product/decision-assist after foundation E2E closure criteria met.
+Label: **SCHEDULED** — residual owner = product/decision-assist; foundation 0r.1–0r.3 closed; next = 0r.5b → 2F.
