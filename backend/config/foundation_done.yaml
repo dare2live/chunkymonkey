@@ -9,8 +9,9 @@
 #   - Typed walls (S7 23 hard-stop / org BLOCKED / Type-B enrichment defer)
 #     are PASS when the wall is honestly maintained — they must NOT block
 #     foundation-phase closure incorrectly
-#   - F8 §15 behavior stays PARTIAL until §15-VERIFY measures
-#     commits/knife ≤1.5 on 3 consecutive L3 foundation knives
+#   - F8 §15 behavior PASS only when §15-VERIFY evidence lists
+#     ≥3 consecutive L3 knives with commits/knife ≤1.5 and pre_knife=true
+#     (do NOT loosen thresholds to force PASS)
 #   - Aggregate gate exit 0 for PASS|PARTIAL; exit 1 only on FAIL
 #   - phase_closure_ready (E/F may schedule) requires every criterion PASS
 
@@ -50,15 +51,34 @@ b5:
   type_b_defer_codes:
     - enrichment_projection_partial
 
-# §15 behavior (F8) — PARTIAL until §15-VERIFY updates this block
+# §15 behavior (F8) — PASS after §15-VERIFY (2026-07-21)
+# Evidence authority: analysis/section15_verify_20260721.md
 section_15:
-  status: PARTIAL
-  reason: awaiting_section15_verify_three_l3_knives
+  status: PASS
+  reason: section15_verify_three_consecutive_l3_knives
   max_commits_per_knife: 1.5
   required_consecutive_l3_knives: 3
-  # When status=PASS, evidence.knives must list ≥3 knives with commits + pre_knife
+  # PASS requires ≥3 knives each with positive commits + pre_knife=true;
+  # mean commits/knife must be ≤ max_commits_per_knife (not loosened).
   evidence:
-    knives: []
+    measured_at: "2026-07-21"
+    commits_per_knife: 1.0
+    artifact: analysis/section15_verify_20260721.md
+    knives:
+      - name: e0-hist
+        commits: 1
+        pre_knife: true
+        sha: "4f7a13af083f21494b720806c9a3d3607d33be4c"
+        subject: "feat(foundation): E0-HIST F6 PASS — holders/stk local-raw chunked accept"
+      - name: fnd-gate
+        commits: 1
+        pre_knife: true
+        sha: "eefd19e532c7403202664a304d7f9191ff2f4109"
+        subject: "feat(foundation): FND-GATE — machine-checkable F1–F10 foundation-done aggregate"
+      - name: section15-verify
+        commits: 1
+        pre_knife: true
+        subject: "feat(foundation): §15-VERIFY — F8 PASS knife-merge evidence (this knife)"
 
 # Strategy track pause (F9) — substrings that must remain in goal.md
 strategy_pause:

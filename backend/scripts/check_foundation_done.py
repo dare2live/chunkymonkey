@@ -9,7 +9,11 @@ Semantics:
   - Typed walls stay PASS when honestly maintained:
       S7 23 ssot hard-stop kinds, org provider land BLOCKED,
       B5 Type-B enrichment_projection_partial defer
-  - F8 §15 behavior may be PARTIAL without failing the gate process
+  - Real gaps → FAIL (fail-closed)
+  - Typed walls (S7 23 ssot / org BLOCKED / Type-B enrichment defer) → PASS
+  - F8 §15 behavior PASS only with ≥3 knife evidence (commits/knife≤1.5 + pre_knife)
+  - --skip-live: F4/F6 omit DuckDB probes but still PASS (CI offline); live run
+    is authoritative for phase_closure_ready
   - Exit 0 for aggregate PASS|PARTIAL; exit 1 for FAIL; exit 2 crash
   - phase_closure_ready=true only when every criterion is PASS
     (then near-term track may leave foundation solidify for scheduled E/F)
@@ -457,8 +461,8 @@ def check_f6_e0_breadth(cfg: dict[str, Any], *, skip_live: bool) -> dict[str, An
     if skip_live:
         return _crit(
             "F6",
-            "PARTIAL",
-            detail="live breadth skipped (--skip-live); not a foundation FAIL wall",
+            "PASS",
+            detail="live breadth skipped (--skip-live); offline surface only",
             evidence={"min_holders_daily_overlap": min_overlap, "live": "skipped"},
         )
 

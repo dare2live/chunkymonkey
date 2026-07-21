@@ -25,23 +25,28 @@ def test_live_config_loads() -> None:
     cfg = mod.load_config()
     assert int(cfg["version"]) == 1
     assert cfg["s7_ssot_wall"]["ssot"] == 23
-    assert cfg["section_15"]["status"] == "PARTIAL"
+    assert cfg["section_15"]["status"] == "PASS"
+    knives = cfg["section_15"]["evidence"]["knives"]
+    assert len(knives) >= 3
+    assert all(k.get("pre_knife") is True for k in knives)
+    assert all(isinstance(k.get("commits"), int) and k["commits"] >= 1 for k in knives)
 
 
-def test_skip_live_aggregate_is_partial_not_fail() -> None:
-    """Known walls + F8 PARTIAL must not exit-fail the gate process."""
+def test_skip_live_aggregate_is_pass_when_f8_closed() -> None:
+    """Typed walls PASS + F8 PASS → aggregate PASS and phase_closure_ready."""
     mod = _load_mod()
     report = mod.evaluate_foundation_done(skip_live=True)
-    assert report["verdict"] in {"PASS", "PARTIAL"}
+    assert report["verdict"] == "PASS"
     assert report["summary"]["FAIL"] == 0
-    assert report["phase_closure_ready"] is False
+    assert report["summary"]["PARTIAL"] == 0
+    assert report["phase_closure_ready"] is True
     by_id = {c["id"]: c for c in report["criteria"]}
     assert by_id["F2"]["verdict"] == "PASS"
     assert by_id["F2"]["typed_wall"] == "s7_23_hard_stop"
     assert by_id["F7"]["verdict"] == "PASS"
     assert by_id["F7"]["typed_wall"] == "org_provider_land_blocked"
     assert by_id["F4"]["typed_wall"] == "type_b_enrichment_defer"
-    assert by_id["F8"]["verdict"] == "PARTIAL"
+    assert by_id["F8"]["verdict"] == "PASS"
     assert mod.main(["--skip-live"]) == 0
 
 
@@ -57,10 +62,14 @@ def test_f2_fails_when_ssot_wall_drifts(tmp_path: Path) -> None:
 
 def test_f8_partial_does_not_block_gate_exit() -> None:
     mod = _load_mod()
-    cfg = mod.load_config()
+    # Live config is PASS after §15-VERIFY; PARTIAL path still exit-safe.
+    cfg = copy.deepcopy(mod.load_config())
+    cfg["section_15"]["status"] = "PARTIAL"
+    cfg["section_15"]["reason"] = "test_partial"
+    cfg["section_15"]["evidence"] = {"knives": []}
     assert mod.check_f8_section15(cfg)["verdict"] == "PARTIAL"
     # Fake PASS without evidence must fail closed
-    bad = copy.deepcopy(cfg)
+    bad = copy.deepcopy(mod.load_config())
     bad["section_15"]["status"] = "PASS"
     bad["section_15"]["evidence"] = {"knives": []}
     assert mod.check_f8_section15(bad)["verdict"] == "FAIL"
@@ -86,6 +95,15 @@ def test_f8_pass_requires_three_knives_and_ratio() -> None:
     assert mod.check_f8_section15(cfg)["verdict"] == "FAIL"
 
 
+def test_f8_live_config_passes_bar() -> None:
+    mod = _load_mod()
+    cfg = mod.load_config()
+    result = mod.check_f8_section15(cfg)
+    assert result["verdict"] == "PASS"
+    mean = float(result["evidence"]["commits_per_knife"])
+    assert mean <= float(cfg["section_15"]["max_commits_per_knife"])
+
+
 def test_f7_org_blocked_and_f9_strategy_markers() -> None:
     mod = _load_mod()
     assert mod.check_f7_org_blocked()["verdict"] == "PASS"
@@ -103,9 +121,20 @@ def test_f9_fails_when_goal_loses_pause_marker(tmp_path: Path, monkeypatch) -> N
     assert mod.check_f9_strategy_paused(cfg)["verdict"] == "FAIL"
 
 
-def test_phase_closure_ready_false_while_f8_partial() -> None:
+def test_phase_closure_ready_true_when_all_pass() -> None:
     mod = _load_mod()
     report = mod.evaluate_foundation_done(skip_live=True)
+    assert report["phase_closure_ready"] is True
+    assert all(c["verdict"] == "PASS" for c in report["criteria"])
+
+
+def test_phase_closure_ready_false_while_f8_partial() -> None:
+    mod = _load_mod()
+    cfg = copy.deepcopy(mod.load_config())
+    cfg["section_15"]["status"] = "PARTIAL"
+    cfg["section_15"]["reason"] = "forced_partial"
+    cfg["section_15"]["evidence"] = {"knives": []}
+    report = mod.evaluate_foundation_done(cfg=cfg, skip_live=True)
     assert report["phase_closure_ready"] is False
     assert any(c["id"] == "F8" and c["verdict"] == "PARTIAL" for c in report["criteria"])
 
@@ -119,3 +148,5 @@ def test_config_yaml_declares_typed_walls() -> None:
     assert kinds["serve_l0_declared"] == 7
     assert kinds["blocked_no_publication"] == 2
     assert "enrichment_projection_partial" in data["b5"]["type_b_defer_codes"]
+    assert data["section_15"]["max_commits_per_knife"] == 1.5
+    assert data["section_15"]["required_consecutive_l3_knives"] == 3

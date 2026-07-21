@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-21（**foundation ~91% vs scheme** — 见 `analysis/foundation_phase_reeval_20260721.md`；近端 track = **foundation solidify**；策略 **paused**；**FND-GATE FIXED** — `check_foundation_done.py` F1–F10 聚合（live：F1–F7/F9–F10 **PASS**；F8 **PARTIAL**；`phase_closure_ready=false`）；**S1–S6 FIXED**；**S7 near-FIXED** — **23/46 ssot** typed hard-stop wall；B1+B2 **done**；**§15 adoption started**（behavior PARTIAL）；**E0-HIST FIXED（F6）** — holders **152** part / **126** trading-day overlap（`20251020`→`20260717`）；stk **194** / **161** overlap（`20251020`→`20260715`）；org **2** local-raw；**org BLOCKED**；**B5 PARTIAL** — qfq lineage **FIXED**；Type-B enrichment **defer**；daily **`20190102`→`20260720`**（1829d）；ST **`20220104`→`20260720`**（1099d））
+> 更新：2026-07-21（**foundation phase_closure_ready** — 见 `analysis/foundation_phase_reeval_20260721.md`；近端 track = **foundation solidify CLOSED**；策略 **paused**；**FND-GATE PASS** — `check_foundation_done.py` F1–F10 全 **PASS**（含 F8 §15-VERIFY）；`phase_closure_ready=true`；**S1–S6 FIXED**；**S7 near-FIXED** — **23/46 ssot** typed hard-stop wall；B1+B2 **done**；**§15 behavior PASS**（e0-hist→fnd-gate→section15-verify；commits/knife=1.0）；**E0-HIST FIXED（F6）** — holders **152** part / **126** trading-day overlap（`20251020`→`20260717`）；stk **194** / **161** overlap（`20251020`→`20260715`）；org **2** local-raw；**org BLOCKED**；**B5 PARTIAL** — qfq lineage **FIXED**；Type-B enrichment **defer**；daily **`20190102`→`20260720`**（1829d）；ST **`20220104`→`20260720`**（1099d））
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -14,11 +14,12 @@
 > **吞吐瓶颈诊断（墙钟 vs 真相门；§15 adoption）**：`analysis/throughput_bottleneck_diagnosis_20260721.md`
 > **§15 效率复测（measured validation）**：`analysis/process_efficiency_validation_20260721.md`
 > **地基阶段重评（近端排序 authority）**：`analysis/foundation_phase_reeval_20260721.md`
+> **§15-VERIFY 证据（F8 PASS）**：`analysis/section15_verify_20260721.md`
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 
 ## 当前 objective
 
-**轨道 = foundation solidify**（2026-07-21 重评；母体 = transport strangler S1–S7 + brick L0–L3 + E0 + DB 分层；**~91% vs scheme**）。模块化 **S1–S6 FIXED**；**S7 near-FIXED**（23 ssot = typed hard-stop 墙；B1+B2 done；禁假 COMPAT）。**E0-HIST / F6 PASS**（holders≥120 trading-day overlap）。**FND-GATE FIXED**（机器聚合 F1–F10；F8 PARTIAL 不误挡）。**主 residual = §15 行为 adoption**。**B5** registry/qfq **FIXED 子集**；Type-B enrichment **defer**。A→H = **后置研究地图**；**E/F remeasure paused**。WP0–WP4 闭合；WP6 shadow 开放。**§15 knife-merge started**（binding 不变）。
+**轨道 = foundation solidify CLOSED**（2026-07-21；母体 = transport strangler S1–S7 + brick L0–L3 + E0 + DB 分层；**phase_closure_ready=true**）。模块化 **S1–S6 FIXED**；**S7 near-FIXED**（23 ssot = typed hard-stop 墙；B1+B2 done；禁假 COMPAT）。**E0-HIST / F6 PASS**（holders≥120 trading-day overlap）。**FND-GATE PASS**（F1–F10 全 PASS；F8 §15-VERIFY **PASS**）。**§15 behavior PASS**（连续 3 刀 commits/knife=1.0 + pre-knife）。**B5** registry/qfq **FIXED 子集**；Type-B enrichment **defer**。A→H = **后置研究地图**；**E/F remeasure paused**（可 schedule，未开）。WP0–WP4 闭合；WP6 shadow 开放。**§15 knife-merge binding 不变**。
 
 已落地硬事实（勿回滚）：
 - C + B-pit **`cutover_allowed=true`**（commit `b38e9ac5`）→ resolver `ACCEPTED_CUTOVER` / `MART_CUTOVER`
@@ -39,9 +40,9 @@
 
 **近端排序 authority** = `analysis/foundation_phase_reeval_20260721.md`（supersede plan_reeval §11 历史菜单）。母体仍 = `plan_reeval_first_principles_20260720.md` + `data_brick_architecture_20260721.md`。
 
-**foundation-done 前唯一序列**（禁 E/F/G/H）：
+**foundation-done 已闭合**（F1–F10 PASS；`phase_closure_ready=true`）。下一轨仅在 owner 显式 schedule 后开：
 
-1. **§15-VERIFY** — 下 2–3 个 L3 刀 knife-merge + `pre-knife`；process_efficiency 复测 → F8 PASS → `phase_closure_ready`
+1. **scheduled E/F remeasure**（同 protocol；仍禁 Optuna/松门/Release）— **未开**；保持 paused
 
 **已闭合（勿回滚）**：
 
@@ -50,13 +51,14 @@
 - **E0 transport FIXED 子集** — S1/S2 CLI + stk/holders provider land；**org_holding provider land BLOCKED**
 - **E0-HIST / F6 PASS** — local-raw chunked ≤40d empty_skip：holders **152**（`20251020`→`20260717`；**126** trading-day overlap daily）；stk **194**（`20251020`→`20260715`；**161** overlap）；org **2** unchanged
 - **B5 FIXED 子集** — registry gate 绿 + qfq lineage + live derive；**Type-B enrichment defer**（registry in-scheme；enrichment 非近端）
-- **FND-GATE FIXED** — `backend/scripts/check_foundation_done.py` + `backend/config/foundation_done.yaml`；doctor/moth/CI wired；typed walls（S7 23 / org BLOCKED / Type-B defer）PASS；F8 PARTIAL exit 0
+- **FND-GATE FIXED** — `backend/scripts/check_foundation_done.py` + `backend/config/foundation_done.yaml`；doctor/moth/CI wired；typed walls（S7 23 / org BLOCKED / Type-B defer）PASS
+- **§15-VERIFY / F8 PASS** — 连续 3 L3 刀 e0-hist→fnd-gate→section15-verify；commits/knife=1.0；pre-knife 全 true；证据 `analysis/section15_verify_20260721.md`
 
-**近端 focus**：§15 行为 adoption — **不是** Type-B enrichment / S7 假 COMPAT / E/F remeasure / G/H/Release / org invent。
+**近端 focus**：owner schedule E/F 前保持 pause — **不是** Type-B enrichment / S7 假 COMPAT / 擅自 E/F / G/H/Release / org invent。
 
 **护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；org BLOCKED 维持。
 
-A→H 仍为后置地图；E/F remeasure **仅** foundation-done 后 scheduled。
+A→H 仍为后置地图；E/F remeasure **仅** owner schedule 后开。
 
 ## 禁令
 

@@ -3058,3 +3058,22 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Did not**：E/F remeasure；§15 behavior close；S7 COMPAT；org invent.
 - **Next**：**§15-VERIFY**.
 - **Status**: **FIXED** (FND-GATE) / F8 still **PARTIAL**.
+
+### 2026-07-21 — §15-VERIFY FIXED (F8 PASS): phase_closure_ready
+
+- Wall-clock: Tue 2026-07-21 ~19:18–19:45 Asia/Shanghai.
+- Tip base: `eefd19e53`. Authority: `foundation_phase_reeval_20260721.md` §3 F8 + eng_gov §15.
+- **Knife §15-VERIFY**（§15；pre-knife `section15-verify` OK **0.85s**；no E/F；no S7 fake COMPAT；
+  no org invent；no Type-B enrichment；**thresholds not loosened**）：
+  1. Evidence window = three consecutive L3 foundation knives:
+     - E0-HIST `4f7a13af0` commits=1 pre_knife=`e0-hist`
+     - FND-GATE `eefd19e53` commits=1 pre_knife=`fnd-gate`
+     - §15-VERIFY (this tip) commits=1 pre_knife=`section15-verify`
+  2. Mean `commits/knife=1.0 ≤ 1.5`.
+  3. Artifact `analysis/section15_verify_20260721.md` + `foundation_done.yaml`
+     `section_15.status=PASS` evidence block；tests + board/goal/reeval sync.
+- **Live score**：F1–F10 **PASS**；`phase_closure_ready=true`.
+- **Did not**：relax max_commits_per_knife / drop pre_knife requirement；E/F
+  remeasure；Optuna/Release；S7 COMPAT；org invent.
+- **Next**：owner-scheduled E/F only（goal pause markers retained for F9）.
+- **Status**: **FIXED** (§15-VERIFY / F8) / foundation phase **CLOSED**.

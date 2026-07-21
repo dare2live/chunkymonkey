@@ -10,7 +10,7 @@
 
 | 问 | 答 |
 |---|---|
-| **效率 improved?** | **PARTIAL (Y on docs/mechanical gates; N on L3 wall-clock; behavior adoption 刚起步)** |
+| **效率 improved?** | **YES on §15 behavior** (F8 PASS；3 consecutive L3 knives commits/knife=1.0)；PARTIAL on L3 wall-clock (pytest tax unchanged) |
 | **Numbers** | L1 **1.54s** (re-measure ≈ T0 **1.6s**); L3 pytest **898 tests / 54 paths / 122.7s** (T0 L3 **27.1s** 不含全量 ci_pytest); `agent-boot` **9.3s** (T0 **11.6s**); `pre-knife` **0.64s** |
 | **Top remaining waste** | (1) micro-commit / 不敢刀级合并 (2) L3 全 pytest 面 ~2min/commit (3) 父 agent 串行 + subagent 空转 (4) S7/E0 领域物理（≤40d、逐域 strangler） |
 | **Foundation one-liner** | **S1–S6 FIXED**；**S7 PARTIAL** (29/46 ssot)；**E0 PARTIAL**；E/F remeasure **paused**；DB 逻辑 E0→R1 strangler，物理单 DuckDB |
@@ -49,6 +49,7 @@ L1 路径 **已证有效**；CI paths-ignore (c473f5b4) 与 tier 分类一致。
 |---|---:|---:|
 | `scripts/chunkyctl agent-boot` | **9.30s** | 11.6s |
 | `scripts/chunkyctl pre-knife s7-inventory` | **0.64s** | (new in 464e6edf9) |
+| `scripts/chunkyctl pre-knife section15-verify` | **0.85s** | §15-VERIFY 2026-07-21 remeasure |
 
 ### 1.4 Before vs after §15 knife-merge（git 证据）
 
@@ -64,7 +65,17 @@ L1 路径 **已证有效**；CI paths-ignore (c473f5b4) 与 tier 分类一致。
 - 捆绑：§15 eng_gov binding、`pre_knife_audit.py`、`agent-boot` 提醒、S7 ssot **41→36**、5 域 formalize tests
 - 演示 **刀级合并可行**；§15 adoption **started**，非 **closed**
 
-**Contrast verdict**：编排 **政策面 FIXED**；**行为面 PARTIAL** — 一刀示范存在，59-commit 窗口说明 **旧习惯仍占多数 session 墙钟**。
+**Contrast verdict**：编排 **政策面 FIXED**；**行为面 PASS**（2026-07-21 §15-VERIFY）— 连续 3 个 L3 foundation 刀（e0-hist / fnd-gate / section15-verify）均为 **1 commit + pre-knife**；`commits/knife=1.0≤1.5`。证据：`analysis/section15_verify_20260721.md` + `foundation_done.yaml` `section_15`.
+
+### 1.6 §15-VERIFY close（2026-07-21）
+
+| Knife | SHA | commits | pre-knife |
+|---|---|---:|---|
+| E0-HIST | `4f7a13af0` | 1 | `e0-hist` |
+| FND-GATE | `eefd19e53` | 1 | `fnd-gate` |
+| §15-VERIFY | this tip | 1 | `section15-verify` |
+
+F8 → **PASS**；`phase_closure_ready=true`（F1–F10）。阈值 **未**放宽。
 
 ### 1.5 对 ANY model 仍慢的事（不可甩锅「模型慢」）
 
@@ -162,6 +173,7 @@ L1 路径 **已证有效**；CI paths-ignore (c473f5b4) 与 tier 分类一致。
 | T0 门耗时 | ledger L1862–1907；eng_gov §15 L306–311 |
 | Throughput 诊断 | `analysis/throughput_bottleneck_diagnosis_20260721.md` |
 | §15 knife-merge commit | `464e6edf9` |
+| §15-VERIFY F8 PASS | `analysis/section15_verify_20260721.md`；`foundation_done.yaml` section_15 |
 | ci_pytest SSOT | `backend/config/ci_pytest_surface.yaml`；543c9e478 |
 | S7 inventory | `legacy_raw_plane.yaml`；moth `legacy-raw-plane-inventory` |
 | Foundation stages | `goal.md`；modularity gap §8；plan_reeval §0 |

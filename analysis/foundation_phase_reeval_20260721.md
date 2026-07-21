@@ -8,7 +8,7 @@
 
 ## 0. 一句话裁决
 
-**相对既定方案（transport strangler S1–S7 + brick L0–L3 + E0 + DB 逻辑分层），数据地基约 **~91% 闭合**——S1–S6 与 S7 可行动项已 shipped；S7 余 **23/46 ssot** 为 **typed hard-stop 墙**（非未完成清单）；**E0-HIST/F6 PASS**；近端缺口 = **§15 行为 adoption** + **foundation-done 机器门**。Type-B enrichment **defer**（registry 在方案内；enrichment 刀序超前）。策略轨 **paused**。
+**相对既定方案（transport strangler S1–S7 + brick L0–L3 + E0 + DB 逻辑分层），数据地基约 **~94% 闭合**——S1–S6 与 S7 可行动项已 shipped；S7 余 **23/46 ssot** 为 **typed hard-stop 墙**（非未完成清单）；**E0-HIST/F6 PASS**；**§15 behavior PASS**（§15-VERIFY）；**foundation-done 机器门 PASS**（`phase_closure_ready=true`）。Type-B enrichment **defer**（registry 在方案内；enrichment 刀序超前）。策略轨 **paused**。
 
 ---
 
@@ -71,7 +71,7 @@
 |---|---|
 | `db_layering_toplevel_design_20260721.md` | **authority shipped**（逻辑 E0→R1；物理单 DuckDB） |
 | `data_brick_architecture_20260721.md` | **authority shipped** |
-| §15 knife-merge | **policy FIXED**；**behavior PARTIAL**（见 process_efficiency_validation） |
+| §15 knife-merge | **policy FIXED**；**behavior PASS**（§15-VERIFY；见 `section15_verify_20260721.md`） |
 | WP6 agent-OS shadow | ceremony 开放；**不**阻塞 foundation-done |
 
 ---
@@ -92,8 +92,8 @@
 | 项 | 判定 |
 |---|---|
 | **E0 accept 历史广度** | **F6 PASS**（holders 126d overlap ≥120；stk 同步）— 相对 daily 1829d 仍可 chunked 续扩，**非** foundation-done blocker |
-| **§15 行为 adoption** | 59 micro-commit 窗口 vs 1 knife-merge 示范 — **undershot** |
-| **Foundation-done 机器门** | **FIXED**（`check_foundation_done.py`；F8 PARTIAL 仍挡 `phase_closure_ready`） |
+| **§15 行为 adoption** | **PASS**（e0-hist→fnd-gate→section15-verify；commits/knife=1.0） |
+| **Foundation-done 机器门** | **PASS**（`check_foundation_done.py`；`phase_closure_ready=true`） |
 | **org_holding** | 方案允许 BLOCKED + local-raw；**非 undershot**（诚实 blocked） |
 
 ### 2.3 Type-B enrichment：in-scheme 还是 scope creep？
@@ -123,7 +123,7 @@
 | F9 | 策略轨 | E/F/G/H **未**开；frontier honest（`operation_window_blocked` 非落后） |
 | F10 | dual-track | residual **NONE**（re-audit 或 moth claim） |
 
-**当前计分**：F1–F6 **PASS**；F7 **PASS**（org BLOCKED 维持）；F8 **PARTIAL**；F9–F10 **PASS**。
+**当前计分**：F1–F10 **PASS**；`phase_closure_ready=true`（2026-07-21 §15-VERIFY）。
 
 ---
 
@@ -136,11 +136,11 @@
 | E0 disclosure | 20% | 85%（CLI+provider；F6 accept 广度 PASS；org BLOCKED） | 17.0 |
 | B5 L2/L3 registry + qfq | 10% | 90%（enrichment defer） | 9.0 |
 | DB/brick 文档 authority | 5% | 100% | 5.0 |
-| §15 process adoption | 5% | 40% | 2.0 |
+| §15 process adoption | 5% | 100% | 5.0 |
 | Acquire/universe 立法 | 5% | 100% | 5.0 |
-| **合计** | **100%** | | **~91%** |
+| **合计** | **100%** | | **~94%** |
 
-**读法**：~91% = **方案内地基**；不是 Tier0「全 repo 零 legacy raw」——那需要 owner 对 23 域 publication/sunset 裁决，**超出本阶段定义**。
+**读法**：~94% = **方案内地基**（含 §15 behavior）；不是 Tier0「全 repo 零 legacy raw」——那需要 owner 对 23 域 publication/sunset 裁决，**超出本阶段定义**。`phase_closure_ready=true` 允许 schedule E/F；残差权重落在 S7 墙 / org BLOCKED / Type-B defer。
 
 ---
 
@@ -150,11 +150,14 @@
 
 | 序 | 刀 | 内容 | 退出 | 不在此刀 |
 |---:|---|---|---|---|
-| **1** | **§15-VERIFY** | 下 2–3 个 L3 刀强制 knife-merge + `pre-knife`；process_efficiency 复测；更新 `foundation_done.yaml` §15 evidence | F8 PASS → `phase_closure_ready` | 放宽 L3/Rule10/PIT |
+| — | — | **foundation closure 序列已完成** | `phase_closure_ready=true` | — |
 
 **已完成**：
 - **E0-HIST** — holders/stk local-raw chunked ≤40d empty_skip → F6 PASS（2026-07-21）。
-- **FND-GATE** — `backend/scripts/check_foundation_done.py` + `foundation_done.yaml`；doctor/moth/CI；typed walls PASS；F8 PARTIAL exit 0（2026-07-21）。
+- **FND-GATE** — `backend/scripts/check_foundation_done.py` + `foundation_done.yaml`；doctor/moth/CI；typed walls PASS；F8 当时 PARTIAL exit 0（2026-07-21）。
+- **§15-VERIFY** — 连续 3 L3 刀 e0-hist→fnd-gate→section15-verify；commits/knife=1.0；pre-knife 全 true；F8 PASS → `phase_closure_ready=true`（证据 `analysis/section15_verify_20260721.md`）。
+
+**Post-foundation（owner schedule only）**：E/F same-protocol remeasure — **仍 paused**；禁 Optuna/松门/Release。
 
 ### 5.1 S7 23 orphans — 怎么办？
 
@@ -207,11 +210,12 @@
 
 | 标签 | 内容 |
 |---|---|
-| **FOUNDATION_VS_SCHEME** | **~85%** |
-| **NEAR_TERM_TRACK** | foundation solidify（strategy paused） |
-| **NEXT_3** | §15-VERIFY（E0-HIST + FND-GATE done） |
+| **FOUNDATION_VS_SCHEME** | **~94%** |
+| **NEAR_TERM_TRACK** | foundation solidify **CLOSED**（`phase_closure_ready=true`；strategy paused） |
+| **NEXT** | owner-scheduled E/F remeasure only（仍禁 Optuna/松门/Release） |
 | **S7_23** | typed wall；非近端刀 |
 | **TYPE_B** | registry in-scheme；enrichment **defer** |
 | **ORG** | BLOCKED maintained |
+| **F8** | **PASS**（§15-VERIFY） |
 
 **APPROVED** — 作为 2026-07-21 foundation 阶段出口排序；implementation 仍 strangler，不触发 greenfield。
