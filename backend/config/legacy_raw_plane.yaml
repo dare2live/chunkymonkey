@@ -29,10 +29,14 @@ membership_l0_entities:
   - dc_member
   - index_member_all
 
-# Pulse builder-only flow inputs (display publication = mart_*; not serve L0 leaf).
+# Pulse builder-only inputs (display publication = mart_*; not serve L0 leaf).
 pulse_flow_builder_entities:
   - moneyflow_ind_dc
   - moneyflow_mkt_dc
+  - sw_daily
+  - dc_index
+  - index_dailybasic
+  - limit_cpt_list
 
 tables:
   raw_tushare_adj_factor:
@@ -66,7 +70,10 @@ tables:
     role: ssot
 
   raw_tushare_dc_index:
-    role: ssot
+    role: compatibility
+    kind: pulse_flow_builder
+    publication_surface: mart_sector_pulse_daily
+    note: "S7: pulse builder input via DataAccess; sector mart owns display; dim_stock_dc_* = current-snapshot residual"
 
   raw_tushare_dc_member:
     role: ssot
@@ -101,7 +108,10 @@ tables:
     role: ssot
 
   raw_tushare_index_dailybasic:
-    role: ssot
+    role: compatibility
+    kind: pulse_flow_builder
+    publication_surface: mart_market_pulse_daily
+    note: "S7: pulse builder mkt_pe/turnover via DataAccess; market mart owns display publication"
 
   raw_tushare_index_member_all:
     role: compatibility
@@ -113,10 +123,14 @@ tables:
     role: ssot
 
   raw_tushare_limit_cpt_list:
-    role: ssot
+    role: compatibility
+    kind: pulse_flow_builder
+    publication_surface: mart_market_pulse_daily
+    note: "S7: pulse builder strongest-sectors via DataAccess; market mart owns display publication"
 
   raw_tushare_limit_list_d:
     role: ssot
+    note: "serve drill L0 leaf + pulse builder; stock-level limit detail has no mart-mirror"
 
   raw_tushare_margin:
     role: compatibility
@@ -190,16 +204,21 @@ tables:
     role: ssot
 
   raw_tushare_sw_daily:
-    role: ssot
+    role: compatibility
+    kind: pulse_flow_builder
+    publication_surface: mart_sector_pulse_daily
+    note: "S7: pulse builder SW RS/px via DataAccess; sector mart owns display publication"
 
   raw_tushare_ths_hot:
     role: ssot
 
   raw_tushare_top_inst:
     role: ssot
+    note: "pulse builder + institution_profile truth; no formal inst-seat publication"
 
   raw_tushare_top_list:
     role: ssot
+    note: "pulse builder + multi-consumer; no formal LHB publication beyond mart aggregates"
 
   raw_tushare_trade_cal:
     role: compatibility

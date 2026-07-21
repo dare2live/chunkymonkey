@@ -194,14 +194,14 @@ def test_s7_derive_runtime_still_bans_acquire_imports() -> None:
     assert "capture_and_publish" not in src
 
 
-def test_s7_inventory_role_counts_after_membership_flow_knife() -> None:
-    """S7 knife: membership/flow + identity/adj leave ssot (41→36)."""
+def test_s7_inventory_role_counts_after_pulse_builder_knife() -> None:
+    """S7 knife: pulse builder leftovers leave ssot (36→32)."""
 
     mod = _load_check_mod()
     counts = mod.role_counts()
-    assert counts["ssot"] == 36, counts
+    assert counts["ssot"] == 32, counts
     assert counts["fill"] == 1, counts
-    assert counts["compatibility"] == 9, counts
+    assert counts["compatibility"] == 13, counts
     assert sum(counts.values()) == 46, counts
 
 
@@ -224,24 +224,49 @@ def test_s7_sw_membership_publication_is_pit_view() -> None:
 
 
 def test_s7_pulse_flow_builder_tables_are_compatibility() -> None:
-    """moneyflow_ind_dc / moneyflow_mkt_dc: mart owns display; raw = compat residual."""
+    """Pulse builder inputs: mart owns display; raw = compat residual."""
 
     from services.data_access.spec import load_registry
 
     reg = load_registry()
     assert reg.entity("moneyflow_ind_dc").table == "raw_tushare_moneyflow_ind_dc"
     assert reg.entity("moneyflow_mkt_dc").table == "raw_tushare_moneyflow_mkt_dc"
+    assert reg.entity("sw_daily").table == "raw_tushare_sw_daily"
+    assert reg.entity("dc_index").table == "raw_tushare_dc_index"
+    assert reg.entity("index_dailybasic").table == "raw_tushare_index_dailybasic"
+    assert reg.entity("limit_cpt_list").table == "raw_tushare_limit_cpt_list"
 
     mod = _load_check_mod()
     inv = mod._load_yaml(mod.INVENTORY_YAML)
     for table, mart in (
         ("raw_tushare_moneyflow_ind_dc", "mart_sector_pulse_daily"),
         ("raw_tushare_moneyflow_mkt_dc", "mart_market_pulse_daily"),
+        ("raw_tushare_sw_daily", "mart_sector_pulse_daily"),
+        ("raw_tushare_dc_index", "mart_sector_pulse_daily"),
+        ("raw_tushare_index_dailybasic", "mart_market_pulse_daily"),
+        ("raw_tushare_limit_cpt_list", "mart_market_pulse_daily"),
     ):
         meta = inv["tables"][table]
         assert meta["role"] == "compatibility", table
         assert meta.get("kind") == "pulse_flow_builder", table
         assert meta.get("publication_surface") == mart, table
+
+
+def test_s7_pulse_builder_resolves_via_data_access_entity() -> None:
+    """market_pulse builder must not hardcode reclassified pulse raw tables."""
+
+    src = (REPO / "backend" / "services" / "market_pulse.py").read_text(encoding="utf-8")
+    for banned in (
+        "tr.raw_tushare_sw_daily",
+        "tr.raw_tushare_dc_index",
+        "tr.raw_tushare_index_dailybasic",
+        "tr.raw_tushare_limit_cpt_list",
+    ):
+        assert banned not in src, banned
+    assert '_tr_entity("sw_daily")' in src
+    assert '_tr_entity("dc_index")' in src
+    assert '_tr_entity("index_dailybasic")' in src
+    assert '_tr_entity("limit_cpt_list")' in src
 
 
 def test_s7_stock_basic_identity_publication_is_dim() -> None:

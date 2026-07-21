@@ -342,8 +342,8 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
         -- (停牌/缺流数据成分不进分母); 板块当日无成分快照 (dc_member 2025+ 起) → NULL 不知道≠0。
         SELECT m.trade_date, m.ts_code AS sector_code,
                COUNT(*) FILTER (WHERE f.net_amount > 0) * 1.0 / COUNT(*) AS inflow_breadth
-        FROM tr.raw_tushare_dc_member m
-        JOIN tr.raw_tushare_moneyflow_dc f
+        FROM {_tr_entity("dc_member")} m
+        JOIN {_tr_entity("moneyflow_dc")} f
           ON f.ts_code = m.con_code AND f.trade_date = m.trade_date
         WHERE m.trade_date >= {dc_start} AND {dc_day_where}
         GROUP BY 1, 2
@@ -382,7 +382,7 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
         SELECT trade_date,
                (close / NULLIF(LAG(close, {w4})  OVER (ORDER BY trade_date), 0) - 1) * 100 AS bench_ret_4w,
                (close / NULLIF(LAG(close, {w12}) OVER (ORDER BY trade_date), 0) - 1) * 100 AS bench_ret_12w
-        FROM tr.raw_tushare_index_daily WHERE ts_code = {bench}
+        FROM {_tr_entity("index_daily")} WHERE ts_code = {bench}
     ),
     sw_px AS (
         -- 滚窗累计收益 = close_t/close_(t-w) - 1, 尾对齐 (历史不足 → NULL, 不外推)。
@@ -392,7 +392,7 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
                (s.close / NULLIF(LAG(s.close, {w4})  OVER (PARTITION BY s.ts_code ORDER BY s.trade_date), 0) - 1) * 100 AS ret_4w,
                (s.close / NULLIF(LAG(s.close, {w12}) OVER (PARTITION BY s.ts_code ORDER BY s.trade_date), 0) - 1) * 100 AS ret_12w,
                s.amount / NULLIF(SUM(s.amount) OVER (PARTITION BY s.trade_date, l.level), 0) AS turnover_amt_share
-        FROM tr.raw_tushare_sw_daily s
+        FROM {_tr_entity("sw_daily")} s
         JOIN sw_dim l ON l.code = s.ts_code
         WHERE s.trade_date >= {sw_start}
     ),
@@ -413,8 +413,8 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
         -- 契约的 as-of 语义), 防区间重叠把同一笔净流双计进两套行业。
         SELECT f.trade_date, p.l1_code, p.l2_code, p.l3_code,
                TRY_CAST(f.net_mf_amount AS DOUBLE) AS net_mf_amount
-        FROM tr.raw_tushare_moneyflow f
-        JOIN tr.v_sw_industry_pit p
+        FROM {_tr_entity("moneyflow")} f
+        JOIN {_tr_entity("index_member_all")} p
           ON p.ts_code = f.ts_code AND p.in_date <= f.trade_date
          AND (p.out_date IS NULL OR p.out_date > f.trade_date)
         WHERE f.trade_date >= {sw_start}
@@ -435,8 +435,8 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
         -- 板块流通市值底座: 成分个股 daily_basic.circ_mv (万元) as-of 归属聚合 (同上防双计)
         SELECT b.trade_date, p.l1_code, p.l2_code, p.l3_code,
                TRY_CAST(b.circ_mv AS DOUBLE) AS circ_mv
-        FROM tr.raw_tushare_daily_basic b
-        JOIN tr.v_sw_industry_pit p
+        FROM {_tr_entity("valuation")} b
+        JOIN {_tr_entity("index_member_all")} p
           ON p.ts_code = b.ts_code AND p.in_date <= b.trade_date
          AND (p.out_date IS NULL OR p.out_date > b.trade_date)
         WHERE b.trade_date >= {sw_start}
@@ -468,7 +468,7 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
                COUNT(*) FILTER (WHERE ll."limit" = 'U') AS limit_up_n,
                COUNT(*) FILTER (WHERE ll."limit" = 'D') AS limit_down_n,
                COUNT(*) FILTER (WHERE ll."limit" = 'Z') AS zha_ban_n
-        FROM tr.raw_tushare_limit_list_d ll
+        FROM {_tr_entity("limit_list_d")} ll
         JOIN dim_stock_segment_daily seg
           ON seg.stock_code = substr(ll.ts_code, 1, 6) AND seg.trade_date = ll.trade_date
         WHERE seg.sw_l1 IS NOT NULL
@@ -476,7 +476,7 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
     ),
     limit_days AS (
         -- 源当日有数据才把缺组记 0 (真·零涨停); 源整日缺失 (2023 前/断供) 记 NULL (不知道≠0)
-        SELECT DISTINCT trade_date FROM tr.raw_tushare_limit_list_d
+        SELECT DISTINCT trade_date FROM {_tr_entity("limit_list_d")}
     )
     SELECT q.chain, q.sector_code, q.sector_name, q.trade_date,
            CAST(q.pct_change AS DOUBLE) AS pct_change,
@@ -505,7 +505,7 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
            -- cum_ratio 分母: dc_index.total_mv 万元→元 (总市值口径 — 源无流通市值字段, 见头注)
            {_clean_num('i.total_mv')} * 10000.0 AS sector_mv
     FROM dc_quiet q
-    LEFT JOIN tr.raw_tushare_dc_index i
+    LEFT JOIN {_tr_entity("dc_index")} i
       ON i.ts_code = q.sector_code AND i.trade_date = q.trade_date
     LEFT JOIN dc_breadth br
       ON br.sector_code = q.sector_code AND br.trade_date = q.trade_date
@@ -605,7 +605,7 @@ def _market_sql(
                AVG({_clean_num('fd_amount')}) FILTER (WHERE "limit" = 'U') AS avg_fd_amount,
                COALESCE(SUM({_clean_num('open_times')}) FILTER (WHERE "limit" IN ('U', 'Z')), 0)
                    AS open_times_total
-        FROM tr.raw_tushare_limit_list_d GROUP BY 1
+        FROM {_tr_entity("limit_list_d")} GROUP BY 1
     ),
     limits AS (
         -- 晋级率 = 今日>=2板家数 ÷ 前一源日>=1板家数 (U 全体, limit_times>=1 恒真);
@@ -619,7 +619,7 @@ def _market_sql(
         -- 由外层 CASE 区分 '{{}}' (源在场真·无涨停) vs NULL (源整日缺失)。
         SELECT trade_date, CAST(json_group_object(lt_key, n) AS VARCHAR) AS limit_times_dist_json
         FROM (SELECT trade_date, CAST(TRY_CAST({lt} AS INTEGER) AS VARCHAR) AS lt_key, COUNT(*) AS n
-              FROM tr.raw_tushare_limit_list_d
+              FROM {_tr_entity("limit_list_d")}
               WHERE "limit" = 'U' AND TRY_CAST({lt} AS INTEGER) IS NOT NULL
               GROUP BY 1, 2)
         GROUP BY 1
@@ -631,7 +631,7 @@ def _market_sql(
         -- 门槛 = 2 非 3: BSE 融资融券 2020 前不存在, 要求 3 会把早期真实 SSE+SZSE 日全判缺。
         SELECT trade_date,
                CASE WHEN COUNT(DISTINCT exchange_id) >= 2 THEN SUM(rzrqye) END AS rzrqye
-        FROM tr.raw_tushare_margin GROUP BY 1
+        FROM {_tr_entity("margin")} GROUP BY 1
     ),
     margin2 AS (
         -- chg 只跨 qualifying (覆盖门通过) 日算: 先滤 NULL 再 LAG (过滤后序列),
@@ -643,18 +643,18 @@ def _market_sql(
     idxb AS (
         -- 大盘估值/换手水位 (mkt_valuation_code 行): pe_ttm (TTM 口径) + turnover_rate_f (自由流通)。
         SELECT trade_date, pe_ttm AS mkt_pe, turnover_rate_f AS mkt_turnover
-        FROM tr.raw_tushare_index_dailybasic WHERE ts_code = {val_code}
+        FROM {_tr_entity("index_dailybasic")} WHERE ts_code = {val_code}
     ),
     lhb AS (
         -- 龙虎榜家数: 同股同日多上榜理由多行 → DISTINCT ts_code 算 1 家。
         SELECT trade_date, COUNT(DISTINCT ts_code) AS lhb_count
-        FROM tr.raw_tushare_top_list GROUP BY 1
+        FROM {_tr_entity("top_list")} GROUP BY 1
     ),
     lhb_inst AS (
         -- 席位净买直和 (源=top_inst 全部披露席位含游资营业部, 非纯机构 — 列名沿设计契约);
         -- 同席位同股买/卖双榜重复披露 (side 0/1 同额) → DISTINCT 去重后再和。
         SELECT trade_date, SUM(net_buy) AS lhb_inst_net
-        FROM (SELECT DISTINCT trade_date, ts_code, exalter, net_buy FROM tr.raw_tushare_top_inst)
+        FROM (SELECT DISTINCT trade_date, ts_code, exalter, net_buy FROM {_tr_entity("top_inst")})
         GROUP BY 1
     ),
     strongest AS (
@@ -663,7 +663,7 @@ def _market_sql(
                    ts_code := ts_code, name := name, days := days, up_stat := up_stat,
                    cons_nums := cons_nums, up_nums := up_nums, pct_chg := pct_chg, rank := "rank")
                ORDER BY "rank" ASC, ts_code)) AS VARCHAR) AS strongest_sectors_json
-        FROM tr.raw_tushare_limit_cpt_list GROUP BY 1
+        FROM {_tr_entity("limit_cpt_list")} GROUP BY 1
     ),
     tops AS (
         SELECT trade_date,
@@ -757,8 +757,8 @@ def _latest_source_dates(
         str(cfg["data_start_dc"]),
         dc_types[CHAIN_DC_INDUSTRY], dc_types[CHAIN_DC_CONCEPT],
     ]).fetchone()
-    latest_sw = con.execute("""
-        SELECT MAX(trade_date) FROM tr.raw_tushare_sw_daily WHERE trade_date >= ?
+    latest_sw = con.execute(f"""
+        SELECT MAX(trade_date) FROM {_tr_entity("sw_daily")} WHERE trade_date >= ?
     """, [str(cfg["data_start_sw"])]).fetchone()[0]
     return latest_dc_industry, latest_dc_concept, latest_sw
 
@@ -808,7 +808,7 @@ def _dc_current_source_parity(
                      WHEN idx_type = ? THEN ?
                    END AS chain,
                    CAST(ts_code AS VARCHAR) AS sector_code
-            FROM tr.raw_tushare_dc_index
+            FROM {_tr_entity("dc_index")}
             WHERE trade_date = ? AND idx_type IN (?, ?)
         ), flow_keys AS (
             SELECT DISTINCT chain, sector_code FROM flow_raw
@@ -886,7 +886,7 @@ def _validate_rebuild_tables(
             WHERE l3_code IS NOT NULL
         )
         SELECT COUNT(DISTINCT s.ts_code)
-        FROM tr.raw_tushare_sw_daily s JOIN sw_dim d ON d.code = s.ts_code
+        FROM {_tr_entity("sw_daily")} s JOIN sw_dim d ON d.code = s.ts_code
         WHERE s.trade_date = ?
     """, [latest_sw]).fetchone()[0] if latest_sw is not None else 0
     if (latest_dc_industry is None or latest_dc_concept is None or latest_sw is None
@@ -951,7 +951,7 @@ def _validate_rebuild_tables(
             WHERE trade_date >= ? AND content_type IN (?, ?)
             UNION ALL
             SELECT ? AS chain, CAST(s.ts_code AS VARCHAR), CAST(s.trade_date AS VARCHAR)
-            FROM tr.raw_tushare_sw_daily s
+            FROM {_tr_entity("sw_daily")} s
             JOIN sw_dim d ON d.code = s.ts_code
             WHERE s.trade_date >= ?
         ), expected AS (
@@ -1391,7 +1391,7 @@ def build_latest(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]
             date for dates in dc_missing_by_namespace.values() for date in dates
         })
         sw_missing = _missing_dates(con, f"""
-            SELECT DISTINCT trade_date FROM tr.raw_tushare_sw_daily
+            SELECT DISTINCT trade_date FROM {_tr_entity("sw_daily")}
             WHERE trade_date >= ? AND trade_date NOT IN (
                 SELECT DISTINCT trade_date FROM {SECTOR_TABLE} WHERE chain = '{CHAIN_SW}')
             ORDER BY 1""", [str(cfg["data_start_sw"])])

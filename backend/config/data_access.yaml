@@ -59,6 +59,7 @@ entities:
     code_col: ts_code
     asof_col: trade_date
     asof_format: yyyymmdd
+    # circ_mv used by pulse builder sector_mv aggregate (S7 via _tr_entity)
     columns: [ts_code, trade_date, pe_ttm, pb, ps_ttm, dv_ttm, turnover_rate, total_mv, circ_mv]
     vendor: tushare
     available_after: eod
@@ -176,7 +177,7 @@ entities:
     available_after: ann_date
 
   sw_daily:
-    # 申万一级行业指数日线 (ts_code=申万行业码 801xxx, 非股票码 → ts_passthrough; flow-vendor=申万)
+    # 申万行业指数日线 (S7: pulse builder → mart_sector_pulse_daily; raw = compat residual)
     db: tushare_raw
     table: raw_tushare_sw_daily
     layer: L0
@@ -184,8 +185,34 @@ entities:
     code_input: ts_passthrough
     asof_col: trade_date
     asof_format: yyyymmdd
-    columns: [ts_code, trade_date, close]
+    columns: [ts_code, trade_date, close, pct_change, amount]
     vendor: shenwan
+    available_after: eod
+
+  index_dailybasic:
+    # 指数估值/换手 (S7: pulse builder → mart_market_pulse_daily mkt_pe/turnover)
+    db: tushare_raw
+    table: raw_tushare_index_dailybasic
+    layer: L0
+    code_col: ts_code
+    code_input: ts_passthrough
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [ts_code, trade_date, pe_ttm, turnover_rate_f]
+    vendor: tushare
+    available_after: eod
+
+  limit_cpt_list:
+    # 最强板块榜 (S7: pulse builder → mart_market_pulse_daily; TI 码独立卡)
+    db: tushare_raw
+    table: raw_tushare_limit_cpt_list
+    layer: L0
+    code_col: ts_code
+    code_input: ts_passthrough
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [ts_code, name, trade_date, days, up_stat, cons_nums, up_nums, pct_chg, rank]
+    vendor: tushare
     available_after: eod
 
   top_list:
@@ -316,7 +343,7 @@ entities:
     available_after: eod
 
   dc_index:
-    # 东财概念指数 (板块码 ts_code=BKxxxx.DC passthrough; 概念名+热度 pct_change)
+    # 东财板块指数 (S7: pulse builder → mart_sector_pulse_daily; dim current-snapshot residual)
     db: tushare_raw
     table: raw_tushare_dc_index
     layer: L0
@@ -324,7 +351,21 @@ entities:
     code_input: ts_passthrough
     asof_col: trade_date
     asof_format: yyyymmdd
-    columns: [ts_code, trade_date, name, pct_change]
+    columns:
+      [
+        ts_code,
+        trade_date,
+        name,
+        pct_change,
+        leading,
+        leading_code,
+        leading_pct,
+        total_mv,
+        up_num,
+        down_num,
+        idx_type,
+        level,
+      ]
     vendor: eastmoney_via_tushare
     available_after: eod
 

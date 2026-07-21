@@ -13,7 +13,7 @@
 | **效率 improved?** | **PARTIAL (Y on docs/mechanical gates; N on L3 wall-clock; behavior adoption 刚起步)** |
 | **Numbers** | L1 **1.54s** (re-measure ≈ T0 **1.6s**); L3 pytest **898 tests / 54 paths / 122.7s** (T0 L3 **27.1s** 不含全量 ci_pytest); `agent-boot` **9.3s** (T0 **11.6s**); `pre-knife` **0.64s** |
 | **Top remaining waste** | (1) micro-commit / 不敢刀级合并 (2) L3 全 pytest 面 ~2min/commit (3) 父 agent 串行 + subagent 空转 (4) S7/E0 领域物理（≤40d、逐域 strangler） |
-| **Foundation one-liner** | **S1–S6 FIXED**；**S7 PARTIAL** (36/46 ssot)；**E0 PARTIAL**；E/F remeasure **paused**；DB 逻辑 E0→R1 strangler，物理单 DuckDB |
+| **Foundation one-liner** | **S1–S6 FIXED**；**S7 PARTIAL** (32/46 ssot)；**E0 PARTIAL**；E/F remeasure **paused**；DB 逻辑 E0→R1 strangler，物理单 DuckDB |
 | **「续减 ssot」** | S7 `legacy_raw_plane` 清单里仍标 **publication/serve SSOT 经 raw** 的表 → 逐域 reclassify 到 compatibility / accepted / DataAccess；**不是** hobby 线，是 foundation modularity **S7 长尾** |
 
 ---
@@ -100,7 +100,7 @@ L1 路径 **已证有效**；CI paths-ignore (c473f5b4) 与 tier 分类一致。
 
 ### 3.1 「续减 ssot」是什么？
 
-**定义**：S7 `legacy_raw_plane.yaml` + `check_legacy_raw_plane.py` 维护的 **46 域 inventory** 中，仍被分类为 **`role=ssot` 且 publication/serve 经 raw_tushare_*`** 的表 — 当前 **36/46**（1 fill，9 compatibility）。
+**定义**：S7 `legacy_raw_plane.yaml` + `check_legacy_raw_plane.py` 维护的 **46 域 inventory** 中，仍被分类为 **`role=ssot` 且 publication/serve 经 raw_tushare_*`** 的表 — 当前 **32/46**（1 fill，13 compatibility）。
 
 **任务**：逐域 **formalize**（publication → accepted/mart/DataAccess）或 **sunset**（证据 + gate 降级）— **禁盲删 raw**。
 
@@ -122,7 +122,7 @@ L1 路径 **已证有效**；CI paths-ignore (c473f5b4) 与 tier 分类一致。
 | **S4** acquire swappable | **FIXED** | `security_day_acquire` provider \| local-raw |
 | **S5** derive from accepted | **FIXED** | `chunkyctl derive`；零 fused publish |
 | **S6** serve via DataAccess | **FIXED** | pulse drill/members；router 零 serve-exempt |
-| **S7** legacy raw plane | **PARTIAL** | inventory **36 ssot**；续减 ssot 主线 |
+| **S7** legacy raw plane | **PARTIAL** | inventory **32 ssot**；续减 ssot 主线 |
 | **E0** disclosure transport | **PARTIAL** | stk/holders provider land OK；org **BLOCKED** |
 | **E/F remeasure** | **paused** | F0–F3 protocol-complete reject；window unblocked 但 owner paused |
 | **Acquire-filter docs** | **FIXED** | full-market acquire；ST/BSE/delist at universe read |
