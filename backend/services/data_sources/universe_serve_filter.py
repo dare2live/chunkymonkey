@@ -5,11 +5,45 @@ applied only at canonical/serve, never by deleting rows before raw write.
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from services.universe import UniversePolicy, verify_universe_policy
+
+_FULL_TS_CODE = re.compile(r"^\d{6}\.(SH|SZ|BJ|OC)$")
+_BARE_DIGITS = re.compile(r"^\d{6}$")
+_BJ_BOARD_PREFIXES = frozenset({"83", "87", "88", "89", "92"})
+
+
+def normalize_provider_security_code(code: Any) -> str:
+    """Normalize bare 6-digit codes to NNNNNN.EX without widening format rules.
+
+    Vendor batches (e.g. share_float) sometimes emit BJ codes as ``874075``
+    instead of ``874075.BJ``. Landing preserves the row after suffix repair;
+    validate_universe_filter_column still requires full ``\\d{6}.(SH|SZ|BJ|OC)``.
+    """
+
+    raw = str(code or "").strip()
+    if not raw:
+        return raw
+    upper = raw.upper()
+    if _FULL_TS_CODE.fullmatch(upper):
+        return upper
+    if not _BARE_DIGITS.fullmatch(upper):
+        return raw
+    prefix = upper[:2]
+    from services.universe import UNIVERSE_POLICY
+
+    for rule in UNIVERSE_POLICY.venue_rules:
+        if prefix == rule.board_prefix:
+            return f"{upper}.{rule.ts_suffix}"
+    if prefix in _BJ_BOARD_PREFIXES or upper[0] in {"4", "8"}:
+        return f"{upper}.BJ"
+    return raw
+
+
 
 
 @dataclass(frozen=True)
@@ -136,6 +170,7 @@ def serve_filter_from_spec(
 __all__ = [
     "UniverseFilterEvidence",
     "apply_universe_serve_filter",
+    "normalize_provider_security_code",
     "serve_filter_from_spec",
     "validate_universe_filter_column",
 ]

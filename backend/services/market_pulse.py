@@ -88,6 +88,7 @@ from services.taxonomy_config import (
     source_index_type,
     source_level_map,
 )
+from services.universe import sql_where_active_a_share
 
 logger = logging.getLogger(__name__)
 
@@ -126,18 +127,22 @@ def _tr_entity(entity: str) -> str:
 # Formal daily never writes legacy raw. Prefer accepted canonical; raw fills
 # only dates absent from canonical (pre-canary history / compatibility).
 # Columns used by market breadth / missing-day detection only (not full OHLCV).
-_NOMINAL_DAILY_SQL = """
+# Project-universe whitelist (60/00/30/68): accept may keep BJ as raw_evidence;
+# sensing must not claim 沪深A breadth from unfiltered venues.
+_NOMINAL_DAILY_SQL = f"""
 (
     SELECT
         c.ts_code,
         strftime(c.trade_date, '%Y%m%d') AS trade_date,
         c.pct_chg
     FROM tr.canonical_nominal_ohlcv_daily c
+    WHERE {sql_where_active_a_share("c.ts_code")}
     UNION ALL
     SELECT
         r.ts_code, r.trade_date, r.pct_chg
     FROM tr.raw_tushare_daily r
-    WHERE NOT EXISTS (
+    WHERE {sql_where_active_a_share("r.ts_code")}
+      AND NOT EXISTS (
         SELECT 1
         FROM tr.canonical_nominal_ohlcv_daily c
         WHERE c.ts_code = r.ts_code
@@ -359,6 +364,7 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
         JOIN {_tr_entity("moneyflow_dc")} f
           ON f.ts_code = m.con_code AND f.trade_date = m.trade_date
         WHERE m.trade_date >= {dc_start} AND {dc_day_where}
+          AND {sql_where_active_a_share("m.con_code")}
         GROUP BY 1, 2
     ),
     dc_grp AS (
@@ -431,6 +437,7 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
           ON p.ts_code = f.ts_code AND p.in_date <= f.trade_date
          AND (p.out_date IS NULL OR p.out_date > f.trade_date)
         WHERE f.trade_date >= {sw_start}
+          AND {sql_where_active_a_share("f.ts_code")}
         QUALIFY ROW_NUMBER() OVER (PARTITION BY f.ts_code, f.trade_date ORDER BY p.in_date DESC) = 1
     ),
     sw_flow AS (
@@ -487,6 +494,7 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
         JOIN dim_stock_segment_daily seg
           ON seg.stock_code = substr(ll.ts_code, 1, 6) AND seg.trade_date = ll.trade_date
         WHERE seg.sw_l1 IS NOT NULL
+          AND {sql_where_active_a_share("ll.ts_code")}
         GROUP BY 1, 2
     ),
     limit_days AS (
@@ -510,9 +518,12 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
            CAST(q.quiet_inflow_days AS BIGINT) AS quiet_inflow_days,
            CAST(q.quiet_outflow_days AS BIGINT) AS quiet_outflow_days,
            CAST(q.content_type AS VARCHAR) AS content_type,
-           CAST(i."leading" AS VARCHAR) AS "leading",
-           CAST(i.leading_code AS VARCHAR) AS leading_code,
-           CAST(i.leading_pct AS DOUBLE) AS leading_pct,
+           CAST(CASE WHEN {sql_where_active_a_share("i.leading_code")}
+                THEN i."leading" END AS VARCHAR) AS "leading",
+           CAST(CASE WHEN {sql_where_active_a_share("i.leading_code")}
+                THEN i.leading_code END AS VARCHAR) AS leading_code,
+           CAST(CASE WHEN {sql_where_active_a_share("i.leading_code")}
+                THEN i.leading_pct END AS DOUBLE) AS leading_pct,
            CAST(q.flow_leader_stock AS VARCHAR) AS flow_leader_stock,
            CAST(br.inflow_breadth AS DOUBLE) AS inflow_breadth,
            -- DC namespace 内按 config 映射真实中文 level；未知/概念/无 dc_index 行 → NULL。

@@ -87,6 +87,7 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
     if not isinstance(defaults, dict):
         raise ValueError("sync_registry defaults must be a mapping")
     default_db = defaults.get("target_db", "tushare_raw")
+    from services.data_sources.formal_boundaries import formal_boundary
     from services.data_sources.margin_ingest import contract_for_spec
 
     specs: list[dict[str, Any]] = []
@@ -97,6 +98,12 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
         contract_spec["domain"] = domain
         margin_contract = contract_for_spec(contract_spec)
         accepted_margin = margin_contract is not None
+        boundary = formal_boundary(domain)
+        accepted_security_day = (
+            boundary is not None
+            and isinstance(entry.get("security_day_partition"), dict)
+            and bool(boundary.dataset_id)
+        )
         table = (
             margin_contract.canonical_table
             if accepted_margin
@@ -118,9 +125,15 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
             "data_start": str(
                 margin_contract.coverage_start
                 if accepted_margin
-                else entry.get("data_start", "")
+                else (
+                    (entry.get("security_day_partition") or {}).get("coverage_start")
+                    if accepted_security_day
+                    else entry.get("data_start", "")
+                )
             ).replace("-", ""),
             "accepted_margin": accepted_margin,
+            "accepted_security_day": accepted_security_day,
+            "dataset_id": boundary.dataset_id if accepted_security_day else None,
             "_margin_contract": margin_contract,
             "availability_policy": (
                 margin_contract.availability_policy.payload()
@@ -256,14 +269,41 @@ def check_calendar_gaps(
                 f"accepted margin evidence contradictory: {exc}",
             )
         col = "AcceptedPartition"
+    elif spec.get("accepted_security_day"):
+        # Formal daily/ST truth = accepted_partition frontier (not legacy raw MAX).
+        dataset_id = spec.get("dataset_id")
+        if not dataset_id:
+            return _result(
+                "calendar_gaps",
+                spec,
+                "fail_accepted_state",
+                "accepted_security_day missing dataset_id",
+            )
+        if not _table_exists(conn, "accepted_partition"):
+            return _result(
+                "calendar_gaps",
+                spec,
+                "skipped_missing_table",
+                "accepted_partition 不存在 (formal 未 bootstrap)",
+            )
+        present = {
+            _norm_day(r[0])
+            for r in conn.execute(
+                "SELECT DISTINCT partition_value FROM accepted_partition "
+                "WHERE dataset_id = ?",
+                [dataset_id],
+            ).fetchall()
+            if r[0] is not None
+        }
+        col = "accepted_partition.partition_value"
     elif not _table_exists(conn, table):
         return _result("calendar_gaps", spec, "skipped_missing_table", "表不存在 (域注册未拉/重建期)")
     else:
         col = _resolve_date_col(conn, table, spec)
-    if not spec.get("accepted_margin") and col is None:
+    if not spec.get("accepted_margin") and not spec.get("accepted_security_day") and col is None:
         return _result("calendar_gaps", spec, "skipped_no_date_col",
                        "无可解析日期列 (freshness_date_column/date_param/trade_date/end_date/ann_date 均缺)")
-    if spec.get("accepted_margin"):
+    if spec.get("accepted_margin") or spec.get("accepted_security_day"):
         pass
     elif spec.get("batch_completeness") or int(spec.get("min_rows_per_batch", 0)) > 0:
         # 截断批/缺市场不能用 DISTINCT(date) 洗白；与 sync drain/SLA 共用完整口径。
@@ -329,6 +369,16 @@ def check_cross_section(
     grain 含 exchange_id/data_type 类分组列: 基线组当日缺失 = FAIL (margin SSE-only 型)。"""
     table = spec["table"]
     accepted_batches: dict[str, str] | None = None
+    if spec.get("accepted_security_day"):
+        # Dual-path: formal land_then_accept advances accepted_partition while legacy
+        # raw may lag. Row-dip on raw would false-FAIL; calendar_gaps owns freshness.
+        return _result(
+            "cross_section",
+            spec,
+            "pass",
+            "formal security-day freshness owned by accepted_partition "
+            f"(dataset_id={spec.get('dataset_id')}); legacy raw row_dip not authoritative",
+        )
     if spec.get("accepted_margin"):
         from services.data_sources.margin_state import load_margin_accepted_state
 

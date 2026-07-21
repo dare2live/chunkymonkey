@@ -34,6 +34,9 @@ TARGET = "price_kline_qfq_tushare"
 START = "20190101"  # rule-compliance: ok evidence=raw_tushare_daily 实测起点 2019-01-02 (全量回测窗起点)
 
 # Accepted canonical wins on overlap; legacy raw fills pre-canary history only.
+# Project-universe whitelist: qfq is 沪深A analysis surface — never copy BJ/B.
+from services.universe import sql_where_active_a_share as _sql_ashare
+
 _NOMINAL_SOURCE_CTE = f"""
 nominal AS (
     SELECT
@@ -42,11 +45,13 @@ nominal AS (
         c.open, c.high, c.low, c.close, c.vol, c.amount
     FROM tr.canonical_nominal_ohlcv_daily c
     WHERE c.trade_date >= DATE '2019-01-01'
+      AND {_sql_ashare("c.ts_code")}
     UNION ALL
     SELECT
         r.ts_code, r.trade_date, r.open, r.high, r.low, r.close, r.vol, r.amount
     FROM tr.raw_tushare_daily r
     WHERE r.trade_date >= '{START}'
+      AND {_sql_ashare("r.ts_code")}
       AND NOT EXISTS (
           SELECT 1
           FROM tr.canonical_nominal_ohlcv_daily c
@@ -57,7 +62,7 @@ nominal AS (
 """
 
 # S5: accepted-only derive — no legacy raw nominal fill (adj_factor still from raw table).
-_NOMINAL_SOURCE_CTE_FROM_ACCEPTED = """
+_NOMINAL_SOURCE_CTE_FROM_ACCEPTED = f"""
 nominal AS (
     SELECT
         c.ts_code,
@@ -65,6 +70,7 @@ nominal AS (
         c.open, c.high, c.low, c.close, c.vol, c.amount
     FROM tr.canonical_nominal_ohlcv_daily c
     WHERE c.trade_date >= DATE '2019-01-01'
+      AND {_sql_ashare("c.ts_code")}
 )
 """
 

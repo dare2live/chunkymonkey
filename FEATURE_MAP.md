@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-21 22:48
+> Snapshot: 2026-07-21 22:50
 
 ## 1. 入口面
 
@@ -169,7 +169,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,759 | calls 边 10,271 | imports 边 2,977 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,771 | calls 边 10,429 | imports 边 2,992 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -178,10 +178,10 @@
 | services.duck_adapter | 64 |
 | services.data_sources | 26 |
 | services.data_sources.security_day_partition | 19 |
+| services.universe | 19 |
 | services.data_sources.accepted_schema | 18 |
 | services.institution_follow_b0_measure | 18 |
 | services.institution_follow_edge_gates | 17 |
-| services.universe | 17 |
 | services.data_sources.holders_top10_schema | 14 |
 | services.data_sources.margin_schema | 14 |
 | services.database_manifest | 14 |
@@ -197,7 +197,7 @@
 |---|---|
 | backend/services/duck_adapter.py | 30 |
 | backend/services/institution_follow_edge_gates.py | 17 |
-| backend/services/universe.py | 14 |
+| backend/services/universe.py | 15 |
 | backend/services/source_watermarks.py | 13 |
 | backend/services/data_sources/disclosure_boundaries.py | 11 |
 | backend/services/database_manifest.py | 11 |
@@ -212,9 +212,9 @@
 
 | 文件 | 行数 |
 |---|---|
-| backend/services/data_sources/sync_runner.py | 3958 |
-| backend/services/market_pulse.py | 1529 |
-| backend/scripts/check_continuity_integrity.py | 949 |
+| backend/services/data_sources/sync_runner.py | 3961 |
+| backend/services/market_pulse.py | 1540 |
+| backend/scripts/check_continuity_integrity.py | 999 |
 | backend/services/data_sources/holders_top10_acceptance.py | 787 |
 | backend/scripts/check_foundation_done.py | 784 |
 | backend/services/research_runtime.py | 780 |

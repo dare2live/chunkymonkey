@@ -450,7 +450,12 @@ def _check_cross_table_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResu
     # 10+ 周的快照, 且 universe.py 已确立 K 线本身即活跃真相源) — 少了外部 is_active 声明源, 这个
     # 检查会退化为拿 K 线跟自己比对的空转; 保留仅剩这里的 kline_universe_coverage(北交所/非A股板块 leak)。
     if extras:
-        return CheckResult("cross_table_consistency", "FAIL", f"{len(extras)} kline codes not in universe tables")
+        return CheckResult(
+            "cross_table_consistency",
+            "FAIL",
+            f"{len(extras)} kline codes outside project-universe board whitelist "
+            f"(60/00/30/68); sample: {', '.join(extras[:8])}",
+        )
     return CheckResult("cross_table_consistency", "PASS", "kline codes consistent with universe board-prefix truth source")
 
 

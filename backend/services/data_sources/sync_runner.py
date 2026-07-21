@@ -921,11 +921,14 @@ def _prepare_batch_df(
     # A4 landing purity: validate filter-column wiring, never drop provider rows here.
     if spec.get("universe_filter"):
         from services.data_sources.universe_serve_filter import (
+            normalize_provider_security_code,
             validate_universe_filter_column,
         )
 
         ucol = spec.get("universe_filter_col") or grain[0]
         if ucol in df.columns:
+            # Repair bare BJ/A codes (e.g. 874075 → 874075.BJ) before shape gate.
+            df[ucol] = df[ucol].map(normalize_provider_security_code)
             validate_universe_filter_column(
                 df[ucol].tolist(), filter_column=str(ucol), table=table
             )

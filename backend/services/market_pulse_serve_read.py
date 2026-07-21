@@ -246,10 +246,13 @@ def dc_member_snap(conn, sector_code: str, as_of: str) -> str | None:
 
 
 def dc_member_mem_sql() -> str:
+    from services.universe import sql_where_active_a_share
+
     tbl = _tr("dc_member")
     return (
         f"SELECT con_code AS ts_code, MAX(name) AS name FROM {tbl} "
-        "WHERE ts_code = ? AND trade_date = ? GROUP BY 1"
+        f"WHERE ts_code = ? AND trade_date = ? AND {sql_where_active_a_share('con_code')} "
+        "GROUP BY 1"
     )
 
 
@@ -265,11 +268,14 @@ def dc_flow_sql(as_of: str) -> str:
 
 
 def sw_member_mem_sql() -> str:
+    from services.universe import sql_where_active_a_share
+
     tbl = _tr("index_member_all")
     return (
         f"SELECT ts_code, MAX(name) AS name FROM {tbl} "
-        "WHERE l3_code = ? AND in_date <= ? "
-        "AND (out_date IS NULL OR CAST(out_date AS VARCHAR) > ?) GROUP BY 1"
+        f"WHERE l3_code = ? AND in_date <= ? "
+        f"AND (out_date IS NULL OR CAST(out_date AS VARCHAR) > ?) "
+        f"AND {sql_where_active_a_share('ts_code')} GROUP BY 1"
     )
 
 
@@ -289,6 +295,8 @@ def sw_flow_sql(as_of: str) -> str:
 
 def list_sector_members(conn, *, chain: str, sector_code: str) -> dict[str, Any]:
     """板块成分下钻 payload (dc 最新快照 / sw is_new 当前成分)。"""
+    from services.universe import sql_where_active_a_share
+
     if chain in mp.DC_CHAINS:
         dc = _tr("dc_member")
         as_of_row = conn.execute(
@@ -307,7 +315,9 @@ def list_sector_members(conn, *, chain: str, sector_code: str) -> dict[str, Any]
         rows = conn.execute(
             f"""
             SELECT con_code, name FROM {dc}
-            WHERE ts_code = ? AND trade_date = ? ORDER BY con_code""",
+            WHERE ts_code = ? AND trade_date = ?
+              AND {sql_where_active_a_share("con_code")}
+            ORDER BY con_code""",
             [sector_code, as_of],
         ).fetchall()
         return {
@@ -321,7 +331,9 @@ def list_sector_members(conn, *, chain: str, sector_code: str) -> dict[str, Any]
     rows = conn.execute(
         f"""
         SELECT DISTINCT ts_code, name FROM {sw}
-        WHERE l1_code = ? AND is_new = 'Y' ORDER BY ts_code""",
+        WHERE l1_code = ? AND is_new = 'Y'
+          AND {sql_where_active_a_share("ts_code")}
+        ORDER BY ts_code""",
         [sector_code],
     ).fetchall()
     return {

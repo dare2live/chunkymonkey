@@ -38,6 +38,9 @@ def test_s5_from_accepted_nominal_excludes_legacy_raw() -> None:
     assert "canonical_nominal_ohlcv_daily" in accepted_cte
     assert "raw_tushare_daily" not in accepted_cte
     assert "UNION ALL" not in accepted_cte
+    assert "SUBSTR(c.ts_code, 1, 2) IN" in accepted_cte
+    assert "SUBSTR(c.ts_code, 1, 2) IN" in default_cte
+    assert "'60'" in accepted_cte and "'92'" not in accepted_cte
     assert "raw_tushare_daily" in default_cte
 
 

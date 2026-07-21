@@ -1432,3 +1432,12 @@ def test_v2_margin_valuation_lhb_strongest():
         assert d3["lhb_count"] is None and d3["strongest_sectors_json"] is None
     finally:
         c.close()
+
+
+def test_project_universe_whitelist_in_nominal_and_leading_sql():
+    """Sensing SQL must whitelist 沪深A boards — denylist-only paths previously leaked B/BJ."""
+    assert "SUBSTR(c.ts_code, 1, 2) IN" in mp._NOMINAL_DAILY_SQL
+    assert "'60'" in mp._NOMINAL_DAILY_SQL and "'00'" in mp._NOMINAL_DAILY_SQL
+    sql = mp._sector_sql(CFG)
+    assert "SUBSTR(i.leading_code, 1, 2) IN" in sql
+    assert "SUBSTR(m.con_code, 1, 2) IN" in sql

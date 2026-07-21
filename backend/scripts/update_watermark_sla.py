@@ -115,6 +115,7 @@ def _sync_registry_queries(*, registry_path: Path | None = None) -> dict[str, di
         defaults = reg.get("defaults") or {}
         if not isinstance(defaults, dict):
             raise TypeError("registry defaults must be a mapping")
+        from services.data_sources.formal_boundaries import formal_boundary
         from services.data_sources.margin_ingest import contract_for_spec
 
         for name, spec in domains.items():
@@ -125,6 +126,7 @@ def _sync_registry_queries(*, registry_path: Path | None = None) -> dict[str, di
             contract_spec.update(spec)
             contract_spec["domain"] = name
             margin_contract = contract_for_spec(contract_spec)
+            boundary = formal_boundary(name)
             if margin_contract is not None:
                 out[f"sync:{name}"] = {
                     "db": "tushare_raw",
@@ -132,6 +134,22 @@ def _sync_registry_queries(*, registry_path: Path | None = None) -> dict[str, di
                     "_margin_contract": margin_contract,
                     "sla_days": spec.get("freshness_sla_trading_days"),
                     "parser_version": f"margin_accepted_contract_{margin_contract.contract_version}",
+                }
+            elif (
+                boundary is not None
+                and isinstance(spec.get("security_day_partition"), dict)
+                and boundary.dataset_id
+            ):
+                # Formal daily/ST: SLA judges accepted_partition, not legacy raw MAX.
+                out[f"sync:{name}"] = {
+                    "db": "tushare_raw",
+                    "query": (
+                        "SELECT MAX(partition_value) FROM accepted_partition "
+                        f"WHERE dataset_id = '{boundary.dataset_id}'"
+                    ),
+                    "sla_days": spec.get("freshness_sla_trading_days"),
+                    "formal_accepted_frontier": True,
+                    "parser_version": f"security_day_accepted_{boundary.dataset_id}",
                 }
             elif spec.get("freshness_no_probe"):
                 # 季报/事件域 (forecast/income/dividend): ann_date 淡季数周无新数据=正常, 日频 SLA 会

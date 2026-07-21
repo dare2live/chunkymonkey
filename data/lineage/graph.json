@@ -1699,6 +1699,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_continuity_integrity.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/check_foundation_done.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -1706,6 +1712,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/persist_b_pit_breadth_shadow.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/update_watermark_sla.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
     },
@@ -1814,6 +1826,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/tier12_publish_writer.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_continuity_integrity.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
     },
@@ -4201,6 +4219,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_continuity_integrity.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/check_foundation_done.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -4208,6 +4232,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/persist_b_pit_breadth_shadow.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/update_watermark_sla.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -4316,6 +4346,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/tier12_publish_writer.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_continuity_integrity.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -5060,6 +5096,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_build_price_kline_qfq_tushare.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_continuity_integrity.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
     },
@@ -6187,6 +6229,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_universe_serve_filter.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_share_float"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stk_factor_pro"
@@ -6841,9 +6889,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1089,
-    "generated_at": "2026-07-21T14:48:53.555825+00:00",
-    "node_count": 402,
+    "edge_count": 1097,
+    "generated_at": "2026-07-21T14:51:51.526063+00:00",
+    "node_count": 403,
     "version": 2
   },
   "nodes": [
@@ -8421,6 +8469,14 @@
         "path": "backend/tests/services/test_top_inst_seat_publish_b2.py"
       },
       "id": "consumer:backend/tests/services/test_top_inst_seat_publish_b2.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_universe_serve_filter.py"
+      },
+      "id": "consumer:backend/tests/services/test_universe_serve_filter.py",
       "kind": "consumer"
     },
     {

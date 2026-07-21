@@ -95,6 +95,35 @@ def test_calendar_gaps_tail_sla_ok_vs_fail():
         c.close()
 
 
+def test_calendar_gaps_formal_security_day_ignores_stale_raw():
+    """daily/ST dual-path: accepted_partition at frontier PASS even if legacy raw lags."""
+    tds = _weekdays("20260701", 10)
+    c = duck_mem()
+    try:
+        c.execute(
+            "CREATE TABLE accepted_partition ("
+            "dataset_id TEXT, partition_value TEXT)"
+        )
+        c.executemany(
+            "INSERT INTO accepted_partition VALUES (?, ?)",
+            [("tier0.market_data.nominal_ohlcv_daily", d) for d in tds],
+        )
+        _mktable(c, {d: 2 for d in tds[:-3]}, table="raw_tushare_daily")
+        spec = _mkspec(
+            domain="daily",
+            table="raw_tushare_daily",
+            accepted_security_day=True,
+            dataset_id="tier0.market_data.nominal_ohlcv_daily",
+            data_start=tds[0],
+            sla=1,
+        )
+        r = cci.check_calendar_gaps(c, spec, tds, tds[-1])
+        assert r["status"] == "pass"
+        assert "accepted_partition" in r["detail"]
+    finally:
+        c.close()
+
+
 def test_calendar_gaps_known_empty_tombstone_and_annotate():
     """known_empty_days 墓碑排除中间空洞; gap_tolerance=annotate 空洞降 WARN 不 FAIL。"""
     tds = _weekdays("20260601", 15)
