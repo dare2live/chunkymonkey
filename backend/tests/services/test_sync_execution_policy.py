@@ -76,6 +76,9 @@ def test_live_margin_v2_is_disabled_but_read_only_contract_still_loads():
         "mode": "disabled",
         "reason": "scope_blocked",
     }
+    # Frozen product stays out of all-due so daily_update preflight cannot deadlock.
+    assert spec.get("sync_policy") == "on_demand"
+    assert "margin" not in sr.automatic_domains(registry)
     assert spec["population_scope"] == {
         "kind": "external_aggregate",
         "venue_field": "exchange_id",
@@ -241,6 +244,9 @@ def test_automatic_domain_inventory_matches_all_due_and_fails_closed():
         "execution_policy": {"mode": "enabled", "reason": "manual_only"},
     }
     assert sr.automatic_domains(registry) == ["daily", "margin"]
+
+    registry["domains"]["margin"]["sync_policy"] = "on_demand"
+    assert sr.automatic_domains(registry) == ["daily"]
 
     registry["domains"]["broken"] = None
     with pytest.raises(ValueError, match="domain entry.*broken.*mapping"):

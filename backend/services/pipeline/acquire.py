@@ -21,8 +21,11 @@ class Tier0AcquireError(RuntimeError):
 def run_acquire(ctx: PipelineContext) -> None:
     if ctx.skip_sync:
         ctx.log("=== ① 获取 ACQUIRE: SKIP (--skip-sync) ===")
-        if not ctx.dry:
+        # Margin hard-gate only while the product is enabled; frozen/disabled skips.
+        if not ctx.dry and _margin_hard_gate_required():
             _assert_margin_shadow_parity(ctx)
+        elif not ctx.dry:
+            ctx.log("margin hard-gate SKIP (execution_policy disabled / not in all-due)")
         return
     # 独立 stage 入口也必须走与全链相同的授权硬门；全链已探针时复用 ctx 缓存。
     from .preflight import ensure_pipeline_sync_ready, ensure_tushare_authorized
@@ -174,6 +177,43 @@ def _refresh_active_a_stock_master() -> None:
     print(f"security_master: refresh_active_a_stock_master rows={n}")
 
 
+def _margin_hard_gate_required(registry: dict | None = None) -> bool:
+    """True only when margin is enabled for live acquire gating.
+
+    Frozen ``mode=disabled`` (scope_blocked) must not deadlock daily_update.
+    Explicit margin sync remains blocked by sync_runner execution policy.
+    """
+
+    from services.data_sources import sync_runner
+
+    reg = registry if registry is not None else sync_runner.load_registry()
+    spec = sync_runner.domain_spec(reg, "margin")
+    return sync_runner.execution_policy_for_spec(spec).mode == "enabled"
+
+
+def _require_margin_drain_closed(results: list[dict]) -> None:
+    """Fail closed on the single margin drain result when the product is enabled."""
+
+    margin_results = [item for item in results if item.get("domain") == "margin"]
+    if len(margin_results) != 1:
+        raise Tier0AcquireError(
+            f"formal margin result cardinality must be one, got {len(margin_results)}"
+        )
+    margin = margin_results[0]
+    if (
+        margin.get("status") not in {"clean", "drained"}
+        or margin.get("still_failed")
+        or margin.get("truncated")
+        or margin.get("today_catchup_failed")
+    ):
+        raise Tier0AcquireError(
+            "formal margin did not close accepted/reconcile gates: "
+            f"status={margin.get('status')!r} "
+            f"still_failed={margin.get('still_failed')!r} "
+            f"truncated={margin.get('truncated')!r}"
+        )
+
+
 def _sync_registry_drain(ctx: PipelineContext) -> None:
     """sync_runner --all-due --drain (module 调用, subprocess 隔离)。"""
     import subprocess, sys as _sys
@@ -204,30 +244,23 @@ def _sync_registry_drain(ctx: PipelineContext) -> None:
         results = json.loads(proc.stdout or "")
     except (TypeError, ValueError) as exc:
         raise Tier0AcquireError(
-            "sync_registry did not return parseable per-domain evidence; "
-            "formal margin readiness is unknown"
+            "sync_registry did not return parseable per-domain evidence"
+            + (
+                "; formal margin readiness is unknown"
+                if _margin_hard_gate_required()
+                else ""
+            )
         ) from exc
     if not isinstance(results, list) or any(not isinstance(item, dict) for item in results):
         raise Tier0AcquireError("sync_registry per-domain evidence must be a JSON list")
-    margin_results = [item for item in results if item.get("domain") == "margin"]
-    if len(margin_results) != 1:
-        raise Tier0AcquireError(
-            f"formal margin result cardinality must be one, got {len(margin_results)}"
+    if _margin_hard_gate_required():
+        _require_margin_drain_closed(results)
+        _assert_margin_shadow_parity(ctx)
+    else:
+        ctx.log(
+            "margin drain/shadow hard-gate SKIP "
+            "(disabled + on_demand; product stays frozen)"
         )
-    margin = margin_results[0]
-    if (
-        margin.get("status") not in {"clean", "drained"}
-        or margin.get("still_failed")
-        or margin.get("truncated")
-        or margin.get("today_catchup_failed")
-    ):
-        raise Tier0AcquireError(
-            "formal margin did not close accepted/reconcile gates: "
-            f"status={margin.get('status')!r} "
-            f"still_failed={margin.get('still_failed')!r} "
-            f"truncated={margin.get('truncated')!r}"
-        )
-    _assert_margin_shadow_parity(ctx)
     if proc.returncode != 0:
         ctx.degraded("sync_registry drain 有残余缺口或域错误 (见 log)")
 

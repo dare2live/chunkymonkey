@@ -52,7 +52,7 @@ AGENTS.md
 |---|---|
 | Session boot context (git+moth+codegraph+board, one page) | `scripts/chunkyctl agent-boot [--format json]` |
 | Health | `scripts/chunkyctl doctor --fast` |
-| Manual full data update | `bash scripts/daily_update.sh --date YYYYMMDD`；on_demand formal domains 不进 all-due；margin 仍 scope_blocked |
+| Manual full data update | `bash scripts/daily_update.sh --date YYYYMMDD`；on_demand formal domains 不进 all-due；margin=`on_demand`+`scope_blocked`（frozen，不进 all-due / 不挡 preflight） |
 | Manual single-domain sync/canary/replay | `scripts/chunkyctl sync --domain DOMAIN`；`trade_cal` full generation；`daily`/`stock_st` 须显式 `--start/--end`（同日或 ≤40 交易日）；`--drain` 对三域 inapplicable；其它 disabled/formal 仍 fail closed |
 | Shared tooling snapshot | `moth snapshot --repo .` |
 | Business/tool assertions | `moth assert --repo .` |
@@ -73,7 +73,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | K accepted + form/qfq/segments/pulse 至 `20260720`；legacy raw daily 仍 `20260716`（预期）；`index_dailybasic` 短窗 min_rows 拒写；margin frozen（rzrqye 新日 NULL）；禁 mass backfill | 两融列诚实 unknown；估值水位可能 stale |
+| P0 | K accepted + form/qfq/segments/pulse 至 `20260721`（扇区/DC pulse 可能滞后）；legacy raw daily 仍 `20260716`（预期）；`index_dailybasic` 短窗 min_rows 拒写；margin frozen=`on_demand`+`scope_blocked`（rzrqye 新日 NULL；不挡 daily_update preflight）；禁 mass backfill | 两融列诚实 unknown；估值水位可能 stale |
 | P0 | E 120d checkpointed measured reject/no-gain；C full-universe accept `20260717`（4989）+ `20260720`（4991）form enrich v1；D FIXED；F0+F1+F2 main_rally B0/B1 reject/`claimable=false`；B-pit 120d shadow **120/120 MATCH**；C/B-pit cutover **ON**（ACCEPTED_CUTOVER / MART_CUTOVER；无 accept/窗外日 fail-closed→legacy）；pulse drill 双轨 form 读已退役 | 下一刀 F3 main_rally B2（market sensing，同 B0 snapshot/folds/costs）**或** stop（非 Optuna / 非松门 / 非 mass backfill / 非静默 cutover / 非 StrategyRelease） |
 | P0 | qfq physical lineage FIXED (batch_id/ingested_at/factor_as_of on rebuild); still not execution truth; used broadly as analysis input | Pin batch_id for reproducibility; never treat qfq as nominal execution price |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
@@ -152,7 +152,7 @@ readiness 经 `resolve_eligible_observation_date`（accepted calendar ∩ K/ST
 Sync transport 用 `trigger_mode=manual|automatic`（`resolve_sync_eligibility_frontier`）；
 consumer/`available_at`/continuity 仍走时钟门 `resolve_availability_frontier`。
 `trade_cal`/`daily`/`stock_st` = `authorized_manual_generation` + `on_demand`
-（禁 all-due；K/ST 禁 drain）；sync 禁 legacy raw 直写 canonical。margin 仍 scope_blocked / frozen。
+（禁 all-due；K/ST 禁 drain）；sync 禁 legacy raw 直写 canonical。margin=`on_demand`+`scope_blocked`（frozen；禁 thaw；acquire 硬门仅在 enabled 时启用）。
 
 旧 margin history request/runtime/writer/CLI 已退役物删。冻结 v2 只由 `margin_evidence.py`、
 `margin_state.py`、reconcile/readiness/projection 读侧保留不可变审计证据；不存在受支持的继续写入旁路。

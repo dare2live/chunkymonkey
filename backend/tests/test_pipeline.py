@@ -508,6 +508,7 @@ def test_sync_registry_margin_partial_is_a_tier0_block(monkeypatch, tmp_path):
     from services.pipeline import acquire
     from services.pipeline.context import PipelineContext
 
+    monkeypatch.setattr(acquire, "_margin_hard_gate_required", lambda registry=None: True)
     monkeypatch.setattr(
         "subprocess.run",
         lambda *_args, **_kwargs: SimpleNamespace(
@@ -538,12 +539,40 @@ def test_sync_registry_margin_partial_is_a_tier0_block(monkeypatch, tmp_path):
         ctx.close()
 
 
+def test_sync_registry_drain_skips_margin_gate_when_disabled(monkeypatch, tmp_path):
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(acquire, "_margin_hard_gate_required", lambda registry=None: False)
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps([{"domain": "adj_factor", "status": "clean"}]),
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        acquire,
+        "_assert_margin_shadow_parity",
+        lambda _ctx: pytest.fail("disabled margin must not run shadow parity"),
+    )
+    ctx = PipelineContext(date="20260717", log_path=tmp_path / "run.log")
+    try:
+        acquire._sync_registry_drain(ctx)
+        assert ctx.degraded_msgs == []
+        assert "margin drain/shadow hard-gate SKIP" in (tmp_path / "run.log").read_text()
+    finally:
+        ctx.close()
+
+
 def test_unrelated_sync_failure_degrades_only_after_margin_gate_passes(
     monkeypatch, tmp_path
 ):
     from services.pipeline import acquire
     from services.pipeline.context import PipelineContext
 
+    monkeypatch.setattr(acquire, "_margin_hard_gate_required", lambda registry=None: True)
     monkeypatch.setattr(
         "subprocess.run",
         lambda *_args, **_kwargs: SimpleNamespace(

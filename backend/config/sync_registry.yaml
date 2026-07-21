@@ -233,6 +233,9 @@ domains:
     execution_policy:
       mode: disabled
       reason: scope_blocked
+    # Frozen product: stay out of --all-due / daily_update preflight while disabled.
+    # Explicit `chunkyctl sync --domain margin` still hard-stops on scope_blocked (no thaw).
+    sync_policy: on_demand
     # 这是供应商按交易所定义的外部汇总人口，不是项目可交易股票池。
     # BSE 在此只描述原响应/旧 generation 的覆盖，不能流入 project_universe_pit。
     population_scope:
