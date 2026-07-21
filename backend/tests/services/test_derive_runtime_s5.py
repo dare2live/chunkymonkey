@@ -14,8 +14,8 @@ REPO = Path(__file__).resolve().parents[3]
 
 
 def test_s5_form_from_accepted_sql_excludes_legacy_raw_daily() -> None:
-    default_sql = ts.src_temp_sql(from_accepted=False)
-    accepted_sql = ts.src_temp_sql(from_accepted=True)
+    accepted_sql = ts.src_temp_sql()  # S7 library default = accepted-only
+    fill_sql = ts.src_temp_sql(from_accepted=False)
 
     assert "canonical_nominal_ohlcv_daily" in accepted_sql
     assert "raw_tushare_daily" not in accepted_sql
@@ -24,8 +24,8 @@ def test_s5_form_from_accepted_sql_excludes_legacy_raw_daily() -> None:
     # stk_limit remains a separate domain input (like adj_factor for qfq).
     assert "raw_tushare_stk_limit" in accepted_sql
 
-    assert "raw_tushare_daily" in default_sql
-    assert "COALESCE(rd.close, can.close)" in default_sql
+    assert "raw_tushare_daily" in fill_sql
+    assert "COALESCE(rd.close, can.close)" in fill_sql
 
 
 def test_s5_derive_targets_are_qfq_and_form_only() -> None:

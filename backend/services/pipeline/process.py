@@ -36,7 +36,8 @@ def run_process(ctx: PipelineContext) -> None:
 
     # Tier1 state: 形态识别 fact_stock_form_daily 增量 (历史编号 B2):
     #   必须在 segments 之后 — E 轴消费 B1 的 rv_pctile/vol_regime 列, 缺列 fail loud)
+    #   S7: library default = accepted-only nominal (same escape as derive --allow-legacy-fill).
     def _form_latest():
         from services.technical_states import build_latest
-        ctx.log(f"[technical_states] {build_latest()}")
+        ctx.log(f"[technical_states] {build_latest(from_accepted=True)}")
     ctx.step(_form_latest, degraded_msg="Tier1 形态状态增量失败 — form 标签与 Tier3 研究输入将 stale")

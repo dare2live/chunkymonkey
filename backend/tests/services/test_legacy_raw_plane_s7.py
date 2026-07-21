@@ -53,12 +53,25 @@ def test_s7_qfq_allow_legacy_fill_restores_union() -> None:
     assert "UNION ALL" in cte
 
 
+def test_s7_form_library_defaults_to_from_accepted() -> None:
+    """S7: technical_states rebuild/build_latest/src_temp_sql default accepted-only."""
+
+    assert ts.src_temp_sql.__kwdefaults__["from_accepted"] is True
+    assert ts.rebuild_all.__kwdefaults__["from_accepted"] is True
+    assert ts.build_latest.__kwdefaults__["from_accepted"] is True
+    sql = ts.src_temp_sql()
+    assert "raw_tushare_daily" not in sql
+    assert "can.close AS raw_close" in sql
+    fill = ts.src_temp_sql(from_accepted=False)
+    assert "raw_tushare_daily" in fill
+
+
 def test_s7_derive_form_path_excludes_legacy_raw_daily(monkeypatch) -> None:
     """S7 derive form default passes from_accepted=True into technical_states."""
 
     seen: dict[str, bool] = {}
 
-    def _fake_build_latest(*, from_accepted: bool = False, **kwargs):
+    def _fake_build_latest(*, from_accepted: bool = True, **kwargs):
         seen["from_accepted"] = from_accepted
         return {"mode": "build_latest", "added_days": 0, "rows": 0}
 
@@ -66,7 +79,7 @@ def test_s7_derive_form_path_excludes_legacy_raw_daily(monkeypatch) -> None:
     out = dr.run_derive("form")
     assert seen["from_accepted"] is True
     assert out["from_accepted"] is True
-    sql = ts.src_temp_sql(from_accepted=True)
+    sql = ts.src_temp_sql()
     assert "raw_tushare_daily" not in sql
     assert "can.close AS raw_close" in sql
 
@@ -77,14 +90,24 @@ def test_s7_derive_cli_has_allow_legacy_fill() -> None:
     assert "from_accepted" in src
 
 
-def test_s7_pipeline_clean_explicit_allow_legacy_fill() -> None:
-    """daily_update clean keeps 2019 history via explicit escape (not silent default)."""
+def test_s7_pipeline_clean_defaults_from_accepted() -> None:
+    """daily_update clean uses accepted-only qfq after daily expand to 20190102."""
 
     src = (REPO / "backend" / "services" / "pipeline" / "clean.py").read_text(
         encoding="utf-8"
     )
-    assert "allow-legacy-fill" in src
     assert "build_price_kline_qfq_tushare.py" in src
+    assert '["--from-accepted"]' in src
+    assert '["--allow-legacy-fill"]' not in src
+
+
+def test_s7_pipeline_process_form_uses_from_accepted() -> None:
+    """pipeline process form step pins accepted-only (matches library default)."""
+
+    src = (REPO / "backend" / "services" / "pipeline" / "process.py").read_text(
+        encoding="utf-8"
+    )
+    assert "build_latest(from_accepted=True)" in src
 
 
 def test_s7_chunkyctl_documents_allow_legacy_fill() -> None:

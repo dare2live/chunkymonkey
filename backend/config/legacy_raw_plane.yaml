@@ -47,7 +47,7 @@ tables:
     role: fill
     formal_domain: daily
     write: forbidden
-    note: "S7 derive default=from-accepted; pipeline clean may --allow-legacy-fill for 2019–2021"
+    note: "S7 derive+pipeline clean default=from-accepted; accepted daily 20190102→frontier; --allow-legacy-fill escape only"
 
   raw_tushare_daily_basic:
     role: ssot

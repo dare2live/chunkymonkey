@@ -386,3 +386,12 @@ Live 焊点（evidence pack §2.7 复核）：
   Optuna/Release/cutover；E/F remeasure.
 - Residual：pipeline `--allow-legacy-fill`；membership/flow L0 SSOT；多数
   sync_registry raw 仍 ssot；E0；E/F paused.
+
+### Amend 2026-07-21 — S7 PARTIAL cont. (form defaults + daily expand)
+
+- Form library + pipeline process/clean → accepted-only defaults（escape hatch kept）.
+- Daily-only local-raw accept `20190102`→`20211231`；accepted daily **1829d**
+  `20190102`→`20260720`；ST **1099d** `20220104`→`20260720`（asymmetric）.
+- qfq from-accepted = 8.40M rows full span；inventory still **41 ssot** →
+  remain **PARTIAL**（not FIXED）.
+- Residual：membership/flow L0 + per-domain ssot formal|sunset；E0；E/F paused.

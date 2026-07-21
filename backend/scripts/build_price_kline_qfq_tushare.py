@@ -108,8 +108,9 @@ def build(conn, *, from_accepted: bool = True) -> int:
 
 # measured: 2026-07-02 实测基线 8,319,172 行 / 5,431 股; floor 留 ~10% 缓冲防日常波动误报
 MIN_ROWS = 7_500_000
-# S7 from-accepted: accepted window 20220104→20260720 measured ~5.54M rows / 5716 codes
-MIN_ROWS_FROM_ACCEPTED = 5_000_000
+# S7 from-accepted after daily-only expand to 20190102: same span as legacy fill.
+# (Pre-expand floor was 5M for 20220104→frontier; do not regress that gate.)
+MIN_ROWS_FROM_ACCEPTED = 7_500_000
 MIN_CODES = 5_000
 
 

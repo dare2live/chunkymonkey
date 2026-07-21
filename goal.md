@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-21（**S1–S6 FIXED**；**S7 PARTIAL**；accepted daily/ST **`20220104`→`20260720`**（1099d；ST raw floor））
+> 更新：2026-07-21（**S1–S6 FIXED**；**S7 PARTIAL**；accepted daily **`20190102`→`20260720`**（1829d）；ST **`20220104`→`20260720`**（1099d；asymmetric ST raw floor））
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -12,7 +12,7 @@
 
 ## 当前 objective
 
-**轨道 = transport strangler S1–S7**（owner 2026-07-20 第一原理重评）。模块化诉求（acquire≠accept≠derive≠serve；sync=caller-only；acquire 可换源）**S1–S6 FIXED**；**S7 PARTIAL**（derive 默认 accepted-only + legacy raw 清单门）——见重评文 §2–§3 / modularity gap §8。A→H 骨架保留为**后置研究地图**；近端 residual = S7 续 strangler（pipeline fill escape / membership L0 / 多数 raw SSOT）+ optional daily-only 再向 2019 扩；不是 E/F remeasure。Agent-OS WP0–WP4 已闭合；WP6 仪式影子期仍开放。
+**轨道 = transport strangler S1–S7**（owner 2026-07-20 第一原理重评）。模块化诉求（acquire≠accept≠derive≠serve；sync=caller-only；acquire 可换源）**S1–S6 FIXED**；**S7 PARTIAL**（derive+form+pipeline clean 默认 accepted-only；daily accepted 已扩至 `20190102`；inventory 仍 41/46 ssot）——见重评文 §2–§3 / modularity gap §8。A→H 骨架保留为**后置研究地图**；近端 residual = S7 续 strangler（membership L0 / 多数 raw SSOT 逐域 formal|sunset；禁盲删 raw）；不是 E/F remeasure。Agent-OS WP0–WP4 已闭合；WP6 仪式影子期仍开放。
 
 已落地硬事实（勿回滚）：
 - C + B-pit **`cutover_allowed=true`**（commit `b38e9ac5`）→ resolver `ACCEPTED_CUTOVER` / `MART_CUTOVER`
@@ -25,7 +25,7 @@
 - Phase F **F3 FIXED**：B2 = B0 + Tier2 market-sensing FeatureBlock（`MarketContextSnapshot` project-board breadth risk-on gate，mirrors `institution_follow_b2`；legacy `market_pulse` mart 遇 UNTRUSTED 拒绝、缺 `available_at` fail-closed；独立 ablate on B0，非叠加 B1）→ 同窗口 measured **`reject`** / **`claimable=false`**（coverage sufficient 121/121d, risk_on 53/121d；edge gates unmet + holdout lift vs B0 unmet）。**F0–F3 ladder 可 checkpoint**（三个 ablation 均诚实 reject，非叠加寻优）。
 - **Dual-track 复核（2026-07-20 续作）**：`rg`+人工复查 `routers`/`services`/`scripts`/前端 API，residual **NONE**——无新旁路可删/退役；既有 resolver 边界（`resolve_tier12_production_read`、`resolve_b_pit_mart_production_read`）仍是唯一读路径。证据见 `data/lineage/legacy_retire_notes.md`「2026-07-20 re-audit」。
 - **Accept frontier 复核（2026-07-20 续作）**：实测 `chunkyctl sync --domain daily|stock_st --start 20260721 --end 20260721` 均 `operation_window_blocked`（`wall_clock_preflight`，`eligible horizon=20260720`）——frontier 已 **current**，非落后；`20260721` 是交易日但尚未收盘（系统时钟仍 `2026-07-20`），无新数据可 accept。
-- **F 更长窗**：accepted daily/ST chunked local-raw 扩至 **`20220104`→`20260720`（1099d）**（ST local-raw floor）；E/F **同 protocol remeasure** 窗长已 unblock（仍禁 Optuna/松门/Release；本轨不跑策略实验）。
+- **F 更长窗 / S7 daily expand**：accepted daily chunked local-raw 扩至 **`20190102`→`20260720`（1829d）**；ST 仍 **`20220104`→`20260720`（1099d）**（ST raw floor；不可对称）。E/F **同 protocol remeasure** 窗长已 unblock（仍禁 Optuna/松门/Release；本轨不跑策略实验）。
 
 启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。
 
@@ -39,11 +39,11 @@
 
 - **S1–S3 transport FIXED**：default `chunkyctl sync` daily/stock_st/trade_cal = caller-only S1→S2；`capture_and_publish_*` **非** sync 生产 fan-in；CLI `--land-only` / `--accept-from-landing` / `--land-then-accept` + `--from-local-raw`
 - **S4 acquire FIXED（daily/ST land boundary）**：`security_day_acquire.resolve_security_day_acquire` — modes `provider_tushare` | `local_legacy_raw_materialize`；land/default sync 经 acquire；accept 零 acquire（禁重焊）；TDD `test_security_day_acquire_s4.py`；**不**复活多源 fallback registry
-- **Accepted window（local-raw chunked）**：daily+ST **`20220104`→`20260720`（1099d）** — ST raw floor；holdout `20250601` in-window；optional daily-only further back to raw min `20190102`（ST 不可对称）
-- **S5 derive FIXED**：`chunkyctl derive qfq|form --from-accepted` + `derive_runtime`（canonical-only nominal；零 acquire/fused publish；不进 accept 事务）；default qfq/form 仍可 canonical∪legacy fill
+- **Accepted window（local-raw chunked）**：daily **`20190102`→`20260720`（1829d）**；ST **`20220104`→`20260720`（1099d）** — ST raw floor，asymmetric；holdout `20250601` in-window
+- **S5 derive FIXED**：`chunkyctl derive qfq|form --from-accepted` + `derive_runtime`（canonical-only nominal；零 acquire/fused publish；不进 accept 事务）
 - **S6 serve FIXED**：`market_pulse_serve_read` 经 DataAccess registry+resolver 承接 drill/members/margin L0 leaf；router 零 `# serve-exempt:` / 零内联 raw；D5 全绿；form/sentiment 仍 production_read
-- **S7 PARTIAL**：`chunkyctl derive` 默认 `--from-accepted`（`--allow-legacy-fill` 逃生）；`legacy_raw_plane.yaml` + `check_legacy_raw_plane` 分类 SSOT/fill/compatibility；pipeline clean **显式** `--allow-legacy-fill`（保 2019–2021 qfq）；membership L0 (`dc_member`/`index_member_all`) 诚实 ssot
-- **近端 focus**：S7 续刀（日落 pipeline fill / 单域 formal 或 sunset；禁盲删 raw）；**研究轨** E0 → E/F 同 protocol remeasure（窗已扩；本 session 不跑）；不开 G/H/Release 抢跑
+- **S7 PARTIAL**：derive + form library + pipeline clean/process 默认 accepted-only（`--allow-legacy-fill` / `from_accepted=False` 逃生）；daily-only expand 闭合 2019 缺口；qfq from-accepted 实测 **8,402,928** 行 = 原 fill 面；`legacy_raw_plane.yaml` inventory **仍 41 ssot / 1 fill / 4 compatibility**（未 meaningfully shrink → 不升 FIXED）；membership L0 诚实 ssot
+- **近端 focus**：S7 续刀（membership L0 / 单域 formal|sunset；禁盲删 raw）；**研究轨** E0 → E/F 同 protocol remeasure（窗已扩；本 session 不跑）；不开 G/H/Release 抢跑
 - **护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d+禁 mass backfill/第二 DB/plugin bus
 
 A→H 降为地图；细节以重评文 §4、§9 为准。

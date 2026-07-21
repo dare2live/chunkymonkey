@@ -12,13 +12,14 @@ def run_clean(ctx: PipelineContext) -> None:
     ctx.log("=== ② 清洗 CLEAN (L0→L1 复权归一+校验) ===")
 
     # Step 2.96: 构建 qfq 派生分析面 (price_kline_qfq_tushare)
-    # S7: derive CLI defaults to --from-accepted; daily_update keeps explicit
-    # --allow-legacy-fill so 2019–2021 history is not silently truncated until
-    # optional daily-only accepted expand. latest-adj rebase 须全量。
+    # S7: accepted daily now covers 20190102→frontier, so clean uses the same
+    # accepted-only default as `chunkyctl derive qfq` (no silent legacy fill).
+    # Escape remains: run the script with --allow-legacy-fill if needed.
+    # latest-adj rebase 须全量。
     if not ctx.skip_sync and not ctx.dry:
         ctx.run_script(
             "backend/scripts/build_price_kline_qfq_tushare.py",
-            ["--allow-legacy-fill"],
+            ["--from-accepted"],
             degraded_msg="qfq analysis/serving build 失败 — 研究读面将 stale",
         )
     else:

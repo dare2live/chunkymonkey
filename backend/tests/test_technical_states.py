@@ -454,12 +454,17 @@ def _gen_fixture_data(n: int = _N_FIX):
 def _load_fixture(data, upto_day: str | None = None):
     c = duck_mem()
     c.executescript(_FIX_DDL)
-    c.executemany("INSERT INTO mkt.price_kline_qfq_tushare VALUES (?,?,?,?,?,?,?,?)",
-                  data["kline"] if upto_day is None else
-                  [r for r in data["kline"] if r[1] <= upto_day])
-    c.executemany("INSERT INTO tr.raw_tushare_daily VALUES (?,?,?)",
-                  data["raw"] if upto_day is None else
-                  [r for r in data["raw"] if r[1] <= upto_day.replace("-", "")])
+    kline = data["kline"] if upto_day is None else [r for r in data["kline"] if r[1] <= upto_day]
+    raw = data["raw"] if upto_day is None else [
+        r for r in data["raw"] if r[1] <= upto_day.replace("-", "")
+    ]
+    c.executemany("INSERT INTO mkt.price_kline_qfq_tushare VALUES (?,?,?,?,?,?,?,?)", kline)
+    c.executemany("INSERT INTO tr.raw_tushare_daily VALUES (?,?,?)", raw)
+    # S7 default form path reads canonical nominal close (not legacy raw fill).
+    c.executemany(
+        "INSERT INTO tr.canonical_nominal_ohlcv_daily VALUES (?,?,?)",
+        [(f"{r[1][:4]}-{r[1][4:6]}-{r[1][6:8]}", r[0], r[2]) for r in raw],
+    )
     c.executemany("INSERT INTO tr.raw_tushare_stk_limit VALUES (?,?,?,?)",
                   data["limit"] if upto_day is None else
                   [r for r in data["limit"] if r[1] <= upto_day.replace("-", "")])
@@ -534,8 +539,12 @@ def test_build_latest_incremental_equals_rebuild(fix_data):
         compact = last_day.replace("-", "")
         con_inc.executemany("INSERT INTO mkt.price_kline_qfq_tushare VALUES (?,?,?,?,?,?,?,?)",
                             [r for r in fix_data["kline"] if r[1] == last_day])
-        con_inc.executemany("INSERT INTO tr.raw_tushare_daily VALUES (?,?,?)",
-                            [r for r in fix_data["raw"] if r[1] == compact])
+        day_raw = [r for r in fix_data["raw"] if r[1] == compact]
+        con_inc.executemany("INSERT INTO tr.raw_tushare_daily VALUES (?,?,?)", day_raw)
+        con_inc.executemany(
+            "INSERT INTO tr.canonical_nominal_ohlcv_daily VALUES (?,?,?)",
+            [(f"{r[1][:4]}-{r[1][4:6]}-{r[1][6:8]}", r[0], r[2]) for r in day_raw],
+        )
         con_inc.executemany("INSERT INTO tr.raw_tushare_stk_limit VALUES (?,?,?,?)",
                             [r for r in fix_data["limit"] if r[1] == compact])
         con_inc.executemany("INSERT INTO tr.raw_tushare_index_daily VALUES (?,?,?)",
@@ -549,7 +558,7 @@ def test_build_latest_incremental_equals_rebuild(fix_data):
         # 幂等: 再跑 no-op, 无重复行
         out2 = ts.build_latest(conn=con_inc, cfg=CFG)
         assert out2["added_days"] == 0 and out2["rows"] == 0
-        assert out2.get("from_accepted") is False
+        assert out2.get("from_accepted") is True
         dup = con_inc.execute(f"""
             SELECT COUNT(*) FROM (SELECT stock_code, trade_date, COUNT(*) AS n
                                   FROM {ts.TABLE} GROUP BY 1, 2 HAVING n > 1)""").fetchone()[0]

@@ -15,9 +15,9 @@
 
 产物表 (契约 §5): smartmoney.fact_stock_form_daily (Type A 确定性 PIT 重排, 每日 process 步跑)。
 上游: market.price_kline_qfq_tushare (当前派生分析输入；非名义成交真相) +
-  tushare_raw.raw_tushare_daily ∪ canonical_nominal_ohlcv_daily / raw_tushare_stk_limit
-  (原始价空间触板判定; formal daily 不写 legacy raw 时走 accepted canonical;
-  S5 ``from_accepted=True`` / ``chunkyctl derive form --from-accepted`` 跳过 legacy raw fill) +
+  canonical_nominal_ohlcv_daily / raw_tushare_stk_limit
+  (原始价空间触板判定; S7 library default = accepted-only nominal;
+  ``from_accepted=False`` / ``--allow-legacy-fill`` 才 COALESCE legacy raw) +
   tushare_raw.raw_tushare_index_daily (RS 基准) +
   reference.dim_trading_calendar (周期闭合真相源, H1) + smartmoney.dim_stock_segment_daily
   (Tier1 context: rv_pctile/vol_regime 列 — 先跑 segments 再跑本模块)。
@@ -206,25 +206,7 @@ def _row_tuple(code: str, k: str, r: dict) -> tuple:
 
 
 # ---------------------------------------------------------------- 构建
-# Default: accepted canonical preferred; legacy raw fills nominal close gaps.
-_SRC_TEMP_SQL = """
-CREATE OR REPLACE TEMP TABLE _b2_src AS
-SELECT k.code, k.date, k.open, k.high, k.low, k.close, k.volume,
-       COALESCE(rd.close, can.close) AS raw_close, sl.up_limit, sl.down_limit,
-       seg.rv_pctile, seg.vol_regime
-FROM mkt.price_kline_qfq_tushare k
-LEFT JOIN tr.raw_tushare_daily rd
-  ON substr(rd.ts_code, 1, 6) = k.code AND rd.trade_date = replace(k.date, '-', '')
-LEFT JOIN tr.canonical_nominal_ohlcv_daily can
-  ON substr(can.ts_code, 1, 6) = k.code AND can.trade_date = CAST(k.date AS DATE)
-LEFT JOIN tr.raw_tushare_stk_limit sl
-  ON substr(sl.ts_code, 1, 6) = k.code AND sl.trade_date = replace(k.date, '-', '')
-LEFT JOIN dim_stock_segment_daily seg
-  ON seg.stock_code = k.code AND seg.trade_date = replace(k.date, '-', '')
-WHERE k.date >= ?
-"""
-
-# S5: accepted-only nominal close — no legacy raw_tushare_daily fill.
+# S7 default: accepted-only nominal close — no legacy raw_tushare_daily fill.
 # stk_limit stays a separate domain input (parallel to qfq adj_factor).
 _SRC_TEMP_SQL_FROM_ACCEPTED = """
 CREATE OR REPLACE TEMP TABLE _b2_src AS
@@ -241,17 +223,36 @@ LEFT JOIN dim_stock_segment_daily seg
 WHERE k.date >= ?
 """
 
+# Escape hatch: COALESCE legacy raw fill for pre-accepted history.
+# Requires explicit from_accepted=False / --allow-legacy-fill.
+_SRC_TEMP_SQL_LEGACY_FILL = """
+CREATE OR REPLACE TEMP TABLE _b2_src AS
+SELECT k.code, k.date, k.open, k.high, k.low, k.close, k.volume,
+       COALESCE(rd.close, can.close) AS raw_close, sl.up_limit, sl.down_limit,
+       seg.rv_pctile, seg.vol_regime
+FROM mkt.price_kline_qfq_tushare k
+LEFT JOIN tr.raw_tushare_daily rd
+  ON substr(rd.ts_code, 1, 6) = k.code AND rd.trade_date = replace(k.date, '-', '')
+LEFT JOIN tr.canonical_nominal_ohlcv_daily can
+  ON substr(can.ts_code, 1, 6) = k.code AND can.trade_date = CAST(k.date AS DATE)
+LEFT JOIN tr.raw_tushare_stk_limit sl
+  ON substr(sl.ts_code, 1, 6) = k.code AND sl.trade_date = replace(k.date, '-', '')
+LEFT JOIN dim_stock_segment_daily seg
+  ON seg.stock_code = k.code AND seg.trade_date = replace(k.date, '-', '')
+WHERE k.date >= ?
+"""
 
-def src_temp_sql(*, from_accepted: bool = False) -> str:
-    """Return form source SQL; ``from_accepted`` skips legacy raw daily fill.
 
-    Library default stays fill-compatible for pipeline/tests; S7
-    ``chunkyctl derive form`` defaults to ``from_accepted=True`` via derive_runtime.
+def src_temp_sql(*, from_accepted: bool = True) -> str:
+    """Return form source SQL; default skips legacy raw daily fill (S7).
+
+    Pass ``from_accepted=False`` only for authorized pre-accepted UNION fill
+    (same escape hatch as qfq ``--allow-legacy-fill``).
     """
 
     if from_accepted:
         return _SRC_TEMP_SQL_FROM_ACCEPTED
-    return _SRC_TEMP_SQL
+    return _SRC_TEMP_SQL_LEGACY_FILL
 
 
 
@@ -302,11 +303,11 @@ def _process_codes(con, codes: list[str], cal: list[str], bench: dict, cfg: dict
 
 
 def rebuild_all(
-    conn=None, cfg: dict | None = None, *, from_accepted: bool = False
+    conn=None, cfg: dict | None = None, *, from_accepted: bool = True
 ) -> dict[str, Any]:
     """全量重建 fact_stock_form_daily (data_start 起)。conn=None 自管连接并 ATTACH mkt/tr/ref;
     注入 conn (测试) 时调用方负责 mkt./tr./ref. 与 dim_stock_segment_daily 可解析。
-    ``from_accepted`` (S5/S7 derive path): nominal close from canonical only.
+    S7 default ``from_accepted=True``: nominal close from canonical only.
     """
     cfg = cfg or load_config()
     own = conn is None
@@ -345,13 +346,13 @@ def rebuild_all(
 
 
 def build_latest(
-    conn=None, cfg: dict | None = None, *, from_accepted: bool = False
+    conn=None, cfg: dict | None = None, *, from_accepted: bool = True
 ) -> dict[str, Any]:
     """增量: 补 K线已有而 form 表缺的日期 (幂等; pipeline process 步在 segments 之后每日调)。
 
     切片 = 交易日历回溯 incremental_lookback_days (覆盖月线 warmup + context/突破前序需求),
     特征窗口全在切片内 → 增量行与全量重建逐 bit 一致 (确定性, 单测证伪门)。
-    ``from_accepted`` (S5/S7 derive path): nominal close from canonical only.
+    S7 default ``from_accepted=True``: nominal close from canonical only.
     """
     cfg = cfg or load_config()
     own = conn is None

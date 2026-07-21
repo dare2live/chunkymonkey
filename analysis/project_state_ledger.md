@@ -2470,3 +2470,27 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   sync_registry raw still ssot until per-domain formal|sunset；optional
   daily-only pre-`20220104`；E0；E/F paused.
 - **Status**: **PARTIAL**（S7）.
+
+### 2026-07-21 — S7 PARTIAL cont. (form defaults + daily-only expand)
+
+- Wall-clock: Tue 2026-07-21 ~10:00 Asia/Shanghai (in-session).
+- **Form/pipeline defaults**：`technical_states.src_temp_sql` /
+  `rebuild_all` / `build_latest` default `from_accepted=True`；pipeline
+  `process` pins `build_latest(from_accepted=True)`；pipeline `clean`
+  calls qfq with `--from-accepted` (escape remains CLI `--allow-legacy-fill`).
+- **Daily-only expand**：19×≤40d `--land-then-accept --from-local-raw`
+  for `daily` only over `20190102`→`20211231`（ST cannot follow — raw ST
+  floor `20220104`）。Accepted daily **min=`20190102` max=`20260720`
+  n=1829**；ST unchanged **min=`20220104` max=`20260720` n=1099**.
+- **qfq proof**：`build_price_kline_qfq_tushare.py --from-accepted` →
+  **8,402,928** rows / 5762 codes / `2019-01-02`→`2026-07-20` PASS；
+  `MIN_ROWS_FROM_ACCEPTED` raised to `7_500_000`.
+- **Inventory**：still **41 ssot / 1 fill / 4 compatibility** of 46 —
+  no meaningful ssot shrink this knife → **remain PARTIAL** (not FIXED).
+- Evidence：`test_legacy_raw_plane_s7` + derive + technical_states targeted
+  green；`check_legacy_raw_plane` OK.
+- **Did not**：raw mass delete；per-domain formal sunset；Optuna/Release；
+  E/F remeasure；ST pre-2022 invent.
+- **Residual**：membership L0 + 41 ssot tables until per-domain
+  formal|sunset；E0；E/F paused.
+- **Status**: **PARTIAL**（S7）.
