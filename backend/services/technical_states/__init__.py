@@ -16,11 +16,13 @@
 产物表 (契约 §5): smartmoney.fact_stock_form_daily (Type A 确定性 PIT 重排, 每日 process 步跑)。
 上游: market.price_kline_qfq_tushare (当前派生分析输入；非名义成交真相) +
   tushare_raw.raw_tushare_daily ∪ canonical_nominal_ohlcv_daily / raw_tushare_stk_limit
-  (原始价空间触板判定; formal daily 不写 legacy raw 时走 accepted canonical) +
+  (原始价空间触板判定; formal daily 不写 legacy raw 时走 accepted canonical;
+  S5 ``from_accepted=True`` / ``chunkyctl derive form --from-accepted`` 跳过 legacy raw fill) +
   tushare_raw.raw_tushare_index_daily (RS 基准) +
   reference.dim_trading_calendar (周期闭合真相源, H1) + smartmoney.dim_stock_segment_daily
   (Tier1 context: rv_pctile/vol_regime 列 — 先跑 segments 再跑本模块)。
-入口: rebuild_all (全量) / build_latest (幂等增量)。形态 = 结构层非 alpha (F1 裁决), 无买卖暗示。
+入口: rebuild_all (全量) / build_latest (幂等增量) / chunkyctl derive form。
+形态 = 结构层非 alpha (F1 裁决), 无买卖暗示。
 
 当前边界: 本模块只发布版本化描述状态；未来标签、收益概率和买卖含义必须留在 Tier3 research。
 """
@@ -204,6 +206,7 @@ def _row_tuple(code: str, k: str, r: dict) -> tuple:
 
 
 # ---------------------------------------------------------------- 构建
+# Default: accepted canonical preferred; legacy raw fills nominal close gaps.
 _SRC_TEMP_SQL = """
 CREATE OR REPLACE TEMP TABLE _b2_src AS
 SELECT k.code, k.date, k.open, k.high, k.low, k.close, k.volume,
@@ -220,6 +223,32 @@ LEFT JOIN dim_stock_segment_daily seg
   ON seg.stock_code = k.code AND seg.trade_date = replace(k.date, '-', '')
 WHERE k.date >= ?
 """
+
+# S5: accepted-only nominal close — no legacy raw_tushare_daily fill.
+# stk_limit stays a separate domain input (parallel to qfq adj_factor).
+_SRC_TEMP_SQL_FROM_ACCEPTED = """
+CREATE OR REPLACE TEMP TABLE _b2_src AS
+SELECT k.code, k.date, k.open, k.high, k.low, k.close, k.volume,
+       can.close AS raw_close, sl.up_limit, sl.down_limit,
+       seg.rv_pctile, seg.vol_regime
+FROM mkt.price_kline_qfq_tushare k
+LEFT JOIN tr.canonical_nominal_ohlcv_daily can
+  ON substr(can.ts_code, 1, 6) = k.code AND can.trade_date = CAST(k.date AS DATE)
+LEFT JOIN tr.raw_tushare_stk_limit sl
+  ON substr(sl.ts_code, 1, 6) = k.code AND sl.trade_date = replace(k.date, '-', '')
+LEFT JOIN dim_stock_segment_daily seg
+  ON seg.stock_code = k.code AND seg.trade_date = replace(k.date, '-', '')
+WHERE k.date >= ?
+"""
+
+
+def src_temp_sql(*, from_accepted: bool = False) -> str:
+    """Return form source SQL; ``from_accepted`` skips legacy raw daily fill (S5)."""
+
+    if from_accepted:
+        return _SRC_TEMP_SQL_FROM_ACCEPTED
+    return _SRC_TEMP_SQL
+
 
 
 def _process_codes(con, codes: list[str], cal: list[str], bench: dict, cfg: dict, lab: Labeler,
@@ -268,9 +297,13 @@ def _process_codes(con, codes: list[str], cal: list[str], bench: dict, cfg: dict
     return total
 
 
-def rebuild_all(conn=None, cfg: dict | None = None) -> dict[str, Any]:
+def rebuild_all(
+    conn=None, cfg: dict | None = None, *, from_accepted: bool = False
+) -> dict[str, Any]:
     """全量重建 fact_stock_form_daily (data_start 起)。conn=None 自管连接并 ATTACH mkt/tr/ref;
-    注入 conn (测试) 时调用方负责 mkt./tr./ref. 与 dim_stock_segment_daily 可解析。"""
+    注入 conn (测试) 时调用方负责 mkt./tr./ref. 与 dim_stock_segment_daily 可解析。
+    ``from_accepted`` (S5): nominal close from canonical only — no legacy raw daily fill.
+    """
     cfg = cfg or load_config()
     own = conn is None
     con = conn or duck_connect(_db("smartmoney"), read_only=False)
@@ -285,7 +318,7 @@ def rebuild_all(conn=None, cfg: dict | None = None) -> dict[str, Any]:
         seg_thr = vol_regime_threshold()
         con.execute(f"DROP TABLE IF EXISTS {TABLE}")
         con.execute(_DDL)
-        con.execute(_SRC_TEMP_SQL, [iso_start])
+        con.execute(src_temp_sql(from_accepted=from_accepted), [iso_start])
         codes = [r[0] for r in con.execute("SELECT DISTINCT code FROM _b2_src ORDER BY 1").fetchall()]
         total = _process_codes(con, codes, cal, bench, cfg, lab, seg_thr, wanted_by_code=None)
         con.execute("DROP TABLE IF EXISTS _b2_src")
@@ -294,7 +327,12 @@ def rebuild_all(conn=None, cfg: dict | None = None) -> dict[str, Any]:
             f"SELECT COUNT(*), COUNT(DISTINCT trade_date) FROM {TABLE}").fetchone()
         if own:
             con.execute("CHECKPOINT")
-        out = {"rows": n, "days": days, "codes": len(codes)}
+        out = {
+            "rows": n,
+            "days": days,
+            "codes": len(codes),
+            "from_accepted": bool(from_accepted),
+        }
         logger.info("[technical_states] rebuild_all: %s", out)
         return out
     finally:
@@ -302,11 +340,14 @@ def rebuild_all(conn=None, cfg: dict | None = None) -> dict[str, Any]:
             con.close()
 
 
-def build_latest(conn=None, cfg: dict | None = None) -> dict[str, Any]:
+def build_latest(
+    conn=None, cfg: dict | None = None, *, from_accepted: bool = False
+) -> dict[str, Any]:
     """增量: 补 K线已有而 form 表缺的日期 (幂等; pipeline process 步在 segments 之后每日调)。
 
     切片 = 交易日历回溯 incremental_lookback_days (覆盖月线 warmup + context/突破前序需求),
     特征窗口全在切片内 → 增量行与全量重建逐 bit 一致 (确定性, 单测证伪门)。
+    ``from_accepted`` (S5): nominal close from canonical only — no legacy raw daily fill.
     """
     cfg = cfg or load_config()
     own = conn is None
@@ -317,7 +358,10 @@ def build_latest(conn=None, cfg: dict | None = None) -> dict[str, Any]:
         have = {r[0] for r in con.execute(
             "SELECT table_name FROM information_schema.tables WHERE table_name = ?", [TABLE]).fetchall()}
         if TABLE not in have:
-            return {"mode": "rebuild", **rebuild_all(conn=con, cfg=cfg)}
+            return {
+                "mode": "rebuild",
+                **rebuild_all(conn=con, cfg=cfg, from_accepted=from_accepted),
+            }
         _assert_b1_ready(con)
         iso_start = _iso(str(cfg["data_start"]))
         # watermark 语义 (非 NOT IN 全集): warmup 前缀日期在 form 表永远缺失, NOT IN 会把
@@ -328,7 +372,7 @@ def build_latest(conn=None, cfg: dict | None = None) -> dict[str, Any]:
                 SELECT COALESCE(MAX(trade_date), '') FROM {TABLE})
             ORDER BY 1""", [iso_start]).fetchall()]
         if not missing:
-            return {"added_days": 0, "rows": 0}
+            return {"added_days": 0, "rows": 0, "from_accepted": bool(from_accepted)}
         cal = _trading_days(con)
         lookback = int(cfg["incremental_lookback_days"])
         pos = bisect_left(cal, missing[0])
@@ -336,7 +380,7 @@ def build_latest(conn=None, cfg: dict | None = None) -> dict[str, Any]:
         bench = _bench_close(con, cfg)
         lab = Labeler(cfg)
         seg_thr = vol_regime_threshold()
-        con.execute(_SRC_TEMP_SQL, [max(cutoff, iso_start)])
+        con.execute(src_temp_sql(from_accepted=from_accepted), [max(cutoff, iso_start)])
         ph = ",".join("?" for _ in missing)
         wanted_rows = con.execute(
             f"SELECT DISTINCT code, date FROM _b2_src WHERE date IN ({ph})", missing).fetchall()
@@ -347,7 +391,11 @@ def build_latest(conn=None, cfg: dict | None = None) -> dict[str, Any]:
         total = _process_codes(con, codes, cal, bench, cfg, lab, seg_thr, wanted_by_code=wanted_by_code)
         con.execute("DROP TABLE IF EXISTS _b2_src")
         con.commit()
-        out = {"added_days": len(missing), "rows": total}
+        out = {
+            "added_days": len(missing),
+            "rows": total,
+            "from_accepted": bool(from_accepted),
+        }
         logger.info("[technical_states] build_latest: %s", out)
         return out
     finally:

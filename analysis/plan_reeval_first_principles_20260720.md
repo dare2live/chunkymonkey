@@ -355,3 +355,13 @@ Live 焊点（evidence pack §2.7 复核）：
   **`20220104`→`20260720`（1099d）** = ST raw floor（safe joint left edge）.
 - E/F same-protocol remeasure **window-unblocked**（not executed this session）.
 - Next strangler knives：S5 derive / S6 serve；optional daily-only pre-2022.
+
+### Amend 2026-07-21 — S5 FIXED + S6 PARTIAL
+
+- **S5 FIXED**：`chunkyctl derive qfq|form --from-accepted`；
+  `derive_runtime` independent of acquire；form
+  `src_temp_sql(from_accepted=True)`；TDD + source ban vs fused publish.
+- **S6 PARTIAL**：SERVE **D5** router audit（new ad-hoc `raw_*` FAIL）；
+  `market_pulse` drill/members exempt-tracked；form/sentiment already
+  production_read；dual-track residual still NONE.
+- Residual：S6 drill DataAccess migration；S7 legacy raw；E0；E/F remeasure.

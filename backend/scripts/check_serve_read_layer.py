@@ -24,6 +24,8 @@ scope="只迁 dossier")。dossier.py 已随 2026-06-28 纯数据平台重建永�
                             追不到声明源=FAIL (可追溯=确定性走链)
   D4 feature-from-l2      : backend/scripts 0 个 experiment_/analyze_ 因子 runner
                             (L2-bypass 向量关闭: 实验只能在 sandbox, 按 README 读 L2 panel 不绕 L0 重算)
+  D5 router-no-ad-hoc-raw : backend/routers/ 禁止新增内联 raw_* 读 (S6 serve 边界);
+                            既有 drill/members residual 须带 ``# serve-exempt:`` 理由
 
 跑: PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py
 """
@@ -40,12 +42,22 @@ GENERIC = REPO / "backend" / "services" / "data_access" / "drivers" / "generic.p
 DATA_ACCESS_YAML = REPO / "backend" / "config" / "data_access.yaml"
 SCRIPTS_DIR = REPO / "backend" / "scripts"
 SERVICES_DIR = REPO / "backend" / "services"
+ROUTERS_DIR = REPO / "backend" / "routers"
 MEMBERS_YAML = REPO / "backend" / "config" / "data_module_members.yaml"
 
 # entity 声明链必填字段 (D3): 缺一 = 追溯断链
 REQUIRED_ENTITY_KEYS = ("db", "table", "layer", "vendor", "asof_col", "code_col")
 
 INLINE_RAW_PATS = (r"FROM\s+raw_", r"FROM\s+price_kline\b", r"duck_connect\s*\(", r"duckdb\.connect\s*\(")
+
+# S6: routers — flag ad-hoc raw table reads (alias-qualified included). Conn helpers
+# alone are allowed; DataAccess / production_read remain the published read path.
+ROUTER_RAW_PATS = (
+    r"FROM\s+raw_",
+    r"FROM\s+\w+\.raw_",
+    r"JOIN\s+raw_",
+    r"JOIN\s+\w+\.raw_",
+)
 
 
 def _read(p: Path) -> str:
@@ -143,11 +155,39 @@ def door_feature_from_l2() -> list[str]:
     return bad
 
 
+def door_router_no_ad_hoc_raw() -> list[str]:
+    """D5 (S6): routers must not introduce new ad-hoc raw_* SELECTs.
+
+    Grandfathered residuals require an explicit ``# serve-exempt:`` rationale in-file
+    (same token as D1). Form/sentiment production_read paths are already resolver-bound;
+    drill/members leaf raw is the tracked residual.
+    """
+    if not ROUTERS_DIR.is_dir():
+        return ["backend/routers/ missing"]
+    violations: list[str] = []
+    for p in sorted(ROUTERS_DIR.glob("*.py")):
+        if p.name.startswith("_"):
+            continue
+        raw = _read(p)
+        if "# serve-exempt:" in raw:
+            continue
+        code = _strip_comments_and_docstrings(raw)
+        hits = [pat for pat in ROUTER_RAW_PATS if re.search(pat, code, flags=re.IGNORECASE)]
+        if hits:
+            rel = str(p.relative_to(REPO))
+            violations.append(
+                f"{rel}: router 内联 raw 命中 {hits} "
+                "(S6: 走 DataAccess/production_read, 或加 # serve-exempt: 理由)"
+            )
+    return violations
+
+
 DOORS = [
     ("D1 no-consumer-bypass", door_no_consumer_bypass),
     ("D2 preflight-wired", door_preflight_wired),
     ("D3 lineage-complete", door_lineage_complete),
     ("D4 feature-from-l2", door_feature_from_l2),
+    ("D5 router-no-ad-hoc-raw", door_router_no_ad_hoc_raw),
 ]
 
 

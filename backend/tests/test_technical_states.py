@@ -548,7 +548,8 @@ def test_build_latest_incremental_equals_rebuild(fix_data):
         assert got == want, "增量行与全量重建不一致 — 切片/前序需求破坏确定性"
         # 幂等: 再跑 no-op, 无重复行
         out2 = ts.build_latest(conn=con_inc, cfg=CFG)
-        assert out2 == {"added_days": 0, "rows": 0}
+        assert out2["added_days"] == 0 and out2["rows"] == 0
+        assert out2.get("from_accepted") is False
         dup = con_inc.execute(f"""
             SELECT COUNT(*) FROM (SELECT stock_code, trade_date, COUNT(*) AS n
                                   FROM {ts.TABLE} GROUP BY 1, 2 HAVING n > 1)""").fetchone()[0]

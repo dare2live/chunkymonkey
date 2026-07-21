@@ -2410,3 +2410,20 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual**：form `--from-accepted`；wire `chunkyctl`/pipeline clean entry；
   S6 serve；optional daily-only pre-2022.
 - **Status**: **PARTIAL**（S5 qfq accepted-only path）。
+
+### 2026-07-21 — S5 FIXED + S6 PARTIAL (derive CLI + router D5)
+
+- Wall-clock: Tue 2026-07-21 ~09:40 Asia/Shanghai (in-session).
+- **S5 FIXED**：`chunkyctl derive qfq|form --from-accepted` via
+  `services/derive_runtime.py` + `derive_cli.py`；form
+  `src_temp_sql(from_accepted=True)` / `rebuild_all`/`build_latest` canonical-only
+  nominal close；source ban no acquire/fused publish. Evidence：
+  `test_derive_runtime_s5.py` + qfq suite green；`check_serve_read_layer` D1–D5 OK.
+- **S6 PARTIAL**：SERVE door **D5** `door_router_no_ad_hoc_raw` scans
+  `backend/routers/`；new inline `raw_*` fails；`market_pulse.py` drill/members
+  grandfathered with `# serve-exempt:` (form/sentiment already production_read).
+- **Did not**：live full qfq/form rebuild；drill DataAccess migration；legacy
+  UNION default sunset；E/F remeasure；Optuna/Release/cutover flip.
+- **Residual**：S6 drill/members → DataAccess；S7 legacy `raw_tushare_*`；
+  optional daily-only pre-`20220104`；E0；E/F remeasure when scheduled.
+- **Status**: **FIXED**（S5）/ **PARTIAL**（S6）。

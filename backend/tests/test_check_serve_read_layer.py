@@ -92,3 +92,38 @@ def test_no_consumer_bypass_exempts_registered_members(tmp_path, monkeypatch):
 
 def test_preflight_wired_real():
     assert mod.door_preflight_wired() == []  # generic.py 真调 resolver.preflight
+
+
+def test_router_no_ad_hoc_raw_red_green_on_injection(tmp_path, monkeypatch):
+    """D5 (S6): new router inline raw_* = red; clean / serve-exempt = green."""
+    routers_dir = tmp_path / "routers"
+    routers_dir.mkdir()
+    monkeypatch.setattr(mod, "ROUTERS_DIR", routers_dir)
+    monkeypatch.setattr(mod, "REPO", tmp_path)
+
+    clean = routers_dir / "clean_api.py"
+    clean.write_text(
+        "from services.data_access import DataAccess\nrows = DataAccess().get('kline_qfq')\n",
+        encoding="utf-8",
+    )
+    assert mod.door_router_no_ad_hoc_raw() == []
+
+    dirty = routers_dir / "dirty_api.py"
+    dirty.write_text(
+        'q = "SELECT a FROM tr.raw_tushare_moneyflow WHERE trade_date = ?"\n',
+        encoding="utf-8",
+    )
+    viol = mod.door_router_no_ad_hoc_raw()
+    assert viol and "dirty_api.py" in viol[0]
+
+    dirty.write_text(
+        "# serve-exempt: tracked residual\n"
+        'q = "SELECT a FROM tr.raw_tushare_moneyflow WHERE trade_date = ?"\n',
+        encoding="utf-8",
+    )
+    assert mod.door_router_no_ad_hoc_raw() == []
+
+
+def test_router_no_ad_hoc_raw_live_surface_green():
+    """Live routers: market_pulse grandfathered via serve-exempt; others clean."""
+    assert mod.door_router_no_ad_hoc_raw() == []

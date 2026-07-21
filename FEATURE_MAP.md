@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-21 08:58
+> Snapshot: 2026-07-21 09:22
 
 ## 1. 入口面
 
@@ -13,6 +13,7 @@
 | `agent-boot` | one-page session-start context: git + moth summary + codegraph status + generated board; read-only projection. |
 | `doctor` | project health snapshot, including manual-only automation residue enforcement. |
 | `sync` | manual single-domain provider sync through the production runner and writer lock. |
+| `derive` | S5 qfq/form rebuild independent of acquire/accept; --from-accepted = canonical-only |
 | `map` | regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only. |
 | `pipeline` | manually run one declared data stage; full manual chain remains daily_update.sh. |
 | `lineage` | generated dependency projection; impact <table> audits fan-in before delete/migrate. |
@@ -161,7 +162,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 7,990 | calls 边 9,321 | imports 边 2,859 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 7,993 | calls 边 9,323 | imports 边 2,859 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -209,15 +210,15 @@
 | backend/scripts/check_continuity_integrity.py | 949 |
 | backend/services/research_runtime.py | 780 |
 | backend/services/data_sources/security_day_partition.py | 779 |
+| backend/routers/market_pulse.py | 777 |
 | backend/services/data_sources/holders_top10_acceptance.py | 776 |
-| backend/routers/market_pulse.py | 773 |
 | backend/services/institution_follow_b0.py | 758 |
 | backend/services/universe.py | 755 |
 | backend/scripts/data_health_snapshot.py | 731 |
 
 ## 5. 概览
 
-- chunkyctl 子命令 6 | launchd 任务 0 | router 4 (端点 20)
+- chunkyctl 子命令 7 | launchd 任务 0 | router 4 (端点 20)
 - sync_registry 数据域 47
 - 产表 34 (多 writer 12)
 

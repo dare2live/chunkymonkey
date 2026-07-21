@@ -40,12 +40,13 @@ def test_s5_from_accepted_nominal_excludes_legacy_raw() -> None:
 
 
 def test_form_source_sql_joins_canonical_and_limit_without_raw() -> None:
-    from services.technical_states import _SRC_TEMP_SQL
+    from services.technical_states import src_temp_sql
 
-    assert "canonical_nominal_ohlcv_daily" in _SRC_TEMP_SQL
-    assert "COALESCE(rd.close, can.close)" in _SRC_TEMP_SQL
-    assert "substr(sl.ts_code, 1, 6) = k.code" in _SRC_TEMP_SQL
-    assert "sl.ts_code = rd.ts_code" not in _SRC_TEMP_SQL
+    default_sql = src_temp_sql(from_accepted=False)
+    assert "canonical_nominal_ohlcv_daily" in default_sql
+    assert "COALESCE(rd.close, can.close)" in default_sql
+    assert "substr(sl.ts_code, 1, 6) = k.code" in default_sql
+    assert "sl.ts_code = rd.ts_code" not in default_sql
 
 
 def test_market_pulse_nominal_daily_prefers_canonical() -> None:

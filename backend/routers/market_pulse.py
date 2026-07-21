@@ -1,3 +1,7 @@
+# serve-exempt: S6 PARTIAL — drill/members leaf still ATTACH tushare_raw membership+flow
+# (million-row; not mirrored into mart). Form/sentiment already via
+# resolve_tier12_production_read / b_pit production_read. Residual tracked for
+# incremental DataAccess migration; new routers must not copy this pattern.
 """market_pulse router — Tier2 市场感知 API。
 
 现行边界: docs/MASTER_TOPLEVEL_DESIGN.md；历史设计证据: analysis/market_pulse_design_20260702.md。
