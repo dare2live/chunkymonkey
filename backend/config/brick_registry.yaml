@@ -1,19 +1,22 @@
-# Brick registry (L2 primitives / L3 FeatureBlocks) — B5 strangler
+# Brick registry (L2 primitives / L3 FeatureBlocks + Type-B edge) — B5 strangler
 #
 # Authority: analysis/data_brick_architecture_20260721.md
 # Gate: backend/scripts/check_brick_registry.py (+ moth claim + doctor section)
 #
 # Orthogonal to legacy data_layers.yaml:
 #   - data_layers L2_feature / L3_model = wiped physical Type-B vocab (compatibility)
-#   - THIS file = brick-architecture L0–L3 semantic layers (L2=primitive, L3=composite)
+#   - THIS file = brick-architecture L0–L3 semantic layers (L2=primitive, L3=composite/Type-B)
 #
 # Rules:
 #   - L2 depends_on ⊆ L1/L0 reference_nodes | other L2 bricks (never L3/L4)
 #   - L3 feature_blocks: max_composite_hops along L3 chain (default 2)
 #   - no silent raw_* / raw_tushare_* depends_on (allow_raw_bypass only with evidence)
 #   - every FEATURE_BLOCK_ID in backend/services must appear under feature_blocks
+#   - every data_layers tables:* → L2_feature must appear in some outputs (Type-B deep reg)
+#   - status=partial requires typed partial_reasons; type_b_edge requires store=feature_store
 #
-# First knife = structure + enforcement; lineage completeness for qfq remains PARTIAL.
+# Deepen knife = Type-B/feature_store registration + qfq typed PARTIAL lineage.
+# Not FIXED: qfq physical lineage columns still absent; inst profile enrichment PARTIAL.
 
 version: 1
 max_composite_hops: 2
@@ -47,7 +50,29 @@ bricks:
     config_hash: derive_qfq_from_accepted_v1
     availability_axis: available_at
     status: partial
-    notes: "S5/S7 derive --from-accepted; L2 qfq lineage placeholder batch_id residual known"
+    partial_reasons:
+      - code: missing_physical_lineage_columns
+        detail: >-
+          price_kline_qfq_tushare is full CTAS rebuild with no batch_id /
+          ingested_at / factor_as_of columns on the physical table.
+      - code: latest_factor_full_history_rewrite
+        detail: >-
+          qfq = nominal × adj_factor / adj_factor_latest_per_stock; historical
+          levels rewrite when latest factor changes (Tier0 lineage/PIT migration).
+      - code: read_surface_placeholder_lineage
+        detail: >-
+          analysis_kline_daily_qfq_sql(include_source_lineage=True) COALESCE
+          source_name/source_tier/is_fallback placeholders; columns absent on table.
+    lineage:
+      method: latest_factor_rebase_qfq
+      as_of_policy: rebuild_snapshot_latest_adj_factor_per_stock
+      nominal_source: accepted_canonical_nominal_ohlcv_daily
+      factor_source: raw_tushare_adj_factor
+      physical_lineage_columns: []
+      read_placeholders: [source_name, source_tier, is_fallback]
+      trust: PARTIAL
+      not_execution_truth: true
+    notes: "S5/S7 derive --from-accepted; typed PARTIAL lineage (not UNTRUSTED, not FIXED)"
 
   fact_stock_form_daily:
     layer: L2
@@ -87,7 +112,7 @@ bricks:
     status: declared
     notes: "Tier2 base publish (L2); B2 FeatureBlock composes this snapshot"
 
-  # Declared Type-B / pulse composites kept thin (no hop inflation in first knife)
+  # Declared Type-A pulse composite kept thin (no hop inflation)
   mart_market_pulse_daily:
     layer: L2
     kind: primitive
@@ -98,7 +123,12 @@ bricks:
     config_hash: market_pulse_daily_v2
     availability_axis: available_at
     status: partial
-    notes: "display/Type-A mart; registered as L2 serve primitive pending deeper L3 split"
+    partial_reasons:
+      - code: pending_deeper_l3_split
+        detail: >-
+          Registered as L2 serve/display primitive; optional L3 composite split
+          deferred (not required for Type-B orphan coverage).
+    notes: "display/Type-A mart; L2 serve primitive pending optional L3 split"
 
 feature_blocks:
   stock_state_stage_pattern_v0:
@@ -159,3 +189,50 @@ feature_blocks:
     availability_axis: notice_date_and_available_at_required_null_excluded
     status: declared
     notes: "B4 FeatureBlock; L1 disclosure inputs (E0 PARTIAL)"
+
+  # ── Type-B / feature_store edge (data_layers L2_feature tables) ────────────
+  institution_profile_edge_v0:
+    layer: L3
+    kind: type_b_edge
+    store: feature_store
+    depends_on:
+      - price_kline_qfq_tushare
+      - DatasetSnapshot.holders_top10
+      - canonical_top10_float_holders_period
+    outputs:
+      - period_windows
+      - fact_inst_episode
+      - mart_inst_profile
+      - mart_inst_profile_dim
+    owners:
+      - backend/services/institution_profile.py
+    config_hash: canonical_spine_legacy_enrichment_projection
+    availability_axis: research_rebuild_only_no_decision_time_claim
+    status: partial
+    partial_reasons:
+      - code: enrichment_projection_partial
+        detail: >-
+          Episode rebuild uses disclosure_enrichment_projection (canonical spine
+          + typed legacy join); feature_store_profiles attestation remains PARTIAL.
+    notes: "Type-B edge; wipeable feature_store; not FeatureBlock strategy ladder"
+
+  rally_gt_edge_v2:
+    layer: L3
+    kind: type_b_edge
+    store: feature_store
+    depends_on:
+      - price_kline_qfq_tushare
+      - fact_stock_form_daily
+      - accepted_stock_st_daily
+    outputs:
+      - fact_rally_ground_truth
+      - fact_rally_negative
+      - fact_rally_strata
+    owners:
+      - backend/services/rally_gt.py
+    config_hash: v2_20260702
+    availability_axis: post_outcome_label_research_only
+    status: declared
+    notes: >-
+      Type-B GT with forward labels; edge-isolated in feature_store;
+      taxonomy_version=v2_20260702; never SERVE as Type A

@@ -2,7 +2,7 @@
 
 > 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。
 > **Projection only** — not an enforcement input. Cutover / readiness / PIT gates still resolve from yaml + code resolvers + accepted partitions.
-> Snapshot: 2026-07-21T09:56:57Z
+> Snapshot: 2026-07-21T10:06:17Z
 
 ## Track
 
@@ -44,7 +44,7 @@
 ## Next (projection — goal.md wins on order)
 
 - S7 near-FIXED / stronger PARTIAL: inventory 23/46 ssot = typed hard-stop wall (2 blocked + 7 serve_l0_declared + 14 sync_orphan); no fake COMPAT
-- B5 brick registry PARTIAL: L2/L3 manifest + orphan/hop/raw gate shipped; residual = qfq lineage + Type-B/feature_store deepen (no fake FIXED)
+- B5 brick registry PARTIAL: L2/L3 manifest + orphan/hop/raw gate shipped; residual = qfq physical lineage columns (or honest UNTRUSTED read); Type-B registered (no fake FIXED)
 - E0 disclosure residual: org_holding provider land BLOCKED; holders 17 / stk 27 accepted; org stay local-raw (no by-date invent)
 - §15 adoption verify: commits/knife ≤1.5; async CI; pre-knife before L3
 - E/F same-protocol remeasure paused (not near-term; F0–F3 protocol-complete)

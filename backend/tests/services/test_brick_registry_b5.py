@@ -289,5 +289,158 @@ def test_b5_check_script_json_shape() -> None:
     report = check.build_report()
     assert report["verdict"] in {"PASS", "FAIL"}
     assert "orphan_feature_blocks" in report
+    assert "orphan_type_b_tables" in report
     assert "violations" in report
     assert "l2_count" in report and "l3_count" in report
+
+
+def test_b5_discover_type_b_tables_from_data_layers() -> None:
+    br = _load_service_mod()
+    found = br.discover_type_b_tables_from_data_layers(REPO)
+    # Live feature_store Type-B edge tables (data_layers L2_feature)
+    for expected in (
+        "period_windows",
+        "fact_inst_episode",
+        "mart_inst_profile",
+        "mart_inst_profile_dim",
+        "fact_rally_ground_truth",
+        "fact_rally_negative",
+        "fact_rally_strata",
+    ):
+        assert expected in found
+
+
+def test_b5_live_registry_covers_type_b_and_typed_qfq_partial() -> None:
+    br = _load_service_mod()
+    reg = br.load_registry()
+    assert "institution_profile_edge_v0" in reg.feature_blocks
+    assert "rally_gt_edge_v2" in reg.feature_blocks
+    inst = reg.feature_blocks["institution_profile_edge_v0"]
+    rally = reg.feature_blocks["rally_gt_edge_v2"]
+    assert inst.kind == "type_b_edge"
+    assert rally.kind == "type_b_edge"
+    assert inst.store == "feature_store"
+    assert rally.store == "feature_store"
+    assert rally.config_hash == "v2_20260702"
+    qfq = reg.bricks["price_kline_qfq_tushare"]
+    assert qfq.status == "partial"
+    assert qfq.partial_reasons
+    assert any(r.code == "missing_physical_lineage_columns" for r in qfq.partial_reasons)
+    assert qfq.lineage is not None
+    assert qfq.lineage.get("trust") == "PARTIAL"
+    assert br.orphan_type_b_tables(reg, repo=REPO) == []
+
+
+def test_b5_rejects_partial_without_reasons(tmp_path: Path) -> None:
+    br = _load_service_mod()
+    reg_yaml = tmp_path / "brick_registry.yaml"
+    reg_yaml.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "max_composite_hops": 2,
+                "reference_nodes": {
+                    "accepted_nominal_ohlcv_daily": {
+                        "layer": "L1",
+                        "kind": "accepted_canonical",
+                    },
+                },
+                "bricks": {
+                    "price_kline_qfq_tushare": {
+                        "layer": "L2",
+                        "kind": "primitive",
+                        "depends_on": ["accepted_nominal_ohlcv_daily"],
+                        "owners": ["backend/scripts/build_price_kline_qfq_tushare.py"],
+                        "config_hash": "x",
+                        "availability_axis": "available_at",
+                        "status": "partial",
+                    }
+                },
+                "feature_blocks": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    reg = br.load_registry(reg_yaml)
+    viol = br.collect_violations(reg, repo=REPO, discovered=set(), type_b_tables=set())
+    assert any("partial_reasons" in v and "status=partial" in v for v in viol)
+
+
+def test_b5_rejects_type_b_without_feature_store(tmp_path: Path) -> None:
+    br = _load_service_mod()
+    reg_yaml = tmp_path / "brick_registry.yaml"
+    reg_yaml.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "max_composite_hops": 2,
+                "reference_nodes": {
+                    "accepted_nominal_ohlcv_daily": {
+                        "layer": "L1",
+                        "kind": "accepted_canonical",
+                    },
+                },
+                "bricks": {},
+                "feature_blocks": {
+                    "bad_edge": {
+                        "layer": "L3",
+                        "kind": "type_b_edge",
+                        "depends_on": ["accepted_nominal_ohlcv_daily"],
+                        "owners": ["backend/services/rally_gt.py"],
+                        "config_hash": "v2_20260702",
+                        "availability_axis": "post_outcome_label_research_only",
+                        "outputs": ["fact_rally_ground_truth"],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    reg = br.load_registry(reg_yaml)
+    viol = br.collect_violations(reg, repo=REPO, discovered=set(), type_b_tables=set())
+    assert any("store=feature_store" in v for v in viol)
+
+
+def test_b5_orphan_type_b_table_fails(tmp_path: Path) -> None:
+    br = _load_service_mod()
+    reg_yaml = tmp_path / "brick_registry.yaml"
+    reg_yaml.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "max_composite_hops": 2,
+                "reference_nodes": {
+                    "accepted_nominal_ohlcv_daily": {
+                        "layer": "L1",
+                        "kind": "accepted_canonical",
+                    },
+                },
+                "bricks": {},
+                "feature_blocks": {
+                    "rally_gt_edge_v2": {
+                        "layer": "L3",
+                        "kind": "type_b_edge",
+                        "depends_on": ["accepted_nominal_ohlcv_daily"],
+                        "owners": ["backend/services/rally_gt.py"],
+                        "config_hash": "v2_20260702",
+                        "availability_axis": "post_outcome_label_research_only",
+                        "store": "feature_store",
+                        "outputs": ["fact_rally_ground_truth"],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    reg = br.load_registry(reg_yaml)
+    orphans = br.orphan_type_b_tables(
+        reg, type_b_tables={"fact_rally_ground_truth", "fact_rally_negative"}
+    )
+    assert orphans == ["fact_rally_negative"]
+    viol = br.collect_violations(
+        reg,
+        repo=REPO,
+        discovered=set(),
+        type_b_tables={"fact_rally_ground_truth", "fact_rally_negative"},
+    )
+    assert any("orphan type_b table" in v for v in viol)

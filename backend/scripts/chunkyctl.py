@@ -416,12 +416,13 @@ def _moth_gate(repo: Path) -> dict[str, Any]:
 
 
 def _brick_registry_section(result: dict[str, Any]) -> dict[str, Any]:
-    """B5: doctor reports orphan FeatureBlocks / hop-raw violations (static gate)."""
+    """B5: doctor reports orphan FeatureBlocks / Type-B tables / hop-raw (static)."""
 
     report = _json_from_stdout(result)
     shape_ok = bool(
         report is not None
         and isinstance(report.get("orphan_feature_blocks"), list)
+        and isinstance(report.get("orphan_type_b_tables"), list)
         and isinstance(report.get("violations"), list)
         and report.get("verdict") in {"PASS", "FAIL"}
     )
@@ -438,8 +439,12 @@ def _brick_registry_section(result: dict[str, Any]) -> dict[str, Any]:
         "orphan_feature_blocks": (
             None if report is None else report.get("orphan_feature_blocks")
         ),
+        "orphan_type_b_tables": (
+            None if report is None else report.get("orphan_type_b_tables")
+        ),
         "l2_count": None if report is None else report.get("l2_count"),
         "l3_count": None if report is None else report.get("l3_count"),
+        "type_b_count": None if report is None else report.get("type_b_count"),
         "violations": None if report is None else report.get("violations"),
     }
     if not passed:
@@ -451,7 +456,9 @@ def _brick_registry_section(result: dict[str, Any]) -> dict[str, Any]:
             else:
                 section["error"] = "brick-registry report has invalid shape"
         else:
-            section["error"] = "brick-registry has orphan bricks or hop/raw violations"
+            section["error"] = (
+                "brick-registry has orphan bricks/Type-B tables or hop/raw violations"
+            )
     return section
 
 

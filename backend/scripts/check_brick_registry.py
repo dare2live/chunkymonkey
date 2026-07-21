@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""B5 gate: L2/L3 brick registry completeness + hop/raw/orphan honesty.
+"""B5 gate: L2/L3 brick registry completeness + hop/raw/orphan/Type-B honesty.
 
 Checks (authority: analysis/data_brick_architecture_20260721.md):
   1. brick_registry.yaml version=1 + max_composite_hops
   2. L2 bricks are primitives; deps never L3/L4; no silent raw_* bypass
   3. L3 feature_blocks hop depth ≤ max_composite_hops
   4. Every FEATURE_BLOCK_ID in backend/services is registered
-  5. Owner paths exist
+  5. Every data_layers L2_feature table appears in some outputs (Type-B)
+  6. status=partial requires typed partial_reasons; type_b_edge → feature_store
+  7. Owner paths exist
 
 Run:
   PYTHONPATH=backend python backend/scripts/check_brick_registry.py
@@ -76,9 +78,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {item}", file=sys.stderr)
     else:
         print(
-            "OK brick_registry: L2/L3 classified; "
+            "OK brick_registry: L2/L3/Type-B classified; "
             f"l2={report.get('l2_count', 0)} l3={report.get('l3_count', 0)} "
-            f"orphans=0 hops≤{report.get('max_composite_hops', 2)}"
+            f"type_b={report.get('type_b_count', 0)} "
+            f"orphans=0 type_b_orphans=0 "
+            f"hops≤{report.get('max_composite_hops', 2)}"
         )
     return 0 if not viol else 1
 

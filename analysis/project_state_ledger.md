@@ -2940,3 +2940,22 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual**：qfq lineage placeholder；Type-B/feature_store deep registration；
   org BLOCKED；S7 hard-stop wall. Label **PARTIAL**（structure landed；not FIXED）.
 - **Status**: **PARTIAL**.
+
+### 2026-07-21 — B5 deepen stronger PARTIAL (Type-B + qfq typed lineage)
+
+- Wall-clock: Tue 2026-07-21 ~18:00–19:00 Asia/Shanghai.
+- **B5 deepen knife**（§15；tip `b451cbb79`）：
+  1. Type-B/feature_store deep registration：`institution_profile_edge_v0` +
+     `rally_gt_edge_v2` (`kind=type_b_edge`, `store=feature_store`) covering all
+     live `data_layers` L2_feature tables (7 outputs).
+  2. Gate extensions：orphan Type-B tables；`status=partial` → typed
+     `partial_reasons`；`type_b_edge` → `store=feature_store`；doctor reports
+     `orphan_type_b_tables` / `type_b_count`.
+  3. qfq lineage closed **honestly as typed PARTIAL**（not FIXED / not UNTRUSTED）：
+     missing physical batch_id/`factor_as_of`；latest-factor full-history rewrite；
+     read-surface COALESCE placeholders — declared under `lineage.trust=PARTIAL`.
+- Evidence：`test_brick_registry_b5` + doctor tests green；`check_brick_registry` PASS.
+- **Did not**：Optuna；E/F；org invent；S7 fake FIXED；physical qfq schema rewrite.
+- **Residual**：qfq physical lineage columns（or honest UNTRUSTED read）；org BLOCKED；
+  S7 hard-stop wall. Label **stronger PARTIAL**（not FIXED）.
+- **Status**: **PARTIAL**（stronger）.

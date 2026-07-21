@@ -224,8 +224,9 @@ def test_doctor_blocks_when_automation_surface_fails(tmp_path, monkeypatch, caps
                 '"scope_counts":{"external_aggregate":1},"live_readiness":"NOT_EVALUATED"}'
                 if any("check_universe_filter.py" in part for part in command)
                 else (
-                    '{"verdict":"PASS","orphan_feature_blocks":[],"violations":[],'
-                    '"l2_count":1,"l3_count":1}'
+                    '{"verdict":"PASS","orphan_feature_blocks":[],'
+                    '"orphan_type_b_tables":[],"violations":[],'
+                    '"l2_count":1,"l3_count":1,"type_b_count":1}'
                     if any("check_brick_registry.py" in part for part in command)
                     else '{"verdict":"PASS","summary":{"total":1}}'
                 )

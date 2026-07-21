@@ -1,4 +1,4 @@
-"""L2/L3 brick registry — strangler for FeatureBlock + primitive lineage gates.
+"""L2/L3 brick registry — strangler for FeatureBlock + Type-B + primitive lineage gates.
 
 Authority: analysis/data_brick_architecture_20260721.md (B5).
 Orthogonal to legacy backend/config/data_layers.yaml (physical/wiped L2_feature/L3_model).
@@ -8,12 +8,16 @@ Rules enforced cheaply:
   - L3 feature_blocks: max_composite_hops (default 2) along L3 chain
   - no silent raw_* / raw_tushare_* depends_on without allow_raw_bypass
   - every FEATURE_BLOCK_ID in backend/services must be registered (orphan = FAIL)
+  - every data_layers.yaml tables:* → L2_feature must appear in some outputs
+    (Type-B / feature_store deep registration)
+  - status=partial requires typed partial_reasons (honest residual, no silent PARTIAL)
+  - kind=type_b_edge requires store=feature_store (edge isolation)
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -21,6 +25,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REGISTRY = REPO_ROOT / "backend" / "config" / "brick_registry.yaml"
+DEFAULT_DATA_LAYERS = REPO_ROOT / "backend" / "config" / "data_layers.yaml"
 
 _FEATURE_BLOCK_ID_RE = re.compile(
     r'^FEATURE_BLOCK_ID\s*=\s*["\']([^"\']+)["\']\s*$',
@@ -30,7 +35,8 @@ _RAW_DEP_RE = re.compile(r"^raw(_tushare)?_", re.IGNORECASE)
 
 ALLOWED_LAYERS = frozenset({"L0", "L1", "L2", "L3"})
 L2_KINDS = frozenset({"primitive"})
-L3_KINDS = frozenset({"feature_block", "composite"})
+L3_KINDS = frozenset({"feature_block", "composite", "type_b_edge"})
+PARTIAL_STATUSES = frozenset({"partial", "PARTIAL"})
 
 
 @dataclass(frozen=True)
@@ -38,6 +44,12 @@ class RefNode:
     node_id: str
     layer: str
     kind: str
+
+
+@dataclass(frozen=True)
+class PartialReason:
+    code: str
+    detail: str
 
 
 @dataclass(frozen=True)
@@ -53,6 +65,9 @@ class Brick:
     status: str = "declared"
     allow_raw_bypass: bool = False
     notes: str = ""
+    store: str = ""
+    partial_reasons: tuple[PartialReason, ...] = ()
+    lineage: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -81,6 +96,14 @@ class BrickRegistry:
             | set(self.feature_blocks)
         )
 
+    def all_outputs(self) -> set[str]:
+        out: set[str] = set()
+        for brick in self.bricks.values():
+            out.update(brick.outputs)
+        for fb in self.feature_blocks.values():
+            out.update(fb.outputs)
+        return out
+
 
 def _as_str_tuple(value: Any) -> tuple[str, ...]:
     if value is None:
@@ -90,6 +113,33 @@ def _as_str_tuple(value: Any) -> tuple[str, ...]:
     if isinstance(value, (list, tuple)):
         return tuple(str(x) for x in value)
     raise ValueError(f"expected list/str, got {type(value).__name__}")
+
+
+def _parse_partial_reasons(brick_id: str, value: Any) -> tuple[PartialReason, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError(f"{brick_id}: partial_reasons must be a list")
+    out: list[PartialReason] = []
+    for i, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(f"{brick_id}: partial_reasons[{i}] must be a mapping")
+        code = item.get("code")
+        detail = item.get("detail")
+        if not isinstance(code, str) or not code.strip():
+            raise ValueError(f"{brick_id}: partial_reasons[{i}].code required")
+        if not isinstance(detail, str) or not detail.strip():
+            raise ValueError(f"{brick_id}: partial_reasons[{i}].detail required")
+        out.append(PartialReason(code=code.strip(), detail=detail.strip()))
+    return tuple(out)
+
+
+def _parse_lineage(brick_id: str, value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{brick_id}: lineage must be a mapping")
+    return dict(value)
 
 
 def _parse_brick(brick_id: str, meta: dict[str, Any], *, default_layer: str) -> Brick:
@@ -103,6 +153,7 @@ def _parse_brick(brick_id: str, meta: dict[str, Any], *, default_layer: str) -> 
     axis = meta.get("availability_axis")
     if not isinstance(axis, str) or not axis.strip():
         raise ValueError(f"{brick_id}: availability_axis required")
+    store = str(meta.get("store") or "").strip()
     return Brick(
         brick_id=brick_id,
         layer=layer,
@@ -115,6 +166,9 @@ def _parse_brick(brick_id: str, meta: dict[str, Any], *, default_layer: str) -> 
         status=str(meta.get("status") or "declared"),
         allow_raw_bypass=bool(meta.get("allow_raw_bypass") or False),
         notes=str(meta.get("notes") or ""),
+        store=store,
+        partial_reasons=_parse_partial_reasons(brick_id, meta.get("partial_reasons")),
+        lineage=_parse_lineage(brick_id, meta.get("lineage")),
     )
 
 
@@ -189,6 +243,22 @@ def discover_feature_block_ids(repo: Path | None = None) -> set[str]:
     return found
 
 
+def discover_type_b_tables_from_data_layers(repo: Path | None = None) -> set[str]:
+    """Tables declared L2_feature in data_layers.yaml (= Type-B / feature_store edge)."""
+    path = (repo or REPO_ROOT) / "backend" / "config" / "data_layers.yaml"
+    if not path.is_file():
+        path = DEFAULT_DATA_LAYERS
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    tables = raw.get("tables") or {}
+    if not isinstance(tables, dict):
+        raise ValueError(f"data_layers.yaml tables must be a mapping ({path})")
+    return {
+        str(name)
+        for name, layer in tables.items()
+        if str(layer) == "L2_feature"
+    }
+
+
 def orphan_feature_blocks(
     registry: BrickRegistry,
     *,
@@ -197,6 +267,21 @@ def orphan_feature_blocks(
     found = set(discovered) if discovered is not None else discover_feature_block_ids()
     missing = sorted(found - set(registry.feature_blocks))
     return missing
+
+
+def orphan_type_b_tables(
+    registry: BrickRegistry,
+    *,
+    type_b_tables: Iterable[str] | None = None,
+    repo: Path | None = None,
+) -> list[str]:
+    tables = (
+        set(type_b_tables)
+        if type_b_tables is not None
+        else discover_type_b_tables_from_data_layers(repo)
+    )
+    covered = registry.all_outputs()
+    return sorted(tables - covered)
 
 
 def composite_hop_depth(feature_block_id: str, registry: BrickRegistry) -> int:
@@ -237,6 +322,7 @@ def collect_violations(
     *,
     repo: Path | None = None,
     discovered: set[str] | None = None,
+    type_b_tables: set[str] | None = None,
 ) -> list[str]:
     reg = registry or load_registry()
     root = repo or REPO_ROOT
@@ -256,11 +342,39 @@ def collect_violations(
             viol.append(f"feature_block {fid}: layer must be L3 (got {fb.layer!r})")
         if fb.kind not in L3_KINDS:
             viol.append(
-                f"feature_block {fid}: kind must be feature_block|composite "
+                f"feature_block {fid}: kind must be feature_block|composite|type_b_edge "
                 f"(got {fb.kind!r})"
             )
         if not fb.owners:
             viol.append(f"feature_block {fid}: owners required")
+        if fb.kind == "type_b_edge" and fb.store != "feature_store":
+            viol.append(
+                f"feature_block {fid}: type_b_edge requires store=feature_store "
+                f"(got {fb.store!r})"
+            )
+        if fb.kind == "type_b_edge" and not fb.outputs:
+            viol.append(
+                f"feature_block {fid}: type_b_edge requires outputs covering "
+                "data_layers L2_feature tables"
+            )
+
+    def _check_partial(entry: Brick, *, label: str) -> None:
+        if entry.status in PARTIAL_STATUSES and not entry.partial_reasons:
+            viol.append(
+                f"{label} {entry.brick_id}: status=partial requires typed "
+                "partial_reasons (code+detail)"
+            )
+        trust = str((entry.lineage or {}).get("trust") or "").upper()
+        if trust in {"PARTIAL", "UNTRUSTED"} and entry.status not in PARTIAL_STATUSES:
+            viol.append(
+                f"{label} {entry.brick_id}: lineage.trust={trust} requires "
+                "status=partial"
+            )
+
+    for brick in reg.bricks.values():
+        _check_partial(brick, label="brick")
+    for fb in reg.feature_blocks.values():
+        _check_partial(fb, label="feature_block")
 
     known = reg.all_registered_ids()
 
@@ -309,6 +423,18 @@ def collect_violations(
             "but missing from brick_registry.yaml feature_blocks"
         )
 
+    # --- orphan Type-B tables (data_layers L2_feature) ---
+    tb = (
+        type_b_tables
+        if type_b_tables is not None
+        else discover_type_b_tables_from_data_layers(root)
+    )
+    for orphan in orphan_type_b_tables(reg, type_b_tables=tb):
+        viol.append(
+            f"orphan type_b table {orphan!r}: data_layers L2_feature but missing "
+            "from brick_registry outputs (register Type-B/feature_store edge)"
+        )
+
     # --- owner paths must exist ---
     for bid, brick in reg.bricks.items():
         for owner in brick.owners:
@@ -338,17 +464,27 @@ def audit_report(
     reg = registry or load_registry()
     root = repo or REPO_ROOT
     found = discover_feature_block_ids(root)
+    type_b = discover_type_b_tables_from_data_layers(root)
     orphans = orphan_feature_blocks(reg, discovered=found)
-    violations = collect_violations(reg, repo=root, discovered=found)
+    orphan_tb = orphan_type_b_tables(reg, type_b_tables=type_b)
+    violations = collect_violations(
+        reg, repo=root, discovered=found, type_b_tables=type_b
+    )
+    type_b_count = sum(
+        1 for fb in reg.feature_blocks.values() if fb.kind == "type_b_edge"
+    )
     return {
         "verdict": "PASS" if not violations else "FAIL",
         "version": reg.version,
         "max_composite_hops": reg.max_composite_hops,
         "l2_count": len(reg.bricks),
         "l3_count": len(reg.feature_blocks),
+        "type_b_count": type_b_count,
         "reference_count": len(reg.reference_nodes),
         "discovered_feature_blocks": sorted(found),
+        "discovered_type_b_tables": sorted(type_b),
         "orphan_feature_blocks": orphans,
+        "orphan_type_b_tables": orphan_tb,
         "violations": violations,
     }
 
@@ -356,11 +492,14 @@ def audit_report(
 __all__ = [
     "Brick",
     "BrickRegistry",
+    "PartialReason",
     "RefNode",
     "audit_report",
     "collect_violations",
     "composite_hop_depth",
     "discover_feature_block_ids",
+    "discover_type_b_tables_from_data_layers",
     "load_registry",
     "orphan_feature_blocks",
+    "orphan_type_b_tables",
 ]

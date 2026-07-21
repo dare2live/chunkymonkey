@@ -36,12 +36,12 @@
     }
   },
   "enforcement": "projection_only_not_truth",
-  "generated_at": "2026-07-21T09:56:57Z",
+  "generated_at": "2026-07-21T10:06:17Z",
   "generated_from": "backend/scripts/build_agent_board.py",
   "goal_hand_excerpt": "## 当前 objective\n\n**轨道 = transport strangler S1–S7**（owner 2026-07-20 第一原理重评）。模块化诉求（acquire≠accept≠derive≠serve；sync=caller-only；acquire 可换源）**S1–S6 FIXED**；**S7 stronger PARTIAL / near-FIXED**（derive+form+pipeline clean 默认 accepted-only；daily accepted 已扩至 `20190102`；inventory **23 ssot / 1 fill / 22 compatibility** of 46；B1+B2 priority serve/multi-consumer **done**；residual **全部** typed hard-stop — 无下一批可诚实 COMPAT 而不假 publication）——见重评文 §2–§3 / modularity gap §8。A→H 骨架保留为**后置研究地图**；近端 residual = E0 / §15 verify（S7 不假升 FIXED）；不是 E/F remeasure。Agent-OS WP0–WP4 已闭合；WP6 仪式影子期仍开放。**§15 knife-merge adoption started**（binding：一刀=一次 Rule10+一次 safe_commit；异步 CI；L3 先 `pre-knife`）。\n\n已落地硬事实（勿回滚）：\n- C + B-pit **`cutover_allowed=true`**（commit `b38e9ac5`）→ resolver `ACCEPTED_CUTOVER` / `MART_CUTOVER`\n- daily+ST+form/qfq/pulse 前沿 **`20260720`**\n- Phase D research_runtime **FIXED**（persist + fold + measured offline）\n- Delivery-OS：eng_gov **§15** knife-merge binding（一刀=一次 Rule10+一次 safe_commit；异步 CI 禁 sync `gh watch`；L3 `chunkyctl pre-knife`；并行仅 moth 证非重叠；L1 docs skip CI）— **不**放宽 L3/Rule10/PIT/≤40d\n- Tier1 accept **form enrich v1**：`stock_state_stage_pattern_v1` + exact-day `fact_stock_form_daily`…",
   "next_knives_frozen": [
     "S7 near-FIXED / stronger PARTIAL: inventory 23/46 ssot = typed hard-stop wall (2 blocked + 7 serve_l0_declared + 14 sync_orphan); no fake COMPAT",
-    "B5 brick registry PARTIAL: L2/L3 manifest + orphan/hop/raw gate shipped; residual = qfq lineage + Type-B/feature_store deepen (no fake FIXED)",
+    "B5 brick registry PARTIAL: L2/L3 manifest + orphan/hop/raw gate shipped; residual = qfq physical lineage columns (or honest UNTRUSTED read); Type-B registered (no fake FIXED)",
     "E0 disclosure residual: org_holding provider land BLOCKED; holders 17 / stk 27 accepted; org stay local-raw (no by-date invent)",
     "§15 adoption verify: commits/knife ≤1.5; async CI; pre-knife before L3",
     "E/F same-protocol remeasure paused (not near-term; F0–F3 protocol-complete)"
