@@ -251,16 +251,43 @@ entities:
     available_after: eod
 
   index_member_all:
-    # 申万三级成分 (展示 drill/members; PIT 特征侧另走 sw_industry / v_sw_industry_pit)
+    # 申万三级成分 (S7: serve/derive publication = v_sw_industry_pit; raw = sync residual)
     db: tushare_raw
-    table: raw_tushare_index_member_all
-    layer: L0
+    table: v_sw_industry_pit
+    layer: L1
     code_col: ts_code
     code_input: ts_passthrough
     asof_col: in_date
     asof_format: yyyymmdd
     columns: [l1_code, l1_name, l2_code, l2_name, l3_code, l3_name, ts_code, name, in_date, out_date, is_new]
     vendor: shenwan
+    available_after: eod
+    compute_fn: build_sw_industry_view
+
+  moneyflow_ind_dc:
+    # 东财板块资金流 (pulse builder → mart_sector_pulse_daily; 非 drill 个股叶)
+    db: tushare_raw
+    table: raw_tushare_moneyflow_ind_dc
+    layer: L0
+    code_col: ts_code
+    code_input: ts_passthrough
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [trade_date, content_type, ts_code, name, pct_change, net_amount, buy_elg_amount, buy_sm_amount_stock]
+    vendor: eastmoney_via_tushare
+    available_after: eod
+
+  moneyflow_mkt_dc:
+    # 东财大盘资金 (pulse builder → mart_market_pulse_daily)
+    db: tushare_raw
+    table: raw_tushare_moneyflow_mkt_dc
+    layer: L0
+    code_col: trade_date
+    code_input: ts_passthrough
+    asof_col: trade_date
+    asof_format: yyyymmdd
+    columns: [trade_date, net_amount]
+    vendor: eastmoney_via_tushare
     available_after: eod
 
   daily:

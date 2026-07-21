@@ -106,9 +106,12 @@ def empty_client(monkeypatch):
     c = _api_conn()
     c.execute(f"DELETE FROM {mp.MARKET_TABLE}")
     c.execute(f"DELETE FROM {mp.SECTOR_TABLE}")
-    for (table_name,) in c.execute("""
-        SELECT table_name FROM information_schema.tables WHERE table_schema = 'tr'
+    for table_name, table_type in c.execute("""
+        SELECT table_name, table_type FROM information_schema.tables
+        WHERE table_schema = 'tr'
     """).fetchall():
+        if str(table_type).upper() == "VIEW":
+            continue  # S7: v_sw_industry_pit is a view over membership raw
         c.execute(f'DELETE FROM tr."{table_name}"')
     c.execute("DELETE FROM dim_stock_segment_daily")
     c.execute("DELETE FROM fact_stock_form_daily")
@@ -245,7 +248,12 @@ def test_members_drilldown(client):
     assert r2.status_code == 200
     body2 = r2.json()
     assert body2["as_of"] is None
-    assert [m["con_code"] for m in body2["members"]] == ["000592.SZ", "002679.SZ", "600001.SH"]
+    assert [m["con_code"] for m in body2["members"]] == [
+        "000592.SZ",
+        "002679.SZ",
+        "600001.SH",
+        "600003.SZ",
+    ]
     assert all(m["con_code"] != "600265.SH" for m in body2["members"]), "is_new='N' 历史行必须排除"
     r3 = client.get("/api/v3/pulse/members?sector_code=BK9999.DC")
     assert r3.status_code == 200 and r3.json()["members"] == [] and r3.json()["as_of"] is None
@@ -414,7 +422,7 @@ def test_drill_sw_three_level_chain(client):
     assert b2["rows_level"] == "L2"
     assert [x["code"] for x in b2["breadcrumb"]] == ["801010.SI"]
     assert b2["breadcrumb"][0]["name"] == "农林牧渔"
-    assert [x["sector_code"] for x in b2["rows"]] == ["801011.SI"]
+    assert [x["sector_code"] for x in b2["rows"]] == ["801011.SI", "801012.SI"]
     assert b2["rows"][0]["level"] == "L2" and b2["rows"][0]["rs_4w"] is not None
     r3 = client.get("/api/v3/pulse/drill?code=801011.SI")
     b3 = r3.json()

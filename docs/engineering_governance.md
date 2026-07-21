@@ -308,23 +308,50 @@ L2 17.0s（moth assert 7.3s + staged-snapshot cold codegraph 3.8s）、L3 27.1s�
 `agent-boot` 11.6s（moth snapshot ≈7s）、CI 单次 ≈1min。结论：机械门不是墙钟
 瓶颈；瓶颈在编排仪式（每 slice 同步等 CI、每 micro-commit 一次 Rule 10、
 父 agent 串行单 worker）。本节只裁编排节奏，**不放宽任何
-accept/PIT/calendar/fail-closed/cutover/E 门语义**。
+accept/PIT/calendar/fail-closed/cutover/E 门 / Rule 10 / ≤40d 语义**。
 
-- **并行 subagents（默认并行，例外才串行）**：写集不相交且不碰共享真相文件的
-  刀一次性并行派发；父 agent 等 worker 期间不空等。**必须串行的共享面**：
+### 15.1 刀级合并（binding；防 micro-commit 复辟）
+
+**刀** = 一个逻辑单元（例：单域 S7 formal|sunset、单 CLI 面、单 E0 域 land
+路径）。刀内允许多文件、一次 stage、**一次 Rule 10**、**一次
+`safe_commit`**。禁止把同一刀拆成「docs commit → 小改 commit → 测 commit」各
+审一次。验收信号：`commits/knife ≤ 1.5`；ledger 条目写明刀边界。
+
+- **异步 CI（pipelining，不是放松）**：L2/L3 本地先绿同一 pytest 面
+  （`backend/config/ci_pytest_surface.yaml` via `run_ci_pytest.py`，亦是
+  `safe_commit` `ci_pytest` 门）再 push；push 后**禁止**同步 `gh run watch` /
+  空等 CI；可开下一刀。刀收口前回读该刀 CI verdict（或上一刀已结束 run）；红 =
+  fix-forward 最高优先并暂停派新刀。同步等待只保留给改 CI/gate 机械本身的切片。
+- **并行 subagents**：仅当写集不相交且不碰共享真相文件时，父可并行派
+  disjoint 刀；派前用 `moth coupling --repo . --impact <name>`（或
+  `chunkyctl pre-knife`）证明非重叠。**必须串行的共享面**：
   `goal.md`/`BOARD.md`/ledger/`PROJECT_INDEX.md`/`AGENTS.md`/docs owner 三文档/
   `.moth/`/`commit_tiers.yaml`/`safe_commit.sh`/`ci.yml`；同一 DuckDB 的写；
   provider 采集 job；git stage/commit/push 窗口；Rule 10 verdict 与最终验收
   （controller-owned）。机器话：两把刀的 `git diff --name-only` 预期集合相交，
   或任一方触本清单 → 串行。
-- **异步 CI（pipelining，不是放松）**：L2/L3 本地先绿同一 pytest 面
-  （`backend/config/ci_pytest_surface.yaml` via `run_ci_pytest.py`，亦是
-  `safe_commit` `ci_pytest` 门）再 push；push 后**不**守 `gh run watch`，
-  可开下一刀。刀收口前回读该刀 CI verdict（或上一刀已结束 run）；红 =
-  fix-forward 最高优先并暂停派新刀。同步等待只保留给改 CI/gate 机械本身的切片。
-- **Rule 10 节奏**：独立审查按**刀（逻辑单元）**一次，覆盖该刀合并 diff；不按
+- **Rule 10 节奏**：独立审查按**刀**一次，覆盖该刀合并 diff；不按
   micro-commit 重复开审。审查仍 blocking（L2/L3 trailer 语义不变），只是粒度
   归刀。
+- **薄 enforcement（非 Delivery-OS 重写）**：`chunkyctl agent-boot` 投影提醒本
+  节；`chunkyctl pre-knife <name>` 固化刀前审计；不新增第二套 commit OS，不软化
+  L3/Rule10/PIT/≤40d。
+
+### 15.2 刀前 impact 审计（L3 mandatory）
+
+动 `backend/services/`、YAML/SQL 契约、删表/删配置前，**固定一次**：
+
+```bash
+scripts/chunkyctl pre-knife <name>
+# 等价：moth coupling --repo . --impact <name>
+#       codegraph explore "<name> callers"
+```
+
+再配最窄 pytest red-first。一次规划、一次绿；禁止「连崩多层 CI / 多 commit
+才绿」。刀后若动 PIT/schema/writer，仍走 `$post-fix-audit`（本清单不替代）。
+
+### 15.3 其它节奏
+
 - **owner 文档读取**：每任务读一次 `docs/README.md` 指到的 owner 文档；同任务
   内后续刀不重读 MASTER 全文，引用具体条款即可。
 - **显式不做（Occam，有测量背书）**：`agent-boot --fast`（只省 ~7s/session，

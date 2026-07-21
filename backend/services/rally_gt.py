@@ -6,7 +6,7 @@ owner=docs/strategy_validation_contract.md §8.1 + d1_gt_archaeology_20260702.md
 定义 (v1.5 规则本体照搬, 双证据验证 — 考古 §4.1; 阈值全在 backend/config/rally_gt.yaml, 修正#10):
   L0 底→顶 swing: 波段底 (前后 pivot_low_window 最低) → max_forward_days 根内峰,
      峰/底-1 >= gain_min (60%), 峰距 >= min_duration_days (排单日尖峰); 同股 covered 去重。
-  L1 universe: 前缀白名单 (services.universe) + 身份真相源 (raw_tushare_stock_basic, 排 K线里
+  L1 universe: 前缀白名单 (services.universe) + 身份真相源 (ref.dim_active_a_stock, 排 K线里
      非个股码) + 有近期K线 (末K线距数据末 <= NO_RECENT_KLINE_DAYS 自然日) + episode 内非 ST
      (PIT ST 日历 raw_tushare_stock_st, 每 st_sample_step_bars 根抽样)。
   L2 多头排列: 拉升期 [bottom..peak] 内∃某日 MA5>MA10>MA20>MA30>MA60 (bull_align_mode=any_day, P1 拍板)。
@@ -32,9 +32,9 @@ strata (考古 §3.4): 申万 L1/L2 as-of (raw_tushare_index_member_all, in_date
 写: feature_store.fact_rally_ground_truth / fact_rally_negative / fact_rally_strata
   (设计 P3: Type B 含前瞻, edge 隔离 — smartmoney 只放 Type A; DROP 重建, wipeable)。
 读: market.price_kline_qfq_tushare (当前派生研究输入, ATTACH mk；非名义成交真相) + reference.dim_trading_calendar
-  (ATTACH ref) + smartmoney B1/B2 特征面 (ATTACH sm, READ_ONLY) + tushare_raw (独立只读连接
-  raw_conn — universe.load_st_calendar 需默认 catalog 直连, 不能跨 ATTACH catalog 解析未限定
-  表名; stock_basic / index_member_all 同连接读)。
+  + reference.dim_active_a_stock (身份 publication; ATTACH ref) + smartmoney B1/B2 特征面
+  (ATTACH sm, READ_ONLY) + tushare_raw (独立只读连接 raw_conn — universe.load_st_calendar
+  需默认 catalog 直连, 不能跨 ATTACH catalog 解析未限定表名)。
 用法: PYTHONPATH=backend .venv/bin/python -c "from services.rally_gt import rebuild; print(rebuild())"
 
 当前状态: ground-truth/negative/strata 资产保留为 Tier3 research package；任何 StrategyRelease
@@ -453,8 +453,10 @@ def rebuild(conn=None, data_end=None, raw_conn=None) -> dict:
     try:
         # 2) 真相源装载 (全部 <= data_end; K线截断 = holdout 数据物理不进内存)
         st_cal = load_st_calendar(raw_conn)                     # PIT ST 日历 (单一计算点)
-        identity = {str(r[0]) for r in raw_conn.execute(
-            "SELECT DISTINCT symbol FROM raw_tushare_stock_basic").fetchall()}  # 身份真相源 (排非个股码)
+        # S7: identity publication = dim_active_a_stock (raw stock_basic = writer residual)
+        identity = {str(r[0]) for r in conn.execute(
+            "SELECT stock_code FROM ref.dim_active_a_stock "
+            "WHERE stock_code IS NOT NULL").fetchall()}
         trading_days = [str(r[0]) for r in conn.execute(
             "SELECT trade_date FROM ref.dim_trading_calendar WHERE is_trading=1 AND trade_date <= ? "
             "ORDER BY trade_date", (data_end_iso,)).fetchall()]

@@ -14,7 +14,7 @@
 
 ---
 
-## 1.  ranked 瓶颈（粗 attribution）
+## 1. Ranked 瓶颈（粗 attribution）
 
 | 排名 | 类别 | 粗占比 | 机制（证据） | 与普通 CRUD 对比 |
 |---|---|---:|---|---|
@@ -159,4 +159,16 @@ Agent-OS 解决的是 **「错误类的慢」**（docs 全门、CI 无 pytest、
 
 ## 7. Status
 
-**FIXED**（诊断交付）；**next verification** = 2026-07-28 前一周 session 采样：`commits/knife`、Rule10 次数/knife、是否仍 sync CI watch、S7 inventory delta。
+**FIXED**（诊断交付）。
+
+### 7.1 Adoption started（2026-07-21 owner-agreed execute）
+
+| 项 | 落地 |
+|---|---|
+| §15 knife-merge binding | eng_gov §15.1 + `goal.md` + `AGENTS.md` boot pointer |
+| 薄 enforcement | `agent-boot` delivery 提醒；`chunkyctl pre-knife <name>` |
+| 刀前 impact | eng_gov §15.2 = moth coupling + codegraph explore once |
+| S7 inventory | **41→36 ssot**（本刀 −5；membership/flow/identity/adj） |
+| 未动 | L3/Rule10/PIT/≤40d；E/F paused；禁令不变 |
+
+**next verification** = 2026-07-28 前一周 session 采样：`commits/knife`、Rule10 次数/knife、是否仍 sync CI watch、S7 inventory delta。

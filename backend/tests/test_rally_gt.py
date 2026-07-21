@@ -113,13 +113,19 @@ def _mk_env(kline_rows, calendar_dates, symbols, st_rows=(), member_rows=(),
                  "axis_pos VARCHAR, axis_purity VARCHAR)")
     if form_rows:
         conn.executemany("INSERT INTO sm.fact_stock_form_daily VALUES (?,?,?,?)", form_rows)
+    # S7: identity publication = dim_active_a_stock (not raw stock_basic)
+    conn.execute(
+        "CREATE TABLE ref.dim_active_a_stock "
+        "(stock_code VARCHAR, stock_name VARCHAR, market VARCHAR)"
+    )
+    conn.executemany(
+        "INSERT INTO ref.dim_active_a_stock VALUES (?,?,?)",
+        [(s, s, "SH") for s in symbols],
+    )
     raw = duck_mem()
     raw.execute("CREATE TABLE raw_tushare_stock_st (ts_code VARCHAR, trade_date VARCHAR)")
     if st_rows:
         raw.executemany("INSERT INTO raw_tushare_stock_st VALUES (?,?)", st_rows)
-    raw.execute("CREATE TABLE raw_tushare_stock_basic (ts_code VARCHAR, symbol VARCHAR)")
-    raw.executemany("INSERT INTO raw_tushare_stock_basic VALUES (?,?)",
-                    [(f"{s}.XX", s) for s in symbols])
     raw.execute("CREATE TABLE raw_tushare_index_member_all (l1_code VARCHAR, l1_name VARCHAR, "
                 "l2_code VARCHAR, l2_name VARCHAR, ts_code VARCHAR, in_date VARCHAR, out_date INTEGER)")
     if member_rows:

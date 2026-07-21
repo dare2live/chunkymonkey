@@ -29,7 +29,7 @@ SRC = "raw_tushare_index_member_all"
 
 DDL = f"""
 CREATE OR REPLACE VIEW {VIEW} AS
-SELECT SPLIT_PART(ts_code, '.', 1) AS stock_code, ts_code,
+SELECT SPLIT_PART(ts_code, '.', 1) AS stock_code, ts_code, name,
        l1_code, l1_name, l2_code, l2_name, l3_code, l3_name,
        in_date, CAST(out_date AS VARCHAR) AS out_date, is_new
 FROM {SRC}

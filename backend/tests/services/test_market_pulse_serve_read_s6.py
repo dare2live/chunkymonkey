@@ -16,7 +16,6 @@ def test_serve_read_entities_resolve_physical_tables():
     reg = load_registry()
     for name in (
         "dc_member",
-        "index_member_all",
         "moneyflow",
         "moneyflow_dc",
         "limit_list_d",
@@ -25,6 +24,9 @@ def test_serve_read_entities_resolve_physical_tables():
     ):
         assert reg.entity(name).db == "tushare_raw"
         assert serve._table(name).startswith("raw_")
+    # S7: SW membership publication = PIT view (not raw ssot)
+    assert reg.entity("index_member_all").table == "v_sw_industry_pit"
+    assert serve._table("index_member_all") == "v_sw_industry_pit"
 
 
 def test_list_sector_members_dc_and_sw():

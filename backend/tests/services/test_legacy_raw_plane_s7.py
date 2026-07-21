@@ -192,3 +192,198 @@ def test_s7_derive_runtime_still_bans_acquire_imports() -> None:
             imports.append(node.module)
     assert "services.data_sources.sync_runner" not in imports
     assert "capture_and_publish" not in src
+
+
+def test_s7_inventory_role_counts_after_membership_flow_knife() -> None:
+    """S7 knife: membership/flow + identity/adj leave ssot (41→36)."""
+
+    mod = _load_check_mod()
+    counts = mod.role_counts()
+    assert counts["ssot"] == 36, counts
+    assert counts["fill"] == 1, counts
+    assert counts["compatibility"] == 9, counts
+    assert sum(counts.values()) == 46, counts
+
+
+def test_s7_sw_membership_publication_is_pit_view() -> None:
+    """Serve/derive SW membership entity points at L1 PIT view, not raw ssot."""
+
+    from services.data_access.spec import load_registry
+
+    ent = load_registry().entity("index_member_all")
+    assert ent.table == "v_sw_industry_pit"
+    assert ent.layer == "L1"
+    assert "name" in ent.columns
+
+    mod = _load_check_mod()
+    inv = mod._load_yaml(mod.INVENTORY_YAML)
+    meta = inv["tables"]["raw_tushare_index_member_all"]
+    assert meta["role"] == "compatibility"
+    assert meta["kind"] == "membership_l0"
+    assert meta["publication_surface"] == "v_sw_industry_pit"
+
+
+def test_s7_pulse_flow_builder_tables_are_compatibility() -> None:
+    """moneyflow_ind_dc / moneyflow_mkt_dc: mart owns display; raw = compat residual."""
+
+    from services.data_access.spec import load_registry
+
+    reg = load_registry()
+    assert reg.entity("moneyflow_ind_dc").table == "raw_tushare_moneyflow_ind_dc"
+    assert reg.entity("moneyflow_mkt_dc").table == "raw_tushare_moneyflow_mkt_dc"
+
+    mod = _load_check_mod()
+    inv = mod._load_yaml(mod.INVENTORY_YAML)
+    for table, mart in (
+        ("raw_tushare_moneyflow_ind_dc", "mart_sector_pulse_daily"),
+        ("raw_tushare_moneyflow_mkt_dc", "mart_market_pulse_daily"),
+    ):
+        meta = inv["tables"][table]
+        assert meta["role"] == "compatibility", table
+        assert meta.get("kind") == "pulse_flow_builder", table
+        assert meta.get("publication_surface") == mart, table
+
+
+def test_s7_stock_basic_identity_publication_is_dim() -> None:
+    """Identity publication = dim_active_a_stock; raw stock_basic = writer residual."""
+
+    mod = _load_check_mod()
+    inv = mod._load_yaml(mod.INVENTORY_YAML)
+    meta = inv["tables"]["raw_tushare_stock_basic"]
+    assert meta["role"] == "compatibility"
+    assert meta.get("kind") == "identity_cache"
+    assert meta.get("publication_surface") == "dim_active_a_stock"
+
+    src = (REPO / "backend" / "services" / "rally_gt.py").read_text(encoding="utf-8")
+    assert "ref.dim_active_a_stock" in src
+    assert "FROM raw_tushare_stock_basic" not in src
+
+
+def test_s7_adj_factor_derive_publication_is_qfq() -> None:
+    """qfq table owns analysis surface; raw adj_factor = derive rebuild input."""
+
+    mod = _load_check_mod()
+    inv = mod._load_yaml(mod.INVENTORY_YAML)
+    meta = inv["tables"]["raw_tushare_adj_factor"]
+    assert meta["role"] == "compatibility"
+    assert meta.get("kind") == "derive_input"
+    assert meta.get("publication_surface") == "price_kline_qfq_tushare"
+
+
+def test_s7_gate_allows_membership_compat_with_publication_surface(
+    tmp_path, monkeypatch
+) -> None:
+    mod = _load_check_mod()
+    inv = tmp_path / "legacy_raw_plane.yaml"
+    inv.write_text(
+        "version: 1\n"
+        "membership_l0_entities: [dc_member, index_member_all]\n"
+        "tables:\n"
+        "  raw_tushare_daily:\n"
+        "    role: fill\n"
+        "    formal_domain: daily\n"
+        "    write: forbidden\n"
+        "  raw_tushare_stock_st:\n"
+        "    role: compatibility\n"
+        "    formal_domain: stock_st\n"
+        "    write: forbidden\n"
+        "  raw_tushare_trade_cal:\n"
+        "    role: compatibility\n"
+        "    formal_domain: trade_cal\n"
+        "    write: forbidden\n"
+        "  raw_tushare_margin:\n"
+        "    role: compatibility\n"
+        "    formal_domain: margin\n"
+        "    write: forbidden\n"
+        "  raw_tushare_dc_member:\n"
+        "    role: ssot\n"
+        "    kind: membership_l0\n"
+        "  raw_tushare_index_member_all:\n"
+        "    role: compatibility\n"
+        "    kind: membership_l0\n"
+        "    publication_surface: v_sw_industry_pit\n",
+        encoding="utf-8",
+    )
+    reg = tmp_path / "sync_registry.yaml"
+    reg.write_text(
+        "domains:\n"
+        "  daily: {target_table: raw_tushare_daily}\n"
+        "  stock_st: {target_table: raw_tushare_stock_st}\n"
+        "  trade_cal: {target_table: raw_tushare_trade_cal}\n"
+        "  margin: {target_table: raw_tushare_margin}\n"
+        "  dc_member: {target_table: raw_tushare_dc_member}\n"
+        "  index_member_all: {target_table: raw_tushare_index_member_all}\n",
+        encoding="utf-8",
+    )
+    da = tmp_path / "data_access.yaml"
+    da.write_text(
+        "entities:\n"
+        "  dc_member: {table: raw_tushare_dc_member, layer: L0}\n"
+        "  index_member_all: {table: v_sw_industry_pit, layer: L1}\n"
+        "  daily: {table: raw_tushare_daily, layer: L0}\n"
+        "  margin: {table: raw_tushare_margin, layer: L0}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "INVENTORY_YAML", inv)
+    monkeypatch.setattr(mod, "SYNC_REGISTRY_YAML", reg)
+    monkeypatch.setattr(mod, "DATA_ACCESS_YAML", da)
+    viol = mod.collect_violations()
+    assert viol == [], viol
+
+
+def test_s7_gate_rejects_membership_compat_without_publication_surface(
+    tmp_path, monkeypatch
+) -> None:
+    mod = _load_check_mod()
+    inv = tmp_path / "legacy_raw_plane.yaml"
+    inv.write_text(
+        "version: 1\n"
+        "membership_l0_entities: [dc_member, index_member_all]\n"
+        "tables:\n"
+        "  raw_tushare_daily:\n"
+        "    role: fill\n"
+        "    formal_domain: daily\n"
+        "    write: forbidden\n"
+        "  raw_tushare_stock_st:\n"
+        "    role: compatibility\n"
+        "    formal_domain: stock_st\n"
+        "    write: forbidden\n"
+        "  raw_tushare_trade_cal:\n"
+        "    role: compatibility\n"
+        "    formal_domain: trade_cal\n"
+        "    write: forbidden\n"
+        "  raw_tushare_margin:\n"
+        "    role: compatibility\n"
+        "    formal_domain: margin\n"
+        "    write: forbidden\n"
+        "  raw_tushare_dc_member:\n"
+        "    role: ssot\n"
+        "    kind: membership_l0\n"
+        "  raw_tushare_index_member_all:\n"
+        "    role: compatibility\n"
+        "    kind: membership_l0\n",
+        encoding="utf-8",
+    )
+    reg = tmp_path / "sync_registry.yaml"
+    reg.write_text(
+        "domains:\n"
+        "  daily: {target_table: raw_tushare_daily}\n"
+        "  stock_st: {target_table: raw_tushare_stock_st}\n"
+        "  trade_cal: {target_table: raw_tushare_trade_cal}\n"
+        "  margin: {target_table: raw_tushare_margin}\n"
+        "  dc_member: {target_table: raw_tushare_dc_member}\n"
+        "  index_member_all: {target_table: raw_tushare_index_member_all}\n",
+        encoding="utf-8",
+    )
+    da = tmp_path / "data_access.yaml"
+    da.write_text(
+        "entities:\n"
+        "  dc_member: {table: raw_tushare_dc_member, layer: L0}\n"
+        "  index_member_all: {table: raw_tushare_index_member_all, layer: L0}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "INVENTORY_YAML", inv)
+    monkeypatch.setattr(mod, "SYNC_REGISTRY_YAML", reg)
+    monkeypatch.setattr(mod, "DATA_ACCESS_YAML", da)
+    viol = mod.collect_violations()
+    assert any("membership_l0" in v and "publication_surface" in v for v in viol)

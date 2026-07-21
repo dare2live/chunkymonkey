@@ -138,5 +138,5 @@ def test_feature_map_does_not_publish_retired_commands() -> None:
 
     commands = {name for name, _help in module.scan_chunkyctl(REPO_ROOT)}
 
-    assert {"agent-boot", "doctor", "sync", "map", "pipeline", "lineage"} <= commands
+    assert {"agent-boot", "pre-knife", "doctor", "sync", "map", "pipeline", "lineage"} <= commands
     assert commands.isdisjoint(RETIRED_COMMANDS)

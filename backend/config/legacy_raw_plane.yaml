@@ -24,15 +24,22 @@ roles:
   compatibility: "Lag/compat surface; formal or dual-write plane owns publication."
   retired: "Must not be written or treated as truth."
 
-# Membership L0 entities (S6 serve leaf still registry→raw; no mart-mirror yet).
+# Membership L0 entities (S6 serve leaf via DataAccess; SW publication = PIT view).
 membership_l0_entities:
   - dc_member
   - index_member_all
 
+# Pulse builder-only flow inputs (display publication = mart_*; not serve L0 leaf).
+pulse_flow_builder_entities:
+  - moneyflow_ind_dc
+  - moneyflow_mkt_dc
+
 tables:
   raw_tushare_adj_factor:
-    role: ssot
-    note: "qfq corporate-action input; no formal adj plane yet"
+    role: compatibility
+    kind: derive_input
+    publication_surface: price_kline_qfq_tushare
+    note: "S7: qfq derive publication owns analysis surface; raw adj = rebuild input residual (no formal corp-action accept yet)"
 
   raw_tushare_balancesheet:
     role: ssot
@@ -97,9 +104,10 @@ tables:
     role: ssot
 
   raw_tushare_index_member_all:
-    role: ssot
+    role: compatibility
     kind: membership_l0
-    note: "data_access entity index_member_all; S6 serve leaf; SW components"
+    publication_surface: v_sw_industry_pit
+    note: "S7: DataAccess index_member_all → v_sw_industry_pit (L1); raw sync residual; no mass delete"
 
   raw_tushare_kpl_list:
     role: ssot
@@ -122,18 +130,26 @@ tables:
 
   raw_tushare_moneyflow:
     role: ssot
+    note: "serve drill L0 leaf (stock flow); no mart-mirror"
 
   raw_tushare_moneyflow_dc:
     role: ssot
+    note: "serve drill L0 leaf (DC stock flow); no mart-mirror"
 
   raw_tushare_moneyflow_hsgt:
     role: ssot
 
   raw_tushare_moneyflow_ind_dc:
-    role: ssot
+    role: compatibility
+    kind: pulse_flow_builder
+    publication_surface: mart_sector_pulse_daily
+    note: "S7: pulse builder input via DataAccess; sector mart owns display publication"
 
   raw_tushare_moneyflow_mkt_dc:
-    role: ssot
+    role: compatibility
+    kind: pulse_flow_builder
+    publication_surface: mart_market_pulse_daily
+    note: "S7: pulse builder input via DataAccess; market mart owns display publication"
 
   raw_tushare_report_rc:
     role: ssot
@@ -159,8 +175,10 @@ tables:
     role: ssot
 
   raw_tushare_stock_basic:
-    role: ssot
-    note: "identity/name cache; not historical tradeability truth"
+    role: compatibility
+    kind: identity_cache
+    publication_surface: dim_active_a_stock
+    note: "S7: dim_active_a_stock owns identity publication; raw = security_master writer input; not historical tradeability truth"
 
   raw_tushare_stock_st:
     role: compatibility

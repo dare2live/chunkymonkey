@@ -141,9 +141,9 @@ Acquire 边界（owner 2026-07-21；MASTER §5.1）：formal daily/ST = 全市�
 | S4 acquire swappable | **FIXED** | `security_day_acquire` modes `provider_tushare`/`local_legacy_raw_materialize`；land+default sync via resolve；accept 零 acquire；TDD `test_security_day_acquire_s4.py` |
 | S5 derive | **FIXED** | `chunkyctl derive qfq|form --from-accepted`；`derive_runtime`；form/qfq canonical-only nominal；TDD `test_derive_runtime_s5.py`；零 acquire |
 | S6 serve | **FIXED** | `market_pulse_serve_read` + DataAccess entities；router 零 `# serve-exempt:`；D5 OK |
-| S7 legacy raw plane | **PARTIAL** | derive+form+pipeline clean 默认 accepted-only；daily accepted `20190102`→`20260720`；inventory 仍 41/46 ssot |
+| S7 legacy raw plane | **PARTIAL** | derive+form+pipeline clean 默认 accepted-only；daily accepted `20190102`→`20260720`；inventory **36/46 ssot**（SW→PIT；pulse flow→mart；stock_basic→dim；adj→qfq） |
 
-Residual owner：S7 续（membership L0 / 单域 formal|sunset；禁盲删 raw）；ST 不可对称扩至 2019。
+Residual owner：S7 续（dc_member / stock-flow drill L0 / 长尾 ssot formal|sunset；禁盲删 raw）；ST 不可对称扩至 2019。
 Live expand evidence（2026-07-21）：accepted daily **`20190102`→`20260720`（1829d）**；ST **`20220104`→`20260720`（1099d）**（asymmetric）。
 E0 note（2026-07-21）：`stk_holdertrade` + `holders_top10` provider land CLI shipped（by_ann_date / by_notice_date）；`org_holding` provider land **BLOCKED**（by-period ~830k；仍 local-raw）。
-Next verification：S7 next knife（ssot shrink）或 E0 org residual（by-date faucet if ever / mass accept）；E/F same-protocol remeasure when scheduled（window unblocked）。
+Next verification：S7 next knife（dc_member / drill flow / 长尾 ssot）或 E0 org residual；E/F same-protocol remeasure when scheduled（window unblocked）。

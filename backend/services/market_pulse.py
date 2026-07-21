@@ -80,6 +80,7 @@ from typing import Any
 import yaml
 
 from services.database_manifest import get_database_manifest
+from services.data_access.spec import load_registry
 from services.duck_adapter import connect as duck_connect
 from services.taxonomy_config import (
     current_snapshot_quality_floor,
@@ -91,6 +92,23 @@ from services.taxonomy_config import (
 logger = logging.getLogger(__name__)
 
 _CFG_PATH = Path(__file__).resolve().parent.parent / "config" / "market_pulse.yaml"
+_ACCESS_REG = None
+
+
+def _access_reg():
+    """Lazy DataAccess registry (S7: builder resolves physical tables via entity)."""
+    global _ACCESS_REG
+    if _ACCESS_REG is None:
+        _ACCESS_REG = load_registry()
+    return _ACCESS_REG
+
+
+def _entity_table(entity: str) -> str:
+    return _access_reg().entity(entity).table
+
+
+def _tr_entity(entity: str) -> str:
+    return f"tr.{_entity_table(entity)}"
 
 # Formal daily never writes legacy raw. Prefer accepted canonical; raw fills
 # only dates absent from canonical (pre-canary history / compatibility).
@@ -315,7 +333,7 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
                             ORDER BY net_amount DESC NULLS LAST) AS rank_flow,
                CASE WHEN ABS(pct_change) < {band} AND net_amount > {min_amt} THEN 1 ELSE 0 END AS in_flag,
                CASE WHEN ABS(pct_change) < {band} AND net_amount < -{min_amt} THEN 1 ELSE 0 END AS out_flag
-        FROM tr.raw_tushare_moneyflow_ind_dc
+        FROM {_tr_entity("moneyflow_ind_dc")}
         WHERE trade_date >= {dc_start} AND content_type IN ({ctypes})
     ),
     dc_breadth AS (
@@ -351,13 +369,13 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
         -- 申万三级码表 (v3: L1+L2+L3, 含历史码 PIT 正确); 同码同级, MAX 防同码多名重复行
         SELECT code, MAX(name) AS name, MAX(level) AS level FROM (
             SELECT l1_code AS code, l1_name AS name, 'L1' AS level
-            FROM tr.raw_tushare_index_member_all WHERE l1_code IS NOT NULL
+            FROM {_tr_entity("index_member_all")} WHERE l1_code IS NOT NULL
             UNION ALL
             SELECT l2_code, l2_name, 'L2'
-            FROM tr.raw_tushare_index_member_all WHERE l2_code IS NOT NULL
+            FROM {_tr_entity("index_member_all")} WHERE l2_code IS NOT NULL
             UNION ALL
             SELECT l3_code, l3_name, 'L3'
-            FROM tr.raw_tushare_index_member_all WHERE l3_code IS NOT NULL
+            FROM {_tr_entity("index_member_all")} WHERE l3_code IS NOT NULL
         ) GROUP BY code
     ),
     bench AS (
@@ -698,7 +716,7 @@ def _market_sql(
            st.strongest_sectors_json AS strongest_sectors_json,
            CURRENT_TIMESTAMP AS built_at
     FROM days d
-    LEFT JOIN tr.raw_tushare_moneyflow_mkt_dc f ON f.trade_date = d.trade_date
+    LEFT JOIN {_tr_entity("moneyflow_mkt_dc")} f ON f.trade_date = d.trade_date
     LEFT JOIN limits l ON l.trade_date = d.trade_date
     LEFT JOIN ladder lad ON lad.trade_date = d.trade_date
     LEFT JOIN margin2 mg ON mg.trade_date = d.trade_date
@@ -729,10 +747,10 @@ def _latest_source_dates(
     cfg: dict[str, Any],
 ) -> tuple[str | None, str | None, str | None]:
     dc_types = _dc_content_type_by_namespace(cfg)
-    latest_dc_industry, latest_dc_concept = con.execute("""
+    latest_dc_industry, latest_dc_concept = con.execute(f"""
         SELECT MAX(CASE WHEN content_type = ? THEN trade_date END),
                MAX(CASE WHEN content_type = ? THEN trade_date END)
-        FROM tr.raw_tushare_moneyflow_ind_dc
+        FROM {_tr_entity("moneyflow_ind_dc")}
         WHERE trade_date >= ? AND content_type IN (?, ?)
     """, [
         dc_types[CHAIN_DC_INDUSTRY], dc_types[CHAIN_DC_CONCEPT],
@@ -775,14 +793,14 @@ def _dc_current_source_parity(
     dc_types = _dc_content_type_by_namespace(cfg)
     industry_index_type = source_index_type(CHAIN_DC_INDUSTRY)
     concept_index_type = source_index_type(CHAIN_DC_CONCEPT)
-    return tuple(int(value) for value in con.execute("""
+    return tuple(int(value) for value in con.execute(f"""
         WITH flow_raw AS (
             SELECT CASE
                      WHEN content_type = ? THEN ?
                      WHEN content_type = ? THEN ?
                    END AS chain,
                    CAST(ts_code AS VARCHAR) AS sector_code
-            FROM tr.raw_tushare_moneyflow_ind_dc
+            FROM {_tr_entity("moneyflow_ind_dc")}
             WHERE trade_date = ? AND content_type IN (?, ?)
         ), index_raw AS (
             SELECT CASE
@@ -856,15 +874,15 @@ def _validate_rebuild_tables(
 
     dc_types = _dc_content_type_by_namespace(cfg)
     latest_dc_industry, latest_dc_concept, latest_sw = _latest_source_dates(con, cfg)
-    latest_sw_mappable = con.execute("""
+    latest_sw_mappable = con.execute(f"""
         WITH sw_dim AS (
-            SELECT l1_code AS code FROM tr.raw_tushare_index_member_all
+            SELECT l1_code AS code FROM {_tr_entity("index_member_all")}
             WHERE l1_code IS NOT NULL
             UNION
-            SELECT l2_code FROM tr.raw_tushare_index_member_all
+            SELECT l2_code FROM {_tr_entity("index_member_all")}
             WHERE l2_code IS NOT NULL
             UNION
-            SELECT l3_code FROM tr.raw_tushare_index_member_all
+            SELECT l3_code FROM {_tr_entity("index_member_all")}
             WHERE l3_code IS NOT NULL
         )
         SELECT COUNT(DISTINCT s.ts_code)
@@ -913,13 +931,13 @@ def _validate_rebuild_tables(
      expected_chain_count) = con.execute(f"""
         WITH sw_dim AS (
             SELECT DISTINCT code FROM (
-                SELECT l1_code AS code FROM tr.raw_tushare_index_member_all
+                SELECT l1_code AS code FROM {_tr_entity("index_member_all")}
                 WHERE l1_code IS NOT NULL
                 UNION ALL
-                SELECT l2_code FROM tr.raw_tushare_index_member_all
+                SELECT l2_code FROM {_tr_entity("index_member_all")}
                 WHERE l2_code IS NOT NULL
                 UNION ALL
-                SELECT l3_code FROM tr.raw_tushare_index_member_all
+                SELECT l3_code FROM {_tr_entity("index_member_all")}
                 WHERE l3_code IS NOT NULL
             )
         ), expected_raw AS (
@@ -929,7 +947,7 @@ def _validate_rebuild_tables(
                    END AS chain,
                    CAST(ts_code AS VARCHAR) AS sector_code,
                    CAST(trade_date AS VARCHAR) AS trade_date
-            FROM tr.raw_tushare_moneyflow_ind_dc
+            FROM {_tr_entity("moneyflow_ind_dc")}
             WHERE trade_date >= ? AND content_type IN (?, ?)
             UNION ALL
             SELECT ? AS chain, CAST(s.ts_code AS VARCHAR), CAST(s.trade_date AS VARCHAR)
@@ -1361,7 +1379,7 @@ def build_latest(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]
 
         dc_missing_by_namespace = {
             chain: _missing_dates(con, f"""
-                SELECT DISTINCT trade_date FROM tr.raw_tushare_moneyflow_ind_dc
+                SELECT DISTINCT trade_date FROM {_tr_entity("moneyflow_ind_dc")}
                 WHERE trade_date >= ? AND content_type = ? AND trade_date NOT IN (
                     SELECT DISTINCT trade_date FROM {SECTOR_TABLE} WHERE chain = ?)
                 ORDER BY 1""", [

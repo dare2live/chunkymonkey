@@ -70,9 +70,11 @@ CREATE TABLE tr.raw_tushare_index_daily (
 CREATE TABLE tr.raw_tushare_index_member_all (
     l1_code TEXT, l1_name TEXT, l2_code TEXT, l2_name TEXT, l3_code TEXT, l3_name TEXT,
     ts_code TEXT, name TEXT, in_date TEXT, out_date TEXT, is_new TEXT);
-CREATE TABLE tr.v_sw_industry_pit (
-    stock_code TEXT, ts_code TEXT, l1_code TEXT, l1_name TEXT, l2_code TEXT, l2_name TEXT,
-    l3_code TEXT, l3_name TEXT, in_date TEXT, out_date TEXT, is_new TEXT);
+CREATE VIEW tr.v_sw_industry_pit AS
+SELECT SPLIT_PART(ts_code, '.', 1) AS stock_code, ts_code, name,
+       l1_code, l1_name, l2_code, l2_name, l3_code, l3_name,
+       in_date, CAST(out_date AS VARCHAR) AS out_date, is_new
+FROM tr.raw_tushare_index_member_all;
 CREATE TABLE tr.raw_tushare_moneyflow (
     ts_code TEXT, trade_date TEXT, net_mf_amount DOUBLE);
 CREATE TABLE tr.raw_tushare_daily_basic (
@@ -162,6 +164,8 @@ def _fixture_conn():
          "002679.SZ", "福建金森", "20120105", None, "Y"),
         ("801010.SI", "农林牧渔", "801011.SI", "种植业", "850111.SI", "粮食种植",
          "600001.SH", "甲", "20111010", None, "Y"),
+        ("801010.SI", "农林牧渔", "801012.SI", "渔业", "850121.SI", "水产养殖",
+         "600003.SZ", "丙", "20111010", None, "Y"),
         ("801010.SI", "农林牧渔", "801011.SI", "种植业", "850111.SI", "粮食种植",
          "600265.SH", "ST景谷", "20111010", "20211213", "N"),
         ("801080.SI", "电子", "801081.SI", "半导体", "850811.SI", "数字芯片设计",
@@ -178,15 +182,10 @@ def _fixture_conn():
                   list(zip(D, closes_l2)))
     c.executemany("INSERT INTO tr.raw_tushare_index_daily VALUES ('000300.SH', ?, 100.0)",
                   [(d,) for d in D])
-    # v3 sw 链资金流底座: 个股全单净流 (万元) × as-of 归属 (v_sw_industry_pit)。
+    # v3 sw 链资金流底座: 个股全单净流 (万元) × as-of 归属 (v_sw_industry_pit VIEW)。
     #   600001 (801010/801011/850111): D0-D3 每日 2.0 万元 (D4 无行 → L2 当日 net NULL);
     #   600003 (801010/801012/850121, 同 L1 异 L2 分支): D0-D4 每日 3.0 万元
     #   → L1 801010 net: D0-D3 = 5e4 元, D4 = 3e4; L2 801011 net: D0-D3 = 2e4, D4 = NULL。
-    c.executemany("INSERT INTO tr.v_sw_industry_pit VALUES (?,?,?,?,?,?,?,?,?,?,?)", [
-        ("600001", "600001.SH", "801010.SI", "农林牧渔", "801011.SI", "种植业",
-         "850111.SI", "粮食种植", "20111010", None, "Y"),
-        ("600003", "600003.SZ", "801010.SI", "农林牧渔", "801012.SI", "渔业",
-         "850121.SI", "水产养殖", "20111010", None, "Y")])
     c.executemany("INSERT INTO tr.raw_tushare_moneyflow VALUES ('600001.SH', ?, 2.0)",
                   [(d,) for d in D[:4]])
     c.executemany("INSERT INTO tr.raw_tushare_moneyflow VALUES ('600003.SZ', ?, 3.0)",

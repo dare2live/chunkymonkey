@@ -188,6 +188,13 @@ def collect(repo: Path = REPO, run: Runner | None = None) -> dict[str, Any]:
             "docs/README.md → 按任务读唯一 owner 文档",
             "history: rg/tail analysis/project_state_ledger.md (不整读)",
         ],
+        # Thin §15 reminder (projection only; not a gate).
+        "delivery": [
+            "knife-merge: one logical knife = one Rule10 + one safe_commit",
+            "async CI: push then continue — no sync `gh run watch`",
+            "L3 pre-knife: `chunkyctl pre-knife <name>` (moth+codegraph once)",
+            "parallel agents only when moth proves non-overlap; never loosen L3/PIT/≤40d",
+        ],
     }
 
 
@@ -242,6 +249,10 @@ def render_text(d: dict[str, Any]) -> str:
             add(f"- ban: {ban}")
         for item in b.get("next_knives_frozen") or []:
             add(f"- next: {item}")
+    add("")
+    add("## delivery (§15 knife-merge)")
+    for item in d.get("delivery") or []:
+        add(f"- {item}")
     add("")
     add("## read next")
     for item in d["read_next"]:

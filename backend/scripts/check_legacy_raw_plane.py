@@ -5,16 +5,20 @@ Checks:
   1. Every sync_registry target_table ``raw_tushare_*`` is classified.
   2. Every data_access entity table ``raw_*`` is classified.
   3. Formal-domain raw tables must not be role=ssot; write must be forbidden.
-  4. Membership L0 entity tables declared in inventory must be role=ssot
-     (honest: no formal membership plane yet) and listed under
-     membership_l0_entities.
-  5. ``raw_tushare_daily`` must be role=fill (derive fill, not SSOT).
+  4. Membership L0: role=ssot OR role=compatibility with publication_surface
+     that DataAccess entity resolves to (≠ raw table).
+  5. pulse_flow_builder tables must be role=compatibility with mart
+     publication_surface.
+  6. derive_input / identity_cache: role=compatibility + non-raw
+     publication_surface.
+  7. ``raw_tushare_daily`` must be role=fill (derive fill, not SSOT).
 
 Run: PYTHONPATH=backend python backend/scripts/check_legacy_raw_plane.py
 """
 from __future__ import annotations
 
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +37,11 @@ FORMAL_DOMAIN_RAW_TABLES: dict[str, str] = {
     "stock_st": "raw_tushare_stock_st",
     "trade_cal": "raw_tushare_trade_cal",
     "margin": "raw_tushare_margin",
+}
+
+MEMBERSHIP_ENTITY_BY_RAW: dict[str, str] = {
+    "raw_tushare_dc_member": "dc_member",
+    "raw_tushare_index_member_all": "index_member_all",
 }
 
 
@@ -65,6 +74,27 @@ def data_access_raw_tables() -> set[str]:
         if isinstance(table, str) and table.startswith("raw_"):
             out.add(table)
     return out
+
+
+def data_access_entity_table(entity: str) -> str | None:
+    da = _load_yaml(DATA_ACCESS_YAML)
+    ent = (da.get("entities") or {}).get(entity)
+    if not isinstance(ent, dict):
+        return None
+    table = ent.get("table")
+    return table if isinstance(table, str) else None
+
+
+def role_counts() -> dict[str, int]:
+    inv = _load_yaml(INVENTORY_YAML)
+    tables = inv.get("tables") or {}
+    counts: Counter[str] = Counter()
+    for meta in tables.values():
+        if isinstance(meta, dict):
+            role = meta.get("role")
+            if isinstance(role, str):
+                counts[role] += 1
+    return dict(counts)
 
 
 def collect_violations() -> list[str]:
@@ -132,12 +162,65 @@ def collect_violations() -> list[str]:
     for table, meta in tables.items():
         if not isinstance(meta, dict):
             continue
-        if meta.get("kind") != "membership_l0":
+        if meta.get("kind") == "membership_l0":
+            role = meta.get("role")
+            if role == "ssot":
+                continue
+            if role != "compatibility":
+                viol.append(
+                    f"{table}: membership_l0 role must be ssot|compatibility "
+                    f"(got {role!r})"
+                )
+                continue
+            surface = meta.get("publication_surface")
+            if not isinstance(surface, str) or not surface or surface == table:
+                viol.append(
+                    f"{table}: membership_l0 compatibility requires "
+                    f"publication_surface ≠ raw table"
+                )
+                continue
+            entity = MEMBERSHIP_ENTITY_BY_RAW.get(table)
+            if entity is None:
+                viol.append(f"{table}: membership_l0 missing entity mapping in gate")
+                continue
+            ent_table = data_access_entity_table(entity)
+            if ent_table != surface:
+                viol.append(
+                    f"{table}: data_access entity {entity!r} table must be "
+                    f"{surface!r} (got {ent_table!r})"
+                )
             continue
-        if meta.get("role") != "ssot":
-            viol.append(
-                f"{table}: membership_l0 must stay role=ssot until formal membership plane"
-            )
+
+        if meta.get("kind") == "pulse_flow_builder":
+            if meta.get("role") != "compatibility":
+                viol.append(
+                    f"{table}: pulse_flow_builder must be role=compatibility "
+                    f"(got {meta.get('role')!r})"
+                )
+            surface = meta.get("publication_surface")
+            if not isinstance(surface, str) or not surface.startswith("mart_"):
+                viol.append(
+                    f"{table}: pulse_flow_builder requires mart_* publication_surface"
+                )
+            continue
+
+        if meta.get("kind") in ("derive_input", "identity_cache"):
+            if meta.get("role") != "compatibility":
+                viol.append(
+                    f"{table}: {meta.get('kind')} must be role=compatibility "
+                    f"(got {meta.get('role')!r})"
+                )
+            surface = meta.get("publication_surface")
+            if (
+                not isinstance(surface, str)
+                or not surface
+                or surface == table
+                or surface.startswith("raw_")
+            ):
+                viol.append(
+                    f"{table}: {meta.get('kind')} requires non-raw "
+                    f"publication_surface ≠ raw table"
+                )
 
     return viol
 
@@ -154,7 +237,13 @@ def main(argv: list[str] | None = None) -> int:
         for item in viol:
             print(f"  - {item}", file=sys.stderr)
         return 1
-    print("OK legacy_raw_plane: inventory complete; formal roles honest")
+    counts = role_counts()
+    print(
+        "OK legacy_raw_plane: inventory complete; formal roles honest; "
+        f"ssot={counts.get('ssot', 0)} fill={counts.get('fill', 0)} "
+        f"compatibility={counts.get('compatibility', 0)} "
+        f"retired={counts.get('retired', 0)}"
+    )
     return 0
 
 

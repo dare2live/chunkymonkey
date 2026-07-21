@@ -2618,6 +2618,32 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   accept；S7 membership L0 / ssot long-tail；E/F paused.
 - **Status**: **PARTIAL**（E0 provider land stk+holders；org BLOCKED）.
 
+### 2026-07-21 — S7 + §15 knife-merge adoption (ssot 41→36)
+
+- Wall-clock: Tue 2026-07-21 ~13:40–14:10 Asia/Shanghai.
+- **Process (§15 adoption started)**：eng_gov §15.1 knife-merge binding
+  （一刀=一次 Rule10+一次 safe_commit；禁 sync `gh watch`；并行仅 moth 非重叠）；
+  §15.2 L3 `chunkyctl pre-knife <name>`；agent-boot delivery 提醒；AGENTS boot
+  pointer。**未**放宽 L3/Rule10/PIT/≤40d；非 Delivery-OS 重写。
+- **S7 knife**（finish peer WIP + extend；no raw delete）：
+  1. SW membership：DataAccess `index_member_all` → `v_sw_industry_pit`；raw
+     → compatibility。
+  2. Pulse builder：`moneyflow_ind_dc`/`moneyflow_mkt_dc` via DataAccess；mart
+     owns display；raw → compatibility。
+  3. Identity：`stock_basic` → compatibility
+     (`publication_surface=dim_active_a_stock`)；`rally_gt` reads dim。
+  4. Adj：`adj_factor` → compatibility
+     (`publication_surface=price_kline_qfq_tushare`；derive_input residual)。
+  5. Gate：membership/pulse/derive_input/identity_cache kinds；`role_counts()`。
+  6. Inventory：**41→36 ssot** / 1 fill / **4→9 compatibility** of 46。
+- **BLOCKED this knife（honest）**：`stk_limit` / `daily_basic` / `suspend_d` /
+  `margin_detail` — no single publication surface yet。
+- Evidence：`check_legacy_raw_plane` OK；targeted pytest green；pre-knife TDD。
+- **Did not**：blind delete raw；dc_member formal；drill moneyflow mart-mirror；
+  E/F remeasure；Optuna/Release/cutover flip。
+- **Residual**：dc_member + stock-flow drill L0 ssot；长尾；E0 org；E/F paused。
+- **Status**: **PARTIAL**（S7 stronger + §15 adoption started；not FIXED）。
+
 ### 2026-07-21 — DB storage hygiene reclaim (local data plane)
 
 - Wall-clock: Tue 2026-07-21 ~11:01 Asia/Shanghai (compact/delete) + commit session.

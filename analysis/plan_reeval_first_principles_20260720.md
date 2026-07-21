@@ -404,6 +404,22 @@ Live 焊点（evidence pack §2.7 复核）：
   remain **PARTIAL**（not FIXED）.
 - Residual：membership/flow L0 + per-domain ssot formal|sunset；E0；E/F paused.
 
+### Amend 2026-07-21 — S7 PARTIAL stronger + §15 adoption (ssot 41→36)
+
+- SW membership：DataAccess `index_member_all` → `v_sw_industry_pit`；raw →
+  **compatibility**.
+- Pulse builder：`moneyflow_ind_dc` / `moneyflow_mkt_dc` → mart publication；
+  raw → **compatibility**（`_tr_entity`）.
+- Identity：`stock_basic` → `dim_active_a_stock`；`rally_gt` reads dim.
+- Adj：`adj_factor` → `price_kline_qfq_tushare`（derive_input residual）.
+- Process：eng_gov §15.1–15.2 knife-merge + `chunkyctl pre-knife`；agent-boot
+  reminder；**adoption started**（诊断 Top3）.
+- Inventory：**41→36 ssot** / 1 fill / **9 compatibility** of 46 → stronger
+  **PARTIAL**（not FIXED；dc_member + stock-flow drill L0 still ssot）.
+- BLOCKED this knife：`stk_limit` / `daily_basic` / `suspend_d` / `margin_detail`.
+- Did not：blind delete raw；E/F remeasure；loosen L3/Rule10/PIT/≤40d.
+- Residual：dc_member ssot；drill stock-flow L0；长尾 ssot；E0；E/F paused.
+
 ### Amend 2026-07-21 — R0 E0 PARTIAL (disclosure transport modular)
 
 - Shipped `disclosure_transport` mirroring S1/S2：`land_disclosure_partition_from_rows`

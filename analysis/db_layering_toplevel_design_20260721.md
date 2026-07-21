@@ -213,7 +213,8 @@ ST 是 **E1 日级 membership 证据**（`stock_st` accepted partition），不�
 
 1. **qfq 在 market 库** ≠ 成交价真相；纸面必须用 nominal（MASTER §6.1）。
 2. **smartmoney 混 I0+D1 display** 是历史债；新 Tier1/2 发布走 contract/hash，不以此为借口拆库。
-3. **membership L0 仍 raw ssot**（dc_member 等）— S7 下一刀；与 DB 分层正交但阻塞「全 repo 模块化」叙事。
+3. **membership L0**：SW `index_member_all` 已 strangler 到 `v_sw_industry_pit`
+  （raw=compat）；**dc_member 仍 raw ssot** — S7 续刀；与 DB 分层正交。
 4. **BOARD 非执法**；DB 边界以 manifest + 本设计 + goal 为准。
 
 ---
@@ -225,7 +226,7 @@ ST 是 **E1 日级 membership 证据**（`stock_st` accepted partition），不�
 | 序 | 切片 | 内容 | 退出条件 | 禁做 |
 |---:|---|---|---|---|
 | **D8-1** | 路由收编文档化 | manifest ↔ sync_registry ↔ data_access 三角 **单页真相**（本文件 + FEATURE_MAP 生成校验） | drift gate 零 dangling db alias | 新「路由表」表 |
-| **D8-2** | S7 续 — membership L0 | dc_member / index_member 等 **formal \| sunset** 单域 | inventory ssot 计数下降；moth green | 盲删 raw |
+| **D8-2** | S7 续 — membership L0 | SW index_member → PIT view **done**；dc_member 仍 **formal \| sunset** | inventory ssot 再降；moth green | 盲删 raw |
 | **D8-3** | S7 续 — legacy raw 域 | 按 `legacy_raw_plane.yaml` 逐域 parity → cutover 或 sunset | 单域零 ssot 或显式 fill 文档 | dual-write 窗 |
 | **D8-4** | E0 residual | disclosure provider land（非仅 local-raw）；org full-universe | NONCONFORMING 路径隔离 | silent merge |
 | **D8-5** | market qfq lineage | placeholder batch_id 补齐或读面标 UNTRUSTED 至 derive 证据完整 | qfq 重建 manifest 可审计 | qfq 当 exec 价 |

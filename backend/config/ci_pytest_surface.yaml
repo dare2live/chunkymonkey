@@ -73,6 +73,7 @@ paths:
 - tests/scripts/test_check_codex_review.py
 - tests/scripts/test_build_agent_board.py
 - tests/scripts/test_agent_boot.py
+- tests/scripts/test_pre_knife_audit.py
 - tests/scripts/test_persist_phase_d_experiment_runs.py
 - tests/scripts/test_build_price_kline_qfq_tushare.py
 - tests/services/test_main_rally_b0.py

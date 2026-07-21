@@ -198,11 +198,20 @@ def test_render_text_is_one_page_with_all_sections(tmp_path):
         "codegraph": {"out": "Index is up to date"},
     }))
     text = agent_boot.render_text(data)
-    for heading in ("## git", "## moth", "## codegraph", "## board", "## read next"):
+    for heading in (
+        "## git",
+        "## moth",
+        "## codegraph",
+        "## board",
+        "## delivery (§15 knife-merge)",
+        "## read next",
+    ):
         assert heading in text
     assert "suspended_at_d8b69090" in text
     assert "goal.md" in text
-    assert len(text.splitlines()) < 60  # one-page contract
+    assert "one Rule10" in text
+    assert "pre-knife" in text
+    assert len(text.splitlines()) < 70  # one-page contract (+ §15 reminder)
 
 
 def test_render_text_surfaces_board_error_and_fix(tmp_path):
