@@ -17,7 +17,7 @@
 > **地基阶段重评（近端排序 authority）**：`analysis/foundation_phase_reeval_20260721.md`
 > **§15-VERIFY 证据（F8 PASS）**：`analysis/section15_verify_20260721.md`
 > **地基 E2E（UI 更新路径 20260721）**：`analysis/foundation_e2e_frontend_update_20260721.md` — UI 缺按钮 + `daily_update` 被 margin `scope_blocked` 预检拦死；模块化 `land_then_accept` 单日增量 **PASS**（daily/ST/adj/basic→qfq/form）；pulse 扇区面仍 `20260720` residual
-> **产品决策辅助 backlog（scheduled，未开）**：`analysis/product_decision_assist_backlog_20260721.md` — A 资金流多窗+相对+行为标签+自动结论；B 形态/阶段作选股策略面（更后）；硬门=地基 E2E 后；禁融结论进 Tier0
+> **产品决策辅助 backlog（scheduled，未开）**：`analysis/product_decision_assist_backlog_20260721.md` — A 资金流决策辅助；B 形态/阶段选股面；C 页内多 tab；D 交集最强股；硬门=地基 E2E 后；禁融结论进 Tier0
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 
 ## 当前 objective
@@ -60,7 +60,7 @@
 
 **近端 focus**：owner schedule E/F 前保持 pause — **不是** Type-B enrichment / S7 假 COMPAT / 擅自 E/F / G/H/Release / org invent。
 
-**Deferred product（scheduled，未开刀）**：资金流决策辅助（A）与形态/阶段选股面（B）见 `analysis/product_decision_assist_backlog_20260721.md`。**仅**在 foundation E2E verify/optimize 之后开 A；B 更后。禁 Optuna/Release/松 holdout；结论=Tier3/产品面，不融进 Tier0。
+**Deferred product（scheduled，未开刀）**：A–D 见 `analysis/product_decision_assist_backlog_20260721.md`（A 资金流；B 形态/阶段选股；C 页内多 tab 随早期 A UI；D 交集最强股偏后/可并行于交叉输入就绪）。**仅**在 foundation E2E verify/optimize 之后开；禁 Optuna/Release/松 holdout；结论=Tier3/产品面，不融进 Tier0。
 
 **护栏**：frontier=`20260721`（pulse 扇区 residual 见 E2E）；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；org BLOCKED 维持；**org/period 域 manual update = incremental-only**（见下裁决）。
 
