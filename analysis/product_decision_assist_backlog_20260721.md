@@ -50,6 +50,14 @@ Not a display-only pulse card. Intended surface:
 - Sequencing: likely **after A moneyflow conclusions**, **or parallel** once intersection inputs exist.
 - **Dependency note:** existing pulse `/strongest` (and related sector/DC surfaces) already show **serve lag** vs daily frontier in foundation E2E — D must not pretend freshness or invent intersection scores on stale/UNTRUSTED inputs; fail-closed / unknown when coverage lags.
 
+## 5b. Capability E — Modular pipeline step cards / independent node ops
+
+- One-click full `daily_update` stays the primary path (preflight→acquire→land/accept→derive→process→serve).
+- **Also** show a workbench **stepper / flowchart of modular stages** so when stuck, owner can click **one stage** independently (S1 land / S2 accept / derive / process / store-ish ops that already exist as caller-only APIs/CLIs).
+- Aligns with brick transport: acquire → land/raw → accept → derive → process → serve — UI mirrors boundaries; does **not** invent a second orchestration DAG.
+- **Near-term:** after foundation click-proof + live activity observability; can ride near **Capability C** (tabs) as an ops tab / stepper surface.
+- **NON-goal tonight:** full beautiful step-card UI. Only schedule + wire later. Tonight’s workbench fix is **current-activity** visibility during one-click run — not independent stage buttons.
+
 ## 6. Dependencies on foundation (must be true first)
 
 Gate: **after** data-foundation E2E verify/optimize. Peer evidence may still be updating `analysis/foundation_e2e_frontend_update_20260721.md` — do not open A/C/D implementation while that path is PARTIAL without owner schedule.
@@ -79,6 +87,7 @@ Gate: **after** data-foundation E2E verify/optimize. Peer evidence may still be 
 | 3 | Behavior taxonomy (潜伏/抢筹/出货… + return coupling; versioned; unknown allowed) | **scheduled after 2** |
 | 4 | Decision-assist UI + **Capability C tabbed layout** (auto conclusions; north-star buy/sell help) | **scheduled after 3** (C rides with early A UI) |
 | 5 | **Capability D** 交集最强股 (after A conclusions, or parallel once intersection inputs + serve freshness exist) | **scheduled / deferred** |
+| 5b | **Capability E** modular pipeline step cards / independent node ops (after click-proof; near C tabs) | **scheduled / deferred** |
 | 6 | Form/stage as **选股策略** surface (Capability B) | **later / deferred** after A or explicit owner reorder |
 
 Parallel research (E/F remeasure) remains **owner-scheduled** and orthogonal; this backlog does **not** open it.
@@ -98,6 +107,7 @@ Parallel research (E/F remeasure) remains **owner-scheduled** and orthogonal; th
 - **A lands after** foundation E2E is verified/optimized enough that accepted moneyflow + serve freshness + multi-horizon contracts are honest.
 - **C lands with** early decision-assist UI (same post-foundation gate as A UI) — tabs-within-page, not one long flatten.
 - **D lands after A conclusions** (preferred), or **parallel** once intersection inputs exist and pulse/strongest lag is owned — decision-assist, not raw dump.
+- **E lands after** foundation one-click click-proof + current-activity observability; prefer ride near **C tabs** as ops stepper — independent stage buttons, not a second orchestrator.
 - **B lands later** as a selection-strategy surface, after form/stage publish is a stable dependency — not in the near-term knife queue.
 - **Stays deferred until owner opens:** Optuna, StrategyRelease, holdout loosen, Type-B enrichment, E/F remeasure (unless separately scheduled).
 

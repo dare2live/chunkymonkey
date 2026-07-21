@@ -1,9 +1,17 @@
 /** 工作台 — 手动 ops 触发面（ops_manual_run「前端按钮面板」）。
  *  当前只接线「数据更新」→ POST /api/v3/ops/jobs/daily_update/run + 状态轮询。
- *  多 tab / 资金流决策辅助 backlog 另开，不在本页堆产品面。 */
+ *  多 tab / 资金流决策辅助 / 模块化 step cards (Capability E) backlog 另开，不在本页堆产品面。
+ *  本页只保证 one-click 运行时可观测：当前阶段 / 最近进度行 / 日志时间 / 告警原因。 */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/client";
-import { fetchOpsJob, jobLooksActive, runOpsJob, type OpsJobStatus } from "../api/ops";
+import {
+  deriveActivityFallback,
+  fetchOpsJob,
+  formatLogMtime,
+  jobLooksActive,
+  runOpsJob,
+  type OpsJobStatus,
+} from "../api/ops";
 import { Card } from "../components/Card";
 
 const DAILY_UPDATE_JOB = "daily_update";
@@ -18,6 +26,8 @@ function activeAlertNames(flags: Record<string, boolean> | undefined): string[] 
 
 function statusLabel(s: OpsJobStatus | null): string {
   if (!s) return "未加载";
+  const act = deriveActivityFallback(s);
+  if (act?.summary) return act.summary;
   if (jobLooksActive(s)) {
     const owner = s.owner || "unknown";
     const pid = s.owner_pid != null ? ` pid=${s.owner_pid}` : "";
@@ -34,12 +44,14 @@ export function WorkbenchPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
+  const [polledAt, setPolledAt] = useState<number | null>(null);
   const pollRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       const s = await fetchOpsJob(DAILY_UPDATE_JOB);
       setStatus(s);
+      setPolledAt(Date.now());
       setLoadError(null);
       return s;
     } catch (e) {
@@ -80,7 +92,7 @@ export function WorkbenchPage() {
     setActionMsg(null);
     try {
       const resp = await runOpsJob(DAILY_UPDATE_JOB);
-      setActionMsg(`已受理 pid=${resp.pid} — 下方日志会刷新；预检失败会写 ALERT flag`);
+      setActionMsg(`已受理 pid=${resp.pid} — 下方会显示当前阶段；预检失败会写 ALERT flag`);
       await refresh();
     } catch (e) {
       if (e instanceof ApiError) {
@@ -97,6 +109,11 @@ export function WorkbenchPage() {
   const busy = triggering || jobLooksActive(status);
   const alerts = activeAlertNames(status?.alert_flags);
   const tail = status?.log_tail ?? [];
+  const activity = deriveActivityFallback(status);
+  const blocking =
+    status?.alert_summary ||
+    activity?.blocking_reason ||
+    (alerts.length ? `flag: ${alerts.join(", ")}` : null);
 
   return (
     <div className="page">
@@ -121,9 +138,17 @@ export function WorkbenchPage() {
       {actionError && (
         <div className="banner-warn">触发失败: {actionError}</div>
       )}
-      {alerts.length > 0 && (
+      {blocking && !jobLooksActive(status) && (
         <div className="banner-warn">
-          告警 flag 仍在: {alerts.join(", ")} — 常见于预检硬停（如 PREFLIGHT BLOCK）；修好后成功跑会自清，或手工清 /tmp flag。
+          阻断 / 告警: {blocking}
+          {alerts.length > 0
+            ? ` （${alerts.join(", ")} — 修好后成功跑会自清，或手工清 /tmp flag）`
+            : null}
+        </div>
+      )}
+      {blocking && jobLooksActive(status) && (
+        <div className="banner-info">
+          注意: 仍有历史 ALERT flag（{blocking}）。当前链已在跑；成功结束通常会自清。
         </div>
       )}
 
@@ -131,6 +156,32 @@ export function WorkbenchPage() {
         title="数据更新"
         extra={<span className="mono">{statusLabel(status)}</span>}
       >
+        <div
+          className={
+            jobLooksActive(status)
+              ? "ops-activity ops-activity-live"
+              : blocking
+                ? "ops-activity ops-activity-alert"
+                : "ops-activity"
+          }
+        >
+          <div className="ops-activity-label">当前活动</div>
+          <div className="ops-activity-summary">{activity?.summary ?? "—"}</div>
+          {activity?.progress_line && (
+            <div className="ops-activity-progress mono">{activity.progress_line}</div>
+          )}
+          <div className="ops-activity-meta mono">
+            阶段={activity?.phase_label ?? "—"}
+            {" · "}
+            日志更新={formatLogMtime(status?.log_mtime ?? null)}
+            {activity?.log_age_s != null ? `（${Math.floor(activity.log_age_s)}s 前）` : ""}
+            {" · "}
+            轮询={polledAt ? new Date(polledAt).toLocaleTimeString("zh-CN", { hour12: false }) : "—"}
+            {status?.owner ? ` · writer=${status.owner}` : ""}
+            {status?.owner_pid != null ? ` pid=${status.owner_pid}` : ""}
+          </div>
+        </div>
+
         <div className="kpi-grid" style={{ marginBottom: 10 }}>
           <div className="kpi">
             <label>任务</label>

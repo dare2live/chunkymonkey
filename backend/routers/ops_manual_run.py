@@ -8,10 +8,14 @@
 - 状态 = 受支持 pipeline/sync writer flock 真相 + pgrep 诊断提示 + wrapper flag + 链日志尾部,
   全部只读, 不碰 DuckDB
   (状态接口任何时刻可调, 不与运行中的链抢锁)。
+- current_activity = 从 log_tail 解析的可读「正在: …」摘要 (UI 可观测性; 非业务真相)。
 """
 from __future__ import annotations
 
+import os
+import re
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -43,9 +47,20 @@ MANUAL_JOBS: dict[str, dict[str, Any]] = {
 }
 
 # tail 行数: 前端状态卡只展示链尾近况, 全文走日志文件本身
-_LOG_TAIL_LINES = 15  # rule-compliance: ok evidence=display-only UI tail, 非业务阈值
+_LOG_TAIL_LINES = 40  # rule-compliance: ok evidence=display-only UI tail, 非业务阈值
 # wrapper flag 目录 (测试 monkeypatch 此值隔离, 不碰生产 /tmp flag)
 _FLAG_DIR = Path("/tmp")
+# 运行中日志无新行超过此秒数 → UI 标注「可能 stdout 缓冲 / 长同步中」
+_STALE_LOG_S = 90  # rule-compliance: ok evidence=UI hint only
+
+_PHASE_PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
+    ("preflight", "预检 preflight", re.compile(r"Preflight|Sync execution policy|Calendar foundation|Authorization", re.I)),
+    ("acquire", "① 获取 ACQUIRE", re.compile(r"①\s*获取|ACQUIRE|=== .*获取")),
+    ("clean", "② 清洗/派生 CLEAN", re.compile(r"②\s*清洗|CLEAN|derive|land_then_accept|accept_", re.I)),
+    ("process", "③ 加工 PROCESS", re.compile(r"③\s*加工|PROCESS")),
+    ("store", "④ 存储 STORE", re.compile(r"④\s*存储|=== .*STORE|post-acquire Store", re.I)),
+    ("fail", "失败 / 阻断", re.compile(r"PREFLIGHT BLOCK|FAIL rc=|DEGRADED:|scope_blocked", re.I)),
+)
 
 
 def _job_or_404(job: str) -> dict[str, Any]:
@@ -65,6 +80,9 @@ def _is_running(spec: dict[str, Any]) -> bool:
 def _spawn(job: str, spec: dict[str, Any]) -> int:
     argv = [str(_PY), str(_WRAPPER), job, *spec["argv"]]
     stdout_path = Path(f"/tmp/chunkymonkey_{job}.stdout.log")
+    env = os.environ.copy()
+    # 链式 Python print 默认块缓冲 → 前端长时间只见「更新中」; 强制行缓冲
+    env.setdefault("PYTHONUNBUFFERED", "1")
     with stdout_path.open("ab") as fh:
         proc = subprocess.Popen(
             argv,
@@ -72,8 +90,96 @@ def _spawn(job: str, spec: dict[str, Any]) -> int:
             stdout=fh,
             stderr=subprocess.STDOUT,
             start_new_session=True,
+            env=env,
         )
     return proc.pid
+
+
+def _alert_summary(flag_path: Path) -> str | None:
+    if not flag_path.exists():
+        return None
+    text = flag_path.read_text(errors="ignore").strip()
+    if not text:
+        return flag_path.name
+    for line in text.splitlines():
+        if "PREFLIGHT BLOCK" in line or "DEGRADED:" in line or "FAIL rc=" in line:
+            return line.strip()
+    return text.splitlines()[0].strip()[:240]
+
+
+def _slice_current_run(tail: list[str]) -> list[str]:
+    """Keep lines after the latest daily_update / stage banner when present."""
+    start = 0
+    for i, line in enumerate(tail):
+        if "=== ChunkyMonkey daily update" in line or "=== ChunkyMonkey pipeline stage" in line:
+            start = i
+    return tail[start:]
+
+
+def _derive_current_activity(
+    *,
+    tail: list[str],
+    mtime: float | None,
+    writer_busy: bool,
+    process_hint: bool,
+    owner: str | None,
+    owner_pid: int | None,
+    alert_summary: str | None,
+) -> dict[str, Any]:
+    active = bool(writer_busy or process_hint)
+    run_lines = _slice_current_run(tail)
+    progress = ""
+    for line in reversed(run_lines):
+        s = line.strip()
+        if s:
+            progress = s
+            break
+    phase_id = "idle"
+    phase_label = "空闲"
+    # Walk newest→oldest; first matching line wins (so ACQUIRE beats earlier preflight).
+    for line in reversed(run_lines):
+        for pid, label, pat in _PHASE_PATTERNS:
+            if pid == "fail" and active:
+                continue  # prior FAIL residue must not mask live phase
+            if pat.search(line):
+                phase_id, phase_label = pid, label
+                break
+        if phase_id != "idle":
+            break
+    if active and phase_id == "idle":
+        phase_id, phase_label = "running", "运行中"
+
+    age_s: float | None = None
+    if mtime is not None:
+        age_s = max(0.0, time.time() - float(mtime))
+    stale = bool(active and age_s is not None and age_s >= _STALE_LOG_S)
+
+    if active:
+        summary = f"正在: {phase_label}"
+        if owner:
+            summary += f" · writer={owner}"
+        if owner_pid is not None:
+            summary += f" pid={owner_pid}"
+        if stale:
+            summary += f" · 日志已 {int(age_s or 0)}s 无新行（进程仍在，可能长同步 / stdout 缓冲）"
+    elif alert_summary:
+        summary = f"告警: {alert_summary}"
+        phase_id = "alert"
+        phase_label = "告警残留"
+    elif progress:
+        summary = f"最近: {progress[:160]}"
+    else:
+        summary = "空闲 · 尚无日志"
+
+    return {
+        "phase": phase_id,
+        "phase_label": phase_label,
+        "summary": summary,
+        "progress_line": progress[:320] if progress else None,
+        "log_age_s": round(age_s, 1) if age_s is not None else None,
+        "stale_log": stale,
+        "blocking_reason": alert_summary,
+    }
 
 
 def _status_payload(job: str, spec: dict[str, Any]) -> dict[str, Any]:
@@ -90,6 +196,16 @@ def _status_payload(job: str, spec: dict[str, Any]) -> dict[str, Any]:
     if log.exists():
         tail = log.read_text(errors="ignore").splitlines()[-_LOG_TAIL_LINES:]
         mtime = log.stat().st_mtime
+    alert_text = _alert_summary(fail_flag)
+    activity = _derive_current_activity(
+        tail=tail,
+        mtime=mtime,
+        writer_busy=lock.busy,
+        process_hint=process_hint,
+        owner=lock.owner,
+        owner_pid=lock.owner_pid,
+        alert_summary=alert_text,
+    )
     return {
         "job": job,
         "label": spec["label"],
@@ -99,9 +215,11 @@ def _status_payload(job: str, spec: dict[str, Any]) -> dict[str, Any]:
         "owner_pid": lock.owner_pid,
         "process_hint_running": process_hint,
         "alert_flags": flags,
+        "alert_summary": alert_text,
         "log_path": str(log),
         "log_tail": tail,
         "log_mtime": mtime,
+        "current_activity": activity,
     }
 
 

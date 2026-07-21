@@ -954,7 +954,52 @@ select:focus {
   color: #a06a00;
 }
 
-/* 工作台 ops 日志尾（daily_update 状态卡） */
+/* 工作台 ops：当前活动 + 日志尾（daily_update 状态卡） */
+.ops-activity {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  background: var(--bg-panel-2);
+}
+
+.ops-activity-live {
+  border-color: rgba(59, 102, 212, 0.45);
+  background: rgba(59, 102, 212, 0.06);
+}
+
+.ops-activity-alert {
+  border-color: rgba(160, 106, 0, 0.45);
+  background: rgba(160, 106, 0, 0.07);
+}
+
+.ops-activity-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.ops-activity-summary {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.ops-activity-progress {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-dim);
+  word-break: break-word;
+}
+
+.ops-activity-meta {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
 .ops-log-head {
   display: flex;
   align-items: center;

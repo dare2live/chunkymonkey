@@ -18,7 +18,8 @@
 > **§15-VERIFY 证据（F8 PASS）**：`analysis/section15_verify_20260721.md`
 > **地基 E2E（UI 更新路径 20260721）**：`analysis/foundation_e2e_frontend_update_20260721.md` — 初判 PARTIAL（UI 缺按钮 + margin 预检死锁）；后续 unblock 见下
 > **地基 daily_update 解阻（20260721）**：`analysis/foundation_daily_update_unblock_20260721.md` — margin=`on_demand`+frozen；formal daily/ST 编排器 land_then_accept；DC/pulse 已至 `20260721`；工作台「数据更新」**FIXED**
-> **产品决策辅助 backlog（scheduled，未开）**：`analysis/product_decision_assist_backlog_20260721.md` — A 资金流决策辅助；B 形态/阶段选股面；C 页内多 tab；D 交集最强股；硬门=地基 E2E 后；禁融结论进 Tier0
+> **产品决策辅助 backlog（scheduled，未开）**：`analysis/product_decision_assist_backlog_20260721.md` — A 资金流决策辅助；B 形态/阶段选股面；C 页内多 tab；D 交集最强股；**E 模块化 pipeline step cards / 独立节点 ops**；硬门=地基 E2E 后；禁融结论进 Tier0
+> **地基 UI 点击跟跑（20260721 晚）**：`analysis/foundation_daily_update_ui_click_20260721.md` — workbench 可观测性（current_activity）+ org incremental skip 证据
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 
 ## 当前 objective
@@ -38,6 +39,7 @@
 - **Accept frontier 复核（2026-07-20）**：当时墙钟仍 `2026-07-20`，`20260721` `operation_window_blocked`——已过时。
 - **Accept frontier 复核（2026-07-21 E2E）**：收盘后模块化 `land_then_accept` 单日增量 daily/ST **`20260721` accepted**；当时 UI/`daily_update` 因缺按钮 + margin `scope_blocked` 预检 **FAIL**。
 - **daily_update 解阻（2026-07-21 follow-up）**：margin 预检 **FIXED**（`on_demand`+frozen，禁 thaw）；编排器 formal daily/ST catchup **FIXED**；DC/pulse **`20260721`**；工作台「数据更新」**FIXED**（`#/workbench` → `POST /api/v3/ops/jobs/daily_update/run` + 状态/日志尾；证据 `foundation_daily_update_unblock_20260721.md` Knife 4）。
+- **工作台可观测性（2026-07-21 晚）**：运行中展示 `current_activity`（阶段/进度行/日志时间/告警原因），不再只显示「更新中」；证据见 `foundation_daily_update_ui_click_20260721.md`。Capability E（独立 step 按钮）仍 scheduled。
 - **F 更长窗 / S7 daily expand**：accepted daily **`20190102`→`20260721`**；ST **`20220104`→`20260721`**。E/F remeasure 仍 paused。
 
 启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。

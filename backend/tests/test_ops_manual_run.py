@@ -75,3 +75,43 @@ def test_status_exposes_writer_lock_as_authority_and_pgrep_as_hint(tmp_path, mon
     assert payload["writer_busy"] is False
     assert payload["owner"] is None and payload["owner_pid"] is None
     assert payload["process_hint_running"] is True
+    assert "current_activity" in payload
+    assert payload["current_activity"]["phase"] in {"running", "idle"}
+
+
+def test_current_activity_prefers_latest_phase_over_prior_fail(tmp_path, monkeypatch):
+    log = tmp_path / "daily.log"
+    log.write_text(
+        "\n".join(
+            [
+                "[20:42:13] DEGRADED: PREFLIGHT BLOCK: sync_execution_blocked:margin:scope_blocked",
+                "[20:42:13] FAIL rc=4 job=daily_update",
+                "[21:53:18] === ChunkyMonkey daily update 20260721 ===",
+                "[21:53:19] --- Preflight: watermark SLA 新鲜度检查 ---",
+                "[21:53:23] === ① 获取 ACQUIRE (纯采集 →L0, 不计算) ===",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    flag = tmp_path / "chunkymonkey_ALERT_daily_update.flag"
+    flag.write_text(
+        "[20:42:13] DEGRADED: PREFLIGHT BLOCK: sync_execution_blocked:margin:scope_blocked\n",
+        encoding="utf-8",
+    )
+    spec = dict(ops_manual_run.MANUAL_JOBS["daily_update"])
+    spec["log"] = str(log)
+    spec["extra_flags"] = []
+    monkeypatch.setattr(ops_manual_run, "_FLAG_DIR", tmp_path)
+    monkeypatch.setattr(
+        ops_manual_run,
+        "writer_lock_status",
+        lambda: SimpleNamespace(busy=True, owner="pipeline.run", owner_pid=3299),
+    )
+    monkeypatch.setattr(ops_manual_run, "_is_running", lambda _spec: True)
+
+    payload = ops_manual_run._status_payload("daily_update", spec)
+    act = payload["current_activity"]
+    assert act["phase"] == "acquire"
+    assert "正在: ① 获取 ACQUIRE" in act["summary"]
+    assert payload["alert_summary"] and "PREFLIGHT BLOCK" in payload["alert_summary"]
+    assert "ACQUIRE" in (act["progress_line"] or "")
