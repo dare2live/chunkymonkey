@@ -52,13 +52,34 @@ nominal AS (
 )
 """
 
+# S5: accepted-only derive — no legacy raw nominal fill (adj_factor still from raw table).
+_NOMINAL_SOURCE_CTE_FROM_ACCEPTED = """
+nominal AS (
+    SELECT
+        c.ts_code,
+        strftime(c.trade_date, '%Y%m%d') AS trade_date,
+        c.open, c.high, c.low, c.close, c.vol, c.amount
+    FROM tr.canonical_nominal_ohlcv_daily c
+    WHERE c.trade_date >= DATE '2019-01-01'
+)
+"""
 
-def build(conn) -> int:
+
+def nominal_source_cte(*, from_accepted: bool = False) -> str:
+    """Return nominal CTE; ``from_accepted`` skips legacy raw fill (S5)."""
+
+    if from_accepted:
+        return _NOMINAL_SOURCE_CTE_FROM_ACCEPTED
+    return _NOMINAL_SOURCE_CTE
+
+
+def build(conn, *, from_accepted: bool = False) -> int:
     conn.execute(f"ATTACH IF NOT EXISTS '{TUSHARE_DB}' AS tr (READ_ONLY)")
     conn.execute(f"DROP TABLE IF EXISTS {TARGET}")
+    nominal_cte = nominal_source_cte(from_accepted=from_accepted)
     conn.execute(f"""
         CREATE TABLE {TARGET} AS
-        WITH {_NOMINAL_SOURCE_CTE},
+        WITH {nominal_cte},
         latest AS (
             SELECT ts_code, adj_factor AS f_latest FROM (
                 SELECT ts_code, adj_factor,
@@ -78,7 +99,7 @@ def build(conn) -> int:
         JOIN tr.raw_tushare_adj_factor a ON d.ts_code = a.ts_code AND d.trade_date = a.trade_date
         JOIN latest l ON d.ts_code = l.ts_code
         WHERE d.trade_date >= '{START}' AND d.close > 0 AND a.adj_factor > 0 AND l.f_latest > 0
-    """)
+""")
     n = conn.execute(f"SELECT count(*) FROM {TARGET}").fetchone()[0]
     conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{TARGET}_cd ON {TARGET}(code, date)")
     return n
@@ -110,13 +131,25 @@ def cross_check(conn) -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check-only", action="store_true")  # rule-compliance: ok evidence=只对账不重建
+    ap.add_argument(
+        "--from-accepted",
+        action="store_true",
+        help=(
+            "S5: rebuild qfq from accepted canonical_nominal_ohlcv_daily only "
+            "(no legacy raw_tushare_daily fill). Does not run inside accept."
+        ),
+    )
     args = ap.parse_args(argv)
     conn = connect(MARKET_DB, read_only=False)
     try:
         if not args.check_only:
-            n = build(conn)
+            n = build(conn, from_accepted=bool(args.from_accepted))
+            mode = "from_accepted" if args.from_accepted else "canonical_plus_legacy_fill"
             r = conn.execute(f"SELECT min(date),max(date),count(DISTINCT code) FROM {TARGET}").fetchone()
-            print(f"[build] {TARGET}: {n:,} 行 | {r[0]}~{r[1]} | {r[2]} 股", flush=True)
+            print(
+                f"[build] {TARGET}: {n:,} 行 | {r[0]}~{r[1]} | {r[2]} 股 | mode={mode}",
+                flush=True,
+            )
         cc = cross_check(conn)
         conn.execute("CHECKPOINT")
     finally:

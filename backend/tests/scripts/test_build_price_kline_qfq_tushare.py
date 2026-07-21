@@ -27,6 +27,18 @@ def test_nominal_source_prefers_canonical_over_legacy_raw() -> None:
     assert cte.index("canonical_nominal_ohlcv_daily") < cte.index("raw_tushare_daily")
 
 
+def test_s5_from_accepted_nominal_excludes_legacy_raw() -> None:
+    """S5: --from-accepted derives from accepted canonical only (no raw fill)."""
+
+    mod = _load_module()
+    default_cte = mod.nominal_source_cte(from_accepted=False)
+    accepted_cte = mod.nominal_source_cte(from_accepted=True)
+    assert "canonical_nominal_ohlcv_daily" in accepted_cte
+    assert "raw_tushare_daily" not in accepted_cte
+    assert "UNION ALL" not in accepted_cte
+    assert "raw_tushare_daily" in default_cte
+
+
 def test_form_source_sql_joins_canonical_and_limit_without_raw() -> None:
     from services.technical_states import _SRC_TEMP_SQL
 

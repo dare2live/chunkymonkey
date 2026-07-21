@@ -138,7 +138,9 @@ default sync → acquire → `land_then_accept_authorized_security_day`；fused
 `capture_and_publish_authorized_*_partition` **test-only**。CLI：
 `chunkyctl sync --domain daily|stock_st`（default land→accept）以及
 `--land-only|--accept-from-landing|--land-then-accept`（可选 `--from-local-raw`；
-accept 路径跳过 provider auth / acquire）。
+accept 路径跳过 provider auth / acquire）。S5 derive（PARTIAL）：
+`build_price_kline_qfq_tushare.py --from-accepted` 只读
+`canonical_nominal_ohlcv_daily`（无 legacy raw fill；不进 accept）。
 `observation_population.py` 的 default
 readiness 经 `resolve_eligible_observation_date`（accepted calendar ∩ K/ST
 `availability_policy`）评 frontier，不索要周末/节假 calendar-today 分区。

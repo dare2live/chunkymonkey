@@ -40,7 +40,8 @@
 - **S1–S3 transport FIXED**：default `chunkyctl sync` daily/stock_st/trade_cal = caller-only S1→S2；`capture_and_publish_*` **非** sync 生产 fan-in；CLI `--land-only` / `--accept-from-landing` / `--land-then-accept` + `--from-local-raw`
 - **S4 acquire FIXED（daily/ST land boundary）**：`security_day_acquire.resolve_security_day_acquire` — modes `provider_tushare` | `local_legacy_raw_materialize`；land/default sync 经 acquire；accept 零 acquire（禁重焊）；TDD `test_security_day_acquire_s4.py`；**不**复活多源 fallback registry
 - **Accepted window（local-raw chunked）**：daily+ST **`20220104`→`20260720`（1099d）** — ST raw floor；holdout `20250601` in-window；optional daily-only further back to raw min `20190102`（ST 不可对称）
-- **近端 focus**：**S5–S6 按需**；legacy `raw_tushare_*` = S7；**研究轨** E0 → E/F 同 protocol remeasure（窗已扩；本 session 不跑）；不开 G/H/Release 抢跑
+- **S5 derive PARTIAL**：`build_price_kline_qfq_tushare.py --from-accepted` = canonical-only nominal（无 legacy raw fill；不进 accept 事务）；form/`chunkyctl derive` 入口仍 residual
+- **近端 focus**：finish S5（form CLI）→ S6；legacy `raw_tushare_*` = S7；**研究轨** E0 → E/F 同 protocol remeasure（窗已扩；本 session 不跑）；不开 G/H/Release 抢跑
 - **护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d+禁 mass backfill/第二 DB/plugin bus
 
 A→H 降为地图；细节以重评文 §4、§9 为准。

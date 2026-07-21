@@ -2397,3 +2397,16 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual**：optional daily-only pre-`20220104`；S5 derive CLI；S6 serve；
   S7 legacy raw；E0；E/F remeasure when owner schedules（window unblocked）.
 - **Status**: **FIXED**（S4 + expand-to-ST-floor）。
+
+### 2026-07-21 — S5 derive thin knife (PARTIAL)
+
+- Wall-clock: Tue 2026-07-21 ~09:20 Asia/Shanghai (in-session).
+- **S5 PARTIAL**：`build_price_kline_qfq_tushare.py --from-accepted` rebuilds
+  qfq from `canonical_nominal_ohlcv_daily` only（no `raw_tushare_daily` UNION
+  fill）；outside accept transaction. Evidence：
+  `test_s5_from_accepted_nominal_excludes_legacy_raw` + suite 4/4 passed.
+- **Did not**：form independent CLI；chunkyctl derive surface；legacy UNION
+  sunset as default；full qfq rebuild live run this slice.
+- **Residual**：form `--from-accepted`；wire `chunkyctl`/pipeline clean entry；
+  S6 serve；optional daily-only pre-2022.
+- **Status**: **PARTIAL**（S5 qfq accepted-only path）。
