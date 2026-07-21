@@ -15,12 +15,15 @@ from test_market_pulse import CFG, D, _fixture_conn
 def test_serve_read_entities_resolve_physical_tables():
     reg = load_registry()
     for name in (
-        "dc_member",
         "daily",
         "margin",
     ):
         assert reg.entity(name).db == "tushare_raw"
         assert serve._table(name).startswith("raw_")
+    # B1: dc_member → smartmoney observation-date publication
+    assert reg.entity("dc_member").db == "smartmoney"
+    assert reg.entity("dc_member").table == "fact_dc_member_daily"
+    assert serve._tr("dc_member") == "fact_dc_member_daily"
     # B2: moneyflow / moneyflow_dc / limit_list_d → smartmoney publications
     assert reg.entity("moneyflow").db == "smartmoney"
     assert reg.entity("moneyflow").table == "fact_stock_moneyflow_daily"

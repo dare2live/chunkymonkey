@@ -112,7 +112,7 @@ def _tr_entity(entity: str) -> str:
 
     ``tushare_raw`` entities live on the READ_ONLY ``tr`` attach; ``smartmoney``
     publication entities (B2 fact_stock_limit_daily / moneyflow facts /
-    fact_top_inst_seat_daily) are bare on the main conn.
+    fact_top_inst_seat_daily; B1 fact_dc_member_daily) are bare on the main conn.
     """
     ent = _access_reg().entity(entity)
     if ent.db == "tushare_raw":

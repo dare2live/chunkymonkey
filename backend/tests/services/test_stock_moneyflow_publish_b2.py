@@ -278,8 +278,8 @@ def test_legacy_plane_moneyflow_tables_are_compatibility() -> None:
         assert meta["publication_surface"] == surface, table
     assert mod.collect_violations() == []
     counts = mod.role_counts()
-    assert counts["ssot"] == 24
-    assert counts["compatibility"] == 21
+    assert counts["ssot"] == 23
+    assert counts["compatibility"] == 22
 
 
 def test_pulse_entity_ref_uses_smartmoney_bare_tables(monkeypatch) -> None:
@@ -297,6 +297,6 @@ def test_pulse_entity_ref_uses_smartmoney_bare_tables(monkeypatch) -> None:
     assert mp._tr_entity("moneyflow_dc") == "fact_stock_moneyflow_dc_daily"
     assert serve._tr("moneyflow") == "fact_stock_moneyflow_daily"
     assert serve._tr("moneyflow_dc") == "fact_stock_moneyflow_dc_daily"
-    # still-raw leaf stays on tr.
-    assert mp._tr_entity("dc_member").startswith("tr.raw_")
-    assert serve._tr("dc_member").startswith("tr.raw_")
+    # B1: dc_member observation-date PIT also off raw.
+    assert mp._tr_entity("dc_member") == "fact_dc_member_daily"
+    assert serve._tr("dc_member") == "fact_dc_member_daily"

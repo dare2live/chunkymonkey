@@ -2829,3 +2829,43 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Did not**: fake dc_member PIT；E/F remeasure；auto-wire publish into sync.
 - **Residual**: dc_member no DC PIT；E0 org；E/F paused.
 - **Status**: **PARTIAL**（B2 seat plane done；S7 not FIXED — dc_member remains）.
+
+### 2026-07-21 — B1 dc_member → fact_dc_member_daily (observation-date PIT)
+
+- Knife: honest DC membership publication (trade_date × board ts_code × con_code).
+- Why dims were not PIT:
+  1. `dim_stock_dc_industry` / `dim_stock_dc_concept` = latest-frontier collapse
+     only (no trade_date / valid_from-to).
+  2. Retired `v_dc_industry_pit` = first-seen `in_date` only, **no out_date**
+     (fake PIT; writer already retired).
+- Owner correction (2026-07-21): TuShare **does** have DC membership history —
+  do not assume snapshot-only without checking.
+- Evidence (confirms owner + clarifies form):
+  1. TuShare `dc_member` doc_id=363: "可以根据…交易日期，获取历史成分";
+     inputs trade_date/start_date/end_date; **outputs** trade_date, ts_code,
+     con_code, name only — **no in_date/out_date**.
+  2. Live `raw_tushare_dc_member` columns match catalog; **24,415,704** rows;
+     `20250102`→`20260716` (371d); vendor floor = sync `data_start` (E8 probe).
+  3. Membership drifts across days (e.g. BK0552.DC 889→903 members) — not a
+     static current scrape.
+  4. `ths_member` has in_date/out_date schema but marked **暂无**; different
+     namespace (同花顺); not in sync_registry; not a DC substitute.
+  5. `index_member_all` has real in/out — SW industry, already `v_sw_industry_pit`.
+- Gap classification: **not** "landing incomplete" / **not** "vendor has no
+  history". History form = daily observation-date snapshots; landing covers
+  vendor floor. Honest PIT = observation-date publication (not invent range).
+- Shipped:
+  1. `services/dc_member_publish.py` + `scripts/publish_fact_dc_member_daily.py`
+  2. available_at = trade_date 18:00 Asia/Shanghai；lineage source_table+built_at
+  3. DataAccess `dc_member` → smartmoney `fact_dc_member_daily`
+  4. Inventory `raw_tushare_dc_member` ssot→compatibility
+  5. serve `open_members_conn` → smartmoney + ATTACH raw (SW still on tr)
+  6. moth `smartmoney-size-band` high 3GB→6GB (measured 5.53GB after 24.4M rows)
+- Live: **24415704** rows；`20250102`→`20260716`；371d；grain dups=0.
+- Inventory：**24→23 ssot** / 1 fill / **21→22 compatibility** of 46.
+- Evidence: `check_legacy_raw_plane` ssot=23；TDD `test_dc_member_publish_b1`
+  + legacy/pulse/serve/API green；`pre-knife b1-dc-member-pit` OK；moth PASS.
+- **Did not**: invent in_date/out_date；claim vendor has no history；rewrite
+  dim_stock_dc_* as PIT；land ths_member；E/F；auto-wire publish into sync.
+- **Residual**: typed hard-stop ssot 长尾；E0 org；E/F paused；S7 not FIXED.
+- **Status**: **FIXED**（B1 observation-date PIT）；S7 remains **PARTIAL**.

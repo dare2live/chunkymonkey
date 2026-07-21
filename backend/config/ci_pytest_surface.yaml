@@ -68,6 +68,7 @@ paths:
 - tests/services/test_stock_moneyflow_publish_b2.py
 - tests/services/test_index_daily_publish_b2.py
 - tests/services/test_top_inst_seat_publish_b2.py
+- tests/services/test_dc_member_publish_b1.py
 - tests/services/test_market_pulse_serve_read_s6.py
 - tests/services/test_runtime_limits.py
 - tests/scripts/test_check_universe_filter.py

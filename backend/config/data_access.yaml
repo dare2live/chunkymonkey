@@ -271,17 +271,23 @@ entities:
     available_after: eod
 
   dc_member:
-    # 东财概念成员 (con_code=个股 ts_code格式, ts_code=板块BKxxxx.DC 字段语义陷阱; 最近快照≤t)
-    db: tushare_raw
-    table: raw_tushare_dc_member
-    layer: L0
+    # B1 observation-date PIT (S7 membership_l0 strangler).
+    # Publication = fact_dc_member_daily (smartmoney); raw_tushare_dc_member = rebuild input.
+    # Grain = trade_date × ts_code(board BK*.DC) × con_code(stock); available_at = trade_date 18:00 Asia/Shanghai.
+    # Vendor history EXISTS as daily trade_date snapshots (TuShare dc_member; start_date/end_date loop;
+    # local land 20250102→… = vendor floor). Output has no in_date/out_date — do not invent range PIT.
+    # Consumers: market_pulse inflow_breadth + serve /members+/drill. dim_stock_dc_* = current-snapshot residual.
+    db: smartmoney
+    table: fact_dc_member_daily
+    layer: L1
     code_col: con_code
     code_input: ts_from_plain   # con_code 存 ts_code 格式(600519.SH); 列名非'ts_code'故默认推断失效, 显式声明
     asof_col: trade_date
     asof_format: yyyymmdd
-    columns: [con_code, ts_code, trade_date, name]
+    columns: [trade_date, ts_code, con_code, name, available_at]
     vendor: eastmoney_via_tushare
-    available_after: eod
+    available_after: "18:00"
+    compute_fn: publish_fact_dc_member_daily
 
   index_member_all:
     # 申万三级成分 (S7: serve/derive publication = v_sw_industry_pit; raw = sync residual)

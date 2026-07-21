@@ -100,6 +100,9 @@ CREATE TABLE tr.raw_tushare_moneyflow_mkt_dc (
     trade_date TEXT, net_amount DOUBLE);
 CREATE TABLE tr.raw_tushare_dc_member (
     trade_date TEXT, ts_code TEXT, con_code TEXT, name TEXT);
+CREATE TABLE fact_dc_member_daily (
+    trade_date TEXT, ts_code TEXT, con_code TEXT, name TEXT,
+    available_at TIMESTAMPTZ, source_table TEXT, built_at TIMESTAMPTZ);
 CREATE TABLE tr.raw_tushare_moneyflow_dc (
     trade_date TEXT, ts_code TEXT, name TEXT, net_amount DOUBLE, pct_change DOUBLE);
 CREATE TABLE fact_stock_moneyflow_dc_daily (
@@ -166,6 +169,24 @@ def _fixture_conn():
         (D[3], "600003.SZ", "丙"), (D[3], "600004.SZ", "丁"),
         (D[4], "600001.SH", "甲"), (D[4], "600002.SZ", "乙"),
     ])
+    # B1: pulse/serve read fact_dc_member_daily (DataAccess observation-date PIT).
+    c.executemany(
+        "INSERT INTO fact_dc_member_daily VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            (D[3], "BK0001.DC", "600001.SH", "甲",
+             "2024-01-05 18:00:00+08:00", "raw_tushare_dc_member", "2024-01-05 18:00:00+08:00"),
+            (D[3], "BK0001.DC", "600002.SZ", "乙",
+             "2024-01-05 18:00:00+08:00", "raw_tushare_dc_member", "2024-01-05 18:00:00+08:00"),
+            (D[3], "BK0001.DC", "600003.SZ", "丙",
+             "2024-01-05 18:00:00+08:00", "raw_tushare_dc_member", "2024-01-05 18:00:00+08:00"),
+            (D[3], "BK0001.DC", "600004.SZ", "丁",
+             "2024-01-05 18:00:00+08:00", "raw_tushare_dc_member", "2024-01-05 18:00:00+08:00"),
+            (D[4], "BK0001.DC", "600001.SH", "甲",
+             "2024-01-08 18:00:00+08:00", "raw_tushare_dc_member", "2024-01-08 18:00:00+08:00"),
+            (D[4], "BK0001.DC", "600002.SZ", "乙",
+             "2024-01-08 18:00:00+08:00", "raw_tushare_dc_member", "2024-01-08 18:00:00+08:00"),
+        ],
+    )
     c.executemany("INSERT INTO tr.raw_tushare_moneyflow_dc VALUES (?, ?, ?, ?, ?)", [
         (D[3], "600001.SH", "甲", 5.0, 2.0), (D[3], "600002.SZ", "乙", -3.0, -0.5),
         (D[3], "600003.SZ", "丙", 1.0, 0.3),
@@ -585,6 +606,15 @@ def test_build_latest_incremental_idempotent():
         # d6 成分+个股流: 2 成分 1 流入 → 宽度 1/2 (验证 dc_day_where 下推不丢增量日)
         c.executemany("INSERT INTO tr.raw_tushare_dc_member VALUES (?, 'BK0001.DC', ?, ?)",
                       [(d6, "600001.SH", "甲"), (d6, "600002.SZ", "乙")])
+        c.executemany(
+            "INSERT INTO fact_dc_member_daily VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                (d6, "BK0001.DC", "600001.SH", "甲",
+                 "2024-01-09 18:00:00+08:00", "raw_tushare_dc_member", "2024-01-09 18:00:00+08:00"),
+                (d6, "BK0001.DC", "600002.SZ", "乙",
+                 "2024-01-09 18:00:00+08:00", "raw_tushare_dc_member", "2024-01-09 18:00:00+08:00"),
+            ],
+        )
         c.executemany("INSERT INTO tr.raw_tushare_moneyflow_dc VALUES (?, ?, ?, ?, ?)",
                       [(d6, "600001.SH", "甲", 5.0, 1.2), (d6, "600002.SZ", "乙", -3.0, -0.4)])
         c.executemany(

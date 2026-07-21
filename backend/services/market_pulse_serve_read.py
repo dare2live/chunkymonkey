@@ -52,14 +52,16 @@ def _tr(entity: str) -> str:
 
 
 def open_members_conn():
-    """成分下钻: 内存主库 + READ_ONLY ATTACH tushare_raw AS tr.
+    """成分下钻: smartmoney 主库 (B1 fact_dc_member_daily) + READ_ONLY ATTACH tushare_raw AS tr.
 
-    sync 写锁窗口内 ATTACH 拒连 → 前端失败态重试, 不降级伪造。
+    DC membership reads the observation-date publication on smartmoney; SW
+    index_member_all still resolves on the tr attach. sync 写锁窗口内 ATTACH
+    拒连 → 前端失败态重试, 不降级伪造。
     """
-    con = duck_connect(":memory:")
+    con = duck_connect(resolver.db_path("smartmoney"), read_only=True)
     try:
         raw_path = resolver.db_path("tushare_raw").replace("'", "''")
-        con.execute(f"ATTACH '{raw_path}' AS tr (READ_ONLY)")
+        con.execute(f"ATTACH IF NOT EXISTS '{raw_path}' AS tr (READ_ONLY)")
         yield con
     finally:
         con.close()

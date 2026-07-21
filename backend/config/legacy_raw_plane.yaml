@@ -92,9 +92,10 @@ tables:
     note: "S7: pulse builder input via DataAccess; sector mart owns display; dim_stock_dc_* = current-snapshot residual"
 
   raw_tushare_dc_member:
-    role: ssot
+    role: compatibility
     kind: membership_l0
-    note: "S7 hard-stop verified 2026-07-21: serve /members+/drill + pulse; dim_stock_dc_*=current-snapshot; v_dc_industry_pit retired fake PIT (no out_date); unblock=real DC membership PIT then DataAccess redirect"
+    publication_surface: fact_dc_member_daily
+    note: "B1 2026-07-21: fact_dc_member_daily owns DC membership observation-date PIT (trade_date×board×con; available_at+lineage). Vendor history = daily trade_date snapshots (TuShare dc_member doc_id=363; start/end loop) — NOT range in/out (those fields do not exist on this API). Landing complete 20250102→20260716 (vendor floor). DataAccess redirected; raw = rebuild residual; dim_stock_dc_*=current-snapshot display; v_dc_industry_pit retired fake first-seen PIT unused. ths_member is different namespace (同花顺) and its in_date/out_date are marked 暂无 — not a DC substitute."
 
   raw_tushare_dividend:
     role: ssot

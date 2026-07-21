@@ -198,8 +198,8 @@ def test_legacy_plane_top_inst_is_compatibility() -> None:
     assert meta["publication_surface"] == "fact_top_inst_seat_daily"
     assert mod.collect_violations() == []
     counts = mod.role_counts()
-    assert counts["ssot"] == 24
-    assert counts["compatibility"] == 21
+    assert counts["ssot"] == 23
+    assert counts["compatibility"] == 22
 
 
 def test_consumers_resolve_top_inst_off_raw_leaf(monkeypatch) -> None:
@@ -215,5 +215,5 @@ def test_consumers_resolve_top_inst_off_raw_leaf(monkeypatch) -> None:
     assert reg.entity("top_inst").table == "fact_top_inst_seat_daily"
     assert mp._tr_entity("top_inst") == "fact_top_inst_seat_daily"
     assert ip._tr_entity("top_inst") == "sm.fact_top_inst_seat_daily"
-    # dc_member still ssot on raw (this knife does not fake PIT).
-    assert mp._tr_entity("dc_member").startswith("tr.raw_")
+    # B1: dc_member observation-date PIT also off raw.
+    assert mp._tr_entity("dc_member") == "fact_dc_member_daily"

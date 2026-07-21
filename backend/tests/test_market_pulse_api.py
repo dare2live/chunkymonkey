@@ -115,6 +115,16 @@ def empty_client(monkeypatch):
         c.execute(f'DELETE FROM tr."{table_name}"')
     c.execute("DELETE FROM dim_stock_segment_daily")
     c.execute("DELETE FROM fact_stock_form_daily")
+    # B1/B2 publications live on main (not tr.*); clear serve-leaf facts too.
+    for fact in (
+        "fact_dc_member_daily",
+        "fact_stock_moneyflow_daily",
+        "fact_stock_moneyflow_dc_daily",
+        "fact_stock_limit_daily",
+        "fact_index_daily",
+        "fact_top_inst_seat_daily",
+    ):
+        c.execute(f"DELETE FROM {fact}")
     try:
         yield _make_client(c)
     finally:

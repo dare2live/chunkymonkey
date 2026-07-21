@@ -3,7 +3,8 @@
 # 单一计算点: 所有策略的 cell 定义 / 画像维度 / edge 筛选器从 dim_stock_segment_daily 取, 禁各自算。
 # 分位法 (非绝对阈值): 市值/换手按当日全市场分位分段 — 自适应跨年市值水平漂移 (2019 vs 2026)。
 # 概念(东财)不进本表: 多对多标签非互斥分层；消费者应经版本化 classification snapshot 契约读取，
-# 不得把 raw_tushare_dc_member 或当前 v_dc_industry_pit 直接当历史 PIT 真相。
+# 历史 PIT = fact_dc_member_daily (observation-date)；禁把 raw_tushare_dc_member /
+# dim_stock_dc_* 当前快照 / 退役 v_dc_industry_pit(无 out_date) 当 PIT 真相。
 version: 1
 
 mktcap_segments:          # 按流通市值 circ_mv 当日分位

@@ -73,6 +73,7 @@ member_service_files:
   - stock_moneyflow_publish.py  # B2 2026-07-21: fact_stock_moneyflow(_dc)_daily stock-day flow publication (raw moneyflow/moneyflow_dc → smartmoney; serve/pulse leaf)
   - index_daily_publish.py      # B2 2026-07-21: fact_index_daily index×trade_date close publication (raw index_daily → smartmoney; paper/RS/tech/inst)
   - top_inst_seat_publish.py    # B2 2026-07-21: fact_top_inst_seat_daily LHB seat grain (raw top_inst → smartmoney; pulse/inst)
+  - dc_member_publish.py        # B1 2026-07-21: fact_dc_member_daily observation-date DC membership PIT (raw dc_member → smartmoney; pulse/serve)
   - audit.py                 # 审计
   - data_health_snapshot.py
   - data_layer_audit.py

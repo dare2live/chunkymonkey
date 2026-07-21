@@ -140,6 +140,7 @@ tables:
   fact_stock_moneyflow_dc_daily: L1_foundation  # 2026-07-21 brick B2: stock-day eastmoney moneyflow; writer=stock_moneyflow_publish; serve/pulse leaf; raw_tushare_moneyflow_dc=rebuild input; not DC membership PIT
   fact_index_daily: L1_foundation  # 2026-07-21 brick B2: index×trade_date close publication; writer=index_daily_publish; paper/RS/tech/inst; raw_tushare_index_daily=rebuild input
   fact_top_inst_seat_daily: L1_foundation  # 2026-07-21 brick B2: LHB seat grain (trade_date×ts_code×exalter×side); writer=top_inst_seat_publish; pulse/inst; raw_tushare_top_inst=rebuild input
+  fact_dc_member_daily: L1_foundation  # 2026-07-21 brick B1: DC observation-date membership PIT (trade_date×board×con); writer=dc_member_publish; pulse/serve leaf; raw_tushare_dc_member=rebuild input; NOT range PIT
   price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-15 tushare 前复权 K线 (回测主源, §4.3; build_price_kline_qfq_tushare.py 从 raw_tushare_daily×adj_factor 建 2019+)
   # ── edge 层第一批 (2026-07-02 机构画像引擎 promote, 探索弧 inst_follow E1/E2; feature_store 库) ──
   period_windows: L2_feature               # 披露窗口三方案价 (institution_profile.build_period_windows)

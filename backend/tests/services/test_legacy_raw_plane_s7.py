@@ -199,9 +199,9 @@ def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
 
     mod = _load_check_mod()
     counts = mod.role_counts()
-    assert counts["ssot"] == 24, counts
+    assert counts["ssot"] == 23, counts
     assert counts["fill"] == 1, counts
-    assert counts["compatibility"] == 21, counts
+    assert counts["compatibility"] == 22, counts
     assert sum(counts.values()) == 46, counts
 
 
@@ -277,24 +277,24 @@ def test_s7_top_inst_seat_publication_is_fact_top_inst_seat_daily() -> None:
     assert "exalter" in ent.columns
 
 
-def test_s7_serve_multi_consumer_priority_stay_ssot() -> None:
-    """Remaining priority membership_l0 stay ssot until honest DC PIT."""
+def test_s7_membership_l0_dc_member_is_compatibility() -> None:
+    """B1: dc_member observation-date PIT published → raw membership_l0 COMPAT."""
 
     from services.data_access.spec import load_registry
 
     mod = _load_check_mod()
     inv = mod._load_yaml(mod.INVENTORY_YAML)
     reg = load_registry()
-    expected = {
-        "raw_tushare_dc_member": ("membership_l0", "dc_member"),
-    }
-    for table, (kind, entity) in expected.items():
-        meta = inv["tables"][table]
-        assert meta["role"] == "ssot", table
-        assert meta.get("kind") == kind, table
-        assert "verified 2026-07-21" in (meta.get("note") or ""), table
-        ent = reg.entity(entity)
-        assert ent.table == table, (entity, ent.table)
+    meta = inv["tables"]["raw_tushare_dc_member"]
+    assert meta["role"] == "compatibility"
+    assert meta.get("kind") == "membership_l0"
+    assert meta.get("publication_surface") == "fact_dc_member_daily"
+    assert "observation-date" in (meta.get("note") or "")
+    ent = reg.entity("dc_member")
+    assert ent.db == "smartmoney"
+    assert ent.table == "fact_dc_member_daily"
+    assert "trade_date" in ent.columns
+    assert "con_code" in ent.columns
 
 
 def test_s7_gate_rejects_serve_leaf_compat_without_data_access_redirect(
