@@ -1795,6 +1795,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/pipeline/acquire.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/tier12_consumer_cutover.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -4243,6 +4249,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/pipeline/acquire.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/tier12_consumer_cutover.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -4970,6 +4982,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/market_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/pipeline/acquire.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
     },
@@ -6775,8 +6793,8 @@
     }
   ],
   "meta": {
-    "edge_count": 1078,
-    "generated_at": "2026-07-21T12:16:47.492202+00:00",
+    "edge_count": 1081,
+    "generated_at": "2026-07-21T13:07:28.920480+00:00",
     "node_count": 400,
     "version": 2
   },

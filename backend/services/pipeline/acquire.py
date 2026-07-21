@@ -66,6 +66,10 @@ def run_acquire(ctx: PipelineContext) -> None:
     # Step 2l (profit_forecast EPS 快照) 已退役 2026-06-27 (通达信全删 M4: akshare 退役, 用户决cut):
     #   raw_profit_forecast_snapshot_daily 0 live 读者 (snapshot 设计防leakage但无消费); 档B 若需景气度走 tushare forecast/report_rc。
 
+    # Step 2.94: formal on_demand daily/ST — modular land_then_accept for latest
+    #   eligible day only (never rides --all-due; never mass history fill).
+    _sync_formal_on_demand_security_days(ctx)
+
     # Step 2.95: sync_registry 域日历 gap 重放 = 增量 + 修洞统一机制 (终败/漏跑/历史空洞)
     _sync_registry_drain(ctx)
 
@@ -175,6 +179,124 @@ def _refresh_active_a_stock_master() -> None:
     from services.security_master import refresh_active_a_stock_master
     n = refresh_active_a_stock_master(None)
     print(f"security_master: refresh_active_a_stock_master rows={n}")
+
+
+FORMAL_ON_DEMAND_SECURITY_DAY_DOMAINS: tuple[str, ...] = ("daily", "stock_st")
+
+
+def _formal_security_day_dataset_id(domain: str) -> str:
+    if domain == "daily":
+        from services.data_sources.nominal_ohlcv_schema import DATASET_ID
+
+        return DATASET_ID
+    if domain == "stock_st":
+        from services.data_sources.stock_st_schema import DATASET_ID
+
+        return DATASET_ID
+    raise Tier0AcquireError(f"unsupported formal security-day domain={domain!r}")
+
+
+def _accepted_partition_exists(conn, dataset_id: str, partition_value: str) -> bool:
+    row = conn.execute(
+        """
+        SELECT 1 AS ok
+        FROM accepted_partition
+        WHERE dataset_id = ? AND partition_value = ?
+        LIMIT 1
+        """,
+        [dataset_id, partition_value],
+    ).fetchone()
+    return row is not None
+
+
+def _sync_formal_on_demand_security_days(ctx: PipelineContext) -> None:
+    """Pull latest eligible formal daily/ST via modular land_then_accept.
+
+    on_demand domains never enter --all-due. This is the S3 orchestrator bridge:
+    one trade_date = eligible_end when missing from accepted_partition.
+    Does **not** fill historical holes (log-not-fill / explicit backfill knife).
+    """
+
+    from services.data_sources import sync_runner
+    from services.duck_adapter import connect
+
+    registry = sync_runner.load_registry()
+    planned: list[tuple[str, str, str, str]] = []  # domain, eligible_end, reason, dataset_id
+    conn = connect(ctx.db("tushare_raw"), read_only=True)
+    try:
+        for domain in FORMAL_ON_DEMAND_SECURITY_DAY_DOMAINS:
+            spec = sync_runner.domain_spec(registry, domain)
+            if spec.get("sync_policy") != "on_demand":
+                raise Tier0AcquireError(
+                    f"domain={domain} orchestrator catchup requires sync_policy=on_demand"
+                )
+            policy = sync_runner.execution_policy_for_spec(spec)
+            if policy.mode != "enabled":
+                ctx.log(
+                    f"formal {domain}: SKIP catchup "
+                    f"(execution_policy {policy.mode}/{policy.reason})"
+                )
+                continue
+            eligibility = sync_runner.eligible_end_date(spec, trigger_mode="manual")
+            eligible_end = eligibility.eligible_end
+            if eligible_end is None:
+                ctx.log(
+                    f"formal {domain}: SKIP catchup "
+                    f"(no eligible_end; reason={eligibility.reason})"
+                )
+                continue
+            dataset_id = _formal_security_day_dataset_id(domain)
+            if _accepted_partition_exists(conn, dataset_id, eligible_end):
+                print(
+                    json.dumps(
+                        {
+                            "domain": domain,
+                            "action": "skip",
+                            "reason": "latest_eligible_already_accepted",
+                            "eligible_end": eligible_end,
+                            "eligibility_reason": eligibility.reason,
+                            "dataset_id": dataset_id,
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+                continue
+            planned.append(
+                (domain, eligible_end, str(eligibility.reason), dataset_id)
+            )
+    finally:
+        conn.close()
+
+    for domain, eligible_end, eligibility_reason, dataset_id in planned:
+        print(
+            json.dumps(
+                {
+                    "domain": domain,
+                    "action": "land_then_accept",
+                    "eligible_end": eligible_end,
+                    "eligibility_reason": eligibility_reason,
+                    "dataset_id": dataset_id,
+                    "window": "single_day_incremental",
+                },
+                ensure_ascii=False,
+            )
+        )
+        result = sync_runner.run_domain(
+            domain,
+            start=eligible_end,
+            end=eligible_end,
+            registry=registry,
+            trigger_mode="manual",
+        )
+        failed = int(result.get("failed_batches") or 0)
+        status = str(result.get("status") or "")
+        if status != "ok" or failed:
+            raise Tier0AcquireError(
+                f"formal {domain} land_then_accept failed for {eligible_end}: "
+                f"status={status!r} failed_batches={failed} "
+                f"error={result.get('error')!r}"
+            )
+        print(json.dumps(result, ensure_ascii=False, default=str))
 
 
 def _margin_hard_gate_required(registry: dict | None = None) -> bool:

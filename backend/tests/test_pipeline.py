@@ -566,6 +566,132 @@ def test_sync_registry_drain_skips_margin_gate_when_disabled(monkeypatch, tmp_pa
         ctx.close()
 
 
+def test_formal_on_demand_catchup_skips_when_latest_accepted(monkeypatch, tmp_path):
+    from services.data_sources import sync_runner
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    registry = {
+        "domains": {
+            "daily": {
+                "domain": "daily",
+                "sync_policy": "on_demand",
+                "execution_policy": {
+                    "mode": "enabled",
+                    "reason": "authorized_manual_generation",
+                },
+            },
+            "stock_st": {
+                "domain": "stock_st",
+                "sync_policy": "on_demand",
+                "execution_policy": {
+                    "mode": "enabled",
+                    "reason": "authorized_manual_generation",
+                },
+            },
+        }
+    }
+    calls = []
+
+    class _Conn:
+        def execute(self, *_a, **_k):
+            return SimpleNamespace(fetchone=lambda: {"ok": 1})
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(sync_runner, "load_registry", lambda: registry)
+    monkeypatch.setattr(sync_runner, "domain_spec", lambda reg, domain: reg["domains"][domain])
+    monkeypatch.setattr(
+        sync_runner,
+        "eligible_end_date",
+        lambda _spec, **_kwargs: SimpleNamespace(
+            eligible_end="20260721", reason="manual_calendar_eligible"
+        ),
+    )
+    monkeypatch.setattr(
+        sync_runner,
+        "run_domain",
+        lambda *a, **k: calls.append((a, k)) or {"status": "ok", "failed_batches": 0},
+    )
+    monkeypatch.setattr(
+        "services.duck_adapter.connect", lambda *_a, **_k: _Conn()
+    )
+    ctx = PipelineContext(date="20260721", log_path=tmp_path / "run.log")
+    try:
+        acquire._sync_formal_on_demand_security_days(ctx)
+    finally:
+        ctx.close()
+    assert calls == []
+
+
+def test_formal_on_demand_catchup_pulls_single_missing_eligible_day(
+    monkeypatch, tmp_path
+):
+    from services.data_sources import sync_runner
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    registry = {
+        "domains": {
+            "daily": {
+                "domain": "daily",
+                "sync_policy": "on_demand",
+                "execution_policy": {
+                    "mode": "enabled",
+                    "reason": "authorized_manual_generation",
+                },
+            },
+            "stock_st": {
+                "domain": "stock_st",
+                "sync_policy": "on_demand",
+                "execution_policy": {
+                    "mode": "enabled",
+                    "reason": "authorized_manual_generation",
+                },
+            },
+        }
+    }
+    calls = []
+
+    class _Conn:
+        def execute(self, *_a, **_k):
+            return SimpleNamespace(fetchone=lambda: None)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(sync_runner, "load_registry", lambda: registry)
+    monkeypatch.setattr(sync_runner, "domain_spec", lambda reg, domain: reg["domains"][domain])
+    monkeypatch.setattr(
+        sync_runner,
+        "eligible_end_date",
+        lambda _spec, **_kwargs: SimpleNamespace(
+            eligible_end="20260721", reason="manual_calendar_eligible"
+        ),
+    )
+    monkeypatch.setattr(
+        sync_runner,
+        "run_domain",
+        lambda domain, **kwargs: calls.append((domain, kwargs))
+        or {"domain": domain, "status": "ok", "failed_batches": 0, "rows": 1},
+    )
+    monkeypatch.setattr(
+        "services.duck_adapter.connect", lambda *_a, **_k: _Conn()
+    )
+    ctx = PipelineContext(date="20260721", log_path=tmp_path / "run.log")
+    try:
+        acquire._sync_formal_on_demand_security_days(ctx)
+    finally:
+        ctx.close()
+    assert [c[0] for c in calls] == ["daily", "stock_st"]
+    for _domain, kwargs in calls:
+        assert kwargs["start"] == "20260721"
+        assert kwargs["end"] == "20260721"
+        assert kwargs["trigger_mode"] == "manual"
+        assert kwargs["registry"] is registry
+
+
 def test_unrelated_sync_failure_degrades_only_after_margin_gate_passes(
     monkeypatch, tmp_path
 ):

@@ -52,7 +52,7 @@ AGENTS.md
 |---|---|
 | Session boot context (git+moth+codegraph+board, one page) | `scripts/chunkyctl agent-boot [--format json]` |
 | Health | `scripts/chunkyctl doctor --fast` |
-| Manual full data update | `bash scripts/daily_update.sh --date YYYYMMDD`；on_demand formal domains 不进 all-due；margin=`on_demand`+`scope_blocked`（frozen，不进 all-due / 不挡 preflight） |
+| Manual full data update | `bash scripts/daily_update.sh --date YYYYMMDD`；acquire 先 formal `daily`/`stock_st` 最新 eligible 日 land_then_accept（已接受则 skip）；on_demand 不进 all-due；margin=`on_demand`+`scope_blocked`（frozen，不挡 preflight） |
 | Manual single-domain sync/canary/replay | `scripts/chunkyctl sync --domain DOMAIN`；`trade_cal` full generation；`daily`/`stock_st` 须显式 `--start/--end`（同日或 ≤40 交易日）；`--drain` 对三域 inapplicable；其它 disabled/formal 仍 fail closed |
 | Shared tooling snapshot | `moth snapshot --repo .` |
 | Business/tool assertions | `moth assert --repo .` |
