@@ -446,3 +446,11 @@ Live 焊点（evidence pack §2.7 复核）：
 - Formal daily/ST: full-market by trade_date; ST/BSE/delist at population read;
   `by_ts_code` pre-filter = non-formal contrast only.
 - No transport code change this amend; next knife remains E0 residual or S7.
+
+### Amend 2026-07-21 — E0 provider land (stk_holdertrade)
+
+- Shipped `--land-only|--land-then-accept` **without** `--from-local-raw` for
+  `stk_holdertrade` only (by_ann_date full-market; ≤40d; TDD green).
+- holders/org remain `--from-local-raw` (by_ts_code/period = non-formal).
+- Residual：holders/org provider faucet；mass/org-full accept；S7；E/F paused.
+- Label：**E0 PARTIAL** (provider land partial; not FIXED).

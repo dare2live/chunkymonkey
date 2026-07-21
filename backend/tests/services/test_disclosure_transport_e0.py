@@ -366,8 +366,8 @@ def test_land_from_legacy_empty_partition_fails_closed(conn) -> None:
         )
 
 
-def test_sync_runner_disclosure_land_only_requires_from_local_raw() -> None:
-    """Disclosure land-only is local-raw acquire; no provider mass dump."""
+def test_sync_runner_disclosure_land_only_holders_requires_from_local_raw() -> None:
+    """holders/org land without local-raw fail-closed (no by_ts_code provider land)."""
 
     from argparse import Namespace
 
@@ -392,6 +392,165 @@ def test_sync_runner_disclosure_land_only_requires_from_local_raw() -> None:
     )
     with pytest.raises(SyncWindowError, match="from-local-raw"):
         sr._preflight_disclosure_cli_shape(args, transport="land_only")
+
+
+def test_sync_runner_disclosure_land_only_stk_allows_provider() -> None:
+    """stk_holdertrade provider land-only preflight (by_ann_date; no mass dump)."""
+
+    from argparse import Namespace
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from services.data_sources import sync_runner as sr
+
+    args = Namespace(
+        land_only=True,
+        accept_from_landing=False,
+        land_then_accept=False,
+        from_local_raw=False,
+        drain=False,
+        backfill=False,
+        resume=False,
+        all_due=False,
+        domain="stk_holdertrade",
+        batch_id=None,
+        start="20260715",
+        end="20260715",
+        max_dates=None,
+        trigger_mode="manual",
+    )
+    sr._preflight_disclosure_cli_shape(
+        args,
+        transport="land_only",
+        now=datetime(2026, 7, 20, 12, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+
+
+def test_land_from_provider_stk_does_not_write_canonical(conn) -> None:
+    """S1 provider land: landing only; inject fetch; no canonical."""
+
+    from services.data_sources.disclosure_transport import (
+        land_disclosure_partition_from_provider,
+    )
+
+    row = _stk_row()
+    batch = land_disclosure_partition_from_provider(
+        "stk_holdertrade",
+        conn,
+        partition=PARTITION_STK,
+        observed_at=OBSERVED_STK,
+        fetch_rows=lambda _domain, _part: [row],
+    )
+    assert batch.batch_id.startswith(f"stk_holdertrade:{PARTITION_STK}:")
+    status = conn.execute(
+        "SELECT status FROM ingest_batch WHERE batch_id = ?",
+        [batch.batch_id],
+    ).fetchone()[0]
+    assert status == "LANDED"
+    assert (
+        conn.execute(
+            f"SELECT COUNT(*) FROM {STK_CANONICAL} WHERE ann_date = ?",
+            [PARTITION_STK],
+        ).fetchone()[0]
+        == 0
+    )
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM accepted_partition WHERE dataset_id = ?",
+            [STK_DATASET],
+        ).fetchone()[0]
+        == 0
+    )
+
+
+def test_land_from_provider_holders_fails_without_inject(conn) -> None:
+    from services.data_sources.disclosure_transport import (
+        DisclosureTransportError,
+        land_disclosure_partition_from_provider,
+    )
+
+    with pytest.raises(DisclosureTransportError, match="from-local-raw"):
+        land_disclosure_partition_from_provider(
+            "holders_top10",
+            conn,
+            partition=PARTITION_HOLDERS,
+            observed_at=OBSERVED_HOLDERS,
+        )
+
+
+def test_sync_runner_disclosure_provider_land_stop_on_first_fail(monkeypatch) -> None:
+    """Provider land-only stops on first failed partition (≤40d window)."""
+
+    from argparse import Namespace
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from services.data_sources import sync_runner as sr
+
+    calls: list[str] = []
+
+    def fake_land(domain, *, partition):
+        calls.append(partition)
+        if partition == "20260715":
+            return {
+                "domain": domain,
+                "status": "error",
+                "batches": 0,
+                "rows": 0,
+                "failed_batches": 1,
+                "error": "no provider rows",
+                "partition_value": partition,
+                "publication": "land_only_disclosure_from_provider",
+                "transport": "land_only",
+                "acquire_mode": "provider",
+            }
+        return {
+            "domain": domain,
+            "status": "ok",
+            "batches": 1,
+            "rows": 1,
+            "failed_batches": 0,
+            "batch_id": f"stk_holdertrade:{partition}:test",
+            "partition_value": partition,
+            "publication": "land_only_disclosure_from_provider",
+            "transport": "land_only",
+            "acquire_mode": "provider",
+        }
+
+    monkeypatch.setattr(
+        sr, "land_disclosure_partition_from_provider_batch", fake_land
+    )
+    args = Namespace(
+        land_only=True,
+        accept_from_landing=False,
+        land_then_accept=False,
+        from_local_raw=False,
+        drain=False,
+        backfill=False,
+        resume=False,
+        all_due=False,
+        domain="stk_holdertrade",
+        batch_id=None,
+        start="20260714",
+        end="20260716",
+        max_dates=None,
+        trigger_mode="manual",
+    )
+    sr._preflight_disclosure_cli_shape(
+        args,
+        transport="land_only",
+        now=datetime(2026, 7, 20, 12, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    result = sr._run_disclosure_transport_window(
+        "stk_holdertrade",
+        transport="land_only",
+        start="20260714",
+        end="20260716",
+        from_local_raw=False,
+    )
+    assert calls == ["20260714", "20260715"]
+    assert int(result.get("failed_batches") or 0) >= 1
+    assert result.get("window_days_attempted") == 2
 
 
 def test_sync_runner_disclosure_land_only_cli_allows_domains() -> None:

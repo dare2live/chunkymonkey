@@ -1,20 +1,24 @@
 """Thin transport orchestration for E0 disclosure domains.
 
 Strangler surfaces (caller-only composition; not a second dragon):
-- S1 land-only via :func:`land_disclosure_partition_from_rows` or
-  :func:`land_disclosure_partition_from_legacy` (local legacy; no provider)
+- S1 land-only via :func:`land_disclosure_partition_from_rows`,
+  :func:`land_disclosure_partition_from_legacy` (local legacy), or
+  :func:`land_disclosure_partition_from_provider` (bounded provider;
+  currently ``stk_holdertrade`` by_ann_date full-market only)
 - S2 accept-from-landing via :func:`accept_disclosure_from_landing` (zero fetch)
 - :func:`land_then_accept_disclosure_partition` = S1 then S2 in the caller
 
 Production ``disclosure_dual_write`` uses land_then_accept. Fused
 ``publish_accepted_*`` helpers remain thin aliases for older callers/tests.
-CLI land-only for disclosure is ``--land-only --from-local-raw`` (no provider
-mass dump). Domains: holders_top10 (miaoxiang), org_holding (miaoxiang),
+CLI: ``--land-only --from-local-raw`` (all three) or ``--land-only`` provider
+for ``stk_holdertrade`` only (≤40d; no mass dump). holders/org remain
+local-raw for land CLI (by_ts_code/period = non-formal acquire contrast).
+Domains: holders_top10 (miaoxiang), org_holding (miaoxiang),
 stk_holdertrade (tushare).
 """
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -23,6 +27,8 @@ from zoneinfo import ZoneInfo
 DISCLOSURE_TRANSPORT_DOMAINS = frozenset(
     {"holders_top10", "org_holding", "stk_holdertrade"}
 )
+# Full-market-by-date provider land (formal-shaped acquire). Not by_ts_code.
+DISCLOSURE_PROVIDER_LAND_DOMAINS = frozenset({"stk_holdertrade"})
 
 
 class DisclosureTransportError(RuntimeError):
@@ -170,6 +176,81 @@ def land_disclosure_partition_from_legacy(
         observed_at=observed_at,
         available_at=available_at,
         batch_id=batch_id,
+        bootstrap=bootstrap,
+    )
+
+
+def fetch_disclosure_provider_partition_rows(
+    domain: str,
+    *,
+    partition: str,
+    fetch_rows: Callable[[str, str], Sequence[Mapping[str, Any]] | None] | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch provider-shaped rows for one disclosure partition (no land/accept).
+
+    Default path: ``stk_holdertrade`` = full-market by ``ann_date`` (tushare).
+    holders_top10 / org_holding have no full-market-by-date faucet here
+    (by_ts_code / period = non-formal contrast); inject ``fetch_rows`` for tests
+    or use local-raw land.
+    """
+
+    if domain not in DISCLOSURE_TRANSPORT_DOMAINS:
+        raise DisclosureTransportError(
+            f"unsupported disclosure domain={domain!r}; "
+            f"allowed={sorted(DISCLOSURE_TRANSPORT_DOMAINS)}"
+        )
+    part = _partition_yyyymmdd(partition)
+    if fetch_rows is not None:
+        return [dict(row) for row in (fetch_rows(domain, part) or ())]
+    if domain not in DISCLOSURE_PROVIDER_LAND_DOMAINS:
+        raise DisclosureTransportError(
+            f"domain={domain} has no full-market-by-date provider land; "
+            "use --from-local-raw (by_ts_code/period acquire is non-formal)"
+        )
+    if domain == "stk_holdertrade":
+        from services.data_sources.sync_runner import _adapter
+
+        adapter = _adapter("tushare")
+        raw = adapter.fetch_raw("stk_holdertrade", ann_date=part) or ()
+        return [dict(row) for row in raw]
+    raise DisclosureTransportError(
+        f"domain={domain} provider land not wired"
+    )
+
+
+def land_disclosure_partition_from_provider(
+    domain: str,
+    conn,
+    *,
+    partition: str,
+    observed_at: datetime | str | None = None,
+    available_at: datetime | str | None = None,
+    batch_id: str | None = None,
+    bootstrap: bool = True,
+    fetch_rows: Callable[[str, str], Sequence[Mapping[str, Any]] | None] | None = None,
+) -> Any:
+    """S1: land one disclosure partition from provider faucet (no accept).
+
+    Preserves provider rows as ``raw_evidence``; no universe exclude-then-fetch.
+    """
+
+    part = _partition_yyyymmdd(partition)
+    rows = fetch_disclosure_provider_partition_rows(
+        domain, partition=part, fetch_rows=fetch_rows
+    )
+    if not rows:
+        raise DisclosureTransportError(
+            f"domain={domain} no provider rows for partition={part}"
+        )
+    return land_disclosure_partition_from_rows(
+        domain,
+        conn,
+        partition=part,
+        rows=rows,
+        observed_at=observed_at,
+        available_at=available_at,
+        batch_id=batch_id,
+        request={"ann_date": part, "acquire_mode": "provider"},
         bootstrap=bootstrap,
     )
 
@@ -424,11 +505,14 @@ def disclosure_target_db_alias(domain: str) -> str:
 
 
 __all__ = [
+    "DISCLOSURE_PROVIDER_LAND_DOMAINS",
     "DISCLOSURE_TRANSPORT_DOMAINS",
     "DisclosureTransportError",
     "accept_disclosure_from_landing",
     "disclosure_target_db_alias",
+    "fetch_disclosure_provider_partition_rows",
     "land_disclosure_partition_from_legacy",
+    "land_disclosure_partition_from_provider",
     "land_disclosure_partition_from_rows",
     "land_then_accept_disclosure_partition",
     "load_disclosure_legacy_partition_rows",

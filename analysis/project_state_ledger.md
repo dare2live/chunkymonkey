@@ -2572,3 +2572,40 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Did not**: code path change; E0/S7 advance; mass fetch; Optuna/Release.
 - **Status**: docs **FIXED** (authority aligned); program residuals unchanged
   (E0 provider land; S7 membership L0 / ssot long-tail; E/F paused).
+
+### 2026-07-21 — E0 PARTIAL: stk_holdertrade provider land CLI
+
+- Wall-clock: Tue 2026-07-21 ~11:20 Asia/Shanghai (in-session).
+- **E0 residual knife**：disclosure provider land without `--from-local-raw`
+  for **stk_holdertrade only** (by_ann_date full-market; ≤40 calendar d;
+  stop-on-first-fail; no mass dump). Aligns with owner acquire rule
+  (full-market by date → raw_evidence; no exclude-then-fetch).
+  1. `disclosure_transport`: `fetch_disclosure_provider_partition_rows` +
+     `land_disclosure_partition_from_provider`；
+     `DISCLOSURE_PROVIDER_LAND_DOMAINS={stk_holdertrade}`.
+  2. CLI：`chunkyctl sync --domain stk_holdertrade --land-only|--land-then-accept
+     --start/--end` (no `--from-local-raw`). holders/org still require
+     `--from-local-raw` (by_ts_code/period = non-formal contrast).
+  3. TDD：`test_disclosure_transport_e0` 17 passed (provider land + holders
+     still require local-raw + stop-on-first-fail).
+- **Did not**：holders/org provider land；mass legacy accept；org full-universe；
+  live TuShare mass pull；E/F remeasure；Optuna/Release/cutover flip.
+- **Residual**：holders/org provider land (needs full-market-by-date faucet or
+  stays local-raw)；mass/org-full accept；S7 membership L0 / ssot long-tail；
+  E/F paused.
+- **Status**: **PARTIAL**（E0 stronger — provider land for stk_holdertrade）.
+
+### 2026-07-21 — DB storage hygiene reclaim (local data plane)
+
+- Wall-clock: Tue 2026-07-21 ~11:01 Asia/Shanghai (compact/delete) + commit session.
+- Evidence note: `analysis/db_storage_hygiene_20260721.md` (evidence-only).
+- Mechanisms: `db_lifecycle_delete` archive→deletion_record→DROP (no shrink);
+  reclaim only via `db_compact.py --execute` (ATTACH-copy parity); `CHECKPOINT`
+  alone does not reclaim free blocks; `data/archive/**` = lifecycle fuse (kept).
+- Actions: compacted `market` / `smartmoney` / `feature_store` (~1.33 GiB freed);
+  deleted `etf.duckdb` husk after parquet export of `mart_data_deletion_record`;
+  removed `field_dictionary.yaml` etf stub; deleted `*_precompact_bak`; kept all
+  four `data/archive/` subdirs; skipped `tushare_raw` compact.
+- **Did not**: mass-delete archive; second DB; touch accepted/live tables.
+- **Status**: hygiene reclaim **FIXED** (local); residual optional
+  `experiment_store` tiny free blocks.

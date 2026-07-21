@@ -472,9 +472,6 @@ databases:
         p3_failures_json:      {type: TEXT}
         built_at:              {type: TEXT}
 
-  etf.duckdb:
-    description: ETF 数据 (单独 DB, 跟主流不混)
-
 ## 跨表 JOIN 模板 (Rule 7 PIT 防 leakage)
 join_templates:
 

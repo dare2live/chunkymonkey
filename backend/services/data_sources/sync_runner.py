@@ -2101,6 +2101,81 @@ def land_disclosure_partition_from_legacy_batch(
     }
 
 
+def land_disclosure_partition_from_provider_batch(
+    domain: str,
+    *,
+    partition: str,
+) -> dict[str, Any]:
+    """E0 S1 CLI: land one disclosure partition from provider. No accept."""
+
+    from services.data_sources.disclosure_transport import (
+        DISCLOSURE_PROVIDER_LAND_DOMAINS,
+        DISCLOSURE_TRANSPORT_DOMAINS,
+        DisclosureTransportError,
+        disclosure_target_db_alias,
+        land_disclosure_partition_from_provider,
+    )
+    from services.database_manifest import get_database_manifest
+    from services.duck_adapter import connect
+
+    if domain not in DISCLOSURE_TRANSPORT_DOMAINS:
+        raise SyncWindowError(
+            "land-only disclosure supports "
+            f"{sorted(DISCLOSURE_TRANSPORT_DOMAINS)}; got domain={domain}"
+        )
+    if domain not in DISCLOSURE_PROVIDER_LAND_DOMAINS:
+        raise SyncWindowError(
+            f"disclosure provider land supports only "
+            f"{sorted(DISCLOSURE_PROVIDER_LAND_DOMAINS)}; "
+            f"domain={domain} requires --from-local-raw "
+            "(by_ts_code/period = non-formal acquire)"
+        )
+    part = "".join(ch for ch in str(partition or "") if ch.isdigit())[:8]
+    if len(part) != 8:
+        raise SyncWindowError(
+            f"disclosure land-only requires YYYYMMDD partition; got {partition!r}"
+        )
+    db_alias = disclosure_target_db_alias(domain)
+    path = get_database_manifest().path_for(db_alias)
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    conn = connect(str(path), read_only=False)
+    try:
+        try:
+            batch = land_disclosure_partition_from_provider(
+                domain, conn, partition=part, bootstrap=True
+            )
+        except DisclosureTransportError as exc:
+            return {
+                "domain": domain,
+                "status": "error",
+                "batches": 0,
+                "rows": 0,
+                "failed_batches": 1,
+                "error": str(exc)[:500],
+                "partition_value": part,
+                "publication": "land_only_disclosure_from_provider",
+                "transport": "land_only",
+                "acquire_mode": "provider",
+                "target_db": db_alias,
+            }
+    finally:
+        conn.close()
+
+    return {
+        "domain": domain,
+        "status": "ok",
+        "batches": 1,
+        "rows": len(tuple(batch.rows)),
+        "failed_batches": 0,
+        "batch_id": batch.batch_id,
+        "partition_value": batch.partition_value,
+        "publication": "land_only_disclosure_from_provider",
+        "transport": "land_only",
+        "acquire_mode": "provider",
+        "target_db": db_alias,
+    }
+
+
 def _disclosure_partition_dates(start: str, end: str) -> list[str]:
     """Inclusive calendar YYYYMMDD range for disclosure axes (≤40d)."""
 
@@ -2153,10 +2228,19 @@ def _preflight_disclosure_cli_shape(
             )
         return
     if not getattr(args, "from_local_raw", False):
-        raise SyncWindowError(
-            "disclosure --land-only/--land-then-accept requires "
-            "--from-local-raw (local legacy acquire; provider mass dump banned)"
+        from services.data_sources.disclosure_transport import (
+            DISCLOSURE_PROVIDER_LAND_DOMAINS,
         )
+
+        domain = str(getattr(args, "domain", "") or "")
+        if domain not in DISCLOSURE_PROVIDER_LAND_DOMAINS:
+            raise SyncWindowError(
+                "disclosure --land-only/--land-then-accept without "
+                "--from-local-raw supports only "
+                f"{sorted(DISCLOSURE_PROVIDER_LAND_DOMAINS)} "
+                "(by_ann_date full-market); holders_top10/org_holding "
+                "require --from-local-raw (by_ts_code/period = non-formal)"
+            )
     if args.start is None or args.end is None:
         raise SyncWindowError(
             f"--{transport.replace('_', '-')} requires --start and --end"
@@ -2179,9 +2263,12 @@ def _run_disclosure_transport_window(
     batch_id: str | None = None,
     from_local_raw: bool = False,
 ) -> dict[str, Any]:
-    """Thin disclosure land / accept / land-then-accept (local-raw acquire)."""
+    """Thin disclosure land / accept / land-then-accept (local-raw or provider)."""
 
-    from services.data_sources.disclosure_transport import DISCLOSURE_TRANSPORT_DOMAINS
+    from services.data_sources.disclosure_transport import (
+        DISCLOSURE_PROVIDER_LAND_DOMAINS,
+        DISCLOSURE_TRANSPORT_DOMAINS,
+    )
 
     if domain not in DISCLOSURE_TRANSPORT_DOMAINS:
         raise SyncWindowError(
@@ -2190,10 +2277,11 @@ def _run_disclosure_transport_window(
     if transport == "accept_from_landing":
         return accept_disclosure_from_landing_batch(domain, batch_id=str(batch_id or ""))
 
-    if not from_local_raw:
+    if not from_local_raw and domain not in DISCLOSURE_PROVIDER_LAND_DOMAINS:
         raise SyncWindowError(
-            "disclosure --land-only/--land-then-accept requires --from-local-raw "
-            "(local legacy acquire; provider mass dump banned)"
+            "disclosure --land-only/--land-then-accept without --from-local-raw "
+            f"supports only {sorted(DISCLOSURE_PROVIDER_LAND_DOMAINS)}; "
+            f"domain={domain} requires --from-local-raw"
         )
     partitions = _disclosure_partition_dates(str(start), str(end))
     day_results: list[dict[str, Any]] = []
@@ -2201,15 +2289,16 @@ def _run_disclosure_transport_window(
     failed = 0
     last_ok: str | None = None
     completed_ok = 0
+    acquire_label = "from_local_raw" if from_local_raw else "from_provider"
     for part in partitions:
+        if from_local_raw:
+            land_fn = land_disclosure_partition_from_legacy_batch
+        else:
+            land_fn = land_disclosure_partition_from_provider_batch
         if transport == "land_only":
-            result = land_disclosure_partition_from_legacy_batch(
-                domain, partition=part
-            )
+            result = land_fn(domain, partition=part)
         elif transport == "land_then_accept":
-            land_result = land_disclosure_partition_from_legacy_batch(
-                domain, partition=part
-            )
+            land_result = land_fn(domain, partition=part)
             if int(land_result.get("failed_batches") or 0) != 0:
                 result = dict(land_result)
                 result["transport"] = "land_then_accept"
@@ -2218,7 +2307,9 @@ def _run_disclosure_transport_window(
                     domain, batch_id=str(land_result["batch_id"])
                 )
                 result["transport"] = "land_then_accept"
-                result["publication"] = f"land_then_accept_{domain}_from_local_raw"
+                result["publication"] = (
+                    f"land_then_accept_{domain}_{acquire_label}"
+                )
         else:
             raise SyncWindowError(
                 f"unsupported disclosure transport={transport}"
@@ -2245,7 +2336,9 @@ def _run_disclosure_transport_window(
         "partitions": partitions,
         "day_results": day_results,
         "transport": transport,
-        "acquire_mode": "local_legacy_raw_materialize",
+        "acquire_mode": (
+            "local_legacy_raw_materialize" if from_local_raw else "provider"
+        ),
         "window_days_requested": len(partitions),
         "window_days_attempted": len(day_results),
     }
@@ -3332,8 +3425,8 @@ def _parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help=(
             "S1: daily|stock_st|holders_top10|org_holding|stk_holdertrade "
-            "capture→LANDING only (no canonical/accept); disclosure requires "
-            "--from-local-raw"
+            "capture→LANDING only (no canonical/accept); disclosure: "
+            "--from-local-raw (all three) or provider for stk_holdertrade only"
         ),
     )
     transport.add_argument(
@@ -3346,7 +3439,7 @@ def _parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help=(
             "Thin caller-only S1→S2 composition (not the default fused sync); "
-            "disclosure requires --from-local-raw"
+            "disclosure: --from-local-raw or stk_holdertrade provider"
         ),
     )
     parser.add_argument(
