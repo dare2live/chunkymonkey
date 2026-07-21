@@ -2896,3 +2896,28 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   E/F remeasure；claim S7 FIXED.
 - **Next**：E0 residual / §15 verify；S7 only on owner publication|sunset.
 - **Status**: **PARTIAL**（stronger / near-FIXED；not FIXED）.
+
+### 2026-07-21 — E0 stronger PARTIAL: local-raw empty_skip + holders row_seq + broaden
+
+- Wall-clock: Tue 2026-07-21 ~17:40–18:20 Asia/Shanghai.
+- **E0 residual knife**（§15；no org by-date invent；no mass；E/F paused）：
+  1. Local-raw disclosure window：**empty_skip** on `no legacy rows`
+     (weekends / no-announcement days continue ≤40d); provider empty stays
+     fail-closed / stop-on-first-fail.
+  2. Holders GRAIN fix：`assign_unique_holders_row_seq` — miaoxiang same
+     `HOLDER_RANK` + legacy `row_seq=1` caused DUPLICATE_GRAIN on accept；
+     stable renumber by holder_name within grain prefix（`_clean` + local-raw
+     load）. Does not invent rows.
+  3. Live broaden（local-raw land-then-accept）：
+     - holders `20260706`→`20260717`：11 accepted / 1 empty_skip / 666 rows；
+       previously blocked landed days `06/07/08/16` now accepted.
+     - stk `20260616`→`20260715`：25 accepted / 5 empty_skip / 737 rows.
+  4. Live accepted counts：**holders 13→17** / **stk 6→27** / **org 2**（unchanged）.
+  5. TDD：`test_disclosure_transport_e0` + holders_aif10 / acceptance green.
+- **Did not**：org provider land / by-date faucet；org mass accept；
+  DatasetSnapshot rewrite；E/F remeasure；Optuna/Release/cutover；S7 fake FIXED.
+- **Residual**：`org_holding` provider land **BLOCKED**（by-period ~830k；no
+  NOTICE_DATE）；further holders/stk broaden only via ≤40d local-raw/provider；
+  S7 hard-stop wall；next foundation knife = brick L2/L3 registry if E0 org
+  stays blocked；E/F paused.
+- **Status**: **PARTIAL**（E0 stronger；org still BLOCKED；not FIXED）.

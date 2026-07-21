@@ -45,8 +45,8 @@ def _next_knives(*, b_on: bool, c_on: bool) -> list[str]:
     knives = [
         "S7 near-FIXED / stronger PARTIAL: inventory 23/46 ssot = typed hard-stop "
         "wall (2 blocked + 7 serve_l0_declared + 14 sync_orphan); no fake COMPAT",
-        "E0 disclosure residual: org_holding provider land BLOCKED; expand "
-        "stk/holders accept",
+        "E0 disclosure residual: org_holding provider land BLOCKED; holders 17 / "
+        "stk 27 accepted; next = org stay local-raw or L2/L3 registry",
         "§15 adoption verify: commits/knife ≤1.5; async CI; pre-knife before L3",
         "E/F same-protocol remeasure paused (not near-term; F0–F3 protocol-complete)",
     ]

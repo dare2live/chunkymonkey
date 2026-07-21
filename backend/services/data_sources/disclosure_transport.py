@@ -12,6 +12,8 @@ Production ``disclosure_dual_write`` uses land_then_accept. Fused
 ``publish_accepted_*`` helpers remain thin aliases for older callers/tests.
 CLI: ``--land-only --from-local-raw`` (all three) or ``--land-only`` provider
 for ``stk_holdertrade`` / ``holders_top10`` (≤40d; no mass dump).
+Local-raw empty partitions are typed ``empty_skip`` (continue window);
+provider empty stays fail-closed / stop-on-first-fail.
 ``org_holding`` remains local-raw (by-period ~830k/period = mass; no
 by-calendar-date faucet; BLOCKED for provider land).
 Domains: holders_top10 (miaoxiang), org_holding (miaoxiang),
@@ -94,6 +96,7 @@ def load_disclosure_legacy_partition_rows(
             CANONICAL_ROW_FIELDS,
             COMPATIBILITY_TABLE,
             SOURCE,
+            assign_unique_holders_row_seq,
         )
 
         cols = ", ".join(CANONICAL_ROW_FIELDS)
@@ -107,7 +110,9 @@ def load_disclosure_legacy_partition_rows(
             """,
             [SOURCE, part],
         ).fetchall()
-        return [dict(zip(CANONICAL_ROW_FIELDS, row, strict=True)) for row in raw]
+        return assign_unique_holders_row_seq(
+            [dict(zip(CANONICAL_ROW_FIELDS, row, strict=True)) for row in raw]
+        )
 
     if domain == "org_holding":
         from services.data_sources.org_holding_schema import (

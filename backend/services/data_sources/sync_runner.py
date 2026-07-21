@@ -2070,13 +2070,31 @@ def land_disclosure_partition_from_legacy_batch(
                 domain, conn, partition=part, bootstrap=True
             )
         except DisclosureTransportError as exc:
+            err = str(exc)
+            # Local-raw only: empty partition is a typed no-announcement day,
+            # not a hard failure. Enables ≤40d window broaden across weekends
+            # without inventing mass / crawling past real writer errors.
+            if "no legacy rows" in err:
+                return {
+                    "domain": domain,
+                    "status": "empty_skip",
+                    "batches": 0,
+                    "rows": 0,
+                    "failed_batches": 0,
+                    "error": err[:500],
+                    "partition_value": part,
+                    "publication": "land_only_disclosure_from_local_raw",
+                    "transport": "land_only",
+                    "acquire_mode": "local_legacy_raw_materialize",
+                    "target_db": db_alias,
+                }
             return {
                 "domain": domain,
                 "status": "error",
                 "batches": 0,
                 "rows": 0,
                 "failed_batches": 1,
-                "error": str(exc)[:500],
+                "error": err[:500],
                 "partition_value": part,
                 "publication": "land_only_disclosure_from_local_raw",
                 "transport": "land_only",
@@ -2289,6 +2307,7 @@ def _run_disclosure_transport_window(
     day_results: list[dict[str, Any]] = []
     total_rows = 0
     failed = 0
+    empty_skips = 0
     last_ok: str | None = None
     completed_ok = 0
     acquire_label = "from_local_raw" if from_local_raw else "from_provider"
@@ -2301,7 +2320,10 @@ def _run_disclosure_transport_window(
             result = land_fn(domain, partition=part)
         elif transport == "land_then_accept":
             land_result = land_fn(domain, partition=part)
-            if int(land_result.get("failed_batches") or 0) != 0:
+            if str(land_result.get("status") or "") == "empty_skip":
+                result = dict(land_result)
+                result["transport"] = "land_then_accept"
+            elif int(land_result.get("failed_batches") or 0) != 0:
                 result = dict(land_result)
                 result["transport"] = "land_then_accept"
             else:
@@ -2319,12 +2341,16 @@ def _run_disclosure_transport_window(
         day_results.append(result)
         day_failed = int(result.get("failed_batches") or 0)
         failed += day_failed
+        if str(result.get("status") or "") == "empty_skip":
+            empty_skips += 1
+            continue
         if day_failed == 0:
             completed_ok += 1
             last_ok = part
             total_rows += int(result.get("rows") or 0)
         else:
             # Match security-day: stop on first failure (no partial-accept crawl).
+            # Local-raw empty_skip continues above; provider empty stays fail-closed.
             break
 
     status = "ok" if failed == 0 else "error"
@@ -2334,6 +2360,7 @@ def _run_disclosure_transport_window(
         "batches": completed_ok,
         "rows": total_rows,
         "failed_batches": failed,
+        "empty_skips": empty_skips,
         "last_ok_partition": last_ok,
         "partitions": partitions,
         "day_results": day_results,

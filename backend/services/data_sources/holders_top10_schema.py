@@ -7,7 +7,7 @@ legacy mirror for research rebuild.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from services.data_sources.accepted_schema import ACCEPTED_TABLE, INGEST_BATCH_TABLE
@@ -32,6 +32,50 @@ GRAIN = (
     "row_seq",
     "is_exit_row",
 )
+
+
+def assign_unique_holders_row_seq(
+    rows: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Renumber ``row_seq`` so GRAIN is unique within a partition load.
+
+    Miaoxiang can emit multiple holder_name rows at the same HOLDER_RANK;
+    legacy ``_clean`` historically hard-coded ``row_seq=1``, which then fails
+    accept with DUPLICATE_GRAIN. ``row_seq`` exists in GRAIN for this case —
+    assign stable 1..n ordered by holder_name within
+    (stock_code, report_date, holder_set, holder_rank, is_exit_row).
+    """
+
+    from collections import defaultdict
+
+    prepared = [dict(row) for row in rows]
+    prepared.sort(
+        key=lambda r: (
+            str(r.get("stock_code") or ""),
+            str(r.get("report_date") or ""),
+            str(r.get("holder_set") or ""),
+            int(r.get("holder_rank") or 0),
+            bool(r.get("is_exit_row")),
+            str(r.get("holder_name") or ""),
+            str(r.get("notice_date") or ""),
+        )
+    )
+    counters: dict[tuple[Any, ...], int] = defaultdict(int)
+    out: list[dict[str, Any]] = []
+    for row in prepared:
+        key = (
+            str(row.get("stock_code") or ""),
+            str(row.get("report_date") or ""),
+            str(row.get("holder_set") or ""),
+            int(row.get("holder_rank") or 0),
+            bool(row.get("is_exit_row")),
+        )
+        counters[key] += 1
+        row["row_seq"] = counters[key]
+        out.append(row)
+    return out
+
+
 # Shadow / provider identity projection (stable compare surface).
 PROVIDER_FIELDS = (
     "stock_code",
@@ -263,5 +307,6 @@ __all__ = [
     "SCHEMA_VERSION",
     "SOURCE",
     "WRITER_ID",
+    "assign_unique_holders_row_seq",
     "schema_contract_payload",
 ]

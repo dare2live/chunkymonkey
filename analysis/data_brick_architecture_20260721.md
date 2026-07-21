@@ -242,7 +242,7 @@ flowchart TB
 | 域 | Gap | 下一刀 |
 |---|---|---|
 | **S7 legacy plane** | **near-FIXED / stronger PARTIAL**：23/46 ssot = typed hard-stop wall only（2 blocked + 7 serve_l0_declared + 14 sync_orphan）；B1+B2 priority done | no fake COMPAT；next only with new publication/sunset evidence；else E0 |
-| **E0 disclosure** | org provider land **BLOCKED**；accepted 窗窄 | org by-date faucet 或 stay local-raw |
+| **E0 disclosure** | org provider land **BLOCKED**；holders **17** / stk **27** accepted（local-raw empty_skip + row_seq fix） | org stay local-raw；no by-date invent |
 | **L2 qfq lineage** | placeholder batch_id / UNION 残留 | manifest 补齐或 UNTRUSTED |
 | **L3 brick registry** | FeatureBlock 分散在脚本 | 收编为 contract + hash（无新 DB） |
 | **Blocked datasets** | stk_limit/daily_basic/suspend_d/margin_detail | 诚实无 publication；不 fake PIT |

@@ -182,7 +182,11 @@ def _clean(raw: list[dict], *, start_period: str) -> list[dict]:
             "fetched_at": fetched_at,
             "created_at": fetched_at,
         })
-    return out
+    from services.data_sources.holders_top10_schema import (
+        assign_unique_holders_row_seq,
+    )
+
+    return assign_unique_holders_row_seq(out)
 
 
 # ── ③ 加工 process ───────────────────────────────────────────────────

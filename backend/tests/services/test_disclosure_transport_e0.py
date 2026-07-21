@@ -315,6 +315,89 @@ def _seed_holders_legacy(conn, row: dict) -> None:
     _write_legacy_direct(conn, [legacy], as_mirror=False)
 
 
+def test_assign_unique_holders_row_seq_breaks_rank_collisions() -> None:
+    from services.data_sources.holders_top10_schema import (
+        GRAIN,
+        assign_unique_holders_row_seq,
+    )
+
+    rows = [
+        {
+            "stock_code": "301059",
+            "report_date": "20260702",
+            "holder_set": "free",
+            "holder_rank": 3,
+            "row_seq": 1,
+            "is_exit_row": False,
+            "holder_name": "乙",
+            "hold_ratio_float": 1.0,
+            "notice_date": "20260706",
+        },
+        {
+            "stock_code": "301059",
+            "report_date": "20260702",
+            "holder_set": "free",
+            "holder_rank": 3,
+            "row_seq": 1,
+            "is_exit_row": False,
+            "holder_name": "甲",
+            "hold_ratio_float": 2.0,
+            "notice_date": "20260706",
+        },
+    ]
+    fixed = assign_unique_holders_row_seq(rows)
+    keys = [tuple(r[k] for k in GRAIN) for r in fixed]
+    assert len(keys) == len(set(keys))
+    by_name = {r["holder_name"]: r["row_seq"] for r in fixed}
+    # Stable sort by holder_name (Unicode); 乙 < 甲
+    assert by_name["乙"] == 1
+    assert by_name["甲"] == 2
+
+
+def test_land_then_accept_after_row_seq_assign_accepts_rank_collisions(
+    conn,
+) -> None:
+    """Renumber row_seq before land→accept so same-rank holder_names accept."""
+
+    from services.data_sources.disclosure_transport import (
+        land_then_accept_disclosure_partition,
+    )
+    from services.data_sources.holders_top10_schema import (
+        assign_unique_holders_row_seq,
+    )
+
+    base = _holders_row()
+    twin = _holders_row(
+        holder_name="同名冲突乙",
+        holder_name_norm="同名冲突乙",
+        hold_ratio_float=0.5,
+        row_seq=1,
+    )
+    fixed = assign_unique_holders_row_seq([base, twin])
+    outcome = land_then_accept_disclosure_partition(
+        "holders_top10",
+        conn,
+        partition=PARTITION_HOLDERS,
+        rows=fixed,
+        observed_at=OBSERVED_HOLDERS,
+        available_at=OBSERVED_HOLDERS,
+    )
+    assert outcome.status == "ACCEPTED"
+    assert outcome.row_count == 2
+    seqs = {
+        r[0]: r[1]
+        for r in conn.execute(
+            f"""
+            SELECT holder_name, row_seq FROM {HOLDERS_CANONICAL}
+             WHERE notice_date = ?
+            """,
+            [PARTITION_HOLDERS],
+        ).fetchall()
+    }
+    assert len(seqs) == 2
+    assert seqs[base["holder_name"]] != seqs[twin["holder_name"]]
+
+
 def test_land_from_legacy_holders_does_not_write_canonical(conn) -> None:
     """S1 from local legacy: landing only; no canonical / accepted_partition."""
 
@@ -700,7 +783,7 @@ def test_disclosure_cli_rejects_future_window_before_writer_lock(
 
 
 def test_disclosure_window_stops_on_first_failure(monkeypatch) -> None:
-    """Multi-day disclosure must not crawl past the first failed day."""
+    """Multi-day disclosure must not crawl past the first real failed day."""
 
     from services.data_sources import sync_runner as sr
 
@@ -715,7 +798,7 @@ def test_disclosure_window_stops_on_first_failure(monkeypatch) -> None:
                 "batches": 0,
                 "rows": 0,
                 "failed_batches": 1,
-                "error": "no legacy rows",
+                "error": "writer lock busy",
                 "partition_value": partition,
                 "publication": "land_only_disclosure_from_local_raw",
                 "transport": "land_only",
@@ -744,6 +827,112 @@ def test_disclosure_window_stops_on_first_failure(monkeypatch) -> None:
     assert result["failed_batches"] == 1
     assert result["window_days_attempted"] == 2
     assert len(result["day_results"]) == 2
+
+
+def test_disclosure_local_raw_empty_partition_skips_and_continues(
+    monkeypatch,
+) -> None:
+    """Local-raw: 0 legacy rows = typed empty day, not hard-stop (no mass invent).
+
+    Provider empty still fails closed elsewhere; this unlocks ≤40d window
+    broaden across weekends / no-announcement calendar days.
+    """
+
+    from services.data_sources import sync_runner as sr
+
+    calls: list[str] = []
+    accepts: list[str] = []
+
+    def fake_land(domain, *, partition):
+        calls.append(partition)
+        if partition == "20260716":
+            return {
+                "domain": domain,
+                "status": "empty_skip",
+                "batches": 0,
+                "rows": 0,
+                "failed_batches": 0,
+                "error": "no legacy rows",
+                "partition_value": partition,
+                "publication": "land_only_disclosure_from_local_raw",
+                "transport": "land_only",
+                "acquire_mode": "local_legacy_raw_materialize",
+            }
+        return {
+            "domain": domain,
+            "status": "ok",
+            "batches": 1,
+            "rows": 3,
+            "failed_batches": 0,
+            "batch_id": f"{domain}:{partition}:x",
+            "partition_value": partition,
+            "publication": "land_only_disclosure_from_local_raw",
+            "transport": "land_only",
+            "acquire_mode": "local_legacy_raw_materialize",
+        }
+
+    def fake_accept(domain, *, batch_id):
+        accepts.append(batch_id)
+        return {
+            "domain": domain,
+            "status": "ok",
+            "batches": 1,
+            "rows": 3,
+            "failed_batches": 0,
+            "batch_id": batch_id,
+            "partition_value": batch_id.split(":")[1],
+            "publication": "accept_from_landing",
+            "transport": "accept_from_landing",
+        }
+
+    monkeypatch.setattr(sr, "land_disclosure_partition_from_legacy_batch", fake_land)
+    monkeypatch.setattr(sr, "accept_disclosure_from_landing_batch", fake_accept)
+    result = sr._run_disclosure_transport_window(
+        "stk_holdertrade",
+        transport="land_then_accept",
+        start="20260715",
+        end="20260717",
+        from_local_raw=True,
+    )
+    assert calls == ["20260715", "20260716", "20260717"]
+    assert accepts == [
+        "stk_holdertrade:20260715:x",
+        "stk_holdertrade:20260717:x",
+    ]
+    assert result["status"] == "ok"
+    assert result["failed_batches"] == 0
+    assert result["batches"] == 2
+    assert result["empty_skips"] == 1
+    assert result["rows"] == 6
+
+
+def test_land_from_legacy_empty_returns_typed_empty_skip(
+    conn, monkeypatch
+) -> None:
+    """CLI local-raw land of empty partition → empty_skip (not failed_batches)."""
+
+    from services.data_sources import sync_runner as sr
+
+    class _Manifest:
+        def path_for(self, _alias: str) -> str:
+            return ":memory:"
+
+    monkeypatch.setattr(
+        "services.database_manifest.get_database_manifest", lambda: _Manifest()
+    )
+    monkeypatch.setattr(
+        "services.duck_adapter.connect", lambda *_a, **_k: conn
+    )
+    monkeypatch.setattr(conn, "close", lambda: None)
+
+    result = sr.land_disclosure_partition_from_legacy_batch(
+        "holders_top10",
+        partition="20990101",
+    )
+    assert result["status"] == "empty_skip"
+    assert result["failed_batches"] == 0
+    assert result["rows"] == 0
+    assert "no legacy" in str(result.get("error") or "").lower()
 
 
 def test_sync_runner_land_disclosure_from_legacy_helper_zero_accept(
