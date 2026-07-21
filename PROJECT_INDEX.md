@@ -138,8 +138,9 @@ default sync → acquire → `land_then_accept_authorized_security_day`；fused
 `capture_and_publish_authorized_*_partition` **test-only**。CLI：
 `chunkyctl sync --domain daily|stock_st`（default land→accept）以及
 `--land-only|--accept-from-landing|--land-then-accept`（可选 `--from-local-raw`；
-accept 路径跳过 provider auth / acquire；disclosure 三域同 flags 且
-**必须** `--from-local-raw`）。S5 derive（FIXED）+ S7 near-FIXED / stronger PARTIAL：
+accept 路径跳过 provider auth / acquire；disclosure 三域同 land/accept flags：
+`--from-local-raw`（三域；empty_skip）或 provider land（`stk_holdertrade`+`holders_top10` only；
+org provider land BLOCKED）。S5 derive（FIXED）+ S7 near-FIXED / stronger PARTIAL：
 `chunkyctl derive qfq|form` + form library + pipeline clean/process 默认
 accepted-only；`--allow-legacy-fill` 逃生；daily accepted `20190102`→`20260720`
 （ST asymmetric `20220104`）；`legacy_raw_plane.yaml` + gate（**23/46 ssot** typed hard-stop wall；B1+B2 priority done）；§15 `pre-knife`。
