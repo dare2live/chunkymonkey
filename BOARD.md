@@ -2,12 +2,12 @@
 
 > 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。
 > **Projection only** — not an enforcement input. Cutover / readiness / PIT gates still resolve from yaml + code resolvers + accepted partitions.
-> Snapshot: 2026-07-20T13:27:24Z
+> Snapshot: 2026-07-21T06:12:12Z
 
 ## Track
 
-- track: `a_to_h_resumed` status=`a_to_h_resumed_owner_20260720`
-- A→H: `resumed_20260720_from_d8b69090`
+- track: `transport_strangler_s1_s7` status=`s1_s6_fixed_s7_partial_e0_partial`
+- A→H: `post_research_map_only_efgh_appendix`
 - WP1: `FIXED` | WP2: `FIXED` | WP3: `FIXED` | WP4: `FIXED` | WP5: `SKIPPED_occam` | WP6: `POLICY_FIXED_shadow_open`
 - agent-OS: `shadow_period_open_not_closed` shadow start=`be8efc6f/2026-07-20` deadline=`10_sessions_or_14d_first` (ceremony flip only; B-pit/C data cutover unrelated)
 
@@ -41,12 +41,12 @@
 - mass backfill / plugin bus / second DB / silent cutover
 - --no-verify / agent self-downgrade of commit tier
 
-## Next (frozen menu)
+## Next (projection — goal.md wins on order)
 
-- A→H next: F main_rally B0–B2 on shared research_runtime (no Optuna/Release)
-- accept Tier1/2 partitions for days after 20260720 when eligible
-- agent-OS WP6 ceremony flip after shadow checklist (owner-gated)
-- or stop
+- S7 legacy raw: dc_member / stock-flow drill L0 / tail ssot formal|sunset (inventory 32/46 ssot)
+- E0 disclosure residual: org_holding provider land BLOCKED; expand stk/holders accept
+- §15 adoption verify: commits/knife ≤1.5; async CI; pre-knife before L3
+- E/F same-protocol remeasure paused (not near-term; F0–F3 protocol-complete)
 
 ## Sources
 

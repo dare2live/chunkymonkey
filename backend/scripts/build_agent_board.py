@@ -37,19 +37,25 @@ BANS = [
 
 
 def _next_knives(*, b_on: bool, c_on: bool) -> list[str]:
-    """Project next-knife menu from live cutover yaml (not a frozen false)."""
-    if b_on and c_on:
-        return [
-            "A→H next: F main_rally B0–B2 on shared research_runtime (no Optuna/Release)",
-            "accept Tier1/2 partitions for days after 20260720 when eligible",
-            "agent-OS WP6 ceremony flip after shadow checklist (owner-gated)",
-            "or stop",
-        ]
-    return [
-        "opt-in C/B-pit cutover only with strong evidence (yaml still false)",
-        "agent-OS shadow residuals (ceremony flip owner-gated)",
-        "or stop",
+    """Project near-term knives from goal.md mainline (not A→H research map).
+
+    BOARD is projection-only; ``goal.md`` + ``plan_reeval_first_principles`` win
+    on ordering. Cutover yaml only gates opt-in lines when gates are false.
+    """
+    knives = [
+        "S7 legacy raw: dc_member / stock-flow drill L0 / tail ssot formal|sunset "
+        "(inventory 32/46 ssot)",
+        "E0 disclosure residual: org_holding provider land BLOCKED; expand "
+        "stk/holders accept",
+        "§15 adoption verify: commits/knife ≤1.5; async CI; pre-knife before L3",
+        "E/F same-protocol remeasure paused (not near-term; F0–F3 protocol-complete)",
     ]
+    if not (b_on and c_on):
+        knives.insert(
+            0,
+            "opt-in C/B-pit cutover only with strong evidence (yaml still false)",
+        )
+    return knives
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -130,10 +136,10 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
         "generated_from": "backend/scripts/build_agent_board.py",
         "enforcement": "projection_only_not_truth",
         "track": {
-            "name": "a_to_h_resumed",
-            "status": "a_to_h_resumed_owner_20260720",
+            "name": "transport_strangler_s1_s7",
+            "status": "s1_s6_fixed_s7_partial_e0_partial",
             "agent_os": "shadow_period_open_not_closed",
-            "a_to_h": "resumed_20260720_from_d8b69090",
+            "a_to_h": "post_research_map_only_efgh_appendix",
             "wp1": "FIXED",
             "wp2": "FIXED",
             "wp3": "FIXED",
@@ -295,7 +301,7 @@ def render_md(d: dict[str, Any]) -> str:
     for ban in d["bans"]:
         add(f"- {ban}")
     add("")
-    add("## Next (frozen menu)")
+    add("## Next (projection — goal.md wins on order)")
     add("")
     for item in d["next_knives_frozen"]:
         add(f"- {item}")

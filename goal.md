@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-21（**S1–S6 FIXED**；**S7 PARTIAL** stronger — inventory **36/46 ssot**；**§15 knife-merge adoption started**；**E0 PARTIAL** land-only CLI + provider land `stk_holdertrade`+`holders_top10`；`org_holding` provider land **BLOCKED**；accepted daily **`20190102`→`20260720`**（1829d）；ST **`20220104`→`20260720`**（1099d；asymmetric ST raw floor））
+> 更新：2026-07-21（**S1–S6 FIXED**；**S7 PARTIAL** stronger — inventory **32/46 ssot**；**§15 knife-merge adoption started**；**E0 PARTIAL** land-only CLI + provider land `stk_holdertrade`+`holders_top10`；`org_holding` provider land **BLOCKED**；accepted daily **`20190102`→`20260720`**（1829d）；ST **`20220104`→`20260720`**（1099d；asymmetric ST raw floor））
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -12,11 +12,12 @@
 > **数据积木/变量分层权威（L0–L4、组合规则、模块 operability）**：`analysis/data_brick_architecture_20260721.md`
 > **DB 存储卫生（free-block / archive 机制 + 2026-07-21 reclaim）**：`analysis/db_storage_hygiene_20260721.md`
 > **吞吐瓶颈诊断（墙钟 vs 真相门；§15 adoption）**：`analysis/throughput_bottleneck_diagnosis_20260721.md`
+> **§15 效率复测（measured validation）**：`analysis/process_efficiency_validation_20260721.md`
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 
 ## 当前 objective
 
-**轨道 = transport strangler S1–S7**（owner 2026-07-20 第一原理重评）。模块化诉求（acquire≠accept≠derive≠serve；sync=caller-only；acquire 可换源）**S1–S6 FIXED**；**S7 PARTIAL**（derive+form+pipeline clean 默认 accepted-only；daily accepted 已扩至 `20190102`；inventory **36 ssot / 1 fill / 9 compatibility** of 46）——见重评文 §2–§3 / modularity gap §8。A→H 骨架保留为**后置研究地图**；近端 residual = S7 续 strangler（dc_member 仍 ssot；stock-flow drill L0；其余 raw 逐域 formal|sunset；禁盲删 raw）；不是 E/F remeasure。Agent-OS WP0–WP4 已闭合；WP6 仪式影子期仍开放。**§15 knife-merge adoption started**（binding：一刀=一次 Rule10+一次 safe_commit；异步 CI；L3 先 `pre-knife`）。
+**轨道 = transport strangler S1–S7**（owner 2026-07-20 第一原理重评）。模块化诉求（acquire≠accept≠derive≠serve；sync=caller-only；acquire 可换源）**S1–S6 FIXED**；**S7 PARTIAL**（derive+form+pipeline clean 默认 accepted-only；daily accepted 已扩至 `20190102`；inventory **32 ssot / 1 fill / 13 compatibility** of 46）——见重评文 §2–§3 / modularity gap §8。A→H 骨架保留为**后置研究地图**；近端 residual = S7 续 strangler（dc_member 仍 ssot；stock-flow drill L0；其余 raw 逐域 formal|sunset；禁盲删 raw）；不是 E/F remeasure。Agent-OS WP0–WP4 已闭合；WP6 仪式影子期仍开放。**§15 knife-merge adoption started**（binding：一刀=一次 Rule10+一次 safe_commit；异步 CI；L3 先 `pre-knife`）。
 
 已落地硬事实（勿回滚）：
 - C + B-pit **`cutover_allowed=true`**（commit `b38e9ac5`）→ resolver `ACCEPTED_CUTOVER` / `MART_CUTOVER`
@@ -46,7 +47,7 @@
 - **Accepted window（local-raw chunked）**：daily **`20190102`→`20260720`（1829d）**；ST **`20220104`→`20260720`（1099d）** — ST raw floor，asymmetric；holdout `20250601` in-window
 - **S5 derive FIXED**：`chunkyctl derive qfq|form --from-accepted` + `derive_runtime`（canonical-only nominal；零 acquire/fused publish；不进 accept 事务）
 - **S6 serve FIXED**：`market_pulse_serve_read` 经 DataAccess registry+resolver 承接 drill/members/margin L0 leaf；router 零 `# serve-exempt:` / 零内联 raw；D5 全绿；form/sentiment 仍 production_read
-- **S7 PARTIAL（stronger）**：derive + form library + pipeline clean/process 默认 accepted-only；daily expand 闭合 2019；qfq from-accepted **8,402,928** 行；**inventory 41→36 ssot**（+5 compatibility）：SW membership→`v_sw_industry_pit`；pulse builder `moneyflow_ind_dc`/`moneyflow_mkt_dc`→mart publication；`stock_basic`→`dim_active_a_stock`；`adj_factor`→`price_kline_qfq_tushare`；dc_member + stock-flow drill L0 仍 ssot；**BLOCKED 本刀**：`stk_limit`/`daily_basic`/`suspend_d`/`margin_detail`（无诚实 publication）→ **不升 FIXED**
+- **S7 PARTIAL（stronger）**：derive + form library + pipeline clean/process 默认 accepted-only；daily expand 闭合 2019；qfq from-accepted **8,402,928** 行；**inventory 36→32 ssot**（+4 compatibility）：pulse builder `sw_daily`/`dc_index`/`index_dailybasic`/`limit_cpt_list`→mart publication via DataAccess；prior SW/pulse-flow/identity/adj still compatibility；dc_member + stock-flow drill L0 + `limit_list_d`/`top_list`/`top_inst`/`index_daily` 仍 ssot；**BLOCKED**：`stk_limit`/`daily_basic`/`suspend_d`/`margin_detail`（无诚实 publication）+ serve-leaf/multi-consumer 域 → **不升 FIXED**
 - **§15 adoption started**：knife-merge + `chunkyctl pre-knife` + agent-boot reminder；E/F **paused**；禁令不变
 - **E0 PARTIAL（stronger）**：disclosure S1/S2 CLI 齐：`--land-only|--land-then-accept --from-local-raw`（三域）+ provider land without `--from-local-raw` for **`stk_holdertrade`**（by_ann_date）+ **`holders_top10`**（miaoxiang by `UPDATE_DATE`/notice_date；~10–120 行/日；≤40d；禁 mass dump；首日失败即停）+ `--accept-from-landing --batch-id`；**`org_holding` provider land BLOCKED**（by-period ~830k/期；无 NOTICE_DATE；仍 `--from-local-raw`）；live accepted holders **13** / stk **6** / org **2**；DatasetSnapshot 未改写；E/F remeasure 仍 paused
 - **近端 focus**：S7 续刀（dc_member / moneyflow drill L0 / 长尾 ssot formal|sunset）或 E0 residual（org by-date faucet if ever；org full-universe；mass legacy accept）；**不**开 E/F remeasure / G/H/Release

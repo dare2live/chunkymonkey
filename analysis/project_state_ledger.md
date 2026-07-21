@@ -2644,6 +2644,32 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual**：dc_member + stock-flow drill L0 ssot；长尾；E0 org；E/F paused。
 - **Status**: **PARTIAL**（S7 stronger + §15 adoption started；not FIXED）。
 
+### 2026-07-21 — S7 pulse-builder leftovers (ssot 36→32)
+
+- Wall-clock: Tue 2026-07-21 ~14:00–14:40 Asia/Shanghai.
+- **Knife**：reclassify pulse-builder-only inputs that already feed mart display
+  publication；route builder SQL via DataAccess `_tr_entity`；no raw delete.
+  1. `sw_daily` / `dc_index` → compatibility
+     (`publication_surface=mart_sector_pulse_daily`)。
+  2. `index_dailybasic` / `limit_cpt_list` → compatibility
+     (`publication_surface=mart_market_pulse_daily`)；new DataAccess entities。
+  3. Builder hygiene（stay ssot where honest）：`dc_member` / `moneyflow` /
+     `moneyflow_dc` / `limit_list_d` / `top_list` / `top_inst` / `index_daily` /
+     `valuation` also resolved via `_tr_entity` in `market_pulse.py`。
+  4. Inventory：**36→32 ssot** / 1 fill / **9→13 compatibility** of 46。
+- **BLOCKED / stay ssot（honest）**：dc_member（no DC membership PIT）；
+  moneyflow/moneyflow_dc（serve drill L0；no mart-mirror）；limit_list_d（serve
+  leaf）；top_list/top_inst（institution_profile multi-consumer）；index_daily
+  （paper/RS/multi-consumer）；`stk_limit`/`daily_basic`/`suspend_d`/
+  `margin_detail`；~20 sync-orphan long-tail（no formal plane → not fake
+  compatibility）。
+- Evidence：`check_legacy_raw_plane` ssot=32；69 targeted pytest green；
+  `pre-knife s7-pulse-builder-ssot` OK。
+- **Did not**：blind delete raw；dc_member formal PIT；drill stock-flow mart；
+  E/F remeasure；touch peer `process_efficiency_validation_*` mid-edit。
+- **Residual**：32 ssot as above；E0 org；E/F paused。
+- **Status**: **PARTIAL**（S7 stronger；not FIXED）。
+
 ### 2026-07-21 — DB storage hygiene reclaim (local data plane)
 
 - Wall-clock: Tue 2026-07-21 ~11:01 Asia/Shanghai (compact/delete) + commit session.

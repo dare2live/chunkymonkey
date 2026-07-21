@@ -420,6 +420,21 @@ Live 焊点（evidence pack §2.7 复核）：
 - Did not：blind delete raw；E/F remeasure；loosen L3/Rule10/PIT/≤40d.
 - Residual：dc_member ssot；drill stock-flow L0；长尾 ssot；E0；E/F paused.
 
+### Amend 2026-07-21 — S7 pulse-builder leftovers (ssot 36→32)
+
+- Pulse builder leftovers → mart publication via DataAccess：`sw_daily` /
+  `dc_index` → `mart_sector_pulse_daily`；`index_dailybasic` /
+  `limit_cpt_list` → `mart_market_pulse_daily`；raw → **compatibility**.
+- Builder SQL in `market_pulse.py` routes remaining pulse inputs through
+  `_tr_entity`（including still-ssot serve-leaf / multi-consumer tables）.
+- Inventory：**36→32 ssot** / 1 fill / **13 compatibility** of 46 → stronger
+  **PARTIAL**（not FIXED）.
+- Stay ssot（honest）：dc_member；moneyflow/moneyflow_dc drill L0；limit_list_d；
+  top_list/top_inst；index_daily；BLOCKED limit/basic/suspend/margin_detail；
+  sync-orphan long-tail without formal plane.
+- Did not：blind delete raw；fake DC PIT；E/F remeasure；loosen L3/Rule10/PIT/≤40d.
+- Residual：32 ssot as above；E0；E/F paused.
+
 ### Amend 2026-07-21 — R0 E0 PARTIAL (disclosure transport modular)
 
 - Shipped `disclosure_transport` mirroring S1/S2：`land_disclosure_partition_from_rows`

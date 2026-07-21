@@ -1,7 +1,10 @@
 # Forward program — E/F rejects → G/H gates (2026-07-20)
 
 > 生命周期：历史证据（evidence-only）。owner-facing program draft，非产品 KPI 宣称；
-> 不拥有执法（以 `goal.md` 为准）；不发明 claimable/Release。  
+> 不拥有执法（以 `goal.md` 为准）；不发明 claimable/Release。
+> **Superseded near-term ordering (2026-07-21)**：近端排序见 `goal.md` +
+> `analysis/plan_reeval_first_principles_20260720.md`（transport S1–S7 → E0 → E/F
+> remeasure）。本文 = E/F/G/H **后置研究地图**，非 agent 启动菜单。
 > 依据：`~/.cursor/plans/gap_analysis_audit_3cdd0f6e.plan.md` §3/§5.3；
 > `goal.md`；`data/lineage/phase_{e,f}_experiment_verdicts/`；
 > ledger 2026-07-19→20；strangler commit `cba8063fd`；

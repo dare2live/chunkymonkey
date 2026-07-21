@@ -238,10 +238,11 @@ run_domain(daily|stock_st)
 | **G** 公式 + BestChoice | B5 / challenger | **未开**（goal 禁；forward program：无 claimable 不开 G） |
 | **H** Release / 纸面 | StrategyRelease 后 | **未开**（机械封锁） |
 
-补充事实（board `next_knives_frozen` 投影，可能滞后于 goal 手写）：
+补充事实（board `next_knives_frozen` 投影 — **2026-07-20 采集时 stale**）：
 
-- 仍列出：`A→H next: F main_rally B0–B2…`；`accept Tier1/2 … after 20260720`；WP6 ceremony；`or stop`。  
-- goal 手写下一步指针：`forward_program_efgh` 的 **P0+P1**；并另有「地基模块化 — NOT SHIPPED」旁路句指向 modularity gap。
+- 采集日 BOARD 仍列出：`A→H next: F main_rally B0–B2…` 等 — **与 goal 冲突**（plan §0 已裁决）。
+- **2026-07-21 fix**：`build_agent_board.py` 改投影为 S7/E0/§15 主线；regen `BOARD.md`。
+- goal 手写下一步（现行）：`plan_reeval_first_principles` 排序；S1–S6 FIXED；S7 续减 ssot。
 
 Plan §2 多源目标态 vs 实况句（plan 原文摘要）：正式 registry 域 live adapter=TuShare；miaoxiang 披露域 live 但 NONCONFORMING（直写）— 归 E0。
 

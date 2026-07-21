@@ -1,14 +1,16 @@
 # 数据地基模块化缺口诊断（2026-07-20）
 
-> 状态：evidence-only / owner diagnosis（含 2026-07-20 业主二次澄清）
+> 状态：evidence-only / owner diagnosis（含 2026-07-20 业主二次澄清；**2026-07-21 amend**）
 > 范围：daily + stock_st formal path；对照「模块边界 + 编排器」需求 vs 已交付实现
 > 禁令：不写 Optuna/StrategyRelease/cutover 翻转；本笔记不启动 pipeline rewrite
+>
+> **Amend 2026-07-21（现行真相）**：**S1–S6 transport strangler FIXED**（见 §8）。§0–§4 为 **2026-07-20 诊断当时**快照（fused `capture_and_publish` 路径）；**勿**再当作「模块化编排未交付」的执法输入。近端 residual = **S7 续减 ssot**（inventory 32/46）；运营路径已 caller-only land→accept + derive + serve。
 
-## 0. 一句话裁决（业主澄清后，不稀释）
+## 0. 一句话裁决（2026-07-20 诊断当时；§8 superseded）
 
-### 模块化编排需求是否已 shipped？
+### 模块化编排需求是否已 shipped？（诊断日答案）
 
-**NO。**
+**NO**（截至 2026-07-20；**S1–S6 落地后见 §8 FIXED**）。
 
 近期 daily/ST 路径**没有**交付「独立模块 + 编排器依次触发」；交付的是 **fetch 焊死在 accept 上的一条龙函数**（`capture_and_publish_*`），由 `sync_runner` 直接调用。一键 sync **可以**作为系统级编排存在，但现状不是编排——是融合实现。
 
@@ -141,7 +143,7 @@ Acquire 边界（owner 2026-07-21；MASTER §5.1）：formal daily/ST = 全市�
 | S4 acquire swappable | **FIXED** | `security_day_acquire` modes `provider_tushare`/`local_legacy_raw_materialize`；land+default sync via resolve；accept 零 acquire；TDD `test_security_day_acquire_s4.py` |
 | S5 derive | **FIXED** | `chunkyctl derive qfq|form --from-accepted`；`derive_runtime`；form/qfq canonical-only nominal；TDD `test_derive_runtime_s5.py`；零 acquire |
 | S6 serve | **FIXED** | `market_pulse_serve_read` + DataAccess entities；router 零 `# serve-exempt:`；D5 OK |
-| S7 legacy raw plane | **PARTIAL** | derive+form+pipeline clean 默认 accepted-only；daily accepted `20190102`→`20260720`；inventory **36/46 ssot**（SW→PIT；pulse flow→mart；stock_basic→dim；adj→qfq） |
+| S7 legacy raw plane | **PARTIAL** | derive+form+pipeline clean 默认 accepted-only；daily accepted `20190102`→`20260720`；inventory **32/46 ssot**（SW→PIT；pulse builders→mart；stock_basic→dim；adj→qfq） |
 
 Residual owner：S7 续（dc_member / stock-flow drill L0 / 长尾 ssot formal|sunset；禁盲删 raw）；ST 不可对称扩至 2019。
 Live expand evidence（2026-07-21）：accepted daily **`20190102`→`20260720`（1829d）**；ST **`20220104`→`20260720`（1099d）**（asymmetric）。
