@@ -2999,3 +2999,16 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   (not org invent / not E/F). Residual documented；stop.
 - **Did not**：Optuna；E/F；org invent；S7 fake FIXED；B5 fake FIXED.
 - **Status**: **FIXED** (qfq live lineage populate) / **PARTIAL** (B5 overall).
+
+### 2026-07-21 — foundation phase reeval (tip 650aea42f)
+
+- Authority：`analysis/foundation_phase_reeval_20260721.md`；`goal.md` near-term =
+  **foundation solidify**；strategy **paused**.
+- Vs scheme：**~85%**（S1–S6 FIXED；S7 near-FIXED 23/46 typed wall；E0 accept
+  thin；B5 registry/qfq FIXED subset；Type-B enrichment **defer**；§15 behavior
+  PARTIAL).
+- Next 3 (foundation only)：E0-HIST → FND-GATE → §15-VERIFY.
+- NOT next：E/F remeasure；G/H/Release；S7 fake COMPAT；Type-B enrichment knife;
+  org provider invent.
+- Gates live：`check_legacy_raw_plane` ssot=23；`check_brick_registry` PASS.
+- **Status**: **REPOSITIONED** (near-term sequencing).

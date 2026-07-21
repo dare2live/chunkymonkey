@@ -2,11 +2,11 @@
 
 > 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。
 > **Projection only** — not an enforcement input. Cutover / readiness / PIT gates still resolve from yaml + code resolvers + accepted partitions.
-> Snapshot: 2026-07-21T10:29:31Z
+> Snapshot: 2026-07-21T10:42:25Z
 
 ## Track
 
-- track: `transport_strangler_s1_s7` status=`s1_s6_fixed_s7_partial_e0_partial`
+- track: `transport_strangler_s1_s7` status=`foundation_solidify_85pct_s7_wall_e0_thin`
 - A→H: `post_research_map_only_efgh_appendix`
 - WP1: `FIXED` | WP2: `FIXED` | WP3: `FIXED` | WP4: `FIXED` | WP5: `SKIPPED_occam` | WP6: `POLICY_FIXED_shadow_open`
 - agent-OS: `shadow_period_open_not_closed` shadow start=`be8efc6f/2026-07-20` deadline=`10_sessions_or_14d_first` (ceremony flip only; B-pit/C data cutover unrelated)
@@ -43,11 +43,13 @@
 
 ## Next (projection — goal.md wins on order)
 
-- S7 near-FIXED / stronger PARTIAL: inventory 23/46 ssot = typed hard-stop wall (2 blocked + 7 serve_l0_declared + 14 sync_orphan); no fake COMPAT
-- B5 brick registry PARTIAL: L2/L3 + Type-B gate shipped; qfq physical lineage FIXED + live derive populated; residual = Type-B enrichment PARTIAL only (no thin knife; no fake FIXED)
-- E0 disclosure residual: org_holding provider land BLOCKED; holders 17 / stk 27 accepted; org stay local-raw (no by-date invent)
-- §15 adoption verify: commits/knife ≤1.5; async CI; pre-knife before L3
-- E/F same-protocol remeasure paused (not near-term; F0–F3 protocol-complete)
+- foundation ~85% vs scheme — track=foundation_solidify (analysis/foundation_phase_reeval_20260721.md)
+- E0-HIST: holders+stk local-raw chunked broaden (empty_skip; ≤40d); org BLOCKED stay local-raw
+- FND-GATE: foundation-done F1–F10 aggregate check (legacy plane + brick registry + E0 breadth)
+- §15-VERIFY: knife-merge behavior in next L3 foundation knives; pre-knife before L3
+- S7 23/46 ssot = typed hard-stop wall — no fake COMPAT; owner publication/sunset only
+- Type-B enrichment DEFER (B5 registry/qfq FIXED subset; not near-term knife)
+- E/F remeasure paused until foundation-done (F0–F3 protocol-complete baseline frozen)
 
 ## Sources
 

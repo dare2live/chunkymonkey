@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-21（**S1–S6 FIXED**；**S7 stronger PARTIAL / near-FIXED** — inventory **23/46 ssot** = typed hard-stop wall only（2 `blocked_no_publication` + 7 `serve_l0_declared` + 14 `sync_orphan`）；priority serve/multi-consumer B2/B1 **done**；**禁假 FIXED / 假 COMPAT**；**§15 knife-merge adoption started**；**E0 PARTIAL（stronger）** land-only CLI + provider land `stk_holdertrade`+`holders_top10`；`org_holding` provider land **BLOCKED**；**B5 PARTIAL** — qfq physical lineage **FIXED** + live `derive qfq --from-accepted` populated（8,402,928 行 / `missing_lineage=0` / 6.45s）；residual Type-B enrichment PARTIAL（no thin knife；holders canary）；local-raw empty_skip + holders `row_seq` grain fix；live accepted holders **17** / stk **27** / org **2**；accepted daily **`20190102`→`20260720`**（1829d）；ST **`20220104`→`20260720`**（1099d；asymmetric ST raw floor））
+> 更新：2026-07-21（**foundation ~85% vs scheme** — 见 `analysis/foundation_phase_reeval_20260721.md`；近端 track = **foundation solidify**；策略 **paused**；**S1–S6 FIXED**；**S7 near-FIXED** — **23/46 ssot** typed hard-stop wall；B1+B2 **done**；**§15 adoption started**（behavior PARTIAL）；**E0 PARTIAL** — CLI+provider land ok；accept 薄（holders **17** / stk **27** / org **2**）；**org BLOCKED**；**B5 PARTIAL** — qfq lineage **FIXED**；Type-B enrichment **defer**；daily **`20190102`→`20260720`**（1829d）；ST **`20220104`→`20260720`**（1099d））
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -13,11 +13,12 @@
 > **DB 存储卫生（free-block / archive 机制 + 2026-07-21 reclaim）**：`analysis/db_storage_hygiene_20260721.md`
 > **吞吐瓶颈诊断（墙钟 vs 真相门；§15 adoption）**：`analysis/throughput_bottleneck_diagnosis_20260721.md`
 > **§15 效率复测（measured validation）**：`analysis/process_efficiency_validation_20260721.md`
+> **地基阶段重评（近端排序 authority）**：`analysis/foundation_phase_reeval_20260721.md`
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 
 ## 当前 objective
 
-**轨道 = transport strangler S1–S7**（owner 2026-07-20 第一原理重评）。模块化诉求（acquire≠accept≠derive≠serve；sync=caller-only；acquire 可换源）**S1–S6 FIXED**；**S7 stronger PARTIAL / near-FIXED**（derive+form+pipeline clean 默认 accepted-only；daily accepted 已扩至 `20190102`；inventory **23 ssot / 1 fill / 22 compatibility** of 46；B1+B2 priority serve/multi-consumer **done**；residual **全部** typed hard-stop — 无下一批可诚实 COMPAT 而不假 publication）——见重评文 §2–§3 / modularity gap §8。A→H 骨架保留为**后置研究地图**；近端 residual = E0 / §15 verify（S7 不假升 FIXED）；不是 E/F remeasure。Agent-OS WP0–WP4 已闭合；WP6 仪式影子期仍开放。**§15 knife-merge adoption started**（binding：一刀=一次 Rule10+一次 safe_commit；异步 CI；L3 先 `pre-knife`）。
+**轨道 = foundation solidify**（2026-07-21 重评；母体 = transport strangler S1–S7 + brick L0–L3 + E0 + DB 分层；**~85% vs scheme**）。模块化 **S1–S6 FIXED**；**S7 near-FIXED**（23 ssot = typed hard-stop 墙；B1+B2 done；禁假 COMPAT）。**主 undershot = E0 accept 广度** + **§15 行为 adoption**。**B5** registry/qfq **FIXED 子集**；Type-B enrichment **defer**。A→H = **后置研究地图**；**E/F remeasure paused**。WP0–WP4 闭合；WP6 shadow 开放。**§15 knife-merge started**（binding 不变）。
 
 已落地硬事实（勿回滚）：
 - C + B-pit **`cutover_allowed=true`**（commit `b38e9ac5`）→ resolver `ACCEPTED_CUTOVER` / `MART_CUTOVER`
@@ -36,28 +37,26 @@
 
 ## 下一步
 
-**现行单一路径（排序权威）** =
-`analysis/plan_reeval_first_principles_20260720.md`
+**近端排序 authority** = `analysis/foundation_phase_reeval_20260721.md`（supersede plan_reeval §11 历史菜单）。母体仍 = `plan_reeval_first_principles_20260720.md` + `data_brick_architecture_20260721.md`。
 
-顺序：**S1 → S2 → S3**（land-only / accept-from-landing / sync caller-only）→ **S4–S6 按需** → **R0 E0** → **R1 E/F 复测** → G/H；**H only after accept**。  
-旧 `forward_program_efgh` P1 remeasure **superseded**；P0 自然 sync 护栏仍并行。
+**foundation-done 前唯一序列**（禁 E/F/G/H）：
 
-- **S1–S3 transport FIXED**：default `chunkyctl sync` daily/stock_st/trade_cal = caller-only S1→S2；`capture_and_publish_*` **非** sync 生产 fan-in；CLI `--land-only` / `--accept-from-landing` / `--land-then-accept` + `--from-local-raw`
-- **S4 acquire FIXED（daily/ST land boundary）**：`security_day_acquire.resolve_security_day_acquire` — modes `provider_tushare` | `local_legacy_raw_materialize`；land/default sync 经 acquire；accept 零 acquire（禁重焊）；TDD `test_security_day_acquire_s4.py`；**不**复活多源 fallback registry
-- **Accepted window（local-raw chunked）**：daily **`20190102`→`20260720`（1829d）**；ST **`20220104`→`20260720`（1099d）** — ST raw floor，asymmetric；holdout `20250601` in-window
-- **S5 derive FIXED**：`chunkyctl derive qfq|form --from-accepted` + `derive_runtime`（canonical-only nominal；零 acquire/fused publish；不进 accept 事务）
-- **S6 serve FIXED**：`market_pulse_serve_read` 经 DataAccess registry+resolver 承接 drill/members/margin L0 leaf；router 零 `# serve-exempt:` / 零内联 raw；D5 全绿；form/sentiment 仍 production_read
-- **S7 stronger PARTIAL / near-FIXED**：derive + form library + pipeline clean/process 默认 accepted-only；daily expand 闭合 2019；qfq from-accepted **8,402,928** 行；**inventory 23 ssot / 1 fill / 22 compatibility** of 46；**B1 FIXED**：`dc_member` → `fact_dc_member_daily`（observation-date PIT）；**B2 FIXED**（priority serve/multi-consumer）：limit+moneyflow(+dc)+index_daily+top_inst → fact_*；gate rejects serve_l0_leaf/multi_consumer COMPAT without DataAccess→non-raw publication；**residual ssot map（23；全部 typed hard-stop；无下一批可诚实 COMPAT）**：
-  - `blocked_no_publication` (2)：`suspend_d`（无 fact_daily_price_status writer）、`margin_detail`（formal exchange aggregate = margin only）
-  - `serve_l0_declared` (7)：`block_trade`/`cyq_perf`/`fina_indicator`/`forecast`/`report_rc`/`share_float`/`stk_surv` — DataAccess L0 声明在册，无 live router/service consumer，无 mart/formal plane
-  - `sync_orphan` (14)：`balancesheet`/`daily_info`/`dc_daily`/`dividend`/`express`/`fina_mainbz`/`hm_detail`/`hm_list`/`income`/`kpl_list`/`moneyflow_hsgt`/`stk_factor_pro`/`stk_holdernumber`/`ths_hot` — sync residual；零 DataAccess/serve consumer；禁假 publication → **不升 FIXED**
-- **§15 adoption started**：knife-merge + `chunkyctl pre-knife` + agent-boot reminder；E/F **paused**；禁令不变
-- **E0 PARTIAL（stronger）**：disclosure S1/S2 CLI 齐：`--land-only|--land-then-accept --from-local-raw`（三域；local-raw **empty_skip** continues ≤40d window）+ provider land without `--from-local-raw` for **`stk_holdertrade`**（by_ann_date）+ **`holders_top10`**（miaoxiang by `UPDATE_DATE`/notice_date；~10–120 行/日；≤40d；禁 mass dump；provider 首日失败即停）+ `--accept-from-landing --batch-id`；holders **`row_seq` renumber** unlocks same-rank DUPLICATE_GRAIN；**`org_holding` provider land BLOCKED**（by-period ~830k/期；无 NOTICE_DATE；仍 `--from-local-raw`）；live accepted holders **17** / stk **27** / org **2**；DatasetSnapshot 未改写；E/F remeasure 仍 paused
-- **B5 PARTIAL**（qfq lineage **FIXED** + live populate）：`brick_registry.yaml` L2 primitives + L3 FeatureBlocks（4）+ Type-B edge（2）；gate 绿；qfq physical lineage columns on rebuild（`batch_id`/`ingested_at`/`factor_as_of`；view passthrough；no COALESCE placeholders；`trust=LINEAGE_OK`；latest-factor rebase = typed method）；live `derive qfq --from-accepted` → **8,402,928** 行 / `missing_lineage=0` / **6.45s** — **禁**假升 B5 整体 FIXED；residual = `institution_profile_edge` enrichment PARTIAL（legacy join + thin holders canary；无 safe thin knife）
-- **近端 focus**：B5 residual = Type-B enrichment PARTIAL（needs broader E0 holders historical enrichment，非 org invent）/ E0 **org BLOCKED** 维持 local-raw；S7 仅在 owner 建新 publication 或 sunset 证据时再动 — **不**假 COMPAT / 假 FIXED；**不**开 E/F remeasure / G/H/Release
-- **护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d+禁 mass backfill/第二 DB/plugin bus；§15 不放宽 L3/Rule10
+1. **E0-HIST** — holders_top10 + stk_holdertrade local-raw chunked 续扩（empty_skip；≤40d）；目标 F6：holders **≥120** 交易日 overlap daily accepted（或 owner 书面阈值）；stk 同步；**org 仍 local-raw only**
+2. **FND-GATE** — foundation-done F1–F10 聚合检查（`check_legacy_raw_plane` + `check_brick_registry` + E0 breadth + §15 行为）
+3. **§15-VERIFY** — 下 2–3 个 L3 刀 knife-merge + `pre-knife`；process_efficiency 复测
 
-A→H 降为地图；细节以重评文 §4、§9 为准。
+**已闭合（勿回滚）**：
+
+- **S1–S6 FIXED** — transport modular；default sync caller-only；derive/serve 独立 CLI
+- **S7 near-FIXED** — 23/46 ssot typed hard-stop wall（2 blocked + 7 serve_l0 + 14 sync_orphan）；B1+B2 done；daily **1829d** / ST **1099d**；**本阶段不再开 S7 刀** unless owner 新 publication/sunset block
+- **E0 transport FIXED 子集** — S1/S2 CLI + stk/holders provider land；**org_holding provider land BLOCKED**
+- **B5 FIXED 子集** — registry gate 绿 + qfq lineage + live derive；**Type-B enrichment defer**（registry in-scheme；enrichment 非近端）
+
+**近端 focus**：E0 accept 广度 + foundation-done gate + §15 行为 — **不是** Type-B enrichment / S7 假 COMPAT / E/F remeasure / G/H/Release。
+
+**护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；org BLOCKED 维持。
+
+A→H 仍为后置地图；E/F remeasure **仅** foundation-done 后 scheduled。
 
 ## 禁令
 
