@@ -268,3 +268,294 @@ def test_dual_write_source_uses_transport_not_fused_publish_only() -> None:
     assert "def land_disclosure_partition_from_rows" in transport_src
     assert "def accept_disclosure_from_landing" in transport_src
     assert "def land_then_accept_disclosure_partition" in transport_src
+    assert "def land_disclosure_partition_from_legacy" in transport_src
+
+
+def _seed_holders_legacy(conn, row: dict) -> None:
+    from services.holders_aif10 import _write_legacy_direct
+
+    legacy = {
+        "stock_code": row["stock_code"],
+        "stock_name": "",
+        "market": "",
+        "report_date": row["report_date"],
+        "holder_set": row["holder_set"],
+        "holder_rank": row["holder_rank"],
+        "row_seq": row["row_seq"],
+        "holder_name": row["holder_name"],
+        "holder_name_norm": row.get("holder_name_norm") or row["holder_name"],
+        "share_class": row.get("share_class"),
+        "is_secondary_class": False,
+        "is_exit_row": row.get("is_exit_row", False),
+        "shares_text": None,
+        "shares_approx": row.get("shares_approx"),
+        "shares_precision": None,
+        "hold_amount": None,
+        "hold_ratio_float": row.get("hold_ratio_float"),
+        "hold_ratio_total": None,
+        "hold_ratio": row.get("hold_ratio_float"),
+        "hold_market_cap": None,
+        "holder_type": row.get("holder_type"),
+        "share_nature": None,
+        "change_status": row.get("change_status"),
+        "change_shares_text": None,
+        "change_shares_approx": None,
+        "hold_change": "",
+        "hold_change_num": row.get("hold_change_num"),
+        "notice_date": row["notice_date"],
+        "effective_date": None,
+        "page_update_date": row["notice_date"],
+        "availability_source": "page_update_date",
+        "source": "miaoxiang",
+        "source_tier": 1,
+        "raw_hash": None,
+        "fetched_at": OBSERVED_HOLDERS.isoformat(),
+        "created_at": OBSERVED_HOLDERS.isoformat(),
+    }
+    _write_legacy_direct(conn, [legacy], as_mirror=False)
+
+
+def test_land_from_legacy_holders_does_not_write_canonical(conn) -> None:
+    """S1 from local legacy: landing only; no canonical / accepted_partition."""
+
+    from services.data_sources.disclosure_transport import (
+        land_disclosure_partition_from_legacy,
+    )
+
+    _seed_holders_legacy(conn, _holders_row())
+    batch = land_disclosure_partition_from_legacy(
+        "holders_top10",
+        conn,
+        partition=PARTITION_HOLDERS,
+        observed_at=OBSERVED_HOLDERS,
+    )
+    assert batch.batch_id.startswith(f"holders_top10:{PARTITION_HOLDERS}:")
+    status = conn.execute(
+        "SELECT status FROM ingest_batch WHERE batch_id = ?",
+        [batch.batch_id],
+    ).fetchone()[0]
+    assert status == "LANDED"
+    assert (
+        conn.execute(
+            f"SELECT COUNT(*) FROM {HOLDERS_CANONICAL} WHERE notice_date = ?",
+            [PARTITION_HOLDERS],
+        ).fetchone()[0]
+        == 0
+    )
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM accepted_partition WHERE dataset_id = ?",
+            [HOLDERS_DATASET],
+        ).fetchone()[0]
+        == 0
+    )
+
+
+def test_land_from_legacy_empty_partition_fails_closed(conn) -> None:
+    from services.data_sources.disclosure_transport import (
+        DisclosureTransportError,
+        land_disclosure_partition_from_legacy,
+    )
+
+    with pytest.raises(DisclosureTransportError, match="no legacy"):
+        land_disclosure_partition_from_legacy(
+            "holders_top10",
+            conn,
+            partition=PARTITION_HOLDERS,
+            observed_at=OBSERVED_HOLDERS,
+        )
+
+
+def test_sync_runner_disclosure_land_only_requires_from_local_raw() -> None:
+    """Disclosure land-only is local-raw acquire; no provider mass dump."""
+
+    from argparse import Namespace
+
+    from services.data_sources import sync_runner as sr
+    from services.data_sources.availability import SyncWindowError
+
+    args = Namespace(
+        land_only=True,
+        accept_from_landing=False,
+        land_then_accept=False,
+        from_local_raw=False,
+        drain=False,
+        backfill=False,
+        resume=False,
+        all_due=False,
+        domain="holders_top10",
+        batch_id=None,
+        start="20260715",
+        end="20260715",
+        max_dates=None,
+        trigger_mode="manual",
+    )
+    with pytest.raises(SyncWindowError, match="from-local-raw"):
+        sr._preflight_disclosure_cli_shape(args, transport="land_only")
+
+
+def test_sync_runner_disclosure_land_only_cli_allows_domains() -> None:
+    from argparse import Namespace
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from services.data_sources import sync_runner as sr
+
+    args = Namespace(
+        land_only=True,
+        accept_from_landing=False,
+        land_then_accept=False,
+        from_local_raw=True,
+        drain=False,
+        backfill=False,
+        resume=False,
+        all_due=False,
+        domain="stk_holdertrade",
+        batch_id=None,
+        start="20260715",
+        end="20260715",
+        max_dates=None,
+        trigger_mode="manual",
+    )
+    assert sr._cli_transport_mode(args) == "land_only"
+    sr._preflight_disclosure_cli_shape(
+        args,
+        transport="land_only",
+        now=datetime(2026, 7, 21, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    with pytest.raises(sr.SyncWindowError, match="40 calendar"):
+        sr._disclosure_partition_dates("20260101", "20260301")
+
+
+def test_disclosure_cli_rejects_future_window_before_writer_lock(
+    monkeypatch, capsys
+) -> None:
+    """Tier0: future disclosure land-only must not take writer lock / DB I/O."""
+
+    import sys
+
+    import services.writer_lock as writer_lock_module
+    from services.data_sources import sync_runner as sr
+
+    monkeypatch.setattr(
+        writer_lock_module,
+        "writer_lock",
+        lambda *_a, **_k: pytest.fail("future disclosure acquired writer lock"),
+    )
+    monkeypatch.setattr(
+        sr,
+        "land_disclosure_partition_from_legacy_batch",
+        lambda *_a, **_k: pytest.fail("future disclosure reached land helper"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "sync_runner.py",
+            "--domain",
+            "holders_top10",
+            "--land-only",
+            "--from-local-raw",
+            "--start",
+            "20990101",
+            "--end",
+            "20990101",
+        ],
+    )
+    rc = sr.main()
+    captured = capsys.readouterr().out
+    assert rc == 1
+    assert "writer_lock" not in captured
+    assert "20990101" in captured or "future" in captured.lower() or "after" in captured
+
+
+def test_disclosure_window_stops_on_first_failure(monkeypatch) -> None:
+    """Multi-day disclosure must not crawl past the first failed day."""
+
+    from services.data_sources import sync_runner as sr
+
+    calls: list[str] = []
+
+    def fake_land(domain, *, partition):
+        calls.append(partition)
+        if partition == "20260716":
+            return {
+                "domain": domain,
+                "status": "error",
+                "batches": 0,
+                "rows": 0,
+                "failed_batches": 1,
+                "error": "no legacy rows",
+                "partition_value": partition,
+                "publication": "land_only_disclosure_from_local_raw",
+                "transport": "land_only",
+            }
+        return {
+            "domain": domain,
+            "status": "ok",
+            "batches": 1,
+            "rows": 1,
+            "failed_batches": 0,
+            "batch_id": f"{domain}:{partition}:x",
+            "partition_value": partition,
+            "publication": "land_only_disclosure_from_local_raw",
+            "transport": "land_only",
+        }
+
+    monkeypatch.setattr(sr, "land_disclosure_partition_from_legacy_batch", fake_land)
+    result = sr._run_disclosure_transport_window(
+        "holders_top10",
+        transport="land_only",
+        start="20260715",
+        end="20260717",
+        from_local_raw=True,
+    )
+    assert calls == ["20260715", "20260716"]  # stopped; never 20260717
+    assert result["failed_batches"] == 1
+    assert result["window_days_attempted"] == 2
+    assert len(result["day_results"]) == 2
+
+
+def test_sync_runner_land_disclosure_from_legacy_helper_zero_accept(
+    conn, monkeypatch
+) -> None:
+    """CLI land helper must land only (composition point for chunkyctl)."""
+
+    from services.data_sources import sync_runner as sr
+
+    _seed_holders_legacy(conn, _holders_row())
+
+    class _Manifest:
+        def path_for(self, _alias: str) -> str:
+            return ":memory:"
+
+    monkeypatch.setattr(
+        "services.database_manifest.get_database_manifest", lambda: _Manifest()
+    )
+    monkeypatch.setattr(
+        "services.duck_adapter.connect", lambda *_a, **_k: conn
+    )
+    # sync helper closes the conn; keep the fixture usable.
+    monkeypatch.setattr(conn, "close", lambda: None)
+
+    result = sr.land_disclosure_partition_from_legacy_batch(
+        "holders_top10",
+        partition=PARTITION_HOLDERS,
+    )
+    assert result["status"] == "ok"
+    assert result["transport"] == "land_only"
+    assert result["publication"] == "land_only_disclosure_from_local_raw"
+    assert result["failed_batches"] == 0
+    assert (
+        conn.execute(
+            f"SELECT COUNT(*) FROM {HOLDERS_CANONICAL}",
+        ).fetchone()[0]
+        == 0
+    )
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM accepted_partition WHERE dataset_id = ?",
+            [HOLDERS_DATASET],
+        ).fetchone()[0]
+        == 0
+    )

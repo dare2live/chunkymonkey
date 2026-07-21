@@ -1,14 +1,16 @@
 """Thin transport orchestration for E0 disclosure domains.
 
 Strangler surfaces (caller-only composition; not a second dragon):
-- S1 land-only via :func:`land_disclosure_partition_from_rows`
+- S1 land-only via :func:`land_disclosure_partition_from_rows` or
+  :func:`land_disclosure_partition_from_legacy` (local legacy; no provider)
 - S2 accept-from-landing via :func:`accept_disclosure_from_landing` (zero fetch)
 - :func:`land_then_accept_disclosure_partition` = S1 then S2 in the caller
 
 Production ``disclosure_dual_write`` uses land_then_accept. Fused
 ``publish_accepted_*`` helpers remain thin aliases for older callers/tests.
-Domains: holders_top10 (miaoxiang), org_holding (miaoxiang), stk_holdertrade
-(tushare).
+CLI land-only for disclosure is ``--land-only --from-local-raw`` (no provider
+mass dump). Domains: holders_top10 (miaoxiang), org_holding (miaoxiang),
+stk_holdertrade (tushare).
 """
 from __future__ import annotations
 
@@ -55,6 +57,121 @@ def _partition_yyyymmdd(value: Any) -> str:
     if len(digits) < 8:
         raise DisclosureTransportError(f"partition must be YYYYMMDD; got {value!r}")
     return digits[:8]
+
+
+def load_disclosure_legacy_partition_rows(
+    domain: str,
+    conn,
+    *,
+    partition: str,
+    stock_codes: Sequence[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Load provider-shaped rows from local legacy tables (no network).
+
+    Empty result is a valid load outcome; callers fail closed as needed.
+    """
+
+    if domain not in DISCLOSURE_TRANSPORT_DOMAINS:
+        raise DisclosureTransportError(
+            f"unsupported disclosure domain={domain!r}; "
+            f"allowed={sorted(DISCLOSURE_TRANSPORT_DOMAINS)}"
+        )
+    part = _partition_yyyymmdd(partition)
+    codes = [c.strip() for c in (stock_codes or []) if c and str(c).strip()]
+
+    if domain == "holders_top10":
+        from services.data_sources.holders_top10_schema import (
+            CANONICAL_ROW_FIELDS,
+            COMPATIBILITY_TABLE,
+            SOURCE,
+        )
+
+        cols = ", ".join(CANONICAL_ROW_FIELDS)
+        raw = conn.execute(
+            f"""
+            SELECT {cols}
+              FROM {COMPATIBILITY_TABLE}
+             WHERE source = ?
+               AND replace(CAST(notice_date AS VARCHAR), '-', '') = ?
+             ORDER BY stock_code, holder_rank, row_seq, holder_name
+            """,
+            [SOURCE, part],
+        ).fetchall()
+        return [dict(zip(CANONICAL_ROW_FIELDS, row, strict=True)) for row in raw]
+
+    if domain == "org_holding":
+        from services.data_sources.org_holding_schema import (
+            COMPATIBILITY_TABLE,
+            PROVIDER_FIELDS,
+        )
+
+        cols = ", ".join(PROVIDER_FIELDS)
+        sql = f"""
+            SELECT {cols}
+              FROM {COMPATIBILITY_TABLE}
+             WHERE replace(CAST(available_date AS VARCHAR), '-', '') = ?
+        """
+        params: list[Any] = [part]
+        if codes:
+            placeholders = ", ".join("?" for _ in codes)
+            sql += f" AND stock_code IN ({placeholders})"
+            params.extend(codes)
+        sql += " ORDER BY stock_code, holder_code, fund_derivecode, report_date"
+        raw = conn.execute(sql, params).fetchall()
+        return [dict(zip(PROVIDER_FIELDS, row, strict=True)) for row in raw]
+
+    from services.data_sources.stk_holdertrade_schema import (
+        COMPATIBILITY_TABLE,
+        PROVIDER_FIELDS,
+    )
+
+    cols = ", ".join(PROVIDER_FIELDS)
+    raw = conn.execute(
+        f"""
+        SELECT {cols}
+          FROM {COMPATIBILITY_TABLE}
+         WHERE replace(CAST(ann_date AS VARCHAR), '-', '') = ?
+         ORDER BY ts_code, holder_name, in_de
+        """,
+        [part],
+    ).fetchall()
+    return [dict(zip(PROVIDER_FIELDS, row, strict=True)) for row in raw]
+
+
+def land_disclosure_partition_from_legacy(
+    domain: str,
+    conn,
+    *,
+    partition: str,
+    observed_at: datetime | str | None = None,
+    available_at: datetime | str | None = None,
+    batch_id: str | None = None,
+    stock_codes: Sequence[str] | None = None,
+    bootstrap: bool = True,
+) -> Any:
+    """S1: land one disclosure partition from local legacy rows only.
+
+    Does not write canonical / accepted_partition and does not call providers.
+    """
+
+    part = _partition_yyyymmdd(partition)
+    rows = load_disclosure_legacy_partition_rows(
+        domain, conn, partition=part, stock_codes=stock_codes
+    )
+    if not rows:
+        raise DisclosureTransportError(
+            f"domain={domain} no legacy rows for partition={part}"
+        )
+    return land_disclosure_partition_from_rows(
+        domain,
+        conn,
+        partition=part,
+        rows=rows,
+        observed_at=observed_at,
+        available_at=available_at,
+        batch_id=batch_id,
+        bootstrap=bootstrap,
+    )
 
 
 def land_disclosure_partition_from_rows(
@@ -311,6 +428,8 @@ __all__ = [
     "DisclosureTransportError",
     "accept_disclosure_from_landing",
     "disclosure_target_db_alias",
+    "land_disclosure_partition_from_legacy",
     "land_disclosure_partition_from_rows",
     "land_then_accept_disclosure_partition",
+    "load_disclosure_legacy_partition_rows",
 ]

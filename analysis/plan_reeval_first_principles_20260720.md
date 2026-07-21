@@ -409,3 +409,25 @@ Live 焊点（evidence pack §2.7 复核）：
   Optuna/Release/cutover flip；second DB/plugin bus.
 - Residual：land-only CLI for disclosure；broaden accepted partitions；E/F paused.
 - Label：**E0 PARTIAL**（transport modularity；not full E0 closure）.
+
+### Amend 2026-07-21 — E0 stronger PARTIAL (land-only CLI + bounded broaden)
+
+- Shipped disclosure **land-only CLI** consistent with daily/ST flags：
+  `chunkyctl sync --domain holders_top10|org_holding|stk_holdertrade
+  --land-only|--land-then-accept --from-local-raw --start/--end`（≤40 calendar
+  days；registry-orthogonal；`local_legacy_raw_materialize`；no provider dump）.
+- Transport：`load_disclosure_legacy_partition_rows` +
+  `land_disclosure_partition_from_legacy`（S1；no canonical）.
+- Live broaden（chunked fail-closed）：holders accepted **11→13**
+  (`+20260711`,`+20260715`；`20260716`/`20260708`/`20260706` →
+  `DUPLICATE_GRAIN` reject kept）；stk **4→6** (`+20260714`,`+20260715`)；
+  org unchanged **2**（legacy only has those two `available_date`s）.
+- Freeze script `_BOUNDED_SETS` updated；committed DatasetSnapshot file
+  **not** rewritten（phase D/E pin sha256；remeasure paused）.
+- TDD：`test_disclosure_transport_e0` land-from-legacy + future-before-lock +
+  stop-on-first-fail.
+- **Did not**：provider land without `--from-local-raw`；mass legacy accept；
+  org full-universe；E/F remeasure；Optuna/Release/cutover flip.
+- Residual：provider land path；mass/org-full accept；authorized DatasetSnapshot
+  re-freeze after E/F remeasure；S7 ssot long-tail；E/F paused.
+- Label：**E0 PARTIAL**（stronger — CLI complete for local-raw；not full E0 FIXED）.

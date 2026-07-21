@@ -2034,6 +2034,223 @@ def accept_disclosure_from_landing_batch(
     }
 
 
+def land_disclosure_partition_from_legacy_batch(
+    domain: str,
+    *,
+    partition: str,
+) -> dict[str, Any]:
+    """E0 S1 CLI: land one disclosure partition from local legacy. No accept."""
+
+    from services.data_sources.disclosure_transport import (
+        DISCLOSURE_TRANSPORT_DOMAINS,
+        DisclosureTransportError,
+        disclosure_target_db_alias,
+        land_disclosure_partition_from_legacy,
+    )
+    from services.database_manifest import get_database_manifest
+    from services.duck_adapter import connect
+
+    if domain not in DISCLOSURE_TRANSPORT_DOMAINS:
+        raise SyncWindowError(
+            "land-only disclosure supports "
+            f"{sorted(DISCLOSURE_TRANSPORT_DOMAINS)}; got domain={domain}"
+        )
+    part = "".join(ch for ch in str(partition or "") if ch.isdigit())[:8]
+    if len(part) != 8:
+        raise SyncWindowError(
+            f"disclosure land-only requires YYYYMMDD partition; got {partition!r}"
+        )
+    db_alias = disclosure_target_db_alias(domain)
+    path = get_database_manifest().path_for(db_alias)
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    conn = connect(str(path), read_only=False)
+    try:
+        try:
+            batch = land_disclosure_partition_from_legacy(
+                domain, conn, partition=part, bootstrap=True
+            )
+        except DisclosureTransportError as exc:
+            return {
+                "domain": domain,
+                "status": "error",
+                "batches": 0,
+                "rows": 0,
+                "failed_batches": 1,
+                "error": str(exc)[:500],
+                "partition_value": part,
+                "publication": "land_only_disclosure_from_local_raw",
+                "transport": "land_only",
+                "acquire_mode": "local_legacy_raw_materialize",
+                "target_db": db_alias,
+            }
+    finally:
+        conn.close()
+
+    return {
+        "domain": domain,
+        "status": "ok",
+        "batches": 1,
+        "rows": len(tuple(batch.rows)),
+        "failed_batches": 0,
+        "batch_id": batch.batch_id,
+        "partition_value": batch.partition_value,
+        "publication": "land_only_disclosure_from_local_raw",
+        "transport": "land_only",
+        "acquire_mode": "local_legacy_raw_materialize",
+        "target_db": db_alias,
+    }
+
+
+def _disclosure_partition_dates(start: str, end: str) -> list[str]:
+    """Inclusive calendar YYYYMMDD range for disclosure axes (≤40d)."""
+
+    from datetime import date, timedelta
+
+    s = "".join(ch for ch in str(start or "") if ch.isdigit())[:8]
+    e = "".join(ch for ch in str(end or "") if ch.isdigit())[:8]
+    if len(s) != 8 or len(e) != 8:
+        raise SyncWindowError(
+            "disclosure land-only/--land-then-accept requires "
+            "--start/--end as YYYYMMDD"
+        )
+    if s > e:
+        raise SyncWindowError(f"start={s} after end={e}")
+    start_d = date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+    end_d = date(int(e[:4]), int(e[4:6]), int(e[6:8]))
+    span = (end_d - start_d).days + 1
+    if span > 40:
+        raise SyncWindowError(
+            f"disclosure transport window exceeds 40 calendar days "
+            f"(start={s} end={e} span={span})"
+        )
+    out: list[str] = []
+    cur = start_d
+    while cur <= end_d:
+        out.append(cur.strftime("%Y%m%d"))
+        cur += timedelta(days=1)
+    return out
+
+
+def _preflight_disclosure_cli_shape(
+    args: argparse.Namespace,
+    *,
+    transport: str,
+    now: datetime | None = None,
+) -> None:
+    """Registry-orthogonal disclosure CLI gates before writer lock / DB I/O."""
+
+    from zoneinfo import ZoneInfo
+
+    if args.drain or args.backfill or args.resume or args.all_due:
+        raise SyncWindowError(
+            f"--{transport.replace('_', '-')} cannot combine with "
+            "--drain/--backfill/--resume/--all-due"
+        )
+    if transport == "accept_from_landing":
+        if not str(getattr(args, "batch_id", "") or "").strip():
+            raise SyncWindowError(
+                "disclosure --accept-from-landing requires --batch-id"
+            )
+        return
+    if not getattr(args, "from_local_raw", False):
+        raise SyncWindowError(
+            "disclosure --land-only/--land-then-accept requires "
+            "--from-local-raw (local legacy acquire; provider mass dump banned)"
+        )
+    if args.start is None or args.end is None:
+        raise SyncWindowError(
+            f"--{transport.replace('_', '-')} requires --start and --end"
+        )
+    today = (now or datetime.now(ZoneInfo("Asia/Shanghai"))).strftime("%Y%m%d")
+    resolve_operation_window(
+        DomainEligibility(today, False, "wall_clock_preflight"),
+        requested_start=args.start,
+        requested_end=args.end,
+    )
+    _disclosure_partition_dates(str(args.start), str(args.end))
+
+
+def _run_disclosure_transport_window(
+    domain: str,
+    *,
+    transport: str,
+    start: str | None,
+    end: str | None,
+    batch_id: str | None = None,
+    from_local_raw: bool = False,
+) -> dict[str, Any]:
+    """Thin disclosure land / accept / land-then-accept (local-raw acquire)."""
+
+    from services.data_sources.disclosure_transport import DISCLOSURE_TRANSPORT_DOMAINS
+
+    if domain not in DISCLOSURE_TRANSPORT_DOMAINS:
+        raise SyncWindowError(
+            f"disclosure transport unsupported domain={domain}"
+        )
+    if transport == "accept_from_landing":
+        return accept_disclosure_from_landing_batch(domain, batch_id=str(batch_id or ""))
+
+    if not from_local_raw:
+        raise SyncWindowError(
+            "disclosure --land-only/--land-then-accept requires --from-local-raw "
+            "(local legacy acquire; provider mass dump banned)"
+        )
+    partitions = _disclosure_partition_dates(str(start), str(end))
+    day_results: list[dict[str, Any]] = []
+    total_rows = 0
+    failed = 0
+    last_ok: str | None = None
+    completed_ok = 0
+    for part in partitions:
+        if transport == "land_only":
+            result = land_disclosure_partition_from_legacy_batch(
+                domain, partition=part
+            )
+        elif transport == "land_then_accept":
+            land_result = land_disclosure_partition_from_legacy_batch(
+                domain, partition=part
+            )
+            if int(land_result.get("failed_batches") or 0) != 0:
+                result = dict(land_result)
+                result["transport"] = "land_then_accept"
+            else:
+                result = accept_disclosure_from_landing_batch(
+                    domain, batch_id=str(land_result["batch_id"])
+                )
+                result["transport"] = "land_then_accept"
+                result["publication"] = f"land_then_accept_{domain}_from_local_raw"
+        else:
+            raise SyncWindowError(
+                f"unsupported disclosure transport={transport}"
+            )
+        day_results.append(result)
+        day_failed = int(result.get("failed_batches") or 0)
+        failed += day_failed
+        if day_failed == 0:
+            completed_ok += 1
+            last_ok = part
+            total_rows += int(result.get("rows") or 0)
+        else:
+            # Match security-day: stop on first failure (no partial-accept crawl).
+            break
+
+    status = "ok" if failed == 0 else "error"
+    return {
+        "domain": domain,
+        "status": status,
+        "batches": completed_ok,
+        "rows": total_rows,
+        "failed_batches": failed,
+        "last_ok_partition": last_ok,
+        "partitions": partitions,
+        "day_results": day_results,
+        "transport": transport,
+        "acquire_mode": "local_legacy_raw_materialize",
+        "window_days_requested": len(partitions),
+        "window_days_attempted": len(day_results),
+    }
+
+
 def accept_security_day_from_landing_batch(
     domain: str,
     *,
@@ -3113,7 +3330,11 @@ def _parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
     transport.add_argument(
         "--land-only",
         action="store_true",
-        help="S1: daily|stock_st capture→LANDING only (no canonical/accept)",
+        help=(
+            "S1: daily|stock_st|holders_top10|org_holding|stk_holdertrade "
+            "capture→LANDING only (no canonical/accept); disclosure requires "
+            "--from-local-raw"
+        ),
     )
     transport.add_argument(
         "--accept-from-landing",
@@ -3123,7 +3344,10 @@ def _parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
     transport.add_argument(
         "--land-then-accept",
         action="store_true",
-        help="Thin caller-only S1→S2 composition (not the default fused sync)",
+        help=(
+            "Thin caller-only S1→S2 composition (not the default fused sync); "
+            "disclosure requires --from-local-raw"
+        ),
     )
     parser.add_argument(
         "--batch-id",
@@ -3135,7 +3359,8 @@ def _parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help=(
             "With --land-only/--land-then-accept: materialize landing from "
-            "local raw_tushare_* (explicit acquire→landing; never raw→canonical)"
+            "local legacy/raw tables (explicit acquire→landing; never "
+            "raw→canonical). Required for disclosure domains."
         ),
     )
     return parser.parse_args(argv)
@@ -3211,14 +3436,13 @@ def _preflight_cli_request_shape(
                 f"--{transport.replace('_', '-')} cannot combine with "
                 "--drain/--backfill/--resume/--all-due"
             )
-        allowed = {"daily", "stock_st"}
-        if transport == "accept_from_landing":
-            allowed = allowed | set(DISCLOSURE_TRANSPORT_DOMAINS)
+        allowed = {"daily", "stock_st"} | set(DISCLOSURE_TRANSPORT_DOMAINS)
         if len(domains) != 1 or domains[0] not in allowed:
             raise SyncWindowError(
                 f"--{transport.replace('_', '-')} requires exactly one "
                 f"--domain {'|'.join(sorted(allowed))}"
             )
+        disclosure = domains[0] in DISCLOSURE_TRANSPORT_DOMAINS
         if getattr(args, "from_local_raw", False) and transport not in {
             "land_only",
             "land_then_accept",
@@ -3226,7 +3450,18 @@ def _preflight_cli_request_shape(
             raise SyncWindowError(
                 "--from-local-raw only valid with --land-only or --land-then-accept"
             )
+        if disclosure and transport in {"land_only", "land_then_accept"}:
+            if not getattr(args, "from_local_raw", False):
+                raise SyncWindowError(
+                    "disclosure --land-only/--land-then-accept requires "
+                    "--from-local-raw (local legacy acquire; provider mass "
+                    "dump banned)"
+                )
         if transport == "accept_from_landing":
+            if disclosure and not args.batch_id:
+                raise SyncWindowError(
+                    "disclosure --accept-from-landing requires --batch-id"
+                )
             if not args.batch_id and (args.start is None or args.end is None):
                 raise SyncWindowError(
                     "--accept-from-landing requires --batch-id or single-day "
@@ -3441,27 +3676,28 @@ def main() -> int:
 
     # help/参数错误必须在 writer lock 与 provider 探针之前完成。
     args = _parse_cli_args()
-    # E0 S2: disclosure accept-from-landing is registry-orthogonal (holders/org
-    # are aif10 writers; stk uses tushare_raw). Short-circuit before sync_registry
+    # E0: disclosure transport is registry-orthogonal (holders/org are aif10
+    # writers; stk uses tushare_raw). Short-circuit before sync_registry
     # domain_spec / provider authorization probes.
     transport = _cli_transport_mode(args)
-    if transport == "accept_from_landing" and args.domain:
+    if transport is not None and args.domain:
         from services.data_sources.disclosure_transport import (
             DISCLOSURE_TRANSPORT_DOMAINS,
         )
 
         if args.domain in DISCLOSURE_TRANSPORT_DOMAINS:
-            if not str(getattr(args, "batch_id", "") or "").strip():
+            # Registry-orthogonal shape checks only (no domain_spec / provider).
+            # Must reject future windows before writer_lock / DB I/O (Tier0).
+            try:
+                _preflight_disclosure_cli_shape(args, transport=transport)
+            except SyncWindowError as exc:
                 print(
                     json.dumps(
                         {
                             "status": "error",
                             "domain": args.domain,
-                            "transport": "accept_from_landing",
-                            "error": (
-                                "disclosure --accept-from-landing requires "
-                                "--batch-id"
-                            ),
+                            "transport": transport,
+                            "error": str(exc)[:500],
                         },
                         ensure_ascii=False,
                     )
@@ -3469,9 +3705,15 @@ def main() -> int:
                 return 1
             try:
                 with writer_lock("sync_runner"):
-                    result = accept_disclosure_from_landing_batch(
+                    result = _run_disclosure_transport_window(
                         args.domain,
-                        batch_id=str(args.batch_id),
+                        transport=transport,
+                        start=args.start,
+                        end=args.end,
+                        batch_id=getattr(args, "batch_id", None),
+                        from_local_raw=bool(
+                            getattr(args, "from_local_raw", False)
+                        ),
                     )
             except WriterLockBusyError as exc:
                 print(
@@ -3490,7 +3732,7 @@ def main() -> int:
                         {
                             "status": "error",
                             "domain": args.domain,
-                            "transport": "accept_from_landing",
+                            "transport": transport,
                             "error": str(exc)[:500],
                         },
                         ensure_ascii=False,

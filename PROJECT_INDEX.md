@@ -2,7 +2,7 @@
 
 > 状态：live navigation，非规则 owner
 > 更新：2026-07-21
-> 当前目标看 `goal.md`（S1–S6 FIXED；S7 PARTIAL；E0 PARTIAL transport；C/B-pit cutover ON；`BOARD.md`；启动 `scripts/chunkyctl agent-boot`）。
+> 当前目标看 `goal.md`（S1–S6 FIXED；S7 PARTIAL；E0 PARTIAL land-only CLI+bounded；C/B-pit cutover ON；`BOARD.md`；启动 `scripts/chunkyctl agent-boot`）。
 > 架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口与 writer 清单看 `FEATURE_MAP.md` 和 CodeGraph。
 > 生成状态板：`PYTHONPATH=backend python backend/scripts/build_agent_board.py`（勿手改 BOARD.md；snapshot 时间戳非 trade_date；Next 菜单随 cutover yaml 投影）。
 
@@ -26,7 +26,7 @@ AGENTS.md
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `technical_states/`, `segments.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `market_pulse_tier12_read.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py` | 多轴状态可复用；C accept 分 `publish_scope=canary|project_universe`；`resolve_tier12_production_read` + B1/pulse 接线；**cutover yaml=true** → ACCEPTED_CUTOVER；**form enrich v1**（`stock_state_stage_pattern_v1`，exact-day `fact_stock_form_daily` → `form_name`/`axis_pos`；writer `axis_trend` 不覆盖）；re-accept `20260717`=4989 + `20260720`=4991；无 accept 日仍 fail-closed→LEGACY/`fact_stock_form_daily`；persist 可在 cutover-ON 下重跑（不回翻 yaml） |
 | T2 market sensing | `market_pulse.py`, `market_pulse_tier12_read.py`, `market_pulse_b_pit_read.py`, `b_pit_mart_cutover.py`, `project_universe_breadth.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；sentiment 旁路 `tier12_production_read` + `b_pit_mart_production_read`；B-pit shadow MATCH 120/120；**mart cutover=true（owner opt-in 2026-07-20）→ MART_CUTOVER（project_universe_pit）**；C envelope 可 project_universe scope；窗外/无 shadow 日仍 fail-closed→legacy；drill form 单轨 production-read（无 legacy JOIN+accepted 双写） |
-| T3 institution | `institution_profile.py` + `institution_follow_b0/b1/b2/b4` (+ `_measure`) + `institution_follow_edge_gates.py` + `disclosure_transport.py` + `disclosure_research_read.py` + `disclosure_enrichment_projection.py` + `disclosure_dataset_snapshot.py` + dual-write/shadow/boundaries + `*_acceptance.py` + router/tests | **首个正式策略包**；E0 PARTIAL（transport modular S1/S2 + formal_only gate）；E PARTIAL：120d B0/B1/B2 reject；B4 inconclusive（coverage fraction）；均 ≠ StrategyRelease |
+| T3 institution | `institution_profile.py` + `institution_follow_b0/b1/b2/b4` (+ `_measure`) + `institution_follow_edge_gates.py` + `disclosure_transport.py` + `disclosure_research_read.py` + `disclosure_enrichment_projection.py` + `disclosure_dataset_snapshot.py` + dual-write/shadow/boundaries + `*_acceptance.py` + router/tests | **首个正式策略包**；E0 PARTIAL（land-only/accept CLI + local-raw + bounded broaden + formal_only）；E PARTIAL：120d B0/B1/B2 reject；B4 inconclusive（coverage fraction）；均 ≠ StrategyRelease |
 | T3 main rally | `main_rally_dataset_snapshot.py`, `main_rally_b0.py`, `main_rally_b0_measure.py`, `main_rally_b1.py`, `main_rally_b1_measure.py`, `main_rally_b2.py`, `main_rally_b2_measure.py`, `rally_gt.py`, `rally_detect.py`, rally config/tests | GT 资产成熟；**F0+F1+F2+F3 FIXED**：`main_rally_v1` freeze + B0 setup-entry short-horizon + B1(+Tier1 stock state) + B2(+Tier2 market sensing/`MarketContextSnapshot` project-board breadth, 独立 ablate on B0, 非叠加 B1) measured，同 B0 folds/costs、`REQUIRE_HOLDOUT_LIFT_VS_B0` → 三者均 reject/`claimable=false`（共享 `research_runtime`；非 full-episode；F0–F3 可 checkpoint） |
 | T3 formulas | `bestchoice/FROZEN.md` + `evidence_manifest.json` | 冻结 challenger；Phase G 前不吸收 |
 | T4 decision/paper | `paper_portfolio.py`, frontend observation page | Legacy NONCONFORMING 观察账本；不是 paper execution |
@@ -138,7 +138,8 @@ default sync → acquire → `land_then_accept_authorized_security_day`；fused
 `capture_and_publish_authorized_*_partition` **test-only**。CLI：
 `chunkyctl sync --domain daily|stock_st`（default land→accept）以及
 `--land-only|--accept-from-landing|--land-then-accept`（可选 `--from-local-raw`；
-accept 路径跳过 provider auth / acquire）。S5 derive（FIXED）+ S7 PARTIAL：
+accept 路径跳过 provider auth / acquire；disclosure 三域同 flags 且
+**必须** `--from-local-raw`）。S5 derive（FIXED）+ S7 PARTIAL：
 `chunkyctl derive qfq|form` + form library + pipeline clean/process 默认
 accepted-only；`--allow-legacy-fill` 逃生；daily accepted `20190102`→`20260720`
 （ST asymmetric `20220104`）；`legacy_raw_plane.yaml` + gate（仍 41/46 ssot）。

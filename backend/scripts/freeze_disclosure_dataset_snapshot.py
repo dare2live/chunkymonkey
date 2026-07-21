@@ -32,6 +32,8 @@ _SERVING = {
 
 # Bounded broaden — recent/small accepts (+ canaries). Org 20260430 is a
 # documented stock subset (600519,000001), not full-universe.
+# 2026-07-21 chunk: +holders 20260711/20260715; +stk 20260714/20260715
+# via land-then-accept --from-local-raw (DUPLICATE_GRAIN dates fail-closed).
 _BOUNDED_SETS = {
     "holders_top10": [
         "20260508",
@@ -42,12 +44,21 @@ _BOUNDED_SETS = {
         "20260703",
         "20260709",
         "20260710",
+        "20260711",
         "20260713",
         "20260714",
+        "20260715",
         "20260717",
     ],
     "org_holding": ["20190430", "20260430"],
-    "stk_holdertrade": ["20260518", "20260608", "20260706", "20260713"],
+    "stk_holdertrade": [
+        "20260518",
+        "20260608",
+        "20260706",
+        "20260713",
+        "20260714",
+        "20260715",
+    ],
 }
 
 _BOUNDED_NOTES = (

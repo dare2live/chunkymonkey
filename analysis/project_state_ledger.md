@@ -2521,3 +2521,34 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   beyond canary/bounded；E/F still paused；S7 long-tail ssot untouched.
 - **Status**: **PARTIAL**（E0 transport）；prior E0 gate/formal_only /
   DatasetSnapshot canary evidence remains valid, not re-opened.
+
+### 2026-07-21 — E0 stronger PARTIAL: disclosure land-only CLI + bounded broaden
+
+- Wall-clock: Tue 2026-07-21 ~10:25 Asia/Shanghai (in-session).
+- **E0 PARTIAL (stronger)**：
+  1. CLI S1：`chunkyctl sync --domain holders_top10|org_holding|stk_holdertrade
+     --land-only --from-local-raw --start/--end`（≤40 calendar days；
+     registry-orthogonal short-circuit；no provider auth）. Without
+     `--from-local-raw` → fail-closed（provider mass dump banned）.
+  2. CLI thin S1→S2：same domains `--land-then-accept --from-local-raw`.
+  3. Transport：`load_disclosure_legacy_partition_rows` +
+     `land_disclosure_partition_from_legacy`（landing only；no canonical）.
+  4. Live evidence：land-only holders `20260715` → LANDED 82 rows, 0 canonical；
+     land-then-accept broaden holders **11→13** partitions
+     (`20260711`=70, `20260715`=82)；stk **4→6** (`20260714`=30,
+     `20260715`=27)；`DUPLICATE_GRAIN` on dirty holders dates fail-closed；
+     org still 2（legacy inventory only has 2 available_dates）.
+  5. Freeze script `_BOUNDED_SETS` updated for next authorized freeze；
+     **did not** rewrite committed `disclosure_dataset_snapshot.json`
+     (phase D/E manifests pin its sha256；E/F remeasure paused — no silent
+     snapshot_id drift). Live accepted partitions already broader than
+     frozen date_set.
+- TDD：`test_disclosure_transport_e0` (+ CI surface) green.
+- **Did not**：provider land CLI without local-raw；mass accept all
+  1951/2216 legacy partitions；org full-universe rewrite of subset canary；
+  E/F remeasure；Optuna / StrategyRelease / cutover false；second DB /
+  plugin bus.
+- **Residual**：provider land path；mass/org-full accept；S7 ssot long-tail；
+  E/F paused. Not full E0 FIXED（research cutover / institution_follow still
+  gated）.
+- **Status**: **PARTIAL**（E0 stronger）.
