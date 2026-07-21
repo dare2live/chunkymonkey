@@ -1024,3 +1024,92 @@ select:focus {
   border-radius: 5px;
   color: var(--text);
 }
+
+/* ── 股票档案 MVP (`#/stock/:code`) — keep separate from workbench step cards ── */
+
+.dossier-page .dossier-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dossier-page h1 {
+  margin: 4px 0 0;
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.dossier-crumb {
+  margin: 4px 0 0;
+  color: var(--text-dim);
+}
+
+.dossier-lookup {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.dossier-lookup input {
+  width: 96px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel);
+}
+
+.dossier-tabs {
+  margin-bottom: 10px;
+}
+
+.dossier-observation {
+  margin: 0 0 10px;
+  font-size: 15px;
+  line-height: 1.55;
+  max-width: 52rem;
+}
+
+.dossier-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-bottom: 10px;
+  font-size: 11px;
+}
+
+.dossier-gaps {
+  margin-top: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.dossier-gaps ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.dossier-subhead {
+  margin: 14px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dossier-note {
+  margin-top: 10px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.dossier-axis-grid .kpi-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.muted {
+  color: var(--text-dim);
+}

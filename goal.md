@@ -1,7 +1,6 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-21（**foundation phase_closure_ready**；FND-GATE PASS；S1–S6 FIXED；S7 near-FIXED；E0-HIST FIXED；org BLOCKED；daily/ST/pulse 前沿 **`20260721`**；`daily_update` margin 预检 + 编排器 + **UI「数据更新」** **FIXED** — `analysis/foundation_daily_update_unblock_20260721.md`；产品决策辅助 **scheduled** — `analysis/product_decision_assist_backlog_20260721.md`）
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -18,8 +17,9 @@
 > **§15-VERIFY 证据（F8 PASS）**：`analysis/section15_verify_20260721.md`
 > **地基 E2E（UI 更新路径 20260721）**：`analysis/foundation_e2e_frontend_update_20260721.md` — 初判 PARTIAL（UI 缺按钮 + margin 预检死锁）；后续 unblock 见下
 > **地基 daily_update 解阻（20260721）**：`analysis/foundation_daily_update_unblock_20260721.md` — margin=`on_demand`+frozen；formal daily/ST 编排器 land_then_accept；DC/pulse 已至 `20260721`；工作台「数据更新」**FIXED**
-> **产品决策辅助 backlog（scheduled，未开）**：`analysis/product_decision_assist_backlog_20260721.md` — A 资金流决策辅助；B 形态/阶段选股面；C 页内多 tab；D 交集最强股；**E 模块化 pipeline step cards / 独立节点 ops**；硬门=地基 E2E 后；禁融结论进 Tier0
-> **地基 UI 点击跟跑（20260721 晚）**：`analysis/foundation_daily_update_ui_click_20260721.md` — workbench 可观测性（current_activity）+ org incremental skip 证据
+> **产品决策辅助 backlog（scheduled；E=DONE 子集）**：`analysis/product_decision_assist_backlog_20260721.md` — A 资金流；B 形态/阶段选股；C tabs；D 交集最强；**E step cards FIXED 子集** — `analysis/capability_e_pipeline_step_cards_20260721.md`
+> **产品计划重评（20260721 晚）**：`analysis/product_plan_reeval_stock_dossier_20260721.md` — **YES 调序**：foundation residuals → E → **股票档案 MVP** → A/C → D → B；`#/stock/:code` 与工作台分文件
+> **地基 UI 点击跟跑（20260721 晚）**：`analysis/foundation_daily_update_ui_click_20260721.md` — workbench 可观测性（current_activity）+ org incremental skip 证据；click DONE degraded
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 
 ## 当前 objective
@@ -39,7 +39,8 @@
 - **Accept frontier 复核（2026-07-20）**：当时墙钟仍 `2026-07-20`，`20260721` `operation_window_blocked`——已过时。
 - **Accept frontier 复核（2026-07-21 E2E）**：收盘后模块化 `land_then_accept` 单日增量 daily/ST **`20260721` accepted**；当时 UI/`daily_update` 因缺按钮 + margin `scope_blocked` 预检 **FAIL**。
 - **daily_update 解阻（2026-07-21 follow-up）**：margin 预检 **FIXED**（`on_demand`+frozen，禁 thaw）；编排器 formal daily/ST catchup **FIXED**；DC/pulse **`20260721`**；工作台「数据更新」**FIXED**（`#/workbench` → `POST /api/v3/ops/jobs/daily_update/run` + 状态/日志尾；证据 `foundation_daily_update_unblock_20260721.md` Knife 4）。
-- **工作台可观测性（2026-07-21 晚）**：运行中展示 `current_activity`（阶段/进度行/日志时间/告警原因），不再只显示「更新中」；证据见 `foundation_daily_update_ui_click_20260721.md`。Capability E（独立 step 按钮）仍 scheduled。
+- **工作台可观测性（2026-07-21 晚）**：运行中展示 `current_activity`（阶段/进度行/日志时间/告警原因），不再只显示「更新中」；证据见 `foundation_daily_update_ui_click_20260721.md`。
+- **Capability E（2026-07-21）**：**FIXED 子集** — workbench「分步节点」step cards + `GET /api/v3/ops/pipeline/nodes`；可独立跑 `pipeline_acquire|clean|process|store` + `derive_qfq`；预检/S1·S2 参数化路径 disabled+reason；一键「数据更新」仍主路径。证据 `capability_e_pipeline_step_cards_20260721.md`。
 - **F 更长窗 / S7 daily expand**：accepted daily **`20190102`→`20260721`**；ST **`20220104`→`20260721`**。E/F remeasure 仍 paused。
 
 启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。
@@ -64,7 +65,6 @@
 
 **近端 focus**：owner schedule E/F 前保持 pause — **不是** Type-B enrichment / S7 假 COMPAT / 擅自 E/F / G/H/Release / org invent。
 
-**Deferred product（scheduled，未开刀）**：A–D 见 `analysis/product_decision_assist_backlog_20260721.md`（A 资金流；B 形态/阶段选股；C 页内多 tab 随早期 A UI；D 交集最强股偏后/可并行于交叉输入就绪）。**仅**在 foundation E2E verify/optimize 之后开；禁 Optuna/Release/松 holdout；结论=Tier3/产品面，不融进 Tier0。
 
 **护栏**：frontier=`20260721`（含 pulse sector/flow/strongest）；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；org BLOCKED 维持；**org/period 域 manual update = incremental-only**（见下裁决）；margin 禁 thaw。
 

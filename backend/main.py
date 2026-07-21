@@ -137,6 +137,10 @@ app.include_router(inst_profile_router, prefix="/api/v3/inst", tags=["institutio
 from routers.market_pulse import router as market_pulse_router
 app.include_router(market_pulse_router, prefix="/api/v3/pulse", tags=["market_pulse"])
 
+# 股票档案 MVP：分层读 form/holders；observation 为产品标签，不融 Tier0。
+from routers.stock_dossier import router as stock_dossier_router
+app.include_router(stock_dossier_router, prefix="/api/v3/stock", tags=["stock_dossier"])
+
 # (退役 routers: market_perception/bestchoice/perception_legacy/signals_v2 等 2026-06-14~28 删, 详 ledger + git史)
 
 # 设置选项相关的API (比如开启/关闭功能模块)

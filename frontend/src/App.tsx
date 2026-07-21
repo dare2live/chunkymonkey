@@ -4,6 +4,7 @@ import { InstitutionDetailPage } from "./pages/InstitutionDetailPage";
 import { InstitutionsPage } from "./pages/InstitutionsPage";
 import { MarketPage } from "./pages/MarketPage";
 import { PaperPage } from "./pages/PaperPage";
+import { StockDossierPage } from "./pages/StockDossierPage";
 import { WorkbenchPage } from "./pages/WorkbenchPage";
 
 // HashRouter: 无需服务端 history fallback, vite preview / 任意静态托管直接可用
@@ -18,6 +19,8 @@ export function App() {
           <Route path="/paper" element={<PaperPage />} />
           <Route path="/workbench" element={<WorkbenchPage />} />
           <Route path="/market" element={<MarketPage />} />
+          <Route path="/stock/:code" element={<StockDossierPage />} />
+          <Route path="/stock" element={<Navigate to="/stock/600519" replace />} />
           <Route path="*" element={<Navigate to="/institutions" replace />} />
         </Route>
       </Routes>

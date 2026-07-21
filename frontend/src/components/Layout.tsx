@@ -1,13 +1,15 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 const NAV_ITEMS = [
-  { to: "/institutions", label: "机构档案", enabled: true },
-  { to: "/paper", label: "观察账本", enabled: true },
-  { to: "/workbench", label: "工作台", enabled: true },
-  { to: "/market", label: "市场感知", enabled: true },
+  { to: "/institutions", label: "机构档案", enabled: true, prefix: "/institutions" },
+  { to: "/stock/600519", label: "股票档案", enabled: true, prefix: "/stock" },
+  { to: "/paper", label: "观察账本", enabled: true, prefix: "/paper" },
+  { to: "/workbench", label: "工作台", enabled: true, prefix: "/workbench" },
+  { to: "/market", label: "市场感知", enabled: true, prefix: "/market" },
 ];
 
 export function Layout() {
+  const loc = useLocation();
   return (
     <div className="layout">
       <header className="topbar">
@@ -21,7 +23,9 @@ export function Layout() {
               <NavLink
                 key={item.to}
                 to={item.to}
-                className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+                className={() =>
+                  `nav-item${loc.pathname.startsWith(item.prefix) ? " active" : ""}`
+                }
               >
                 {item.label}
               </NavLink>
