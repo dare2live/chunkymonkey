@@ -112,8 +112,8 @@ def test_preflight_schema_drift_raises():
 def test_index_ts_passthrough_no_conversion():
     """不变量#1: code_input=ts_passthrough 指数码 000300.SH 直用不转 (code_to_ts_code 股票前缀规则对指数无效)。"""
     c = duck_mem()
-    c.executescript("CREATE TABLE raw_tushare_index_daily (ts_code TEXT, trade_date TEXT, close REAL);")
-    c.executemany("INSERT INTO raw_tushare_index_daily VALUES (?,?,?)",
+    c.executescript("CREATE TABLE fact_index_daily (ts_code TEXT, trade_date TEXT, close REAL, available_at TIMESTAMPTZ);")
+    c.executemany("INSERT INTO fact_index_daily VALUES (?,?,?, NULL)",
                   [("000300.SH", "20260504", 3800.0), ("000300.SH", "20260505", 3820.0)])
     da = DataAccess()
     res = da.get("index_daily", codes=["000300.SH"], as_of="2026-05-05", conn=c)
@@ -132,5 +132,9 @@ def test_registry_loads_core_entities():
     # B2: moneyflow publication = fact_stock_moneyflow_daily
     assert reg.entity("moneyflow").table == "fact_stock_moneyflow_daily"
     assert reg.entity("moneyflow").layer == "L1"
+    # B2: index_daily publication = fact_index_daily
+    assert reg.entity("index_daily").table == "fact_index_daily"
+    assert reg.entity("index_daily").layer == "L1"
+    assert reg.entity("index_daily").db == "smartmoney"
     # S7: stk_limit removed from DataAccess (form owns buyable/sellable/is_one_word)
     assert "stk_limit" not in reg.entities

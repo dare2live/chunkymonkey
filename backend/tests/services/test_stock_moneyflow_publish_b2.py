@@ -278,8 +278,8 @@ def test_legacy_plane_moneyflow_tables_are_compatibility() -> None:
         assert meta["publication_surface"] == surface, table
     assert mod.collect_violations() == []
     counts = mod.role_counts()
-    assert counts["ssot"] == 26
-    assert counts["compatibility"] == 19
+    assert counts["ssot"] == 25
+    assert counts["compatibility"] == 20
 
 
 def test_pulse_entity_ref_uses_smartmoney_bare_tables(monkeypatch) -> None:

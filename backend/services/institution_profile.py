@@ -60,8 +60,19 @@ def _access_reg():
 
 
 def _tr_entity(entity: str) -> str:
-    """S7: resolve tushare_raw physical table via DataAccess (no hardcoded raw_*)."""
-    return f"tr.{_access_reg().entity(entity).table}"
+    """Resolve DataAccess physical table for feature_store SQL.
+
+    ``tushare_raw`` entities live on the READ_ONLY ``tr`` attach;
+    ``smartmoney`` publication entities (B2 fact_index_daily) on ``sm``.
+    """
+    ent = _access_reg().entity(entity)
+    if ent.db == "tushare_raw":
+        return f"tr.{ent.table}"
+    if ent.db == "smartmoney":
+        return f"sm.{ent.table}"
+    raise ValueError(
+        f"unsupported data_access db for institution SQL: {ent.db!r} (entity={entity})"
+    )
 
 
 def _db(alias: str) -> str:

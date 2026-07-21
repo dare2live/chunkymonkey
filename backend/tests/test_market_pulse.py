@@ -65,8 +65,9 @@ CREATE TABLE tr.raw_tushare_dc_index (
     up_num BIGINT, down_num BIGINT, total_mv DOUBLE, level TEXT);
 CREATE TABLE tr.raw_tushare_sw_daily (
     ts_code TEXT, trade_date TEXT, close DOUBLE, pct_change DOUBLE, amount DOUBLE);
-CREATE TABLE tr.raw_tushare_index_daily (
-    ts_code TEXT, trade_date TEXT, close DOUBLE);
+CREATE TABLE fact_index_daily (
+    trade_date TEXT, ts_code TEXT, close DOUBLE,
+    available_at TIMESTAMPTZ, source_table TEXT, built_at TIMESTAMPTZ);
 CREATE TABLE tr.raw_tushare_index_member_all (
     l1_code TEXT, l1_name TEXT, l2_code TEXT, l2_name TEXT, l3_code TEXT, l3_name TEXT,
     ts_code TEXT, name TEXT, in_date TEXT, out_date TEXT, is_new TEXT);
@@ -210,8 +211,10 @@ def _fixture_conn():
     # v3: L2 行情码入 sw_daily → mart 出 L2 行 (amount=50 只进 L2 分区分母, L1 份额不受扰)
     c.executemany("INSERT INTO tr.raw_tushare_sw_daily VALUES ('801011.SI', ?, ?, 5.0, 50.0)",
                   list(zip(D, closes_l2)))
-    c.executemany("INSERT INTO tr.raw_tushare_index_daily VALUES ('000300.SH', ?, 100.0)",
-                  [(d,) for d in D])
+    c.executemany(
+        "INSERT INTO fact_index_daily VALUES (?, '000300.SH', 100.0, ?, 'raw_tushare_index_daily', ?)",
+        [(d, f"2024-01-{d[6:8]} 18:00:00+08:00", f"2024-01-{d[6:8]} 18:00:00+08:00") for d in D],
+    )
     # v3 sw 链资金流底座: 个股全单净流 (万元) × as-of 归属 (v_sw_industry_pit VIEW)。
     #   600001 (801010/801011/850111): D0-D3 每日 2.0 万元 (D4 无行 → L2 当日 net NULL);
     #   600003 (801010/801012/850121, 同 L1 异 L2 分支): D0-D4 每日 3.0 万元
@@ -584,7 +587,10 @@ def test_build_latest_incremental_idempotent():
         )
         c.execute("INSERT INTO tr.raw_tushare_sw_daily VALUES ('801010.SI', ?, 161.051, 10.0, 300.0)", [d6])
         c.execute("INSERT INTO tr.raw_tushare_sw_daily VALUES ('801080.SI', ?, 65.61, -10.0, 100.0)", [d6])
-        c.execute("INSERT INTO tr.raw_tushare_index_daily VALUES ('000300.SH', ?, 100.0)", [d6])
+        c.execute(
+            "INSERT INTO fact_index_daily VALUES (?, '000300.SH', 100.0, ?, 'raw_tushare_index_daily', ?)",
+            [d6, "2024-01-09 18:00:00+08:00", "2024-01-09 18:00:00+08:00"],
+        )
         c.execute("INSERT INTO tr.raw_tushare_daily VALUES ('600001.SH', ?, 1.0)", [d6])
         # v3: sw 流增量 (600003 补 d6 → 801010 net=3e4; 601 无行)
         c.execute("INSERT INTO tr.raw_tushare_moneyflow VALUES ('600003.SZ', ?, 3.0)", [d6])

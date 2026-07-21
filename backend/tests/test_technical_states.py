@@ -414,7 +414,9 @@ CREATE TABLE tr.raw_tushare_daily (ts_code TEXT, trade_date TEXT, close DOUBLE);
 CREATE TABLE tr.canonical_nominal_ohlcv_daily (
     trade_date DATE, ts_code TEXT, close DOUBLE);
 CREATE TABLE tr.raw_tushare_stk_limit (ts_code TEXT, trade_date TEXT, up_limit DOUBLE, down_limit DOUBLE);
-CREATE TABLE tr.raw_tushare_index_daily (ts_code TEXT, trade_date TEXT, close DOUBLE);
+CREATE TABLE fact_index_daily (
+    trade_date TEXT, ts_code TEXT, close DOUBLE,
+    available_at TIMESTAMPTZ, source_table TEXT, built_at TIMESTAMPTZ);
 CREATE TABLE ref.dim_trading_calendar (trade_date TEXT, is_trading INTEGER);
 CREATE TABLE dim_stock_segment_daily (
     stock_code TEXT, trade_date TEXT, mktcap_seg TEXT, turnover_seg TEXT, sw_l1 TEXT,
@@ -468,9 +470,17 @@ def _load_fixture(data, upto_day: str | None = None):
     c.executemany("INSERT INTO tr.raw_tushare_stk_limit VALUES (?,?,?,?)",
                   data["limit"] if upto_day is None else
                   [r for r in data["limit"] if r[1] <= upto_day.replace("-", "")])
-    c.executemany("INSERT INTO tr.raw_tushare_index_daily VALUES (?,?,?)",
-                  data["bench"] if upto_day is None else
-                  [r for r in data["bench"] if r[1] <= upto_day.replace("-", "")])
+    c.executemany(
+        "INSERT INTO fact_index_daily VALUES (?, ?, ?, NULL, 'raw_tushare_index_daily', NULL)",
+        [
+            (r[1], r[0], r[2])
+            for r in (
+                data["bench"]
+                if upto_day is None
+                else [r for r in data["bench"] if r[1] <= upto_day.replace("-", "")]
+            )
+        ],
+    )
     c.executemany("INSERT INTO dim_stock_segment_daily VALUES (?,?,?,?,?,?,?,?,?)",
                   data["seg"] if upto_day is None else
                   [r for r in data["seg"] if r[1] <= upto_day.replace("-", "")])
@@ -547,8 +557,10 @@ def test_build_latest_incremental_equals_rebuild(fix_data):
         )
         con_inc.executemany("INSERT INTO tr.raw_tushare_stk_limit VALUES (?,?,?,?)",
                             [r for r in fix_data["limit"] if r[1] == compact])
-        con_inc.executemany("INSERT INTO tr.raw_tushare_index_daily VALUES (?,?,?)",
-                            [r for r in fix_data["bench"] if r[1] == compact])
+        con_inc.executemany(
+            "INSERT INTO fact_index_daily VALUES (?, ?, ?, NULL, 'raw_tushare_index_daily', NULL)",
+            [(r[1], r[0], r[2]) for r in fix_data["bench"] if r[1] == compact],
+        )
         con_inc.executemany("INSERT INTO dim_stock_segment_daily VALUES (?,?,?,?,?,?,?,?,?)",
                             [r for r in fix_data["seg"] if r[1] == compact])
         out = ts.build_latest(conn=con_inc, cfg=CFG)

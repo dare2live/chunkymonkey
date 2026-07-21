@@ -137,9 +137,10 @@ tables:
     note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_index_daily:
-    role: ssot
+    role: compatibility
     kind: multi_consumer
-    note: "S7 hard-stop verified 2026-07-21: pulse RS + technical_states + institution_profile + paper_portfolio need close series; mart has rs_* only (no bench close); unblock=accepted/fact index plane + DataAccess redirect"
+    publication_surface: fact_index_daily
+    note: "B2 2026-07-21: fact_index_daily owns index×trade_date close publication (available_at+lineage); DataAccess index_daily redirected; raw = rebuild input residual; consumers paper/RS/tech/inst"
 
   raw_tushare_index_dailybasic:
     role: compatibility

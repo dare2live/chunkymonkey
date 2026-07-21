@@ -2772,6 +2772,31 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   E0 org；E/F paused。
 - **Status**: **PARTIAL**（B2 stock-day flow+limit done；S7 not FIXED）。
 
+### 2026-07-21 — B2 knife: index_daily → fact_index_daily
+
+- Wall-clock: Tue 2026-07-21 ~16:22–16:30 Asia/Shanghai.
+- **Knife**（§15；brick B2 multi-consumer residual；E/F paused）：
+  1. Publication：`smartmoney.fact_index_daily` grain `(trade_date, ts_code)`
+     close series from `raw_tushare_index_daily`；`available_at` = trade_date
+     18:00 Asia/Shanghai；lineage `source_table`+`built_at`。
+  2. Writer：`services/index_daily_publish.py` +
+     `scripts/publish_fact_index_daily.py`。
+  3. Consumer cut：DataAccess `index_daily` → fact；pulse `_tr_entity` bare；
+     institution_profile `_tr_entity` → `sm.fact_index_daily`；
+     technical_states `_index_daily_rel` bare on smartmoney main。
+  4. Inventory：`raw_tushare_index_daily` ssot→compatibility
+     (`publication_surface=fact_index_daily`)。
+- Live：`35279` rows；`20050104`→`20260716`；7 index codes；grain dups=0。
+- Inventory：**26→25 ssot** / 1 fill / **19→20 compatibility** of 46。
+- Evidence：`check_legacy_raw_plane` ssot=25；TDD
+  `test_index_daily_publish_b2` + legacy/pulse/tech/inst/data_access green；
+  `pre-knife index-daily-b2` OK。
+- **Did not**：fake dc_member PIT；start top_inst seat grain；E/F remeasure；
+  auto-wire publish into sync。
+- **Residual**：dc_member no DC PIT；top_inst multi-consumer（seat）；
+  E0 org；E/F paused。
+- **Status**: **PARTIAL**（B2 index close + stock-day limit/flow done；S7 not FIXED）。
+
 ### 2026-07-21 — DB storage hygiene reclaim (local data plane)
 
 - Wall-clock: Tue 2026-07-21 ~11:01 Asia/Shanghai (compact/delete) + commit session.

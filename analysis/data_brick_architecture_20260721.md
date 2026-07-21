@@ -195,7 +195,7 @@ flowchart TB
 | 1 | **PIT / `available_at` 装饰化** | 异常漂亮 = 先查泄漏 | F2/F3 fail-closed 先例；manual sync 仍绑 cutoff |
 | 2 | **Population vs vendor dump** | 把 TuShare 全集当沪深池 | MASTER §5.1 + formal acquire 全市场 landing；**读时** `traded_on_observation_date` |
 | 3 | **ST / universe 坐在 acquire** | exclude-then-fetch 换源即崩 | **已裁决**：ST = E1 membership，读时过滤 |
-| 4 | **Dual-plane legacy raw** | formal 绿但 mart 仍 ssot raw | S7 inventory **26 ssot**；dc_member still L0；B2 limit+moneyflow(+dc) COMPAT |
+| 4 | **Dual-plane legacy raw** | formal 绿但 mart 仍 ssot raw | S7 inventory **25 ssot**；dc_member still L0；B2 limit+moneyflow(+dc)+index_daily COMPAT |
 | 5 | **Fail-closed 分类** | 0 行 / 权限 / schema / timeout 混成「无数据」 | MASTER §6.1 kill-point；continuity 四级 |
 | 6 | **Reproducibility** | 同 snapshot 不同机器不同列 | `DatasetSnapshot` hash + config hash + accepted partition pin |
 | 7 | **Optuna-as-truth** | 搜索最优 = 生产候选 | goal 禁令；F0–F3 measured reject |

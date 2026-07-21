@@ -152,7 +152,9 @@ def _sql_conn():
     CREATE TABLE period_windows (
         stock_code TEXT, report_date TEXT, prev_period TEXT, w_start TEXT, w_end TEXT,
         c1_vwap DOUBLE, c2_eod DOUBLE, c3_lhb DOUBLE, c3_eff DOUBLE);
-    CREATE TABLE tr.raw_tushare_index_daily (ts_code TEXT, trade_date TEXT, close DOUBLE);
+    CREATE TABLE sm.fact_index_daily (
+        trade_date TEXT, ts_code TEXT, close DOUBLE,
+        available_at TIMESTAMPTZ, source_table TEXT, built_at TIMESTAMPTZ);
     CREATE TABLE tr.v_sw_industry_pit (stock_code TEXT, l1_name TEXT, in_date TEXT, out_date TEXT);
     """)
     c.executemany("INSERT INTO period_windows VALUES (?,?,?,?,?,?,?,?,?)", [

@@ -19,7 +19,7 @@
   (原始价空间触板判定; S7: form owns buyable/sellable/is_one_word publication;
   raw stk_limit = derive_input residual; library default = accepted-only nominal;
   ``from_accepted=False`` / ``--allow-legacy-fill`` 才 COALESCE legacy raw) +
-  DataAccess entity index_daily (RS 基准; physical raw until index accepted plane) +
+  DataAccess entity index_daily (RS 基准; publication=fact_index_daily) +
   reference.dim_trading_calendar (周期闭合真相源, H1) + smartmoney.dim_stock_segment_daily
   (Tier1 context: rv_pctile/vol_regime 列 — 先跑 segments 再跑本模块)。
 入口: rebuild_all (全量) / build_latest (幂等增量) / chunkyctl derive form。
@@ -110,12 +110,23 @@ def _trading_days(con) -> list[str]:
     return days
 
 
-def _bench_close(con, cfg: dict) -> dict:
+def _index_daily_rel() -> str:
+    """Qualified index_daily table on smartmoney main conn (bare) or tr attach."""
     from services.data_access.spec import load_registry
 
-    bench_tbl = load_registry().entity("index_daily").table
+    ent = load_registry().entity("index_daily")
+    if ent.db == "tushare_raw":
+        return f"tr.{ent.table}"
+    if ent.db == "smartmoney":
+        return ent.table
+    raise ValueError(
+        f"unsupported data_access db for form RS bench: {ent.db!r}"
+    )
+
+
+def _bench_close(con, cfg: dict) -> dict:
     rows = con.execute(
-        f"SELECT trade_date, close FROM tr.{bench_tbl} WHERE ts_code = ? ORDER BY 1",
+        f"SELECT trade_date, close FROM {_index_daily_rel()} WHERE ts_code = ? ORDER BY 1",
         [str(cfg["RS"]["基准"])]).fetchall()
     return {_iso(str(r[0])): float(r[1]) for r in rows if r[1] is not None}
 

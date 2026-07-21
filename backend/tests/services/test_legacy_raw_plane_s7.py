@@ -195,13 +195,13 @@ def test_s7_derive_runtime_still_bans_acquire_imports() -> None:
 
 
 def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
-    """S7 inventory after B2 moneyflow publication: 26 ssot / 19 compatibility."""
+    """S7 inventory after B2 index_daily publication: 25 ssot / 20 compatibility."""
 
     mod = _load_check_mod()
     counts = mod.role_counts()
-    assert counts["ssot"] == 26, counts
+    assert counts["ssot"] == 25, counts
     assert counts["fill"] == 1, counts
-    assert counts["compatibility"] == 19, counts
+    assert counts["compatibility"] == 20, counts
     assert sum(counts.values()) == 46, counts
 
 
@@ -242,6 +242,23 @@ def test_s7_moneyflow_publications_are_fact_stock_day() -> None:
         assert ent.table == surface, entity
 
 
+def test_s7_index_daily_publication_is_fact_index_daily() -> None:
+    """B2: index_daily multi_consumer → fact_index_daily; raw = compatibility."""
+
+    from services.data_access.spec import load_registry
+
+    mod = _load_check_mod()
+    inv = mod._load_yaml(mod.INVENTORY_YAML)
+    meta = inv["tables"]["raw_tushare_index_daily"]
+    assert meta["role"] == "compatibility"
+    assert meta.get("kind") == "multi_consumer"
+    assert meta.get("publication_surface") == "fact_index_daily"
+    ent = load_registry().entity("index_daily")
+    assert ent.db == "smartmoney"
+    assert ent.table == "fact_index_daily"
+    assert ent.code_input == "ts_passthrough"
+
+
 def test_s7_serve_multi_consumer_priority_stay_ssot() -> None:
     """Remaining priority serve/multi-consumer tables stay ssot until leaf publication."""
 
@@ -253,7 +270,6 @@ def test_s7_serve_multi_consumer_priority_stay_ssot() -> None:
     expected = {
         "raw_tushare_dc_member": ("membership_l0", "dc_member"),
         "raw_tushare_top_inst": ("multi_consumer", "top_inst"),
-        "raw_tushare_index_daily": ("multi_consumer", "index_daily"),
     }
     for table, (kind, entity) in expected.items():
         meta = inv["tables"][table]
@@ -455,7 +471,9 @@ def test_s7_index_daily_consumers_resolve_via_data_access() -> None:
     ts = (REPO / "backend" / "services" / "technical_states" / "__init__.py").read_text(
         encoding="utf-8"
     )
-    assert 'FROM tr.raw_tushare_index_daily' not in ts
+    assert "tr.raw_tushare_index_daily" not in ts
+    assert "FROM tr.{bench_tbl}" not in ts
+    assert "_index_daily_rel" in ts
     assert 'entity("index_daily")' in ts
 
     ip = (REPO / "backend" / "services" / "institution_profile.py").read_text(
@@ -465,6 +483,7 @@ def test_s7_index_daily_consumers_resolve_via_data_access() -> None:
     assert "tr.raw_tushare_top_inst" not in ip
     assert '_tr_entity("index_daily")' in ip
     assert '_tr_entity("top_inst")' in ip
+    assert 'ent.db == "smartmoney"' in ip
 
 
 def test_s7_stock_basic_identity_publication_is_dim() -> None:

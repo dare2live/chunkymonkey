@@ -69,16 +69,21 @@ entities:
     available_after: eod
 
   index_daily:
-    db: tushare_raw
-    table: raw_tushare_index_daily
-    layer: L0
+    # B2 index×trade_date close publication (S7 multi_consumer strangler).
+    # Publication = fact_index_daily (smartmoney); raw_tushare_index_daily = rebuild input.
+    # Grain = trade_date × ts_code; available_at = trade_date 18:00 Asia/Shanghai.
+    # Consumers: paper excess / pulse RS / technical_states RS / institution alpha.
+    db: smartmoney
+    table: fact_index_daily
+    layer: L1
     code_col: ts_code
     code_input: ts_passthrough   # 指数码 000300.SH 直用 (code_to_ts_code 股票前缀规则对指数无效)
     asof_col: trade_date
     asof_format: yyyymmdd
-    columns: [ts_code, trade_date, close]
+    columns: [ts_code, trade_date, close, available_at]
     vendor: tushare
-    available_after: eod
+    available_after: "18:00"
+    compute_fn: publish_fact_index_daily
 
   moneyflow_dc:
     # B2 stock-day eastmoney moneyflow publication (S7 serve_l0_leaf strangler).
