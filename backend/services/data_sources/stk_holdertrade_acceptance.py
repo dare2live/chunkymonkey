@@ -201,16 +201,25 @@ def publish_accepted_stk_holdertrade_partition(
     batch: StkHoldertradeLandingBatch,
     contract: StkHoldertradeContract | None = None,
 ) -> StkHoldertradeAcceptanceOutcome:
-    from services.data_sources.formal_execution import (
-        propagate_disclosure_execution_contract,
+    """Deprecated fused helper: thin alias to caller-only S1→S2 transport."""
+
+    from services.data_sources.disclosure_transport import (
+        land_then_accept_disclosure_partition,
     )
 
-    contract = verify_stk_holdertrade_contract(
+    _ = verify_stk_holdertrade_contract(
         contract or load_stk_holdertrade_contract()
     )
-    handed = propagate_disclosure_execution_contract("stk_holdertrade", contract)
-    land_stk_holdertrade_batch(conn, batch, handed, handoff=handed)
-    return accept_stk_holdertrade_batch(conn, batch.batch_id, handed, handoff=handed)
+    return land_then_accept_disclosure_partition(
+        "stk_holdertrade",
+        conn,
+        partition=str(batch.partition_value),
+        rows=list(batch.rows),
+        observed_at=batch.observed_at,
+        available_at=batch.available_at,
+        batch_id=str(batch.batch_id),
+        request=dict(batch.request),
+    )
 
 
 def runtime_surface() -> dict[str, Any]:

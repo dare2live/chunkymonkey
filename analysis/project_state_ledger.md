@@ -2494,3 +2494,30 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual**：membership L0 + 41 ssot tables until per-domain
   formal|sunset；E0；E/F paused.
 - **Status**: **PARTIAL**（S7）.
+
+### 2026-07-21 — R0 E0 PARTIAL: disclosure transport modular (S1/S2 style)
+
+- Wall-clock: Tue 2026-07-21 ~10:30 Asia/Shanghai (in-session).
+- **E0 PARTIAL (transport)**：strangler advance — land→validate→accept
+  modular surfaces consistent with daily/ST S1–S3, not greenfield.
+  1. New `services.data_sources.disclosure_transport` —
+     `land_disclosure_partition_from_rows` (S1; no canonical),
+     `accept_disclosure_from_landing` (S2; zero fetch),
+     `land_then_accept_disclosure_partition` (caller-only S1→S2).
+     Domains: `holders_top10` / `org_holding` / `stk_holdertrade`.
+  2. Production `disclosure_dual_write` routes through
+     `land_then_accept_disclosure_partition` (source ban vs fused
+     `publish_accepted_*`). Fused publish helpers kept as thin aliases.
+  3. CLI：`chunkyctl sync --domain holders_top10|org_holding|stk_holdertrade
+     --accept-from-landing --batch-id` short-circuits before sync_registry
+     `domain_spec` / provider auth（holders/org not registry domains；
+     stk → tushare_raw；holders/org → smartmoney）.
+  4. TDD：`test_disclosure_transport_e0.py` (+ CI surface)；dual-write /
+     acceptance / shadow / research_read / phase_e smoke regression green.
+- **Did not**：disclosure land-only provider CLI；mass legacy accept；
+  E/F remeasure；Optuna / StrategyRelease / gate loosen / cutover false；
+  second DB / plugin bus / mass dump.
+- **Residual**：land-only CLI for disclosure；broaden accepted partitions
+  beyond canary/bounded；E/F still paused；S7 long-tail ssot untouched.
+- **Status**: **PARTIAL**（E0 transport）；prior E0 gate/formal_only /
+  DatasetSnapshot canary evidence remains valid, not re-opened.

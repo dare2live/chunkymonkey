@@ -36,7 +36,7 @@
     }
   },
   "enforcement": "projection_only_not_truth",
-  "generated_at": "2026-07-21T02:00:04Z",
+  "generated_at": "2026-07-21T02:10:57Z",
   "generated_from": "backend/scripts/build_agent_board.py",
   "goal_hand_excerpt": "## 当前 objective\n\n**轨道 = transport strangler S1–S7**（owner 2026-07-20 第一原理重评）。模块化诉求（acquire≠accept≠derive≠serve；sync=caller-only；acquire 可换源）**S1–S6 FIXED**；**S7 PARTIAL**（derive+form+pipeline clean 默认 accepted-only；daily accepted 已扩至 `20190102`；inventory 仍 41/46 ssot）——见重评文 §2–§3 / modularity gap §8。A→H 骨架保留为**后置研究地图**；近端 residual = S7 续 strangler（membership L0 / 多数 raw SSOT 逐域 formal|sunset；禁盲删 raw）；不是 E/F remeasure。Agent-OS WP0–WP4 已闭合；WP6 仪式影子期仍开放。\n\n已落地硬事实（勿回滚）：\n- C + B-pit **`cutover_allowed=true`**（commit `b38e9ac5`）→ resolver `ACCEPTED_CUTOVER` / `MART_CUTOVER`\n- daily+ST+form/qfq/pulse 前沿 **`20260720`**\n- Phase D research_runtime **FIXED**（persist + fold + measured offline）\n- Delivery-OS：eng_gov **§15**（并行 subagent、异步 CI、L1 docs skip CI）\n- Tier1 accept **form enrich v1**：`stock_state_stage_pattern_v1` + exact-day `fact_stock_form_daily`；re-accept `20260717` (4989) + `20260720` (4991)；cutover yaml 未回翻\n- Phase F **F0+F1 FIXED**：`main_rally_v1` DatasetSnapshot freeze + B0 setup-entry short-horizon measured → `reject` / `claimable=false`（非 full-episode；禁 Optuna / StrategyRelease）\n- Phase F **F2 FIXED**：B1 = B0 + Tier1 stock-state FeatureBlock（同 B0 snapshot/folds/costs/paper，经 `…",
   "next_knives_frozen": [

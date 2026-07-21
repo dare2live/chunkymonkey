@@ -26,6 +26,7 @@ Usage:
   scripts/chunkyctl sync --domain daily|stock_st --land-only --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl sync --domain daily|stock_st --land-only --from-local-raw --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl sync --domain daily|stock_st --accept-from-landing --batch-id BATCH
+  scripts/chunkyctl sync --domain holders_top10|org_holding|stk_holdertrade --accept-from-landing --batch-id BATCH
   scripts/chunkyctl sync --domain daily|stock_st --land-then-accept [--from-local-raw] --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl map [--check]
   scripts/chunkyctl derive qfq|form [--from-accepted|--allow-legacy-fill] [--rebuild|--check-only]
@@ -53,6 +54,8 @@ Notes:
                 S1 --land-only / S2 --accept-from-landing / thin --land-then-accept are independent
                 of the legacy fused fetch→accept path; --from-local-raw materializes landing from
                 local raw_tushare_* (never SELECT raw INSERT canonical). Accept path skips provider auth.
+                E0 disclosure S2: holders_top10|org_holding|stk_holdertrade --accept-from-landing
+                --batch-id (zero fetch; land-only remains code API via disclosure_transport).
   derive      = S5/S7 qfq/form rebuild independent of acquire/accept; default = accepted-only
                 nominal (no legacy raw_tushare_daily fill). --allow-legacy-fill = authorized
                 pre-accepted UNION escape (pipeline clean/form library also default accepted-only).

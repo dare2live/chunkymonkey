@@ -395,3 +395,17 @@ Live 焊点（evidence pack §2.7 复核）：
 - qfq from-accepted = 8.40M rows full span；inventory still **41 ssot** →
   remain **PARTIAL**（not FIXED）.
 - Residual：membership/flow L0 + per-domain ssot formal|sunset；E0；E/F paused.
+
+### Amend 2026-07-21 — R0 E0 PARTIAL (disclosure transport modular)
+
+- Shipped `disclosure_transport` mirroring S1/S2：`land_disclosure_partition_from_rows`
+  / `accept_disclosure_from_landing` / `land_then_accept_disclosure_partition`.
+- Production `disclosure_dual_write` composes caller-only S1→S2（not fused
+  `publish_accepted_*`）；publish helpers remain thin deprecated aliases.
+- CLI：`chunkyctl sync --domain holders_top10|org_holding|stk_holdertrade
+  --accept-from-landing --batch-id`（registry-orthogonal short-circuit；zero fetch）.
+- TDD：`test_disclosure_transport_e0` + dual-write/acceptance regression green.
+- **Did not**：disclosure land-only provider CLI；mass accept；E/F remeasure；
+  Optuna/Release/cutover flip；second DB/plugin bus.
+- Residual：land-only CLI for disclosure；broaden accepted partitions；E/F paused.
+- Label：**E0 PARTIAL**（transport modularity；not full E0 closure）.

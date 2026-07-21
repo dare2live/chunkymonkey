@@ -737,16 +737,27 @@ def publish_accepted_holders_top10_partition(
     batch: HoldersTop10LandingBatch,
     contract: HoldersTop10Contract | None = None,
 ) -> HoldersTop10AcceptanceOutcome:
-    """Land + accept with mandatory disclosure execution handoff."""
+    """Deprecated fused helper: thin alias to caller-only S1→S2 transport.
 
-    from services.data_sources.formal_execution import (
-        propagate_disclosure_execution_contract,
+    Production writers use ``disclosure_dual_write`` →
+    ``land_then_accept_disclosure_partition``. Kept for older tests.
+    """
+
+    from services.data_sources.disclosure_transport import (
+        land_then_accept_disclosure_partition,
     )
 
-    contract = verify_holders_top10_contract(contract or load_holders_top10_contract())
-    handed = propagate_disclosure_execution_contract("holders_top10", contract)
-    land_holders_top10_batch(conn, batch, handed, handoff=handed)
-    return accept_holders_top10_batch(conn, batch.batch_id, handed, handoff=handed)
+    _ = verify_holders_top10_contract(contract or load_holders_top10_contract())
+    return land_then_accept_disclosure_partition(
+        "holders_top10",
+        conn,
+        partition=str(batch.partition_value),
+        rows=list(batch.rows),
+        observed_at=batch.observed_at,
+        available_at=batch.available_at,
+        batch_id=str(batch.batch_id),
+        request=dict(batch.request),
+    )
 
 
 def runtime_surface() -> dict[str, Any]:

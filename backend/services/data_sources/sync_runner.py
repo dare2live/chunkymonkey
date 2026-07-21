@@ -1979,6 +1979,61 @@ def _publish_security_day_accepted_partition(
     }
 
 
+def accept_disclosure_from_landing_batch(
+    domain: str,
+    *,
+    batch_id: str,
+) -> dict[str, Any]:
+    """E0 S2 CLI: accept one LANDED disclosure batch. Zero provider fetch."""
+
+    from services.data_sources.disclosure_transport import (
+        DISCLOSURE_TRANSPORT_DOMAINS,
+        DisclosureTransportError,
+        accept_disclosure_from_landing,
+        disclosure_target_db_alias,
+    )
+    from services.database_manifest import get_database_manifest
+    from services.duck_adapter import connect
+
+    if domain not in DISCLOSURE_TRANSPORT_DOMAINS:
+        raise SyncWindowError(
+            "accept-from-landing disclosure supports "
+            f"{sorted(DISCLOSURE_TRANSPORT_DOMAINS)}; got domain={domain}"
+        )
+    resolved = str(batch_id or "").strip()
+    if not resolved:
+        raise SyncWindowError("--accept-from-landing requires --batch-id")
+    db_alias = disclosure_target_db_alias(domain)
+    path = get_database_manifest().path_for(db_alias)
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    conn = connect(str(path), read_only=False)
+    try:
+        try:
+            outcome = accept_disclosure_from_landing(
+                domain, conn, resolved, bootstrap=True
+            )
+        except DisclosureTransportError as exc:
+            raise SyncWindowError(str(exc)) from exc
+    finally:
+        conn.close()
+
+    accepted = outcome.status == "ACCEPTED"
+    return {
+        "domain": domain,
+        "status": "ok" if accepted else str(outcome.status).lower(),
+        "batches": 1,
+        "rows": int(outcome.row_count or 0),
+        "failed_batches": 0 if accepted else 1,
+        "batch_id": outcome.batch_id,
+        "partition_value": outcome.partition_value,
+        "content_hash": outcome.content_hash,
+        "rejection_code": getattr(outcome, "rejection_code", None),
+        "publication": f"accepted_{domain}_from_landing",
+        "transport": "accept_from_landing",
+        "target_db": db_alias,
+    }
+
+
 def accept_security_day_from_landing_batch(
     domain: str,
     *,
@@ -1987,9 +2042,15 @@ def accept_security_day_from_landing_batch(
 ) -> dict[str, Any]:
     """S2 CLI surface: accept one LANDED batch. Zero ``_adapter`` / provider fetch."""
 
+    from services.data_sources.disclosure_transport import DISCLOSURE_TRANSPORT_DOMAINS
+
+    if domain in DISCLOSURE_TRANSPORT_DOMAINS:
+        return accept_disclosure_from_landing_batch(domain, batch_id=batch_id)
+
     if domain not in {"daily", "stock_st"}:
         raise SyncWindowError(
-            f"accept-from-landing supports daily|stock_st only; got domain={domain}"
+            "accept-from-landing supports daily|stock_st|"
+            f"{'|'.join(sorted(DISCLOSURE_TRANSPORT_DOMAINS))}; got domain={domain}"
         )
     batch_id = str(batch_id or "").strip()
     if not batch_id:
@@ -3141,15 +3202,22 @@ def _preflight_cli_request_shape(
 
     transport = _cli_transport_mode(args)
     if transport is not None:
+        from services.data_sources.disclosure_transport import (
+            DISCLOSURE_TRANSPORT_DOMAINS,
+        )
+
         if args.drain or args.backfill or args.resume or args.all_due:
             raise SyncWindowError(
                 f"--{transport.replace('_', '-')} cannot combine with "
                 "--drain/--backfill/--resume/--all-due"
             )
-        if len(domains) != 1 or domains[0] not in {"daily", "stock_st"}:
+        allowed = {"daily", "stock_st"}
+        if transport == "accept_from_landing":
+            allowed = allowed | set(DISCLOSURE_TRANSPORT_DOMAINS)
+        if len(domains) != 1 or domains[0] not in allowed:
             raise SyncWindowError(
                 f"--{transport.replace('_', '-')} requires exactly one "
-                "--domain daily|stock_st"
+                f"--domain {'|'.join(sorted(allowed))}"
             )
         if getattr(args, "from_local_raw", False) and transport not in {
             "land_only",
@@ -3373,6 +3441,65 @@ def main() -> int:
 
     # help/参数错误必须在 writer lock 与 provider 探针之前完成。
     args = _parse_cli_args()
+    # E0 S2: disclosure accept-from-landing is registry-orthogonal (holders/org
+    # are aif10 writers; stk uses tushare_raw). Short-circuit before sync_registry
+    # domain_spec / provider authorization probes.
+    transport = _cli_transport_mode(args)
+    if transport == "accept_from_landing" and args.domain:
+        from services.data_sources.disclosure_transport import (
+            DISCLOSURE_TRANSPORT_DOMAINS,
+        )
+
+        if args.domain in DISCLOSURE_TRANSPORT_DOMAINS:
+            if not str(getattr(args, "batch_id", "") or "").strip():
+                print(
+                    json.dumps(
+                        {
+                            "status": "error",
+                            "domain": args.domain,
+                            "transport": "accept_from_landing",
+                            "error": (
+                                "disclosure --accept-from-landing requires "
+                                "--batch-id"
+                            ),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+                return 1
+            try:
+                with writer_lock("sync_runner"):
+                    result = accept_disclosure_from_landing_batch(
+                        args.domain,
+                        batch_id=str(args.batch_id),
+                    )
+            except WriterLockBusyError as exc:
+                print(
+                    json.dumps(
+                        {
+                            "status": "writer_lock_busy",
+                            "error": str(exc)[:300],
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+                return 5
+            except SyncWindowError as exc:
+                print(
+                    json.dumps(
+                        {
+                            "status": "error",
+                            "domain": args.domain,
+                            "transport": "accept_from_landing",
+                            "error": str(exc)[:500],
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+                return 1
+            print(json.dumps([result], ensure_ascii=False, indent=1))
+            return 0 if int(result.get("failed_batches") or 0) == 0 else 1
+
     reg = load_registry()
     domains = _selected_domains(args, reg)
     try:

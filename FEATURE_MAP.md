@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-21 09:40
+> Snapshot: 2026-07-21 10:11
 
 ## 1. 入口面
 
@@ -162,22 +162,22 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,104 | calls 边 9,385 | imports 边 2,875 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,152 | calls 边 9,451 | imports 边 2,890 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 52 |
+| services.duck_adapter | 53 |
 | services.data_sources | 26 |
 | services.data_sources.security_day_partition | 19 |
 | services.data_sources.accepted_schema | 18 |
 | services.institution_follow_b0_measure | 18 |
 | services.institution_follow_edge_gates | 17 |
 | services.universe | 16 |
+| services.data_sources.holders_top10_schema | 14 |
 | services.data_sources.margin_schema | 14 |
 | services.database_manifest | 14 |
-| services.data_sources.holders_top10_schema | 13 |
 | services.data_sources.nominal_ohlcv_schema | 13 |
 | services.source_watermarks | 13 |
 | services.data_sources.calendar_schema | 12 |
@@ -188,7 +188,7 @@
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 29 |
+| backend/services/duck_adapter.py | 30 |
 | backend/services/institution_follow_edge_gates.py | 17 |
 | backend/services/source_watermarks.py | 13 |
 | backend/services/universe.py | 13 |
@@ -205,12 +205,12 @@
 
 | 文件 | 行数 |
 |---|---|
-| backend/services/data_sources/sync_runner.py | 3467 |
+| backend/services/data_sources/sync_runner.py | 3594 |
 | backend/services/market_pulse.py | 1496 |
 | backend/scripts/check_continuity_integrity.py | 949 |
+| backend/services/data_sources/holders_top10_acceptance.py | 787 |
 | backend/services/research_runtime.py | 780 |
 | backend/services/data_sources/security_day_partition.py | 779 |
-| backend/services/data_sources/holders_top10_acceptance.py | 776 |
 | backend/services/institution_follow_b0.py | 758 |
 | backend/services/universe.py | 755 |
 | backend/scripts/data_health_snapshot.py | 731 |

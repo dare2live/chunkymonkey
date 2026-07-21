@@ -1,10 +1,12 @@
-"""E0 formal disclosure writes: land→accept; legacy mirror off by default.
+"""E0 formal disclosure writes: caller-only land→accept; legacy mirror off.
 
-Production disclosure writers route here as ``formal_only``.  Legacy mirror
-runs only when ``enable_legacy_mirror=True`` or an explicit ``mirror`` callback
-is passed (test/emergency escape).  Holders enrichment columns are carried on
-canonical; research provider-field reads prefer accepted canonical when shadow
-MATCH.  Naked NONCONFORMING direct writes remain test-escape only.
+Production disclosure writers route here as ``formal_only`` and compose
+``disclosure_transport.land_then_accept_disclosure_partition`` (S1→S2).
+Legacy mirror runs only when ``enable_legacy_mirror=True`` or an explicit
+``mirror`` callback is passed (test/emergency escape).  Holders enrichment
+columns are carried on canonical; research provider-field reads prefer
+accepted canonical when shadow MATCH.  Naked NONCONFORMING direct writes
+remain test-escape only.
 """
 from __future__ import annotations
 
@@ -104,11 +106,9 @@ def write_holders_top10_formal_then_mirror(
 ) -> DisclosureDualWriteOutcome:
     """Publish by notice_date (stock-merge); legacy mirror only if enabled."""
 
-    from services.data_sources.holders_top10_acceptance import (
-        HoldersTop10LandingBatch,
-        publish_accepted_holders_top10_partition,
+    from services.data_sources.disclosure_transport import (
+        land_then_accept_disclosure_partition,
     )
-    from services.data_sources.holders_top10_contract import load_holders_top10_contract
     from services.data_sources.holders_top10_schema import (
         API,
         CANONICAL_ROW_FIELDS,
@@ -147,7 +147,6 @@ def write_holders_top10_formal_then_mirror(
     stocks.discard("")
     batch_ids: list[str] = []
     canonical_total = 0
-    contract = load_holders_top10_contract()
 
     for partition, provider_rows in sorted(by_partition.items()):
         event_at = available_at or observed_at or _default_event_instant(partition)
@@ -172,17 +171,15 @@ def write_holders_top10_formal_then_mirror(
 
         merged = others + provider_rows
         batch_id = f"holders_top10:{partition}:{uuid4().hex[:12]}"
-        outcome = publish_accepted_holders_top10_partition(
+        outcome = land_then_accept_disclosure_partition(
+            "holders_top10",
             conn,
-            HoldersTop10LandingBatch(
-                batch_id=batch_id,
-                partition_value=partition,
-                observed_at=event_at,
-                available_at=event_at,
-                rows=merged,
-                request={"api": API, "notice_date": partition, "source": SOURCE},
-            ),
-            contract,
+            partition=partition,
+            rows=merged,
+            observed_at=event_at,
+            available_at=event_at,
+            batch_id=batch_id,
+            request={"api": API, "notice_date": partition, "source": SOURCE},
         )
         _require_accepted("holders_top10", outcome)
         batch_ids.append(batch_id)
@@ -221,14 +218,11 @@ def write_org_holding_formal_then_mirror(
 ) -> DisclosureDualWriteOutcome:
     """Publish by available_date; legacy mirror only if enabled (ISO dates)."""
 
-    from services.data_sources.org_holding_acceptance import (
-        OrgHoldingLandingBatch,
-        publish_accepted_org_holding_partition,
+    from services.data_sources.disclosure_transport import (
+        land_then_accept_disclosure_partition,
     )
-    from services.data_sources.org_holding_contract import load_org_holding_contract
     from services.data_sources.org_holding_schema import (
         API,
-        CONTRACT_VERSION,
         PROVIDER_FIELDS,
         SOURCE,
     )
@@ -260,23 +254,18 @@ def write_org_holding_formal_then_mirror(
 
     batch_ids: list[str] = []
     canonical_total = 0
-    contract = load_org_holding_contract()
     for partition, provider_rows in sorted(by_partition.items()):
         event_at = available_at or observed_at or _default_event_instant(partition)
         batch_id = f"org_holding:{partition}:{uuid4().hex[:12]}"
-        outcome = publish_accepted_org_holding_partition(
+        outcome = land_then_accept_disclosure_partition(
+            "org_holding",
             conn,
-            OrgHoldingLandingBatch(
-                batch_id=batch_id,
-                partition_value=partition,
-                observed_at=event_at,
-                available_at=event_at,
-                rows=provider_rows,
-                request={"api": API, "available_date": partition, "source": SOURCE},
-                source=SOURCE,
-                contract_version=CONTRACT_VERSION,
-            ),
-            contract,
+            partition=partition,
+            rows=provider_rows,
+            observed_at=event_at,
+            available_at=event_at,
+            batch_id=batch_id,
+            request={"api": API, "available_date": partition, "source": SOURCE},
         )
         _require_accepted("org_holding", outcome)
         batch_ids.append(batch_id)
@@ -325,17 +314,12 @@ def write_stk_holdertrade_formal_then_mirror(
 ) -> DisclosureDualWriteOutcome:
     """Publish by ann_date; legacy mirror only if enabled."""
 
-    from services.data_sources.stk_holdertrade_acceptance import (
-        StkHoldertradeLandingBatch,
-        publish_accepted_stk_holdertrade_partition,
-    )
-    from services.data_sources.stk_holdertrade_contract import (
-        load_stk_holdertrade_contract,
+    from services.data_sources.disclosure_transport import (
+        land_then_accept_disclosure_partition,
     )
     from services.data_sources.stk_holdertrade_schema import (
         API,
         COMPATIBILITY_TABLE,
-        CONTRACT_VERSION,
         PROVIDER_FIELDS,
         SOURCE,
     )
@@ -366,23 +350,18 @@ def write_stk_holdertrade_formal_then_mirror(
 
     batch_ids: list[str] = []
     canonical_total = 0
-    contract = load_stk_holdertrade_contract()
     for partition, provider_rows in sorted(by_partition.items()):
         event_at = available_at or observed_at or _default_event_instant(partition)
         batch_id = f"stk_holdertrade:{partition}:{uuid4().hex[:12]}"
-        outcome = publish_accepted_stk_holdertrade_partition(
+        outcome = land_then_accept_disclosure_partition(
+            "stk_holdertrade",
             conn,
-            StkHoldertradeLandingBatch(
-                batch_id=batch_id,
-                partition_value=partition,
-                observed_at=event_at,
-                available_at=event_at,
-                rows=provider_rows,
-                request={"api": API, "ann_date": partition, "source": SOURCE},
-                source=SOURCE,
-                contract_version=CONTRACT_VERSION,
-            ),
-            contract,
+            partition=partition,
+            rows=provider_rows,
+            observed_at=event_at,
+            available_at=event_at,
+            batch_id=batch_id,
+            request={"api": API, "ann_date": partition, "source": SOURCE},
         )
         _require_accepted("stk_holdertrade", outcome)
         batch_ids.append(batch_id)

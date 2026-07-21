@@ -203,14 +203,23 @@ def publish_accepted_org_holding_partition(
     batch: OrgHoldingLandingBatch,
     contract: OrgHoldingContract | None = None,
 ) -> OrgHoldingAcceptanceOutcome:
-    from services.data_sources.formal_execution import (
-        propagate_disclosure_execution_contract,
+    """Deprecated fused helper: thin alias to caller-only S1→S2 transport."""
+
+    from services.data_sources.disclosure_transport import (
+        land_then_accept_disclosure_partition,
     )
 
-    contract = verify_org_holding_contract(contract or load_org_holding_contract())
-    handed = propagate_disclosure_execution_contract("org_holding", contract)
-    land_org_holding_batch(conn, batch, handed, handoff=handed)
-    return accept_org_holding_batch(conn, batch.batch_id, handed, handoff=handed)
+    _ = verify_org_holding_contract(contract or load_org_holding_contract())
+    return land_then_accept_disclosure_partition(
+        "org_holding",
+        conn,
+        partition=str(batch.partition_value),
+        rows=list(batch.rows),
+        observed_at=batch.observed_at,
+        available_at=batch.available_at,
+        batch_id=str(batch.batch_id),
+        request=dict(batch.request),
+    )
 
 
 def runtime_surface() -> dict[str, Any]:
