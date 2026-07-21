@@ -16,14 +16,18 @@ def test_serve_read_entities_resolve_physical_tables():
     reg = load_registry()
     for name in (
         "dc_member",
-        "moneyflow",
-        "moneyflow_dc",
         "daily",
         "margin",
     ):
         assert reg.entity(name).db == "tushare_raw"
         assert serve._table(name).startswith("raw_")
-    # B2: limit_list_d publication = fact_stock_limit_daily (smartmoney)
+    # B2: moneyflow / moneyflow_dc / limit_list_d → smartmoney publications
+    assert reg.entity("moneyflow").db == "smartmoney"
+    assert reg.entity("moneyflow").table == "fact_stock_moneyflow_daily"
+    assert serve._tr("moneyflow") == "fact_stock_moneyflow_daily"
+    assert reg.entity("moneyflow_dc").db == "smartmoney"
+    assert reg.entity("moneyflow_dc").table == "fact_stock_moneyflow_dc_daily"
+    assert serve._tr("moneyflow_dc") == "fact_stock_moneyflow_dc_daily"
     assert reg.entity("limit_list_d").db == "smartmoney"
     assert reg.entity("limit_list_d").table == "fact_stock_limit_daily"
     assert serve._table("limit_list_d") == "fact_stock_limit_daily"

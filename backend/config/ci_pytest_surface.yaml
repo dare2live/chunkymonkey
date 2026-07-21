@@ -65,6 +65,7 @@ paths:
 - tests/services/test_derive_runtime_s5.py
 - tests/services/test_legacy_raw_plane_s7.py
 - tests/services/test_stock_limit_publish_b2.py
+- tests/services/test_stock_moneyflow_publish_b2.py
 - tests/services/test_market_pulse_serve_read_s6.py
 - tests/services/test_runtime_limits.py
 - tests/scripts/test_check_universe_filter.py

@@ -195,13 +195,13 @@ def test_s7_derive_runtime_still_bans_acquire_imports() -> None:
 
 
 def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
-    """S7 inventory after B2 limit publication: 28 ssot / 17 compatibility."""
+    """S7 inventory after B2 moneyflow publication: 26 ssot / 19 compatibility."""
 
     mod = _load_check_mod()
     counts = mod.role_counts()
-    assert counts["ssot"] == 28, counts
+    assert counts["ssot"] == 26, counts
     assert counts["fill"] == 1, counts
-    assert counts["compatibility"] == 17, counts
+    assert counts["compatibility"] == 19, counts
     assert sum(counts.values()) == 46, counts
 
 
@@ -221,6 +221,27 @@ def test_s7_limit_list_d_publication_is_fact_stock_limit_daily() -> None:
     assert ent.table == "fact_stock_limit_daily"
 
 
+def test_s7_moneyflow_publications_are_fact_stock_day() -> None:
+    """B2: moneyflow + moneyflow_dc → fact_stock_moneyflow(_dc)_daily; raw = compatibility."""
+
+    from services.data_access.spec import load_registry
+
+    mod = _load_check_mod()
+    inv = mod._load_yaml(mod.INVENTORY_YAML)
+    reg = load_registry()
+    for table, entity, surface in (
+        ("raw_tushare_moneyflow", "moneyflow", "fact_stock_moneyflow_daily"),
+        ("raw_tushare_moneyflow_dc", "moneyflow_dc", "fact_stock_moneyflow_dc_daily"),
+    ):
+        meta = inv["tables"][table]
+        assert meta["role"] == "compatibility", table
+        assert meta.get("kind") == "serve_l0_leaf", table
+        assert meta.get("publication_surface") == surface, table
+        ent = reg.entity(entity)
+        assert ent.db == "smartmoney", entity
+        assert ent.table == surface, entity
+
+
 def test_s7_serve_multi_consumer_priority_stay_ssot() -> None:
     """Remaining priority serve/multi-consumer tables stay ssot until leaf publication."""
 
@@ -230,8 +251,6 @@ def test_s7_serve_multi_consumer_priority_stay_ssot() -> None:
     inv = mod._load_yaml(mod.INVENTORY_YAML)
     reg = load_registry()
     expected = {
-        "raw_tushare_moneyflow": ("serve_l0_leaf", "moneyflow"),
-        "raw_tushare_moneyflow_dc": ("serve_l0_leaf", "moneyflow_dc"),
         "raw_tushare_dc_member": ("membership_l0", "dc_member"),
         "raw_tushare_top_inst": ("multi_consumer", "top_inst"),
         "raw_tushare_index_daily": ("multi_consumer", "index_daily"),

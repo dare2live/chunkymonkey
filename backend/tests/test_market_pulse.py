@@ -77,6 +77,11 @@ SELECT SPLIT_PART(ts_code, '.', 1) AS stock_code, ts_code, name,
 FROM tr.raw_tushare_index_member_all;
 CREATE TABLE tr.raw_tushare_moneyflow (
     ts_code TEXT, trade_date TEXT, net_mf_amount DOUBLE);
+CREATE TABLE fact_stock_moneyflow_daily (
+    trade_date TEXT, ts_code TEXT, stock_code TEXT, net_mf_amount DOUBLE,
+    buy_sm_amount DOUBLE, buy_md_amount DOUBLE, buy_lg_amount DOUBLE, buy_elg_amount DOUBLE,
+    sell_sm_amount DOUBLE, sell_md_amount DOUBLE, sell_lg_amount DOUBLE, sell_elg_amount DOUBLE,
+    available_at TIMESTAMPTZ, source_table TEXT, built_at TIMESTAMPTZ);
 CREATE TABLE tr.raw_tushare_daily_basic (
     ts_code TEXT, trade_date TEXT, circ_mv DOUBLE);
 CREATE TABLE tr.raw_tushare_limit_list_d (
@@ -96,6 +101,10 @@ CREATE TABLE tr.raw_tushare_dc_member (
     trade_date TEXT, ts_code TEXT, con_code TEXT, name TEXT);
 CREATE TABLE tr.raw_tushare_moneyflow_dc (
     trade_date TEXT, ts_code TEXT, name TEXT, net_amount DOUBLE, pct_change DOUBLE);
+CREATE TABLE fact_stock_moneyflow_dc_daily (
+    trade_date TEXT, ts_code TEXT, stock_code TEXT, net_amount DOUBLE,
+    net_amount_rate DOUBLE, pct_change DOUBLE,
+    available_at TIMESTAMPTZ, source_table TEXT, built_at TIMESTAMPTZ);
 CREATE TABLE tr.raw_tushare_margin (
     trade_date TEXT, exchange_id TEXT, rzrqye DOUBLE);
 CREATE TABLE tr.raw_tushare_index_dailybasic (
@@ -160,6 +169,22 @@ def _fixture_conn():
         (D[3], "600003.SZ", "丙", 1.0, 0.3),
         (D[4], "600001.SH", "甲", -1.0, -1.0), (D[4], "600002.SZ", "乙", 0.0, 0.1),
     ])
+    # B2: pulse/serve read fact_stock_moneyflow_dc_daily (DataAccess redirect).
+    c.executemany(
+        "INSERT INTO fact_stock_moneyflow_dc_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (D[3], "600001.SH", "600001", 5.0, None, 2.0,
+             "2024-01-05 18:00:00+08:00", "raw_tushare_moneyflow_dc", "2024-01-05 18:00:00+08:00"),
+            (D[3], "600002.SZ", "600002", -3.0, None, -0.5,
+             "2024-01-05 18:00:00+08:00", "raw_tushare_moneyflow_dc", "2024-01-05 18:00:00+08:00"),
+            (D[3], "600003.SZ", "600003", 1.0, None, 0.3,
+             "2024-01-05 18:00:00+08:00", "raw_tushare_moneyflow_dc", "2024-01-05 18:00:00+08:00"),
+            (D[4], "600001.SH", "600001", -1.0, None, -1.0,
+             "2024-01-08 18:00:00+08:00", "raw_tushare_moneyflow_dc", "2024-01-08 18:00:00+08:00"),
+            (D[4], "600002.SZ", "600002", 0.0, None, 0.1,
+             "2024-01-08 18:00:00+08:00", "raw_tushare_moneyflow_dc", "2024-01-08 18:00:00+08:00"),
+        ],
+    )
     # sw 链: 2 个 L1 (+1 个 L2 行情码, v3) + HS300 基准 (平盘 → rs = 板块自身滚窗收益)。
     # 成员行含三级码 + PIT 区间 (v3 drill 叶子层; is_new='N'/out_date 已过历史行必须被排除)
     c.executemany("INSERT INTO tr.raw_tushare_index_member_all VALUES (?,?,?,?,?,?,?,?,?,?,?)", [
@@ -195,6 +220,23 @@ def _fixture_conn():
                   [(d,) for d in D[:4]])
     c.executemany("INSERT INTO tr.raw_tushare_moneyflow VALUES ('600003.SZ', ?, 3.0)",
                   [(d,) for d in D])
+    # B2: pulse/serve read fact_stock_moneyflow_daily (DataAccess redirect).
+    c.executemany(
+        "INSERT INTO fact_stock_moneyflow_daily VALUES "
+        "(?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?)",
+        [
+            (d, "600001.SH", "600001", 2.0,
+             f"2024-01-{d[6:8]} 18:00:00+08:00", "raw_tushare_moneyflow",
+             f"2024-01-{d[6:8]} 18:00:00+08:00")
+            for d in D[:4]
+        ]
+        + [
+            (d, "600003.SZ", "600003", 3.0,
+             f"2024-01-{d[6:8]} 18:00:00+08:00", "raw_tushare_moneyflow",
+             f"2024-01-{d[6:8]} 18:00:00+08:00")
+            for d in D
+        ],
+    )
     # 板块流通市值分母 (S7: dim owns circ_mv publication): 801010 = (100+300)万元 = 4e6 元; 801011 = 1e6 元
     for d in D:
         c.execute(
@@ -531,12 +573,27 @@ def test_build_latest_incremental_idempotent():
                       [(d6, "600001.SH", "甲"), (d6, "600002.SZ", "乙")])
         c.executemany("INSERT INTO tr.raw_tushare_moneyflow_dc VALUES (?, ?, ?, ?, ?)",
                       [(d6, "600001.SH", "甲", 5.0, 1.2), (d6, "600002.SZ", "乙", -3.0, -0.4)])
+        c.executemany(
+            "INSERT INTO fact_stock_moneyflow_dc_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (d6, "600001.SH", "600001", 5.0, None, 1.2,
+                 "2024-01-09 18:00:00+08:00", "raw_tushare_moneyflow_dc", "2024-01-09 18:00:00+08:00"),
+                (d6, "600002.SZ", "600002", -3.0, None, -0.4,
+                 "2024-01-09 18:00:00+08:00", "raw_tushare_moneyflow_dc", "2024-01-09 18:00:00+08:00"),
+            ],
+        )
         c.execute("INSERT INTO tr.raw_tushare_sw_daily VALUES ('801010.SI', ?, 161.051, 10.0, 300.0)", [d6])
         c.execute("INSERT INTO tr.raw_tushare_sw_daily VALUES ('801080.SI', ?, 65.61, -10.0, 100.0)", [d6])
         c.execute("INSERT INTO tr.raw_tushare_index_daily VALUES ('000300.SH', ?, 100.0)", [d6])
         c.execute("INSERT INTO tr.raw_tushare_daily VALUES ('600001.SH', ?, 1.0)", [d6])
         # v3: sw 流增量 (600003 补 d6 → 801010 net=3e4; 601 无行)
         c.execute("INSERT INTO tr.raw_tushare_moneyflow VALUES ('600003.SZ', ?, 3.0)", [d6])
+        c.execute(
+            "INSERT INTO fact_stock_moneyflow_daily VALUES "
+            "(?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?)",
+            [d6, "600003.SZ", "600003", 3.0,
+             "2024-01-09 18:00:00+08:00", "raw_tushare_moneyflow", "2024-01-09 18:00:00+08:00"],
+        )
         c.execute(
             "INSERT INTO dim_stock_segment_daily VALUES ('600003', ?, 'mid', 'mid', '农林牧渔', 300.0)",
             [d6],

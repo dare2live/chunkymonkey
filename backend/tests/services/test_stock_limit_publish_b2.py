@@ -171,8 +171,8 @@ def test_legacy_plane_limit_list_d_is_compatibility() -> None:
     assert meta["publication_surface"] == "fact_stock_limit_daily"
     assert mod.collect_violations() == []
     counts = mod.role_counts()
-    assert counts["ssot"] == 28
-    assert counts["compatibility"] == 17
+    assert counts["ssot"] == 26
+    assert counts["compatibility"] == 19
 
 
 def test_pulse_entity_ref_uses_smartmoney_bare_table(monkeypatch) -> None:
@@ -187,6 +187,6 @@ def test_pulse_entity_ref_uses_smartmoney_bare_table(monkeypatch) -> None:
     assert reg.entity("limit_list_d").db == "smartmoney"
     assert mp._tr_entity("limit_list_d") == "fact_stock_limit_daily"
     assert serve._tr("limit_list_d") == "fact_stock_limit_daily"
-    # still-raw entities keep tr. prefix
-    assert mp._tr_entity("moneyflow").startswith("tr.raw_")
-    assert serve._tr("moneyflow").startswith("tr.raw_")
+    # B2 moneyflow also smartmoney — keep limit test from asserting raw moneyflow
+    assert mp._tr_entity("moneyflow") == "fact_stock_moneyflow_daily"
+    assert serve._tr("moneyflow") == "fact_stock_moneyflow_daily"

@@ -182,14 +182,16 @@ tables:
     note: "S7 BLOCKED: stock-level margin detail; formal exchange aggregate is raw_tushare_margin only; no honest publication surface"
 
   raw_tushare_moneyflow:
-    role: ssot
+    role: compatibility
     kind: serve_l0_leaf
-    note: "S7 hard-stop verified 2026-07-21: serve SW drill leaf needs stock-day net_mf_amount; design keeps stock regime on-the-fly (no mart mirror); unblock=stock-day flow publication + DataAccess redirect"
+    publication_surface: fact_stock_moneyflow_daily
+    note: "B2 2026-07-21: fact_stock_moneyflow_daily owns stock-day tushare flow publication (available_at+lineage); DataAccess moneyflow redirected; raw = rebuild input residual"
 
   raw_tushare_moneyflow_dc:
-    role: ssot
+    role: compatibility
     kind: serve_l0_leaf
-    note: "S7 hard-stop verified 2026-07-21: serve DC drill leaf needs stock-day net_amount; sector mart inflow_breadth is aggregate only; unblock=stock-day DC flow publication + DataAccess redirect"
+    publication_surface: fact_stock_moneyflow_dc_daily
+    note: "B2 2026-07-21: fact_stock_moneyflow_dc_daily owns stock-day eastmoney flow publication (available_at+lineage); DataAccess moneyflow_dc redirected; raw = rebuild input residual; not DC membership PIT"
 
   raw_tushare_moneyflow_hsgt:
     role: ssot

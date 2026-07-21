@@ -29,15 +29,22 @@ def _mem_with_kline():
 
 def _mem_with_moneyflow():
     c = duck_mem()
-    # 2026-07-02 fixture 跟上 entity 声明 (06-23 加 8 档买卖额列, fixture 未同步致 preflight 漂移 FAIL)
+    # B2: DataAccess moneyflow → fact_stock_moneyflow_daily (stock_code + available_at + lineage).
     c.executescript(
-        "CREATE TABLE raw_tushare_moneyflow (ts_code TEXT, trade_date TEXT, net_mf_amount REAL,"
+        "CREATE TABLE fact_stock_moneyflow_daily ("
+        " trade_date TEXT, ts_code TEXT, stock_code TEXT, net_mf_amount REAL,"
         " buy_sm_amount REAL, buy_md_amount REAL, buy_lg_amount REAL, buy_elg_amount REAL,"
-        " sell_sm_amount REAL, sell_md_amount REAL, sell_lg_amount REAL, sell_elg_amount REAL);"
+        " sell_sm_amount REAL, sell_md_amount REAL, sell_lg_amount REAL, sell_elg_amount REAL,"
+        " available_at TIMESTAMPTZ);"
     )
     c.executemany(
-        "INSERT INTO raw_tushare_moneyflow VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        [("600519.SH", "20260504", 1234.5, 1,1,1,1, 1,1,1,1), ("600519.SH", "20260505", -678.9, 1,1,1,1, 1,1,1,1)],
+        "INSERT INTO fact_stock_moneyflow_daily VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            ("20260504", "600519.SH", "600519", 1234.5, 1, 1, 1, 1, 1, 1, 1, 1,
+             "2026-05-04 18:00:00+08:00"),
+            ("20260505", "600519.SH", "600519", -678.9, 1, 1, 1, 1, 1, 1, 1, 1,
+             "2026-05-05 18:00:00+08:00"),
+        ],
     )
     return c
 
@@ -122,5 +129,8 @@ def test_registry_loads_core_entities():
     # S7: valuation publication = dim_stock_segment_daily (not raw daily_basic)
     assert reg.entity("valuation").table == "dim_stock_segment_daily"
     assert reg.entity("valuation").layer == "L1"
+    # B2: moneyflow publication = fact_stock_moneyflow_daily
+    assert reg.entity("moneyflow").table == "fact_stock_moneyflow_daily"
+    assert reg.entity("moneyflow").layer == "L1"
     # S7: stk_limit removed from DataAccess (form owns buyable/sellable/is_one_word)
     assert "stk_limit" not in reg.entities

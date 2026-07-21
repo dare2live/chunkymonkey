@@ -41,16 +41,20 @@ entities:
     available_after: eod
 
   moneyflow:
-    db: tushare_raw
-    table: raw_tushare_moneyflow
-    layer: L0
+    # B2 stock-day moneyflow publication (S7 serve_l0_leaf strangler).
+    # Publication = fact_stock_moneyflow_daily (smartmoney); raw_tushare_moneyflow = rebuild input.
+    # Grain = trade_date × ts_code; available_at = trade_date 18:00 Asia/Shanghai.
+    db: smartmoney
+    table: fact_stock_moneyflow_daily
+    layer: L1
     code_col: ts_code
     asof_col: trade_date
     asof_format: yyyymmdd
     # 2026-06-23 清洗迁移: 补 8 档买卖额 (data_loaders total_flow=全单买卖额之和的加工原料; SERVE 服务原始列, 求和=加工层纯函数)
-    columns: [ts_code, trade_date, net_mf_amount, buy_sm_amount, buy_md_amount, buy_lg_amount, buy_elg_amount, sell_sm_amount, sell_md_amount, sell_lg_amount, sell_elg_amount]
+    columns: [trade_date, ts_code, stock_code, net_mf_amount, buy_sm_amount, buy_md_amount, buy_lg_amount, buy_elg_amount, sell_sm_amount, sell_md_amount, sell_lg_amount, sell_elg_amount, available_at]
     vendor: tushare
-    available_after: eod
+    available_after: "18:00"
+    compute_fn: publish_fact_stock_moneyflow_daily
 
   valuation:
     # S7: serve/segment publication = dim_stock_segment_daily; raw daily_basic = rebuild input
@@ -77,16 +81,20 @@ entities:
     available_after: eod
 
   moneyflow_dc:
-    # 东财个股资金 (主力大单净额; flow-vendor=membership-vendor 红线, 与概念=东财同源)
-    db: tushare_raw
-    table: raw_tushare_moneyflow_dc
-    layer: L0
+    # B2 stock-day eastmoney moneyflow publication (S7 serve_l0_leaf strangler).
+    # Publication = fact_stock_moneyflow_dc_daily (smartmoney); raw = rebuild input.
+    # Grain = trade_date × ts_code; available_at = trade_date 18:00 Asia/Shanghai.
+    # Not DC membership PIT — stock-day vendor flow only (flow-vendor=membership-vendor 红线保留).
+    db: smartmoney
+    table: fact_stock_moneyflow_dc_daily
+    layer: L1
     code_col: ts_code
     asof_col: trade_date
     asof_format: yyyymmdd
-    columns: [ts_code, trade_date, net_amount, net_amount_rate, pct_change]
+    columns: [trade_date, ts_code, stock_code, net_amount, net_amount_rate, pct_change, available_at]
     vendor: eastmoney_via_tushare
-    available_after: eod
+    available_after: "18:00"
+    compute_fn: publish_fact_stock_moneyflow_dc_daily
 
   cyq:
     # 长江筹码分布/获利盘 (复权 qfq 空间, 实测核证 CLEAN)

@@ -2745,6 +2745,33 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   top_inst/index_daily multi-consumer；E0 org；E/F paused。
 - **Status**: **PARTIAL**（B2 one-domain；S7 not FIXED）。
 
+### 2026-07-21 — B2 knife: moneyflow + moneyflow_dc → fact_stock_moneyflow(_dc)_daily
+
+- Wall-clock: Tue 2026-07-21 ~16:08–16:15 Asia/Shanghai.
+- **Knife**（§15；brick B2 residual；both domains one knife；E/F paused）：
+  1. Publication：`smartmoney.fact_stock_moneyflow_daily` grain
+     `(trade_date, ts_code)` from `raw_tushare_moneyflow`；
+     `smartmoney.fact_stock_moneyflow_dc_daily` grain `(trade_date, ts_code)`
+     from `raw_tushare_moneyflow_dc`；`available_at` = trade_date 18:00
+     Asia/Shanghai；lineage `source_table`+`built_at`。
+  2. Writer：`services/stock_moneyflow_publish.py` +
+     `scripts/publish_fact_stock_moneyflow_daily.py`（`--which both|moneyflow|moneyflow_dc`）。
+  3. Consumer cut：DataAccess `moneyflow`/`moneyflow_dc` → facts；pulse/serve
+     already db-aware `_tr`（smartmoney bare）。
+  4. Inventory：both raw tables ssot→compatibility
+     (`publication_surface=fact_stock_moneyflow(_dc)_daily`)。
+- Live：moneyflow `7514799` rows `20200102`→`20260720`；moneyflow_dc
+  `3720793` rows `20230911`→`20260716`；grain dups=0。
+- Inventory：**28→26 ssot** / 1 fill / **17→19 compatibility** of 46。
+- Evidence：`check_legacy_raw_plane` ssot=26；TDD
+  `test_stock_moneyflow_publish_b2` + legacy/serve/pulse/api/data_access green；
+  `pre-knife b2-moneyflow-stock-day` OK。
+- **Did not**：fake dc_member PIT；loosen gates；E/F remeasure；auto-wire
+  publish into sync（re-run publish after new moneyflow days）。
+- **Residual**：dc_member no DC PIT；top_inst/index_daily multi-consumer；
+  E0 org；E/F paused。
+- **Status**: **PARTIAL**（B2 stock-day flow+limit done；S7 not FIXED）。
+
 ### 2026-07-21 — DB storage hygiene reclaim (local data plane)
 
 - Wall-clock: Tue 2026-07-21 ~11:01 Asia/Shanghai (compact/delete) + commit session.

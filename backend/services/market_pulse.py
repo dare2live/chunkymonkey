@@ -111,7 +111,8 @@ def _tr_entity(entity: str) -> str:
     """Qualified table for pulse SQL.
 
     ``tushare_raw`` entities live on the READ_ONLY ``tr`` attach; ``smartmoney``
-    publication entities (B2 fact_stock_limit_daily) are bare on the main conn.
+    publication entities (B2 fact_stock_limit_daily / moneyflow facts) are bare
+    on the main conn.
     """
     ent = _access_reg().entity(entity)
     if ent.db == "tushare_raw":

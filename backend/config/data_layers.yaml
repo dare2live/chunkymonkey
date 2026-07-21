@@ -136,6 +136,8 @@ tables:
   mart_market_pulse_daily: display          # 2026-07-02 B4 市场感知 全市场×日 (大盘水位/涨跌停总量/炸板率/top板块快照)
   fact_stock_form_daily: L1k_kline_intermediate     # 2026-07-02 B2 形态识别 (services/technical_states, 5正交轴+cell标签+突破事件+可成交flags; Type A 描述层无方向claim)
   fact_stock_limit_daily: L1_foundation  # 2026-07-21 brick B2: stock-day limit publication (U/D/Z); writer=stock_limit_publish; serve/pulse leaf; raw_tushare_limit_list_d=rebuild input
+  fact_stock_moneyflow_daily: L1_foundation  # 2026-07-21 brick B2: stock-day tushare moneyflow; writer=stock_moneyflow_publish; serve/pulse leaf; raw_tushare_moneyflow=rebuild input
+  fact_stock_moneyflow_dc_daily: L1_foundation  # 2026-07-21 brick B2: stock-day eastmoney moneyflow; writer=stock_moneyflow_publish; serve/pulse leaf; raw_tushare_moneyflow_dc=rebuild input; not DC membership PIT
   price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-15 tushare 前复权 K线 (回测主源, §4.3; build_price_kline_qfq_tushare.py 从 raw_tushare_daily×adj_factor 建 2019+)
   # ── edge 层第一批 (2026-07-02 机构画像引擎 promote, 探索弧 inst_follow E1/E2; feature_store 库) ──
   period_windows: L2_feature               # 披露窗口三方案价 (institution_profile.build_period_windows)
