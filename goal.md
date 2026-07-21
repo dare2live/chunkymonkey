@@ -8,6 +8,7 @@
 > **现行排序权威（第一原理重评 → S1–S3 → 再策略）**：`analysis/plan_reeval_first_principles_20260720.md`
 > **重评事实包（无裁决）**：`analysis/plan_reeval_evidence_pack_20260720.md`
 > **模块化缺口证据**：`analysis/data_foundation_modularity_gap_20260720.md`
+> **DB 分层权威（逻辑 E0→R1 vs 物理 DuckDB；禁按加工阶段拆库）**：`analysis/db_layering_toplevel_design_20260721.md`
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 
 ## 当前 objective
