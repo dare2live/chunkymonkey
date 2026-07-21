@@ -1,10 +1,11 @@
 /**
  * 股票档案 MVP — `#/stock/:code`
- * Decision-assist layers (basic / form·stage / holders). Separate from workbench.
- * NON-goal: moneyflow A, Optuna, fake holder PnL.
+ * Decision-assist layers (basic / form·stage / holders / moneyflow). Separate from workbench.
+ * NON-goal: Optuna, fake holder PnL, fake 机构 deep-link.
  */
 import { FormEvent, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { fetchStockMoneyflow, type StockMoneyflowResp } from "../api/decision";
 import { fetchStockDossier, type StockDossierResponse, type StockFormStage } from "../api/stock";
 import { Card, FetchGate } from "../components/Card";
 import { fmtInt, fmtPct } from "../format";
@@ -16,7 +17,7 @@ const TABS: { key: TabKey; label: string; enabled: boolean; soon?: string }[] = 
   { key: "overview", label: "概况", enabled: true },
   { key: "form", label: "形态·阶段", enabled: true },
   { key: "holders", label: "股东", enabled: true },
-  { key: "moneyflow", label: "资金", enabled: false, soon: "3A 资金流决策辅助" },
+  { key: "moneyflow", label: "资金", enabled: true },
   { key: "intersection", label: "交集", enabled: false, soon: "4D 交集最强股" },
 ];
 
@@ -206,6 +207,74 @@ function HoldersPanel(props: { d: StockDossierResponse }) {
   );
 }
 
+function MoneyflowPanel(props: { code: string }) {
+  const state = useFetch(() => fetchStockMoneyflow(props.code), [props.code]);
+  return (
+    <FetchGate state={state}>
+      {(m: StockMoneyflowResp) => {
+        const dc = m.planes.moneyflow_dc;
+        return (
+          <>
+            <p className="dossier-observation">
+              {m.conclusion ?? "本股资金结论未知 — 窗未满、分母缺失或板块未形成行为标签。"}
+            </p>
+            <div className="dossier-meta muted">
+              <span>{m.behavior.behavior_zh}</span>
+              <span>{m.behavior_version}</span>
+              {m.sector_context?.sector_name && (
+                <span>
+                  板块 {m.sector_context.sector_name} · {m.sector_context.flow_regime ?? "—"}
+                </span>
+              )}
+              {dc.as_of && <span>DC as-of {dc.as_of}</span>}
+            </div>
+            <h3 className="dossier-subhead">{dc.label}</h3>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>窗口</th>
+                    <th>状态</th>
+                    <th>相对比率</th>
+                    <th>窗口涨跌</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dc.horizons.map((h) => (
+                    <tr key={h.horizon}>
+                      <td className="mono">{h.horizon}日</td>
+                      <td>{h.status === "known" ? "已知" : "未知"}</td>
+                      <td className="mono">
+                        {h.relative_ratio_pct != null ? `${h.relative_ratio_pct.toFixed(2)}%` : "—"}
+                      </td>
+                      <td className="mono">
+                        {h.window_return_pct != null ? `${h.window_return_pct.toFixed(2)}%` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="muted dossier-note">{m.disclaimer}</p>
+            {m.gaps.length > 0 && (
+              <details className="dossier-gaps">
+                <summary>已知缺口 ({m.gaps.length})</summary>
+                <ul>
+                  {m.gaps.map((g) => (
+                    <li key={g} className="mono">
+                      {g}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </>
+        );
+      }}
+    </FetchGate>
+  );
+}
+
 export function StockDossierPage() {
   const { code: routeCode } = useParams<{ code: string }>();
   const navigate = useNavigate();
@@ -277,19 +346,27 @@ export function StockDossierPage() {
       </div>
 
       <Card title={TABS.find((t) => t.key === tab)?.label ?? ""}>
-        <FetchGate state={state}>
-          {(d) => {
-            if (tab === "overview") return <OverviewPanel d={d} />;
-            if (tab === "form") return <FormPanel d={d} />;
-            if (tab === "holders") return <HoldersPanel d={d} />;
-            const soon = TABS.find((t) => t.key === tab)?.soon;
-            return (
-              <div className="state-hint">
-                {soon} — 排期见 product_plan_reeval_stock_dossier_20260721。数据未就绪前不展示假信号。
-              </div>
-            );
-          }}
-        </FetchGate>
+        {tab === "moneyflow" ? (
+          /^\d{6}$/.test(code) ? (
+            <MoneyflowPanel code={code} />
+          ) : (
+            <div className="state-hint">请输入 6 位股票代码</div>
+          )
+        ) : (
+          <FetchGate state={state}>
+            {(d) => {
+              if (tab === "overview") return <OverviewPanel d={d} />;
+              if (tab === "form") return <FormPanel d={d} />;
+              if (tab === "holders") return <HoldersPanel d={d} />;
+              const soon = TABS.find((t) => t.key === tab)?.soon;
+              return (
+                <div className="state-hint">
+                  {soon} — 排期见 product_plan_reeval_stock_dossier_20260721。数据未就绪前不展示假信号。
+                </div>
+              );
+            }}
+          </FetchGate>
+        )}
       </Card>
     </div>
   );

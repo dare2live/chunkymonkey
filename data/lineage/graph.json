@@ -2269,6 +2269,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/moneyflow_assist.py",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_stock_dc_industry"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/schema_core.py",
       "kind": "consume",
       "src": "table:smartmoney.dim_stock_dc_industry"
@@ -2282,6 +2288,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_build_dc_industry_view.py",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_stock_dc_industry"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_moneyflow_assist.py",
       "kind": "consume",
       "src": "table:smartmoney.dim_stock_dc_industry"
     },
@@ -2336,6 +2348,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/market_pulse.py",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_stock_segment_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/moneyflow_assist.py",
       "kind": "consume",
       "src": "table:smartmoney.dim_stock_segment_daily"
     },
@@ -2396,6 +2414,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_market_pulse_api.py",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_stock_segment_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_moneyflow_assist.py",
       "kind": "consume",
       "src": "table:smartmoney.dim_stock_segment_daily"
     },
@@ -3079,6 +3103,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/moneyflow_assist.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/stock_moneyflow_publish.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_daily"
@@ -3175,6 +3205,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/moneyflow_assist.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/stock_moneyflow_publish.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
@@ -3206,6 +3242,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_market_pulse_api.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_moneyflow_assist.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
     },
@@ -4039,6 +4081,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/moneyflow_assist.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_sector_pulse_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_check_grain_uniqueness.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_sector_pulse_daily"
@@ -4046,6 +4094,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_sector_pulse_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_moneyflow_assist.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_sector_pulse_daily"
     },
@@ -6937,9 +6991,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1105,
-    "generated_at": "2026-07-21T15:31:08.018500+00:00",
-    "node_count": 404,
+    "edge_count": 1114,
+    "generated_at": "2026-07-21T15:49:18.997763+00:00",
+    "node_count": 406,
     "version": 2
   },
   "nodes": [
@@ -7850,6 +7904,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/moneyflow_assist.py"
+      },
+      "id": "consumer:backend/services/moneyflow_assist.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/org_holding_aif10.py"
       },
       "id": "consumer:backend/services/org_holding_aif10.py",
@@ -8661,6 +8723,14 @@
         "path": "backend/tests/test_mart_data_lineage_compat.py"
       },
       "id": "consumer:backend/tests/test_mart_data_lineage_compat.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/test_moneyflow_assist.py"
+      },
+      "id": "consumer:backend/tests/test_moneyflow_assist.py",
       "kind": "consumer"
     },
     {

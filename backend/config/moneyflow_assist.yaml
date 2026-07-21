@@ -1,0 +1,37 @@
+# moneyflow_assist.yaml — Cap A Tier3 product surface (NOT Tier0/Tier2 truth)
+# Authority: analysis/decision_3a_moneyflow_assist_20260721.md
+# Reads pulse marts + stock moneyflow facts; never writes labels back to accepted.
+version: 1
+behavior_version: moneyflow_behavior_v0
+disclaimer: "供应商资金不平衡代理形成的行为迹象，非买卖指令；未经 B0→B5 策略验证。"
+
+# Multi-horizon windows (trading days). Incomplete window → ratio/behavior unknown.
+horizons: [1, 3, 5, 10, 20, 30, 60]
+
+# Map published flow_regime (Tier2 descriptive) → product behavior label (Tier3).
+# Keys are engine vocabulary; values are product vocabulary. Unmapped → unknown.
+regime_to_behavior:
+  accum_in_silent: latent          # 潜伏迹象 — quiet accumulation
+  surge_in: chase                  # 抢筹迹象 — pulse inflow
+  accum_in_driving: chase          # 抢筹迹象 — driving accumulation
+  surge_out: distribute            # 出货迹象 — pulse outflow
+  accum_out_silent: distribute     # 出货迹象 — quiet distribution
+  accum_out_driving: distribute    # 出货迹象 — driving distribution
+  neutral: unknown
+
+behavior_labels_zh:
+  latent: 潜伏迹象
+  chase: 抢筹迹象
+  distribute: 出货迹象
+  unknown: 未形成标签
+
+# Price-response guard for chase/distribute (pct_change window sum, percentage points).
+# When regime suggests chase but window return ≤ 0 → unknown (don't force label).
+# When regime suggests distribute but window return > +1 → unknown (rally-with-outflow stays unknown).
+chase_min_window_return_pct: 0.0
+distribute_max_window_return_pct: 1.0
+
+# Board defaults
+default_chain: dc_industry
+default_limit: 20
+chains: [dc_industry, dc_concept, sw_industry]

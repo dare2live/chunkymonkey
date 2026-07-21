@@ -11,6 +11,13 @@ import type { EChartsOption } from "echarts";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  ASSIST_HORIZONS,
+  fetchMoneyflowBoard,
+  type AssistChain,
+  type AssistHorizon,
+  type MoneyflowBoardRow,
+} from "../api/decision";
+import {
   fetchDcRotation,
   fetchDrill,
   fetchFlowBoard,
@@ -1443,12 +1450,116 @@ function WarningsCard() {
   );
 }
 
-// ── 页面 (信息漏斗: 宏观 → 资金 → 情绪 → 异动) ─────────────────────────────
+// ── Cap A：资金决策辅助（Tier3 页签；与感知卡分离，保留零买卖暗示） ─────────
 
-export function MarketPage() {
+function MoneyflowAssistPanel() {
+  const [chain, setChain] = useState<AssistChain>("dc_industry");
+  const [horizon, setHorizon] = useState<AssistHorizon>(20);
+  const state = useFetch(
+    () => fetchMoneyflowBoard({ chain, horizon, limit: 25 }),
+    [chain, horizon],
+  );
+
   return (
-    <div className="page">
-      <h1>市场感知</h1>
+    <div className="assist-panel">
+      <p className="page-desc assist-disclaimer">
+        决策辅助层：供应商资金不平衡代理 → 行为迹象（潜伏/抢筹/出货）。
+        非买卖指令；未经策略验证。感知页签仍保持零暗示。
+      </p>
+      <div className="tab-group assist-filters">
+        {(
+          [
+            ["dc_industry", "东财行业"],
+            ["dc_concept", "东财概念"],
+            ["sw_industry", "申万行业"],
+          ] as const
+        ).map(([k, lab]) => (
+          <button
+            key={k}
+            type="button"
+            className={`btn tab${chain === k ? " active" : ""}`}
+            onClick={() => setChain(k)}
+          >
+            {lab}
+          </button>
+        ))}
+      </div>
+      <div className="tab-group assist-filters">
+        {ASSIST_HORIZONS.map((h) => (
+          <button
+            key={h}
+            type="button"
+            className={`btn tab${horizon === h ? " active" : ""}`}
+            onClick={() => setHorizon(h)}
+          >
+            {h}日
+          </button>
+        ))}
+      </div>
+      <Card
+        title={`资金决策辅助 · ${chain} · ${horizon}日窗`}
+        extra={
+          state.data ? (
+            <span className="muted mono">
+              as-of {fmtDate(state.data.as_of)} · {state.data.behavior_version}
+            </span>
+          ) : null
+        }
+      >
+        <FetchGate state={state} empty={(d) => d.rows.length === 0} emptyHint="当前链/窗口无可用板块行">
+          {(d) => (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>板块</th>
+                    <th>行为</th>
+                    <th>相对比率</th>
+                    <th>窗口涨跌</th>
+                    <th>形态(证据)</th>
+                    <th>结论</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.rows.map((r: MoneyflowBoardRow) => (
+                    <tr key={r.sector_code}>
+                      <td>
+                        <div>{r.sector_name ?? r.sector_code}</div>
+                        <div className="mono muted">{r.sector_code}</div>
+                      </td>
+                      <td>
+                        <b>{r.behavior.behavior_zh}</b>
+                      </td>
+                      <td className="mono">
+                        {r.horizon.status === "known" && r.horizon.relative_ratio_pct != null
+                          ? `${r.horizon.relative_ratio_pct.toFixed(2)}%`
+                          : "未知"}
+                      </td>
+                      <td className="mono">
+                        {r.horizon.window_return_pct != null
+                          ? `${r.horizon.window_return_pct.toFixed(2)}%`
+                          : "未知"}
+                      </td>
+                      <td className="mono muted">{r.flow_regime ?? "—"}</td>
+                      <td className="assist-conclusion">
+                        {r.conclusion ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="muted dossier-note">{d.disclaimer}</p>
+            </div>
+          )}
+        </FetchGate>
+      </Card>
+    </div>
+  );
+}
+
+function SensingPanel() {
+  return (
+    <>
       <p className="page-desc">
         感知层只描述资金现状与市场温度 (钱在哪 / 流向哪 / 什么形态), 不构成任何操作建议。
       </p>
@@ -1469,6 +1580,34 @@ export function MarketPage() {
         <StrongestCard />
         <WarningsCard />
       </div>
+    </>
+  );
+}
+
+// ── 页面 (C tabs: 市场感知 | 资金决策辅助) ─────────────────────────────────
+
+export function MarketPage() {
+  const [pageTab, setPageTab] = useState<"sensing" | "assist">("sensing");
+  return (
+    <div className="page">
+      <h1>市场</h1>
+      <div className="tab-group dossier-tabs">
+        <button
+          type="button"
+          className={`btn tab${pageTab === "sensing" ? " active" : ""}`}
+          onClick={() => setPageTab("sensing")}
+        >
+          市场感知
+        </button>
+        <button
+          type="button"
+          className={`btn tab${pageTab === "assist" ? " active" : ""}`}
+          onClick={() => setPageTab("assist")}
+        >
+          资金决策辅助
+        </button>
+      </div>
+      {pageTab === "sensing" ? <SensingPanel /> : <MoneyflowAssistPanel />}
     </div>
   );
 }

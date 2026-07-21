@@ -1199,6 +1199,18 @@ select:focus {
   background: var(--bg-panel);
 }
 
+.assist-filters {
+  margin: 0.5rem 0 0.75rem;
+  flex-wrap: wrap;
+}
+.assist-conclusion {
+  max-width: 28rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+.assist-disclaimer {
+  margin-top: 0.5rem;
+}
 .dossier-tabs {
   margin-bottom: 10px;
 }

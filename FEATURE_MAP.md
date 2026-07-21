@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-21 22:50
+> Snapshot: 2026-07-21 23:48
 
 ## 1. 入口面
 
@@ -28,6 +28,7 @@
 
 | router | prefix | 端点数 |
 |---|---|---|
+| decision_assist | `/api/v3/decision` | 2 |
 | institution_profile | `—` | 3 |
 | market_pulse | `/api/v3/pulse` | 9 |
 | ops_manual_run | `/api/v3/ops` | 4 |
@@ -169,16 +170,16 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 8,771 | calls 边 10,429 | imports 边 2,992 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 8,858 | calls 边 10,532 | imports 边 3,014 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 64 |
+| services.duck_adapter | 65 |
 | services.data_sources | 26 |
+| services.universe | 20 |
 | services.data_sources.security_day_partition | 19 |
-| services.universe | 19 |
 | services.data_sources.accepted_schema | 18 |
 | services.institution_follow_b0_measure | 18 |
 | services.institution_follow_edge_gates | 17 |
@@ -197,7 +198,7 @@
 |---|---|
 | backend/services/duck_adapter.py | 30 |
 | backend/services/institution_follow_edge_gates.py | 17 |
-| backend/services/universe.py | 15 |
+| backend/services/universe.py | 16 |
 | backend/services/source_watermarks.py | 13 |
 | backend/services/data_sources/disclosure_boundaries.py | 11 |
 | backend/services/database_manifest.py | 11 |
@@ -225,7 +226,7 @@
 
 ## 5. 概览
 
-- chunkyctl 子命令 8 | launchd 任务 0 | router 5 (端点 22)
+- chunkyctl 子命令 8 | launchd 任务 0 | router 6 (端点 24)
 - sync_registry 数据域 47
 - 产表 34 (多 writer 12)
 

@@ -97,6 +97,7 @@ blocking_paths:
 - tests/scripts/test_run_ci_pytest.py
 - tests/scripts/test_check_foundation_done.py
 - tests/test_stock_dossier_api.py
+- tests/test_moneyflow_assist.py
 nightly_paths:
 - tests/services/test_main_rally_b0.py
 - tests/services/test_main_rally_b1.py

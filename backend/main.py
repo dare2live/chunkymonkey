@@ -141,6 +141,10 @@ app.include_router(market_pulse_router, prefix="/api/v3/pulse", tags=["market_pu
 from routers.stock_dossier import router as stock_dossier_router
 app.include_router(stock_dossier_router, prefix="/api/v3/stock", tags=["stock_dossier"])
 
+# Cap A 资金流决策辅助（Tier3/product）：读 pulse/moneyflow facts；不融 Tier0；与 pulse 零买卖暗示分离。
+from routers.decision_assist import router as decision_assist_router
+app.include_router(decision_assist_router, prefix="/api/v3/decision", tags=["decision_assist"])
+
 # (退役 routers: market_perception/bestchoice/perception_legacy/signals_v2 等 2026-06-14~28 删, 详 ledger + git史)
 
 # 设置选项相关的API (比如开启/关闭功能模块)
