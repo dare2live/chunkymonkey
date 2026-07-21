@@ -3098,3 +3098,12 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - Evidence: `analysis/foundation_e2e_frontend_update_20260721.md` (PARTIAL).
 - UI missing「数据更新」; API-equivalent `POST /api/v3/ops/jobs/daily_update/run` preflight-blocked on margin scope_blocked.
 - Modular incremental land_then_accept daily/ST/adj/basic `20260721` PASS; org plannable present → skip; pulse sector residual `20260720`.
+
+### 2026-07-21 — foundation daily_update unblock
+
+- Evidence: `analysis/foundation_daily_update_unblock_20260721.md` (**FIXED** foundation path).
+- Commits: `a84e0867e` (margin `on_demand`+frozen; acquire hard-gate skip while disabled);
+  `8bcc37dad` (orchestrator formal daily/ST latest-eligible land_then_accept / skip-if-accepted).
+- Proof: `ensure_pipeline_sync_ready` PASS domains=42; formal plan skip for `20260721`;
+  DC+moneyflow+limit_cpt catchup → pulse `flow_board`/`strongest` **`20260721`**.
+- Residual: edge React「数据更新」button still unwired; full 42-domain acquire wall-clock not re-run.
