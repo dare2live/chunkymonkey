@@ -7,7 +7,9 @@
 > Cap E shipped evidence: `analysis/capability_e_pipeline_step_cards_20260721.md` (`799b7412d`).
 > Holders lineage audit: `analysis/holders_stock_dossier_lineage_audit_20260721.md` (`624d50c87`) — **PARTIAL**; do not re-audit.
 > Foundation 0r.1–0r.4: `analysis/foundation_bj_dualpath_ashare_whitelist_20260721.md` (`6afea30fc`) —
-> whitelist/BJ sensing/continuity/share_float **FIXED**; `ths_hot` **PARTIAL** (availability window).
+> whitelist/BJ sensing/continuity/share_float **FIXED**; `ths_hot` **FIXED** mechanism
+> (2026-07-22 typed `pending_publish`; live watermark catchup = ops).
+> Residual reconcile: `analysis/plan_residual_reconcile_20260722.md`.
 > Foundation click/unblock/RCA: `foundation_daily_update_unblock_20260721.md`,
 > `foundation_daily_update_ui_click_20260721.md`, `foundation_daily_update_degraded_rca_20260721.md`.
 
@@ -22,14 +24,15 @@ New spine: **foundation truth knives (whitelist / BJ / continuity / holders line
 **股票档案 F MVP** → **A moneyflow assist + C tabs** → **D 交集最强** → **B 形态/阶段选股面**.
 Cap E stays shipped; do not rebuild workbench into dossier files.
 **Execution closeout:** mandate 0r.5b→5B **FIXED** subsets — see
-`analysis/product_plan_execution_closeout_20260721.md`. **Next** = owner-scheduled
-residuals only (ths_hot / sw_industry 3-chain / screener cutover with F / E/F remeasure).
+`analysis/product_plan_execution_closeout_20260721.md`. Closeout residuals **cleared**
+2026-07-22 (`plan_residual_reconcile_20260722.md`). **Next** = ops ths_hot catchup
+(token) + owner-scheduled E/F remeasure only (still paused otherwise).
 
 | Question | Answer |
 |---|---|
 | Re-adjust after click-proof + Cap E + degradations? | **Yes** |
 | Cap E still a near-term knife? | **No** — DONE subset; residual = parameterized S1/S2 UI only |
-| 0r.1–0r.4 (whitelist / BJ / continuity / drain)? | **FIXED** subset (`6afea30fc`); `ths_hot` residual **PARTIAL** — not greenwashed |
+| 0r.1–0r.4 (whitelist / BJ / continuity / drain)? | **FIXED** (`6afea30fc` + 2026-07-22 ths_hot `pending_publish`); live ths_hot day catchup = ops |
 | Accept BJ in accepted raw_evidence as project pool? | **No** — landing/raw may keep BJ by design; **serve** = 沪深A whitelist |
 | Holders audit / next foundation product knife? | **0r.5 PARTIAL**; **0r.5b FIXED** (`387eb79b5`); **2F FIXED** subset (`50817db0f`) |
 | Optuna / StrategyRelease / E/F remeasure? | **No** unless owner schedules |
@@ -56,7 +59,7 @@ residuals only (ths_hot / sw_industry 3-chain / screener cutover with F / E/F re
 | Holders **lineage / association / process·serve** | **PARTIAL** audit DONE | see §1.2 — consume, don't re-audit |
 | Dossier period streak / Δ plane | **FIXED** | canonical-only streak (was fact-lag bug) |
 | Drain `share_float` bare BJ normalize | **FIXED** | e.g. `874075` → `874075.BJ`; shape gate not loosened |
-| Drain `ths_hot` same-day empty | **PARTIAL** | availability window (`available_after=22:30`); not parse bug — residual drain |
+| Drain `ths_hot` same-day empty | **FIXED** mechanism / ops catchup open | typed `pending_publish` pre-22:30; post-window fail-closed; live `20260721` needs token drain |
 
 ### 1.2 Holders audit fold-in (peer DONE — facts only)
 
@@ -96,18 +99,18 @@ Also binding: **市场感知只沪深A** (whitelist serve path **FIXED** at `6af
 | **0r.1** | **沪深A whitelist** at correct serve/sensing layer (+ exclusion RCA) | live evidence B shares leaked | **FIXED** (`6afea30fc`) — wired `apply_universe_serve_filter` |
 | **0r.2** | **BJ sensing leak** stop at serve (+ audit wording) | degraded RCA #2 | **FIXED** (`6afea30fc`) — raw BJ land OK by design |
 | **0r.3** | **Continuity dual-path** + daily/ST watermark honesty | degraded RCA #3/#4 | **FIXED** (`6afea30fc`) — formal accepted frontier |
-| **0r.4** | Drain knives: `share_float` normalize; `ths_hot` empty | degraded RCA #1 | **PARTIAL** — share_float **FIXED**; ths_hot window residual |
+| **0r.4** | Drain knives: `share_float` normalize; `ths_hot` empty | degraded RCA #1 | **FIXED** — share_float **FIXED**; ths_hot `pending_publish` **FIXED** (live catchup ops) |
 | **0r.5** | **Holders lineage audit** (association + process + serve) | formal parse ≠ coverage | **PARTIAL DONE** — audit landed; follow-ons §1.2 |
 | **0r.5b** | Formal holders WM/SLA + split ops counters + 机构档案 honesty | 0r.5 audit | **FIXED** (`387eb79b5`) |
 | **1E** | Cap E step cards | click-proof + activity | **DONE** (`799b7412d`) |
 | **2F** | **股票档案 MVP** `#/stock/:code` | 0r.1 code-gate; 0r.5 join PASS; streak FIXED | **FIXED** subset (`50817db0f`) — episode cycle/returns + C-light tabs; 机构 deep-link still honesty-gated |
 | **3A** | Moneyflow decision assist (API + relative denom + taxonomy) | 0r enough that moneyflow bricks/serve honest; sensing A-only | **FIXED** subset (`4f70adc08`) |
 | **3C** | Tabbed UX | rides **2F** + early **3A** | **FIXED** subset (`4f70adc08` + dossier tabs) |
-| **4D** | 交集最强股 | after A conclusions **or** parallel once intersection inputs + freshness owned | **FIXED** subset (`a959baf06`) — DC 行业∩概念; sw_industry residual |
-| **5B** | 形态/阶段 **选股策略** surface | after F proves display; Tier1 publish stable | **FIXED** subset (`8fb0192f9`) — filter surface; no score/rank |
+| **4D** | 交集最强股 | after A conclusions **or** parallel once intersection inputs + freshness owned | **FIXED** (`a959baf06` + 2026-07-22) — DC∩概念∩申万三链 |
+| **5B** | 形态/阶段 **选股策略** surface | after F proves display; Tier1 publish stable | **FIXED** (`8fb0192f9` + 2026-07-22) — filter + shared F cutover hybrid |
 | — | E/F remeasure / Optuna / StrategyRelease | owner schedule only | **paused / banned** |
 
-**Next:** owner-scheduled residuals only (see closeout residual ledger). Cap E stays shipped (do not revert). `ths_hot` residual ≠ reopen 0r.1–0r.3. Mandate closeout: `product_plan_execution_closeout_20260721.md`.
+**Next:** ops ths_hot catchup + owner-scheduled E/F remeasure only. Cap E stays shipped (do not revert). Mandate closeout: `product_plan_execution_closeout_20260721.md`. Residual reconcile: `plan_residual_reconcile_20260722.md`.
 **Dropped default:** old A-first moneyflow stack before dossier/whitelist.
 
 ---
@@ -215,10 +218,10 @@ NON-goal: second orchestrator DAG; fake-runnable S1/S2 without params.
 
 | Track | Owns | Avoid |
 |---|---|---|
-| Foundation peer | 0r.1–0r.3 **FIXED** (`6afea30fc`); 0r.4 **PARTIAL** (`ths_hot`); 0r.5b **FIXED** (`387eb79b5`) | Cap E revert; fake COMPAT |
+| Foundation peer | 0r.1–0r.4 **FIXED** (`6afea30fc` + ths_hot `pending_publish`); 0r.5b **FIXED** (`387eb79b5`) | Cap E revert; fake COMPAT |
 | Holders audit peer | 0r.5 lineage evidence (**勿重审**); 0r.5b honesty shipped | invent 机构 deep-link |
 | Cap E | workbench / ops nodes — **done** | dossier routes; do not revert |
-| Product / dossier | 2F/3A/3C/4D/5B **FIXED** subsets; next = owner residual schedule | Cap E revert; Optuna/Release |
+| Product / dossier | 2F/3A/3C/4D/5B **FIXED**; closeout residuals cleared 2026-07-22 | Cap E revert; Optuna/Release |
 
 ---
 
@@ -228,7 +231,7 @@ NON-goal: second orchestrator DAG; fake-runnable S1/S2 without params.
 |---|---|
 | Cap E | **FIXED** subset |
 | 0r.1–0r.3 whitelist / BJ serve / continuity | **FIXED** (`6afea30fc`) |
-| 0r.4 drain | **PARTIAL** (share_float FIXED; ths_hot window residual) |
+| 0r.4 drain | **FIXED** (share_float + ths_hot `pending_publish`; live catchup ops) |
 | Holders lineage audit | **PARTIAL DONE** (0r.5); follow-ons in **0r.5b FIXED** |
 | 0r.5b WM/SLA + ops + 机构 honesty | **FIXED** (`387eb79b5`) |
 | F dossier / 2F deepen | **FIXED** subset (`50817db0f`) |

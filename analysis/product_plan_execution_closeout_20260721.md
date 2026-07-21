@@ -20,13 +20,13 @@ margin thaw); 沪深A-only on sensing; push after each knife.
 | Phase | Label | Commit | Evidence |
 |---|---|---|---|
 | 0r.1–0r.3 沪深A serve whitelist + formal continuity | **FIXED** | `6afea30fc` | `analysis/foundation_bj_dualpath_ashare_whitelist_20260721.md` |
-| 0r.4 ths_hot 发布窗 | **PARTIAL** (documented residual, not blocking) | `6afea30fc` | same as above |
+| 0r.4 ths_hot 发布窗 | **FIXED** mechanism (2026-07-22) — typed `pending_publish`; live watermark catchup ops-only | `6afea30fc` + residual-clear | `plan_residual_reconcile_20260722.md` |
 | Cap E 工作台分步节点 (pipeline step cards) | **FIXED** subset | `9706f150d` + `799b7412d` | `analysis/capability_e_pipeline_step_cards_20260721.md` |
 | 2F 股票档案 deepen (episode cycle/returns + C-light tabs) | **FIXED** subset (F MVP + this-stock episode overlay) | `50817db0f` | dossier `#/stock/:code`; `holders_stock_dossier_lineage_audit_20260721.md` (勿重审) |
 | 0r.5b 持仓水位/SLA + ops 拆分 + 机构 honesty | **FIXED** | `387eb79b5` | `analysis/foundation_holders_wm_ops_counters_20260721.md` |
 | 3A+3C 资金流决策辅助 + tabs | **FIXED** subset | `4f70adc08` (pushed) | `analysis/capability_a_moneyflow_assist_20260721.md` + `analysis/decision_3a_moneyflow_assist_20260721.md` |
-| 4D 交集最强股 | **FIXED** subset (sw_industry residual documented) | `a959baf06` (pushed) | `analysis/capability_d_intersection_strongest_20260721.md` + `analysis/decision_4d_intersection_strongest_20260721.md` |
-| 5B 形态/阶段选股面 | **FIXED** subset | `8fb0192f9` (pushed) | `analysis/capability_b_stock_screener_20260721.md` + `analysis/decision_5b_stock_screener_20260721.md` |
+| 4D 交集最强股 | **FIXED** (3-chain DC∩概念∩申万; 2026-07-22 residual clear) | `a959baf06` + residual-clear | `analysis/capability_d_intersection_strongest_20260721.md` + reconcile |
+| 5B 形态/阶段选股面 | **FIXED** (+ F/5B production-read cutover hybrid; 2026-07-22) | `8fb0192f9` + residual-clear | `analysis/capability_b_stock_screener_20260721.md` + reconcile |
 
 This mandate's own scope (0r.5b → 5B) is now **fully closed** — every phase in
 the ordered backlog (`product_decision_assist_backlog_20260721.md`: A/B/C/D/E,
@@ -98,15 +98,16 @@ was skipped or silently deferred without a written reason.
   was rebuilt immediately before each `safe_commit.sh` invocation to minimize
   the race window against concurrent live-DB state.
 
-## Residual ledger (owner: next session / explicit schedule)
+## Residual ledger
 
-| Residual | Phase | Why deferred |
+| Residual | Phase | Status (2026-07-22) |
 |---|---|---|
-| 0r.4 ths_hot 发布窗 | 0r.4 | Pre-existing PARTIAL, not part of this mandate's scope, not blocking |
-| sw_industry 3rd chain intersection | 4D | Needs L3→board leaf rollup (new logic), not a same-knife fit |
-| `resolve_tier12_production_read` cutover for screener | 5B | Must move together with F's own (not-yet-flipped) cutover |
-| Dossier axis-label dict (`clean`/`mixed`/`light` unused values) | 2F (pre-existing) | Out of this mandate's scope; documented, not silently patched |
-| Optional intersection badge on dossier F header | 4D (plan §3.5 "later") | Explicitly deferred by the plan itself, not a gap |
+| 0r.4 ths_hot 发布窗 | 0r.4 | **FIXED** mechanism (`pending_publish`); live `20260721` catchup = ops (token) |
+| sw_industry 3rd chain intersection | 4D | **FIXED** — L1 PIT `l1_code` rollup; 3-way freshness |
+| `resolve_tier12_production_read` cutover for screener+F | 5B/2F | **FIXED** hybrid via `form_production_read` (full accepted-only blocked on payload axes) |
+| Dossier axis-label dict (`clean`/`mixed`/`light`) | 2F | **FIXED** → trending/choppy + heavy/shrink/normal |
+| Optional intersection badge on dossier F header | 4D (plan §3.5 "later") | Still deferred by plan — not a gap |
+| Accept enrich purity/vol/sub | Tier1 | Open P2 — see `plan_residual_reconcile_20260722.md` |
 
 ### Closeout residual completed (this follow-up)
 
@@ -115,6 +116,12 @@ code + closeout had shipped. **Docs-only sync** applied to
 `product_plan_reeval_stock_dossier_20260721.md` §0/§2/§6/§7 and
 `product_decision_assist_backlog_20260721.md` §7/§8/§9 so A–F / 0r statuses match
 live SHAs. No code change; verification = 4D+5B tests still **18 passed**.
+
+### Residual-clear knife (2026-07-22)
+
+All four code residuals above cleared; reconcile
+`analysis/plan_residual_reconcile_20260722.md`. Verification: decision_intersection +
+dossier + screener + pending_publish unit tests **25 passed** in targeted run.
 
 ## Guardrails held (no violations this session)
 

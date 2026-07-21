@@ -9,7 +9,7 @@
 
 | Piece | Delivery |
 |---|---|
-| Service | `services/stock_screener.py` — reads `fact_stock_form_daily` directly, same table/columns as `routers/stock_dossier.py::_load_form` (Cap F's 形态·阶段 tab); no new Tier1 concept |
+| Service | `services/stock_screener.py` — same production-read boundary as Cap F via `form_production_read` (fact brick + ACCEPTED_CUTOVER overlay); no new Tier1 concept |
 | API | `GET /api/v3/screener/options` (live facet menu: form_name/form_sub + 4 axes, counted at current as-of) + `GET /api/v3/screener/form_stage` (filtered decision list) — under new `/api/v3/screener` router |
 | Host | `#/market` page 4th tab「形态/阶段选股」; result rows click through to `#/stock/:code` (dossier) |
 | Input honesty | Global `MAX(trade_date)` must not lag `calendar.latest_completed_trade_date` beyond SLA (config `sla_max_lag_calendar_days`, default 1) → `status=stale`, empty rows/facets, explicit `reason` — mirrors Cap 4D / `/pulse/strongest` fail-closed pattern |
@@ -22,8 +22,8 @@
 
 - No scoring/ranking/backtest model over the filtered result — plain filter, plan §3.6 hard gate
 - No Optuna / StrategyRelease / mass org / margin thaw
-- Axis zh-label vocabulary corrected to match the **actual live** `fact_stock_form_daily` values (`trending`/`choppy`, `heavy`/`shrink`/`normal`) in a new, independent config dict — does **not** touch or silently "fix" the pre-existing (already-shipped, 2F) dossier dict that still references unused values (`clean`/`mixed`/`light`); documented residual, see decision log §NON-goals
-- Read path deliberately stays on the legacy direct table read (not `resolve_tier12_production_read`) to stay byte-for-byte consistent with F's current (not-yet-cutover) read path — see decision log
+- Axis zh-label vocabulary matches live `fact_stock_form_daily` (`trending`/`choppy`, `heavy`/`shrink`/`normal`); dossier dict **aligned 2026-07-22** (same vocabulary)
+- Read path: shared `form_production_read` with F (2026-07-22 cutover knife) — hybrid ACCEPTED_CUTOVER overlay
 - Facet menu is live-computed, never hardcoded, so the filter UI can never offer a value with zero real matches
 
 ## Tests
@@ -35,7 +35,7 @@ stale-on-lag, API options + form_stage + bad-axis 400, multi-value `form_name` q
 
 ## Residual / next
 
-- Cutover to `resolve_tier12_production_read` when F itself adopts it (must move together)
-- 2F dossier axis-label dict drift (`clean`/`mixed`/`light`) — not fixed here, out of scope
+- Full accepted-only form read blocked until accept enrich adds purity/vol/sub (hybrid stays)
 - No dedicated `#/screener` route (tab-in-MarketPage chosen; revisit if screener UX outgrows a tab)
 - `axis_volregime` / `axis_*_memb` (membership confidence) columns not exposed as filters yet (no plan requirement this knife)
+- See `plan_residual_reconcile_20260722.md`

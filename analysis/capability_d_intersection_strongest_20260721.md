@@ -1,7 +1,7 @@
 # Cap 4D — 交集最强股 decision assist (2026-07-21)
 
 > Status: evidence-only / product knife
-> Label: **FIXED** subset (DC 行业∩概念 intersection board + dossier 交集 tab)
+> Label: **FIXED** (DC 行业∩概念∩申万三链；2026-07-22 residual clear)
 > Decision: `analysis/decision_4d_intersection_strongest_20260721.md` (self-adversarial synthesis)
 > Authority: `product_plan_reeval_stock_dossier_20260721.md` §2/§3.5; backlog Cap D; goal.md bans intact
 
@@ -23,18 +23,18 @@
 - No new "strong" taxonomy invented; behavior labels + guards inherited from Cap A (`moneyflow_assist.yaml`)
 - HS-A gate on the per-stock endpoint (`classify_exclusion`); membership query itself is also 沪深A-filtered (`sql_where_active_a_share`) — defense in depth
 - No cross-chain fusion into Tier0/Tier2 accepted state; read-only Tier3 consumer
-- sw_industry intersection **not** included this knife (documented residual — see decision log §2; leaf→L1 rollup needed first, not silently dropped)
+- sw_industry 3rd chain **added 2026-07-22** via PIT `l1_code` member rollup (`sw_l1_member_mem_sql`) — not L3 fan-out invent
 - No Optuna / Release / mass org / margin thaw
 
 ## Tests
 
-`tests/test_decision_intersection.py` (blocking): intersection hit with why-sentence,
+`tests/test_decision_intersection.py` (blocking): 3-chain intersection hit with why-sentence,
 non-intersecting members excluded, stale-on-chain-mismatch, stale-on-SLA-lag,
 empty-but-ok when no strong sectors, invalid-horizon rejection, per-stock hit/miss,
 API board + stock + BJ 404 + bad-horizon 400.
 
 ## Residual / next
 
-- sw_industry as a third intersecting chain (needs L3→board leaf rollup first)
 - Trading-day-exact SLA (currently calendar-day approximation, conservative)
 - Optional badge on dossier F header surfacing intersection membership at a glance (plan §3.5 "later")
+- See `plan_residual_reconcile_20260722.md`

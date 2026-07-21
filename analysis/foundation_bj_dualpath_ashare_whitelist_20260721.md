@@ -47,5 +47,5 @@
 | B/BJ 感知漏出 → serve 白名单 | FIXED |
 | dual-path continuity/SLA | FIXED |
 | share_float 裸 BJ | FIXED |
-| ths_hot 当日空 | PARTIAL（已解释） |
+| ths_hot 当日空 | PARTIAL→**FIXED** mechanism 2026-07-22（typed `pending_publish`; live catchup ops — `plan_residual_reconcile_20260722.md`） |
 | BJ 仍可在 accepted raw_evidence | by design |

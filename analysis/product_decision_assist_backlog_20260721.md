@@ -96,14 +96,14 @@ Gate: **after** data-foundation E2E verify/optimize. Peer evidence may still be 
 |---:|---|---|
 | 0 | Foundation E2E verify / optimize | **operable** — unblock+click FIXED/PARTIAL |
 | 0r.1–0r.3 | 沪深A whitelist; BJ sensing serve; continuity dual-path | **FIXED** (`6afea30fc` / `foundation_bj_dualpath_ashare_whitelist_20260721.md`) |
-| 0r.4 | Drain share_float / ths_hot | **PARTIAL** — share_float FIXED; ths_hot availability-window residual |
+| 0r.4 | Drain share_float / ths_hot | **FIXED** mechanism — share_float FIXED; ths_hot typed `pending_publish` (live catchup ops) |
 | 0r.5 | Holders lineage audit | **PARTIAL DONE** — `holders_stock_dossier_lineage_audit_20260721.md` (do not re-audit) |
 | 0r.5b | Holders WM/SLA + split ops counters + 机构档案 honesty | **FIXED** (`387eb79b5`) |
 | 1E | **Capability E** step cards | **DONE** (`799b7412d`) — do not revert |
 | 2F | **Capability F** 股票档案 MVP | **FIXED** subset (`50817db0f`); 机构 deep-link still honesty-gated |
 | 3A/3C | Moneyflow assist + tabbed UX | **FIXED** subset (`4f70adc08`) |
-| 4D | 交集最强股 | **FIXED** subset (`a959baf06`) — DC 行业∩概念; sw_industry residual |
-| 5B | 形态/阶段选股面 | **FIXED** subset (`8fb0192f9`) — plain filter; no score/rank |
+| 4D | 交集最强股 | **FIXED** (`a959baf06` + 2026-07-22) — DC∩概念∩申万三链 |
+| 5B | 形态/阶段选股面 | **FIXED** (`8fb0192f9` + 2026-07-22) — filter + F cutover hybrid |
 
 Parallel research (E/F remeasure) remains **owner-scheduled** and orthogonal; this backlog does **not** open it.
 
@@ -115,14 +115,15 @@ Parallel research (E/F remeasure) remains **owner-scheduled** and orthogonal; th
 - Fake relative ratios, behavior labels, or intersection “strongest” scores when denominator/coverage/freshness is unknown
 - Greenfield rewrite of pulse / market sensing; strangler + resolver SSOT only
 - Mass backfill / margin thaw / org invent / S7 fake COMPAT
-- Revert Cap E / silently drop documented residuals (sw_industry 3-chain, screener cutover-with-F)
+- Revert Cap E / silently drop cleared residuals (sw_industry 3-chain, screener cutover-with-F — now FIXED)
 
 ## 9. Schedule summary (for operators)
 
 - **Mandate closed:** 0r.5b → 2F → 3A/3C → 4D → 5B all **FIXED** subsets (closeout `product_plan_execution_closeout_20260721.md`).
-- **0r.1–0r.3 FIXED** (`6afea30fc`); **0r.4 PARTIAL** (ths_hot window residual only).
-- **A/C FIXED** (`4f70adc08`); **D FIXED** (`a959baf06`); **B FIXED** (`8fb0192f9`); **E shipped** (`799b7412d`) — **do not revert**.
-- **Next** = owner-scheduled residuals only (ths_hot / sw_industry rollup / screener+F cutover / E/F remeasure).
+- **0r.1–0r.4 FIXED** (`6afea30fc` + 2026-07-22 ths_hot `pending_publish`); live ths_hot day catchup = ops.
+- **A/C FIXED** (`4f70adc08`); **D FIXED** (3-chain); **B FIXED** (+F cutover hybrid); **E shipped** (`799b7412d`) — **do not revert**.
+- **Closeout residuals cleared** 2026-07-22 — see `plan_residual_reconcile_20260722.md`.
+- **Next** = ops ths_hot catchup (token) + owner-scheduled E/F remeasure only.
 - **Stays deferred until owner opens:** Optuna, StrategyRelease, holdout loosen, Type-B enrichment, E/F remeasure (unless separately scheduled).
 
-Label: **CLOSED** — residual owner = next explicit schedule; foundation 0r.1–0r.3 closed; product A–F mandate subsets shipped.
+Label: **CLOSED** — closeout residuals cleared; foundation 0r.1–0r.4 mechanism closed; product A–F mandate subsets shipped.
