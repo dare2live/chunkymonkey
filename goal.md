@@ -57,7 +57,7 @@
 
 **近端 focus**：owner schedule E/F 前保持 pause — **不是** Type-B enrichment / S7 假 COMPAT / 擅自 E/F / G/H/Release / org invent。
 
-**护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；org BLOCKED 维持。
+**护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；org BLOCKED 维持；**org/period 域 manual update = incremental-only**（见下裁决）。
 
 A→H 仍为后置地图；E/F remeasure **仅** owner schedule 后开。
 
@@ -65,8 +65,10 @@ A→H 仍为后置地图；E/F remeasure **仅** owner schedule 后开。
 
 - 静默 cutover / 无证据回翻 `cutover_allowed=false`；Optuna；E 松门；StrategyRelease
 - margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier
+- **org_holding（及同类 by-period 域）在每次 manual/`daily_update` 上做全市场单期 ~830k mass re-pull / 无界翻页 refresh** — 只允许 check latest plannable vs local，**缺则拉一期，有则 skip**
 - 随手重写 accepted canonical / 日历契约 / PIT-availability / `stage→validate→publish` / cutover 证据链；dual-write 迁移窗口；把「残破感」当 greenfield 重写许可证
 - 后台 subagent 若再出现「仅 2 行 transcript、tool 无 result」：改用本会话直接做或 `shell` 子代理（见交接文档）
+- S7 14 sync_orphan **blanket pre-accept as standby**；假 S7 COMPAT
 
 ## 已裁决（稳定）
 
@@ -84,6 +86,12 @@ A→H 仍为后置地图；E/F remeasure **仅** owner schedule 后开。
 架构硬决定摘要：积木=`module+data+config+contract+evidence`；landing 保留供应商响应；日历与 universe 同级硬门；名义 OHLCV=成交真相；一数据集一 writer；`manual_only`；静态 PASS≠`live_readiness`。完整条文见 `docs/MASTER_TOPLEVEL_DESIGN.md`。
 
 **Formal daily/ST acquire（owner 2026-07-21）**：acquire = 全市场按 `trade_date`（`raw_evidence`），**禁止** exclude-then-fetch。ST = accepted 日级 membership，在 `traded_on_observation_date` / universe read 应用，**不是** acquire 排除名单。BSE/三板等 landing 可含，经 `universe_rules`/population 过滤。退市主路径 = 观察日无名义 K（非 acquire 黑名单）。部分 `by_ts_code` legacy 预筛 = 非 formal 路径，不得定义 daily/ST acquire。Owner：`docs/MASTER_TOPLEVEL_DESIGN.md` §5.1。
+
+**Gate pytest 分层（owner 2026-07-21 redesign #1 SHIPPED）**：`ci_pytest_surface.yaml` = `blocking_paths` + `nightly_paths` + optional；`run_ci_pytest.py --tier blocking|nightly|all`；L2/L3 safe_commit + CI = **`--tier blocking`**（非全量 985）；tier12 publish contract **promoted**；strategy-paused main_rally/institution_follow → **nightly**。详见 `analysis/gate_redesign_occams_20260721.md`。
+
+**S7 sync_orphan standby（owner Q2）**：**NO** blanket pre-accept of 14 orphans（无 consumer / 无 contract / 大宗成本 / 假 readiness）。保持 ssot 墙；`legacy_raw_plane.yaml` **publication_watchlist** = 未来策略需要时的 publication 候选（非自动队列）；薄门：sync_orphan 进 DataAccess → `check_legacy_raw_plane` FAIL。**禁假 COMPAT**。
+
+**Period-domain incremental（owner Q3 + hard lock）**：每次 `daily_update` / 显式 sync 对 org（及同类 period 域）**必须** check latest plannable vs local；**缺 → 拉一期；有 → skip + log**。**NEVER** 每次点击全市场单期 ~830k mass re-pull / unbounded page crawl refresh。中间历史洞 = log-not-fill（显式 backfill 刀另开，不进 pipeline）。实现：`org_holding_period_gap_report` + `sync_org_holding_incremental`；`sync_period(..., allow_existing_refresh=False)` fail-closed。
 
 **Product 系统 + Agent-OS 演进裁决（owner，针对 Fable5 提案）**：后续演进 = **strangler + 聚焦**，非 greenfield 重写。仅三把杠杆：(1) 单一读 SSOT 经 resolver（禁旁路直读）；(2) 本地 L2/L3 pytest = CI test-list 唯一 SSOT；(3) god-seam strangler，按 blast radius 分步收编，不整体推倒。
 

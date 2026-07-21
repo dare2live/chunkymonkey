@@ -64,12 +64,13 @@ jobs:
       - name: Run offline tests
         run: |
           # Single source of truth: backend/config/ci_pytest_surface.yaml
-          # via backend/scripts/run_ci_pytest.py. Identical surface is also the
-          # L2/L3 safe_commit gate — do not reintroduce a hand-copied path list.
+          # via backend/scripts/run_ci_pytest.py --tier blocking. Identical
+          # blocking surface is also the L2/L3 safe_commit gate — do not
+          # reintroduce a hand-copied path list. Nightly tier is async-only.
           # Markers realdb/network/perf/gcp/slow stay excluded via pytest.ini.
           # Do not suddenly run live DuckDB or provider network.
           PYTHONPATH=backend python backend/scripts/run_ci_pytest.py \
-            -p no:cacheprovider --tb=short -q
+            --tier blocking -p no:cacheprovider --tb=short -q
 
       - name: Population and calendar static gates
         run: |

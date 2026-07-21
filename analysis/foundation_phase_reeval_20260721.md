@@ -166,11 +166,19 @@
 | 批量 COMPAT 降级 | **禁止** — 无 publication consumer |
 | 逐域 formal publication | **仅 owner 新 block**（module+data+contract+evidence） |
 | sunset / 停 sync | 需 moth + consumer 证据 |
-| **本阶段默认** | **documented typed wall**；S7 标签维持 near-FIXED；**不排近端刀** |
+| **blanket pre-accept as standby**（unused now ≠ unused later） | **NO**（owner 2026-07-21 Q2）— 无 consumer / 无 contract / 大宗成本 / **假 readiness**；ssot 墙保持 |
+| **publication_watchlist** | **YES** — `legacy_raw_plane.yaml` 列高价值域（income/balancesheet/dividend/…）；**仅**未来策略需要时开 publication 刀，非自动 fetch/accept 队列 |
+| **薄门** | sync_orphan 若进入 DataAccess live read → `check_legacy_raw_plane` **FAIL**（逼 publication/sunset 刀） |
+| **本阶段默认** | **documented typed wall**；S7 标签维持 near-FIXED；**不排近端刀**；**禁假 S7 COMPAT** |
 
-### 5.2 org BLOCKED
+### 5.2 org BLOCKED + 增量策略（owner Q3）
 
-维持 **`org_holding` provider land BLOCKED**；org accept 仅 **`--from-local-raw`**；禁止 by-period mass land invent。
+| 项 | 裁决 |
+|---|---|
+| provider land | 维持 **BLOCKED**；accept 仅 `--from-local-raw`；禁 by-period mass land invent |
+| 每次 `daily_update` / 显式 sync | **必须** check latest plannable vs local；缺则 **incremental fetch 一期**；有则 skip 并 log |
+| **禁止** | 静默每日全市场 ~830k dump；把中间历史洞当日常自动回填（= mass backfill） |
+| 实现 | `org_holding_period_gap_report` + `sync_org_holding_incremental`（pipeline acquire 已挂）；older gaps **log-not-fill** |
 
 ### 5.3 Type-B
 
@@ -178,6 +186,16 @@
 |---|
 | **DEFER** enrichment 至 E0-HIST 闭合或 FND-GATE 后 owner 复评 |
 | registry/gate **保持**；不假升 B5 FIXED |
+
+### 5.4 Gate redesign #1（owner 2026-07-21）
+
+| 项 | 状态 |
+|---|---|
+| `blocking_paths` / `nightly_paths` | **SHIPPED** — `ci_pytest_surface.yaml` + `run_ci_pytest.py --tier` |
+| L2/L3 + CI | **`--tier blocking`**（非全量 985） |
+| Promote | tier12 publish contract 5 文件 → blocking |
+| Demote | main_rally / institution_follow strategy-paused → nightly |
+| Nightly workflow schedule | **DEFER**（rank #4；可用 `--tier nightly` 手动） |
 
 ---
 

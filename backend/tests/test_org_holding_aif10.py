@@ -135,3 +135,87 @@ def test_fetched_at_utc_on_both_insert_and_update_paths():
     utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
     assert abs((upd - utc_now).total_seconds()) < tol, f"UPDATE 路径 fetched_at 非 UTC: {upd}"
     con.close()
+
+
+# ── Owner 2026-07-21 Q3: check plannable vs local; never silent mass dump ──
+def test_org_holding_period_gap_report_detects_missing_plannable():
+    from datetime import date
+
+    con = duckdb.connect(":memory:")
+    m.ensure_tables(con)
+    # today past Q1 2026 disclosure deadline (04-30) → plannable includes 2026-03-31
+    gap = m.org_holding_period_gap_report(
+        con, today=date(2026, 5, 15), start_period="2025-12-31"
+    )
+    assert gap["plannable"] == "2026-03-31"
+    assert gap["local_has_plannable"] is False
+    assert "2026-03-31" in gap["missing_periods"]
+    assert gap["status"] == "plannable_missing"
+    con.close()
+
+
+def test_sync_org_holding_incremental_skips_when_plannable_present(monkeypatch):
+    import asyncio
+
+    con = duckdb.connect(":memory:")
+    m.ensure_tables(con)
+    monkeypatch.setattr(m, "latest_plannable_report_date", lambda today=None: "2026-03-31")
+    con.execute(
+        "INSERT INTO raw_org_holding_aif10 "
+        "(report_date, stock_code, holder_code, fund_derivecode) "
+        "VALUES ('2026-03-31', '600000', 'H1', '')"
+    )
+    con.commit()
+    fetched = {"called": False}
+
+    def _boom(*_a, **_k):
+        fetched["called"] = True
+        raise AssertionError("must not mass-fetch when plannable present")
+
+    monkeypatch.setattr(m, "sync_period", _boom)
+    result = asyncio.run(m.sync_org_holding_incremental(con))
+    assert result["status"] == "skipped"
+    assert fetched["called"] is False
+    assert "local=present" in result["message"]
+    con.close()
+
+
+def test_sync_period_refuses_mass_refresh_when_period_present(monkeypatch):
+    """Fail-closed: existing period must not trigger ~830k provider crawl."""
+    con = duckdb.connect(":memory:")
+    m.ensure_tables(con)
+    con.execute(
+        "INSERT INTO raw_org_holding_aif10 "
+        "(report_date, stock_code, holder_code, fund_derivecode) "
+        "VALUES ('2026-03-31', '600000', 'H1', '')"
+    )
+    con.commit()
+    fetched = {"called": False}
+
+    def _boom(*_a, **_k):
+        fetched["called"] = True
+        return []
+
+    monkeypatch.setattr(m, "_fetch_period", _boom)
+    with pytest.raises(m.OrgHoldingMassRefreshForbidden, match="refuse mass refresh"):
+        m.sync_period(con, "2026-03-31")
+    assert fetched["called"] is False
+    con.close()
+
+
+def test_pipeline_acquire_org_path_is_incremental_only():
+    """daily_update acquire must wire incremental, never org backfill."""
+    from pathlib import Path
+
+    src = (
+        Path(__file__).resolve().parents[1]
+        / "services"
+        / "pipeline"
+        / "acquire.py"
+    ).read_text(encoding="utf-8")
+    assert "sync_org_holding_incremental" in src
+    assert "org_holding_period_gap_report" in src
+    # Hard ban: pipeline must not call org backfill / unbounded refresh.
+    assert "org_holding_aif10 import (\n        backfill" not in src
+    assert "backfill(" not in src.split("def _sync_org_holding")[1].split("def ")[0]
+    assert "allow_existing_refresh=True" not in src

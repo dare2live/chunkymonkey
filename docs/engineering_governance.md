@@ -317,11 +317,12 @@ accept/PIT/calendar/fail-closed/cutover/E 门 / Rule 10 / ≤40d 语义**。
 `safe_commit`**。禁止把同一刀拆成「docs commit → 小改 commit → 测 commit」各
 审一次。验收信号：`commits/knife ≤ 1.5`；ledger 条目写明刀边界。
 
-- **异步 CI（pipelining，不是放松）**：L2/L3 本地先绿同一 pytest 面
-  （`backend/config/ci_pytest_surface.yaml` via `run_ci_pytest.py`，亦是
+- **异步 CI（pipelining，不是放松）**：L2/L3 本地先绿同一 **blocking** pytest 面
+  （`backend/config/ci_pytest_surface.yaml` via `run_ci_pytest.py --tier blocking`，亦是
   `safe_commit` `ci_pytest` 门）再 push；push 后**禁止**同步 `gh run watch` /
   空等 CI；可开下一刀。刀收口前回读该刀 CI verdict（或上一刀已结束 run）；红 =
   fix-forward 最高优先并暂停派新刀。同步等待只保留给改 CI/gate 机械本身的切片。
+  `nightly_paths` 不进 commit 门（`--tier nightly|all` 手动/未来 schedule）。
 - **并行 subagents**：仅当写集不相交且不碰共享真相文件时，父可并行派
   disjoint 刀；派前用 `moth coupling --repo . --impact <name>`（或
   `chunkyctl pre-knife`）证明非重叠。**必须串行的共享面**：

@@ -17,7 +17,7 @@
 | **Occam 方向** | **少 blocking 实体、多分层 signal** — 快面保 **contract + drift + moth**；重面 **nightly/async**；**提升**真正缺的 PIT/tier12 合同进 blocking；**降级** strategy-paused 的 B0–B2 大块 parametrization。**不**砍 Rule10/PIT/≤40d。 |
 | **下周第一刀** | 给 `ci_pytest_surface.yaml` 加 **`blocking` / `nightly` 两档**（SSOT 不破）；strategy 暂停域移 nightly；tier12 publish contract **5 文件** promoted；continuity **脚本门保留 L3**，pytest 版进 nightly+live job。 |
 
-**裁决标签**：**PARTIAL** — 诊断完成；结构改造待 owner 批 `#1` 两档 YAML 刀。
+**裁决标签**：**FIXED（#1）** — `blocking_paths`/`nightly_paths` + `--tier` + safe_commit/CI blocking **SHIPPED** 2026-07-21；#4 nightly schedule / #5–#6 triage **DEFER**。
 
 ---
 
@@ -215,16 +215,18 @@
 
 ---
 
-## 6. 验收（2026-07-28）
+## 6. 验收（2026-07-21 #1 SHIPPED；原目标窗 2026-07-28 部分提前）
 
-| 检查 | 通过标准 |
-|---|---|
-| blocking pytest 墙钟 | **≤90s** 本机（strategy 域 nightly 后） |
-| blocking 用例数 | **≤750** 且 **含** tier12 publish 5 文件 |
-| nightly workflow | 至少 **1 次** schedule 绿 |
-| optional 未 triage | **≤82**（−5/周） |
-| PIT 测试 | blocking 或 nightly **有跑**，不得 silent optional |
-| 误删 regression | `test_legacy_raw_plane_s7` + `test_formal_boundaries` 仍在 blocking |
+| 检查 | 通过标准 | 实测 2026-07-21 |
+|---|---|---|
+| blocking pytest 墙钟 | **≤90s** 本机（strategy 域 nightly 后） | **~18s** / 950 passed（`--tier blocking`） |
+| blocking 用例数 | **≤750** 且 **含** tier12 publish 5 文件 | **950**（含 tier12；strategy 已出 blocking；≤750 未达 — optional triage 续降） |
+| nightly workflow | 至少 **1 次** schedule 绿 | **DEFER**（`--tier nightly` 可用） |
+| optional 未 triage | **≤82**（−5/周） | 未动（#6 DEFER） |
+| PIT 测试 | blocking 或 nightly **有跑**，不得 silent optional | tier12 publish **5** 文件 in **blocking** |
+| 误删 regression | `test_legacy_raw_plane_s7` + `test_formal_boundaries` 仍在 blocking | 保持 |
+
+**Owner Q2/Q3（同刀文档化）**：orphan blanket pre-accept=**NO** + watchlist + DataAccess thin FAIL；period domains manual update=**incremental-only**（缺才拉；禁 ~830k refresh）。
 
 ---
 
@@ -245,4 +247,4 @@
 
 ---
 
-**状态**：**PARTIAL** — 诊断 + 排序完成；#1–#6 待 owner 开 **`ci_pytest tiers`** 刀。
+**状态**：**#1 FIXED / SHIPPED**（2026-07-21）— blocking/nightly SSOT + `--tier` + L2/L3/CI=`blocking`；tier12 promote + strategy demote。**#4–#6 DEFER**（nightly schedule + optional triage）。

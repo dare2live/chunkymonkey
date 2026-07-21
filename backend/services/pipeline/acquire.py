@@ -119,15 +119,36 @@ def _sync_qfii() -> None:
 
 
 def _sync_org_holding() -> None:
-    """机构持仓明细 aif10 季度增量 (非公募机构分桶). 水位=最近足量披露季度末, 已有则跳过."""
+    """机构持仓明细 aif10 — incremental-only on manual update (owner hard lock).
+
+    Binding (2026-07-21): check latest plannable vs local; fetch **only** if
+    that period is missing. NEVER full-period ~830k mass re-pull / unbounded
+    page crawl for "refresh". NEVER call ``backfill`` from this path.
+    Older historical gaps: log-not-fill (mass backfill is a separate explicit knife).
+    """
     import asyncio
     import json
     from services.duck_adapter import connect as duck_connect
-    from services.org_holding_aif10 import sync_org_holding_incremental
+    from services.org_holding_aif10 import (
+        org_holding_period_gap_report,
+        sync_org_holding_incremental,
+    )
     from .context import db_path
+
     conn = duck_connect(db_path("smartmoney"))
     try:
-        print(json.dumps(asyncio.run(sync_org_holding_incremental(conn)), ensure_ascii=False, default=str))
+        gap = org_holding_period_gap_report(conn)
+        print(
+            "org_holding_gap_check: "
+            + json.dumps(gap, ensure_ascii=False, default=str)
+        )
+        print(
+            json.dumps(
+                asyncio.run(sync_org_holding_incremental(conn)),
+                ensure_ascii=False,
+                default=str,
+            )
+        )
     finally:
         conn.close()
 

@@ -229,13 +229,15 @@ else
     echo "[commit-tier] skip rule_compliance (tier=$COMMIT_TIER)"
 fi
 
-# 3.4 Offline CI pytest surface (L2/L3 only; same list as public CI).
+# 3.4 Offline CI pytest surface (L2/L3 only; same blocking list as public CI).
 # Owner: backend/config/ci_pytest_surface.yaml + backend/scripts/run_ci_pytest.py.
 # Binding finding (2026-07-20): safe_commit previously ran zero pytest locally, so
 # stale assertions only exploded on public CI. This gate closes that gap without
 # changing accept/PIT/cutover semantics. L1 docs commits skip (no code surface).
+# Gate redesign #1 (2026-07-21): L2/L3 + CI run `--tier blocking` only
+# (nightly_paths stay async; do not expand to full 985 here).
 echo
-echo "=== Step 3.4: CI pytest surface (L2/L3) ==="
+echo "=== Step 3.4: CI pytest surface (L2/L3 blocking) ==="
 if gate_enabled ci_pytest; then
 if [[ ! -f "$STAGED_BACKEND/scripts/run_ci_pytest.py" ]]; then
     echo "ERROR: staged snapshot 缺 run_ci_pytest.py；L2/L3 不得跳过 CI 同面 pytest。"
@@ -251,15 +253,15 @@ if ! (
     CHUNKYMONKEY_REPO="$(pwd)" \
     CI_PYTEST_SURFACE="$STAGED_BACKEND/config/ci_pytest_surface.yaml" \
     PYTHONPATH=backend "$PY" "$STAGED_BACKEND/scripts/run_ci_pytest.py" \
-        -p no:cacheprovider --tb=line -q
+        --tier blocking -p no:cacheprovider --tb=line -q
 ); then
     echo
-    echo "ERROR: CI pytest surface 红 — 本地 L2/L3 必须与 public CI 同面绿。"
-    echo "正解: 修失败测试, 或把路径从 ci_pytest_surface.yaml paths 移到 ci_test_optional(带 reason)。"
+    echo "ERROR: CI pytest blocking surface 红 — 本地 L2/L3 必须与 public CI 同面绿。"
+    echo "正解: 修失败测试, 或把路径从 blocking_paths 移到 nightly_paths / ci_test_optional(带 reason)。"
     echo "勿 --no-verify 绕; 勿改 accept/PIT/cutover 门去洗绿。"
     exit 3
 fi
-echo "[ci-pytest] PASS (same surface as .github/workflows/ci.yml)"
+echo "[ci-pytest] PASS (blocking surface = .github/workflows/ci.yml)"
 else
     echo "[commit-tier] skip ci_pytest (tier=$COMMIT_TIER)"
 fi

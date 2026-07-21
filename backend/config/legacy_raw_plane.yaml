@@ -17,8 +17,23 @@
 #     redirects to a non-raw publication_surface (no pulse-aggregate theater)
 #
 # Ban: mass delete of years of raw; mass backfill; second DB; Optuna/Release flip.
+# Ban: blanket pre-accept of sync_orphan as "standby" (owner 2026-07-21 Q2).
+# Watchlist below = future publication candidates when strategy needs them —
+# not a fetch/accept queue and not readiness.
 
 version: 1
+
+# High-value sync_orphan domains for *future* publication knives only
+# (module+data+config+contract+evidence). Not auto-triggered; unused now ≠
+# unused later, but spare accepted without a consumer is false readiness.
+publication_watchlist:
+  - raw_tushare_income
+  - raw_tushare_balancesheet
+  - raw_tushare_dividend
+  - raw_tushare_express
+  - raw_tushare_fina_mainbz
+  - raw_tushare_stk_holdernumber
+  - raw_tushare_moneyflow_hsgt
 
 roles:
   ssot: "Production truth surface until a formal accepted plane replaces it."

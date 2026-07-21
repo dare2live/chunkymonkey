@@ -280,6 +280,21 @@ def collect_violations() -> list[str]:
                     f"{surface!r} before role=compatibility (got {ent_table!r})"
                 )
 
+    # Owner 2026-07-21 Q2: sync_orphan = documented wall, not standby accepted.
+    # Thin gate: if DataAccess starts reading a sync_orphan raw → FAIL (force
+    # publication/sunset knife). Blankets pre-accept of orphans stays banned.
+    da_raw = data_access_raw_tables()
+    for table, meta in tables.items():
+        if not isinstance(meta, dict):
+            continue
+        if meta.get("kind") != "sync_orphan":
+            continue
+        if table in da_raw:
+            viol.append(
+                f"{table}: sync_orphan must not appear in data_access entities "
+                f"(live read forces publication/sunset knife; no silent standby)"
+            )
+
     return viol
 
 

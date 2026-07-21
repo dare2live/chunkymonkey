@@ -373,10 +373,52 @@ def accept_org_holding_partition_from_legacy(
 
 
 # ── 编排 ─────────────────────────────────────────────────────────────
-def sync_period(conn: Any, report_date: str) -> dict:
-    """同步单报告期 (获取→清洗→存储). report_date 形如 '2026-03-31'."""
+class OrgHoldingMassRefreshForbidden(RuntimeError):
+    """Fail-closed: refuse full-period ~830k re-pull when local already has the period.
+
+    Owner 2026-07-21 hard constraint: manual update / incremental path is
+    check-plannable-vs-local then fetch-only-if-missing. Never "refresh" an
+    already-landed period (unbounded page crawl / mass dump).
+    """
+
+
+def _period_row_count(conn: Any, report_date_iso: str) -> int:
+    row = conn.execute(
+        "SELECT COUNT(*) FROM raw_org_holding_aif10 WHERE report_date = ?",
+        (report_date_iso,),
+    ).fetchone()
+    return int(row[0] or 0) if row else 0
+
+
+def sync_period(
+    conn: Any,
+    report_date: str,
+    *,
+    allow_existing_refresh: bool = False,
+) -> dict:
+    """同步单报告期 (获取→清洗→存储). report_date 形如 '2026-03-31'.
+
+    Default ``allow_existing_refresh=False`` is fail-closed: if the period
+    already has local rows, refuse before any provider I/O (no ~830k re-pull).
+    Explicit historical backfill may pass ``allow_existing_refresh=True`` only
+    when the caller intentionally opts into a mass refresh — never from
+    ``daily_update`` / ``sync_org_holding_incremental``.
+    """
     ensure_tables(conn)
     iso = _normalize_date(report_date)
+    if not iso:
+        return {
+            "report_date": report_date,
+            "status": "invalid_period",
+            "written_rows": 0,
+            "error": "unparseable report_date",
+        }
+    existing = _period_row_count(conn, iso)
+    if existing > 0 and not allow_existing_refresh:
+        raise OrgHoldingMassRefreshForbidden(
+            f"org_holding refuse mass refresh: period {iso} already has "
+            f"{existing} local rows; incremental-only (fetch if missing)"
+        )
     try:
         raw = _fetch_period(iso)
     except Exception as exc:  # noqa: BLE001
@@ -390,7 +432,11 @@ def sync_period(conn: Any, report_date: str) -> dict:
 
 def backfill(conn: Any, *, start_period: str = DEFAULT_START_PERIOD,
              end_period: Optional[str] = None, progress: bool = True) -> dict:
-    """回填 [start_period, end_period] 全部季度末 (end 省略=latest_plannable). K线对齐默认 2018Q4 起."""
+    """Explicit multi-period backfill (NOT daily_update).
+
+    Skips periods that already exist (same fail-closed as sync_period default).
+    Must never be wired into pipeline acquire / manual update click.
+    """
     ensure_tables(conn)
     end_period = _normalize_date(end_period) if end_period else latest_plannable_report_date()
     if not end_period:
@@ -399,7 +445,18 @@ def backfill(conn: Any, *, start_period: str = DEFAULT_START_PERIOD,
     total = 0
     detail = []
     for q in quarters:
-        d = sync_period(conn, q)
+        if _period_row_count(conn, q) > 0:
+            detail.append(
+                {
+                    "report_date": q,
+                    "status": "skipped_existing",
+                    "written_rows": 0,
+                }
+            )
+            if progress:
+                print(f"  [org-holding-aif10] {q}: skipped_existing (no mass refresh)")
+            continue
+        d = sync_period(conn, q, allow_existing_refresh=False)
         detail.append(d)
         total += int(d.get("written_rows") or 0)
         if progress:
@@ -408,26 +465,90 @@ def backfill(conn: Any, *, start_period: str = DEFAULT_START_PERIOD,
             "quarters": quarters, "written_rows": total, "detail": detail}
 
 
-async def sync_org_holding_incremental(conn: Any) -> dict:
-    """日常增量 (接 pipeline acquire): 只同步"最近一个足量披露的季度末"且 DB 缺该季时拉.
+def org_holding_period_gap_report(
+    conn: Any,
+    *,
+    today: Optional[date] = None,
+    start_period: str = DEFAULT_START_PERIOD,
+) -> dict:
+    """Read-only: latest plannable vs local + any intermediate missing periods.
 
-    机构持仓是季报派生 (季度更新), 增量 = 看最新 plannable 季度是否已入库, 缺则拉。
+    Owner 2026-07-21 Q3: every manual update must *check* incremental gaps.
+    This report is the check; fetch stays latest-only (see
+    ``sync_org_holding_incremental``) — never silent full-history mass dump.
     """
     ensure_tables(conn)
-    target = latest_plannable_report_date()
+    target = latest_plannable_report_date(today=today)
     if not target:
-        return {"count": 0, "status": "skipped", "message": "尚无足量披露季度末"}
-    row = conn.execute(
-        "SELECT COUNT(*) FROM raw_org_holding_aif10 WHERE report_date = ?", (target,)
-    ).fetchone()
-    existing = int(row[0] or 0) if row else 0
-    if existing > 0:
-        return {"count": 0, "status": "skipped", "existing": existing, "report_date": target,
-                "message": f"季度 {target} 已有 {existing} 条, 跳过"}
+        return {
+            "plannable": None,
+            "local_has_plannable": False,
+            "missing_periods": [],
+            "status": "no_plannable",
+        }
+    local_rows = conn.execute(
+        "SELECT DISTINCT report_date FROM raw_org_holding_aif10"
+    ).fetchall()
+    local = {str(r[0])[:10] for r in local_rows if r and r[0]}
+    # Normalize ISO / compact
+    local_norm = {(_normalize_date(d) if d else d) for d in local}
+    quarters = enumerate_quarter_ends(start_period, target)
+    missing = [q for q in quarters if q not in local_norm]
+    return {
+        "plannable": target,
+        "local_has_plannable": target in local_norm,
+        "local_periods": sorted(local_norm),
+        "missing_periods": missing,
+        "missing_count": len(missing),
+        "status": "ok" if target in local_norm else "plannable_missing",
+    }
+
+
+async def sync_org_holding_incremental(conn: Any) -> dict:
+    """日常增量 (接 pipeline acquire): check plannable vs local; fetch only if
+    latest plannable period is missing.
+
+    机构持仓是季报派生 (季度更新)。Owner Q3: incremental check+fetch >
+    mass dump — when the latest period already exists, skip (no daily ~830k).
+    Intermediate historical gaps are logged via ``org_holding_period_gap_report``
+    but NOT auto-filled here (would be mass backfill).
+    """
+    ensure_tables(conn)
+    gap = org_holding_period_gap_report(conn)
+    target = gap.get("plannable")
+    if not target:
+        return {
+            "count": 0,
+            "status": "skipped",
+            "gap": gap,
+            "message": "尚无足量披露季度末",
+        }
+    if gap.get("local_has_plannable"):
+        missing_older = [p for p in (gap.get("missing_periods") or []) if p != target]
+        msg = (
+            f"check: plannable={target} local=present; skip fetch "
+            f"(older_missing={len(missing_older)}; not auto mass-filled)"
+        )
+        return {
+            "count": 0,
+            "status": "skipped",
+            "report_date": target,
+            "gap": gap,
+            "message": msg,
+        }
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(None, sync_period, conn, target)
     if result.get("status") == "source_unavailable":
         raise RuntimeError(f"org_holding_source_failed:{result.get('error')}")
     written = int(result.get("written_rows") or 0)
-    return {"count": written, "status": "completed", "report_date": target, "written": written,
-            "message": f"季度 {target} 写入 {written} 条"}
+    return {
+        "count": written,
+        "status": "completed",
+        "report_date": target,
+        "written": written,
+        "gap": gap,
+        "message": (
+            f"check: plannable={target} local=missing → incremental fetch "
+            f"wrote {written} rows (not full-history dump)"
+        ),
+    }

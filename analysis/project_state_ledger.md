@@ -3077,3 +3077,18 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   remeasure；Optuna/Release；S7 COMPAT；org invent.
 - **Next**：owner-scheduled E/F only（goal pause markers retained for F9）.
 - **Status**: **FIXED** (§15-VERIFY / F8) / foundation phase **CLOSED**.
+
+### 2026-07-21 — Gate redesign #1 SHIPPED + Q2/Q3 policy locks
+
+- **Knife**: `ci-pytest-tiers` (L3). `blocking_paths`/`nightly_paths` +
+  `run_ci_pytest.py --tier blocking|nightly|all`; safe_commit/CI = blocking.
+  Promote tier12 publish 5 files; demote main_rally/institution_follow → nightly.
+- **Measured**: blocking **950 passed / ~16–18s** (pre redesign collect 985;
+  historical L3 pytest ~123s — strategy demote + warm machine; PIT not gutted).
+- **Q2**: sync_orphan blanket pre-accept = **NO**; publication_watchlist in
+  `legacy_raw_plane.yaml`; DataAccess thin FAIL for sync_orphan live read.
+- **Q3 / hard lock**: org period domain manual update = **incremental-only**;
+  `OrgHoldingMassRefreshForbidden` if period already local; pipeline never
+  calls backfill; gap check logged; older gaps log-not-fill. Ban ~830k refresh.
+- **Deferred**: nightly GH schedule (#4); optional triage (#6); E/F still paused.
+- **Status**: **FIXED** (gate #1 + policy encode) / org incremental fail-closed.

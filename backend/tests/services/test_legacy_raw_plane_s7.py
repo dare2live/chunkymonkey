@@ -514,6 +514,90 @@ def test_s7_hard_stop_kinds_documented_for_residual_ssot() -> None:
         assert meta.get("note"), f"{table}: ssot missing honest note"
 
 
+def test_s7_sync_orphan_not_in_data_access_live() -> None:
+    """Owner Q2 thin gate: sync_orphan raw must not be a DataAccess entity."""
+
+    mod = _load_check_mod()
+    viol = mod.collect_violations()
+    assert viol == [], viol
+    inv = mod._load_yaml(mod.INVENTORY_YAML)
+    da_raw = mod.data_access_raw_tables()
+    orphans = {
+        name
+        for name, meta in inv["tables"].items()
+        if isinstance(meta, dict) and meta.get("kind") == "sync_orphan"
+    }
+    assert orphans
+    assert not (orphans & da_raw)
+    watch = inv.get("publication_watchlist") or []
+    assert isinstance(watch, list) and watch
+    assert set(watch) <= orphans
+
+
+def test_s7_gate_rejects_sync_orphan_in_data_access(tmp_path, monkeypatch) -> None:
+    """Red case: registering a sync_orphan in DataAccess must fail the gate."""
+
+    mod = _load_check_mod()
+    inv = tmp_path / "legacy_raw_plane.yaml"
+    inv.write_text(
+        "version: 1\n"
+        "membership_l0_entities: [dc_member, index_member_all]\n"
+        "tables:\n"
+        "  raw_tushare_daily:\n"
+        "    role: fill\n"
+        "    formal_domain: daily\n"
+        "    write: forbidden\n"
+        "  raw_tushare_stock_st:\n"
+        "    role: compatibility\n"
+        "    formal_domain: stock_st\n"
+        "    write: forbidden\n"
+        "  raw_tushare_trade_cal:\n"
+        "    role: compatibility\n"
+        "    formal_domain: trade_cal\n"
+        "    write: forbidden\n"
+        "  raw_tushare_margin:\n"
+        "    role: compatibility\n"
+        "    formal_domain: margin\n"
+        "    write: forbidden\n"
+        "  raw_tushare_dc_member:\n"
+        "    role: ssot\n"
+        "    kind: membership_l0\n"
+        "  raw_tushare_index_member_all:\n"
+        "    role: ssot\n"
+        "    kind: membership_l0\n"
+        "  raw_tushare_income:\n"
+        "    role: ssot\n"
+        "    kind: sync_orphan\n"
+        "    note: orphan\n",
+        encoding="utf-8",
+    )
+    reg = tmp_path / "sync_registry.yaml"
+    reg.write_text(
+        "domains:\n"
+        "  daily: {target_table: raw_tushare_daily}\n"
+        "  stock_st: {target_table: raw_tushare_stock_st}\n"
+        "  trade_cal: {target_table: raw_tushare_trade_cal}\n"
+        "  margin: {target_table: raw_tushare_margin}\n"
+        "  dc_member: {target_table: raw_tushare_dc_member}\n"
+        "  index_member_all: {target_table: raw_tushare_index_member_all}\n"
+        "  income: {target_table: raw_tushare_income}\n",
+        encoding="utf-8",
+    )
+    da = tmp_path / "data_access.yaml"
+    da.write_text(
+        "entities:\n"
+        "  dc_member: {table: raw_tushare_dc_member, layer: L0}\n"
+        "  index_member_all: {table: raw_tushare_index_member_all, layer: L0}\n"
+        "  income: {table: raw_tushare_income, layer: L0}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "INVENTORY_YAML", inv)
+    monkeypatch.setattr(mod, "SYNC_REGISTRY_YAML", reg)
+    monkeypatch.setattr(mod, "DATA_ACCESS_YAML", da)
+    viol = mod.collect_violations()
+    assert any("sync_orphan must not appear in data_access" in v for v in viol), viol
+
+
 def test_s7_pulse_builder_resolves_via_data_access_entity() -> None:
     """market_pulse builder must not hardcode reclassified pulse raw tables."""
 

@@ -1,13 +1,16 @@
 # Single source of truth for the offline CI pytest surface.
 #
-# Semantics (not gate count): ~985 pytest cases run inside ONE `ci_pytest` gate
-# (L2/L3 safe_commit + CI). Full repo ~1903 cases; 90 files / ~918 cases are
-# ci_test_optional and do NOT block commit. Gate-layer map + blocking/nightly
-# redesign proposal: analysis/gate_redesign_occams_20260721.md
+# Semantics (not gate count): pytest cases run inside ONE `ci_pytest` gate
+# (L2/L3 safe_commit + CI). Gate redesign #1 (2026-07-21):
+#   - `blocking_paths` — default for L2/L3 safe_commit + public CI
+#   - `nightly_paths`  — strategy-paused / heavier offline suite (`--tier nightly`)
+#   - `ci_test_optional` — intentionally NOT run by commit/CI (with reason)
+# Full-repo remainder stays optional until triage. Map:
+#   analysis/gate_redesign_occams_20260721.md
 #
 # Owner: this file + backend/scripts/run_ci_pytest.py. Consumed IDENTICALLY by:
-#   - .github/workflows/ci.yml ("Run offline tests" step)
-#   - scripts/safe_commit.sh (L2/L3 gate "ci_pytest")
+#   - .github/workflows/ci.yml ("Run offline tests" step) via `--tier blocking`
+#   - scripts/safe_commit.sh (L2/L3 gate "ci_pytest") via `--tier blocking`
 # so the local pre-commit test surface and the public-CI test surface can never
 # silently drift apart again.
 #
@@ -18,20 +21,22 @@
 #      test surface (e.g. tests/services/test_main_rally_b1.py was never listed,
 #      so a real regression there would have gone green on every push).
 #
-# `paths`: pytest args (relative to backend/) that run in CI AND in safe_commit's
-#   L2/L3 gate. Keep this list to genuinely offline-collectible, marker-clean
-#   (not realdb/network/perf/gcp/slow) test files only -- markers alone do not
-#   protect against live-DB import/collection errors in a fresh CI checkout.
+# `blocking_paths`: pytest args (relative to backend/) that run in CI AND in
+#   safe_commit's L2/L3 gate. Keep this list to genuinely offline-collectible,
+#   marker-clean (not realdb/network/perf/gcp/slow) test files only.
+#
+# `nightly_paths`: offline-safe but not commit-blocking (strategy paused bulk,
+#   future triage promotions). Run via `run_ci_pytest.py --tier nightly|all`.
 #
 # `ci_test_optional`: exact test file paths (relative to backend/), each with a
 #   `reason`, that are intentionally NOT run by CI/safe_commit. Enforced by
 #   backend/tests/scripts/test_ci_pytest_surface_drift.py: every tracked
-#   backend/tests/**/test_*.py file must appear in `paths` OR here. A new test
-#   file that appears in neither turns that drift test red on the very next
-#   commit that touches it -- the failure mode this file exists to close.
+#   backend/tests/**/test_*.py file must appear in blocking_paths OR
+#   nightly_paths OR here. A new test file that appears in none turns that
+#   drift test red on the very next commit that touches it.
 
 version: 1
-paths:
+blocking_paths:
 - tests/test_utils.py
 - tests/test_db.py
 - tests/test_source_watermarks.py
@@ -56,10 +61,6 @@ paths:
 - tests/services/test_disclosure_enrichment_projection.py
 - tests/services/test_phase_e_smoke.py
 - tests/services/test_research_runtime.py
-- tests/services/test_institution_follow_b0.py
-- tests/services/test_institution_follow_b1.py
-- tests/services/test_institution_follow_b2.py
-- tests/services/test_institution_follow_b4.py
 - tests/services/test_margin_acceptance.py
 - tests/services/test_observation_population.py
 - tests/services/test_project_universe_breadth.py
@@ -87,12 +88,22 @@ paths:
 - tests/scripts/test_pre_knife_audit.py
 - tests/scripts/test_persist_phase_d_experiment_runs.py
 - tests/scripts/test_build_price_kline_qfq_tushare.py
-- tests/services/test_main_rally_b0.py
-- tests/services/test_main_rally_b1.py
-- tests/services/test_main_rally_b2.py
+- tests/services/test_tier12_publish_contract.py
+- tests/services/test_tier12_publish_accept.py
+- tests/services/test_tier12_publish_writer.py
+- tests/services/test_tier12_publish_scope.py
+- tests/services/test_tier12_project_universe.py
 - tests/scripts/test_ci_pytest_surface_drift.py
 - tests/scripts/test_run_ci_pytest.py
 - tests/scripts/test_check_foundation_done.py
+nightly_paths:
+- tests/services/test_main_rally_b0.py
+- tests/services/test_main_rally_b1.py
+- tests/services/test_main_rally_b2.py
+- tests/services/test_institution_follow_b0.py
+- tests/services/test_institution_follow_b1.py
+- tests/services/test_institution_follow_b2.py
+- tests/services/test_institution_follow_b4.py
 ci_test_optional:
 - path: tests/data_governance/test_etl_hook.py
   reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
@@ -289,31 +300,6 @@ ci_test_optional:
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
     review, one triage slice at a time'
 - path: tests/services/test_tier12_nominal_canary.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/services/test_tier12_project_universe.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/services/test_tier12_publish_accept.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/services/test_tier12_publish_contract.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/services/test_tier12_publish_scope.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/services/test_tier12_publish_writer.py
   reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
     ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
