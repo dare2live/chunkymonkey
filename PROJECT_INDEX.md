@@ -53,6 +53,7 @@ AGENTS.md
 | Session boot context (git+moth+codegraph+board, one page) | `scripts/chunkyctl agent-boot [--format json]` |
 | Health | `scripts/chunkyctl doctor --fast` |
 | Manual full data update | UI `#/workbench`「数据更新」→ `POST /api/v3/ops/jobs/daily_update/run`；或 `bash scripts/daily_update.sh --date YYYYMMDD`；acquire 先 formal `daily`/`stock_st` 最新 eligible 日 land_then_accept（已接受则 skip）；on_demand 不进 all-due；margin=`on_demand`+`scope_blocked`（frozen，不挡 preflight） |
+| Stock dossier MVP (F) | UI `#/stock/:code` → `GET /api/v3/stock/{code}/dossier`（沪深A 白名单；form/stage/holders；lineage audit **PARTIAL** — parse+~98% join PASS，机构档案~54%；排期 `analysis/product_plan_reeval_stock_dossier_20260721.md`）；pytest `tests/test_stock_dossier_api.py` ∈ blocking |
 | Manual single-domain sync/canary/replay | `scripts/chunkyctl sync --domain DOMAIN`；`trade_cal` full generation；`daily`/`stock_st` 须显式 `--start/--end`（同日或 ≤40 交易日）；`--drain` 对三域 inapplicable；其它 disabled/formal 仍 fail closed |
 | Shared tooling snapshot | `moth snapshot --repo .` |
 | Business/tool assertions | `moth assert --repo .` |

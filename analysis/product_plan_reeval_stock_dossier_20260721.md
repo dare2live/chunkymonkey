@@ -1,141 +1,235 @@
-# Product plan re-eval — stock dossier + decision-assist (2026-07-21)
+# Product plan re-eval — full schedule (foundation + Cap A–F) 2026-07-21
 
-> 状态：evidence-only / product plan re-eval authority for **product track sequencing** after foundation click-proof
-> Supersedes phase order in `analysis/product_decision_assist_backlog_20260721.md` §7 for near-term knives
-> Layer authority: brick L0–L4 + MASTER Tier0–4; conclusions stay Tier3/product — **never** fused into Tier0
-> Companion backlog (capabilities A–E definitions unchanged): `analysis/product_decision_assist_backlog_20260721.md`
+> 状态：evidence-only / **near-term product+ops schedule authority**
+> Supersedes prior thin dossier-only draft of this path **and** §7 near-term order in
+> `analysis/product_decision_assist_backlog_20260721.md` (capability *definitions* A–E there still valid; E status = DONE subset).
+> Layer authority: brick L0–L4 + MASTER Tier0–4. Conclusions = Tier3/product — **never** fused into Tier0.
+> Cap E shipped evidence: `analysis/capability_e_pipeline_step_cards_20260721.md` (`799b7412d`).
+> Holders lineage audit: `analysis/holders_stock_dossier_lineage_audit_20260721.md` (`624d50c87`) — **PARTIAL**; do not re-audit.
+> Foundation click/unblock/RCA: `foundation_daily_update_unblock_20260721.md`,
+> `foundation_daily_update_ui_click_20260721.md`, `foundation_daily_update_degraded_rca_20260721.md`.
 
 ## 0. Verdict
 
-**YES — re-adjust the plan.**
+**YES — overall re-adjust the plan.**
 
-Foundation one-click path is no longer the hard gate it was when A–E were first scheduled. Click-proof ran end-to-end; moneyflow/pulse serve freshness caught up to `20260721`. Remaining foundation items are **degradation residuals + ops hygiene**, not “no UI / no accepted bricks.” That unlocks a **stock-dossier-first** product slice (decision-assist over layered bricks) while Capability **E** step cards land on workbench (separate surface).
+After foundation E2E → unblock → UI click (PARTIAL/degraded) and Cap E step cards **DONE**, the old backlog order
+(`foundation → moneyflow API/taxonomy → A+C UI → D → E → B`) is obsolete.
+
+New spine: **foundation truth knives (whitelist / BJ / continuity / holders lineage)** → **sensing serve only 沪深A** →
+**股票档案 F MVP** → **A moneyflow assist + C tabs** → **D 交集最强** → **B 形态/阶段选股面**.
+Cap E stays shipped; do not rebuild workbench into dossier files.
 
 | Question | Answer |
 |---|---|
-| Adjust phase order? | **Yes** — see §2 |
-| Open Optuna / StrategyRelease / E/F remeasure? | **No** — still paused / banned |
-| Fuse form labels / holder conclusions into Tier0? | **No** |
-| Stock dossier vs workbench? | **Separate route/files** (`#/stock/:code`) to cut merge pain with E |
+| Re-adjust after click-proof + Cap E + degradations? | **Yes** |
+| Cap E still a near-term knife? | **No** — DONE subset; residual = parameterized S1/S2 UI only |
+| Accept degradations as known forever? | **No** — BJ/B-share/dual-path still **in-flight**; holders audit **PARTIAL** with typed next knives |
+| Optuna / StrategyRelease / E/F remeasure? | **No** unless owner schedules |
+| Fuse product labels into Tier0? | **No** |
+| Sample holders PASS ⇒ full dossier readiness? | **No** — see §1.2 |
 
-## 1. What changed (evidence)
+---
 
-### 1.1 Foundation gate moved PARTIAL → operable
+## 1. What changed (evidence pack)
 
-| Item | Prior backlog assumption | Live evidence (2026-07-21) |
+### 1.1 Foundation / ops (current)
+
+| Item | State | Evidence / note |
 |---|---|---|
-| UI「数据更新」 | missing button / PlaceholderPage | **FIXED** — `#/workbench` → `POST /api/v3/ops/jobs/daily_update/run` |
-| margin preflight | `scope_blocked` hard-stop | **FIXED** — `on_demand`+frozen; no thaw |
-| formal daily/ST on click | skipped (on_demand not in all-due) | **FIXED** — orchestrator land_then_accept latest eligible |
-| DC / pulse / strongest freshness | lag vs daily | **FIXED** ops catchup — flow_board / strongest **`20260721`** |
-| Click wall-clock proof | not run | **PARTIAL** — owner click ~21:53→22:08 DONE **with degraded rc=1** |
-| Workbench observability | “更新中” only | **FIXED** — `current_activity` phase/progress |
-| Org on daily_update | fear of ~830k mass | **FIXED policy proven** — incremental check+skip when plannable present |
-| Holders acquire | watermark gap | **DID fetch** incremental (`affected=76`); accept/drain residual owned separately |
+| E2E UI path | PARTIAL → **unblock FIXED** | margin on_demand+frozen; formal daily/ST orchestrator; DC/pulse `20260721` |
+| UI「数据更新」+ progress「正在:…」 | **FIXED** | workbench one-click + `current_activity` |
+| Cap **E** step cards (一键 + 分步) | **DONE** | `799b7412d`; residual S1/S2 parameterized disabled+reason |
+| Click wall-clock | **PARTIAL** / degraded rc=1 | 4 degradations RCA’d — not greenwashed |
+| BJ leak into qfq / accepted nominal | **in flight** | ~327 `92x` extras; stop BJ accept **or** explicit publication |
+| B-share / exclusion fail on sensing | **in flight** | market sensing showed B shares; adopt **沪深A whitelist at correct layer** (peer) |
+| Continuity dual-path (raw lag vs accepted) | **in flight** | teach continuity/watermark formal frontier — **not** accept-as-known |
+| Holders formal land→accept parse | **FIXED** (full plane) | canonical **218,444** rows null/bad=0 |
+| Holders **lineage / association / process·serve** | **PARTIAL** audit DONE | see §1.2 — consume, don't re-audit |
+| Dossier period streak / Δ plane | **FIXED** | canonical-only streak (was fact-lag bug) |
+| Drain `share_float` / `ths_hot` | **in flight** | bare BJ-like codes fail-closed; ths_hot same-day empty typed |
 
-Sources: `foundation_daily_update_unblock_20260721.md`, `foundation_daily_update_ui_click_20260721.md`, `goal.md`.
+### 1.2 Holders audit fold-in (peer DONE — facts only)
 
-### 1.2 Residuals that still bind honesty (not fake-green)
+Source: `analysis/holders_stock_dossier_lineage_audit_20260721.md`.
 
-1. `sync_registry` drain residual / domain errors
-2. `data_audit` `cross_table_consistency` (327 kline codes ∉ universe)
-3. continuity/integrity FAIL + alert flags
-4. watermark SLA post-acquire alert
+| Claim | Verdict | Number / note |
+|---|---|---|
+| Sample PASS ⇒ population OK | **No** | sample ≠ full |
+| Canonical parse integrity | **PASS** | 218,444 rows; bad_code/empty_name/grain_dup=0 |
+| Ops “76 / ~987k” = net new notices | **PARTIAL** | 76 = UPDATE_DATE window stocks; 987k = **full-history rewrite amp**; net new notices ≈ **30 codes / 380 rows** |
+| Stock↔holders↔form(+industry) for F | **PASS** | ~**98.4%** (5,117/5,200) |
+| Holder→institution **profile** deep link | **PARTIAL** | episodes ~99.3%; `mart_inst_profile` ~**54.2%** — honesty before deep UX |
+| Dossier streak/Δ from fact while rows canonical | was BLOCKED → **FIXED** | same-plane canonical |
+| Formal watermark/SLA still on legacy fact | **PARTIAL** | next knife |
 
-Also: **org provider land still BLOCKED**; period holes = log-not-fill; moneyflow **multi-horizon decision taxonomy** still unbuilt (A).
+**Follow-on knives (from audit § next):** (1) formal watermark/SLA on canonical/accepted notice frontier; (2) **split ops counters** (window stocks vs rewrite rows vs net new notices); (3) honesty gate on **机构档案** coverage before claiming dossier↔机构 deep UX.
 
-### 1.3 Why stock dossier now (before A moneyflow assist)
+### 1.3 Product frontend capabilities (ALL — from prior owner chats)
 
-- Owner north star: **per-stock decision assist** — basic + **阶段** + **形态** + holders (周期/变化/收益).
-- Bricks exist for honest MVP: `fact_stock_form_daily`, `fact_top10_holder_period` / `canonical_top10_float_holders_period`, DC industry dims.
-- Institution archive UX already proves hero + tabs + independent widgets — stock dossier is the mirror object.
-- A still needs denominator/taxonomy design; dossier can ship observations from existing bricks first.
+| ID | Name | Intent (north star = **辅助买卖决策**, not raw dump) |
+|---|---|---|
+| **A** | 资金流决策辅助 | Horizons **1/3/5/10/20/30/60**; relative ratios (not abs ¥ alone); behavior **潜伏/抢筹/出货**; industry/sector/concept **stated conclusions**; cut manual 复盘 |
+| **B** | 形态+阶段选股面 | Form + stage as **选股策略展示** (Tier1 bricks as dependency; no Optuna/Release) |
+| **C** | 页内多标签 | Tabs-within-page; **forbid** one long flatten scroll for decision surfaces |
+| **D** | 交集最强股 | Strongest at intersection of factors / sectors / concepts; fail-closed on stale/UNTRUSTED |
+| **E** | 分步操作台 | **Shipped** — one-click primary + independent stage/derive buttons; S1/S2 param UI residual |
+| **F** | 股票档案 (+股东) | Basic; **阶段**; **形态**; holders; 持仓周期; 变化; 收益; clever IA; **verify associations + lineage + process/serve** (not sample-only) |
 
-## 2. Revised phase order
+Also binding: **市场感知只沪深A** (whitelist; fix broken exclusion root cause first — peer foundation).
 
-| Phase | Work | Gate / notes | Owner surface |
+---
+
+## 2. Revised phase order (binding)
+
+| Phase | Work | Depends on | Status |
 |---:|---|---|---|
-| **0r** | Foundation **residuals** (drain/audit/continuity/SLA hygiene) | Honesty only — does **not** block dossier stub | ops / Tier0 |
-| **1E** | Capability **E** modular pipeline **step cards** | Workbench; after click-proof + `current_activity` | `#/workbench` only |
-| **2S** | **Stock dossier MVP** (this doc) | Separate route; layered read; unknown > fake | `#/stock/:code` |
-| **3A** | Capability **A** moneyflow decision assist | After 0r enough that moneyflow bricks/serve stay honest | market / dossier tab |
-| **3C** | Capability **C** tabbed layout | Rides with 2S (dossier tabs) and early 3A UI | dossier + A |
-| **4D** | Capability **D** 交集最强股 | After A conclusions **or** parallel once inputs honest | market / later |
-| **5B** | Capability **B** form/stage as **选股策略** surface | After dossier proves display useful; no Optuna/Release | selection UI later |
-| — | E/F remeasure / Optuna / StrategyRelease | **paused / banned** until owner schedule | research |
+| **0r.1** | **沪深A whitelist** at correct serve/sensing layer (+ exclusion RCA) | live evidence B shares leaked | **in flight** (peer foundation) |
+| **0r.2** | **BJ leak** stop (or explicit publication) + audit wording | degraded RCA #2 | **in flight** |
+| **0r.3** | **Continuity dual-path** + daily/ST watermark honesty | degraded RCA #3/#4 | **in flight** — **not** accept-as-known |
+| **0r.4** | Drain knives: `share_float` normalize/quarantine; `ths_hot` known_empty | degraded RCA #1 | **scheduled / in flight** |
+| **0r.5** | **Holders lineage audit** (association + process + serve) | formal parse ≠ coverage | **PARTIAL DONE** — audit landed; follow-ons §1.2 |
+| **0r.5b** | Formal holders WM/SLA + split ops counters + 机构档案 honesty | 0r.5 audit | **scheduled** (next knives) |
+| **1E** | Cap E step cards | click-proof + activity | **DONE** (`799b7412d`) |
+| **2F** | **股票档案 MVP** `#/stock/:code` | 0r.1 code-gate; 0r.5 join PASS; streak FIXED | **PARTIAL** — deepen PnL/cycle; no fake 机构 deep-link |
+| **3A** | Moneyflow decision assist (API + relative denom + taxonomy) | 0r enough that moneyflow bricks/serve honest; sensing A-only | **scheduled** |
+| **3C** | Tabbed UX | rides **2F** + early **3A** | **scheduled** (dossier tabs already seed C) |
+| **4D** | 交集最强股 | after A conclusions **or** parallel once intersection inputs + freshness owned | **scheduled / deferred** |
+| **5B** | 形态/阶段 **选股策略** surface | after F proves display; Tier1 publish stable | **later** |
+| — | E/F remeasure / Optuna / StrategyRelease | owner schedule only | **paused / banned** |
 
-**Dropped as near-term default:** old backlog order `0 foundation → 1–3 moneyflow API/metrics/taxonomy → 4 A+C UI → 5 D → 5b E → 6 B`.
+**Parallelism:** 0r.1–0r.4 may run parallel when moth proves non-overlap. **2F** may deepen UX on ~98% stock↔holders↔form join **now**; must **not** claim 机构档案 deep-link until 0r.5b honesty. Cap E stays shipped.
+**Dropped default:** old A-first moneyflow stack before dossier/whitelist.
 
-## 3. Stock dossier — information architecture
+---
 
-### 3.1 Product intent
+## 3. Frontend IA sketches (tabs, not dashboard soup)
 
-**Decision-assist archive for one code**, not a raw dump and not dashboard soup.
+North star per surface: **one job, one observation sentence, supporting evidence** — no KPI soup, no fake signals.
 
-First viewport: identity hero; one observation sentence (阶段+形态); CTA to tabs; no KPI strip / fake buy signal.
+### 3.1 Workbench `#/workbench` (Cap E — done)
 
-### 3.2 Tabs / sections
+| Tab | Job |
+|---|---|
+| 一键更新 | Primary `daily_update`; show「正在:…」/ alerts |
+| 分步节点 | Independent acquire/clean/process/store + derive_qfq; disabled nodes state reason |
+
+NON-goal: second orchestrator DAG; fake-runnable S1/S2 without params.
+
+### 3.2 市场感知 `#/market`
+
+| Rule | Detail |
+|---|---|
+| Universe | **沪深A only** (60/00/30/68) after 0r.1 |
+| Layout | Keep widget cards; leaf drill must not surface B/BJ as project pool |
+| Later | Link leaf → `#/stock/:code` (F) |
+
+### 3.3 股票档案 F `#/stock/:code` (MVP + later)
 
 | Tab | Job | MVP | Later |
 |---|---|---|---|
-| **概况** | Who + freshness + one observation | yes | moneyflow 1-line → full A |
-| **形态·阶段** | Tier1 axes + form names | yes | history; B hooks |
-| **股东** | Top holders + period change; cycle/PnL honest | holders + Δ; cycle/PnL **PARTIAL** | episode reverse + measured return |
+| **概况** | Identity + one observation (阶段·形态 compose) + freshness/gaps | yes | moneyflow one-liner → A |
+| **形态·阶段** | Tier1 axes + form_name/sub + weekly/monthly | yes | history strip; B hooks |
+| **股东** | Top holders + 变化; cycle/PnL honest | list + Δ; streak **canonical**; **收益=未知**; link→机构 only if profile exists | episode×price; deep 机构 UX after 0r.5b |
 | **资金** | A assist | no | after 3A |
-| **交集** | D context | no | after 4D |
+| **交集** | D context for this name | no | after 4D |
 
-### 3.3 Field → data source map
+**Field → brick (summary):**
 
-| UI field | Source | Layer | PIT / availability |
+| Field | Source | Layer | PIT note |
 |---|---|---|---|
-| code / name | `fact_top10_holder_period.stock_name` fallback | identity context | show source |
-| Industry L1/L2/L3 | `dim_stock_dc_industry` | taxonomy snap | snapshot `updated_at` |
-| **阶段** axes | `fact_stock_form_daily` (MVP); later accepted stock_states resolver | Tier1 | `trade_date` observation day; no forward return |
-| **形态** | same | Tier1 | same |
-| Holders | Prefer `canonical_top10_float_holders_period`; else fact | E0 disclosure | `available_at` / `notice_date` |
-| 变化 | holders period cols | disclosure | period grain |
-| 持仓周期 | consecutive report presence (MVP heuristic) | product observation | label `approx_periods_present` |
-| 收益 | episode reverse × price | Tier3 | **MVP = unknown** |
-| Moneyflow | `fact_stock_moneyflow_*` | sensing | later A |
+| code/name/industry | holders name / `dim_stock_dc_industry` | identity / taxonomy snap | show source |
+| 阶段 / 形态 | `fact_stock_form_daily` → later accepted stock_states resolver | Tier1 | observation `trade_date`; no forward return |
+| holders + 变化 | canonical top10 prefer; else fact | E0 disclosure | `available_at` / notice |
+| 持仓周期 / 收益 | episode reverse × price | Tier3 product | unknown until measured |
+| Lineage attestation | `holders_stock_dossier_lineage_audit_20260721.md` + DataAccess/serve | process/serve | parse PASS; profile join PARTIAL; fail-closed on unknown |
 
-### 3.4 Clever UX rules
+**Clever UX:** observation `stock_dossier_obs_v0` product label only; link holders → `#/institutions/:holder`; reject non-沪深A at API.
 
-- One job per tab; observation sentence is the conclusion surface.
-- Independent widget fetch; degraded foundation → banner, not READY claim.
-- Missing PnL → **未知**, never 0.
-- Link to `#/institutions/:holder`; route isolated from workbench.
+### 3.4 Moneyflow assist A (with C)
 
-### 3.5 Observation sentence
+| Piece | IA |
+|---|---|
+| Horizons | 1/3/5/10/20/30/60 as explicit chips/tabs — not seven charts at once |
+| Relative | contract denominator first; unknown > fake ratio |
+| Behavior | versioned 潜伏/抢筹/出货; unknown allowed |
+| Conclusions | auto-stated sentences at industry/sector/concept; evidence expandable |
+| Host | market tab **or** dossier 资金 tab — C tabs, not long scroll |
 
-Product label `stock_dossier_obs_v0` in API only — **not** written to accepted partitions.
+### 3.5 交集最强 D
 
-## 4. MVP vs later
+| Piece | IA |
+|---|---|
+| Input honesty | membership + strength with serve as-of; UNTRUSTED → unknown |
+| Output | decision list + why-intersection sentence; not raw rank dump |
+| Entry | market surface; optional badge on F header later |
 
-**MVP:** `#/stock/:code` + `GET /api/v3/stock/{code}/dossier`; basic + form/stage + holders + gaps[].
+### 3.6 选股 B
 
-**Later:** stock-side episodes+returns; A moneyflow tab; B selection; D badge; resolver-first form read.
+| Piece | IA |
+|---|---|
+| Filters | 形态 / 阶段 as strategy surface consuming same Tier1 bricks as F |
+| Gate | after F display proven; still no Optuna/Release |
+
+---
+
+## 4. MVP vs later (F focus)
+
+### Shipped / shipping (2F PARTIAL)
+
+- `#/stock/:code` + `GET /api/v3/stock/{code}/dossier`
+- 沪深A `classify_exclusion` reject; form/stage + canonical holders; observation; gaps[]
+- Period streak **FIXED** to canonical plane; stock↔holders↔form ~98% join OK
+- **Must not:** treat 76/987k as net-new; claim 机构档案 deep-link (~54%); invent PnL
+
+### Later
+
+- 0r.5b WM/SLA + ops counter split + 机构 honesty
+- Holding-cycle engine + measured returns
+- Resolver-first form; A/D/B surfaces
+
+---
 
 ## 5. NON-goals
 
 - Optuna / StrategyRelease / loosened holdout / unscheduled E/F remeasure
-- Fusing observations into Tier0
-- Greenfield rewrite; fake ratios; org mass refresh; margin thaw; S7 fake COMPAT
-- Building E inside dossier files; claiming foundation READY via UI stub
+- Mass org refresh / margin thaw / S7 fake COMPAT / invent BJ into universe without publication decision
+- Fuse observation/behavior labels into Tier0 landing/accepted
+- Greenfield rewrite of pulse / institutions / workbench
+- Fake relative flow ratios or strongest scores on stale/UNTRUSTED inputs
+- Sample-only holders “proof” standing in for lineage audit
+- Reverting Cap E workbench/API (`799b7412d`)
+
+---
 
 ## 6. Coordination
 
-| Agent | Owns | Avoid |
+| Track | Owns | Avoid |
 |---|---|---|
-| E track | Workbench step cards; ops nodes | stock dossier routes |
-| Dossier track | re-eval doc, `#/stock/:code`, `routers/stock_dossier.py`, `StockDossierPage.tsx` | workbench step UI |
+| Foundation peer | 0r.1–0r.4 whitelist/BJ/continuity/drain | dossier UI files |
+| Holders audit peer | 0r.5 lineage/association/process/serve evidence | fake dossier greens |
+| Cap E | workbench / ops nodes — **done** | dossier routes |
+| Product / dossier | this schedule, `#/stock/:code`, F deepen, then A/C/D/B | Cap E revert |
 
-## 7. Stub status (same-day)
+---
 
-**PARTIAL** — API + page with real form/holders bricks; gaps include holder return/cycle engine, moneyflow assist, accepted stock_states resolver overlay.
+## 7. Stub / delivery label
+
+| Deliverable | Label |
+|---|---|
+| Cap E | **FIXED** subset |
+| Holders lineage audit | **PARTIAL** (parse+F-join PASS; profile/WM/counters follow) |
+| F dossier stub | **PARTIAL** (HS-A gate + streak FIXED; PnL/机构 deep-link later) |
+| Schedule doc (this file) | **SCHEDULED authority** |
+| A/B/C/D | **SCHEDULED** per §2 |
+
+---
 
 ## 8. Pointers
 
-- Backlog A–E: `analysis/product_decision_assist_backlog_20260721.md`
-- Foundation click/unblock: `foundation_daily_update_ui_click_20260721.md` / `foundation_daily_update_unblock_20260721.md`
-- Capability E evidence: `analysis/capability_e_pipeline_step_cards_20260721.md`
-- Controller board: `goal.md`
+- Capability defs: `analysis/product_decision_assist_backlog_20260721.md`
+- Cap E: `analysis/capability_e_pipeline_step_cards_20260721.md`
+- Holders lineage audit: `analysis/holders_stock_dossier_lineage_audit_20260721.md`
+- Degraded RCA: `analysis/foundation_daily_update_degraded_rca_20260721.md`
+- Controller: `goal.md`
+- Universe policy: `backend/config/universe_rules.yaml` (60/00/30/68)

@@ -4,7 +4,7 @@
 > Owner asks captured 2026-07-21（+ C/D follow-up same day）. Sequencing hard-gated on foundation E2E.
 > Layer authority: `analysis/data_brick_architecture_20260721.md` (L0–L3) + MASTER Tier0–4.
 > Foundation dependency evidence: `analysis/foundation_e2e_frontend_update_20260721.md` (PARTIAL) → unblock+click follow-ups FIXED/PARTIAL.
-> **Phase-order authority (2026-07-21 re-eval):** `analysis/product_plan_reeval_stock_dossier_20260721.md` — supersedes §7 near-term order; capability defs A–E here remain.
+> **Phase-order authority (2026-07-21 full re-eval):** `analysis/product_plan_reeval_stock_dossier_20260721.md` — supersedes §7; defs A–E here + **F 股票档案**; E = DONE subset.
 
 ## 1. Problem / north star
 
@@ -57,7 +57,15 @@ Not a display-only pulse card. Intended surface:
 - **Also** show a workbench **stepper / flowchart of modular stages** so when stuck, owner can click **one stage** independently (S1 land / S2 accept / derive / process / store-ish ops that already exist as caller-only APIs/CLIs).
 - Aligns with brick transport: acquire → land/raw → accept → derive → process → serve — UI mirrors boundaries; does **not** invent a second orchestration DAG.
 - **Status (2026-07-21):** **DONE (shipped subset)** — workbench tabs「一键更新 / 分步节点」; runnable jobs = `pipeline_acquire|clean|process|store` + `derive_qfq` via `POST /api/v3/ops/jobs/{job}/run`; catalog `GET /api/v3/ops/pipeline/nodes`. **Disabled (honest):** 预检（嵌在链内）、S1/S2 land·accept（需 domain+dates/batch-id）。NON-goal remains: beautiful polish / parameterized S1-S2 UI / moneyflow tabs.
-- Evidence: `analysis/capability_e_pipeline_step_cards_20260721.md`.
+- Evidence: `analysis/capability_e_pipeline_step_cards_20260721.md` (`799b7412d`).
+
+## 5c. Capability F — 股票档案 (+股东关联)
+
+- Per-stock decision-assist archive: basic; **阶段**; **形态**; holders; 持仓周期; 变化; 收益.
+- Clever IA (tabs C-seed; observation sentence; not dashboard soup).
+- **Must** verify associations + lineage + process/serve (peer audit) — **not** sample-only greens.
+- Serve gate: **沪深A whitelist** (same policy as sensing after 0r.1).
+- Stub: `#/stock/:code` + `GET /api/v3/stock/{code}/dossier` — **PARTIAL** (HS-A gate + canonical streak FIXED; stock↔holders↔form ~98%; **机构档案 ~54% honesty** before deep UX). Full schedule + audit fold-in: re-eval doc §1.2 / §2.
 
 ## 6. Dependencies on foundation (must be true first)
 
@@ -85,16 +93,15 @@ Gate: **after** data-foundation E2E verify/optimize. Peer evidence may still be 
 
 | Phase | Work | Status |
 |---:|---|---|
-| 0 | Foundation E2E verify / optimize (UI path, margin preflight, sector/DC serve lag) | **operable** — unblock+click FIXED/PARTIAL; residuals = drain/audit/continuity/SLA |
-| 0r | Foundation residuals hygiene (honest continuity; not product fake-green) | **scheduled** |
-| 1E | **Capability E** modular pipeline step cards (peer workbench) | **DONE (shipped subset)** — `capability_e_pipeline_step_cards_20260721.md` |
-| 2S | **Stock dossier MVP** (`#/stock/:code`) | **scheduled / stub** — see re-eval doc |
-| 1 | Moneyflow API + feature completeness (horizons 1…60; accepted bricks; PIT) | **scheduled after 2S** (was “after 0”) |
-| 2 | Relative metrics contract (denominator design; vs sector/universe; no fake ratios) | **scheduled after 1** |
-| 3 | Behavior taxonomy (潜伏/抢筹/出货… + return coupling; versioned; unknown allowed) | **scheduled after 2** |
-| 4 | Decision-assist UI + **Capability C tabbed layout** (auto conclusions; north-star buy/sell help) | **C rides with dossier + early A** |
-| 5 | **Capability D** 交集最强股 | **scheduled / deferred** |
-| 6 | Form/stage as **选股策略** surface (Capability B) | **later** after dossier proves display |
+| 0 | Foundation E2E verify / optimize | **operable** — unblock+click FIXED/PARTIAL |
+| 0r.1–0r.4 | 沪深A whitelist; BJ leak; continuity dual-path; drain share_float/ths_hot | **in flight** — **not** accept-as-known |
+| 0r.5 | Holders lineage audit | **PARTIAL DONE** — `holders_stock_dossier_lineage_audit_20260721.md` (do not re-audit) |
+| 0r.5b | Holders WM/SLA + split ops counters + 机构档案 honesty | **scheduled** (re-eval §1.2) |
+| 1E | **Capability E** step cards | **DONE** (`799b7412d`) |
+| 2F | **Capability F** 股票档案 MVP | **PARTIAL**; HS-A gate + streak FIXED; deepen PnL/cycle; no fake 机构 deep-link (~54%) |
+| 3A/3C | Moneyflow assist + tabbed UX | **scheduled after 2F** |
+| 4D | 交集最强股 | **scheduled / deferred** |
+| 5B | 形态/阶段选股面 | **later** |
 
 Parallel research (E/F remeasure) remains **owner-scheduled** and orthogonal; this backlog does **not** open it.
 
