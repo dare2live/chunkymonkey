@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-21（**foundation phase_closure_ready** — 见 `analysis/foundation_phase_reeval_20260721.md`；近端 track = **foundation solidify CLOSED**；策略 **paused**；**FND-GATE PASS** — `check_foundation_done.py` F1–F10 全 **PASS**（含 F8 §15-VERIFY）；`phase_closure_ready=true`；**S1–S6 FIXED**；**S7 near-FIXED** — **23/46 ssot** typed hard-stop wall；B1+B2 **done**；**§15 behavior PASS**（e0-hist→fnd-gate→section15-verify；commits/knife=1.0）；**E0-HIST FIXED（F6）** — holders **152** part / **126** trading-day overlap（`20251020`→`20260717`）；stk **194** / **161** overlap（`20251020`→`20260715`）；org **2** local-raw；**org BLOCKED**；**B5 PARTIAL** — qfq lineage **FIXED**；Type-B enrichment **defer**；daily **`20190102`→`20260720`**（1829d）；ST **`20220104`→`20260720`**（1099d））
+> 更新：2026-07-21（**foundation phase_closure_ready**；FND-GATE PASS；S1–S6 FIXED；S7 near-FIXED；E0-HIST FIXED；org BLOCKED；daily/ST 前沿 **`20260721`**；UI E2E **PARTIAL** — `analysis/foundation_e2e_frontend_update_20260721.md`）
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -16,6 +16,7 @@
 > **Gate 栈 Occam 重设计（985 tests ≠ gates；blocking/nightly 提案）**：`analysis/gate_redesign_occams_20260721.md`
 > **地基阶段重评（近端排序 authority）**：`analysis/foundation_phase_reeval_20260721.md`
 > **§15-VERIFY 证据（F8 PASS）**：`analysis/section15_verify_20260721.md`
+> **地基 E2E（UI 更新路径 20260721）**：`analysis/foundation_e2e_frontend_update_20260721.md` — UI 缺按钮 + `daily_update` 被 margin `scope_blocked` 预检拦死；模块化 `land_then_accept` 单日增量 **PASS**（daily/ST/adj/basic→qfq/form）；pulse 扇区面仍 `20260720` residual
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 
 ## 当前 objective
@@ -24,7 +25,7 @@
 
 已落地硬事实（勿回滚）：
 - C + B-pit **`cutover_allowed=true`**（commit `b38e9ac5`）→ resolver `ACCEPTED_CUTOVER` / `MART_CUTOVER`
-- daily+ST+form/qfq/pulse 前沿 **`20260720`**
+- daily+ST+form/qfq 前沿 **`20260721`**（2026-07-21 E2E 模块化增量；pulse 扇区/flow 仍有 `20260720` residual — 见 foundation_e2e 证据）
 - Phase D research_runtime **FIXED**（persist + fold + measured offline）
 - Delivery-OS：eng_gov **§15** knife-merge binding（一刀=一次 Rule10+一次 safe_commit；异步 CI 禁 sync `gh watch`；L3 `chunkyctl pre-knife`；并行仅 moth 证非重叠；L1 docs skip CI）— **不**放宽 L3/Rule10/PIT/≤40d
 - Tier1 accept **form enrich v1**：`stock_state_stage_pattern_v1` + exact-day `fact_stock_form_daily`；re-accept `20260717` (4989) + `20260720` (4991)；cutover yaml 未回翻
@@ -32,8 +33,9 @@
 - Phase F **F2 FIXED**：B1 = B0 + Tier1 stock-state FeatureBlock（同 B0 snapshot/folds/costs/paper，经 `resolve_tier12_production_read`/`load_stock_state_by_day`）→ 同窗口 measured **`reject`** / **`claimable=false`**（edge gates unmet；holdout vs B0 无 strict lift，`REQUIRE_HOLDOUT_LIFT_VS_B0` 生效）。F2 reject/`claimable=false` 为 protocol-complete 交付，非 stop。
 - Phase F **F3 FIXED**：B2 = B0 + Tier2 market-sensing FeatureBlock（`MarketContextSnapshot` project-board breadth risk-on gate，mirrors `institution_follow_b2`；legacy `market_pulse` mart 遇 UNTRUSTED 拒绝、缺 `available_at` fail-closed；独立 ablate on B0，非叠加 B1）→ 同窗口 measured **`reject`** / **`claimable=false`**（coverage sufficient 121/121d, risk_on 53/121d；edge gates unmet + holdout lift vs B0 unmet）。**F0–F3 ladder 可 checkpoint**（三个 ablation 均诚实 reject，非叠加寻优）。
 - **Dual-track 复核（2026-07-20 续作）**：`rg`+人工复查 `routers`/`services`/`scripts`/前端 API，residual **NONE**——无新旁路可删/退役；既有 resolver 边界（`resolve_tier12_production_read`、`resolve_b_pit_mart_production_read`）仍是唯一读路径。证据见 `data/lineage/legacy_retire_notes.md`「2026-07-20 re-audit」。
-- **Accept frontier 复核（2026-07-20 续作）**：实测 `chunkyctl sync --domain daily|stock_st --start 20260721 --end 20260721` 均 `operation_window_blocked`（`wall_clock_preflight`，`eligible horizon=20260720`）——frontier 已 **current**，非落后；`20260721` 是交易日但尚未收盘（系统时钟仍 `2026-07-20`），无新数据可 accept。
-- **F 更长窗 / S7 daily expand**：accepted daily chunked local-raw 扩至 **`20190102`→`20260720`（1829d）**；ST 仍 **`20220104`→`20260720`（1099d）**（ST raw floor；不可对称）。E/F **同 protocol remeasure** 窗长已 unblock（仍禁 Optuna/松门/Release；本轨不跑策略实验）。
+- **Accept frontier 复核（2026-07-20）**：当时墙钟仍 `2026-07-20`，`20260721` `operation_window_blocked`——已过时。
+- **Accept frontier 复核（2026-07-21 E2E）**：收盘后模块化 `land_then_accept` 单日增量 daily/ST **`20260721` accepted**；UI/`daily_update` 因缺按钮 + margin `scope_blocked` 预检 **FAIL**（见 foundation_e2e 证据）。
+- **F 更长窗 / S7 daily expand**：accepted daily **`20190102`→`20260721`**；ST **`20220104`→`20260721`**。E/F remeasure 仍 paused。
 
 启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。
 
@@ -57,7 +59,7 @@
 
 **近端 focus**：owner schedule E/F 前保持 pause — **不是** Type-B enrichment / S7 假 COMPAT / 擅自 E/F / G/H/Release / org invent。
 
-**护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；org BLOCKED 维持；**org/period 域 manual update = incremental-only**（见下裁决）。
+**护栏**：frontier=`20260721`（pulse 扇区 residual 见 E2E）；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；org BLOCKED 维持；**org/period 域 manual update = incremental-only**（见下裁决）。
 
 A→H 仍为后置地图；E/F remeasure **仅** owner schedule 后开。
 

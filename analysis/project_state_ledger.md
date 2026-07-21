@@ -3092,3 +3092,9 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   calls backfill; gap check logged; older gaps log-not-fill. Ban ~830k refresh.
 - **Deferred**: nightly GH schedule (#4); optional triage (#6); E/F still paused.
 - **Status**: **FIXED** (gate #1 + policy encode) / org incremental fail-closed.
+
+### 2026-07-21 — foundation E2E frontend update path
+
+- Evidence: `analysis/foundation_e2e_frontend_update_20260721.md` (PARTIAL).
+- UI missing「数据更新」; API-equivalent `POST /api/v3/ops/jobs/daily_update/run` preflight-blocked on margin scope_blocked.
+- Modular incremental land_then_accept daily/ST/adj/basic `20260721` PASS; org plannable present → skip; pulse sector residual `20260720`.
