@@ -82,6 +82,10 @@ CREATE TABLE tr.raw_tushare_daily_basic (
 CREATE TABLE tr.raw_tushare_limit_list_d (
     ts_code TEXT, trade_date TEXT, "limit" TEXT, limit_times DOUBLE, fd_amount DOUBLE,
     open_times BIGINT, first_time TEXT);
+CREATE TABLE fact_stock_limit_daily (
+    trade_date TEXT, ts_code TEXT, stock_code TEXT, "limit" TEXT, limit_times DOUBLE,
+    first_time TEXT, fd_amount DOUBLE, open_times BIGINT,
+    available_at TIMESTAMPTZ, source_table TEXT, built_at TIMESTAMPTZ);
 CREATE TABLE tr.raw_tushare_daily (
     ts_code TEXT, trade_date TEXT, pct_chg DOUBLE);
 CREATE TABLE tr.canonical_nominal_ohlcv_daily (
@@ -222,6 +226,20 @@ def _fixture_conn():
         ("600001.SH", D[3], "U", 2.0, 3000.0, 1, "92500"),
         ("600002.SZ", D[3], "Z", None, None, 2, "94000"),
     ])
+    # B2: serve/pulse read fact_stock_limit_daily (DataAccess redirect); mirror fixture rows.
+    c.executemany(
+        'INSERT INTO fact_stock_limit_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+            (D[1], "600001.SH", "600001", "U", 1.0, "131757", 1000.0, 0,
+             "2024-01-03 18:00:00+08:00", "raw_tushare_limit_list_d", "2024-01-03 18:00:00+08:00"),
+            (D[2], "600002.SZ", "600002", "D", None, None, None, None,
+             "2024-01-04 18:00:00+08:00", "raw_tushare_limit_list_d", "2024-01-04 18:00:00+08:00"),
+            (D[3], "600001.SH", "600001", "U", 2.0, "92500", 3000.0, 1,
+             "2024-01-05 18:00:00+08:00", "raw_tushare_limit_list_d", "2024-01-05 18:00:00+08:00"),
+            (D[3], "600002.SZ", "600002", "Z", None, "94000", None, 2,
+             "2024-01-05 18:00:00+08:00", "raw_tushare_limit_list_d", "2024-01-05 18:00:00+08:00"),
+        ],
+    )
     c.execute("INSERT INTO tr.raw_tushare_moneyflow_mkt_dc VALUES (?, -1000.0)", [D[0]])
     # v2 两融 (跨交易所直和 + 日增): D0=150, D1=170 (chg=+20), 其余日源缺 → NULL
     c.executemany("INSERT INTO tr.raw_tushare_margin VALUES (?, ?, ?)", [

@@ -165,9 +165,10 @@ tables:
     note: "S7: pulse builder strongest-sectors via DataAccess; market mart owns display publication"
 
   raw_tushare_limit_list_d:
-    role: ssot
+    role: compatibility
     kind: serve_l0_leaf
-    note: "S7 hard-stop verified 2026-07-21: serve drill joins stock-day limit_times; mart_* holds aggregates only; unblock=stock-day limit publication + DataAccess redirect (not pulse-aggregate COMPAT)"
+    publication_surface: fact_stock_limit_daily
+    note: "B2 2026-07-21: fact_stock_limit_daily owns stock-day limit publication (available_at+lineage); DataAccess limit_list_d redirected; raw = rebuild input residual"
 
   raw_tushare_margin:
     role: compatibility

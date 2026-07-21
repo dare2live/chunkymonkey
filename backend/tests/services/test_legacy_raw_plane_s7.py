@@ -195,18 +195,34 @@ def test_s7_derive_runtime_still_bans_acquire_imports() -> None:
 
 
 def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
-    """S7 inventory holds at 29 ssot after serve/multi-consumer probe (no fake cut)."""
+    """S7 inventory after B2 limit publication: 28 ssot / 17 compatibility."""
 
     mod = _load_check_mod()
     counts = mod.role_counts()
-    assert counts["ssot"] == 29, counts
+    assert counts["ssot"] == 28, counts
     assert counts["fill"] == 1, counts
-    assert counts["compatibility"] == 16, counts
+    assert counts["compatibility"] == 17, counts
     assert sum(counts.values()) == 46, counts
 
 
+def test_s7_limit_list_d_publication_is_fact_stock_limit_daily() -> None:
+    """B2: limit_list_d serve leaf → fact_stock_limit_daily; raw = compatibility."""
+
+    from services.data_access.spec import load_registry
+
+    mod = _load_check_mod()
+    inv = mod._load_yaml(mod.INVENTORY_YAML)
+    meta = inv["tables"]["raw_tushare_limit_list_d"]
+    assert meta["role"] == "compatibility"
+    assert meta.get("kind") == "serve_l0_leaf"
+    assert meta.get("publication_surface") == "fact_stock_limit_daily"
+    ent = load_registry().entity("limit_list_d")
+    assert ent.db == "smartmoney"
+    assert ent.table == "fact_stock_limit_daily"
+
+
 def test_s7_serve_multi_consumer_priority_stay_ssot() -> None:
-    """Priority serve/multi-consumer tables: no honest COMPAT without leaf publication."""
+    """Remaining priority serve/multi-consumer tables stay ssot until leaf publication."""
 
     from services.data_access.spec import load_registry
 
@@ -214,7 +230,6 @@ def test_s7_serve_multi_consumer_priority_stay_ssot() -> None:
     inv = mod._load_yaml(mod.INVENTORY_YAML)
     reg = load_registry()
     expected = {
-        "raw_tushare_limit_list_d": ("serve_l0_leaf", "limit_list_d"),
         "raw_tushare_moneyflow": ("serve_l0_leaf", "moneyflow"),
         "raw_tushare_moneyflow_dc": ("serve_l0_leaf", "moneyflow_dc"),
         "raw_tushare_dc_member": ("membership_l0", "dc_member"),

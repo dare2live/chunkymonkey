@@ -358,17 +358,20 @@ entities:
     available_after: eod
 
   limit_list_d:
-    # 涨跌停每日明细 (市场情绪; limit=U涨停/D跌停/Z炸板; "limit" 保留字引号化; 消费侧 COUNT(DISTINCT ts_code) 聚合防重复行膨胀)
-    db: tushare_raw
-    table: raw_tushare_limit_list_d
-    layer: L0
+    # B2 stock-day limit publication (S7 serve_l0_leaf strangler).
+    # Publication = fact_stock_limit_daily (smartmoney); raw_tushare_limit_list_d = rebuild input.
+    # Grain = trade_date × ts_code × limit (U/D/Z); available_at = trade_date 18:00 Asia/Shanghai.
+    db: smartmoney
+    table: fact_stock_limit_daily
+    layer: L1
     code_col: ts_code
     code_input: ts_passthrough
     asof_col: trade_date
     asof_format: yyyymmdd
-    columns: [trade_date, ts_code, limit, limit_times]
+    columns: [trade_date, ts_code, stock_code, limit, limit_times, first_time, fd_amount, open_times, available_at]
     vendor: tushare
-    available_after: eod
+    available_after: "18:00"
+    compute_fn: publish_fact_stock_limit_daily
 
   # financial_gpcw entity 已删 (2026-06-26 通达信全删): signals_v2 不再读 raw_gpcw_detail (D1/D3 gpcw 过滤器退役)。
 

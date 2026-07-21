@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 更新：2026-07-21（**S1–S6 FIXED**；**S7 PARTIAL** — inventory **29/46 ssot**；serve/multi-consumer knife **verified BLOCKED**（无 leaf publication → 0 cut；gate 防 pulse-aggregate theater）；**§15 knife-merge adoption started**；**E0 PARTIAL** land-only CLI + provider land `stk_holdertrade`+`holders_top10`；`org_holding` provider land **BLOCKED**；accepted daily **`20190102`→`20260720`**（1829d）；ST **`20220104`→`20260720`**（1099d；asymmetric ST raw floor））
+> 更新：2026-07-21（**S1–S6 FIXED**；**S7 PARTIAL** — inventory **28/46 ssot**；B2 `limit_list_d` → `fact_stock_limit_daily` COMPAT；moneyflow/dc_member/multi-consumer 仍 ssot；**§15 knife-merge adoption started**；**E0 PARTIAL** land-only CLI + provider land `stk_holdertrade`+`holders_top10`；`org_holding` provider land **BLOCKED**；accepted daily **`20190102`→`20260720`**（1829d）；ST **`20220104`→`20260720`**（1099d；asymmetric ST raw floor））
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
@@ -17,7 +17,7 @@
 
 ## 当前 objective
 
-**轨道 = transport strangler S1–S7**（owner 2026-07-20 第一原理重评）。模块化诉求（acquire≠accept≠derive≠serve；sync=caller-only；acquire 可换源）**S1–S6 FIXED**；**S7 PARTIAL**（derive+form+pipeline clean 默认 accepted-only；daily accepted 已扩至 `20190102`；inventory **29 ssot / 1 fill / 16 compatibility** of 46）——见重评文 §2–§3 / modularity gap §8。A→H 骨架保留为**后置研究地图**；近端 residual = S7 续 strangler（dc_member 仍 ssot；stock-flow drill L0；typed hard-stop 长尾；禁盲删 raw）；不是 E/F remeasure。Agent-OS WP0–WP4 已闭合；WP6 仪式影子期仍开放。**§15 knife-merge adoption started**（binding：一刀=一次 Rule10+一次 safe_commit；异步 CI；L3 先 `pre-knife`）。
+**轨道 = transport strangler S1–S7**（owner 2026-07-20 第一原理重评）。模块化诉求（acquire≠accept≠derive≠serve；sync=caller-only；acquire 可换源）**S1–S6 FIXED**；**S7 PARTIAL**（derive+form+pipeline clean 默认 accepted-only；daily accepted 已扩至 `20190102`；inventory **28 ssot / 1 fill / 17 compatibility** of 46；B2 `limit_list_d` published）——见重评文 §2–§3 / modularity gap §8。A→H 骨架保留为**后置研究地图**；近端 residual = S7 续 strangler（moneyflow drill L0；dc_member 仍 ssot；typed hard-stop 长尾；禁盲删 raw）；不是 E/F remeasure。Agent-OS WP0–WP4 已闭合；WP6 仪式影子期仍开放。**§15 knife-merge adoption started**（binding：一刀=一次 Rule10+一次 safe_commit；异步 CI；L3 先 `pre-knife`）。
 
 已落地硬事实（勿回滚）：
 - C + B-pit **`cutover_allowed=true`**（commit `b38e9ac5`）→ resolver `ACCEPTED_CUTOVER` / `MART_CUTOVER`
@@ -47,10 +47,10 @@
 - **Accepted window（local-raw chunked）**：daily **`20190102`→`20260720`（1829d）**；ST **`20220104`→`20260720`（1099d）** — ST raw floor，asymmetric；holdout `20250601` in-window
 - **S5 derive FIXED**：`chunkyctl derive qfq|form --from-accepted` + `derive_runtime`（canonical-only nominal；零 acquire/fused publish；不进 accept 事务）
 - **S6 serve FIXED**：`market_pulse_serve_read` 经 DataAccess registry+resolver 承接 drill/members/margin L0 leaf；router 零 `# serve-exempt:` / 零内联 raw；D5 全绿；form/sentiment 仍 production_read
-- **S7 PARTIAL**：derive + form library + pipeline clean/process 默认 accepted-only；daily expand 闭合 2019；qfq from-accepted **8,402,928** 行；**inventory 29 ssot / 1 fill / 16 compatibility** of 46（prior cuts: top_list/daily_basic/stk_limit + pulse builders）；**serve/multi-consumer knife verified BLOCKED（0 cut）**：`limit_list_d`/`moneyflow`/`moneyflow_dc` serve leaf；`dc_member` no DC PIT；`top_inst`/`index_daily` multi-consumer — mart aggregates ≠ leaf grain；gate now rejects serve_l0_leaf/multi_consumer COMPAT without DataAccess→non-raw publication；**hard-stop stay ssot（typed）**：上述六表 + `suspend_d`/`margin_detail` BLOCKED + ~16 sync_orphan|serve_l0_declared → **不升 FIXED**
+- **S7 PARTIAL**：derive + form library + pipeline clean/process 默认 accepted-only；daily expand 闭合 2019；qfq from-accepted **8,402,928** 行；**inventory 28 ssot / 1 fill / 17 compatibility** of 46；**B2 PARTIAL**：`limit_list_d` → `fact_stock_limit_daily`（84992 行；`20230103`→`20260720`；available_at=18:00 SH；DataAccess redirect；raw COMPAT）；**still ssot**：`moneyflow`/`moneyflow_dc` serve leaf；`dc_member` no DC PIT；`top_inst`/`index_daily` multi-consumer；gate rejects serve_l0_leaf/multi_consumer COMPAT without DataAccess→non-raw publication；**hard-stop stay ssot（typed）**：上述五表 + `suspend_d`/`margin_detail` BLOCKED + ~16 sync_orphan|serve_l0_declared → **不升 FIXED**
 - **§15 adoption started**：knife-merge + `chunkyctl pre-knife` + agent-boot reminder；E/F **paused**；禁令不变
 - **E0 PARTIAL（stronger）**：disclosure S1/S2 CLI 齐：`--land-only|--land-then-accept --from-local-raw`（三域）+ provider land without `--from-local-raw` for **`stk_holdertrade`**（by_ann_date）+ **`holders_top10`**（miaoxiang by `UPDATE_DATE`/notice_date；~10–120 行/日；≤40d；禁 mass dump；首日失败即停）+ `--accept-from-landing --batch-id`；**`org_holding` provider land BLOCKED**（by-period ~830k/期；无 NOTICE_DATE；仍 `--from-local-raw`）；live accepted holders **13** / stk **6** / org **2**；DatasetSnapshot 未改写；E/F remeasure 仍 paused
-- **近端 focus**：S7 下一刀 = **build** stock-day flow/limit publication（brick B2）或 DC membership PIT（B1）或 index/seat accepted plane — **不**把 pulse mart 当 leaf COMPAT；或 E0 residual；**不**开 E/F remeasure / G/H/Release
+- **近端 focus**：S7 下一刀 = **B2 residual** moneyflow/moneyflow_dc stock-day publication **或** B1 DC membership PIT **或** index/seat accepted plane — **不**把 pulse mart 当 leaf COMPAT；或 E0 residual；**不**开 E/F remeasure / G/H/Release
 - **护栏**：frontier=`20260720`；dual-track=NONE；PIT+≤40d+禁 mass backfill/第二 DB/plugin bus；§15 不放宽 L3/Rule10
 
 A→H 降为地图；细节以重评文 §4、§9 为准。

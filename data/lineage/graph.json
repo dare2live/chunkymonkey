@@ -2499,6 +2499,96 @@
       "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_module_members.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/build_agent_board.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_grain_uniqueness.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_legacy_raw_plane.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/publish_fact_stock_limit_daily.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_pulse.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_pulse_serve_read.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/stock_limit_publish.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_market_pulse_serve_read_s6.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_stock_limit_publish_b2.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_market_pulse.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
       "src": "table:smartmoney.fact_top10_holder_period"
     },
     {
@@ -4861,6 +4951,18 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_limit_list_d"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_module_members.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_limit_list_d"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_limit_list_d"
@@ -4879,19 +4981,25 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/market_pulse.py",
+      "dst": "consumer:backend/scripts/publish_fact_stock_limit_daily.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_limit_list_d"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/market_pulse_serve_read.py",
+      "dst": "consumer:backend/services/stock_limit_publish.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_limit_list_d"
     },
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_limit_list_d"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_stock_limit_publish_b2.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_limit_list_d"
     },
@@ -5983,9 +6091,9 @@
     }
   ],
   "meta": {
-    "edge_count": 946,
-    "generated_at": "2026-07-21T07:18:22.160069+00:00",
-    "node_count": 375,
+    "edge_count": 964,
+    "generated_at": "2026-07-21T08:01:48.261321+00:00",
+    "node_count": 380,
     "version": 2
   },
   "nodes": [
@@ -6152,6 +6260,14 @@
     {
       "attrs": {
         "ctype": "script",
+        "path": "backend/scripts/build_agent_board.py"
+      },
+      "id": "consumer:backend/scripts/build_agent_board.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
         "path": "backend/scripts/build_dc_industry_view.py"
       },
       "id": "consumer:backend/scripts/build_dc_industry_view.py",
@@ -6251,6 +6367,14 @@
         "path": "backend/scripts/persist_phase_e_experiment_verdicts.py"
       },
       "id": "consumer:backend/scripts/persist_phase_e_experiment_verdicts.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
+        "path": "backend/scripts/publish_fact_stock_limit_daily.py"
+      },
+      "id": "consumer:backend/scripts/publish_fact_stock_limit_daily.py",
       "kind": "consumer"
     },
     {
@@ -6976,6 +7100,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/stock_limit_publish.py"
+      },
+      "id": "consumer:backend/services/stock_limit_publish.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/technical_states/__init__.py"
       },
       "id": "consumer:backend/services/technical_states/__init__.py",
@@ -7347,6 +7479,14 @@
         "path": "backend/tests/services/test_security_day_transport_modularity.py"
       },
       "id": "consumer:backend/tests/services/test_security_day_transport_modularity.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_stock_limit_publish_b2.py"
+      },
+      "id": "consumer:backend/tests/services/test_stock_limit_publish_b2.py",
       "kind": "consumer"
     },
     {
@@ -8440,6 +8580,20 @@
         "db": "smartmoney",
         "layer": "L1_foundation",
         "serve_entities": [
+          "limit_list_d"
+        ],
+        "status": "active",
+        "table": "fact_stock_limit_daily",
+        "vendor": "tushare"
+      },
+      "id": "table:smartmoney.fact_stock_limit_daily",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "smartmoney",
+        "layer": "L1_foundation",
+        "serve_entities": [
           "holders_top10"
         ],
         "status": "active",
@@ -9083,12 +9237,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "limit_list_d"
-        ],
         "status": "active",
-        "table": "raw_tushare_limit_list_d",
-        "vendor": "tushare"
+        "table": "raw_tushare_limit_list_d"
       },
       "id": "table:tushare_raw.raw_tushare_limit_list_d",
       "kind": "table"

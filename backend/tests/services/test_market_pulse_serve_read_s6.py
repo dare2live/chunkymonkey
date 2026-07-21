@@ -18,12 +18,16 @@ def test_serve_read_entities_resolve_physical_tables():
         "dc_member",
         "moneyflow",
         "moneyflow_dc",
-        "limit_list_d",
         "daily",
         "margin",
     ):
         assert reg.entity(name).db == "tushare_raw"
         assert serve._table(name).startswith("raw_")
+    # B2: limit_list_d publication = fact_stock_limit_daily (smartmoney)
+    assert reg.entity("limit_list_d").db == "smartmoney"
+    assert reg.entity("limit_list_d").table == "fact_stock_limit_daily"
+    assert serve._table("limit_list_d") == "fact_stock_limit_daily"
+    assert serve._tr("limit_list_d") == "fact_stock_limit_daily"
     # S7: SW membership publication = PIT view (not raw ssot)
     assert reg.entity("index_member_all").table == "v_sw_industry_pit"
     assert serve._table("index_member_all") == "v_sw_industry_pit"

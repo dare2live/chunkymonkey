@@ -2720,6 +2720,31 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual**：same 29 typed hard-stops；E0 org；E/F paused.
 - **Status**: **PARTIAL**（honest wall；not FIXED）。
 
+### 2026-07-21 — B2 thin knife: limit_list_d → fact_stock_limit_daily
+
+- Wall-clock: Tue 2026-07-21 ~15:51–16:00 Asia/Shanghai.
+- **Knife**（§15；brick B2 start；prefer limit over moneyflow；E/F paused）：
+  1. Publication：`smartmoney.fact_stock_limit_daily` grain
+     `(trade_date, ts_code, limit)`；`available_at` = trade_date 18:00
+     Asia/Shanghai；lineage `source_table`+`built_at`。
+  2. Writer：`services/stock_limit_publish.py` +
+     `scripts/publish_fact_stock_limit_daily.py`（full rebuild from
+     `raw_tushare_limit_list_d`）。
+  3. Consumer cut：DataAccess `limit_list_d` → fact；pulse/serve `_tr` db-aware
+     （smartmoney bare / tushare_raw `tr.`）。
+  4. Inventory：`raw_tushare_limit_list_d` ssot→compatibility
+     (`publication_surface=fact_stock_limit_daily`)。
+- Live：`84992` rows；`20230103`→`20260720`。
+- Inventory：**29→28 ssot** / 1 fill / **16→17 compatibility** of 46。
+- Evidence：`check_legacy_raw_plane` ssot=28；TDD
+  `test_stock_limit_publish_b2` + legacy/serve/pulse green；
+  `pre-knife b2-limit-stock-day` OK。
+- **Did not**：fake dc_member PIT；moneyflow/moneyflow_dc publication；
+  loosen gates；E/F remeasure。
+- **Residual**：moneyflow + moneyflow_dc serve leaf；dc_member；
+  top_inst/index_daily multi-consumer；E0 org；E/F paused。
+- **Status**: **PARTIAL**（B2 one-domain；S7 not FIXED）。
+
 ### 2026-07-21 — DB storage hygiene reclaim (local data plane)
 
 - Wall-clock: Tue 2026-07-21 ~11:01 Asia/Shanghai (compact/delete) + commit session.

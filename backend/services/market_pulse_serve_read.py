@@ -35,12 +35,20 @@ def _reg():
 
 
 def _table(entity: str) -> str:
-    """Physical table for a registered SERVE entity (tr. alias when ATTACHed)."""
+    """Physical table for a registered SERVE entity."""
     return _reg().entity(entity).table
 
 
 def _tr(entity: str) -> str:
-    return f"tr.{_table(entity)}"
+    """Qualified table: ``tr.<raw>`` on attach, bare smartmoney publication."""
+    ent = _reg().entity(entity)
+    if ent.db == "tushare_raw":
+        return f"tr.{ent.table}"
+    if ent.db == "smartmoney":
+        return ent.table
+    raise ValueError(
+        f"unsupported data_access db for serve SQL: {ent.db!r} (entity={entity})"
+    )
 
 
 def open_members_conn():

@@ -108,7 +108,19 @@ def _entity_table(entity: str) -> str:
 
 
 def _tr_entity(entity: str) -> str:
-    return f"tr.{_entity_table(entity)}"
+    """Qualified table for pulse SQL.
+
+    ``tushare_raw`` entities live on the READ_ONLY ``tr`` attach; ``smartmoney``
+    publication entities (B2 fact_stock_limit_daily) are bare on the main conn.
+    """
+    ent = _access_reg().entity(entity)
+    if ent.db == "tushare_raw":
+        return f"tr.{ent.table}"
+    if ent.db == "smartmoney":
+        return ent.table
+    raise ValueError(
+        f"unsupported data_access db for pulse SQL: {ent.db!r} (entity={entity})"
+    )
 
 # Formal daily never writes legacy raw. Prefer accepted canonical; raw fills
 # only dates absent from canonical (pre-canary history / compatibility).
