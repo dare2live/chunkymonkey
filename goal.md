@@ -9,6 +9,7 @@
 > **重评事实包（无裁决）**：`analysis/plan_reeval_evidence_pack_20260720.md`
 > **模块化缺口证据**：`analysis/data_foundation_modularity_gap_20260720.md`
 > **DB 分层权威（逻辑 E0→R1 vs 物理 DuckDB；禁按加工阶段拆库）**：`analysis/db_layering_toplevel_design_20260721.md`
+> **数据积木/变量分层权威（L0–L4、组合规则、模块 operability）**：`analysis/data_brick_architecture_20260721.md`
 > **DB 存储卫生（free-block / archive 机制 + 2026-07-21 reclaim）**：`analysis/db_storage_hygiene_20260721.md`
 > **吞吐瓶颈诊断（墙钟 vs 真相门；§15 adoption）**：`analysis/throughput_bottleneck_diagnosis_20260721.md`
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
