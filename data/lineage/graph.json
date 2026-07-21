@@ -601,6 +601,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "kind": "consume",
+      "src": "table:feature_store.fact_inst_episode"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/institution_profile.py",
       "kind": "consume",
       "src": "table:feature_store.fact_inst_episode"
@@ -2083,6 +2089,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_stock_segment_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:smartmoney.dim_stock_segment_daily"
@@ -2090,6 +2102,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/data_module_members.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_stock_segment_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:smartmoney.dim_stock_segment_daily"
     },
@@ -2150,6 +2168,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_check_grain_uniqueness.py",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_stock_segment_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_stock_segment_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_data_access.py",
       "kind": "consume",
       "src": "table:smartmoney.dim_stock_segment_daily"
     },
@@ -2329,6 +2359,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_form_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_form_daily"
@@ -2420,6 +2456,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_check_grain_uniqueness.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_form_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_form_daily"
     },
@@ -4285,12 +4327,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily_basic"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_module_members.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily_basic"
@@ -4309,13 +4345,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/market_pulse.py",
+      "dst": "consumer:backend/services/segments.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily_basic"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/segments.py",
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily_basic"
     },
@@ -4634,6 +4670,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/technical_states/__init__.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_index_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_index_daily"
     },
@@ -5341,12 +5383,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_stk_limit"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stk_limit"
@@ -5365,12 +5401,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/rally_gt.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_stk_limit"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/technical_states/__init__.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stk_limit"
@@ -5384,6 +5414,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_derive_runtime_s5.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stk_limit"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stk_limit"
     },
@@ -5635,6 +5671,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_top_inst"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_market_pulse.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_top_inst"
@@ -5666,6 +5708,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_top_list"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_top_list"
     },
@@ -5887,8 +5935,8 @@
     }
   ],
   "meta": {
-    "edge_count": 930,
-    "generated_at": "2026-07-21T06:41:58.350716+00:00",
+    "edge_count": 938,
+    "generated_at": "2026-07-21T06:59:42.751061+00:00",
     "node_count": 375,
     "version": 2
   },
@@ -8269,8 +8317,12 @@
       "attrs": {
         "db": "smartmoney",
         "layer": "L1_foundation",
+        "serve_entities": [
+          "valuation"
+        ],
         "status": "active",
-        "table": "dim_stock_segment_daily"
+        "table": "dim_stock_segment_daily",
+        "vendor": "tushare"
       },
       "id": "table:smartmoney.dim_stock_segment_daily",
       "kind": "table"
@@ -8775,12 +8827,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "valuation"
-        ],
         "status": "active",
-        "table": "raw_tushare_daily_basic",
-        "vendor": "tushare"
+        "table": "raw_tushare_daily_basic"
       },
       "id": "table:tushare_raw.raw_tushare_daily_basic",
       "kind": "table"
@@ -9149,12 +9197,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "stk_limit"
-        ],
         "status": "active",
-        "table": "raw_tushare_stk_limit",
-        "vendor": "tushare"
+        "table": "raw_tushare_stk_limit"
       },
       "id": "table:tushare_raw.raw_tushare_stk_limit",
       "kind": "table"

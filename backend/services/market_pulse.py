@@ -53,7 +53,7 @@ v3 (2026-07-03, 契约=设计文档 "v3 设计" v3.1-v3.5):
       多区间取 in_date 最新一行防双计) — sw 链 net_amount 自 v3 不再恒 NULL;
     · 同名列只为 schema 复用, 语义按 chain 读; 展示端两链数字不排同一榜。
   - cum_ratio_20d 分母 (板块市值, 同为跨链不可比): dc = dc_index.total_mv (万元→元, **总市值**
-    口径, 源无流通市值字段); sw = 成分个股 daily_basic.circ_mv 聚合 (万元→元, **流通市值**口径)。
+    口径, 源无流通市值字段); sw = 成分个股 dim_stock_segment_daily.circ_mv 聚合 (万元→元, **流通市值**口径)。
 
 Type A (确定性 PIT 重排): t 日行只用 <= t 数据 (rolling window 尾对齐, streak 逐日递推),
 无策略阈值判断; 全部阈值读 config/market_pulse.yaml (代码零 hardcode)。
@@ -432,15 +432,17 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
         ) GROUP BY 1, 2
     ),
     sw_stock_mv AS (
-        -- 板块流通市值底座: 成分个股 daily_basic.circ_mv (万元) as-of 归属聚合 (同上防双计)
-        SELECT b.trade_date, p.l1_code, p.l2_code, p.l3_code,
-               TRY_CAST(b.circ_mv AS DOUBLE) AS circ_mv
-        FROM {_tr_entity("valuation")} b
+        -- 板块流通市值底座: B1 dim circ_mv (万元) × 申万 as-of 归属 (S7: dim owns publication)
+        SELECT seg.trade_date, p.l1_code, p.l2_code, p.l3_code,
+               TRY_CAST(seg.circ_mv AS DOUBLE) AS circ_mv
+        FROM dim_stock_segment_daily seg
         JOIN {_tr_entity("index_member_all")} p
-          ON p.ts_code = b.ts_code AND p.in_date <= b.trade_date
-         AND (p.out_date IS NULL OR p.out_date > b.trade_date)
-        WHERE b.trade_date >= {sw_start}
-        QUALIFY ROW_NUMBER() OVER (PARTITION BY b.ts_code, b.trade_date ORDER BY p.in_date DESC) = 1
+          ON substr(p.ts_code, 1, 6) = seg.stock_code AND p.in_date <= seg.trade_date
+         AND (p.out_date IS NULL OR p.out_date > seg.trade_date)
+        WHERE seg.trade_date >= {sw_start} AND seg.circ_mv IS NOT NULL
+        QUALIFY ROW_NUMBER() OVER (
+            PARTITION BY seg.stock_code, seg.trade_date ORDER BY p.in_date DESC
+        ) = 1
     ),
     sw_mv AS (
         SELECT trade_date, code, SUM(circ_mv) * 10000.0 AS sector_mv

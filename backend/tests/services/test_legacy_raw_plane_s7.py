@@ -194,14 +194,14 @@ def test_s7_derive_runtime_still_bans_acquire_imports() -> None:
     assert "capture_and_publish" not in src
 
 
-def test_s7_inventory_role_counts_after_pulse_builder_knife() -> None:
-    """S7 knife: pulse builder leftovers leave ssot (36→32)."""
+def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
+    """S7 knife: top_list + daily_basic + stk_limit → ssot 32→29."""
 
     mod = _load_check_mod()
     counts = mod.role_counts()
-    assert counts["ssot"] == 32, counts
+    assert counts["ssot"] == 29, counts
     assert counts["fill"] == 1, counts
-    assert counts["compatibility"] == 13, counts
+    assert counts["compatibility"] == 16, counts
     assert sum(counts.values()) == 46, counts
 
 
@@ -235,6 +235,7 @@ def test_s7_pulse_flow_builder_tables_are_compatibility() -> None:
     assert reg.entity("dc_index").table == "raw_tushare_dc_index"
     assert reg.entity("index_dailybasic").table == "raw_tushare_index_dailybasic"
     assert reg.entity("limit_cpt_list").table == "raw_tushare_limit_cpt_list"
+    assert reg.entity("top_list").table == "raw_tushare_top_list"
 
     mod = _load_check_mod()
     inv = mod._load_yaml(mod.INVENTORY_YAML)
@@ -245,11 +246,59 @@ def test_s7_pulse_flow_builder_tables_are_compatibility() -> None:
         ("raw_tushare_dc_index", "mart_sector_pulse_daily"),
         ("raw_tushare_index_dailybasic", "mart_market_pulse_daily"),
         ("raw_tushare_limit_cpt_list", "mart_market_pulse_daily"),
+        ("raw_tushare_top_list", "mart_market_pulse_daily"),
     ):
         meta = inv["tables"][table]
         assert meta["role"] == "compatibility", table
         assert meta.get("kind") == "pulse_flow_builder", table
         assert meta.get("publication_surface") == mart, table
+
+
+def test_s7_daily_basic_and_stk_limit_are_derive_input() -> None:
+    """S7: daily_basic → dim_stock_segment_daily; stk_limit → fact_stock_form_daily."""
+
+    from services.data_access.spec import load_registry
+
+    reg = load_registry()
+    assert reg.entity("valuation").table == "dim_stock_segment_daily"
+    assert reg.entity("valuation").layer == "L1"
+    assert "stk_limit" not in reg.entities
+
+    mod = _load_check_mod()
+    inv = mod._load_yaml(mod.INVENTORY_YAML)
+    basic = inv["tables"]["raw_tushare_daily_basic"]
+    assert basic["role"] == "compatibility"
+    assert basic["kind"] == "derive_input"
+    assert basic["publication_surface"] == "dim_stock_segment_daily"
+    lim = inv["tables"]["raw_tushare_stk_limit"]
+    assert lim["role"] == "compatibility"
+    assert lim["kind"] == "derive_input"
+    assert lim["publication_surface"] == "fact_stock_form_daily"
+
+    src = (REPO / "backend" / "services" / "market_pulse.py").read_text(encoding="utf-8")
+    assert "FROM dim_stock_segment_daily seg" in src
+    assert '_tr_entity("valuation")' not in src
+
+
+def test_s7_hard_stop_kinds_documented_for_residual_ssot() -> None:
+    """Residual ssot must carry typed kind + note (no fake FIXED)."""
+
+    mod = _load_check_mod()
+    inv = mod._load_yaml(mod.INVENTORY_YAML)
+    allowed = {
+        "membership_l0",
+        "serve_l0_leaf",
+        "serve_l0_declared",
+        "multi_consumer",
+        "blocked_no_publication",
+        "sync_orphan",
+    }
+    for table, meta in inv["tables"].items():
+        if meta.get("role") != "ssot":
+            continue
+        kind = meta.get("kind")
+        assert kind in allowed, f"{table}: ssot missing typed kind ({kind!r})"
+        assert meta.get("note"), f"{table}: ssot missing honest note"
 
 
 def test_s7_pulse_builder_resolves_via_data_access_entity() -> None:
@@ -267,6 +316,25 @@ def test_s7_pulse_builder_resolves_via_data_access_entity() -> None:
     assert '_tr_entity("dc_index")' in src
     assert '_tr_entity("index_dailybasic")' in src
     assert '_tr_entity("limit_cpt_list")' in src
+    assert '_tr_entity("top_list")' in src
+
+
+def test_s7_index_daily_consumers_resolve_via_data_access() -> None:
+    """technical_states + institution_profile must not hardcode index_daily SQL."""
+
+    ts = (REPO / "backend" / "services" / "technical_states" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'FROM tr.raw_tushare_index_daily' not in ts
+    assert 'entity("index_daily")' in ts
+
+    ip = (REPO / "backend" / "services" / "institution_profile.py").read_text(
+        encoding="utf-8"
+    )
+    assert "tr.raw_tushare_index_daily" not in ip
+    assert "tr.raw_tushare_top_inst" not in ip
+    assert '_tr_entity("index_daily")' in ip
+    assert '_tr_entity("top_inst")' in ip
 
 
 def test_s7_stock_basic_identity_publication_is_dim() -> None:

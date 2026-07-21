@@ -178,7 +178,7 @@ flowchart TB
 | **Accept from landing** | `--accept-from-landing --batch-id` | S2 **FIXED** | fetch 重拉 |
 | **Orchestrator** | `chunkyctl sync` daily/ST/cal = S1→S2→derive | S3 **FIXED** | `capture_and_publish_*` 生产 fan-in |
 | **Derive primary (D1)** | `chunkyctl derive qfq\|form --from-accepted` | S5 **FIXED** | qfq 进 accept 事务 |
-| **Derive variable (L2/L3)** | Tier1/2 publish job；FeatureBlock builder；`pipeline/process` | S7 **PARTIAL**（32/46 ssot） | 默认 legacy UNION |
+| **Derive variable (L2/L3)** | Tier1/2 publish job；FeatureBlock builder；`pipeline/process` | S7 **PARTIAL**（29/46 ssot） | 默认 legacy UNION |
 | **Serve** | resolver + DataAccess entities | S6 **FIXED** | router 内联 raw |
 | **Research L4** | B0–B5 runner + frozen snapshot | D/F **FIXED**（reject 诚实） | E/F remeasure 抢跑 S7 |
 
@@ -195,7 +195,7 @@ flowchart TB
 | 1 | **PIT / `available_at` 装饰化** | 异常漂亮 = 先查泄漏 | F2/F3 fail-closed 先例；manual sync 仍绑 cutoff |
 | 2 | **Population vs vendor dump** | 把 TuShare 全集当沪深池 | MASTER §5.1 + formal acquire 全市场 landing；**读时** `traded_on_observation_date` |
 | 3 | **ST / universe 坐在 acquire** | exclude-then-fetch 换源即崩 | **已裁决**：ST = E1 membership，读时过滤 |
-| 4 | **Dual-plane legacy raw** | formal 绿但 mart 仍 ssot raw | S7 inventory **32 ssot**；dc_member、moneyflow drill L0 |
+| 4 | **Dual-plane legacy raw** | formal 绿但 mart 仍 ssot raw | S7 inventory **29 ssot**；dc_member、moneyflow drill L0 |
 | 5 | **Fail-closed 分类** | 0 行 / 权限 / schema / timeout 混成「无数据」 | MASTER §6.1 kill-point；continuity 四级 |
 | 6 | **Reproducibility** | 同 snapshot 不同机器不同列 | `DatasetSnapshot` hash + config hash + accepted partition pin |
 | 7 | **Optuna-as-truth** | 搜索最优 = 生产候选 | goal 禁令；F0–F3 measured reject |
@@ -241,7 +241,7 @@ flowchart TB
 
 | 域 | Gap | 下一刀 |
 |---|---|---|
-| **S7 legacy plane** | 32/46 ssot；dc_member；moneyflow drill L0 | 逐域 formal\|sunset；禁盲删 |
+| **S7 legacy plane** | 29/46 ssot；dc_member；moneyflow drill L0 | 逐域 formal\|sunset；禁盲删 |
 | **E0 disclosure** | org provider land **BLOCKED**；accepted 窗窄 | org by-date faucet 或 stay local-raw |
 | **L2 qfq lineage** | placeholder batch_id / UNION 残留 | manifest 补齐或 UNTRUSTED |
 | **L3 brick registry** | FeatureBlock 分散在脚本 | 收编为 contract + hash（无新 DB） |

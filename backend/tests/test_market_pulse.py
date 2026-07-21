@@ -5,7 +5,7 @@ level 列 / 增量 flow 列接续。
 fixture 形态 = backend/tests/fixtures/domain_samples/*.json 真实字段契约 (禁抽象命名);
 内存 DuckDB 用 CREATE SCHEMA tr 模拟生产 ATTACH tushare_raw AS tr (两部名同解析)。
 单位契约 (与真实源一致): moneyflow_ind_dc.net_amount=元 / moneyflow.net_mf_amount=万元 /
-moneyflow_dc.net_amount=万元 / dc_index.total_mv=万元 / daily_basic.circ_mv=万元。
+moneyflow_dc.net_amount=万元 / dc_index.total_mv=万元 / dim_stock_segment_daily.circ_mv=万元。
 """
 import json
 import sys
@@ -104,7 +104,8 @@ CREATE TABLE tr.raw_tushare_limit_cpt_list (
     trade_date TEXT, ts_code TEXT, name TEXT, days BIGINT, up_stat TEXT,
     cons_nums TEXT, up_nums BIGINT, pct_chg DOUBLE, "rank" BIGINT);
 CREATE TABLE dim_stock_segment_daily (
-    stock_code TEXT, trade_date TEXT, mktcap_seg TEXT, turnover_seg TEXT, sw_l1 TEXT);
+    stock_code TEXT, trade_date TEXT, mktcap_seg TEXT, turnover_seg TEXT, sw_l1 TEXT,
+    circ_mv DOUBLE);
 CREATE TABLE fact_stock_form_daily (
     stock_code TEXT, trade_date TEXT, form_name TEXT, is_breakout_event BOOLEAN);
 """
@@ -190,10 +191,16 @@ def _fixture_conn():
                   [(d,) for d in D[:4]])
     c.executemany("INSERT INTO tr.raw_tushare_moneyflow VALUES ('600003.SZ', ?, 3.0)",
                   [(d,) for d in D])
-    # 板块流通市值分母: circ_mv 万元 → 801010 = (100+300)万元 = 4e6 元; 801011 = 1e6 元
+    # 板块流通市值分母 (S7: dim owns circ_mv publication): 801010 = (100+300)万元 = 4e6 元; 801011 = 1e6 元
     for d in D:
-        c.execute("INSERT INTO tr.raw_tushare_daily_basic VALUES ('600001.SH', ?, 100.0)", [d])
-        c.execute("INSERT INTO tr.raw_tushare_daily_basic VALUES ('600003.SZ', ?, 300.0)", [d])
+        c.execute(
+            "INSERT INTO dim_stock_segment_daily VALUES ('600001', ?, 'large', 'low', '农林牧渔', 100.0)",
+            [d],
+        )
+        c.execute(
+            "INSERT INTO dim_stock_segment_daily VALUES ('600003', ?, 'mid', 'mid', '农林牧渔', 300.0)",
+            [d],
+        )
     # v3 drill 叶子层 form (as-of 取每股 <= date 最新行; D2 旧行必须被 D3 行覆盖)
     c.executemany("INSERT INTO fact_stock_form_daily VALUES (?, ?, ?, ?)", [
         ("600001", D[2], "上升通道", False),
@@ -202,8 +209,10 @@ def _fixture_conn():
     for d in D:
         c.execute("INSERT INTO tr.raw_tushare_daily VALUES ('600001.SH', ?, 1.0)", [d])
         c.execute("INSERT INTO tr.raw_tushare_daily VALUES ('600002.SZ', ?, -1.0)", [d])
-        c.execute("INSERT INTO dim_stock_segment_daily VALUES ('600001', ?, 'large', 'low', '农林牧渔')", [d])
-        c.execute("INSERT INTO dim_stock_segment_daily VALUES ('600002', ?, 'mid', 'high', '电子')", [d])
+        c.execute(
+            "INSERT INTO dim_stock_segment_daily VALUES ('600002', ?, 'mid', 'high', '电子', NULL)",
+            [d],
+        )
     # 涨跌停: 0102/0108 源整日缺失; 0104 只有 D (U+Z=0 炸板率边界); 0105 U+Z 各 1。
     # v2 列: (limit_times, fd_amount, open_times, first_time); first_time 无前导零陷阱
     # ('92500'=09:25:00 是秒板, '131757' 不是); D/Z 行 limit_times 缺失。
@@ -510,7 +519,18 @@ def test_build_latest_incremental_idempotent():
         c.execute("INSERT INTO tr.raw_tushare_daily VALUES ('600001.SH', ?, 1.0)", [d6])
         # v3: sw 流增量 (600003 补 d6 → 801010 net=3e4; 601 无行)
         c.execute("INSERT INTO tr.raw_tushare_moneyflow VALUES ('600003.SZ', ?, 3.0)", [d6])
-        c.execute("INSERT INTO tr.raw_tushare_daily_basic VALUES ('600003.SZ', ?, 300.0)", [d6])
+        c.execute(
+            "INSERT INTO dim_stock_segment_daily VALUES ('600003', ?, 'mid', 'mid', '农林牧渔', 300.0)",
+            [d6],
+        )
+        c.execute(
+            "INSERT INTO dim_stock_segment_daily VALUES ('600001', ?, 'large', 'low', '农林牧渔', 100.0)",
+            [d6],
+        )
+        c.execute(
+            "INSERT INTO dim_stock_segment_daily VALUES ('600002', ?, 'mid', 'high', '电子', NULL)",
+            [d6],
+        )
         out1 = mp.build_latest(conn=c, cfg=CFG)
         assert (out1["dc_added_days"], out1["sw_added_days"], out1["market_added_days"]) == (1, 1, 1)
         row = c.execute(f"""

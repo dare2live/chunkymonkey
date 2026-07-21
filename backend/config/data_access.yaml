@@ -53,14 +53,14 @@ entities:
     available_after: eod
 
   valuation:
-    db: tushare_raw
-    table: raw_tushare_daily_basic
-    layer: L0
-    code_col: ts_code
+    # S7: serve/segment publication = dim_stock_segment_daily; raw daily_basic = rebuild input
+    db: smartmoney
+    table: dim_stock_segment_daily
+    layer: L1
+    code_col: stock_code
     asof_col: trade_date
     asof_format: yyyymmdd
-    # circ_mv used by pulse builder sector_mv aggregate (S7 via _tr_entity)
-    columns: [ts_code, trade_date, pe_ttm, pb, ps_ttm, dv_ttm, turnover_rate, total_mv, circ_mv]
+    columns: [stock_code, trade_date, circ_mv, turnover_rate, mktcap_seg, turnover_seg, sw_l1]
     vendor: tushare
     available_after: eod
 
@@ -99,18 +99,6 @@ entities:
     columns: [ts_code, trade_date, winner_rate, cost_5pct, cost_50pct, cost_95pct, weight_avg]
     vendor: tushare
     available_after: eod
-
-  stk_limit:
-    # A股涨跌停真相源 (盘前可用; 2022+)
-    db: tushare_raw
-    table: raw_tushare_stk_limit
-    layer: L0
-    code_col: ts_code
-    asof_col: trade_date
-    asof_format: yyyymmdd
-    columns: [ts_code, trade_date, up_limit, down_limit]
-    vendor: tushare
-    available_after: preopen
 
   share_float:
     # 解禁 (前瞻事件; PIT 锚=ann_date 公告日, 公告≤t 时未来 float_date 已知 0泄露)

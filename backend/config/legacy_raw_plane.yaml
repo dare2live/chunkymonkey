@@ -37,6 +37,7 @@ pulse_flow_builder_entities:
   - dc_index
   - index_dailybasic
   - limit_cpt_list
+  - top_list
 
 tables:
   raw_tushare_adj_factor:
@@ -47,12 +48,18 @@ tables:
 
   raw_tushare_balancesheet:
     role: ssot
+    kind: sync_orphan
+    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_block_trade:
     role: ssot
+    kind: serve_l0_declared
+    note: "S7 hard-stop: DataAccess L0 entity declared; no live router/service consumer beyond registry; no mart/formal plane"
 
   raw_tushare_cyq_perf:
     role: ssot
+    kind: serve_l0_declared
+    note: "S7 hard-stop: DataAccess L0 entity declared; cyq audit fail-closed vs qfq; no mart publication"
 
   raw_tushare_daily:
     role: fill
@@ -61,13 +68,20 @@ tables:
     note: "S7 derive+pipeline clean default=from-accepted; accepted daily 20190102→frontier; --allow-legacy-fill escape only"
 
   raw_tushare_daily_basic:
-    role: ssot
+    role: compatibility
+    kind: derive_input
+    publication_surface: dim_stock_segment_daily
+    note: "S7: dim_stock_segment_daily owns circ_mv/segment publication; pulse SW MV reads dim; raw = segments rebuild input"
 
   raw_tushare_daily_info:
     role: ssot
+    kind: sync_orphan
+    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_dc_daily:
     role: ssot
+    kind: sync_orphan
+    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_dc_index:
     role: compatibility
@@ -78,34 +92,52 @@ tables:
   raw_tushare_dc_member:
     role: ssot
     kind: membership_l0
-    note: "data_access entity dc_member; S6 serve leaf; no formal membership plane"
+    note: "S7 hard-stop: DataAccess/serve leaf + pulse builder; dim_stock_dc_* = current-snapshot only; no DC membership PIT"
 
   raw_tushare_dividend:
     role: ssot
+    kind: sync_orphan
+    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_express:
     role: ssot
+    kind: sync_orphan
+    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_fina_indicator:
     role: ssot
+    kind: serve_l0_declared
+    note: "S7 hard-stop: DataAccess fundamentals L0 declared; no live serve consumer; no accepted fina plane"
 
   raw_tushare_fina_mainbz:
     role: ssot
+    kind: sync_orphan
+    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_forecast:
     role: ssot
+    kind: serve_l0_declared
+    note: "S7 hard-stop: DataAccess L0 declared; historical load_forecast retired; no formal plane"
 
   raw_tushare_hm_detail:
     role: ssot
+    kind: sync_orphan
+    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_hm_list:
     role: ssot
+    kind: sync_orphan
+    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_income:
     role: ssot
+    kind: sync_orphan
+    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_index_daily:
     role: ssot
+    kind: multi_consumer
+    note: "S7 hard-stop: pulse RS + technical_states bench + institution_profile alpha + paper_portfolio; no index accepted plane"
 
   raw_tushare_index_dailybasic:
     role: compatibility
@@ -121,6 +153,8 @@ tables:
 
   raw_tushare_kpl_list:
     role: ssot
+    kind: sync_orphan
+    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_limit_cpt_list:
     role: compatibility
@@ -130,7 +164,8 @@ tables:
 
   raw_tushare_limit_list_d:
     role: ssot
-    note: "serve drill L0 leaf + pulse builder; stock-level limit detail has no mart-mirror"
+    kind: serve_l0_leaf
+    note: "S7 hard-stop: serve drill L0 leaf + pulse builder; stock-level limit detail has no mart-mirror"
 
   raw_tushare_margin:
     role: compatibility
@@ -140,18 +175,23 @@ tables:
 
   raw_tushare_margin_detail:
     role: ssot
-    note: "stock-level margin detail; not the formal exchange aggregate plane"
+    kind: blocked_no_publication
+    note: "S7 BLOCKED: stock-level margin detail; formal exchange aggregate is raw_tushare_margin only; no honest publication surface"
 
   raw_tushare_moneyflow:
     role: ssot
-    note: "serve drill L0 leaf (stock flow); no mart-mirror"
+    kind: serve_l0_leaf
+    note: "S7 hard-stop: serve drill L0 leaf (stock flow); no mart-mirror"
 
   raw_tushare_moneyflow_dc:
     role: ssot
-    note: "serve drill L0 leaf (DC stock flow); no mart-mirror"
+    kind: serve_l0_leaf
+    note: "S7 hard-stop: serve drill L0 leaf (DC stock flow); no mart-mirror"
 
   raw_tushare_moneyflow_hsgt:
     role: ssot
+    kind: sync_orphan
+    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_moneyflow_ind_dc:
     role: compatibility
@@ -167,26 +207,38 @@ tables:
 
   raw_tushare_report_rc:
     role: ssot
+    kind: serve_l0_declared
+    note: "S7 hard-stop: DataAccess L0 declared; historical load_analyst_reports retired; no formal plane"
 
   raw_tushare_share_float:
     role: ssot
+    kind: serve_l0_declared
+    note: "S7 hard-stop: DataAccess L0 declared; no live router/service consumer; no formal plane"
 
   raw_tushare_stk_factor_pro:
     role: ssot
+    kind: sync_orphan
+    note: "S7 hard-stop: sync residual; on_demand; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_stk_holdernumber:
     role: ssot
+    kind: sync_orphan
+    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_stk_holdertrade:
     role: compatibility
     note: "E0 formal land/canonical exists; legacy raw residual until full cutover"
 
   raw_tushare_stk_limit:
-    role: ssot
-    note: "form/limit touch input; separate from nominal daily formal plane"
+    role: compatibility
+    kind: derive_input
+    publication_surface: fact_stock_form_daily
+    note: "S7: fact_stock_form_daily owns buyable/sellable/is_one_word; raw = form rebuild touch input (like adj→qfq)"
 
   raw_tushare_stk_surv:
     role: ssot
+    kind: serve_l0_declared
+    note: "S7 hard-stop: DataAccess institution_survey L0 declared; mart_stock_survey_activity retired; no formal plane"
 
   raw_tushare_stock_basic:
     role: compatibility
@@ -202,6 +254,8 @@ tables:
 
   raw_tushare_suspend_d:
     role: ssot
+    kind: blocked_no_publication
+    note: "S7 BLOCKED: no fact_daily_price_status writer path; cannot fake suspend publication"
 
   raw_tushare_sw_daily:
     role: compatibility
@@ -211,14 +265,19 @@ tables:
 
   raw_tushare_ths_hot:
     role: ssot
+    kind: sync_orphan
+    note: "S7 hard-stop: sync residual; dead_groups partial; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_top_inst:
     role: ssot
-    note: "pulse builder + institution_profile truth; no formal inst-seat publication"
+    kind: multi_consumer
+    note: "S7 hard-stop: pulse builder + institution_profile fact_inst_episode truth; no single formal inst-seat publication"
 
   raw_tushare_top_list:
-    role: ssot
-    note: "pulse builder + multi-consumer; no formal LHB publication beyond mart aggregates"
+    role: compatibility
+    kind: pulse_flow_builder
+    publication_surface: mart_market_pulse_daily
+    note: "S7: pulse builder lhb_count via DataAccess; market mart owns display; cross_check residual only"
 
   raw_tushare_trade_cal:
     role: compatibility

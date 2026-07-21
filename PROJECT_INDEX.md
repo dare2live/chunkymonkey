@@ -2,7 +2,7 @@
 
 > 状态：live navigation，非规则 owner
 > 更新：2026-07-21
-> 当前目标看 `goal.md`（S1–S6 FIXED；S7 PARTIAL stronger 32/46 ssot；§15 knife-merge adoption；E0 PARTIAL；C/B-pit cutover ON；`BOARD.md`；启动 `scripts/chunkyctl agent-boot`）。
+> 当前目标看 `goal.md`（S1–S6 FIXED；S7 PARTIAL stronger 29/46 ssot；§15 knife-merge adoption；E0 PARTIAL；C/B-pit cutover ON；`BOARD.md`；启动 `scripts/chunkyctl agent-boot`）。
 > 架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口与 writer 清单看 `FEATURE_MAP.md` 和 CodeGraph。
 > 生成状态板：`PYTHONPATH=backend python backend/scripts/build_agent_board.py`（勿手改 BOARD.md；Next 投影跟 `goal.md` 主线 S7/E0/§15，非 A→H 研究菜单）。
 
@@ -22,7 +22,7 @@ AGENTS.md
 
 | Tier | Current owner/package | Current reality |
 |---|---|---|
-| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；accepted daily `20190102`→`20260720`（1829d）+ ST `20220104`→`20260720`（1099d；asymmetric ST raw floor；chunked ≤40d local-raw land→accept）；**S1–S6 FIXED / S7 PARTIAL**：default sync = acquire→caller-only land→accept；`security_day_acquire`；CLI land/accept/derive；derive+form+pipeline clean 默认 accepted-only（`--allow-legacy-fill` 逃生）；`legacy_raw_plane.yaml`+gate（**32/46 ssot**；SW→PIT；pulse builders→mart（含 sw_daily/dc_index/index_dailybasic/limit_cpt_list）；stock_basic→dim；adj→qfq）；dc_member + stock-flow drill 仍 ssot；form/qfq/segments/pulse 至 `20260720`（legacy raw daily 仍停 `20260716`，formal 不写 raw）；margin 仍 frozen；无 mass fetch / cutover |
+| T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；accepted daily `20190102`→`20260720`（1829d）+ ST `20220104`→`20260720`（1099d；asymmetric ST raw floor；chunked ≤40d local-raw land→accept）；**S1–S6 FIXED / S7 PARTIAL**：default sync = acquire→caller-only land→accept；`security_day_acquire`；CLI land/accept/derive；derive+form+pipeline clean 默认 accepted-only（`--allow-legacy-fill` 逃生）；`legacy_raw_plane.yaml`+gate（**29/46 ssot**；SW→PIT；pulse builders→mart（含 top_list）；daily_basic→dim；stk_limit→form；stock_basic→dim；adj→qfq）；dc_member + stock-flow drill 仍 ssot；form/qfq/segments/pulse 至 `20260720`（legacy raw daily 仍停 `20260716`，formal 不写 raw）；margin 仍 frozen；无 mass fetch / cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, DC snapshot builder | namespace 已分离；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `technical_states/`, `segments.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `market_pulse_tier12_read.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py` | 多轴状态可复用；C accept 分 `publish_scope=canary|project_universe`；`resolve_tier12_production_read` + B1/pulse 接线；**cutover yaml=true** → ACCEPTED_CUTOVER；**form enrich v1**（`stock_state_stage_pattern_v1`，exact-day `fact_stock_form_daily` → `form_name`/`axis_pos`；writer `axis_trend` 不覆盖）；re-accept `20260717`=4989 + `20260720`=4991；无 accept 日仍 fail-closed→LEGACY/`fact_stock_form_daily`；persist 可在 cutover-ON 下重跑（不回翻 yaml） |
 | T2 market sensing | `market_pulse.py`, `market_pulse_tier12_read.py`, `market_pulse_b_pit_read.py`, `b_pit_mart_cutover.py`, `project_universe_breadth.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py`, API/frontend | 展示可用但 breadth/margin UNTRUSTED（B-ext）；sentiment 旁路 `tier12_production_read` + `b_pit_mart_production_read`；B-pit shadow MATCH 120/120；**mart cutover=true（owner opt-in 2026-07-20）→ MART_CUTOVER（project_universe_pit）**；C envelope 可 project_universe scope；窗外/无 shadow 日仍 fail-closed→legacy；drill form 单轨 production-read（无 legacy JOIN+accepted 双写） |
@@ -142,7 +142,7 @@ accept 路径跳过 provider auth / acquire；disclosure 三域同 flags 且
 **必须** `--from-local-raw`）。S5 derive（FIXED）+ S7 PARTIAL：
 `chunkyctl derive qfq|form` + form library + pipeline clean/process 默认
 accepted-only；`--allow-legacy-fill` 逃生；daily accepted `20190102`→`20260720`
-（ST asymmetric `20220104`）；`legacy_raw_plane.yaml` + gate（**32/46 ssot**）；§15 `pre-knife`。
+（ST asymmetric `20220104`）；`legacy_raw_plane.yaml` + gate（**29/46 ssot**）；§15 `pre-knife`。
 S6 serve（FIXED）：
 `market_pulse_serve_read` + DataAccess entities；router 零 `# serve-exempt:`；D5 全绿。
 `observation_population.py` 的 default

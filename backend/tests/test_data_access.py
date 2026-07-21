@@ -119,3 +119,8 @@ def test_registry_loads_core_entities():
     reg = load_registry()
     for e in ("kline_qfq", "moneyflow", "valuation", "index_daily"):
         assert e in reg.entities, f"{e} 未注册"
+    # S7: valuation publication = dim_stock_segment_daily (not raw daily_basic)
+    assert reg.entity("valuation").table == "dim_stock_segment_daily"
+    assert reg.entity("valuation").layer == "L1"
+    # S7: stk_limit removed from DataAccess (form owns buyable/sellable/is_one_word)
+    assert "stk_limit" not in reg.entities

@@ -2670,6 +2670,35 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - **Residual**：32 ssot as above；E0 org；E/F paused。
 - **Status**: **PARTIAL**（S7 stronger；not FIXED）。
 
+### 2026-07-21 — S7 derive+pulse ssot cut (32→29) + typed hard-stops
+
+- Wall-clock: Tue 2026-07-21 ~14:50–15:40 Asia/Shanghai.
+- **Knife**（§15；no raw delete；E/F paused）：
+  1. `top_list` → compatibility `pulse_flow_builder`
+     (`publication_surface=mart_market_pulse_daily`)；only pulse aggregate consumer.
+  2. `daily_basic` → compatibility `derive_input`
+     (`publication_surface=dim_stock_segment_daily`)；DataAccess `valuation`→dim L1；
+     pulse SW MV reads dim circ_mv.
+  3. `stk_limit` → compatibility `derive_input`
+     (`publication_surface=fact_stock_form_daily`)；removed DataAccess entity
+     (form owns buyable/sellable/is_one_word；raw = rebuild input like adj→qfq)。
+  4. Hygiene：`technical_states` / `institution_profile` resolve `index_daily`/
+     `top_inst` via DataAccess（stay ssot multi_consumer）。
+  5. Residual ssot：typed `kind` + note
+     (`serve_l0_leaf` / `multi_consumer` / `blocked_no_publication` /
+     `sync_orphan` / `serve_l0_declared` / `membership_l0`)。
+  6. Inventory：**32→29 ssot** / 1 fill / **13→16 compatibility** of 46。
+- **BLOCKED / stay ssot（honest）**：dc_member（no DC PIT）；moneyflow/
+  moneyflow_dc/`limit_list_d` serve leaf；`top_inst`/`index_daily` multi-consumer；
+  `suspend_d`/`margin_detail` blocked_no_publication；~16 sync_orphan|
+  serve_l0_declared。
+- Evidence：`check_legacy_raw_plane` ssot=29；101 targeted pytest green；
+  D1–D5 serve-read 0 viol；`pre-knife s7-derive-pulse-ssot` OK。
+- **Did not**：blind delete raw；dc_member formal PIT；stock-flow mart-mirror；
+  E/F remeasure；fake FIXED on hard-stops。
+- **Residual**：29 ssot as typed map；E0 org；E/F paused。
+- **Status**: **PARTIAL**（S7 stronger；not FIXED）。
+
 ### 2026-07-21 — DB storage hygiene reclaim (local data plane)
 
 - Wall-clock: Tue 2026-07-21 ~11:01 Asia/Shanghai (compact/delete) + commit session.

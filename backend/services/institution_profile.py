@@ -38,6 +38,7 @@ from services.data_sources.holders_top10_schema import (
 )
 from services.database_manifest import get_database_manifest
 from services.duck_adapter import connect as duck_connect
+from services.data_access.spec import load_registry
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,20 @@ HOLDERS_REBUILD_SOURCE = "canonical_spine_legacy_enrichment_projection"
 
 # 被动产品判定 (E2 实测: ETF/联接申赎驱动的名册进出非选股观点, 混入会把指数 beta 当机构技能)
 PASSIVE_NAME_PATTERNS = ("%ETF%", "%交易型开放%", "%指数%", "%联接%")
+
+_ACCESS_REG = None
+
+
+def _access_reg():
+    global _ACCESS_REG
+    if _ACCESS_REG is None:
+        _ACCESS_REG = load_registry()
+    return _ACCESS_REG
+
+
+def _tr_entity(entity: str) -> str:
+    """S7: resolve tushare_raw physical table via DataAccess (no hardcoded raw_*)."""
+    return f"tr.{_access_reg().entity(entity).table}"
 
 
 def _db(alias: str) -> str:
@@ -95,7 +110,7 @@ def build_period_windows(con) -> int:
         SELECT w.stock_code, w.report_date,
                SUM(k.close * ABS(t.net_buy)) / NULLIF(SUM(ABS(t.net_buy)), 0) AS c3_lhb
         FROM win_dated w
-        JOIN tr.raw_tushare_top_inst t
+        JOIN {_tr_entity("top_inst")} t
           ON substr(t.ts_code,1,6) = w.stock_code AND t.exalter LIKE '%机构%'
          AND strftime(strptime(t.trade_date,'%Y%m%d'),'%Y-%m-%d') > w.w_start
          AND strftime(strptime(t.trade_date,'%Y%m%d'),'%Y-%m-%d') <= w.w_end
@@ -249,7 +264,7 @@ def build_episodes(con) -> dict:
     con.execute(f"""
     CREATE OR REPLACE TABLE fact_inst_episode AS
     WITH bench AS (
-        SELECT trade_date, close FROM tr.raw_tushare_index_daily WHERE ts_code = '000300.SH'
+        SELECT trade_date, close FROM {_tr_entity("index_daily")} WHERE ts_code = '000300.SH'
     ), base AS (
         SELECT *,
                CASE WHEN status='closed' AND cost_c1 > 0 AND peak_shares > 0
