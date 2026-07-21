@@ -65,13 +65,29 @@ DOMAIN_SPECS = [
         "parser_version": "tushare_qfq_daily",
     },
     {
+        # 0r.5b: holders 新鲜度水位 = **formal accepted notice frontier**
+        # (canonical land→accept 平面), 盯披露日 notice_date — 非 legacy fact
+        # report_date/page_update_date。formal_only sync 后 legacy fact 滞后, 用它做水位
+        # 会低报真实前沿 (holders_stock_dossier_lineage_audit_20260721 §5 #1)。
+        # canonical 缺失 (pre-migration DB) → 下方 legacy 观察者兜底可见。
         "data_domain": "holders_top10_float",
-        "source_name": "miaoxiang",  # 2026-06-28: holder 主源=东财妙想 aif10 (fact_top10_holder_period source='miaoxiang'); 旧标 tdxhub_holders 退役
+        "source_name": "miaoxiang",  # holder 主源=东财妙想 aif10 (canonical source='miaoxiang')
         "source_tier": 1,
+        "table": "canonical_top10_float_holders_period",
+        "date_col": "notice_date",
+        "parser_version": "aif10_canonical_notice_frontier",
+        "fallback_reason": "canonical_absent_pre_migration",
+    },
+    {
+        # Strangler observer only — legacy fact 平面新鲜度 (formal_only 后滞后),
+        # 保留可见性用于 dual-path 诊断, **不**作为 holders 发布真相。
+        "data_domain": "holders_top10_float_legacy_observer",
+        "source_name": "miaoxiang_fact",
+        "source_tier": 2,
         "table": "fact_top10_holder_period",
-        "date_col": "report_date",
+        "date_col": "page_update_date",
         "raw_hash_col": "raw_hash",
-        "parser_version_col": None,
+        "parser_version": "aif10_legacy_fact_observer",
     },
     # financial_gpcw_8q watermark 条目已删 2026-06-27 (通达信全删 gpcw物删; 财务新鲜度走 tushare sync:* 域)
     # xdxr watermark 域已删 2026-06-28 (xdxr sync acquire 已移除, 复权走 tushare adj_factor; price_xdxr=tdxhub 残留表无 live sync)

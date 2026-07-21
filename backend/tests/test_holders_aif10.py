@@ -7,12 +7,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import duckdb  # noqa: E402
+
 from services.holders_aif10 import (  # noqa: E402
     _parse_change,
     _share_class,
     _clean,
     _derive_exits,
+    _net_new_notice_since,
     fetch_holders_top10_by_notice_date,
+    formal_holders_watermark,
     DEFAULT_START_PERIOD,
 )
 
@@ -102,6 +106,70 @@ def test_derive_exits_no_exit_when_stable():
         _raw("600388.SH", "600388", "2026-06-08", "A机构", 1, 100, "不变"),
     ], start_period=DEFAULT_START_PERIOD)
     assert _derive_exits(base) == []
+
+
+# ── 0r.5b: formal holders watermark + split ops counters ─────────────
+def _wm_fixture():
+    con = duckdb.connect(":memory:")
+    con.execute(
+        """
+        CREATE TABLE canonical_top10_float_holders_period (
+            stock_code VARCHAR, report_date VARCHAR, notice_date VARCHAR,
+            holder_name VARCHAR, is_exit_row BOOLEAN
+        )
+        """
+    )
+    con.execute(
+        """
+        CREATE TABLE fact_top10_holder_period (
+            stock_code VARCHAR, report_date VARCHAR, page_update_date VARCHAR,
+            source VARCHAR
+        )
+        """
+    )
+    return con
+
+
+def test_formal_watermark_prefers_canonical_notice_frontier():
+    con = _wm_fixture()
+    # canonical is ahead (notice 20260722); legacy fact lags (20260717).
+    con.execute(
+        "INSERT INTO canonical_top10_float_holders_period VALUES "
+        "('600519','20260630','20260722','机构甲',FALSE),"
+        "('600519','20260331','20260425','机构甲',FALSE)"
+    )
+    con.execute(
+        "INSERT INTO fact_top10_holder_period VALUES "
+        "('600519','20260331','20260717','miaoxiang')"
+    )
+    wm, src = formal_holders_watermark(con)
+    assert wm == "20260722"
+    assert src == "canonical_notice_frontier"
+
+
+def test_formal_watermark_falls_back_to_legacy_when_no_canonical():
+    con = _wm_fixture()
+    con.execute(
+        "INSERT INTO fact_top10_holder_period VALUES "
+        "('600519','20260331','20260717','miaoxiang')"
+    )
+    wm, src = formal_holders_watermark(con)
+    assert wm == "20260717"
+    assert src == "legacy_fact_page_update_date"
+
+
+def test_net_new_notice_since_splits_amplification_from_new():
+    con = _wm_fixture()
+    # Full-history rewrite would touch 20260331 too; net-new only counts > wm.
+    con.execute(
+        "INSERT INTO canonical_top10_float_holders_period VALUES "
+        "('600519','20260630','20260722','机构甲',FALSE),"
+        "('600519','20260630','20260721','机构乙',FALSE),"
+        "('600519','20260331','20260425','机构甲',FALSE)"
+    )
+    net_rows, parts = _net_new_notice_since(con, "20260717")
+    assert net_rows == 2          # 20260722 + 20260721 rows only
+    assert parts == 2             # two distinct notice partitions
 
 
 def test_fetch_holders_top10_by_notice_date_maps_provider_shape(monkeypatch):

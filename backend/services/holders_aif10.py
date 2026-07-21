@@ -458,34 +458,109 @@ def _affected_stocks_since(client, since_date: str) -> list[str]:
 
 INCREMENT_SAFETY_DAYS = 7   # evidence: 水位回退重扫边界 catch 同日晚披露 + 东财修正 (幂等无害)
 
+CANONICAL_TABLE = "canonical_top10_float_holders_period"
+
+
+def _table_present(conn, name: str) -> bool:
+    try:
+        r = conn.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = ? LIMIT 1",
+            [name],
+        ).fetchone()
+        return r is not None
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def formal_holders_watermark(conn) -> tuple[Optional[str], str]:
+    """Freshness watermark for holders = **formal accepted notice frontier**.
+
+    0r.5b (holders lineage audit §5 next-knife #1): stop advertising legacy
+    ``fact_top10_holder_period.page_update_date`` as holders truth.  The formal
+    accepted plane is ``canonical_top10_float_holders_period`` (built by
+    land→accept), whose ``notice_date`` is the disclosure availability anchor.
+    Legacy fact lags after formal_only sync, so probing it under-reports the
+    true frontier.  Falls back to legacy fact only when canonical is absent
+    (e.g. pre-migration DB), and reports which plane was used.
+
+    Returns ``(watermark_yyyymmdd_or_none, watermark_source)``.
+    """
+    if _table_present(conn, CANONICAL_TABLE):
+        row = conn.execute(
+            f"SELECT MAX(notice_date) FROM {CANONICAL_TABLE}"
+        ).fetchone()
+        if row and row[0]:
+            return str(row[0]), "canonical_notice_frontier"
+    row = conn.execute(
+        "SELECT MAX(page_update_date) FROM fact_top10_holder_period WHERE source=?",
+        (SOURCE,),
+    ).fetchone()
+    if row and row[0]:
+        return str(row[0]), "legacy_fact_page_update_date"
+    return None, "empty"
+
+
+def _net_new_notice_since(conn, pre_wm: Optional[str]) -> tuple[int, int]:
+    """Split ops counters: net-new notice rows / partitions since ``pre_wm``.
+
+    ``rows_written`` from the sync is per-stock full-history **rewrite
+    amplification**, not net new disclosures.  This measures the honest
+    net-new plane on the formal canonical frontier: rows whose
+    ``notice_date > pre_wm``, and the distinct notice partitions they touch.
+    Returns ``(net_new_notice_rows, notice_partitions_touched)``.
+    """
+    if not _table_present(conn, CANONICAL_TABLE):
+        return 0, 0
+    bound = pre_wm or "00000000"
+    row = conn.execute(
+        f"""
+        SELECT COUNT(*), COUNT(DISTINCT notice_date)
+          FROM {CANONICAL_TABLE}
+         WHERE notice_date > ?
+        """,
+        [bound],
+    ).fetchone()
+    return int(row[0] or 0), int(row[1] or 0)
+
 
 def sync_holders_aif10_incremental(
     conn, *, start_period: str = DEFAULT_START_PERIOD,
     safety_days: int = INCREMENT_SAFETY_DAYS,
     fallback_since: str = DEFAULT_START_PERIOD,
 ) -> dict:
-    """日常增量 (水位驱动): 水位 = 存量 MAX(披露日 page_update_date),
+    """日常增量 (水位驱动): 水位 = **formal accepted notice frontier** (canonical),
     扫 UPDATE_DATE >= 水位-safety 的股, 对这些股 per-stock 抓全期 → 退出推导 → 幂等覆盖.
 
-    为何盯披露日 (非报告期): 报告期新必带新披露日 (盯披露⊇盯报告期); 东财修正旧期会刷披露日但
-    报告期不变 (盯报告期会漏修正) → 披露日是充分水位。mythos §10: 应有(新披露)−实有(MAX披露日)=缺口,
-    自适应手动不规则运行 (间隔越长水位自动回退越远, 不会因固定窗漏)。
+    水位口径 (0r.5b): 盯 canonical ``notice_date`` (land→accept 形式前沿), 非 legacy
+    fact ``page_update_date`` (formal_only sync 后滞后)。为何盯披露日 (非报告期): 报告期新必带
+    新披露日 (盯披露⊇盯报告期); 东财修正旧期会刷披露日但报告期不变 → 披露日是充分水位。
+    mythos §10: 应有(新披露)−实有(MAX披露日)=缺口, 自适应手动不规则运行。
+
+    Ops 计数分栏 (audit §5 #2): ``rows_written`` = per-stock 全史 rewrite 放大量,
+    **不是**净新增披露; 另报 ``net_new_notice_rows`` / ``notice_partitions_touched``
+    (canonical notice_date > 同步前水位) 与 ``affected_stocks`` (窗口内股票数) 区分。
     """
     from aif10_scraper import default_client
     client = default_client
-    row = conn.execute(
-        "SELECT MAX(page_update_date) FROM fact_top10_holder_period WHERE source=?",
-        (SOURCE,)).fetchone()
-    wm = row[0] if row and row[0] else None   # YYYYMMDD
-    base = wm or fallback_since                 # 存量空 (未backfill) → 回退起点
+    wm, wm_source = formal_holders_watermark(conn)   # YYYYMMDD, formal frontier
+    base = wm or fallback_since                        # 存量空 (未backfill) → 回退起点
     since_date = (datetime.strptime(base, "%Y%m%d") - timedelta(days=safety_days)).strftime("%Y-%m-%d")
     affected = _affected_stocks_since(client, since_date)
     if not affected:
         return {"ok": 0, "fail": 0, "rows_written": 0, "exit_rows": 0,
-                "affected_stocks": 0, "watermark": wm, "since_date": since_date, "errors": []}
+                "affected_stocks": 0, "net_new_notice_rows": 0,
+                "notice_partitions_touched": 0, "rewrite_amplification_rows": 0,
+                "watermark": wm, "watermark_source": wm_source,
+                "since_date": since_date, "errors": []}
     result = sync_holders_aif10(conn, symbols=affected, start_period=start_period,
                                 progress_every=0)
+    net_new_rows, notice_parts = _net_new_notice_since(conn, wm)
     result["affected_stocks"] = len(affected)
+    result["net_new_notice_rows"] = net_new_rows
+    result["notice_partitions_touched"] = notice_parts
+    # ``rows_written`` kept for back-compat but is rewrite amplification, not net new.
+    result["rewrite_amplification_rows"] = result.get("rows_written", 0)
     result["watermark"] = wm
+    result["watermark_source"] = wm_source
     result["since_date"] = since_date
     return result

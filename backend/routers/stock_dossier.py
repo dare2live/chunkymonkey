@@ -33,10 +33,38 @@ _AXIS_VOL = {"light": "缩量", "normal": "常量", "heavy": "放量"}
 
 def get_dossier_conn():
     con = duck_connect(resolver.db_path("smartmoney"), read_only=True)
+    # Attach feature_store read-only so holder rows can honestly report whether
+    # an institution profile exists (0r.5b — no fake 机构 deep-link at ~54%).
+    try:
+        fs_path = resolver.db_path("feature_store")
+        con.execute(f"ATTACH IF NOT EXISTS '{fs_path}' AS fs (READ_ONLY)")
+    except Exception:  # noqa: BLE001 — profile join is best-effort, fail-open to unknown
+        pass
     try:
         yield con
     finally:
         con.close()
+
+
+def _institution_profile_holders(conn, holder_norms: list[str]) -> set[str]:
+    """Return the subset of holder_name_norm that have an institution profile.
+
+    Profile coverage is ~54% (holders_stock_dossier_lineage_audit_20260721 §2.1);
+    the dossier must only deep-link a holder chip to 机构档案 when a profile row
+    actually exists — never claim full 股东↔机构 linkage.
+    """
+    names = [n for n in {h for h in holder_norms if h} ]
+    if not names:
+        return set()
+    try:
+        placeholders = ",".join(["?"] * len(names))
+        rows = conn.execute(
+            f"SELECT holder FROM fs.mart_inst_profile WHERE holder IN ({placeholders})",
+            names,
+        ).fetchall()
+        return {str(r[0]) for r in rows}
+    except Exception:  # noqa: BLE001 — feature_store absent → all unknown, fail-open
+        return set()
 
 
 def _norm_code(code: str) -> str:
@@ -338,13 +366,28 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
             presence[hn] = streak
 
     out_rows = []
+    holder_norms: list[str] = []
     for row in rows:
         d = dict(zip(cols, row))
         hn = d.get("holder_name_norm") or d.get("holder_name")
+        if hn:
+            holder_norms.append(str(hn))
         d["approx_periods_present"] = presence.get(str(hn)) if hn else None
         d["return_pct"] = None
         d["holding_cycle_days"] = None
         out_rows.append(d)
+
+    # 机构档案 honesty: deep-link only when a profile row truly exists (~54% coverage).
+    profiled = _institution_profile_holders(conn, holder_norms)
+    n_with_profile = 0
+    for d in out_rows:
+        hn = d.get("holder_name_norm") or d.get("holder_name")
+        has_profile = bool(hn) and str(hn) in profiled
+        d["has_institution_profile"] = has_profile
+        if has_profile:
+            n_with_profile += 1
+    n_holders = len(out_rows)
+    coverage = round(n_with_profile / n_holders, 4) if n_holders else None
 
     gaps.extend(
         [
@@ -355,12 +398,23 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
     )
     if source == "canonical_top10_float_holders_period":
         gaps.append("legacy_fact_mirror_skipped_formal_only")
+    if n_holders and n_with_profile < n_holders:
+        gaps.append("institution_profile_partial_no_deep_link_when_absent")
     prev = periods[1] if len(periods) >= 2 else None
     return {
         "report_date": report_date,
         "prev_report_date": prev,
         "source": source,
         "rows": out_rows,
+        "institution_profile": {
+            "holders_total": n_holders,
+            "holders_with_profile": n_with_profile,
+            "coverage": coverage,
+            "note": (
+                "deep-link 机构档案 only when has_institution_profile=true; "
+                "population coverage ~54% (audit §2.1) — absent ≠ no institution"
+            ),
+        },
         "gaps": gaps,
     }
 
@@ -415,10 +469,13 @@ def dossier(
             "holders_parse_integrity": "PASS",
             "stock_holder_assoc_readiness": "PARTIAL",
             "institution_join": "PARTIAL",
+            "institution_profile_coverage": holders.get("institution_profile"),
+            "holders_watermark_frontier": "canonical_notice_frontier",
             "note": (
                 "Sample PASS ≠ full PASS. Formal canonical parse integrity PASS; "
-                "legacy fact watermark lag + institution profile join ~54% + "
-                "holder PnL/cycle engine still unknown."
+                "holders freshness watermark now = formal canonical notice frontier "
+                "(0r.5b); institution profile join ~54% (deep-link per-row only when "
+                "has_institution_profile=true); holder PnL/cycle engine still unknown."
             ),
         },
         "gaps": sorted(set(gaps)),

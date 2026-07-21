@@ -51,6 +51,14 @@ export interface StockHolderRow {
   approx_periods_present: number | null;
   return_pct: number | null;
   holding_cycle_days: number | null;
+  has_institution_profile?: boolean;
+}
+
+export interface InstitutionProfileCoverage {
+  holders_total: number;
+  holders_with_profile: number;
+  coverage: number | null;
+  note: string;
 }
 
 export interface StockDossierResponse {
@@ -72,6 +80,7 @@ export interface StockDossierResponse {
     prev_report_date: string | null;
     source: string | null;
     rows: StockHolderRow[];
+    institution_profile?: InstitutionProfileCoverage;
     gaps: string[];
   };
   gaps: string[];

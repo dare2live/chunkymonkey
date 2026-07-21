@@ -167,3 +167,23 @@ def test_dossier_canonical_period_streak_not_fact_lag():
     assert body["holders"]["rows"][0]["approx_periods_present"] == 2
     assert "legacy_fact_mirror_skipped_formal_only" in body["holders"]["gaps"]
     assert body["lineage"]["status"] == "attested_partial"
+
+
+def test_dossier_institution_profile_honesty():
+    """机构 deep-link only when a profile row exists; coverage stated honestly."""
+    con = _fixture_conn()
+    # feature_store attach: only 机构甲 has a profile, 机构乙 does not (~partial).
+    con.execute("ATTACH ':memory:' AS fs")
+    con.execute("CREATE TABLE fs.mart_inst_profile (holder VARCHAR)")
+    con.execute("INSERT INTO fs.mart_inst_profile VALUES ('机构甲')")
+    client = _client(con)
+    body = client.get("/api/v3/stock/600519/dossier").json()
+    rows = {r["holder_name_norm"]: r for r in body["holders"]["rows"]}
+    assert rows["机构甲"]["has_institution_profile"] is True
+    assert rows["机构乙"]["has_institution_profile"] is False
+    prof = body["holders"]["institution_profile"]
+    assert prof["holders_total"] == 2
+    assert prof["holders_with_profile"] == 1
+    assert prof["coverage"] == 0.5
+    assert "institution_profile_partial_no_deep_link_when_absent" in body["holders"]["gaps"]
+    assert body["lineage"]["institution_profile_coverage"]["coverage"] == 0.5

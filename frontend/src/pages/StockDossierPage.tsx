@@ -110,12 +110,19 @@ function FormPanel(props: { d: StockDossierResponse }) {
 function HoldersPanel(props: { d: StockDossierResponse }) {
   const h = props.d.holders;
   if (!h.rows.length) return <div className="state-hint">无股东披露行</div>;
+  const cov = h.institution_profile;
   return (
     <>
       <div className="dossier-meta muted">
         <span>报告期 {h.report_date ?? "—"}</span>
         {h.prev_report_date && <span>上期 {h.prev_report_date}</span>}
         <span>source {h.source ?? "—"}</span>
+        {cov && cov.coverage != null && (
+          <span title={cov.note}>
+            机构档案覆盖 {cov.holders_with_profile}/{cov.holders_total}（
+            {(cov.coverage * 100).toFixed(0)}%）
+          </span>
+        )}
       </div>
       <div className="table-wrap">
         <table>
@@ -137,14 +144,20 @@ function HoldersPanel(props: { d: StockDossierResponse }) {
                 <td className="mono">{r.holder_rank ?? "—"}</td>
                 <td>
                   {r.holder_name_norm || r.holder_name ? (
-                    <Link
-                      className="holder-name clickable"
-                      to={`/institutions/${encodeURIComponent(
-                        r.holder_name_norm || r.holder_name || "",
-                      )}`}
-                    >
-                      {r.holder_name}
-                    </Link>
+                    r.has_institution_profile ? (
+                      <Link
+                        className="holder-name clickable"
+                        to={`/institutions/${encodeURIComponent(
+                          r.holder_name_norm || r.holder_name || "",
+                        )}`}
+                      >
+                        {r.holder_name}
+                      </Link>
+                    ) : (
+                      <span className="holder-name" title="无机构档案（覆盖~54%）— 不做假链接">
+                        {r.holder_name}
+                      </span>
+                    )
                   ) : (
                     "—"
                   )}
