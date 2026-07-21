@@ -122,3 +122,48 @@ def test_dossier_bad_code_and_404():
     client = _client(con)
     assert client.get("/api/v3/stock/ABC/dossier").status_code == 400
     assert client.get("/api/v3/stock/999999/dossier").status_code == 404
+
+
+def test_dossier_rejects_b_share_and_bj_prefixes():
+    con = _fixture_conn()
+    client = _client(con)
+    # B-share / BJ-like prefixes must not enter 沪深A dossier serve
+    for code in ("900921", "920001"):
+        r = client.get(f"/api/v3/stock/{code}/dossier")
+        assert r.status_code == 404
+        assert "沪深A" in r.json()["detail"]
+
+
+def test_dossier_canonical_period_streak_not_fact_lag():
+    """Formal-only sync: period streak must follow canonical, not stale fact."""
+    con = _fixture_conn()
+    con.execute(
+        """
+        CREATE TABLE canonical_top10_float_holders_period (
+            stock_code VARCHAR, report_date VARCHAR, holder_set VARCHAR,
+            holder_rank INTEGER, row_seq INTEGER, holder_name VARCHAR,
+            holder_name_norm VARCHAR, holder_type VARCHAR,
+            hold_ratio_float DOUBLE, change_status VARCHAR,
+            hold_change_num DOUBLE, notice_date VARCHAR,
+            shares_approx DOUBLE, is_exit_row BOOLEAN,
+            available_at TIMESTAMPTZ
+        )
+        """
+    )
+    con.execute(
+        """
+        INSERT INTO canonical_top10_float_holders_period VALUES
+        ('600519', '20260714', 'free', 1, 1, '机构甲', '机构甲', '基金',
+         5.2, '增持', 100, '20260721', 1.1e6, FALSE, TIMESTAMPTZ '2026-07-21 14:00:00+00'),
+        ('600519', '20260331', 'free', 1, 1, '机构甲', '机构甲', '基金',
+         5.0, '增持', 50, '20260425', 1.0e6, FALSE, TIMESTAMPTZ '2026-04-25 14:00:00+00')
+        """
+    )
+    client = _client(con)
+    body = client.get("/api/v3/stock/600519/dossier").json()
+    assert body["holders"]["source"] == "canonical_top10_float_holders_period"
+    assert body["holders"]["report_date"] == "20260714"
+    assert body["holders"]["prev_report_date"] == "20260331"
+    assert body["holders"]["rows"][0]["approx_periods_present"] == 2
+    assert "legacy_fact_mirror_skipped_formal_only" in body["holders"]["gaps"]
+    assert body["lineage"]["status"] == "attested_partial"

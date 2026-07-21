@@ -3114,3 +3114,11 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - Workbench `#/workbench` enabled;「数据更新」→ `POST /api/v3/ops/jobs/daily_update/run`;
   polls `GET .../jobs/daily_update` for writer/process/alert/log_tail.
 - Honest residual: full 42-domain `daily_update` wall-clock acquire still not re-proven after unblock.
+
+### 2026-07-21 — holders × stock-dossier lineage audit (broader than samples)
+
+- Evidence: `analysis/holders_stock_dossier_lineage_audit_20260721.md` (**PARTIAL**).
+- Owner Q: sample PASS ≠ full PASS — canonical parse **218,444** rows PASS; 76/987k = full-history rewrite amp not net new; post-wm notices **30** codes / **380** rows.
+- Joins: dossier MVP dim∩can∩form∩ind **5117/5200**; holder→episode **99.3%**; holder→inst profile **54.2%**.
+- Fail-closed FIXED: dossier period streak reads same plane as rows (canonical vs stale fact).
+- Next: watermark→formal frontier; ops counter clarity; inst profile coverage honesty.

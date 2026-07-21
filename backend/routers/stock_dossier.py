@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from services.data_access import resolver
 from services.duck_adapter import connect as duck_connect
+from services.universe import classify_exclusion
 
 router = APIRouter()
 SURFACE_STATUS = "stock_dossier_mvp_partial"
@@ -43,6 +44,16 @@ def _norm_code(code: str) -> str:
     if len(c) == 6 and c.isdigit():
         return c
     raise HTTPException(status_code=400, detail="stock code must be 6 digits")
+
+
+def _require_hs_a(code: str) -> None:
+    """沪深A whitelist — same board policy as universe (60/00/30/68)."""
+    reason = classify_exclusion(code)
+    if reason is not None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"not in 沪深A whitelist: {code} ({reason})",
+        )
 
 
 def _zh(mapping: dict[str, str], raw: Any) -> str | None:
@@ -271,29 +282,44 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
         "shares_approx",
     ]
 
-    periods = [
-        r[0]
-        for r in conn.execute(
-            """
+    # Period streak / prev_report MUST use the same plane as rows.
+    # Formal-only sync advances canonical while legacy fact watermark lags —
+    # reading fact here silently drops the latest report (fail-closed bug).
+    if source == "canonical_top10_float_holders_period":
+        period_sql = """
+            SELECT DISTINCT report_date
+            FROM canonical_top10_float_holders_period
+            WHERE stock_code = ?
+            ORDER BY report_date DESC
+            LIMIT 8
+        """
+        presence_sql = """
+            SELECT holder_name_norm, report_date
+            FROM canonical_top10_float_holders_period
+            WHERE stock_code = ?
+              AND coalesce(is_exit_row, FALSE) = FALSE
+              AND report_date IN ({})
+        """
+    else:
+        period_sql = """
             SELECT DISTINCT report_date
             FROM fact_top10_holder_period
             WHERE stock_code = ? AND holder_set = 'free'
             ORDER BY report_date DESC
             LIMIT 8
-            """,
-            [code],
-        ).fetchall()
-    ]
-    presence: dict[str, int] = {}
-    if periods:
-        ph = conn.execute(
-            """
+        """
+        presence_sql = """
             SELECT holder_name_norm, report_date
             FROM fact_top10_holder_period
             WHERE stock_code = ? AND holder_set = 'free'
               AND coalesce(is_exit_row, FALSE) = FALSE
               AND report_date IN ({})
-            """.format(",".join(["?"] * len(periods))),
+        """
+    periods = [r[0] for r in conn.execute(period_sql, [code]).fetchall()]
+    presence: dict[str, int] = {}
+    if periods:
+        ph = conn.execute(
+            presence_sql.format(",".join(["?"] * len(periods))),
             [code, *periods],
         ).fetchall()
         by_holder: dict[str, set[str]] = {}
@@ -327,6 +353,8 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
             "approx_periods_present_is_heuristic_not_episode_engine",
         ]
     )
+    if source == "canonical_top10_float_holders_period":
+        gaps.append("legacy_fact_mirror_skipped_formal_only")
     prev = periods[1] if len(periods) >= 2 else None
     return {
         "report_date": report_date,
@@ -345,6 +373,7 @@ def dossier(
 ):
     """Layered stock archive MVP. Product observations only; fail-closed empties."""
     code = _norm_code(code)
+    _require_hs_a(code)
     if as_of is not None:
         as_of = as_of.replace("-", "")
         if len(as_of) != 8 or not as_of.isdigit():
@@ -371,14 +400,32 @@ def dossier(
         "status": "ok",
         "surface": SURFACE_STATUS,
         "stock_code": code,
+        "universe": {
+            "policy": "active_a_share_trading_universe",
+            "whitelist": "沪深A",
+            "board_prefixes": ["60", "00", "30", "68"],
+        },
         "basic": basic,
         "form_stage": form,
         "observation": observation,
         "holders": holders,
+        "lineage": {
+            "status": "attested_partial",
+            "audit": "analysis/holders_stock_dossier_lineage_audit_20260721.md",
+            "holders_parse_integrity": "PASS",
+            "stock_holder_assoc_readiness": "PARTIAL",
+            "institution_join": "PARTIAL",
+            "note": (
+                "Sample PASS ≠ full PASS. Formal canonical parse integrity PASS; "
+                "legacy fact watermark lag + institution profile join ~54% + "
+                "holder PnL/cycle engine still unknown."
+            ),
+        },
         "gaps": sorted(set(gaps)),
         "pit_notes": [
             "form trade_date = observation day of fact_stock_form_daily builder",
             "holders available_at/notice_date bound disclosure — not same-day as K",
             "observation.text is product label stock_dossier_obs_v0 — not Tier0",
+            "serve rejects non-沪深A via classify_exclusion (B/BJ/etc.)",
         ],
     }
