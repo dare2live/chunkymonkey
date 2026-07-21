@@ -116,3 +116,76 @@ export function fetchStockMoneyflow(code: string): Promise<StockMoneyflowResp> {
     `/api/v3/decision/moneyflow/stock/${encodeURIComponent(code)}`,
   );
 }
+
+// ── Cap 4D 交集最强股 ───────────────────────────────────────────────────────
+
+export interface IntersectionSectorRef {
+  sector_code: string;
+  sector_name: string | null;
+  behavior: AssistBehavior;
+  behavior_zh: string;
+}
+
+export interface IntersectionRow {
+  stock_code: string;
+  ts_code: string;
+  stock_name: string | null;
+  industry_sectors: IntersectionSectorRef[];
+  concept_sectors: IntersectionSectorRef[];
+  why: string;
+}
+
+export interface IntersectionAsOf {
+  dc_industry: string | null;
+  dc_concept: string | null;
+}
+
+export interface IntersectionBoardResp {
+  status: "ok" | "stale";
+  reason: string | null;
+  surface: string;
+  surface_version: string;
+  disclaimer: string;
+  as_of: IntersectionAsOf;
+  horizon: number;
+  horizons: number[];
+  count: number;
+  rows: IntersectionRow[];
+  strong_sector_counts?: { dc_industry: number; dc_concept: number };
+}
+
+export interface IntersectionStockResp {
+  status: "ok" | "stale";
+  reason: string | null;
+  surface: string;
+  surface_version: string;
+  disclaimer: string;
+  stock_code: string;
+  horizon: number;
+  horizons: number[];
+  as_of: IntersectionAsOf;
+  in_intersection: boolean;
+  detail: IntersectionRow | null;
+}
+
+export function fetchIntersectionStrongest(opts: {
+  horizon?: AssistHorizon | number;
+  limit?: number;
+}): Promise<IntersectionBoardResp> {
+  const q = new URLSearchParams();
+  if (opts.horizon !== undefined) q.set("horizon", String(opts.horizon));
+  if (opts.limit !== undefined) q.set("limit", String(opts.limit));
+  const qs = q.toString();
+  return apiGet<IntersectionBoardResp>(
+    `/api/v3/decision/intersection/strongest${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export function fetchStockIntersection(
+  code: string,
+  horizon: AssistHorizon | number = 20,
+): Promise<IntersectionStockResp> {
+  return apiGet<IntersectionStockResp>(
+    `/api/v3/decision/intersection/stock/${encodeURIComponent(code)}?horizon=${horizon}`,
+  );
+}

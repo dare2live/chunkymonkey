@@ -12,9 +12,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ASSIST_HORIZONS,
+  fetchIntersectionStrongest,
   fetchMoneyflowBoard,
   type AssistChain,
   type AssistHorizon,
+  type IntersectionRow,
   type MoneyflowBoardRow,
 } from "../api/decision";
 import {
@@ -1557,6 +1559,92 @@ function MoneyflowAssistPanel() {
   );
 }
 
+// ── Cap 4D：交集最强股（东财行业∩概念两条强势链会员交集，非原始排名表） ──────
+
+function IntersectionRowCard({ row }: { row: IntersectionRow }) {
+  return (
+    <div className="table-wrap">
+      <table className="data-table">
+        <tbody>
+          <tr>
+            <td>
+              <b>{row.stock_name ?? "—"}</b>
+              <span className="mono muted"> {row.stock_code}</span>
+            </td>
+            <td className="muted">
+              行业：{row.industry_sectors.map((s) => s.sector_name ?? s.sector_code).join("、")}
+            </td>
+            <td className="muted">
+              概念：{row.concept_sectors.map((s) => s.sector_name ?? s.sector_code).join("、")}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="assist-conclusion">{row.why}</p>
+    </div>
+  );
+}
+
+function IntersectionPanel() {
+  const [horizon, setHorizon] = useState<AssistHorizon>(20);
+  const state = useFetch(
+    () => fetchIntersectionStrongest({ horizon, limit: 20 }),
+    [horizon],
+  );
+  return (
+    <div className="assist-panel">
+      <p className="page-desc assist-disclaimer">
+        决策辅助层：东财行业∩概念两条强势链（抢筹/潜伏迹象）的会员交集 — 交集越多条链越强，
+        非买卖指令、非原始排名榜。任一链 as-of 过期或不一致即整面判定 stale（宁缺勿假）。
+      </p>
+      <div className="tab-group assist-filters">
+        {ASSIST_HORIZONS.map((h) => (
+          <button
+            key={h}
+            type="button"
+            className={`btn tab${horizon === h ? " active" : ""}`}
+            onClick={() => setHorizon(h)}
+          >
+            {h}日
+          </button>
+        ))}
+      </div>
+      <Card
+        title={`交集最强股 · ${horizon}日窗`}
+        extra={
+          state.data ? (
+            <span className="muted mono">
+              as-of 行业 {fmtDate(state.data.as_of.dc_industry)} · 概念{" "}
+              {fmtDate(state.data.as_of.dc_concept)}
+            </span>
+          ) : null
+        }
+      >
+        {state.data?.status === "stale" ? (
+          <div className="state-hint">
+            数据过期或链间 as-of 不一致（{state.data.reason}）— 不展示假交集，等待下一轮更新。
+          </div>
+        ) : (
+          <FetchGate
+            state={state}
+            empty={(d) => d.rows.length === 0}
+            emptyHint="当前窗口无满足交集条件的个股（诚实空态，非故障）"
+          >
+            {(d) => (
+              <>
+                {d.rows.map((r) => (
+                  <IntersectionRowCard key={r.stock_code} row={r} />
+                ))}
+                <p className="muted dossier-note">{d.disclaimer}</p>
+              </>
+            )}
+          </FetchGate>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 function SensingPanel() {
   return (
     <>
@@ -1586,28 +1674,33 @@ function SensingPanel() {
 
 // ── 页面 (C tabs: 市场感知 | 资金决策辅助) ─────────────────────────────────
 
+const MARKET_PAGE_TABS = [
+  { key: "sensing", label: "市场感知" },
+  { key: "assist", label: "资金决策辅助" },
+  { key: "intersection", label: "交集最强" },
+] as const;
+type MarketPageTab = (typeof MARKET_PAGE_TABS)[number]["key"];
+
 export function MarketPage() {
-  const [pageTab, setPageTab] = useState<"sensing" | "assist">("sensing");
+  const [pageTab, setPageTab] = useState<MarketPageTab>("sensing");
   return (
     <div className="page">
       <h1>市场</h1>
       <div className="tab-group dossier-tabs">
-        <button
-          type="button"
-          className={`btn tab${pageTab === "sensing" ? " active" : ""}`}
-          onClick={() => setPageTab("sensing")}
-        >
-          市场感知
-        </button>
-        <button
-          type="button"
-          className={`btn tab${pageTab === "assist" ? " active" : ""}`}
-          onClick={() => setPageTab("assist")}
-        >
-          资金决策辅助
-        </button>
+        {MARKET_PAGE_TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            className={`btn tab${pageTab === t.key ? " active" : ""}`}
+            onClick={() => setPageTab(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
-      {pageTab === "sensing" ? <SensingPanel /> : <MoneyflowAssistPanel />}
+      {pageTab === "sensing" && <SensingPanel />}
+      {pageTab === "assist" && <MoneyflowAssistPanel />}
+      {pageTab === "intersection" && <IntersectionPanel />}
     </div>
   );
 }

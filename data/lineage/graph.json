@@ -1657,6 +1657,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_decision_intersection.py",
+      "kind": "consume",
+      "src": "table:reference.dim_trading_calendar"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_rally_gt.py",
       "kind": "consume",
       "src": "table:reference.dim_trading_calendar"
@@ -2593,6 +2599,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/decision_intersection.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_dc_member_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:smartmoney.fact_dc_member_daily"
@@ -2618,6 +2630,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/dc_member_publish.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_dc_member_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/decision_intersection.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_dc_member_daily"
     },
@@ -2666,6 +2684,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_top_inst_seat_publish_b2.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_dc_member_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_decision_intersection.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_dc_member_daily"
     },
@@ -4063,6 +4087,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/decision_intersection.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_sector_pulse_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:smartmoney.mart_sector_pulse_daily"
@@ -4094,6 +4124,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_sector_pulse_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_decision_intersection.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_sector_pulse_daily"
     },
@@ -6991,9 +7027,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1114,
-    "generated_at": "2026-07-21T15:49:18.997763+00:00",
-    "node_count": 406,
+    "edge_count": 1120,
+    "generated_at": "2026-07-21T16:13:27.250209+00:00",
+    "node_count": 409,
     "version": 2
   },
   "nodes": [
@@ -7051,6 +7087,14 @@
         "path": "backend/config/database_manifest.yaml"
       },
       "id": "consumer:backend/config/database_manifest.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/decision_intersection.yaml"
+      },
+      "id": "consumer:backend/config/decision_intersection.yaml",
       "kind": "consumer"
     },
     {
@@ -7723,6 +7767,14 @@
         "path": "backend/services/dc_member_publish.py"
       },
       "id": "consumer:backend/services/dc_member_publish.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/decision_intersection.py"
+      },
+      "id": "consumer:backend/services/decision_intersection.py",
       "kind": "consumer"
     },
     {
@@ -8667,6 +8719,14 @@
         "path": "backend/tests/test_db_health.py"
       },
       "id": "consumer:backend/tests/test_db_health.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/test_decision_intersection.py"
+      },
+      "id": "consumer:backend/tests/test_decision_intersection.py",
       "kind": "consumer"
     },
     {

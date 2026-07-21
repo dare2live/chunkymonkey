@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from services import decision_intersection as di
 from services import market_pulse as mp
 from services import moneyflow_assist as mfa
 from services.data_access import resolver
@@ -69,3 +70,40 @@ def moneyflow_stock(code: str, conn=Depends(get_assist_conn)) -> dict[str, Any]:
             detail={"error": "not_hs_a", "stock_code": digits, "exclusion": excl},
         )
     return mfa.build_stock_moneyflow(conn, stock_code=digits)
+
+
+@router.get("/intersection/strongest")
+def intersection_strongest(
+    horizon: int = Query(default=20),
+    limit: int = Query(default=20, ge=1, le=200),
+    conn=Depends(get_assist_conn),
+) -> dict[str, Any]:
+    """Cap 4D 交集最强股 — DC 行业∩概念强势链会员交集决策列表（非原始排名表）。"""
+    cfg = di.load_cfg()
+    hs = mfa._horizons(mfa.load_cfg())
+    if horizon not in hs:
+        raise HTTPException(status_code=400, detail=f"horizon must be one of {hs}")
+    return di.build_intersection_strongest(conn, horizon=horizon, limit=limit, cfg=cfg)
+
+
+@router.get("/intersection/stock/{code}")
+def intersection_stock(
+    code: str,
+    horizon: int = Query(default=20),
+    conn=Depends(get_assist_conn),
+) -> dict[str, Any]:
+    """本股是否处于当前交集最强股列表（dossier 交集 tab）。"""
+    digits = "".join(ch for ch in code if ch.isdigit())[:6]
+    if len(digits) != 6:
+        raise HTTPException(status_code=400, detail="stock code must be 6 digits")
+    excl = classify_exclusion(digits)
+    if excl is not None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_hs_a", "stock_code": digits, "exclusion": excl},
+        )
+    cfg = di.load_cfg()
+    hs = mfa._horizons(mfa.load_cfg())
+    if horizon not in hs:
+        raise HTTPException(status_code=400, detail=f"horizon must be one of {hs}")
+    return di.build_intersection_for_stock(conn, stock_code=digits, horizon=horizon, cfg=cfg)

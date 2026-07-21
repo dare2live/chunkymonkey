@@ -1,0 +1,25 @@
+# decision_intersection.yaml — Cap 4D Tier3 product surface (NOT Tier0/Tier2 truth)
+# Authority: analysis/decision_4d_intersection_strongest_20260721.md
+# Reads mart_sector_pulse_daily (via moneyflow_assist board) + fact_dc_member_daily
+# membership; never writes labels back to accepted. Fail-closed on stale/mismatched
+# as-of across chains — never fakes freshness (mirrors /pulse/strongest honesty).
+version: 1
+surface_version: decision_intersection_strongest_v0
+disclaimer: "东财行业∩概念两条强势链的会员交集，非买卖指令；未经 B0→B5 策略验证；沿用 moneyflow_assist 行为标签。"
+
+# Behaviors counted as inflow "strength" evidence when selecting sectors for
+# intersection (see moneyflow_assist.yaml regime_to_behavior for the map).
+strong_behaviors: [chase, latent]
+
+# Cap sector fan-out per chain before membership lookup (bound query cost;
+# avoid pathological all-sector match diluting "strongest" into "most").
+max_strong_sectors_per_chain: 60
+
+# Freshness gate: dc_industry / dc_concept board as_of must match each other
+# and lag the latest completed trading day by no more than this many calendar
+# days; else surface returns status=stale with empty rows (fail-closed).
+sla_max_lag_calendar_days: 1
+
+default_horizon: 20
+default_limit: 20
+max_limit: 200

@@ -5,7 +5,12 @@
  */
 import { FormEvent, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { fetchStockMoneyflow, type StockMoneyflowResp } from "../api/decision";
+import {
+  fetchStockIntersection,
+  fetchStockMoneyflow,
+  type IntersectionStockResp,
+  type StockMoneyflowResp,
+} from "../api/decision";
 import { fetchStockDossier, type StockDossierResponse, type StockFormStage } from "../api/stock";
 import { Card, FetchGate } from "../components/Card";
 import { fmtInt, fmtPct } from "../format";
@@ -18,7 +23,7 @@ const TABS: { key: TabKey; label: string; enabled: boolean; soon?: string }[] = 
   { key: "form", label: "形态·阶段", enabled: true },
   { key: "holders", label: "股东", enabled: true },
   { key: "moneyflow", label: "资金", enabled: true },
-  { key: "intersection", label: "交集", enabled: false, soon: "4D 交集最强股" },
+  { key: "intersection", label: "交集", enabled: true },
 ];
 
 function industryLine(d: StockDossierResponse): string {
@@ -275,6 +280,57 @@ function MoneyflowPanel(props: { code: string }) {
   );
 }
 
+function IntersectionPanel(props: { code: string }) {
+  const state = useFetch(() => fetchStockIntersection(props.code), [props.code]);
+  return (
+    <FetchGate state={state}>
+      {(m: IntersectionStockResp) => {
+        if (m.status === "stale") {
+          return (
+            <div className="state-hint">
+              交集数据过期或链间 as-of 不一致（{m.reason}）— 不展示假交集，等待下一轮更新。
+            </div>
+          );
+        }
+        if (!m.in_intersection || !m.detail) {
+          return (
+            <div className="state-hint">
+              当前窗口本股不在交集最强榜（{m.reason ?? "未同属两条强势链"}）— 诚实空态，非故障。
+            </div>
+          );
+        }
+        const d = m.detail;
+        return (
+          <>
+            <p className="dossier-observation">{d.why}</p>
+            <div className="dossier-meta muted">
+              <span>as-of 行业 {m.as_of.dc_industry ?? "—"}</span>
+              <span>概念 {m.as_of.dc_concept ?? "—"}</span>
+            </div>
+            <h3 className="dossier-subhead">强势行业链</h3>
+            <ul>
+              {d.industry_sectors.map((s) => (
+                <li key={s.sector_code}>
+                  {s.sector_name ?? s.sector_code} · {s.behavior_zh}
+                </li>
+              ))}
+            </ul>
+            <h3 className="dossier-subhead">强势概念链</h3>
+            <ul>
+              {d.concept_sectors.map((s) => (
+                <li key={s.sector_code}>
+                  {s.sector_name ?? s.sector_code} · {s.behavior_zh}
+                </li>
+              ))}
+            </ul>
+            <p className="muted dossier-note">{m.disclaimer}</p>
+          </>
+        );
+      }}
+    </FetchGate>
+  );
+}
+
 export function StockDossierPage() {
   const { code: routeCode } = useParams<{ code: string }>();
   const navigate = useNavigate();
@@ -346,9 +402,13 @@ export function StockDossierPage() {
       </div>
 
       <Card title={TABS.find((t) => t.key === tab)?.label ?? ""}>
-        {tab === "moneyflow" ? (
+        {tab === "moneyflow" || tab === "intersection" ? (
           /^\d{6}$/.test(code) ? (
-            <MoneyflowPanel code={code} />
+            tab === "moneyflow" ? (
+              <MoneyflowPanel code={code} />
+            ) : (
+              <IntersectionPanel code={code} />
+            )
           ) : (
             <div className="state-hint">请输入 6 位股票代码</div>
           )
@@ -357,13 +417,7 @@ export function StockDossierPage() {
             {(d) => {
               if (tab === "overview") return <OverviewPanel d={d} />;
               if (tab === "form") return <FormPanel d={d} />;
-              if (tab === "holders") return <HoldersPanel d={d} />;
-              const soon = TABS.find((t) => t.key === tab)?.soon;
-              return (
-                <div className="state-hint">
-                  {soon} — 排期见 product_plan_reeval_stock_dossier_20260721。数据未就绪前不展示假信号。
-                </div>
-              );
+              return <HoldersPanel d={d} />;
             }}
           </FetchGate>
         )}
