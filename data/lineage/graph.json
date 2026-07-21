@@ -1819,6 +1819,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/form_production_read.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/institution_follow_b0.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -1964,6 +1970,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_tier12_consumer_cutover.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_stock_dossier_api.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
     },
@@ -2641,12 +2653,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/decision_intersection.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_dc_member_daily"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/market_pulse.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_dc_member_daily"
@@ -2845,12 +2851,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/stock_screener.yaml",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_stock_form_daily"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_form_daily"
@@ -2888,6 +2888,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/derive_cli.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_form_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/form_production_read.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_form_daily"
     },
@@ -4489,6 +4495,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/form_production_read.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/institution_follow_b0.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -4634,6 +4646,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_tier12_consumer_cutover.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_stock_dossier_api.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -5827,6 +5845,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_decision_intersection.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_index_member_all"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_market_pulse.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_index_member_all"
@@ -6991,6 +7015,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/decision_intersection.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_sw_industry_pit"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.v_sw_industry_pit"
@@ -7016,6 +7046,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/check_legacy_raw_plane.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_sw_industry_pit"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/decision_intersection.py",
       "kind": "consume",
       "src": "table:tushare_raw.v_sw_industry_pit"
     },
@@ -7057,6 +7093,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_decision_intersection.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_sw_industry_pit"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_institution_profile.py",
       "kind": "consume",
       "src": "table:tushare_raw.v_sw_industry_pit"
@@ -7075,8 +7117,8 @@
     }
   ],
   "meta": {
-    "edge_count": 1128,
-    "generated_at": "2026-07-21T16:30:35.186281+00:00",
+    "edge_count": 1135,
+    "generated_at": "2026-07-21T23:37:59.350917+00:00",
     "node_count": 413,
     "version": 2
   },
@@ -7199,14 +7241,6 @@
         "path": "backend/config/segments.yaml"
       },
       "id": "consumer:backend/config/segments.yaml",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "config",
-        "path": "backend/config/stock_screener.yaml"
-      },
-      "id": "consumer:backend/config/stock_screener.yaml",
       "kind": "consumer"
     },
     {
@@ -7847,6 +7881,14 @@
         "path": "backend/services/derive_runtime.py"
       },
       "id": "consumer:backend/services/derive_runtime.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/form_production_read.py"
+      },
+      "id": "consumer:backend/services/form_production_read.py",
       "kind": "consumer"
     },
     {

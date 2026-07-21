@@ -279,6 +279,25 @@ def sw_member_mem_sql() -> str:
     )
 
 
+def sw_l1_member_mem_sql() -> str:
+    """L1 board → member stocks via PIT view ``l1_code`` (no L3 fan-out).
+
+    Cap 4D residual: SW sector board is L1; leaf membership historically keyed
+    off ``l3_code``. The PIT publication already carries ``l1_code`` on every
+    member row, so L1→stock rollup is a direct as-of filter — not a new
+    aggregation taxonomy.
+    """
+    from services.universe import sql_where_active_a_share
+
+    tbl = _tr("index_member_all")
+    return (
+        f"SELECT ts_code, MAX(name) AS name FROM {tbl} "
+        f"WHERE l1_code = ? AND in_date <= ? "
+        f"AND (out_date IS NULL OR CAST(out_date AS VARCHAR) > ?) "
+        f"AND {sql_where_active_a_share('ts_code')} GROUP BY 1"
+    )
+
+
 def sw_flow_sql(as_of: str) -> str:
     mf = _tr("moneyflow")
     daily = _tr("daily")
@@ -356,6 +375,7 @@ __all__ = [
     "dc_member_mem_sql",
     "dc_flow_sql",
     "sw_member_mem_sql",
+    "sw_l1_member_mem_sql",
     "sw_flow_sql",
     "list_sector_members",
 ]

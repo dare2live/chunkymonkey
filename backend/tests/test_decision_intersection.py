@@ -1,4 +1,4 @@
-"""Cap 4D 交集最强股 — intersection honesty (freshness gate + why sentence)."""
+"""Cap 4D 交集最强股 — 3-chain honesty (freshness gate + why sentence)."""
 from __future__ import annotations
 
 import sys
@@ -31,18 +31,30 @@ CREATE TABLE fact_dc_member_daily (
 _CAL_DDL = """
 CREATE TABLE dim_trading_calendar (trade_date VARCHAR PRIMARY KEY, is_trading BIGINT)
 """
+_SW_DDL = """
+ATTACH ':memory:' AS tr;
+CREATE TABLE tr.raw_tushare_index_member_all (
+    l1_code VARCHAR, l1_name VARCHAR, l2_code VARCHAR, l2_name VARCHAR,
+    l3_code VARCHAR, l3_name VARCHAR, ts_code VARCHAR, name VARCHAR,
+    in_date VARCHAR, out_date VARCHAR, is_new VARCHAR
+);
+CREATE VIEW tr.v_sw_industry_pit AS
+SELECT l1_code, l1_name, l2_code, l2_name, l3_code, l3_name,
+       ts_code, name, in_date, out_date, is_new
+FROM tr.raw_tushare_index_member_all;
+"""
 
 _DATES = [f"202606{d:02d}" for d in range(1, 21)]  # 20 trading days, latest 20260620
 
 
-def _insert_strong_sector(con, *, sector_code: str, sector_name: str, chain: str) -> None:
+def _insert_strong_sector(con, *, sector_code: str, sector_name: str, chain: str, level: str = "L1") -> None:
     for i, td in enumerate(_DATES):
         con.execute(
             """
             INSERT INTO mart_sector_pulse_daily VALUES
-            (?, ?, ?, 'L1', 'industry', ?, 0.2, 50000.0, 0.5, ?, ?, 'accum_in_silent')
+            (?, ?, ?, ?, 'industry', ?, 0.2, 50000.0, 0.5, ?, ?, 'accum_in_silent')
             """,
-            [chain, sector_code, sector_name, td, i + 1, 1.0 if i == 19 else None],
+            [chain, sector_code, sector_name, level, td, i + 1, 1.0 if i == 19 else None],
         )
 
 
@@ -53,11 +65,22 @@ def _insert_member(con, *, sector_code: str, trade_date: str, con_code: str, nam
     )
 
 
+def _insert_sw_member(con, *, l1_code: str, l1_name: str, ts_code: str, name: str) -> None:
+    con.execute(
+        """
+        INSERT INTO tr.raw_tushare_index_member_all VALUES
+        (?, ?, 'L2X', 'L2名', 'L3X', 'L3名', ?, ?, '20200101', NULL, 'Y')
+        """,
+        [l1_code, l1_name, ts_code, name],
+    )
+
+
 def _base_conn(*, calendar_through: str = "20260620") -> object:
     con = duck_mem()
     con.execute(_SECTOR_DDL)
     con.execute(_MEMBER_DDL)
     con.execute(_CAL_DDL)
+    con.execute(_SW_DDL)
     for i, td in enumerate(_DATES):
         if td > calendar_through:
             break
@@ -69,26 +92,35 @@ def _fresh_intersection_conn():
     con = _base_conn()
     _insert_strong_sector(con, sector_code="BK001", sector_name="行业A", chain="dc_industry")
     _insert_strong_sector(con, sector_code="BK101", sector_name="概念X", chain="dc_concept")
-    # 甲 (600001.SH) is a member of BOTH strong sectors → intersection hit.
+    _insert_strong_sector(con, sector_code="801010.SI", sector_name="申万农林", chain="sw_industry")
+    # 甲 (600001.SH) is a member of ALL three strong sectors → intersection hit.
     _insert_member(con, sector_code="BK001", trade_date="20260620", con_code="600001.SH", name="甲")
     _insert_member(con, sector_code="BK001", trade_date="20260620", con_code="600002.SZ", name="乙")
     _insert_member(con, sector_code="BK101", trade_date="20260620", con_code="600001.SH", name="甲")
     _insert_member(con, sector_code="BK101", trade_date="20260620", con_code="600003.SZ", name="丙")
+    _insert_sw_member(con, l1_code="801010.SI", l1_name="申万农林", ts_code="600001.SH", name="甲")
+    _insert_sw_member(con, l1_code="801010.SI", l1_name="申万农林", ts_code="600004.SH", name="丁")
     return con
 
 
-def test_intersection_hit_has_why_sentence_and_both_chains():
+def test_intersection_hit_has_why_sentence_and_three_chains():
     con = _fresh_intersection_conn()
     out = di.build_intersection_strongest(con, horizon=20, limit=10)
     assert out["status"] == "ok"
-    assert out["as_of"] == {"dc_industry": "20260620", "dc_concept": "20260620"}
+    assert out["as_of"] == {
+        "dc_industry": "20260620",
+        "dc_concept": "20260620",
+        "sw_industry": "20260620",
+    }
+    assert out["chains"] == ["dc_industry", "dc_concept", "sw_industry"]
     assert out["count"] == 1
     row = out["rows"][0]
     assert row["stock_code"] == "600001"
     assert row["stock_name"] == "甲"
     assert row["industry_sectors"][0]["sector_name"] == "行业A"
     assert row["concept_sectors"][0]["sector_name"] == "概念X"
-    assert "行业A" in row["why"] and "概念X" in row["why"]
+    assert row["sw_sectors"][0]["sector_name"] == "申万农林"
+    assert "行业A" in row["why"] and "概念X" in row["why"] and "申万农林" in row["why"]
 
 
 def test_non_intersecting_members_excluded():
@@ -97,12 +129,14 @@ def test_non_intersecting_members_excluded():
     codes = {r["stock_code"] for r in out["rows"]}
     assert "600002" not in codes  # only in industry chain
     assert "600003" not in codes  # only in concept chain
+    assert "600004" not in codes  # only in sw chain
 
 
 def test_stale_when_chain_as_of_mismatch():
     con = _base_conn()
     _insert_strong_sector(con, sector_code="BK001", sector_name="行业A", chain="dc_industry")
-    # Concept chain lags one day behind industry chain → mismatch → fail-closed.
+    _insert_strong_sector(con, sector_code="801010.SI", sector_name="申万农林", chain="sw_industry")
+    # Concept chain lags one day behind → mismatch → fail-closed.
     con.execute(
         """
         INSERT INTO mart_sector_pulse_daily VALUES
@@ -121,6 +155,7 @@ def test_stale_when_as_of_lags_calendar_beyond_sla():
     con.execute("INSERT INTO dim_trading_calendar VALUES ('2026-06-25', 1)")
     _insert_strong_sector(con, sector_code="BK001", sector_name="行业A", chain="dc_industry")
     _insert_strong_sector(con, sector_code="BK101", sector_name="概念X", chain="dc_concept")
+    _insert_strong_sector(con, sector_code="801010.SI", sector_name="申万农林", chain="sw_industry")
     out = di.build_intersection_strongest(con, horizon=20, limit=10)
     assert out["status"] == "stale"
     assert "as_of_lag" in out["reason"]
@@ -128,22 +163,20 @@ def test_stale_when_as_of_lags_calendar_beyond_sla():
 
 def test_no_strong_sectors_yields_empty_ok_not_error():
     con = _base_conn()
-    # Both chains present but neutral (never mapped to chase/latent) → no strong sectors.
+    # All chains present but neutral (never mapped to chase/latent) → no strong sectors.
     for i, td in enumerate(_DATES):
-        con.execute(
-            """
-            INSERT INTO mart_sector_pulse_daily VALUES
-            ('dc_industry', 'BK001', '行业A', 'L1', 'industry', ?, 0.0, 0.0, 0.0, 0, NULL, 'neutral')
-            """,
-            [td],
-        )
-        con.execute(
-            """
-            INSERT INTO mart_sector_pulse_daily VALUES
-            ('dc_concept', 'BK101', '概念X', 'L1', 'industry', ?, 0.0, 0.0, 0.0, 0, NULL, 'neutral')
-            """,
-            [td],
-        )
+        for chain, code, name in (
+            ("dc_industry", "BK001", "行业A"),
+            ("dc_concept", "BK101", "概念X"),
+            ("sw_industry", "801010.SI", "申万农林"),
+        ):
+            con.execute(
+                """
+                INSERT INTO mart_sector_pulse_daily VALUES
+                (?, ?, ?, 'L1', 'industry', ?, 0.0, 0.0, 0.0, 0, NULL, 'neutral')
+                """,
+                [chain, code, name, td],
+            )
     out = di.build_intersection_strongest(con, horizon=20, limit=10)
     assert out["status"] == "ok"
     assert out["rows"] == []
@@ -187,6 +220,7 @@ def test_api_intersection_strongest_and_stock_and_bj_gate():
     body = r.json()
     assert body["surface"] == "decision_intersection_strongest"
     assert body["rows"][0]["stock_code"] == "600001"
+    assert body["rows"][0]["sw_sectors"]
 
     r2 = client.get("/api/v3/decision/intersection/stock/600001?horizon=20")
     assert r2.status_code == 200

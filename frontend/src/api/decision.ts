@@ -132,12 +132,14 @@ export interface IntersectionRow {
   stock_name: string | null;
   industry_sectors: IntersectionSectorRef[];
   concept_sectors: IntersectionSectorRef[];
+  sw_sectors: IntersectionSectorRef[];
   why: string;
 }
 
 export interface IntersectionAsOf {
   dc_industry: string | null;
   dc_concept: string | null;
+  sw_industry: string | null;
 }
 
 export interface IntersectionBoardResp {
@@ -151,7 +153,12 @@ export interface IntersectionBoardResp {
   horizons: number[];
   count: number;
   rows: IntersectionRow[];
-  strong_sector_counts?: { dc_industry: number; dc_concept: number };
+  chains?: string[];
+  strong_sector_counts?: {
+    dc_industry: number;
+    dc_concept: number;
+    sw_industry: number;
+  };
 }
 
 export interface IntersectionStockResp {

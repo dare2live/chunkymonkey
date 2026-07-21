@@ -3017,6 +3017,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     adapter = _adapter(spec["source"])
     conn = _target_conn(spec)
     total_rows, failed = 0, []
+    pending_publish: list[dict[str, Any]] = []
     successful_dates: set[str] = set()
     failed_dates: set[str] = set()
     min_rows = int(spec.get("min_rows_per_batch", 0))
@@ -3036,6 +3037,17 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                 quota_halt = True
                 break
             if rows is None:
+                # Pre-window same-day vacuum (e.g. ths_hot before 22:30) → typed
+                # pending_publish, not failed_batches / not known_empty tombstone.
+                if _is_pre_publish_same_day_zero(spec, params):
+                    pending_publish.append(params)
+                    log.info(
+                        "pending_publish domain=%s params=%s "
+                        "(pre-available_after zero_rows; retry after window)",
+                        domain,
+                        params,
+                    )
+                    continue
                 failed.append(params)
                 failed_date = params.get(spec.get("date_param", "trade_date")) or params.get("end_date")
                 if failed_date:
@@ -3146,12 +3158,22 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         failure_type=failure_type,
         provider_succeeded=ok and bool(batches),
     )
-    result = {"domain": domain, "batches": len(batches), "rows": total_rows,
-              "failed_batches": len(failed), "last_date": last_ok_date, "ok": ok}
+    result = {
+        "domain": domain,
+        "batches": len(batches),
+        "rows": total_rows,
+        "failed_batches": len(failed),
+        "pending_publish_batches": len(pending_publish),
+        "last_date": last_ok_date,
+        "ok": ok,
+    }
+    if pending_publish:
+        result["pending_publish"] = True
+        result["pending_publish_reason"] = "pre_available_after_zero_rows"
     if eligibility is not None:
         result.update({
             "eligible_end": eligibility.eligible_end,
-            "pending_today": eligibility.pending_today,
+            "pending_today": eligibility.pending_today or bool(pending_publish),
             "eligibility_reason": eligibility.reason,
         })
     if operation_window is not None:
@@ -3176,6 +3198,39 @@ def _parse_available_after(spec: dict[str, Any]) -> tuple[int, int] | str | None
     if not (0 <= hh <= 23 and 0 <= mm <= 59):
         return None
     return hh, mm
+
+
+def _is_pre_publish_same_day_zero(
+    spec: dict[str, Any],
+    params: dict[str, Any],
+    *,
+    now: Any = None,
+) -> bool:
+    """Same-day HH:MM domain returned 0 rows before ``available_after``.
+
+    Manual sync may attempt today before the clock (AGENTS: may skip
+    ``same_day_at``). Vendor vacuum before publish is typed
+    ``pending_publish`` — never ``failed_batches`` and never a
+    ``known_empty_days`` tombstone (retryable; gate not loosened).
+    """
+    from zoneinfo import ZoneInfo
+
+    availability = _parse_available_after(spec)
+    if not isinstance(availability, tuple):
+        return False
+    now_local = now or datetime.now(ZoneInfo("Asia/Shanghai"))
+    if getattr(now_local, "tzinfo", None) is None:
+        now_local = now_local.replace(tzinfo=ZoneInfo("Asia/Shanghai"))
+    else:
+        now_local = now_local.astimezone(ZoneInfo("Asia/Shanghai"))
+    if (now_local.hour, now_local.minute) >= availability:
+        return False
+    date_param = str(spec.get("date_param") or "trade_date")
+    batch_date = str(
+        params.get(date_param) or params.get("end_date") or ""
+    ).replace("-", "")
+    today = now_local.strftime("%Y%m%d")
+    return bool(batch_date) and batch_date == today
 
 
 def _normalize_trigger_mode(trigger_mode: TriggerMode | str | None) -> TriggerMode:

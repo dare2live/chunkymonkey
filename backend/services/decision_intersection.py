@@ -1,17 +1,18 @@
 """Cap 4D 交集最强股 — Tier3 product consumer (read-only).
 
-Intersection = stocks that are simultaneous members of a currently "strong"
-(inflow behavior known + chase/latent) DC 行业 sector *and* a currently
-"strong" DC 概念 sector, on the same as-of trade_date. Reuses
-``moneyflow_assist.build_sector_board`` for sector-level honesty (incomplete
-horizon → unknown; never fused into Tier0/Tier2) and ``fact_dc_member_daily``
-(观察日 PIT membership, 沪深A-filtered) for constituent lookup.
+Intersection = stocks that are simultaneous members of currently "strong"
+(inflow behavior known + chase/latent) sectors on **three** chains —
+DC 行业 ∩ DC 概念 ∩ 申万行业 (L1 board → PIT ``l1_code`` member rollup) —
+on the same as-of trade_date. Reuses ``moneyflow_assist.build_sector_board``
+for sector-level honesty and observation-date PIT membership helpers from
+``market_pulse_serve_read``.
 
 Input honesty (plan §3.5): membership + strength must share a serve as-of; a
 stale or mismatched as-of degrades the whole surface to ``status=stale`` with
 empty rows — never a fake freshness claim (mirrors ``/pulse/strongest``).
 
-Authority: analysis/decision_4d_intersection_strongest_20260721.md
+Authority: analysis/decision_4d_intersection_strongest_20260721.md (+ 2026-07-22
+sw_industry 3-chain residual clear).
 """
 from __future__ import annotations
 
@@ -61,17 +62,18 @@ def _freshness_gate(
     *,
     industry_as_of: str | None,
     concept_as_of: str | None,
+    sw_as_of: str | None,
     cfg: dict[str, Any],
 ) -> dict[str, Any]:
-    """Fail-closed as-of honesty: chains must agree and not lag the calendar."""
-    if not industry_as_of or not concept_as_of:
+    """Fail-closed as-of honesty: all three chains must agree and not lag."""
+    if not industry_as_of or not concept_as_of or not sw_as_of:
         return {"status": STATUS_STALE, "reason": "sector_board_as_of_missing"}
-    if industry_as_of != concept_as_of:
+    if len({industry_as_of, concept_as_of, sw_as_of}) != 1:
         return {
             "status": STATUS_STALE,
             "reason": (
                 f"chain_as_of_mismatch dc_industry={industry_as_of} "
-                f"dc_concept={concept_as_of}"
+                f"dc_concept={concept_as_of} sw_industry={sw_as_of}"
             ),
         }
     try:
@@ -111,20 +113,63 @@ def _why_sentence(
     stock_code: str,
     industry_names: list[str],
     concept_names: list[str],
+    sw_names: list[str],
     horizon: int,
     disclaimer: str,
 ) -> str:
     label = stock_name or stock_code
     ind_s = "、".join(n for n in industry_names if n) or "未知行业"
     con_s = "、".join(n for n in concept_names if n) or "未知概念"
+    sw_s = "、".join(n for n in sw_names if n) or "未知申万行业"
     return (
-        f"{label}：同属强势行业「{ind_s}」与强势概念「{con_s}」交集"
+        f"{label}：同属强势东财行业「{ind_s}」、强势概念「{con_s}」"
+        f"与强势申万行业「{sw_s}」三链交集"
         f"（近{horizon}日代理净流入/市值均呈抢筹或潜伏迹象），{disclaimer}"
     )
 
 
 def _valid_horizons() -> list[int]:
     return mfa._horizons(mfa.load_cfg())
+
+
+def _collect_dc_members(
+    conn,
+    strong: dict[str, dict[str, Any]],
+    stock_hits: dict[str, dict[str, Any]],
+    key: str,
+) -> None:
+    mem_sql = pulse_serve.dc_member_mem_sql()
+    for sector_code, row in strong.items():
+        snap = pulse_serve.dc_member_snap(conn, sector_code, str(row["trade_date"]))
+        if snap is None:
+            continue
+        for ts_code, name in conn.execute(mem_sql, [sector_code, snap]).fetchall():
+            hit = stock_hits.setdefault(
+                ts_code, {"name": name, "industry": [], "concept": [], "sw": []}
+            )
+            if not hit.get("name"):
+                hit["name"] = name
+            hit[key].append(sector_code)
+
+
+def _collect_sw_l1_members(
+    conn,
+    strong: dict[str, dict[str, Any]],
+    stock_hits: dict[str, dict[str, Any]],
+) -> None:
+    """L1 board → stocks via PIT ``l1_code`` (sw_l1_member_mem_sql)."""
+    mem_sql = pulse_serve.sw_l1_member_mem_sql()
+    for sector_code, row in strong.items():
+        as_of = str(row["trade_date"])
+        for ts_code, name in conn.execute(
+            mem_sql, [sector_code, as_of, as_of]
+        ).fetchall():
+            hit = stock_hits.setdefault(
+                ts_code, {"name": name, "industry": [], "concept": [], "sw": []}
+            )
+            if not hit.get("name"):
+                hit["name"] = name
+            hit["sw"].append(sector_code)
 
 
 def _compute_intersection(conn, *, horizon: int, cfg: dict[str, Any]) -> dict[str, Any]:
@@ -145,6 +190,9 @@ def _compute_intersection(conn, *, horizon: int, cfg: dict[str, Any]) -> dict[st
     concept_board = mfa.build_sector_board(
         conn, chain=mp.CHAIN_DC_CONCEPT, horizon=horizon, limit=500, cfg=mcfg,
     )
+    sw_board = mfa.build_sector_board(
+        conn, chain=mp.CHAIN_SW, horizon=horizon, level="L1", limit=500, cfg=mcfg,
+    )
 
     base = {
         "status": None,
@@ -155,17 +203,24 @@ def _compute_intersection(conn, *, horizon: int, cfg: dict[str, Any]) -> dict[st
         "as_of": {
             "dc_industry": industry_board.get("as_of"),
             "dc_concept": concept_board.get("as_of"),
+            "sw_industry": sw_board.get("as_of"),
         },
         "horizon": horizon,
         "horizons": _valid_horizons(),
         "rows": [],
-        "strong_sector_counts": {"dc_industry": 0, "dc_concept": 0},
+        "strong_sector_counts": {
+            "dc_industry": 0,
+            "dc_concept": 0,
+            "sw_industry": 0,
+        },
+        "chains": ["dc_industry", "dc_concept", "sw_industry"],
     }
 
     fresh = _freshness_gate(
         conn,
         industry_as_of=industry_board.get("as_of"),
         concept_as_of=concept_board.get("as_of"),
+        sw_as_of=sw_board.get("as_of"),
         cfg=cfg,
     )
     if fresh["status"] != "ready":
@@ -173,37 +228,28 @@ def _compute_intersection(conn, *, horizon: int, cfg: dict[str, Any]) -> dict[st
 
     industry_strong = _strong_sectors(industry_board, strong_set, cap)
     concept_strong = _strong_sectors(concept_board, strong_set, cap)
+    sw_strong = _strong_sectors(sw_board, strong_set, cap)
     base["strong_sector_counts"] = {
         "dc_industry": len(industry_strong),
         "dc_concept": len(concept_strong),
+        "sw_industry": len(sw_strong),
     }
-    if not industry_strong or not concept_strong:
+    if not industry_strong or not concept_strong or not sw_strong:
         return {**base, "status": STATUS_OK, "reason": "no_strong_sector_intersection_this_window"}
 
-    mem_sql = pulse_serve.dc_member_mem_sql()
     stock_hits: dict[str, dict[str, Any]] = {}
-
-    def _collect(strong: dict[str, dict[str, Any]], key: str) -> None:
-        for sector_code, row in strong.items():
-            snap = pulse_serve.dc_member_snap(conn, sector_code, str(row["trade_date"]))
-            if snap is None:
-                continue
-            for ts_code, name in conn.execute(mem_sql, [sector_code, snap]).fetchall():
-                hit = stock_hits.setdefault(ts_code, {"name": name, "industry": [], "concept": []})
-                if not hit.get("name"):
-                    hit["name"] = name
-                hit[key].append(sector_code)
-
-    _collect(industry_strong, "industry")
-    _collect(concept_strong, "concept")
+    _collect_dc_members(conn, industry_strong, stock_hits, "industry")
+    _collect_dc_members(conn, concept_strong, stock_hits, "concept")
+    _collect_sw_l1_members(conn, sw_strong, stock_hits)
 
     rows: list[dict[str, Any]] = []
     for ts_code, hit in stock_hits.items():
-        if not hit["industry"] or not hit["concept"]:
+        if not hit["industry"] or not hit["concept"] or not hit["sw"]:
             continue
         stock_code = ts_code.split(".")[0]
         ind_rows = [industry_strong[code] for code in hit["industry"]]
         con_rows = [concept_strong[code] for code in hit["concept"]]
+        sw_rows = [sw_strong[code] for code in hit["sw"]]
         rows.append({
             "stock_code": stock_code,
             "ts_code": ts_code,
@@ -226,17 +272,32 @@ def _compute_intersection(conn, *, horizon: int, cfg: dict[str, Any]) -> dict[st
                 }
                 for r in con_rows
             ],
+            "sw_sectors": [
+                {
+                    "sector_code": r["sector_code"],
+                    "sector_name": r.get("sector_name"),
+                    "behavior": r["behavior"]["behavior"],
+                    "behavior_zh": r["behavior"]["behavior_zh"],
+                }
+                for r in sw_rows
+            ],
             "why": _why_sentence(
                 stock_name=hit.get("name"),
                 stock_code=stock_code,
                 industry_names=[r.get("sector_name") for r in ind_rows],
                 concept_names=[r.get("sector_name") for r in con_rows],
+                sw_names=[r.get("sector_name") for r in sw_rows],
                 horizon=horizon,
                 disclaimer=disclaimer,
             ),
         })
 
-    rows.sort(key=lambda r: (-(len(r["industry_sectors"]) + len(r["concept_sectors"])), r["stock_code"]))
+    rows.sort(
+        key=lambda r: (
+            -(len(r["industry_sectors"]) + len(r["concept_sectors"]) + len(r["sw_sectors"])),
+            r["stock_code"],
+        )
+    )
     return {
         **base,
         "status": STATUS_OK,
@@ -252,11 +313,7 @@ def build_intersection_strongest(
     limit: int = 20,
     cfg: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """交集最强股 decision list (board): DC 行业∩概念 strong-sector membership overlap.
-
-    Output is a ranked decision list + per-row "why" sentence — not a raw
-    rank dump (plan §3.5).
-    """
+    """交集最强股 decision list: DC 行业∩概念∩申万行业 strong-sector overlap."""
     c = cfg or load_cfg()
     hs = _valid_horizons()
     if horizon not in hs:

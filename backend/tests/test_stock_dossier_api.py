@@ -108,6 +108,13 @@ def test_dossier_mvp_layers_and_observation():
     assert body["observation"]["version"] == "stock_dossier_obs_v0"
     assert body["observation"]["text"]
     assert "放量下跌" in body["observation"]["text"]
+    # Live axis vocabulary (trending/choppy, heavy/shrink/normal) — not clean/mixed/light.
+    assert "结构嘈杂" in body["observation"]["text"]
+    assert "放量" in body["observation"]["text"]
+    assert body["form_stage"]["source"] in {
+        "fact_stock_form_daily",
+        "accepted_partition+fact_stock_form_daily",
+    }
     assert body["holders"]["report_date"] == "20260331"
     assert len(body["holders"]["rows"]) == 2
     row0 = body["holders"]["rows"][0]

@@ -27,8 +27,10 @@ _AXIS_TREND = {
     "sideways": "横盘",
     "flat": "横盘",
 }
-_AXIS_PURITY = {"clean": "结构干净", "choppy": "结构嘈杂", "mixed": "结构混杂"}
-_AXIS_VOL = {"light": "缩量", "normal": "常量", "heavy": "放量"}
+# Live fact_stock_form_daily vocabulary (technical_states.yaml / stock_screener.yaml).
+# Do not revive unused clean/mixed/light labels — they never appear in production rows.
+_AXIS_PURITY = {"trending": "结构干净", "choppy": "结构嘈杂"}
+_AXIS_VOL = {"heavy": "放量", "shrink": "缩量", "normal": "常量"}
 
 
 def get_dossier_conn():
@@ -231,51 +233,10 @@ def _load_basic(conn, code: str) -> dict[str, Any]:
 
 
 def _load_form(conn, code: str, as_of: str | None) -> dict[str, Any] | None:
-    params: list[Any] = [code]
-    date_clause = ""
-    if as_of:
-        date_clause = "AND trade_date <= ?"
-        params.append(as_of)
-    row = conn.execute(
-        f"""
-        SELECT trade_date, form_name, form_sub, weekly_name, monthly_name,
-               is_breakout_event, axis_pos, axis_trend, axis_purity, axis_vol,
-               axis_volregime, axis_pos_memb, axis_trend_memb, axis_purity_memb,
-               axis_vol_memb, base_days
-        FROM fact_stock_form_daily
-        WHERE stock_code = ? {date_clause}
-        ORDER BY trade_date DESC
-        LIMIT 1
-        """,
-        params,
-    ).fetchone()
-    if not row:
-        return None
-    keys = [
-        "trade_date",
-        "form_name",
-        "form_sub",
-        "weekly_name",
-        "monthly_name",
-        "is_breakout_event",
-        "axis_pos",
-        "axis_trend",
-        "axis_purity",
-        "axis_vol",
-        "axis_volregime",
-        "axis_pos_memb",
-        "axis_trend_memb",
-        "axis_purity_memb",
-        "axis_vol_memb",
-        "base_days",
-    ]
-    out = dict(zip(keys, row))
-    out["source"] = "fact_stock_form_daily"
-    out["resolver_note"] = (
-        "MVP reads fact_stock_form_daily directly; later prefer accepted "
-        "stock_states via resolve_tier12_production_read"
-    )
-    return out
+    # Shared with Cap 5B screener — must stay lockstep on production-read cutover.
+    from services.form_production_read import load_form_row
+
+    return load_form_row(conn, code, as_of)
 
 
 def _table_exists(conn, name: str) -> bool:

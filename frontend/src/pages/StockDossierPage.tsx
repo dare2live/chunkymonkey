@@ -295,7 +295,7 @@ function IntersectionPanel(props: { code: string }) {
         if (!m.in_intersection || !m.detail) {
           return (
             <div className="state-hint">
-              当前窗口本股不在交集最强榜（{m.reason ?? "未同属两条强势链"}）— 诚实空态，非故障。
+              当前窗口本股不在交集最强榜（{m.reason ?? "未同属三链强势扇区"}）— 诚实空态，非故障。
             </div>
           );
         }
@@ -304,10 +304,11 @@ function IntersectionPanel(props: { code: string }) {
           <>
             <p className="dossier-observation">{d.why}</p>
             <div className="dossier-meta muted">
-              <span>as-of 行业 {m.as_of.dc_industry ?? "—"}</span>
+              <span>as-of 东财 {m.as_of.dc_industry ?? "—"}</span>
               <span>概念 {m.as_of.dc_concept ?? "—"}</span>
+              <span>申万 {m.as_of.sw_industry ?? "—"}</span>
             </div>
-            <h3 className="dossier-subhead">强势行业链</h3>
+            <h3 className="dossier-subhead">强势东财行业链</h3>
             <ul>
               {d.industry_sectors.map((s) => (
                 <li key={s.sector_code}>
@@ -318,6 +319,14 @@ function IntersectionPanel(props: { code: string }) {
             <h3 className="dossier-subhead">强势概念链</h3>
             <ul>
               {d.concept_sectors.map((s) => (
+                <li key={s.sector_code}>
+                  {s.sector_name ?? s.sector_code} · {s.behavior_zh}
+                </li>
+              ))}
+            </ul>
+            <h3 className="dossier-subhead">强势申万行业链</h3>
+            <ul>
+              {(d.sw_sectors ?? []).map((s) => (
                 <li key={s.sector_code}>
                   {s.sector_name ?? s.sector_code} · {s.behavior_zh}
                 </li>

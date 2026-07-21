@@ -1,6 +1,6 @@
 version: 1
 surface_version: stock_screener_form_stage_v0
-disclaimer: "形态/阶段为 Tier1 观察态标签（fact_stock_form_daily 同一口径，与股票档案「形态·阶段」tab 一致）；非预测，不构成买卖建议；未经 B0→B5 策略验证。"
+disclaimer: "形态/阶段为 Tier1 观察态标签（与股票档案「形态·阶段」同一 production-read 边界：fact brick + ACCEPTED_CUTOVER overlay）；非预测，不构成买卖建议；未经 B0→B5 策略验证。"
 sla_max_lag_calendar_days: 1
 default_limit: 50
 max_limit: 200

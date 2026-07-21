@@ -1568,7 +1568,7 @@ function MoneyflowAssistPanel() {
   );
 }
 
-// ── Cap 4D：交集最强股（东财行业∩概念两条强势链会员交集，非原始排名表） ──────
+// ── Cap 4D：交集最强股（东财行业∩概念∩申万行业三链会员交集，非原始排名表） ──
 
 function IntersectionRowCard({ row }: { row: IntersectionRow }) {
   return (
@@ -1581,10 +1581,13 @@ function IntersectionRowCard({ row }: { row: IntersectionRow }) {
               <span className="mono muted"> {row.stock_code}</span>
             </td>
             <td className="muted">
-              行业：{row.industry_sectors.map((s) => s.sector_name ?? s.sector_code).join("、")}
+              东财行业：{row.industry_sectors.map((s) => s.sector_name ?? s.sector_code).join("、")}
             </td>
             <td className="muted">
               概念：{row.concept_sectors.map((s) => s.sector_name ?? s.sector_code).join("、")}
+            </td>
+            <td className="muted">
+              申万：{(row.sw_sectors ?? []).map((s) => s.sector_name ?? s.sector_code).join("、")}
             </td>
           </tr>
         </tbody>
@@ -1603,7 +1606,7 @@ function IntersectionPanel() {
   return (
     <div className="assist-panel">
       <p className="page-desc assist-disclaimer">
-        决策辅助层：东财行业∩概念两条强势链（抢筹/潜伏迹象）的会员交集 — 交集越多条链越强，
+        决策辅助层：东财行业∩概念∩申万行业三条强势链（抢筹/潜伏迹象）的会员交集 —
         非买卖指令、非原始排名榜。任一链 as-of 过期或不一致即整面判定 stale（宁缺勿假）。
       </p>
       <div className="tab-group assist-filters">
@@ -1623,8 +1626,9 @@ function IntersectionPanel() {
         extra={
           state.data ? (
             <span className="muted mono">
-              as-of 行业 {fmtDate(state.data.as_of.dc_industry)} · 概念{" "}
-              {fmtDate(state.data.as_of.dc_concept)}
+              as-of 东财 {fmtDate(state.data.as_of.dc_industry)} · 概念{" "}
+              {fmtDate(state.data.as_of.dc_concept)} · 申万{" "}
+              {fmtDate(state.data.as_of.sw_industry)}
             </span>
           ) : null
         }

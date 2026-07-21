@@ -714,3 +714,35 @@ def test_drain_main_fallback_incremental_domain_not_double_called(monkeypatch):
     assert run_domain_calls == ["allow_empty_events"], (
         f"应只调用一次 (fallback_incremental 路径), 实际 {run_domain_calls}"
     )
+
+
+def test_pre_publish_same_day_zero_is_typed_pending_not_tombstone():
+    """ths_hot-style: manual may hit today before HH:MM; 0 rows → pending_publish.
+
+    Must NOT count as failed_batches and must NOT require known_empty_days.
+    After the window, same 0 rows remains fail-closed.
+    """
+    spec = {
+        "available_after": "22:30",
+        "date_param": "trade_date",
+        "batch_mode": "by_ann_date",
+    }
+    params = {"trade_date": "20260721"}
+    before = sr._is_pre_publish_same_day_zero(
+        spec,
+        params,
+        now=datetime(2026, 7, 21, 21, 53, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    after = sr._is_pre_publish_same_day_zero(
+        spec,
+        params,
+        now=datetime(2026, 7, 21, 22, 30, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    other_day = sr._is_pre_publish_same_day_zero(
+        spec,
+        {"trade_date": "20260720"},
+        now=datetime(2026, 7, 21, 21, 53, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    assert before is True
+    assert after is False
+    assert other_day is False
