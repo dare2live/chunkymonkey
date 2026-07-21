@@ -2869,3 +2869,30 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   dim_stock_dc_* as PIT；land ths_member；E/F；auto-wire publish into sync.
 - **Residual**: typed hard-stop ssot 长尾；E0 org；E/F paused；S7 not FIXED.
 - **Status**: **FIXED**（B1 observation-date PIT）；S7 remains **PARTIAL**.
+
+### 2026-07-21 — S7 stronger PARTIAL / near-FIXED (residual hard-stop wall)
+
+- Wall-clock: Tue 2026-07-21 ~17:32–17:50 Asia/Shanghai.
+- **Knife**（§15；post-B1 tip `b3b087956`；E/F paused）：
+  1. Audited remaining **23/46 ssot** for any safe COMPAT/fill/formal move
+     without fake publication.
+  2. **Verdict 0 tables moved**：every residual is a typed hard-stop —
+     `blocked_no_publication` (2) / `serve_l0_declared` (7) / `sync_orphan` (14).
+  3. Live consumer probe：no production router/service read of residual raw
+     beyond sync plumbing + DataAccess registry declarations (declared≠live).
+  4. Locked residual map in `test_s7_residual_ssot_map_is_typed_hard_stops_only`；
+     goal/board → **stronger PARTIAL / near-FIXED**（explicit **not FIXED**）.
+- Inventory：**23→23 ssot** / 1 fill / 22 compatibility of 46（unchanged）.
+- Residual map：
+  - blocked: `suspend_d`, `margin_detail`
+  - serve_l0_declared: `block_trade`, `cyq_perf`, `fina_indicator`, `forecast`,
+    `report_rc`, `share_float`, `stk_surv`
+  - sync_orphan: `balancesheet`, `daily_info`, `dc_daily`, `dividend`,
+    `express`, `fina_mainbz`, `hm_detail`, `hm_list`, `income`, `kpl_list`,
+    `moneyflow_hsgt`, `stk_factor_pro`, `stk_holdernumber`, `ths_hot`
+- Evidence：`check_legacy_raw_plane` ssot=23；residual-map pytest；pre-knife
+  `s7-near-fixed-residual` OK.
+- **Did not**：fake COMPAT；delete raw；build suspend/margin_detail/fina planes；
+  E/F remeasure；claim S7 FIXED.
+- **Next**：E0 residual / §15 verify；S7 only on owner publication|sunset.
+- **Status**: **PARTIAL**（stronger / near-FIXED；not FIXED）.

@@ -195,7 +195,7 @@ def test_s7_derive_runtime_still_bans_acquire_imports() -> None:
 
 
 def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
-    """S7 inventory after B2 top_inst seat publication: 24 ssot / 21 compatibility."""
+    """S7 inventory after B1/B2: 23 ssot / 1 fill / 22 compatibility (near-FIXED wall)."""
 
     mod = _load_check_mod()
     counts = mod.role_counts()
@@ -203,6 +203,56 @@ def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
     assert counts["fill"] == 1, counts
     assert counts["compatibility"] == 22, counts
     assert sum(counts.values()) == 46, counts
+
+
+def test_s7_residual_ssot_map_is_typed_hard_stops_only() -> None:
+    """No safe COMPAT batch left: residual ssot = blocked + declared + orphan only.
+
+    Do not reclassify these to compatibility without a non-raw publication
+    surface + DataAccess redirect (or owner sunset). Fake COMPAT = forbidden.
+    """
+
+    mod = _load_check_mod()
+    inv = mod._load_yaml(mod.INVENTORY_YAML)
+    by_kind: dict[str, set[str]] = {}
+    for table, meta in inv["tables"].items():
+        if meta.get("role") != "ssot":
+            continue
+        kind = str(meta.get("kind") or "")
+        short = table.removeprefix("raw_tushare_")
+        by_kind.setdefault(kind, set()).add(short)
+        assert meta.get("note"), f"{table}: missing honest note"
+
+    expected = {
+        "blocked_no_publication": {"margin_detail", "suspend_d"},
+        "serve_l0_declared": {
+            "block_trade",
+            "cyq_perf",
+            "fina_indicator",
+            "forecast",
+            "report_rc",
+            "share_float",
+            "stk_surv",
+        },
+        "sync_orphan": {
+            "balancesheet",
+            "daily_info",
+            "dc_daily",
+            "dividend",
+            "express",
+            "fina_mainbz",
+            "hm_detail",
+            "hm_list",
+            "income",
+            "kpl_list",
+            "moneyflow_hsgt",
+            "stk_factor_pro",
+            "stk_holdernumber",
+            "ths_hot",
+        },
+    }
+    assert by_kind == expected, by_kind
+    assert sum(len(v) for v in by_kind.values()) == 23
 
 
 def test_s7_limit_list_d_publication_is_fact_stock_limit_daily() -> None:

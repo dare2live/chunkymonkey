@@ -2,7 +2,7 @@
 
 > 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。
 > **Projection only** — not an enforcement input. Cutover / readiness / PIT gates still resolve from yaml + code resolvers + accepted partitions.
-> Snapshot: 2026-07-21T09:20:58Z
+> Snapshot: 2026-07-21T09:35:29Z
 
 ## Track
 
@@ -43,7 +43,7 @@
 
 ## Next (projection — goal.md wins on order)
 
-- S7 next: typed hard-stop 长尾 — inventory 23/46 ssot (B1 dc_member observation-date PIT + B2 flow/limit/index/seat COMPAT)
+- S7 near-FIXED / stronger PARTIAL: inventory 23/46 ssot = typed hard-stop wall (2 blocked + 7 serve_l0_declared + 14 sync_orphan); no fake COMPAT
 - E0 disclosure residual: org_holding provider land BLOCKED; expand stk/holders accept
 - §15 adoption verify: commits/knife ≤1.5; async CI; pre-knife before L3
 - E/F same-protocol remeasure paused (not near-term; F0–F3 protocol-complete)

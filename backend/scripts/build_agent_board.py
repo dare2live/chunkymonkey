@@ -43,8 +43,8 @@ def _next_knives(*, b_on: bool, c_on: bool) -> list[str]:
     on ordering. Cutover yaml only gates opt-in lines when gates are false.
     """
     knives = [
-        "S7 next: typed hard-stop 长尾 — inventory 23/46 ssot "
-        "(B1 dc_member observation-date PIT + B2 flow/limit/index/seat COMPAT)",
+        "S7 near-FIXED / stronger PARTIAL: inventory 23/46 ssot = typed hard-stop "
+        "wall (2 blocked + 7 serve_l0_declared + 14 sync_orphan); no fake COMPAT",
         "E0 disclosure residual: org_holding provider land BLOCKED; expand "
         "stk/holders accept",
         "§15 adoption verify: commits/knife ≤1.5; async CI; pre-knife before L3",
