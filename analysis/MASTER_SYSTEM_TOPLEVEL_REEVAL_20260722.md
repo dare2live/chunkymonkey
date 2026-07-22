@@ -164,7 +164,7 @@ PARTIAL」这种无 consumer 的残差追绿**性质不同**。
 
 | 面 | 定位 | Tier | 现状 |
 |---|---|---|---|
-| 工作台 workbench | ops 可操作（一键更新 / 分步节点） | 观测/控制 | shipped；acquire UX P1–P3 待补 |
+| 工作台 workbench | ops 可操作（一键更新 / 分步节点） | 观测/控制 | shipped；acquire UX P0/P0.1/P1/P3 PASS（CX-4/CX-1/CX-2）；P2 progress polish = residual PLAN only |
 | 市场 market（资金决策辅助 default / 交集 / 选股 / 感知） | L1 极简 → L2 → L3 | Tier2 evidence + Tier3 consumer | shipped subset |
 | 股票档案 / 机构档案 dossier | per-stock / per-holder 决策辅助 | Tier3 consumer | PARTIAL（机构 ~54% honesty） |
 | `#/explore` facet 图 | 计算 facet → universe → dossier | Tier3 navigation | **HAVE（CX-3）** sector_membership + flow_streak live |
