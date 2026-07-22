@@ -16,14 +16,15 @@
 
 ### Live ops note (ths_hot watermark)
 
+- Domain is **Tushare** (`source: tushare`, API `ths_hot` → `raw_tushare_ths_hot`); content is 同花顺热榜 via TuShare/tinyshare — **not** a separate THS cookie/login path.
 - `raw_tushare_ths_hot` max was **`20260720`** at session start (missing `20260721` from early-window run).
-- This session **could not** provider-drain (`missing_token`) — **ops catchup** remains: after token, `run_domain ths_hot` for `20260721` (and later days post-22:30). Mechanism no longer misclassifies pre-window vacuum as hard failure.
+- This session **could not** provider-drain (`missing_token` = TuShare auth from `.env`: `TUSHARE_TOKEN` / `TUSHARE_PRO_TOKEN` / `TS_TOKEN`) — **ops catchup** remains: with that token loaded the usual way (`chunkyctl` / `daily_update.sh` source `.env`), run normal sync (`run_domain ths_hot` or drain via `daily_update` acquire) for `20260721` (and later days post-22:30). Mechanism no longer misclassifies pre-window vacuum as hard failure.
 
 ## 2. Remaining open (owner / priority)
 
 | Item | Owner | Priority | Notes |
 |---|---|---|---|
-| ths_hot **live catchup** `20260721`(+) | ops / owner token | P1 | Code FIXED; watermark catchup needs provider auth |
+| ths_hot **live catchup** `20260721`(+) | ops / owner **TuShare** token | P1 | Code FIXED; watermark catchup needs `TUSHARE_TOKEN` (usual `.env`), not THS cookie |
 | Accept enrich full form axes (purity/vol/sub → accepted) | Tier1 publish | P2 | Unblocks pure accepted-only form read (hybrid stays honest until then) |
 | Optional dossier F header intersection badge | product | P3 | Plan §3.5 "later" — still deferred by design |
 | Cap E parameterized S1/S2 UI | product | P3 | Honest disabled+reason; not a silent gap |
@@ -47,7 +48,7 @@
 
 ## 4. Recommended next order
 
-1. **Ops:** token-auth `ths_hot` catchup for `20260721`+ (post-22:30); confirm continuity/group coverage ≠ 热基.
+1. **Ops:** TuShare-token (`TUSHARE_TOKEN`) `ths_hot` catchup for `20260721`+ (post-22:30); confirm continuity/group coverage ≠ 热基.
 2. **P2 (optional):** Tier1 accept enrich for `axis_purity`/`axis_vol`/`form_sub` → then thin the hybrid overlay.
 3. **Stay paused:** E/F remeasure, Optuna, Release, Type-B, S7 blanket COMPAT.
 4. **P3 polish only if owner asks:** intersection badge, trading-day SLA, Cap E S1/S2 params UI.
@@ -55,5 +56,5 @@
 ## 5. Verdict
 
 **FIXED** for the four closeout residuals (code + tests + UI + docs).  
-**PARTIAL** only on ths_hot *live watermark catchup* (provider token).  
+**PARTIAL** only on ths_hot *live watermark catchup* (TuShare `missing_token` / `.env`).  
 **Reconcile:** no hostile drift vs product/foundation plans; next work is ops catchup + owner-scheduled research, not reopening the product mandate.
