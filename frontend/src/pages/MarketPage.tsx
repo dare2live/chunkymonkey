@@ -1462,20 +1462,156 @@ function WarningsCard() {
 }
 
 // ── Cap A：资金决策辅助（Tier3 页签；与感知卡分离，保留零买卖暗示） ─────────
+// MVP floor = 潜伏象限图 (viz plan Alt1 / architecture Phase 3)；地形 hero 延后。
+
+const BEHAVIOR_DOT: Record<string, string> = {
+  latent: "#5b7a9d", // 冷灰蓝 = 潜伏（钱进价平）
+  chase: UI.up, // 涨红 = 抢筹
+  distribute: UI.down, // 跌绿 = 出货
+  unknown: UI.textFaint, // 未形成结论 — 永不画成 0
+};
+
+function latentQuadrantOption(rows: MoneyflowBoardRow[]): EChartsOption {
+  // Only plot full-window known metrics. Thin/unknown never land at (0,0).
+  const points = rows
+    .filter(
+      (r) =>
+        r.horizon.status === "known" &&
+        r.horizon.relative_ratio_pct != null &&
+        r.horizon.window_return_pct != null,
+    )
+    .map((r) => {
+      const cum = r.horizon.cum_net;
+      const absCum = cum == null || Number.isNaN(cum) ? 0 : Math.abs(cum);
+      const size = Math.max(8, Math.min(28, 8 + Math.sqrt(absCum / 1e8) * 10));
+      const beh = r.behavior.behavior;
+      return {
+        value: [r.horizon.window_return_pct as number, r.horizon.relative_ratio_pct as number, size],
+        name: r.sector_name ?? r.sector_code,
+        sector_code: r.sector_code,
+        behavior: beh,
+        behavior_zh: r.behavior.behavior_zh,
+        conclusion: r.conclusion,
+        itemStyle: { color: BEHAVIOR_DOT[beh] ?? BEHAVIOR_DOT.unknown, opacity: beh === "unknown" ? 0.45 : 0.85 },
+      };
+    });
+
+  return {
+    animationDuration: 280,
+    grid: { left: 56, right: 24, top: 36, bottom: 48 },
+    xAxis: {
+      name: "窗口涨跌 %",
+      nameLocation: "middle",
+      nameGap: 28,
+      nameTextStyle: { color: UI.textDim, fontSize: 11 },
+      type: "value",
+      axisLabel: { color: UI.textFaint, fontSize: 11, formatter: (v: number) => `${v}%` },
+      axisLine: { lineStyle: { color: UI.border } },
+      splitLine: { lineStyle: { color: UI.borderSoft } },
+    },
+    yAxis: {
+      name: "相对净流入 %",
+      nameTextStyle: { color: UI.textDim, fontSize: 11 },
+      type: "value",
+      axisLabel: { color: UI.textFaint, fontSize: 11, formatter: (v: number) => `${v}%` },
+      axisLine: { lineStyle: { color: UI.border } },
+      splitLine: { lineStyle: { color: UI.borderSoft } },
+    },
+    tooltip: {
+      trigger: "item",
+      formatter: (p: unknown) => {
+        const d = (p as { data?: (typeof points)[number] }).data;
+        if (!d) return "";
+        const [x, y] = d.value;
+        return [
+          `<b>${d.name}</b>`,
+          `${d.behavior_zh}`,
+          `涨跌 ${x.toFixed(2)}% · 相对流入 ${y.toFixed(2)}%`,
+          d.conclusion ? d.conclusion : "未形成结论",
+        ].join("<br/>");
+      },
+    },
+    series: [
+      {
+        type: "scatter",
+        symbolSize: (val: number[]) => val[2],
+        data: points,
+        markLine: {
+          silent: true,
+          symbol: "none",
+          lineStyle: { color: UI.border, type: "dashed", width: 1 },
+          data: [{ xAxis: 0 }, { yAxis: 0 }],
+          label: { show: false },
+        },
+        markArea: {
+          silent: true,
+          data: [
+            [
+              {
+                name: "潜伏",
+                xAxis: "min",
+                yAxis: 0,
+                itemStyle: { color: "rgba(91, 122, 157, 0.07)" },
+                label: {
+                  show: true,
+                  position: "insideTopLeft",
+                  color: "#5b7a9d",
+                  fontSize: 12,
+                  fontWeight: 600,
+                },
+              },
+              { xAxis: 0, yAxis: "max" },
+            ],
+            [
+              {
+                name: "抢筹",
+                xAxis: 0,
+                yAxis: 0,
+                itemStyle: { color: "rgba(212, 52, 44, 0.05)" },
+                label: {
+                  show: true,
+                  position: "insideTopRight",
+                  color: UI.up,
+                  fontSize: 12,
+                  fontWeight: 600,
+                },
+              },
+              { xAxis: "max", yAxis: "max" },
+            ],
+          ],
+        },
+      },
+    ],
+  };
+}
 
 function MoneyflowAssistPanel() {
   const [chain, setChain] = useState<AssistChain>("dc_industry");
   const [horizon, setHorizon] = useState<AssistHorizon>(20);
+  const [drill, setDrill] = useState<DrillTarget | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const state = useFetch(
-    () => fetchMoneyflowBoard({ chain, horizon, limit: 25 }),
+    () => fetchMoneyflowBoard({ chain, horizon, limit: 50 }),
     [chain, horizon],
+  );
+
+  const unknownCount = useMemo(() => {
+    const rows = state.data?.rows ?? [];
+    return rows.filter(
+      (r) => r.horizon.status !== "known" || r.behavior.behavior === "unknown",
+    ).length;
+  }, [state.data]);
+
+  const quadrantOpt = useMemo(
+    () => (state.data ? latentQuadrantOption(state.data.rows) : null),
+    [state.data],
   );
 
   return (
     <div className="assist-panel">
       <p className="page-desc assist-disclaimer">
         决策辅助层：供应商资金不平衡代理 → 行为迹象（潜伏/抢筹/出货）。
-        非买卖指令；未经策略验证。感知页签仍保持零暗示。
+        潜伏 = 相对净流入高 × 窗口涨跌低（象限左上）。非买卖指令；未经策略验证。沪深A（含 ST）serve。
       </p>
       <div className="tab-group assist-filters">
         {(
@@ -1489,7 +1625,11 @@ function MoneyflowAssistPanel() {
             key={k}
             type="button"
             className={`btn tab${chain === k ? " active" : ""}`}
-            onClick={() => setChain(k)}
+            onClick={() => {
+              setChain(k);
+              setDrill(null);
+              setSelected(null);
+            }}
           >
             {lab}
           </button>
@@ -1501,14 +1641,18 @@ function MoneyflowAssistPanel() {
             key={h}
             type="button"
             className={`btn tab${horizon === h ? " active" : ""}`}
-            onClick={() => setHorizon(h)}
+            onClick={() => {
+              setHorizon(h);
+              setDrill(null);
+              setSelected(null);
+            }}
           >
             {h}日
           </button>
         ))}
       </div>
       <Card
-        title={`资金决策辅助 · ${chain} · ${horizon}日窗`}
+        title={`潜伏象限 · ${chain} · ${horizon}日窗`}
         extra={
           state.data ? (
             <span className="muted mono">
@@ -1519,48 +1663,112 @@ function MoneyflowAssistPanel() {
       >
         <FetchGate state={state} empty={(d) => d.rows.length === 0} emptyHint="当前链/窗口无可用板块行">
           {(d) => (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>板块</th>
-                    <th>行为</th>
-                    <th>相对比率</th>
-                    <th>窗口涨跌</th>
-                    <th>形态(证据)</th>
-                    <th>结论</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.rows.map((r: MoneyflowBoardRow) => (
-                    <tr key={r.sector_code}>
-                      <td>
-                        <div>{r.sector_name ?? r.sector_code}</div>
-                        <div className="mono muted">{r.sector_code}</div>
-                      </td>
-                      <td>
-                        <b>{r.behavior.behavior_zh}</b>
-                      </td>
-                      <td className="mono">
-                        {r.horizon.status === "known" && r.horizon.relative_ratio_pct != null
-                          ? `${r.horizon.relative_ratio_pct.toFixed(2)}%`
-                          : "未知"}
-                      </td>
-                      <td className="mono">
-                        {r.horizon.window_return_pct != null
-                          ? `${r.horizon.window_return_pct.toFixed(2)}%`
-                          : "未知"}
-                      </td>
-                      <td className="mono muted">{r.flow_regime ?? "—"}</td>
-                      <td className="assist-conclusion">
-                        {r.conclusion ?? "—"}
-                      </td>
+            <>
+              {d.status !== "ok" && (
+                <div className="state-hint">
+                  表面状态 {d.status} — 不展示假结论，等待下一轮更新。
+                </div>
+              )}
+              <div className="quadrant-legend">
+                <span><i style={{ background: BEHAVIOR_DOT.latent }} />潜伏</span>
+                <span><i style={{ background: BEHAVIOR_DOT.chase }} />抢筹</span>
+                <span><i style={{ background: BEHAVIOR_DOT.distribute }} />出货</span>
+                <span><i style={{ background: BEHAVIOR_DOT.unknown }} />未形成结论</span>
+                {unknownCount > 0 && (
+                  <span className="muted">
+                    {unknownCount} 行窗未满/未知 — 不画作 0
+                  </span>
+                )}
+              </div>
+              {quadrantOpt && (
+                <EChart
+                  option={quadrantOpt}
+                  height={380}
+                  onClick={(p) => {
+                    const data = p.data as {
+                      sector_code?: string;
+                      name?: string;
+                    } | undefined;
+                    if (!data?.sector_code) return;
+                    setSelected(data.sector_code);
+                    setDrill({
+                      chain: chain as PulseChain,
+                      code: data.sector_code,
+                      name: data.name ?? null,
+                    });
+                  }}
+                />
+              )}
+              {selected && (
+                <p className="assist-conclusion quadrant-focus">
+                  {d.rows.find((r) => r.sector_code === selected)?.conclusion ??
+                    "未形成结论"}
+                </p>
+              )}
+              {drill && <DrillPanel target={drill} onClose={() => setDrill(null)} />}
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>板块</th>
+                      <th>行为</th>
+                      <th>相对比率</th>
+                      <th>窗口涨跌</th>
+                      <th>形态(证据)</th>
+                      <th>结论</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="muted dossier-note">{d.disclaimer}</p>
-            </div>
+                  </thead>
+                  <tbody>
+                    {d.rows.map((r: MoneyflowBoardRow) => {
+                      const thin = r.horizon.status !== "known";
+                      return (
+                        <tr
+                          key={r.sector_code}
+                          className={[
+                            selected === r.sector_code ? "row-selected" : "",
+                            thin || r.behavior.behavior === "unknown" ? "row-unknown" : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
+                          onClick={() => {
+                            setSelected(r.sector_code);
+                            setDrill({
+                              chain: chain as PulseChain,
+                              code: r.sector_code,
+                              name: r.sector_name,
+                            });
+                          }}
+                          style={{ cursor: "pointer" }}
+                        >
+                          <td>
+                            <div>{r.sector_name ?? r.sector_code}</div>
+                            <div className="mono muted">{r.sector_code}</div>
+                          </td>
+                          <td>
+                            <b>{thin ? "未形成结论" : r.behavior.behavior_zh}</b>
+                          </td>
+                          <td className="mono">
+                            {!thin && r.horizon.relative_ratio_pct != null
+                              ? `${r.horizon.relative_ratio_pct.toFixed(2)}%`
+                              : "未知"}
+                          </td>
+                          <td className="mono">
+                            {!thin && r.horizon.window_return_pct != null
+                              ? `${r.horizon.window_return_pct.toFixed(2)}%`
+                              : "未知"}
+                          </td>
+                          <td className="mono muted">{r.flow_regime ?? "—"}</td>
+                          <td className="assist-conclusion">
+                            {r.conclusion ?? "未形成结论"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <p className="muted dossier-note">{d.disclaimer}</p>
+              </div>
+            </>
           )}
         </FetchGate>
       </Card>

@@ -1,6 +1,6 @@
 # Frontend complex data-viz plan — decision-assist overlay (2026-07-22)
 
-> Status: **PLAN ONLY** (no production UI shipped tonight). Evidence-only design doc.
+> Status: evidence-only / **Phase 1 MVP FIXED** (潜伏象限 shipped on `#/market` 资金决策辅助; evidence `analysis/phase3_latent_quadrant_mvp_20260722.md`). Terrain hero / Enrich still deferred.
 > Consumer anchor (§mio #10): serves the owner's **buy/sell decision** step — "哪个方向强 + 具体股" and "资金在潜伏而价格没起". Not a dashboard for its own sake.
 > Authority it obeys: `goal.md` north star (辅助买卖决策; 结论=Tier3/产品面, 不融进 Tier0); `AGENTS.md` §5 (Tier3 conclusions), §4 (PIT); backlog Cap A/C/D/F (`analysis/product_decision_assist_backlog_20260721.md`); Cap A service `services/moneyflow_assist.py`; Cap D `services/decision_intersection.py`.
 > Non-authority: does **not** re-open Optuna/Release, does **not** rewrite pulse sensing, does **not** fuse labels into accepted truth.
@@ -151,9 +151,9 @@ Net: **Primary = "Capital Terrain" as the named metaphor/hero, but its decision 
 - Decide 2.5D-vs-gl-3D from the mock, not from theory. Output = go/no-go on terrain hero.
 - **What NOT to do:** no echarts-gl dependency added to `frontend/package.json`, no route, no edge rewrite.
 
-### Phase 1 — MVP (real, the honest floor)
-- **潜伏象限图** as a new tab/panel on `#/market` (Cap C tabbed pattern), wired to `GET /decision/moneyflow/board` (already shipped). x/y/size/color from existing fields; horizon slider over 1..60; click bubble → existing `drill`/dossier.
-- Stale banner + "未形成结论" greying wired from service `status`.
+### Phase 1 — MVP (real, the honest floor) — **FIXED 2026-07-22**
+- **潜伏象限图** as a panel on `#/market` 资金决策辅助 tab, wired to `GET /decision/moneyflow/board` (already shipped). x/y/size/color from existing fields; horizon slider over 1..60; click bubble → existing `drill`.
+- Stale/unknown honesty: thin windows grey "未形成结论", never faked as 0; evidence `phase3_latent_quadrant_mvp_20260722.md`.
 - **What NOT to build:** no new backend endpoint (board already returns everything), no 3D, no new taxonomy.
 
 ### Phase 2 — Enrich
@@ -194,4 +194,4 @@ No production edge changes tonight (plan-only). No echarts-gl commitment before 
 - Owner decision needed before Phase 1: schedule this against the paused E/F remeasure track, or run parallel (it touches only frontend + read-only Tier3, non-overlapping).
 - Pointer added to `goal.md` (viz plan) — this doc is the owner for the viz-metaphor decision.
 
-Label: **PLAN — PARTIAL** (design + adversarial complete; spike mocks static-only; no production UI). Residual owner: frontend build (Phase 1) pending owner schedule.
+Label: **Phase 1 MVP FIXED** (quadrant on market assist tab). Residual owner: Enrich (terrain hero + Sankey/parcoords) only if owner schedules; kill switch intact if terrain buries values.
