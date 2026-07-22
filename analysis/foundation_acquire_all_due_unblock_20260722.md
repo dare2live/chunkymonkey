@@ -1,6 +1,8 @@
 # Foundation acquire `--all-due` unblock — 2026-07-22
 
 > Status: evidence-only
+> Label: **FIXED** (structural + live follow-through: drain/formal soft/`ths_hot` `20260721`);
+> full-chain Continuity READY still **PARTIAL** (unrelated degrade).
 > Follow-up from `foundation_ths_hot_ui_catchup_20260722.md` (`e56fc7aef`).
 > Primary path = workbench「数据更新」.
 > Adversarial: [FOR rebuild](408a0846-2920-4080-bac3-e91c36f0233c) vs
@@ -93,14 +95,54 @@ Measured from `/tmp/chunkymonkey_daily_update.log` + live PIDs:
 3. Child `python -m services.data_sources.sync_runner --all-due --drain --max-dates 30` (pid under `pipeline.run`) held `tushare_raw.duckdb` and ran heavy DuckDB work (sample peak footprint ~1.6G). Drain stdout is `subprocess.run(capture_output=True)` → parent log stays quiet until drain returns (ops residual, not architecture blocker).
 4. Contrast morning fail (`09:23`): formal `stock_st` `zero_rows` → `TIER0 BLOCK … 后续阶段未启动; exit 5` **with no `--all-due` line** — the kidnap shape this knife rebuilt away.
 
-**PARTIAL pending drain return**: formal soft/pending lines + planner `ths_hot` attempt still need post-drain log flush; do **not** interpret quiet log as “ST removed” or “all-due skipped”.
+**PARTIAL pending drain return** (superseded below): formal soft/pending lines + planner `ths_hot` attempt still need post-drain log flush; do **not** interpret quiet log as “ST removed” or “all-due skipped”.
+
+### Live follow-through @ 10:31–10:37 (peer drain handoff)
+
+Primary evidence: job API `GET /api/v3/ops/jobs/daily_update` +
+`/tmp/chunkymonkey_daily_update.log` + dated
+`/tmp/chunkymonkey_daily_update_20260722.log` (drain stdout flushed via
+`capture_output` → `_log_fh`). No CLI catchup.
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Drain terminal | **YES** | Child `--all-due --drain` 09:52:20→10:31:56; job then CLEAN→PROCESS→STORE |
+| Order: drain before formal | **PASS** | Formal daily/ST JSON only after 10:31:56 margin-skip / drain-degrade lines |
+| Formal daily soft | **PASS** | `action=pending_publish` `pre_available_after_zero_rows` for `20260722` — no `TIER0 BLOCK` / exit 5 |
+| Formal stock_st | **PASS** (live) | Vendor had rows by ~10:32 → `status=ok` batches=1 rows=209 accepted `20260722` (still membership sync, not denylist) |
+| Sibling kidnap gone | **PASS** | Chain continued clean/process/store despite acquire `check_fail` from drain residual |
+| Planner `ths_hot` | **YES** | Drain JSON + log: `domain=ths_hot` batches=2 rows=443 `last_date=20260721` `ok=true` |
+| Rows `20260721` | **YES** | `raw_tushare_ths_hot` max=`20260721`, n(`20260721`)=443; post-SLA wm=`20260721` days_ago=1 alert=false |
+| Same-day `20260722` ths_hot | **pending** (clock) | `pending_publish` / `pre_available_after_zero_rows` before `available_after=22:30` — honest, not a miss |
+| Job terminal | **DONE degraded** exit 1 | 3 degrade: drain residual (15 domains still_failed=`20260722` morning vacuum) + continuity FAIL + post-SLA alerts (margin/legacy observers) — **not** formal kidnap |
+
+Drain residual shape (honest): 42 domain results; 20 `ok`; 15 `partial` with
+`still_failed=['20260722']` (moneyflow/dc/limit/top_list/… same-day empty) →
+`ctx.degraded("sync_registry drain 有残余缺口或域错误")` — expected morning
+publish lag, not architecture regression.
+
+**Peer ST whitelist**: `analysis/hs_a_whitelist_includes_st_20260722.md` already
+**FIXED** (evidence-only) — no duplicate knife here.
+
+## Verdict (live)
+
+| Scope | Label |
+|---|---|
+| Structural rebuild (drain-first / no sibling kidnap) | **FIXED** (live) |
+| Formal soft/degrade after drain | **FIXED** (live) |
+| `ths_hot` recognize + fill `20260721` | **FIXED** (live) |
+| Full `daily_update` green / Continuity READY | **PARTIAL** (unrelated degrade: continuity + same-day vacuum domains + margin SLA) |
+
+Overall for this unblock knife live follow-through: **FIXED** on stated gates;
+full-chain exit remains degraded → do not claim Continuity READY.
 
 ## Residual
 
 - Measure real `stock_st` publish clock → raise `availability_policy.at` when known (**still sync membership**; do not drop ST from HS-A)
-- `ths_hot` live fill past `20260720` still clock/ops
+- `ths_hot` same-day `20260722` still clock-bound (`available_after=22:30`); `20260721` filled
 - holders probe empty-filter returned 0 → `provider_max=None` rewrite amp; **FIXED** bounded `UPDATE_DATE>=` probe (`f0d9389dc`)
 - Drain `capture_output` hides progress until JSON return — observability only
 - Formal hard-fail no longer aborts clean/process — intentional； continuity/SLA still fail-closed on truth
+- Same-day vacuum domains in `--all-due` (`still_failed=20260722`) drive drain degrade until vendor publish — separate from formal kidnap
 - **Hard ban**: never “fix” by excluding ST A-shares from product whitelist or stopping `stock_st` evidence sync
 - **Peer knife (do not revert)**: `analysis/hs_a_whitelist_includes_st_20260722.md` 修 population/universe denylist 误伤 ST — 与本刀编排解耦、互补；本证据只防「soft-fail ⇒ 踢 ST」误读
