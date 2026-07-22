@@ -29,6 +29,7 @@
 > **地基 UI 点击跟跑（20260721 晚）**：`analysis/foundation_daily_update_ui_click_20260721.md` — workbench 可观测性（current_activity）+ org incremental skip；click DONE degraded；RCA `foundation_daily_update_degraded_rca_20260721.md`
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 > **产品排期执行 closeout（0r.5b→5B 全量，2026-07-21 晚）**：`analysis/product_plan_execution_closeout_20260721.md` — mandate FIXED；2026-07-22 residual-clear 见 reconcile
+> **补丁跑步机判断（20260722；禁再默认开刀）**：`analysis/why_patch_treadmill_20260722.md` — 主因=CLOSED 后队列/ceiling 错位；真下一步=用产品+ops 时钟+owner 排期 E/F
 
 ## 当前 objective
 
@@ -74,7 +75,7 @@
 - **FND-GATE FIXED** — `backend/scripts/check_foundation_done.py` + `backend/config/foundation_done.yaml`；doctor/moth/CI wired；typed walls（S7 23 / org BLOCKED / Type-B defer）PASS
 - **§15-VERIFY / F8 PASS** — 连续 3 L3 刀 e0-hist→fnd-gate→section15-verify；commits/knife=1.0；pre-knife 全 true；证据 `analysis/section15_verify_20260721.md`
 
-**近端 focus**：product schedule authority = `analysis/product_plan_reeval_stock_dossier_20260721.md`。Foundation **0r.1–0r.4 FIXED**（ths_hot=`pending_publish`；live catchup ops）。**0r.5 holders lineage audit = PARTIAL DONE** — 证据 `holders_stock_dossier_lineage_audit_20260721.md`，**勿重审**。Cap E **DONE**（禁 revert）。**0r.5b / 2F / 3A+3C FIXED**。**4D FIXED**（DC∩概念∩申万三链；`decision_intersection` v1）。**5B FIXED**（+ F 共享 `form_production_read` cutover hybrid；轴标签与 live 对齐）。**Closeout residuals cleared 2026-07-22** — `plan_residual_reconcile_20260722.md`。下一步 = ops ths_hot catchup（post-22:30；非缺 token）+ owner 显式排期 E/F remeasure。仍禁 Type-B enrichment / S7 假 COMPAT / 擅自 E/F remeasure / G/H/Release / org invent。
+**近端 focus**：product schedule authority = `analysis/product_plan_reeval_stock_dossier_20260721.md`。Foundation **0r.1–0r.4 FIXED**（ths_hot=`pending_publish`；live catchup ops）。**0r.5 holders lineage audit = PARTIAL DONE** — 证据 `holders_stock_dossier_lineage_audit_20260721.md`，**勿重审**。Cap E **DONE**（禁 revert）。**0r.5b / 2F / 3A+3C FIXED**。**4D FIXED**（DC∩概念∩申万三链；`decision_intersection` v1）。**5B FIXED**（+ F 共享 `form_production_read` cutover hybrid；轴标签与 live 对齐）。**Closeout residuals cleared 2026-07-22** — `plan_residual_reconcile_20260722.md`。下一步 = **用已 ship 产品面** + ops 日更/时钟观测（含 ths_hot；非缺 token）+ owner 显式排期 E/F remeasure — 见 `why_patch_treadmill_20260722.md`；**默认禁止**再开 foundation/product「清 PARTIAL」代码刀。仍禁 Type-B enrichment / S7 假 COMPAT / 擅自 E/F remeasure / G/H/Release / org invent。
 
 **Deferred product（顺序已重评）**：0r.5b → E done → **F** → A/C → **D done** → **B done**（0r.1–0r.4 mechanism FIXED）。全量产品排期（0r.5b→5B）+ closeout residual-clear 已闭合。Defs 见 backlog；排期见 `product_plan_reeval_stock_dossier_20260721.md`；残差核对见 `plan_residual_reconcile_20260722.md`。禁 Optuna/Release/松 holdout；结论=Tier3/产品面，不融进 Tier0。
 

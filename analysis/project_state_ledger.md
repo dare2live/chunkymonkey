@@ -3129,3 +3129,9 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - Fix：`resolve_traded_on_observation_date` 不再剔除 ST；`st_member_count` 替代 `excluded_st_count`；
   `get_active_universe` 默认 `include_st=True`；policy v3→v4；MASTER §5.1 + universe_rules 文言。
 - Evidence：`analysis/hs_a_whitelist_includes_st_20260722.md`。与 acquire unblock semantic guard 互补。
+
+### 2026-07-22 — 补丁跑步机判断（禁默认再开刀）
+- Owner：体感 endless patching；问真问题 / 是否仅本仓 / 架构是否过复杂。
+- Judgment：主因=foundation/product CLOSED 后队列与 ceiling 错位；次因=编排交互边偶发真债；架构有罪=再生误读边+floor 绿幻觉，非应 greenfield。
+- Next：用产品 + ops 时钟 + owner 排期 E/F；默认禁止清 PARTIAL 代码刀。
+- Evidence：`analysis/why_patch_treadmill_20260722.md`；adversarial 576ee281 / a1c0b123。
