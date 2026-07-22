@@ -30,7 +30,7 @@ def _patch_tmp_paths(mjw, tmp_path, monkeypatch):
 
 
 def test_soft_degrade_skips_fail_notification(tmp_path, monkeypatch):
-    """rc=1 + degraded flag → no osascript FAIL banner; ALERT flag still written."""
+    """rc=1 (soft_waiting_clock) → no osascript FAIL banner; ALERT flag still written."""
     mjw = _load_wrapper()
     osascript_calls: list[list[str]] = []
 
@@ -43,15 +43,14 @@ def test_soft_degrade_skips_fail_notification(tmp_path, monkeypatch):
 
     monkeypatch.setattr(mjw.subprocess, "run", fake_run)
     _patch_tmp_paths(mjw, tmp_path, monkeypatch)
-    (tmp_path / "chunkymonkey_ALERT_daily_update_degraded.flag").write_text(
-        "[t] sync_registry drain residual\n", encoding="utf-8"
-    )
+    # Isolate from any live data/reports/daily_*.json (stale soft must not matter).
+    monkeypatch.setattr(mjw, "_load_run_outcome", lambda *_a, **_k: None)
     monkeypatch.setattr(sys, "argv", ["manual_job_wrapper.py", "daily_update", "true"])
     assert mjw.main() == 1
     assert (tmp_path / "chunkymonkey_ALERT_daily_update.flag").exists()
     assert osascript_calls == []
     log_text = (tmp_path / "chunkymonkey_daily_update.log").read_text(encoding="utf-8")
-    assert "soft-degrade rc=1: skip FAIL notification" in log_text
+    assert "soft_waiting_clock: skip FAIL notification" in log_text
 
 
 def test_hard_fail_still_notifies(tmp_path, monkeypatch):
@@ -68,7 +67,50 @@ def test_hard_fail_still_notifies(tmp_path, monkeypatch):
 
     monkeypatch.setattr(mjw.subprocess, "run", fake_run)
     _patch_tmp_paths(mjw, tmp_path, monkeypatch)
+    # Stale soft report (exit_code=1) must not suppress hard rc=5 FAIL banner.
+    monkeypatch.setattr(
+        mjw,
+        "_load_run_outcome",
+        lambda *_a, **_k: {
+            "run_outcome": "soft_waiting_clock",
+            "run_outcome_label": "等时钟 / 软观测",
+            "report_path": "/tmp/stale.json",
+            "exit_code": 1,
+        },
+    )
     monkeypatch.setattr(sys, "argv", ["manual_job_wrapper.py", "daily_update", "true"])
     assert mjw.main() == 5
     assert len(osascript_calls) == 1
     assert "job FAIL" in osascript_calls[0][2]
+
+
+def test_matching_report_outcome_skips_fail(tmp_path, monkeypatch):
+    """Report run_outcome_exit_code==rc → outcome-keyed soft skip."""
+    mjw = _load_wrapper()
+    osascript_calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        cmd = list(cmd)
+        if cmd and Path(cmd[0]).name == "osascript":
+            osascript_calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0)
+        return subprocess.CompletedProcess(cmd, 1)
+
+    monkeypatch.setattr(mjw.subprocess, "run", fake_run)
+    _patch_tmp_paths(mjw, tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        mjw,
+        "_load_run_outcome",
+        lambda *_a, **_k: {
+            "run_outcome": "soft_waiting_clock",
+            "run_outcome_label": "等时钟 / 软观测",
+            "report_path": str(tmp_path / "daily_20260722.json"),
+            "exit_code": 1,
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["manual_job_wrapper.py", "daily_update", "true"])
+    assert mjw.main() == 1
+    assert osascript_calls == []
+    log_text = (tmp_path / "chunkymonkey_daily_update.log").read_text(encoding="utf-8")
+    assert "soft_waiting_clock: skip FAIL notification" in log_text
+    assert "report=" in log_text

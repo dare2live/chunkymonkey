@@ -210,10 +210,32 @@ export function WorkbenchPage() {
   const alerts = activeAlertNames(status?.alert_flags);
   const tail = status?.log_tail ?? [];
   const activity = deriveActivityFallback(status);
+  const runOutcome = status?.run_outcome ?? null;
+  const softWaiting = runOutcome === "soft_waiting_clock";
+  const hardFail = runOutcome === "hard_fail";
+  // Soft waiting must never surface as red FAIL / 阻断 (plan §C2).
   const blocking =
-    status?.alert_summary ||
-    activity?.blocking_reason ||
-    (alerts.length ? `flag: ${alerts.join(", ")}` : null);
+    hardFail
+      ? status?.alert_summary ||
+        activity?.blocking_reason ||
+        (alerts.length ? `flag: ${alerts.join(", ")}` : "hard_fail")
+      : softWaiting
+        ? null
+        : activity?.blocking_reason ||
+          (runOutcome ? null : status?.alert_summary) ||
+          (!runOutcome && alerts.length ? `flag: ${alerts.join(", ")}` : null);
+
+  const activityTone = jobLooksActive(status)
+    ? "ops-activity ops-activity-live"
+    : hardFail
+      ? "ops-activity ops-activity-fail"
+      : softWaiting
+        ? "ops-activity ops-activity-soft"
+        : blocking
+          ? "ops-activity ops-activity-alert"
+          : runOutcome === "success"
+            ? "ops-activity ops-activity-ok"
+            : "ops-activity";
 
   return (
     <div className="page">
@@ -259,7 +281,24 @@ export function WorkbenchPage() {
       {actionError && (
         <div className="banner-warn">触发失败: {actionError}</div>
       )}
-      {blocking && !jobLooksActive(status) && tab === "oneclick" && (
+      {softWaiting && !jobLooksActive(status) && tab === "oneclick" && (
+        <div className="banner-soft">
+          等时钟 / 软观测（非 FAIL）: {status?.run_outcome_label || "soft_waiting_clock"}
+          {status?.run_outcome_reason ? ` · ${status.run_outcome_reason}` : ""}
+          {alerts.length > 0
+            ? ` （doctor flag 仍在: ${alerts.join(", ")} — 观测用，非硬阻断）`
+            : null}
+        </div>
+      )}
+      {hardFail && !jobLooksActive(status) && tab === "oneclick" && (
+        <div className="banner-fail">
+          硬失败: {blocking}
+          {alerts.length > 0
+            ? ` （${alerts.join(", ")} — 修好后成功跑会自清，或手工清 /tmp flag）`
+            : null}
+        </div>
+      )}
+      {!softWaiting && !hardFail && blocking && !jobLooksActive(status) && tab === "oneclick" && (
         <div className="banner-warn">
           阻断 / 告警: {blocking}
           {alerts.length > 0
@@ -278,15 +317,7 @@ export function WorkbenchPage() {
           title="数据更新"
           extra={<span className="mono">{statusLabel(status)}</span>}
         >
-          <div
-            className={
-              jobLooksActive(status)
-                ? "ops-activity ops-activity-live"
-                : blocking
-                  ? "ops-activity ops-activity-alert"
-                  : "ops-activity"
-            }
-          >
+          <div className={activityTone}>
             <div className="ops-activity-label">当前活动</div>
             <div className="ops-activity-summary">{activity?.summary ?? "—"}</div>
             {activity?.progress_line && (
@@ -294,6 +325,9 @@ export function WorkbenchPage() {
             )}
             <div className="ops-activity-meta mono">
               阶段={activity?.phase_label ?? "—"}
+              {" · "}
+              run_outcome={runOutcome ?? "—"}
+              {status?.report_date ? ` · report=${status.report_date}` : ""}
               {" · "}
               日志更新={formatLogMtime(status?.log_mtime ?? null)}
               {activity?.log_age_s != null ? `（${Math.floor(activity.log_age_s)}s 前）` : ""}

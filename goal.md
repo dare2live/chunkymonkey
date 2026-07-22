@@ -30,7 +30,7 @@
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 > **产品排期执行 closeout（0r.5b→5B 全量，2026-07-21 晚）**：`analysis/product_plan_execution_closeout_20260721.md` — mandate FIXED；2026-07-22 residual-clear 见 reconcile
 > **补丁跑步机判断（20260722；禁再默认开刀）**：`analysis/why_patch_treadmill_20260722.md` — 主因=CLOSED 后队列/ceiling 错位；真下一步=用产品+ops 时钟+owner 排期 E/F
-> **跑步机第一原理架构修复方案（20260722；控制面/ops/product ceiling）**：`analysis/architecture_fix_treadmill_first_principles_20260722.md` — 三时钟（code/data-clock/usage）各 typed 真话；`run_outcome` ∈ {success/soft_waiting_clock/hard_fail} 单一真相对象；FND-GATE=「地基闭合」唯一 acceptor；**ops 残差默认非刀**（开 foundation/product 刀须 cite owner block ∨ named consumer ∨ 轴①失败 gate）。**PLAN**：Phase 0=doc+指针（本轮）；Phase 1 outcome-model / Phase 3 viz MVP / Phase 4 E-F remeasure 需 owner 排期；**本轮无生产重写**
+> **跑步机第一原理架构修复方案（20260722；控制面/ops/product ceiling）**：`analysis/architecture_fix_treadmill_first_principles_20260722.md` — 三时钟（code/data-clock/usage）各 typed 真话；`run_outcome` ∈ {success/soft_waiting_clock/hard_fail} 单一真相对象；FND-GATE=「地基闭合」唯一 acceptor；**ops 残差默认非刀**。Phase 0 PLAN + **Phase 1 FIXED** — `analysis/phase1_run_outcome_20260722.md`；Phase 3 viz MVP / Phase 4 E-F 仍需 owner 排期；Phase 2 仅第二次真 kidnap 触发
 
 ## 当前 objective
 

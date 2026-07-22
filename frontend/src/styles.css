@@ -311,6 +311,25 @@ td.holder-name.clickable {
   margin-bottom: 10px;
 }
 
+/* Typed run_outcome banners — soft ≠ FAIL (plan §C2) */
+.banner-soft {
+  background: rgba(160, 106, 0, 0.07);
+  border: 1px solid rgba(160, 106, 0, 0.35);
+  color: var(--warn);
+  border-radius: 5px;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+}
+
+.banner-fail {
+  background: rgba(212, 52, 44, 0.08);
+  border: 1px solid rgba(212, 52, 44, 0.4);
+  color: var(--up);
+  border-radius: 5px;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+}
+
 /* 卡内小节标题 (双栏/三栏子块) */
 .sub-head {
   margin: 0 0 8px;
@@ -981,6 +1000,21 @@ select:focus {
 .ops-activity-alert {
   border-color: rgba(160, 106, 0, 0.45);
   background: rgba(160, 106, 0, 0.07);
+}
+
+.ops-activity-soft {
+  border-color: rgba(160, 106, 0, 0.45);
+  background: rgba(160, 106, 0, 0.07);
+}
+
+.ops-activity-fail {
+  border-color: rgba(212, 52, 44, 0.5);
+  background: rgba(212, 52, 44, 0.08);
+}
+
+.ops-activity-ok {
+  border-color: rgba(46, 125, 50, 0.4);
+  background: rgba(46, 125, 50, 0.06);
 }
 
 .ops-activity-label {

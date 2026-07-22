@@ -17,6 +17,10 @@ log = logging.getLogger(__name__)
 
 ALERT_KEYS = ("sla_warn", "kpi_anomaly", "leakage_red")
 
+# Outcome-keyed macOS policy (plan §C2). Replaces --skip-macos transitional hack.
+_SOFT_WAITING = "soft_waiting_clock"
+_SUCCESS = "success"
+
 
 def _truthy(value: Any) -> bool:
     if isinstance(value, bool):
@@ -95,6 +99,7 @@ def _body(report: dict[str, Any], active: list[str]) -> str:
     lines = [
         f"Report: {report.get('_report_path', '-')}",
         f"Active alerts: {', '.join(active)}",
+        f"run_outcome: {report.get('run_outcome', '-')}",
     ]
     sla_summary = report.get("sla_summary")
     if isinstance(sla_summary, dict):
@@ -142,6 +147,14 @@ def _instantiate_drivers(
     return drivers
 
 
+def macos_enabled_for_outcome(outcome: str | None) -> bool:
+    """macOS channel policy keyed by typed run_outcome (plan §C2)."""
+    value = str(outcome or "").strip()
+    if value in {_SUCCESS, _SOFT_WAITING}:
+        return False
+    return True
+
+
 def dispatch_report(
     report_path: str | Path,
     *,
@@ -149,9 +162,15 @@ def dispatch_report(
     email_config: dict[str, Any] | None = None,
     slack_config: dict[str, Any] | None = None,
     macos_config: dict[str, Any] | None = None,
+    outcome: str | None = None,
 ) -> bool:
     trigger_config = trigger_config or load_trigger_config()
     report = _load_report(report_path)
+    resolved_outcome = outcome if outcome is not None else report.get("run_outcome")
+    if str(resolved_outcome or "") == _SUCCESS:
+        log.info("run_outcome=success — skip all notification channels report=%s", report_path)
+        return False
+
     alerts = extract_alerts(report, trigger_config)
     active = [key for key, value in alerts.items() if value]
     if not active:
@@ -162,11 +181,24 @@ def dispatch_report(
     severity = _severity_for(active, trigger_config)
     subject = _subject(report, active)
     body = _body(report, active)
+
+    # Outcome-keyed: soft_waiting_clock / success never use macOS here
+    # (store owns the single observation banner for soft).
+    effective_macos = macos_config
+    if effective_macos is None and not macos_enabled_for_outcome(
+        None if resolved_outcome is None else str(resolved_outcome)
+    ):
+        effective_macos = {"enabled": False}
+        log.info(
+            "run_outcome=%s — macos channel disabled (outcome-keyed coalesce)",
+            resolved_outcome,
+        )
+
     drivers = _instantiate_drivers(
         channels,
         email_config=email_config,
         slack_config=slack_config,
-        macos_config=macos_config,
+        macos_config=effective_macos,
     )
     sent_any = False
     for driver in drivers:
@@ -179,16 +211,29 @@ def main() -> int:
     parser.add_argument("--report", required=True, help="Daily JSON report path")
     parser.add_argument("--config", default=None, help="Trigger config YAML path")
     parser.add_argument(
+        "--outcome",
+        default=None,
+        help="Typed run_outcome override (success|soft_waiting_clock|hard_fail)",
+    )
+    parser.add_argument(
         "--skip-macos",
         action="store_true",
-        help="Skip macOS channel (soft-degrade runs already show one coalesced banner)",
+        help="Deprecated transitional flag; prefer --outcome soft_waiting_clock",
     )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
     config = load_trigger_config(args.config)
+    outcome = args.outcome
+    if args.skip_macos and not outcome:
+        outcome = _SOFT_WAITING
     macos_config = {"enabled": False} if args.skip_macos else None
-    dispatch_report(args.report, trigger_config=config, macos_config=macos_config)
+    dispatch_report(
+        args.report,
+        trigger_config=config,
+        macos_config=macos_config,
+        outcome=outcome,
+    )
     return 0
 
 

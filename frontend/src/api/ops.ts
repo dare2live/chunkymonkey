@@ -28,6 +28,9 @@ export interface DuePlanPreview {
   error?: string;
 }
 
+/** Typed daily_update outcome — SSOT from data/reports/daily_*.json (plan §C2). */
+export type RunOutcome = "success" | "soft_waiting_clock" | "hard_fail";
+
 export interface OpsJobStatus {
   job: string;
   label: string;
@@ -43,6 +46,11 @@ export interface OpsJobStatus {
   log_mtime: number | null;
   current_activity?: OpsJobActivity | null;
   due_plan?: DuePlanPreview | null;
+  run_outcome?: RunOutcome | null;
+  run_outcome_label?: string | null;
+  run_outcome_reason?: string | null;
+  report_path?: string | null;
+  report_date?: string | null;
 }
 
 export interface OpsJobRunResp {
@@ -164,11 +172,12 @@ export function deriveActivityFallback(s: OpsJobStatus | null | undefined): OpsJ
     ["process", "③ 加工 PROCESS", /③\s*加工|PROCESS/],
     ["store", "④ 存储 STORE", /④\s*存储|post-acquire Store/i],
     ["preflight", "预检 preflight", /Preflight|Sync execution policy|Calendar foundation|Authorization/i],
-    ["fail", "失败 / 阻断", /PREFLIGHT BLOCK|FAIL rc=|DEGRADED:/],
+    ["fail", "硬失败 / 阻断", /PREFLIGHT BLOCK|AUTH BLOCK|TIER0 BLOCK|WRITER BLOCK|FAIL rc=[2-5]|HARD_FAIL/i],
+    ["soft_waiting", "等时钟 / 软观测", /soft_waiting_clock|SOFT_WAITING|pending_publish|DONE soft_waiting/i],
   ];
   for (const line of [...run].reverse()) {
     for (const [id, label, re] of checks) {
-      if (active && id === "fail") continue;
+      if (active && (id === "fail" || id === "soft_waiting")) continue;
       if (re.test(line)) {
         phase = id;
         phaseLabel = label;
@@ -183,11 +192,26 @@ export function deriveActivityFallback(s: OpsJobStatus | null | undefined): OpsJ
   }
 
   let summary: string;
+  let blocking: string | null = s.alert_summary ?? null;
   if (active) {
     summary = `正在: ${phaseLabel}`;
     if (s.owner) summary += ` · writer=${s.owner}`;
     if (s.owner_pid != null) summary += ` pid=${s.owner_pid}`;
     if (stale) summary += ` · 日志已 ${Math.floor(age || 0)}s 无新行（进程仍在）`;
+  } else if (s.run_outcome === "hard_fail") {
+    summary = `硬失败: ${s.run_outcome_label || "hard_fail"}`;
+    phase = "fail";
+    phaseLabel = "硬失败";
+  } else if (s.run_outcome === "soft_waiting_clock") {
+    summary = `等时钟 / 软观测: ${s.run_outcome_label || "soft_waiting_clock"}`;
+    phase = "soft_waiting";
+    phaseLabel = "等时钟 / 软观测";
+    blocking = null; // never paint soft wait as FAIL
+  } else if (s.run_outcome === "success") {
+    summary = "最近成功 · run_outcome=success";
+    phase = "ok";
+    phaseLabel = "成功";
+    blocking = null;
   } else if (s.alert_summary) {
     summary = `告警: ${s.alert_summary}`;
     phase = "alert";
@@ -205,7 +229,7 @@ export function deriveActivityFallback(s: OpsJobStatus | null | undefined): OpsJ
     progress_line: progress ? progress.slice(0, 320) : null,
     log_age_s: age != null ? Math.round(age * 10) / 10 : null,
     stale_log: stale,
-    blocking_reason: s.alert_summary ?? null,
+    blocking_reason: blocking,
   };
 }
 

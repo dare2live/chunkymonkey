@@ -9,9 +9,16 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 from .context import REPO, PipelineContext
 from .preflight import run_watermark_sla_check
+from .run_outcome import (
+    OUTCOME_HARD_FAIL,
+    OUTCOME_SOFT_WAITING,
+    OUTCOME_SUCCESS,
+    derive_run_outcome,
+)
 
 
 def run_store(ctx: PipelineContext) -> None:
@@ -44,28 +51,33 @@ def run_store(ctx: PipelineContext) -> None:
             f"post-acquire watermark SLA 检查器 crash (exit {sla_returncode}) — 最终 SLA 失明"
         )
 
-    # Step 5: data-health 报告 + 告警送达
-    _write_report_and_alert(ctx)
-
-    # degraded 汇总送达: 软降级唯一 macOS 横幅 (wrapper 对 rc=1+degraded flag 不再弹 FAIL)
-    _degraded_summary(ctx)
+    # Step 5: data-health 报告 + outcome-keyed 告警送达
+    write_report_and_alert(ctx)
 
 
-def _write_report_and_alert(ctx: PipelineContext) -> None:
-    ctx.log("--- Report (data-health) ---")
+def write_report_and_alert(
+    ctx: PipelineContext,
+    *,
+    hard_exit_code: int | None = None,
+) -> dict[str, Any]:
+    """Write daily_*.json (incl. typed run_outcome) and dispatch by outcome.
+
+    Callable from store (full chain) and from run.py early hard exits so
+    wrapper/UI always have a machine-readable truth object.
+    """
+    ctx.log("--- Report (data-health + run_outcome) ---")
     (REPO / "data/reports").mkdir(parents=True, exist_ok=True)
     (REPO / "data/audit").mkdir(parents=True, exist_ok=True)
     report_json = REPO / f"data/reports/daily_{ctx.date}.json"
     preflight_sla_report = REPO / f"data/audit/watermark_sla_before_{ctx.date}.json"
     sla_report = REPO / f"data/audit/watermark_sla_{ctx.date}.json"
 
-    # 2026-07-10 修报告脱钩（历史证据=analysis/gap_root_cause_20260708.md 第四轮节）:
-    # 原四阶段硬编码 "OK" 不读任何真实状态 — 任何 degraded 甚至整段阶段未跑, 报告照写 OK。
-    # 改为整体口径: degraded_msgs 非空 = DEGRADED_PARTIAL(逐阶段归因由 manifest 的
-    # pipeline.stage.* check_pass/check_fail 承担, 报告不重复造第二套归因逻辑, 只保证
-    # "有问题时报告绝不显示全 OK"这条底线)。
     _has_degraded = len(ctx.degraded_msgs) > 0
-    output = {
+    outcome_info = derive_run_outcome(
+        ctx.degraded_msgs,
+        hard_exit_code=hard_exit_code,
+    )
+    output: dict[str, Any] = {
         "date": ctx.date,
         "dry_run": int(ctx.dry),
         "log": str(ctx.log_path),
@@ -82,6 +94,12 @@ def _write_report_and_alert(ctx: PipelineContext) -> None:
         },
         "degraded_total": len(ctx.degraded_msgs),
         "degraded_msgs": list(ctx.degraded_msgs)[:20],
+        # Typed SSOT — exit/wrapper/notify/UI render this (plan §C2).
+        "run_outcome": outcome_info["run_outcome"],
+        "run_outcome_label": outcome_info["run_outcome_label"],
+        "run_outcome_reason": outcome_info["run_outcome_reason"],
+        "run_outcome_exit_code": outcome_info["exit_code"],
+        "run_outcome_classified": outcome_info["classified"][:20],
     }
     alert_flags = {"sla_warn": False}
 
@@ -97,71 +115,119 @@ def _write_report_and_alert(ctx: PipelineContext) -> None:
         except Exception as e:  # noqa: BLE001
             output["sla_summary"] = {"error": str(e)}
 
-    # regime verdict 旧块已删 (2026-06-23 重设计): services.strategies.regime.regime_state 在地基-reset
-    # 时删除 (只剩 .pyc), 旧 daily_update report 的 regime 字段自 reset 起恒为 {error} = 死代码。
-    # regime 旧 owner (dossier regime.py / market_perception.regime_engine) 已随重建全删; 未来 regime =
-    # 市场感知引擎职责 (market_pulse, master plan B4), 不在本数据底座管线职责内。
-
     output["alert_flags"] = alert_flags
     output.update(alert_flags)
     report_json.write_text(json.dumps(output, indent=2, ensure_ascii=False, default=str))
-    ctx.log(f"Report written: {report_json}")
+    ctx.log(
+        f"Report written: {report_json} "
+        f"run_outcome={output['run_outcome']} "
+        f"reason={output['run_outcome_reason']}"
+    )
 
-    # 告警送达 (SLA stale = 数据断流, 必须送达)。软降级路径会再发一条 coalesced
-    # macOS banner (_degraded_summary)，故此处跳过 macos，避免 WARN+降级+FAIL 三连炸。
+    _dispatch_by_outcome(ctx, report_json, output)
+    _outcome_summary_banner(ctx, output)
+    return output
+
+
+def _dispatch_by_outcome(
+    ctx: PipelineContext,
+    report_json: Path,
+    output: dict[str, Any],
+) -> None:
+    """Outcome-keyed notification: no --skip-macos heuristic.
+
+    success → silent
+    soft_waiting_clock → non-macos channels only (one observation banner separately)
+    hard_fail → wrapper owns the single FAIL macOS banner (no store spam)
+    """
+    outcome = str(output.get("run_outcome") or "")
+    if outcome == OUTCOME_SUCCESS:
+        ctx.log("run_outcome=success — notification silent")
+        return
+    if outcome == OUTCOME_HARD_FAIL:
+        ctx.log("run_outcome=hard_fail — store skips dispatch (wrapper FAIL owns notify)")
+        return
+
     active = [k for k in ("sla_warn",) if bool(output.get(k))]
-    if active:
-        dispatch_cmd = [
-            sys.executable,
-            "-m",
-            "backend.services.notification.dispatcher",
-            "--report",
-            str(report_json),
-        ]
-        if _has_degraded:
-            dispatch_cmd.append("--skip-macos")
-            ctx.log(
-                f"Alerts present (active={','.join(active)}); "
-                "dispatching notification (macos coalesced into degraded banner)"
-            )
-        else:
-            ctx.log(f"Alerts present (active={','.join(active)}); dispatching notification")
-        proc = subprocess.run(
-            dispatch_cmd,
-            cwd=str(REPO), capture_output=True, text=True, env=ctx._subprocess_env(),
-            pass_fds=ctx._subprocess_pass_fds())
-        if ctx._log_fh:
-            ctx._log_fh.write((proc.stdout or "") + (proc.stderr or "")); ctx._log_fh.flush()
-        if proc.returncode != 0:
-            ctx.degraded("notification dispatch failed")
-    else:
-        ctx.log("No notification alerts")
+    if not active:
+        ctx.log("No notification alerts (sla_warn off)")
+        return
+
+    # Soft waiting: observation banner is the single macOS surface.
+    dispatch_cmd = [
+        sys.executable,
+        "-m",
+        "backend.services.notification.dispatcher",
+        "--report",
+        str(report_json),
+        "--outcome",
+        OUTCOME_SOFT_WAITING,
+    ]
+    ctx.log(
+        f"Alerts present (active={','.join(active)}); "
+        "dispatching non-macos (soft_waiting_clock → observation banner owns macOS)"
+    )
+
+    proc = subprocess.run(
+        dispatch_cmd,
+        cwd=str(REPO), capture_output=True, text=True, env=ctx._subprocess_env(),
+        pass_fds=ctx._subprocess_pass_fds())
+    if ctx._log_fh:
+        ctx._log_fh.write((proc.stdout or "") + (proc.stderr or ""))
+        ctx._log_fh.flush()
+    if proc.returncode != 0:
+        ctx.degraded("notification dispatch failed")
 
 
-def _degraded_summary(ctx: PipelineContext) -> None:
+def _outcome_summary_banner(ctx: PipelineContext, output: dict[str, Any]) -> None:
+    """At most one macOS observation banner for soft_waiting_clock; hard via wrapper."""
     from .context import DEGRADED_FLAG
-    if DEGRADED_FLAG.exists():
-        msgs = DEGRADED_FLAG.read_text().strip().splitlines()
-        n = len(msgs)
-        ctx.log(f"DEGRADED SUMMARY: 本次 {n} 步降级 (明细 {DEGRADED_FLAG}):")
-        for m in msgs:
-            ctx.log(f"  {m}")
-        # Pipeline exit 1 still writes ALERT_<job>.flag via manual_job_wrapper, but
-        # wrapper skips the FAIL banner when this degraded flag is present.
-        sla_hint = ""
-        try:
-            report = json.loads((REPO / f"data/reports/daily_{ctx.date}.json").read_text())
-            if report.get("sla_warn") or (report.get("alert_flags") or {}).get("sla_warn"):
-                stale = (report.get("sla_summary") or {}).get("stale_sources") or []
-                sla_hint = f"; SLA stale={','.join(str(s) for s in stale[:4])}" if stale else "; SLA warn"
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            subprocess.run(["osascript", "-e",
-                            f'display notification "daily_update {n} 步降级{sla_hint}, '
-                            f'详见 ALERT flag / data/reports/daily_{ctx.date}.json" '
-                            f'with title "ChunkyMonkey degraded"'], capture_output=True)
-        except Exception:  # noqa: BLE001
-            pass
-    else:
+
+    outcome = str(output.get("run_outcome") or "")
+    if outcome == OUTCOME_SUCCESS:
         ctx.log("degraded: 0 步")
+        return
+    if outcome == OUTCOME_HARD_FAIL:
+        # Wrapper owns the single FAIL notification (rc∈{2,3,4,5}).
+        ctx.log(
+            f"run_outcome=hard_fail — skip store observation banner "
+            f"(wrapper FAIL owns macOS; msgs={len(ctx.degraded_msgs)})"
+        )
+        return
+    if outcome != OUTCOME_SOFT_WAITING:
+        return
+
+    msgs = (
+        DEGRADED_FLAG.read_text().strip().splitlines()
+        if DEGRADED_FLAG.exists()
+        else list(ctx.degraded_msgs)
+    )
+    n = len(msgs) or int(output.get("degraded_total") or 0)
+    ctx.log(f"SOFT_WAITING SUMMARY: 本次 {n} 步软观测 (明细 {DEGRADED_FLAG}):")
+    for m in msgs:
+        ctx.log(f"  {m}")
+    sla_hint = ""
+    try:
+        if output.get("sla_warn") or (output.get("alert_flags") or {}).get("sla_warn"):
+            stale = (output.get("sla_summary") or {}).get("stale_sources") or []
+            sla_hint = (
+                f"; SLA stale={','.join(str(s) for s in stale[:4])}"
+                if stale
+                else "; SLA warn"
+            )
+    except Exception:  # noqa: BLE001
+        pass
+    label = output.get("run_outcome_label") or "等时钟 / 软观测"
+    try:
+        subprocess.run(
+            [
+                "osascript",
+                "-e",
+                f'display notification "daily_update {label} · {n} 项{sla_hint}, '
+                f'见 data/reports/daily_{ctx.date}.json" '
+                f'with title "ChunkyMonkey soft_waiting_clock"',
+            ],
+            capture_output=True,
+        )
+    except Exception:  # noqa: BLE001
+        pass

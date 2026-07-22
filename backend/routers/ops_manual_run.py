@@ -188,7 +188,15 @@ _PHASE_PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
     ("clean", "② 清洗/派生 CLEAN", re.compile(r"②\s*清洗|CLEAN|derive|land_then_accept|accept_", re.I)),
     ("process", "③ 加工 PROCESS", re.compile(r"③\s*加工|PROCESS")),
     ("store", "④ 存储 STORE", re.compile(r"④\s*存储|=== .*STORE|post-acquire Store", re.I)),
-    ("fail", "失败 / 阻断", re.compile(r"PREFLIGHT BLOCK|FAIL rc=|DEGRADED:|scope_blocked", re.I)),
+    # hard_fail markers only — soft DEGRADED / soft_waiting_clock must not paint red FAIL
+    ("fail", "硬失败 / 阻断", re.compile(
+        r"PREFLIGHT BLOCK|AUTH BLOCK|TIER0 BLOCK|WRITER BLOCK|FAIL rc=[2-5]|scope_blocked|HARD_FAIL",
+        re.I,
+    )),
+    ("soft_waiting", "等时钟 / 软观测", re.compile(
+        r"soft_waiting_clock|SOFT_WAITING|pending_publish|DONE soft_waiting",
+        re.I,
+    )),
 )
 
 
@@ -282,9 +290,39 @@ def _alert_summary(flag_path: Path) -> str | None:
     if not text:
         return flag_path.name
     for line in text.splitlines():
-        if "PREFLIGHT BLOCK" in line or "DEGRADED:" in line or "FAIL rc=" in line:
+        if (
+            "PREFLIGHT BLOCK" in line
+            or "AUTH BLOCK" in line
+            or "TIER0 BLOCK" in line
+            or "WRITER BLOCK" in line
+            or "run_outcome=" in line
+            or "FAIL rc=" in line
+            or "DEGRADED:" in line
+        ):
             return line.strip()
     return text.splitlines()[0].strip()[:240]
+
+
+def _latest_daily_report() -> dict[str, Any] | None:
+    """Read newest data/reports/daily_*.json for typed run_outcome (SSOT)."""
+    reports_dir = _REPO / "data" / "reports"
+    if not reports_dir.is_dir():
+        return None
+    candidates = sorted(
+        reports_dir.glob("daily_*.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for path in candidates[:5]:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(data, dict) and data.get("run_outcome"):
+            data = dict(data)
+            data["_report_path"] = str(path)
+            return data
+    return None
 
 
 def _slice_current_run(tail: list[str]) -> list[str]:
@@ -305,6 +343,8 @@ def _derive_current_activity(
     owner: str | None,
     owner_pid: int | None,
     alert_summary: str | None,
+    run_outcome: str | None = None,
+    run_outcome_label: str | None = None,
 ) -> dict[str, Any]:
     active = bool(writer_busy or process_hint)
     run_lines = _slice_current_run(tail)
@@ -319,8 +359,8 @@ def _derive_current_activity(
     # Walk newest→oldest; first matching line wins (so ACQUIRE beats earlier preflight).
     for line in reversed(run_lines):
         for pid, label, pat in _PHASE_PATTERNS:
-            if pid == "fail" and active:
-                continue  # prior FAIL residue must not mask live phase
+            if pid in {"fail", "soft_waiting"} and active:
+                continue  # prior residue must not mask live phase
             if pat.search(line):
                 phase_id, phase_label = pid, label
                 break
@@ -334,6 +374,7 @@ def _derive_current_activity(
         age_s = max(0.0, time.time() - float(mtime))
     stale = bool(active and age_s is not None and age_s >= _STALE_LOG_S)
 
+    blocking_reason = alert_summary
     if active:
         summary = f"正在: {phase_label}"
         if owner:
@@ -342,6 +383,26 @@ def _derive_current_activity(
             summary += f" pid={owner_pid}"
         if stale:
             summary += f" · 日志已 {int(age_s or 0)}s 无新行（进程仍在，可能长同步 / stdout 缓冲）"
+    elif run_outcome == "hard_fail":
+        summary = f"硬失败: {run_outcome_label or 'hard_fail'}"
+        if alert_summary:
+            summary += f" — {alert_summary[:120]}"
+        phase_id = "fail"
+        phase_label = "硬失败"
+        blocking_reason = alert_summary
+    elif run_outcome == "soft_waiting_clock":
+        # Amber observation — structurally not FAIL (plan §C2).
+        summary = f"等时钟 / 软观测: {run_outcome_label or 'soft_waiting_clock'}"
+        if alert_summary and "hard_fail" not in alert_summary:
+            summary += f" — {alert_summary[:120]}"
+        phase_id = "soft_waiting"
+        phase_label = "等时钟 / 软观测"
+        blocking_reason = None  # do not surface as 阻断
+    elif run_outcome == "success":
+        summary = "最近成功 · run_outcome=success"
+        phase_id = "ok"
+        phase_label = "成功"
+        blocking_reason = None
     elif alert_summary:
         summary = f"告警: {alert_summary}"
         phase_id = "alert"
@@ -358,7 +419,7 @@ def _derive_current_activity(
         "progress_line": progress[:320] if progress else None,
         "log_age_s": round(age_s, 1) if age_s is not None else None,
         "stale_log": stale,
-        "blocking_reason": alert_summary,
+        "blocking_reason": blocking_reason,
     }
 
 
@@ -436,6 +497,11 @@ def _status_payload(job: str, spec: dict[str, Any]) -> dict[str, Any]:
         tail = log.read_text(errors="ignore").splitlines()[-_LOG_TAIL_LINES:]
         mtime = log.stat().st_mtime
     alert_text = _alert_summary(fail_flag)
+    report = _latest_daily_report() if job == "daily_update" else None
+    run_outcome = str(report.get("run_outcome") or "") if report else None
+    run_outcome_label = (
+        str(report.get("run_outcome_label") or "") if report else None
+    )
     activity = _derive_current_activity(
         tail=tail,
         mtime=mtime,
@@ -444,6 +510,8 @@ def _status_payload(job: str, spec: dict[str, Any]) -> dict[str, Any]:
         owner=lock.owner,
         owner_pid=lock.owner_pid,
         alert_summary=alert_text,
+        run_outcome=run_outcome,
+        run_outcome_label=run_outcome_label,
     )
     out: dict[str, Any] = {
         "job": job,
@@ -462,6 +530,12 @@ def _status_payload(job: str, spec: dict[str, Any]) -> dict[str, Any]:
     }
     if job == "daily_update":
         out["due_plan"] = _due_plan_preview()
+        if report:
+            out["run_outcome"] = report.get("run_outcome")
+            out["run_outcome_label"] = report.get("run_outcome_label")
+            out["run_outcome_reason"] = report.get("run_outcome_reason")
+            out["report_path"] = report.get("_report_path")
+            out["report_date"] = report.get("date")
     return out
 
 
