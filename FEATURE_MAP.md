@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-22 10:28
+> Snapshot: 2026-07-22 18:11
 
 ## 1. 入口面
 
@@ -171,13 +171,13 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 9,071 | calls 边 10,610 | imports 边 3,038 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,187 | calls 边 10,847 | imports 边 3,072 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 66 |
+| services.duck_adapter | 67 |
 | services.data_sources | 26 |
 | services.universe | 21 |
 | services.data_sources.security_day_partition | 19 |
@@ -197,7 +197,7 @@
 
 | 文件 | 调用方文件数 |
 |---|---|
-| backend/services/duck_adapter.py | 31 |
+| backend/services/duck_adapter.py | 32 |
 | backend/services/institution_follow_edge_gates.py | 17 |
 | backend/services/universe.py | 17 |
 | backend/services/source_watermarks.py | 13 |

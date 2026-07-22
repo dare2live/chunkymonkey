@@ -78,6 +78,8 @@
 
 **近端 focus**：product schedule authority = `analysis/product_plan_reeval_stock_dossier_20260721.md`。Foundation **0r.1–0r.4 FIXED**。跑步机控制面 **Phases 0–3 FIXED**（`run_outcome` + drain-first 断言 + 潜伏象限 MVP）；**默认禁止**再开 foundation/product「清 PARTIAL / Continuity READY」代码刀。下一步 = **用已 ship 产品面**（含 `#/market` 潜伏象限）+ ops 日更/时钟观测 + owner 显式排期 E/F remeasure（checklist `phase4_ef_schedule_gate_honesty_20260722.md`）。仍禁 Type-B enrichment / S7 假 COMPAT / 擅自 E/F remeasure / G/H/Release / org invent / Optuna / 松 holdout / margin thaw。
 
+**Tier0B SW L1 PIT exclusivity（2026-07-22）**：**FIXED** — `v_sw_industry_pit` 合成 effective `out_date`（重分类闭合旧成员 / 同日双 L1 取较新 `built_at`），覆盖 002310/000406/000956/000817；清 `dim_stock_segment_daily` grain dup。证据见 peer drain 文 §7b + `tests/scripts/test_build_sw_industry_view.py`。残留：`test_org_holding_aif10` `:memory:` upsert 2 例失败（optional CI；非本刀；formal dual-write 路径返 0）。
+
 **Deferred product（顺序已重评）**：0r.5b → E done → **F** → A/C → **D done** → **B done**（0r.1–0r.4 mechanism FIXED）。全量产品排期（0r.5b→5B）+ closeout residual-clear 已闭合。Defs 见 backlog；排期见 `product_plan_reeval_stock_dossier_20260721.md`；残差核对见 `plan_residual_reconcile_20260722.md`。禁 Optuna/Release/松 holdout；结论=Tier3/产品面，不融进 Tier0。
 
 **护栏**：frontier=`20260721`（含 pulse sector/flow/strongest）；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；org BLOCKED 维持；**org/period 域 manual update = incremental-only**（见下裁决）；margin 禁 thaw；**市场感知/档案 serve = 沪深A 白名单含 ST**（serve filter `6afea30fc` + population denylist 纠偏见 `hs_a_whitelist_includes_st_20260722.md`）。

@@ -24,10 +24,10 @@ assertions:
     query: "SELECT count(*) FROM duckdb_tables()"
     expect: {op: ">=", value: 29}
   - id: smartmoney-size-band
-    claim: "smartmoney 当前 control/serving 库体量 0.2-6GB 带内 (B1 2026-07-21 fact_dc_member_daily ~24.4M observation-date rows 实测抬升高阈 3GB→6GB)；越界提示异常膨胀、错库或 retention 漂移，不代表项目是纯数据平台"
+    claim: "smartmoney 当前 control/serving 库体量 0.2-8GB 带内 (B1 2026-07-21 fact_dc_member_daily ~24.4M observation-date rows 抬 3GB→6GB; 2026-07-22 daily_update + segment rebuild 实测 ~6.7GB → 抬 6GB→8GB，仍单文件派生自 accepted partition 非 bloat/无 wal)；越界提示异常膨胀、错库或 retention 漂移，不代表项目是纯数据平台"
     type: file_size
     path: data/smartmoney.duckdb
-    expect: {op: between, low: 200000000, high: 6000000000}
+    expect: {op: between, low: 200000000, high: 8000000000}
   - id: calendar-floor
     claim: "交易日历起点 == 2005-01-04 (2026-06-12 扩展+七项验证 PASS; 回退 = 静默 clamp 复发)。2026-06-27 §9 拆库: dim_trading_calendar 迁 reference.duckdb, 断言库改 reference"
     type: duckdb_sql
