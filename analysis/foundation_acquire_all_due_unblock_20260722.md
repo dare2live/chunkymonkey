@@ -27,6 +27,22 @@
 触发条件（症状）：`stock_st` `available_after=09:20` 过乐观 → 09:23 仍 `zero_rows` → 硬失败。
 根因（机制）：编排器把单域失败升级为全链 abort。
 
+## Semantic guard — `stock_st` ≠ 踢出 ST（owner 2026-07-22）
+
+**本刀解的是 publish timing / acquire 编排形状，不是「产品里不要 ST」。**
+
+| 概念 | 正确语义 | 本刀禁止的误读 |
+|---|---|---|
+| `stock_st` domain | 日级 **ST membership 证据** sync（HS-A 含 ST 名） | 当作「从 universe 过滤掉 ST」 |
+| 沪深A whitelist | **保留 ST A 股**；排除仅限 **三板 / 退市整理 / B / BJ** 等非目标板 | 借 unblock 之机把 ST 踢出产品宇宙 |
+| Formal catchup soft/pending | 同日 vendor 真空 → typed soft state / sibling 不绑架 | 用「别 sync stock_st」或「ST 出白名单」当假修复 |
+| Acquire shape | 全市场按 `trade_date` 拉（`raw_evidence`）；`stock_st` 作 PIT 证据消费 | exclude-then-fetch / 先裁 ST 再请求 |
+
+Owner contract 对齐：`goal.md` Formal daily/ST 段 + `docs/MASTER_TOPLEVEL_DESIGN.md` §5.1 +
+`analysis/hs_a_whitelist_includes_st_20260722.md` — ST ∈ 沪深A 白名单；`stock_st` = membership
+证据 **不是** denylist。重建后仍须继续 sync `stock_st`；`pending_publish` / degrade 只表达
+「今日分区尚未可 published」，不改变产品宇宙边界。
+
 ## Rebuild vs patch — 裁决
 
 | Option | Claim | Verdict |
@@ -66,15 +82,25 @@
 
 ## Live verification (UI)
 
-Re-click「数据更新」after rebuild lands. Expect:
+Primary path = workbench「数据更新」(not CLI).
 
-1. Log shows `--all-due --drain` **before** formal daily/ST catchup lines
-2. Formal may print `pending_publish` / `failed`+degraded — **not** `TIER0 BLOCK … 后续阶段未启动` from formal alone before drain
-3. Planner can list/attempt `ths_hot`（wm=`20260720`）；fetch may still be pending if pre-22:30 — OK if recognized
+### Run @ 09:52 (rebuild `49e815e39` + holders probe `f0d9389dc`)
+
+Measured from `/tmp/chunkymonkey_daily_update.log` + live PIDs:
+
+1. **holders skip** (not 11m rewrite): `skip watermark_unchanged wm=20260722 provider_max=20260722`
+2. **`--all-due --drain` started at 09:52:20** — **before** any formal daily/ST catchup lines in this run
+3. Child `python -m services.data_sources.sync_runner --all-due --drain --max-dates 30` (pid under `pipeline.run`) held `tushare_raw.duckdb` and ran heavy DuckDB work (sample peak footprint ~1.6G). Drain stdout is `subprocess.run(capture_output=True)` → parent log stays quiet until drain returns (ops residual, not architecture blocker).
+4. Contrast morning fail (`09:23`): formal `stock_st` `zero_rows` → `TIER0 BLOCK … 后续阶段未启动; exit 5` **with no `--all-due` line** — the kidnap shape this knife rebuilt away.
+
+**PARTIAL pending drain return**: formal soft/pending lines + planner `ths_hot` attempt still need post-drain log flush; do **not** interpret quiet log as “ST removed” or “all-due skipped”.
 
 ## Residual
 
-- Measure real `stock_st` publish clock → raise `availability_policy.at` when known
+- Measure real `stock_st` publish clock → raise `availability_policy.at` when known (**still sync membership**; do not drop ST from HS-A)
 - `ths_hot` live fill past `20260720` still clock/ops
-- holders probe empty-filter returned 0 → `provider_max=None` rewrite amp; **FIXED** bounded `UPDATE_DATE>=` probe (measured)
+- holders probe empty-filter returned 0 → `provider_max=None` rewrite amp; **FIXED** bounded `UPDATE_DATE>=` probe (`f0d9389dc`)
+- Drain `capture_output` hides progress until JSON return — observability only
 - Formal hard-fail no longer aborts clean/process — intentional； continuity/SLA still fail-closed on truth
+- **Hard ban**: never “fix” by excluding ST A-shares from product whitelist or stopping `stock_st` evidence sync
+- **Peer knife (do not revert)**: `analysis/hs_a_whitelist_includes_st_20260722.md` 修 population/universe denylist 误伤 ST — 与本刀编排解耦、互补；本证据只防「soft-fail ⇒ 踢 ST」误读
