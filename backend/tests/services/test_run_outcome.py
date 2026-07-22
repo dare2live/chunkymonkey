@@ -201,3 +201,73 @@ def test_write_report_includes_run_outcome(tmp_path, monkeypatch):
     assert data["run_outcome_exit_code"] == 1
     assert out["run_outcome"] == OUTCOME_SOFT_WAITING
     ctx.close()
+
+
+def test_soft_banner_coalesces_identical_reclick(tmp_path, monkeypatch):
+    """Idle re-click with same soft signature must not re-spawn the macOS banner."""
+    from services.pipeline import store as store_mod
+    from services.pipeline.context import PipelineContext
+    import services.pipeline.context as ctx_mod
+
+    (tmp_path / "data" / "reports").mkdir(parents=True)
+    monkeypatch.setattr(store_mod, "REPO", tmp_path)
+    monkeypatch.setattr(ctx_mod, "REPO", tmp_path)
+    monkeypatch.setattr(ctx_mod, "DEGRADED_FLAG", tmp_path / "degraded.flag")
+
+    osascript_calls: list[list[str]] = []
+
+    def _fake_run(cmd, *a, **k):
+        if cmd and str(cmd[0]) == "osascript":
+            osascript_calls.append(cmd)
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr(store_mod.subprocess, "run", _fake_run)
+
+    def _one_run() -> str:
+        ctx = PipelineContext(date="20260722", dry=True, skip_sync=True)
+        ctx.degraded_msgs.append("sync_registry drain 有残余缺口或域错误 (见 log)")
+        ctx.degraded_msgs.append("post-acquire watermark SLA alert (见 x.json)")
+        out = store_mod.write_report_and_alert(ctx)
+        ctx.close()
+        return out["run_outcome"]
+
+    assert _one_run() == OUTCOME_SOFT_WAITING
+    assert len(osascript_calls) == 1  # first soft outcome notifies once
+    assert _one_run() == OUTCOME_SOFT_WAITING
+    assert len(osascript_calls) == 1  # identical re-click coalesced (no new banner)
+
+
+def test_soft_banner_renotifies_after_change(tmp_path, monkeypatch):
+    """A different soft signature (new degradation) re-notifies; success resets marker."""
+    from services.pipeline import store as store_mod
+    from services.pipeline.context import PipelineContext
+    import services.pipeline.context as ctx_mod
+
+    (tmp_path / "data" / "reports").mkdir(parents=True)
+    monkeypatch.setattr(store_mod, "REPO", tmp_path)
+    monkeypatch.setattr(ctx_mod, "REPO", tmp_path)
+    monkeypatch.setattr(ctx_mod, "DEGRADED_FLAG", tmp_path / "degraded.flag")
+
+    osascript_calls: list[list[str]] = []
+
+    def _fake_run(cmd, *a, **k):
+        if cmd and str(cmd[0]) == "osascript":
+            osascript_calls.append(cmd)
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr(store_mod.subprocess, "run", _fake_run)
+
+    def _run(msgs: list[str]) -> None:
+        ctx = PipelineContext(date="20260722", dry=True, skip_sync=True)
+        ctx.degraded_msgs.extend(msgs)
+        store_mod.write_report_and_alert(ctx)
+        ctx.close()
+
+    _run(["sync_registry drain 有残余缺口或域错误 (见 log)"])
+    assert len(osascript_calls) == 1
+    _run(["sync_registry drain 有残余缺口或域错误 (见 log)", "continuity/integrity 审查 FAIL"])
+    assert len(osascript_calls) == 2  # changed signature → re-notify
+    _run([])  # success clears marker
+    assert len(osascript_calls) == 2
+    _run(["sync_registry drain 有残余缺口或域错误 (见 log)"])
+    assert len(osascript_calls) == 3  # soft after success re-notifies once

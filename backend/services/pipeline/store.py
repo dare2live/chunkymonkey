@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -179,13 +180,57 @@ def _dispatch_by_outcome(
         ctx.degraded("notification dispatch failed")
 
 
-def _outcome_summary_banner(ctx: PipelineContext, output: dict[str, Any]) -> None:
-    """At most one macOS observation banner for soft_waiting_clock; hard via wrapper."""
+def _soft_banner_marker(ctx: PipelineContext) -> Path:
+    """Per-day marker persisting the last soft-outcome signature already notified.
+
+    Lives beside DEGRADED_FLAG so tests that isolate the runtime dir isolate it too.
+    """
     from .context import DEGRADED_FLAG
 
+    return DEGRADED_FLAG.parent / f"chunkymonkey_soft_banner_{ctx.date}.marker"
+
+
+def _soft_banner_signature(output: dict[str, Any]) -> str:
+    """Stable content fingerprint of a soft outcome (timestamp-free).
+
+    Two runs whose degraded reasons + SLA-stale sources are identical produce the
+    same signature, so an idle re-click with no real change is coalesced. A genuine
+    new/changed degradation produces a different signature and re-notifies.
+    Uses raw ``run_outcome_classified`` msgs (not DEGRADED_FLAG lines) precisely
+    because those carry no per-run timestamp prefix.
+    """
+    classified = output.get("run_outcome_classified") or []
+    msgs = sorted(str(c.get("msg", "")) for c in classified if isinstance(c, dict))
+    stale = sorted(str(s) for s in ((output.get("sla_summary") or {}).get("stale_sources") or []))
+    payload = json.dumps(
+        {
+            "date": output.get("date"),
+            "outcome": output.get("run_outcome"),
+            "reason": output.get("run_outcome_reason"),
+            "msgs": msgs,
+            "sla_stale": stale,
+            "sla_warn": bool(output.get("sla_warn") or (output.get("alert_flags") or {}).get("sla_warn")),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _outcome_summary_banner(ctx: PipelineContext, output: dict[str, Any]) -> None:
+    """At most one macOS observation banner PER DISTINCT soft outcome.
+
+    Coalesce (plan §C2 / 通知 truth): an idle re-click that produces the *same*
+    soft signature must not re-spawn an identical banner. Success clears the marker
+    so a later soft change re-notifies once. hard_fail → wrapper owns the banner.
+    """
+    from .context import DEGRADED_FLAG
+
+    marker = _soft_banner_marker(ctx)
     outcome = str(output.get("run_outcome") or "")
     if outcome == OUTCOME_SUCCESS:
         ctx.log("degraded: 0 步")
+        marker.unlink(missing_ok=True)  # 恢复正常 → 下次软观测重新提醒一次
         return
     if outcome == OUTCOME_HARD_FAIL:
         # Wrapper owns the single FAIL notification (rc∈{2,3,4,5}).
@@ -217,6 +262,20 @@ def _outcome_summary_banner(ctx: PipelineContext, output: dict[str, Any]) -> Non
             )
     except Exception:  # noqa: BLE001
         pass
+
+    # Coalesce identical soft outcomes (idempotent re-click de-spam).
+    signature = _soft_banner_signature(output)
+    try:
+        already = marker.read_text(encoding="utf-8").strip() if marker.exists() else ""
+    except OSError:
+        already = ""
+    if already == signature:
+        ctx.log(
+            "run_outcome=soft_waiting_clock — 与上次软观测一致, 合并通知 (不重复弹窗; "
+            f"signature={signature}; 明细见 data/reports/daily_{ctx.date}.json)"
+        )
+        return
+
     label = output.get("run_outcome_label") or "等时钟 / 软观测"
     try:
         subprocess.run(
@@ -230,4 +289,8 @@ def _outcome_summary_banner(ctx: PipelineContext, output: dict[str, Any]) -> Non
             capture_output=True,
         )
     except Exception:  # noqa: BLE001
+        pass
+    try:
+        marker.write_text(signature, encoding="utf-8")
+    except OSError:  # noqa: BLE001 — marker 写失败不影响链; 最坏下次软态多弹一条, 不吞真状态
         pass
