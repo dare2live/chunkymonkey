@@ -493,12 +493,11 @@ def _by_ts_code_batches(
     """按股循环批清单 (单股接口如 stk_factor_pro/fina_mainbz)。
 
     股票清单真相源 = services.universe.get_active_universe (单一计算点): 白名单 60/00/30/68
-    + 非退市 (K线真相源); 默认非 ST。2026-06-17 用户: 排除列表=交易日历级硬真相源, 数据拉取也走它
-    — 不拉排除股 (北交所/ST/三板/退市) 的逐股数据 (原内联 tdxhub 45日活跃+前缀 = 第二套 universe
-    定义且漏 ST 排除, 已退役)。
-    **include_st (2026-06-23)**: 域可声明 `include_st: true` 把活跃 ST 股纳入拉取 — 用于**参考/展示数据**
-    (如 top10_floatholders 十大流通股东, dossier 展示任意股含 ST; 否则 ST 股 holder 缺口致删旧源时丢数据,
-    见 analysis/非tushare源_双轨_holders_20260623.md)。策略信号类域保持默认排 ST。
+    + 非退市 (K线真相源); **默认含 ST/*ST**（沪深A）。2026-06-17 用户: 排除列表=交易日历级
+    硬真相源 — 不拉 B/BJ/三板/无K线退市股的逐股数据。owner 2026-07-22: ST 属白名单，
+    不是与 B/BJ 同类的排除板。
+    **include_st (默认 true)**: 产品/参考域拉活跃 ST；策略域可显式 `include_st: false`
+    收窄（非白名单真相）。见 analysis/hs_a_whitelist_includes_st_20260722.md。
     """
     from services.universe import get_active_universe
 
@@ -516,10 +515,10 @@ def _by_ts_code_batches(
     # ``run_domain`` resolves one live operation window before entering this
     # helper and passes its effective end.  Keeping a second eligibility lookup
     # here would let direct/explicit paths observe different clock frontiers.
-    include_st = bool(spec.get("include_st", False))
+    include_st = bool(spec.get("include_st", True))
     conn0 = _smartmoney_conn()
     try:
-        codes = get_active_universe(conn0, include_st=include_st)  # 白名单+非退市 (排除列表硬真相源); include_st 按域
+        codes = get_active_universe(conn0, include_st=include_st)  # 沪深A+活跃K线; ST 默认纳入
     finally:
         conn0.close()
 

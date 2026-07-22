@@ -1,11 +1,12 @@
 """``traded_on_observation_date`` resolver and accepted-source loaders.
 
-Formal daily project population (MASTER §5.1):
+Formal daily project population (MASTER §5.1; owner 2026-07-22):
 
 1. accepted calendar proves observation date is open;
 2. accepted nominal daily Kline supplies securities that actually traded;
-3. accepted same-day ST membership is excluded;
-4. venue/board prefixes come from one factory-owned UniversePolicy snapshot.
+3. venue/board prefixes keep 沪深A only (60/00/30/68) — **including ST/*ST**;
+4. accepted same-day ``stock_st`` is **membership evidence** (who is ST when),
+   not a denylist. B/BJ/三板 drop via board prefixes; 退市 via no nominal K.
 
 Trusted loaders read accepted partitions only.  Missing live partitions fail
 closed with ``NOT_EVALUATED`` / ``BLOCKED``.  Legacy raw/dim/qfq surfaces cannot
@@ -78,7 +79,7 @@ class ObservationMembership:
     universe_policy_id: str
     universe_policy_version: int
     universe_policy_hash: str
-    excluded_st_count: int
+    st_member_count: int
     excluded_board_count: int
 
 
@@ -399,18 +400,16 @@ def resolve_traded_on_observation_date(
         )
 
     eligible: list[str] = []
-    excluded_st = 0
     excluded_board = 0
     for ts_code in sorted(traded):
         code = str(ts_code).strip()
-        if code in st_members:
-            excluded_st += 1
-            continue
+        # ST/*ST remain 沪深A — do not denylist via stock_st membership.
         if not _board_prefix_allowed(code, policy):
             excluded_board += 1
             continue
         eligible.append(code)
 
+    st_in_universe = sum(1 for code in eligible if code in st_members)
     return ObservationMembership(
         observation_date=day,
         decision_time=cutoff,
@@ -422,7 +421,7 @@ def resolve_traded_on_observation_date(
         universe_policy_id=policy.policy_id,
         universe_policy_version=policy.policy_version,
         universe_policy_hash=policy.config_hash,
-        excluded_st_count=excluded_st,
+        st_member_count=st_in_universe,
         excluded_board_count=excluded_board,
     )
 

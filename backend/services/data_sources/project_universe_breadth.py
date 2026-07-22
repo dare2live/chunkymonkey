@@ -315,8 +315,9 @@ def _rows_in_membership(
 class BreadthShadowDayMeasure:
     """One-day shadow: MATCH = project ≡ membership-restricted proxy.
 
-    ``unfiltered`` is diagnostic only — ST/BSE/excluded-board rows make it
-    diverge from project_universe_pit by definition, not as a bug signal.
+    ``unfiltered`` is diagnostic only — BSE/excluded-board (and off-whitelist)
+    rows make it diverge from project_universe_pit by definition; ST A-shares
+    belong in the project whitelist and are not a semantic-delta driver.
     """
 
     trade_date: str

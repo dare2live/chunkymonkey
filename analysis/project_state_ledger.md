@@ -3122,3 +3122,10 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - Joins: dossier MVP dim∩can∩form∩ind **5117/5200**; holder→episode **99.3%**; holder→inst profile **54.2%**.
 - Fail-closed FIXED: dossier period streak reads same plane as rows (canonical vs stale fact).
 - Next: watermark→formal frontier; ops counter clarity; inst profile coverage honesty.
+
+### 2026-07-22 — 沪深A 白名单含 ST（population denylist 纠偏）
+
+- Owner：ST/*ST ∈ 沪深A；排除仅 B/BJ/三板/观察日无名义K；`stock_st` = membership 证据 ≠ denylist。
+- Fix：`resolve_traded_on_observation_date` 不再剔除 ST；`st_member_count` 替代 `excluded_st_count`；
+  `get_active_universe` 默认 `include_st=True`；policy v3→v4；MASTER §5.1 + universe_rules 文言。
+- Evidence：`analysis/hs_a_whitelist_includes_st_20260722.md`。与 acquire unblock semantic guard 互补。

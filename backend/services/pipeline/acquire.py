@@ -186,6 +186,10 @@ def _refresh_active_a_stock_master() -> None:
     print(f"security_master: refresh_active_a_stock_master rows={n}")
 
 
+# stock_st = day-level ST *membership evidence* for HS-A (ST names stay in
+# whitelist). Soft/pending here is publish-timing only — never "drop ST from
+# product" / exclude-then-fetch. Exclude boards = 三板/退市整理/B/BJ via
+# universe_rules, not by skipping this domain. Owner: MASTER §5.1 / goal.md.
 FORMAL_ON_DEMAND_SECURITY_DAY_DOMAINS: tuple[str, ...] = ("daily", "stock_st")
 
 

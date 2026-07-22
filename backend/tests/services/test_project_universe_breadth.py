@@ -50,7 +50,7 @@ def _membership(codes: tuple[str, ...]) -> ObservationMembership:
         universe_policy_id="traded_on_observation_date",
         universe_policy_version=1,
         universe_policy_hash="p" * 64,
-        excluded_st_count=0,
+        st_member_count=0,
         excluded_board_count=0,
     )
 

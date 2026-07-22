@@ -78,7 +78,7 @@ def _open_calendar():
 
 def test_policy_truth_sources_align_with_accepted_dataset_ids() -> None:
     policy = _policy()
-    assert policy.policy_version == 3
+    assert policy.policy_version == 4
     assert policy.trading_calendar_source == CALENDAR_DATASET_ID
     assert policy.nominal_kline_source == NOMINAL_KLINE_DATASET_ID
     assert policy.st_membership_source == ST_MEMBERSHIP_DATASET_ID
@@ -167,7 +167,8 @@ def test_live_loaders_fail_closed_when_raw_db_missing(monkeypatch) -> None:
     assert st.value.status == "NOT_EVALUATED"
 
 
-def test_resolve_excludes_st_and_wrong_board_with_injected_accepted_sources() -> None:
+def test_resolve_keeps_st_and_excludes_wrong_board_with_injected_accepted_sources() -> None:
+    """沪深A whitelist includes ST; only non-whitelist boards are dropped."""
     policy = _policy()
     kline_ref = _partition(NOMINAL_KLINE_DATASET_ID, OPEN_DAY, rows=4)
     st_ref = _partition(ST_MEMBERSHIP_DATASET_ID, OPEN_DAY, rows=1)
@@ -185,8 +186,8 @@ def test_resolve_excludes_st_and_wrong_board_with_injected_accepted_sources() ->
         st_membership_loader=lambda *_: (st_ref, st_members),
     )
 
-    assert membership.ts_codes == ("000001.SZ", "600000.SH")
-    assert membership.excluded_st_count == 1
+    assert membership.ts_codes == ("000001.SZ", "600000.SH", "600001.SH")
+    assert membership.st_member_count == 1
     assert membership.excluded_board_count == 1
     assert membership.calendar_generation_id == "cal-gen-1"
     assert membership.universe_policy_hash == policy.config_hash

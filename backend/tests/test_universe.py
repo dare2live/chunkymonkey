@@ -72,7 +72,7 @@ def test_universe_policy_snapshot_is_immutable_and_complete():
     from services.universe import UNIVERSE_POLICY
 
     assert UNIVERSE_POLICY.policy_id == "active_a_share_trading_universe"
-    assert UNIVERSE_POLICY.policy_version == 3
+    assert UNIVERSE_POLICY.policy_version == 4
     assert UNIVERSE_POLICY.allowed_board_prefixes == ("60", "00", "30", "68")
     assert UNIVERSE_POLICY.allowed_exchange_ids == ("SSE", "SZSE")
     assert [
@@ -95,7 +95,7 @@ def test_universe_policy_snapshot_is_immutable_and_complete():
     assert len(UNIVERSE_POLICY.config_hash) == 64
 
     with pytest.raises(FrozenInstanceError):
-        UNIVERSE_POLICY.policy_version = 3
+        UNIVERSE_POLICY.policy_version = 4
 
 
 def test_project_exchange_gate_rejects_bse_and_uses_injected_snapshot():
@@ -267,7 +267,7 @@ def test_sql_where_no_st():
 
 
 def test_get_active_universe(tmp_path, monkeypatch):
-    """get_active_universe returns set, exclude ST/退市 by default."""
+    """Default universe = 沪深A + recent K；含 ST/*ST；踢 BJ/无K线."""
     import duckdb
     db_path = tmp_path / "test.duckdb"
     conn = duckdb.connect(str(db_path))
@@ -298,16 +298,20 @@ def test_get_active_universe(tmp_path, monkeypatch):
 
     from services.universe import get_active_universe
     universe = get_active_universe(conn, market_conn=conn)
-    # Should keep: 600001, 000001, 300001, 688001 (4 normal stocks)
-    # Excludes: 600002 (no recent K-line), 600003+600004 (ST/*ST names), 830001 (prefix)
+    # Keep: 正常 + ST/*ST 沪深A；exclude: 无K线、BJ 前缀
     assert "600001" in universe
     assert "000001" in universe
     assert "300001" in universe
     assert "688001" in universe
-    assert "600002" not in universe  # delisted
-    assert "600003" not in universe  # ST
-    assert "600004" not in universe  # *ST
+    assert "600003" in universe  # ST remains 沪深A
+    assert "600004" in universe  # *ST remains 沪深A
+    assert "600002" not in universe  # delisted (no recent K)
     assert "830001" not in universe  # 北交所
+    # Opt-out path still available for strategy-side narrowing
+    narrowed = get_active_universe(conn, market_conn=conn, include_st=False)
+    assert "600003" not in narrowed
+    assert "600004" not in narrowed
+    assert "600001" in narrowed
     conn.close()
 
 

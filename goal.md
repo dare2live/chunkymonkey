@@ -21,10 +21,11 @@
 > **产品决策辅助 backlog（defs；E=DONE）**：`analysis/product_decision_assist_backlog_20260721.md` — A 资金流；**B 形态/阶段选股 FIXED 子集** — `analysis/capability_b_stock_screener_20260721.md`；C tabs；**D 交集最强 FIXED 子集** — `analysis/capability_d_intersection_strongest_20260721.md`；**E step cards FIXED** — `analysis/capability_e_pipeline_step_cards_20260721.md`；**F 股票档案**
 > **产品全量排期权威（20260721 重评）**：`analysis/product_plan_reeval_stock_dossier_20260721.md` — **CLOSED**：0r.1–0r.4 **FIXED**（ths_hot=`pending_publish`）+ 0r.5b→5B **FIXED**；closeout residuals cleared 2026-07-22 — `plan_residual_reconcile_20260722.md`；市场感知只沪深A serve；holders 审计 `holders_stock_dossier_lineage_audit_20260721.md`（勿重审）
 > **地基 BJ/dual-path/沪深A（20260721）**：`analysis/foundation_bj_dualpath_ashare_whitelist_20260721.md` — serve whitelist + formal continuity + share_float **FIXED**；ths_hot mechanism **FIXED**（live catchup ops）
+> **沪深A 白名单含 ST（20260722）**：`analysis/hs_a_whitelist_includes_st_20260722.md` — ST/*ST ∈ 白名单；踢 B/BJ/三板/无K；`stock_st`=membership 证据≠denylist **FIXED**
 > **残差核对（20260722）**：`analysis/plan_residual_reconcile_20260722.md` — 四项 closeout residual **FIXED**/hybrid；次序=ops ths_hot + owner E/F remeasure
 > **完整地基目标 push（20260722）**：`analysis/foundation_full_goal_push_20260722.md` — vs「一直讨论想要的」仍 **PARTIAL**；morning formal daily soft-skip + Cap E S1/S2 UI + form/机构 honesty **FIXED**；ths_hot live / pure accepted / Continuity READY 仍 open
 > **ths_hot UI catchup（20260722 晨）**：`analysis/foundation_ths_hot_ui_catchup_20260722.md` — 前端路径 PASS；Run B daily=`pending_publish` 后 **stock_st** 09:20 后仍 `zero_rows` 硬阻断 → `--all-due` 未跑；ths_hot max 仍 `20260720`
-> **acquire all-due 解阻（2026-07-22）**：`analysis/foundation_acquire_all_due_unblock_20260722.md` — formal daily/ST same-day vacuum → `pending_publish` soft-continue → `--all-due`；holders skip+heartbeat；workbench due-plan preview
+> **acquire all-due 解阻（2026-07-22）**：`analysis/foundation_acquire_all_due_unblock_20260722.md` — **FIXED** live：drain-first + formal soft；`ths_hot` `20260721`=443 rows；`20260722` pending@22:30；job DONE degraded（continuity/same-day vacuum）
 > **地基 UI 点击跟跑（20260721 晚）**：`analysis/foundation_daily_update_ui_click_20260721.md` — workbench 可观测性（current_activity）+ org incremental skip；click DONE degraded；RCA `foundation_daily_update_degraded_rca_20260721.md`
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 > **产品排期执行 closeout（0r.5b→5B 全量，2026-07-21 晚）**：`analysis/product_plan_execution_closeout_20260721.md` — mandate FIXED；2026-07-22 residual-clear 见 reconcile
@@ -49,7 +50,7 @@
 - **工作台可观测性（2026-07-21 晚）**：运行中展示 `current_activity`（阶段/进度行/日志时间/告警原因），不再只显示「更新中」；证据见 `foundation_daily_update_ui_click_20260721.md`。
 - **Capability E（2026-07-21 / 22）**：**FIXED** — workbench「分步节点」+ `GET /api/v3/ops/pipeline/nodes`；可独立跑 `pipeline_acquire|clean|process|store` + `derive_qfq`；**S1/S2 参数化 UI** `POST /api/v3/ops/pipeline/land-accept/run`（daily/stock_st）；预检仍嵌链内；一键「数据更新」仍主路径。证据 `capability_e_pipeline_step_cards_20260721.md`。
 - **完整地基 push（2026-07-22）**：formal **daily** 盘前 `zero_rows` → `pending_publish` soft-skip **已测**；相对完整目标仍 **PARTIAL** — 见 `foundation_full_goal_push_20260722.md`。form 读 typed hybrid residual；机构 deep-link `institution_link_status` 诚实。
-- **acquire `--all-due` 解阻（2026-07-22）**：**FIXED（structural）** — RCA=formal catchup `raise Tier0` 串行硬门绑架 drain；重建=drain 先于 formal + formal 域内 degrade/pending 不 abort；typed `pending_publish` 保留为域契约。证据 `foundation_acquire_all_due_unblock_20260722.md`。ths_hot live fill 仍 clock/ops。
+- **acquire `--all-due` 解阻（2026-07-22）**：**FIXED（structural + live）** — RCA=formal catchup `raise Tier0` 串行硬门绑架 drain；重建=drain 先于 formal + formal 域内 degrade/pending 不 abort；typed `pending_publish` 保留为域契约。UI 09:52→10:37：drain 后 daily=`pending_publish`、stock_st=`20260722` accepted 209、`ths_hot` max=`20260721`（443 rows；当日 `pending_publish`@22:30）。证据 `foundation_acquire_all_due_unblock_20260722.md`。Continuity READY / 全链绿仍 open（DONE degraded）。
 - **0r.1–0r.4 foundation（2026-07-21 / 22）**：**FIXED** — 沪深A serve whitelist + formal continuity/SLA + share_float bare BJ normalize；ths_hot typed `pending_publish`（非 known_empty；live `20260721` catchup=ops）。证据 `foundation_bj_dualpath_ashare_whitelist_20260721.md` + `plan_residual_reconcile_20260722.md`。
 - **F 更长窗 / S7 daily expand**：accepted daily **`20190102`→`20260721`**；ST **`20220104`→`20260721`**。E/F remeasure 仍 paused。
 
@@ -77,7 +78,7 @@
 
 **Deferred product（顺序已重评）**：0r.5b → E done → **F** → A/C → **D done** → **B done**（0r.1–0r.4 mechanism FIXED）。全量产品排期（0r.5b→5B）+ closeout residual-clear 已闭合。Defs 见 backlog；排期见 `product_plan_reeval_stock_dossier_20260721.md`；残差核对见 `plan_residual_reconcile_20260722.md`。禁 Optuna/Release/松 holdout；结论=Tier3/产品面，不融进 Tier0。
 
-**护栏**：frontier=`20260721`（含 pulse sector/flow/strongest）；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；org BLOCKED 维持；**org/period 域 manual update = incremental-only**（见下裁决）；margin 禁 thaw；**市场感知/档案 serve = 沪深A 白名单**（`6afea30fc` serve filter **FIXED**）。
+**护栏**：frontier=`20260721`（含 pulse sector/flow/strongest）；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；org BLOCKED 维持；**org/period 域 manual update = incremental-only**（见下裁决）；margin 禁 thaw；**市场感知/档案 serve = 沪深A 白名单含 ST**（serve filter `6afea30fc` + population denylist 纠偏见 `hs_a_whitelist_includes_st_20260722.md`）。
 
 A→H 仍为后置地图；E/F remeasure **仅** owner schedule 后开。
 
@@ -105,7 +106,7 @@ A→H 仍为后置地图；E/F remeasure **仅** owner schedule 后开。
 
 架构硬决定摘要：积木=`module+data+config+contract+evidence`；landing 保留供应商响应；日历与 universe 同级硬门；名义 OHLCV=成交真相；一数据集一 writer；`manual_only`；静态 PASS≠`live_readiness`。完整条文见 `docs/MASTER_TOPLEVEL_DESIGN.md`。
 
-**Formal daily/ST acquire（owner 2026-07-21）**：acquire = 全市场按 `trade_date`（`raw_evidence`），**禁止** exclude-then-fetch。ST = accepted 日级 membership，在 `traded_on_observation_date` / universe read 应用，**不是** acquire 排除名单。BSE/三板等 landing 可含，经 `universe_rules`/population 过滤。退市主路径 = 观察日无名义 K（非 acquire 黑名单）。部分 `by_ts_code` legacy 预筛 = 非 formal 路径，不得定义 daily/ST acquire。Owner：`docs/MASTER_TOPLEVEL_DESIGN.md` §5.1。
+**Formal daily/ST acquire（owner 2026-07-21；ST∈白名单澄清 2026-07-22）**：acquire = 全市场按 `trade_date`（`raw_evidence`），**禁止** exclude-then-fetch。**沪深A 白名单含 ST/*ST**；排除仅 B/BJ/三板/观察日无名义K。`stock_st` = accepted 日级 **membership 证据**（谁在何时是 ST），**不是** universe denylist，也不是 acquire 排除名单；同日 `zero_rows`=`pending_publish` 属发布窗，勿误读为「不要 ST」。BSE/三板 landing 可含，经 board 白名单过滤。Owner：`docs/MASTER_TOPLEVEL_DESIGN.md` §5.1 + `analysis/hs_a_whitelist_includes_st_20260722.md`。
 
 **Gate pytest 分层（owner 2026-07-21 redesign #1 SHIPPED）**：`ci_pytest_surface.yaml` = `blocking_paths` + `nightly_paths` + optional；`run_ci_pytest.py --tier blocking|nightly|all`；L2/L3 safe_commit + CI = **`--tier blocking`**（非全量 985）；tier12 publish contract **promoted**；strategy-paused main_rally/institution_follow → **nightly**。详见 `analysis/gate_redesign_occams_20260721.md`。
 

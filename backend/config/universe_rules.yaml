@@ -5,14 +5,16 @@
 #
 # === 真相源优先级 ===
 # 正式日期真相 = accepted SSE calendar generation（非 dim_trading_calendar serve projection）。
-# 正式股票日级人口 = traded_on_observation_date（accepted 名义K ∩ ¬ST ∩ board 白名单）。
+# 正式股票日级人口 = traded_on_observation_date（accepted 名义K ∩ board 白名单；**含 ST/*ST**）。
+# 排除 = 非 60/00/30/68（B/BJ/三板/ETF 等）+ 观察日无名义 K（停牌/退市/未上市）。
+# stock_st = 独立「谁在何时是 ST」membership 证据，不是 universe denylist。
 # legacy assert_universe_clean/check_universe_filter 静态前缀审计 ≠ 完整 PIT 门；
 # row-level 证明见 observation_population.resolve_traded_on_observation_date。
 # owner: services/universe.py + 本文件 + observation_population.py。
 
 policy:
   id: "active_a_share_trading_universe"
-  version: 3
+  version: 4
 
 # --- 包含规则 (白名单, 只有这些前缀才进 universe) ---
 include:

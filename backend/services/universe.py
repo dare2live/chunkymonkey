@@ -1,15 +1,17 @@
 """Stock-universe policy and legacy helpers.
 
-第一性原理: 名义 K 线 + 交易日历 + PIT ST 是发布 eligibility 的事实基础，
+第一性原理: 名义 K 线 + 交易日历是发布 eligibility 的事实基础，
 不能用今天的快照重写历史。正式口径是 ``traded_on_observation_date``：
-观察日有名义日 K 线才进入当日项目股票池。``get_active_universe`` 与
-``assert_universe_clean`` 只是迁移前的当前态/静态前缀 helper，不构成完整 PIT 发布门；
-正式路径必须消费同一次执行绑定的 UniversePolicy 与 population scope。
+观察日有名义日 K 线且 board∈沪深A 白名单才进入当日项目股票池（**含 ST/*ST**）。
+``stock_st`` 是独立 PIT membership 证据（谁在何时是 ST），不是 denylist。
+``get_active_universe`` 与 ``assert_universe_clean`` 只是迁移前的当前态/静态前缀
+helper，不构成完整 PIT 发布门；正式路径必须消费同一次执行绑定的 UniversePolicy
+与 population scope。
 
-项目口径排除规则:
-  1. 前缀不是 60/00/30/68 → 排除 (ETF/北交所/三板)
-  2. 股票名含 ST/*ST → 排除 (涨跌停 ±5%, 规则不同)
-  3. 观察日无名义日 K 线 → 排除 (停牌/已退市/尚未上市)
+项目口径排除规则 (owner 2026-07-22):
+  1. 前缀不是 60/00/30/68 → 排除 (B股/北交所BJ/三板/ETF)
+  2. 观察日无名义日 K 线 → 排除 (停牌/已退市/尚未上市)
+  不按 ST/*ST 名称或 stock_st 成员踢出沪深A。
 """
 from __future__ import annotations
 
@@ -545,10 +547,14 @@ def sql_where_no_st(stock_name_column: str = "stock_name") -> str:
 def get_active_universe(
     conn=None,
     *,
-    include_st: bool = False,
+    include_st: bool = True,
     market_conn=None,
 ) -> set[str]:
-    """K 线有交易 + 前缀白名单 + 非 ST = universe. 就这三条."""
+    """K 线有交易 + 前缀白名单 = 活跃沪深A universe（默认含 ST/*ST）.
+
+    ``include_st=False`` 是策略侧可选收窄（涨跌停规则不同），不是产品白名单真相。
+    正式 PIT 人口见 ``resolve_traded_on_observation_date``（亦不按 ST denylist）。
+    """
     mkt = market_conn
     should_close = False
     if mkt is None:
@@ -576,8 +582,8 @@ def get_active_universe(
 
     # 2026-06-19 身份真相源交集: 只留 dim_active_a_stock (tushare stock_basic 真股清单) 内的码,
     #   剔除 K线里的指数 benchmark (沪深300=000300 等与 00 前缀共号段者直读 K线漏入 universe)。
-    #   前缀仍作 defense-in-depth 预筛; conn=None (legacy include_st 路径) 回退纯前缀。
-    # §9 拆库: identity/ST 读 reference dim (security_master active_codes/active_stock_name_map, auto-fallback);
+    #   前缀仍作 defense-in-depth 预筛; conn=None 回退纯前缀。
+    # §9 拆库: identity 读 reference dim (security_master active_codes, auto-fallback);
     #   conn 守卫语义保留 (conn is not None 才 intersect; conn=None legacy 纯前缀)。
     if conn is not None:
         from services.security_master import active_codes

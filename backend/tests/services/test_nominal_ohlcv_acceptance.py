@@ -395,8 +395,9 @@ def test_stock_st_and_ohlcv_resolver_end_to_end(conn) -> None:
         nominal_kline_loader=kline_loader,
         st_membership_loader=st_loader,
     )
-    assert "000001.SZ" not in membership.ts_codes
+    # 000001.SZ is in stock_st fixture but remains 沪深A whitelist member.
+    assert "000001.SZ" in membership.ts_codes
     assert "830001.BJ" not in membership.ts_codes
-    assert membership.excluded_st_count >= 1
+    assert membership.st_member_count >= 1
     assert membership.excluded_board_count >= 1
     assert any(code.endswith((".SH", ".SZ")) for code in membership.ts_codes)

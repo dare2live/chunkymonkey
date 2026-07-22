@@ -298,7 +298,9 @@ def test_execution_hash_changes_with_population_scope_and_policy_hash(tmp_path):
     project_dataset = _dataset(grain=("ts_code", "trade_date"))
     project_a = bind_execution_contract(project_dataset, _project_spec(), _policy())
     project_b = bind_execution_contract(
-        project_dataset, _project_spec(), _policy_version(tmp_path, 4)
+        project_dataset,
+        _project_spec(),
+        _policy_version(tmp_path, project_a.universe_policy.policy_version + 1),
     )
     assert project_a.execution_hash != project_b.execution_hash
 

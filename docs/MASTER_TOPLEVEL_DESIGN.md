@@ -146,17 +146,19 @@ reason 与 policy hash 写入证据。三类 scope 不得混用：
 - `external_aggregate` 保留交易所/供应商定义的总体，必须明确 venue、population、method 和 unit，
   不能命名或宣传为项目股票池统计；交易所级一行无法证明其中每只证券都符合项目 universe；
 - `project_universe_pit` 的当前正式日级定义是 `traded_on_observation_date`：accepted 交易日历证明 t 开市，
-  accepted 名义日 K 线给出 t 日实际交易证券，再按合法 venue/board 与 accepted t 日 ST 成员过滤。
+  accepted 名义日 K 线给出 t 日实际交易证券，再按合法 venue/board 白名单过滤为**沪深A（含 ST/*ST）**。
   停牌、已终止交易或尚未上市因 t 日无 K 线而排除；股票后来退市不得反向删除其过去实际交易日。
+  **不**按 ST 名称或 `stock_st` 成员踢出池；B/BJ/新老三板/ETF 等由 board 白名单排除。
   “退市整理期仍交易也排除”是更强的 temporal-status 语义，只有新增 PIT 身份/status 真相源后才可声称。
 
 **Formal acquire vs universe eligibility（owner 硬裁决）**：
 
 1. Formal **daily / stock_st** acquire = **全市场按 `trade_date` 拉**（`batch_mode=by_trade_date` →
    `raw_evidence` landing）。**禁止** exclude-then-fetch：不得先用 ST/BSE/三板/退市名单裁股票池再请求。
-2. **ST** 是 accepted **日级 membership 证据**（`stock_st` partition），在
-   `traded_on_observation_date` / universe read 应用；**不是** acquire 排除名单项。
-3. **BSE / 新老三板 / 同类非池对象**：landing **可以含**；经 `universe_rules` /
+2. **ST / `stock_st`**：accepted **日级 membership 证据**（谁在何时是 ST），供策略/展示 PIT 消费；
+   **不是** universe denylist，也**不是** acquire 排除名单。沪深A 白名单**包含** ST/*ST。
+   `stock_st` 同日 `zero_rows` / `pending_publish` = **域发布窗问题**，不得误读为「产品不要 ST」。
+3. **BSE / 新老三板 / B股 / 同类非池对象**：landing **可以含**；经 `universe_rules` /
    population read（board include/exclude + eligibility）过滤进项目池——**不是** acquire blacklist。
 4. **退市**：主路径是观察日 **无名义 K** → 当日 `traded_on_observation_date` 不合格；
    **不是** acquire 黑名单删历史。后来退市不得反向抹掉过去实际交易日。
