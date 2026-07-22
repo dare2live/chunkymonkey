@@ -1,5 +1,7 @@
 # 整体优化方案第一原理重评（2026-07-20）
 
+> **SUPERSEDED as roadmap authority** by `analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md`（+ index `DOC_AUTHORITY_20260722.md`）。本文件保留为 S1–S7 排序母体 point-in-time evidence；勿再当近端排序 bible。
+
 > **生命周期**：evidence-only / sequencing authority（由 `goal.md` 指针授权近端排序；不拥有架构立法——仍以 `docs/README.md` owners 为准；`BOARD.md` 为生成投影非执法输入）  
 > **证据包（事实，无裁决）**：`analysis/plan_reeval_evidence_pack_20260720.md`（commit `33d3a345f`）  
 > **缺口诊断**：`analysis/data_foundation_modularity_gap_20260720.md`  

@@ -1,5 +1,7 @@
 # Product plan execution closeout — 0r.1 → 5B (2026-07-21)
 
+> **SUPERSEDED as roadmap authority** by `analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md`（+ `DOC_AUTHORITY_20260722.md`）。本文件保留为 0r.5b→5B 执行证据。
+
 > Status: evidence-only / closeout
 > Authority: `product_plan_reeval_stock_dossier_20260721.md` (schedule) +
 > `foundation_phase_reeval_20260721.md` (foundation ordering) + `goal.md` (live ledger)

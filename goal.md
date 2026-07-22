@@ -4,36 +4,20 @@
 > 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
 > 完成证据追加到 `analysis/project_state_ledger.md`。
 > **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
-> **现行排序权威（第一原理重评 → S1–S3 → 再策略）**：`analysis/plan_reeval_first_principles_20260720.md`
-> **重评事实包（无裁决）**：`analysis/plan_reeval_evidence_pack_20260720.md`
+> **design notes（analysis 层 living roadmap；不改 north star）**：`analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md`（整体优化方案合一 + 底座关键路径/分阶段验收）· 索引 `analysis/DOC_AUTHORITY_20260722.md`
+> **历史排序母体（superseded as roadmap）**：`analysis/plan_reeval_first_principles_20260720.md`
+> **重评事实包（无裁决；superseded as roadmap）**：`analysis/plan_reeval_evidence_pack_20260720.md`
 > **模块化缺口证据**：`analysis/data_foundation_modularity_gap_20260720.md`
 > **DB 分层权威（逻辑 E0→R1 vs 物理 DuckDB；禁按加工阶段拆库）**：`analysis/db_layering_toplevel_design_20260721.md`
 > **数据积木/变量分层权威（L0–L4、组合规则、模块 operability）**：`analysis/data_brick_architecture_20260721.md`
 > **DB 存储卫生（free-block / archive 机制 + 2026-07-21 reclaim）**：`analysis/db_storage_hygiene_20260721.md`
 > **吞吐瓶颈诊断（墙钟 vs 真相门；§15 adoption）**：`analysis/throughput_bottleneck_diagnosis_20260721.md`
 > **§15 效率复测（measured validation）**：`analysis/process_efficiency_validation_20260721.md`
-> **Gate 栈 Occam 重设计（985 tests ≠ gates；blocking/nightly 提案）**：`analysis/gate_redesign_occams_20260721.md`
-> **地基阶段重评（近端排序 authority）**：`analysis/foundation_phase_reeval_20260721.md`
-> **§15-VERIFY 证据（F8 PASS）**：`analysis/section15_verify_20260721.md`
-> **地基 E2E（UI 更新路径 20260721）**：`analysis/foundation_e2e_frontend_update_20260721.md` — 初判 PARTIAL（UI 缺按钮 + margin 预检死锁）；后续 unblock 见下
-> **地基 daily_update 解阻（20260721）**：`analysis/foundation_daily_update_unblock_20260721.md` — margin=`on_demand`+frozen；formal daily/ST 编排器 land_then_accept；DC/pulse 已至 `20260721`；工作台「数据更新」**FIXED**
-> **前端复杂可视化 + 大局极简/L1–L3 facet（20260722）**：象限 MVP `analysis/frontend_complex_viz_plan_20260722.md`；披露映射+chip跳转 `analysis/frontend_big_picture_minimal_20260722.md`（assist 默认 tab；`#/explore`）
-> **产品决策辅助 backlog（defs；E=DONE）**：`analysis/product_decision_assist_backlog_20260721.md` — A 资金流；**B 形态/阶段选股 FIXED 子集** — `analysis/capability_b_stock_screener_20260721.md`；C tabs；**D 交集最强 FIXED 子集** — `analysis/capability_d_intersection_strongest_20260721.md`；**E step cards FIXED** — `analysis/capability_e_pipeline_step_cards_20260721.md`；**F 股票档案**
-> **产品全量排期权威（20260721 重评）**：`analysis/product_plan_reeval_stock_dossier_20260721.md` — **CLOSED**：0r.1–0r.4 **FIXED**（ths_hot=`pending_publish`）+ 0r.5b→5B **FIXED**；closeout residuals cleared 2026-07-22 — `plan_residual_reconcile_20260722.md`；市场感知只沪深A serve；holders 审计 `holders_stock_dossier_lineage_audit_20260721.md`（勿重审）
-> **地基 BJ/dual-path/沪深A（20260721）**：`analysis/foundation_bj_dualpath_ashare_whitelist_20260721.md` — serve whitelist + formal continuity + share_float **FIXED**；ths_hot mechanism **FIXED**（live catchup ops）
-> **沪深A 白名单含 ST（20260722）**：`analysis/hs_a_whitelist_includes_st_20260722.md` — ST/*ST ∈ 白名单；踢 B/BJ/三板/无K；`stock_st`=membership 证据≠denylist **FIXED**
-> **残差核对（20260722）**：`analysis/plan_residual_reconcile_20260722.md` — 四项 closeout residual **FIXED**/hybrid；次序=ops ths_hot + owner E/F remeasure
-> **完整地基目标 push（20260722）**：`analysis/foundation_full_goal_push_20260722.md` — vs「一直讨论想要的」仍 **PARTIAL**；morning formal daily soft-skip + Cap E S1/S2 UI + form/机构 honesty **FIXED**；ths_hot live / pure accepted / Continuity READY 仍 open
-> **ths_hot UI catchup（20260722 晨）**：`analysis/foundation_ths_hot_ui_catchup_20260722.md` — 前端路径 PASS；Run B daily=`pending_publish` 后 **stock_st** 09:20 后仍 `zero_rows` 硬阻断 → `--all-due` 未跑；ths_hot max 仍 `20260720`
-> **acquire all-due 解阻（2026-07-22）**：`analysis/foundation_acquire_all_due_unblock_20260722.md` — **FIXED** live：drain-first + formal soft；`ths_hot` `20260721`=443 rows；`20260722` pending@22:30；job DONE degraded（continuity/same-day vacuum）
-> **drain 流式 + probe-first UI 复核（20260722 晚）**：`analysis/foundation_ui_click_verify_after_drain_fix_20260722.md` — workbench 点击 **PARTIAL**：`[drain i/42]` 直播 + manual `ths_hot`/`daily` 探源；终态 `run_outcome=soft_waiting_clock`；taxonomy `c1efecc78` 已上 HEAD 未走 UI
-> **工作台 UI 真话修复（20260722 晚）**：`analysis/workbench_ui_truthfulness_fix_20260722.md` — 分步节点 IDLE≠正在运行/共享死 pid **FIXED**；soft_waiting=已结束文案 + due-plan 跑后快照 **FIXED**
-> **工作台增量编排 + 进度 UX（20260722 晚）**：`analysis/workbench_incremental_orchestrator_ux_20260722.md` — **P0 通知同软签名合并 FIXED**（空点重跑不再刷屏；软变化/恢复后再软才重弹）+ 软观测/SLA 4 源（miaoxiang_fact/aif10_lhb 墓碑/aif10_qfii 季频/tushare=margin 冻结）三诊；**空增量仍加工=半设计半冗余**（pulse 迟到列自愈不许跳；dc_view 全量重建可安全跳）→ 一刀切短路**不安全**，P1 delta manifest + P0.1 SLA 去误报 + P2 进度 UX + P3 状态传感器 = **PLAN 待 owner 排期**
-> **地基 UI 点击跟跑（20260721 晚）**：`analysis/foundation_daily_update_ui_click_20260721.md` — workbench 可观测性（current_activity）+ org incremental skip；click DONE degraded；RCA `foundation_daily_update_degraded_rca_20260721.md`
-> **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
-> **产品排期执行 closeout（0r.5b→5B 全量，2026-07-21 晚）**：`analysis/product_plan_execution_closeout_20260721.md` — mandate FIXED；2026-07-22 residual-clear 见 reconcile
-> **补丁跑步机判断（20260722；禁再默认开刀）**：`analysis/why_patch_treadmill_20260722.md` — 主因=CLOSED 后队列/ceiling 错位；真下一步=用产品+ops 时钟+owner 排期 E/F
-> **跑步机第一原理架构修复方案（20260722；控制面/ops/product ceiling）**：`analysis/architecture_fix_treadmill_first_principles_20260722.md` — 三时钟（code/data-clock/usage）各 typed 真话；`run_outcome` ∈ {success/soft_waiting_clock/hard_fail}；FND-GATE=「地基闭合」唯一 acceptor；**ops 残差默认非刀**。Phases 0–3 **FIXED**；Phase 4 checklist FIXED / E-F compute **BLOCKED** — closeout `analysis/architecture_fix_treadmill_closeout_20260722.md`
+> **Gate 栈 Occam 重设计**：`analysis/gate_redesign_occams_20260721.md`
+> **地基阶段重评（FND-GATE F1–F10 spec；roadmap 见 MASTER reeval）**：`analysis/foundation_phase_reeval_20260721.md`
+> **§15-VERIFY / 地基 E2E·解阻·点击**（20260721）：`section15_verify` · `foundation_e2e_frontend_update` · `foundation_daily_update_unblock` · `foundation_daily_update_ui_click` · RCA `foundation_daily_update_degraded_rca`
+> **活子权威**：积木/DB/三时钟/沪深A含ST/Cap defs/前端 L1–L3·facet/工作台增量 UX — 见 `DOC_AUTHORITY_20260722.md` §1–2；历史证据同索引 §3–4
+> **跑步机控制面**：`architecture_fix_treadmill_first_principles_20260722.md`（Phases 0–3 FIXED；ops≠刀）
 
 ## 当前 objective
 
@@ -63,7 +47,7 @@
 
 ## 下一步
 
-**近端排序 authority** = `analysis/foundation_phase_reeval_20260721.md`（supersede plan_reeval §11 历史菜单）。母体仍 = `plan_reeval_first_principles_20260720.md` + `data_brick_architecture_20260721.md`。
+**近端排序 authority** = `analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md`（整体优化方案合一；FND-GATE spec 仍 = `foundation_phase_reeval_20260721.md`）。积木分层 = `data_brick_architecture_20260721.md`。历史母体 = `plan_reeval_first_principles_20260720.md`（superseded as roadmap）。
 
 **foundation-done 已闭合**（F1–F10 PASS；`phase_closure_ready=true`）。下一轨仅在 owner 显式 schedule 后开：
 
@@ -79,9 +63,9 @@
 - **FND-GATE FIXED** — `backend/scripts/check_foundation_done.py` + `backend/config/foundation_done.yaml`；doctor/moth/CI wired；typed walls（S7 23 / org BLOCKED / Type-B defer）PASS
 - **§15-VERIFY / F8 PASS** — 连续 3 L3 刀 e0-hist→fnd-gate→section15-verify；commits/knife=1.0；pre-knife 全 true；证据 `analysis/section15_verify_20260721.md`
 
-**近端 focus**：product schedule authority = `analysis/product_plan_reeval_stock_dossier_20260721.md`。Foundation **0r.1–0r.4 FIXED**。跑步机控制面 **Phases 0–3 FIXED**（`run_outcome` + drain-first 断言 + 潜伏象限 MVP）；**默认禁止**再开 foundation/product「清 PARTIAL / Continuity READY」代码刀。下一步 = **用已 ship 产品面**（含 `#/market` 潜伏象限）+ ops 日更/时钟观测 + owner 显式排期 E/F remeasure（checklist `phase4_ef_schedule_gate_honesty_20260722.md`）。仍禁 Type-B enrichment / S7 假 COMPAT / 擅自 E/F remeasure / G/H/Release / org invent / Optuna / 松 holdout / margin thaw。**SW L1 PIT exclusivity FIXED**（`v_sw_industry_pit` effective out_date；002310 等）；**drain 流式 + manual probe-first FIXED**（证据 `business_clock_and_drain_rework_20260722.md`）。org `:memory:` upsert 2 例仍 optional-CI 残差。
+**近端 focus**：roadmap = `analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md` §7（CX-1→CX-4 底座能力验收 → RX 研究 → Phase N Optuna）。Foundation **0r.1–0r.4 FIXED**。跑步机控制面 **Phases 0–3 FIXED**；**默认禁止**再开「清 PARTIAL / Continuity READY」代码刀（能力刀须 named consumer）。下一步 = **CX 底座能力**（delta/传感器/briefing 砖/SLA）owner 排期 + **用已 ship 产品面** + ops 观测；E/F remeasure 仍 paused（checklist `phase4_ef_schedule_gate_honesty_20260722.md`）。仍禁 Type-B enrichment / S7 假 COMPAT / 擅自 E/F / G/H/Release / org invent / Optuna / 松 holdout / margin thaw。**SW L1 PIT exclusivity FIXED**；**drain 流式 + probe-first FIXED**。org `:memory:` upsert 2 例仍 optional-CI 残差。
 
-**Deferred product（顺序已重评）**：0r.5b → E done → **F** → A/C → **D done** → **B done**（0r.1–0r.4 mechanism FIXED）。全量产品排期（0r.5b→5B）+ closeout residual-clear 已闭合。Defs 见 backlog；排期见 `product_plan_reeval_stock_dossier_20260721.md`；残差核对见 `plan_residual_reconcile_20260722.md`。禁 Optuna/Release/松 holdout；结论=Tier3/产品面，不融进 Tier0。
+**Deferred product（顺序已重评；roadmap 见 MASTER reeval）**：0r.5b→5B mandate CLOSED。Defs 见 backlog；历史排期证据见 `product_plan_reeval_stock_dossier_20260721.md`（superseded as roadmap）。禁 Optuna/Release/松 holdout；结论=Tier3/产品面，不融进 Tier0。
 
 **护栏**：frontier=`20260721`（含 pulse sector/flow/strongest）；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；org BLOCKED 维持；**org/period 域 manual update = incremental-only**（见下裁决）；margin 禁 thaw；**市场感知/档案 serve = 沪深A 白名单含 ST**（serve filter `6afea30fc` + population denylist 纠偏见 `hs_a_whitelist_includes_st_20260722.md`）。
 

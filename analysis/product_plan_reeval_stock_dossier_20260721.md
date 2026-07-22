@@ -1,5 +1,7 @@
 # Product plan re-eval — full schedule (foundation + Cap A–F) 2026-07-21
 
+> **SUPERSEDED as roadmap authority** by `analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md`（+ `DOC_AUTHORITY_20260722.md`）。本文件保留为产品排期 closeout point-in-time evidence；Cap defs 仍见 `product_decision_assist_backlog_20260721.md`。
+
 > 状态：evidence-only / **near-term product+ops schedule authority**
 > Supersedes prior thin dossier-only draft of this path **and** §7 near-term order in
 > `analysis/product_decision_assist_backlog_20260721.md` (capability *definitions* A–E there still valid; E status = DONE subset).

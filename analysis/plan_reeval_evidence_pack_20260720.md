@@ -1,5 +1,7 @@
 # Plan re-eval evidence pack（2026-07-20）
 
+> **SUPERSEDED as roadmap authority** by `analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md`（+ `DOC_AUTHORITY_20260722.md`）。本文件保留为无裁决事实包 evidence。
+
 > 生命周期：evidence-only  
 > 作用：供 composer 写终裁重评；本文件**只收录可核对事实与原文引用**，不含排序裁决、不含「业主正确」结论。  
 > 采集时点：2026-07-20；repo `/Users/dp/Documents/M/stock/chunkymonkey`；`main` ahead of origin（采集时 worktree 干净除本文件）。  

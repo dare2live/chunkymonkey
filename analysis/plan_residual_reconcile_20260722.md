@@ -1,5 +1,7 @@
 # Plan residual reconcile — 2026-07-22
 
+> **SUPERSEDED as roadmap authority** by `analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md`（+ `DOC_AUTHORITY_20260722.md`）。本文件保留为四项 residual closeout 证据。
+
 > Status: evidence-only / residual clear + plan drift check
 > Authority: `product_plan_execution_closeout_20260721.md` residual ledger +
 > `product_plan_reeval_stock_dossier_20260721.md` + `foundation_phase_reeval_20260721.md` + `goal.md`

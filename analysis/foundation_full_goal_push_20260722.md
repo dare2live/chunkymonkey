@@ -1,5 +1,7 @@
 # Foundation full-goal push — 2026-07-22
 
+> **SUPERSEDED as roadmap authority** by `analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md`（+ `DOC_AUTHORITY_20260722.md`）。本文件保留为完整目标 push PARTIAL 证据。
+
 > Status: evidence-only closeout  
 > Authority: `goal.md`, `plan_residual_reconcile_20260722.md`, assessment PARTIAL
 > ([Assess foundation goal](0ced2e66-d285-40d8-8a1f-a19f5f8262f9)), `$mio`  

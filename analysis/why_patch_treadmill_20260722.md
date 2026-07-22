@@ -1,5 +1,6 @@
 # 为何像补丁跑步机 — 2026-07-22
 
+> **SUPERSEDED as roadmap judgment** by `analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md` §4/§10（+ `DOC_AUTHORITY_20260722.md`）。本文件保留为跑步机诊断原文。
 > Status: evidence-only / judgment（**禁止再开代码刀**；本文件不授权 implementation）  
 > Authority: `$mio` + `goal.md` + foundation/product closeout + acquire rebuild 证据  
 > Adversarial: [架构太复杂](576ee281-ef5b-416b-bda5-7232ef7a0d99) vs [工作队列错了](a1c0b123-4289-47a6-ab3f-42852f32b97a)  

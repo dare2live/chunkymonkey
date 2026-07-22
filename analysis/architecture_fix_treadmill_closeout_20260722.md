@@ -1,5 +1,6 @@
 # Architecture fix treadmill — closeout (2026-07-22)
 
+> **SUPERSEDED as roadmap authority** by `analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md` §4/§7（+ `DOC_AUTHORITY_20260722.md`）。本文件保留为 Phases 0–3 closeout 证据；活控制面权威仍是 `architecture_fix_treadmill_first_principles_20260722.md`。
 > Status: evidence-only
 > Label: **FIXED** (Phases 0–3) + Phase 4 checklist **FIXED** / E-F compute **BLOCKED**
 > Owner plan: `analysis/architecture_fix_treadmill_first_principles_20260722.md`

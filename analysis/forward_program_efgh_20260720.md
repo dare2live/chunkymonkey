@@ -1,5 +1,7 @@
 # Forward program — E/F rejects → G/H gates (2026-07-20)
 
+> **SUPERSEDED as roadmap authority** by `analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md` §7 RX（+ `DOC_AUTHORITY_20260722.md`）。本文件保留为旧 A→H 研究轨附录 evidence。
+
 > 生命周期：历史证据（evidence-only）。owner-facing program draft，非产品 KPI 宣称；
 > 不拥有执法（以 `goal.md` 为准）；不发明 claimable/Release。
 > **Superseded near-term ordering (2026-07-21)**：近端排序见 `goal.md` +
