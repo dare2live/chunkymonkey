@@ -775,7 +775,10 @@ def test_formal_on_demand_catchup_soft_skips_pending_publish(
 def test_formal_hard_fail_degrades_not_raises_and_continues_sibling(
     monkeypatch, tmp_path, capsys
 ):
-    """Structural: formal domain hard-fail must not raise Tier0AcquireError."""
+    """C1 invariant: formal hard-fail stays domain-local (no Tier0AcquireError / no sibling abort).
+
+    Architecture plan Phase 2 — no cross-sibling hard-raise; do not invent a DAG.
+    """
     from services.data_sources import sync_runner
     from services.pipeline import acquire
     from services.pipeline.context import PipelineContext
@@ -857,7 +860,10 @@ def test_formal_hard_fail_degrades_not_raises_and_continues_sibling(
 def test_acquire_runs_registry_drain_before_formal_and_despite_formal_hard(
     monkeypatch, tmp_path
 ):
-    """RCA regression: --all-due must not be kidnapped by formal catchup order/raise."""
+    """C1 invariant: drain-first; formal hard must not kidnap --all-due / abort acquire.
+
+    Architecture plan Phase 2 — order + no-raise; second true kidnap not observed → no DAG.
+    """
     from services.pipeline import acquire
     from services.pipeline.context import PipelineContext
 
