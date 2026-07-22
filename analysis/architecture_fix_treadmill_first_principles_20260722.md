@@ -1,6 +1,6 @@
 # 补丁跑步机 — 第一原理架构修复方案（2026-07-22）
 
-> Status: **Phase 0 PLAN + Phase 1 FIXED**（Phase 1 evidence = `analysis/phase1_run_outcome_20260722.md`；Phase 2/3/4 仍需触发或 owner 排期）
+> Status: evidence-only / **Phases 0–3 FIXED**; Phase 4 checklist FIXED / E-F compute BLOCKED — closeout `analysis/architecture_fix_treadmill_closeout_20260722.md`
 > Authority chain: `AGENTS.md` → `goal.md` → `docs/README.md` owners → 本文件（treadmill 控制面/ops/product ceiling 的架构裁决）
 > Diagnosis owner（勿重打）: `analysis/why_patch_treadmill_20260722.md`（evidence-only 判断，本文件是它的 architecture 续作）
 > Skills applied: `$architect-controller`（立法→控制→执行）· `$first-principles-thinking` · `$thinking-occams-razor` · `$mio`（真金白银 / 消费者锚定 / 别为制度假绿 / 别被"做完了"锁死）
@@ -157,13 +157,13 @@ RunOutcome ∈ {
 
 ## D. 迁移 / strangler 阶段（每阶段显式 kill criteria）
 
-| Phase | 内容 | 授权 | 完成长什么样 | Kill criteria |
-|---|---|---|---|---|
-| **0 冻结跑步机**（本轮） | 本文件 + `goal.md` 三时钟指针；宣示 ops-residual-≠-knife；**零代码** | 本轮已授权 | 三时钟 + 单一权威 + 队列法写死 | 若 owner 读后仍感「地基没做完」→ 权威还不够单一，回 §C3 收紧 |
-| **1 outcome model**（小代码轮） | 报告 JSON 派生 typed `run_outcome`；wrapper+dispatcher+UI 读它；取代 rc==1 heuristic / `--skip-macos` | **owner 开做 2026-07-22 → FIXED** | 报告+API+UI 三态；soft 不弹 job FAIL；证据 `phase1_run_outcome_20260722.md` | 若仍三连炸 / 仍显 FAIL → 回退到过渡桩，重设计派生规则 |
-| **2 orchestrator**（多半已完） | 仅当**新的** cross-sibling hard-raise 复现时；加「不越 sweep 边界」回归断言 | 触发式 | 断言绿；无 sibling 绑架 | 只有**第二次**真 kidnap（不同域）才泛化；否则**不预建** DAG（架构死#1） |
-| **3 product viz MVP** | viz plan Phase 1 潜伏象限（真 Cap A API，只读 Tier3） | owner schedule | owner 用它产出一个决策辅助观测 | 若沦为装饰 → 回退 header band（viz plan §6 kill switch） |
-| **4 owner-scheduled E/F remeasure** | 仅 owner 签字后；同 protocol | owner signature | remeasure 完成（诚实 reject 亦算交付） | 禁 Optuna/Release/margin-thaw；未签字保持 paused |
+| Phase | 内容 | 授权 | 完成长什么样 | Kill criteria | Status |
+|---|---|---|---|---|---|
+| **0 冻结跑步机**（本轮） | 本文件 + `goal.md` 三时钟指针；宣示 ops-residual-≠-knife；**零代码** | 本轮已授权 | 三时钟 + 单一权威 + 队列法写死 | 若 owner 读后仍感「地基没做完」→ 权威还不够单一，回 §C3 收紧 | **FIXED** |
+| **1 outcome model**（小代码轮） | 报告 JSON 派生 typed `run_outcome`；wrapper+dispatcher+UI 读它；取代 rc==1 heuristic / `--skip-macos` | **owner 开做 2026-07-22 → FIXED** | 报告+API+UI 三态；soft 不弹 job FAIL；证据 `phase1_run_outcome_20260722.md` | 若仍三连炸 / 仍显 FAIL → 回退到过渡桩，重设计派生规则 | **FIXED** |
+| **2 orchestrator**（多半已完） | 仅当**新的** cross-sibling hard-raise 复现时；加「不越 sweep 边界」回归断言 | 触发式 → 断言固化 | 断言绿；无 sibling 绑架 | 只有**第二次**真 kidnap（不同域）才泛化；否则**不预建** DAG（架构死#1） | **FIXED** (`phase2_orchestrator_assert_20260722.md`；无第二 kidnap → 无 DAG) |
+| **3 product viz MVP** | viz plan Phase 1 潜伏象限（真 Cap A API，只读 Tier3） | owner schedule → shipped | owner 用它产出一个决策辅助观测 | 若沦为装饰 → 回退 header band（viz plan §6） | **FIXED** (`phase3_latent_quadrant_mvp_20260722.md`；地形 Enrich 延后) |
+| **4 owner-scheduled E/F remeasure** | 仅 owner 签字后；同 protocol | owner signature | remeasure 完成（诚实 reject 亦算交付） | 禁 Optuna/Release/margin-thaw；未签字保持 paused | checklist **FIXED** / compute **BLOCKED** (`phase4_ef_schedule_gate_honesty_20260722.md`) |
 
 **全局 kill criterion**：任一 phase 一旦开始「造代码刀清 ops 状态」= abort，跑步机回归。
 
@@ -213,4 +213,4 @@ RunOutcome ∈ {
 
 **改的是「词」和「队列」，不是「地基」**：给 code / data-clock / usage 三条时钟各自 typed 的真话（`run_outcome` 三态 + 单一 FND-GATE 权威 + ops 残差默认非刀），本轮只落文档+指针，代码分 owner 排期的 strangler phase 推进；做成 = **下次日更软等显 SOFT_WAITING 不再假 FAIL/刷屏，且 agent 不再把时钟/诚实翻译成代码刀**。
 
-Label: **Phase 0 PLAN + Phase 1 FIXED**（`run_outcome` SSOT + renderers；证据 `phase1_run_outcome_20260722.md`）。Residual owner: owner（Phase 3 viz MVP 排期 / Phase 4 E-F；Phase 2 仅第二次真 kidnap 触发）。
+Label: **Phases 0–3 FIXED**; Phase 4 checklist FIXED / E-F compute BLOCKED. Closeout: `analysis/architecture_fix_treadmill_closeout_20260722.md`. Residual owner: owner usage of viz + optional E/F schedule signature.
