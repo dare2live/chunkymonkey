@@ -67,24 +67,51 @@ function OverviewPanel(props: { d: StockDossierResponse }) {
     axisVol: f?.axis_vol,
     breakout: f?.is_breakout_event,
   });
+  const cov = d.holders.institution_profile;
   return (
     <>
-      <p className="dossier-observation">
+      <p className="dossier-observation dossier-observation-hero">
         {d.observation.text ?? "观察结论未知 — 形态/阶段砖块不足。"}
       </p>
+      {f && (
+        <div className="dossier-l1-strip">
+          <span>
+            <em>形态</em> {f.form_name ?? "—"}
+          </span>
+          <span>
+            <em>轴</em>{" "}
+            {[f.axis_pos, f.axis_trend, f.axis_purity, f.axis_vol].filter(Boolean).join(" · ") ||
+              "—"}
+          </span>
+          {f.is_breakout_event && <span className="badge-breakout">突破</span>}
+        </div>
+      )}
       <div className="facet-chip-block">
-        <span className="facet-chip-label">可探索 facet</span>
+        <span className="facet-chip-label">L1 · 点标签探索宇宙</span>
         <FacetChipRow facets={chips} emptyHint="暂无可跳转形态/轴标签" />
       </div>
-      <div className="dossier-meta muted">
-        <span>observation {d.observation.version}</span>
-        <span>surface {d.surface}</span>
-        {f?.trade_date && <span>form as-of {f.trade_date}</span>}
-        {d.holders.report_date && <span>holders {d.holders.report_date}</span>}
-      </div>
+      {cov && (
+        <p className="dossier-honesty muted">
+          机构深链诚实：档案覆盖 {cov.holders_with_profile}/{cov.holders_total}
+          {cov.coverage != null ? `（${(cov.coverage * 100).toFixed(0)}%）` : ""}
+          {cov.holders_episode_only
+            ? ` · episode-only ${cov.holders_episode_only} 无假链`
+            : ""}
+          — org_holding mass land 仍 BLOCKED，不伪造机构全景。
+        </p>
+      )}
+      <details className="dossier-l2">
+        <summary>L2 · 元数据</summary>
+        <div className="dossier-meta muted">
+          <span>observation {d.observation.version}</span>
+          <span>surface {d.surface}</span>
+          {f?.trade_date && <span>form as-of {f.trade_date}</span>}
+          {d.holders.report_date && <span>holders {d.holders.report_date}</span>}
+        </div>
+      </details>
       {d.gaps.length > 0 && (
         <details className="dossier-gaps">
-          <summary>已知缺口 ({d.gaps.length})</summary>
+          <summary>L3 · 已知缺口 ({d.gaps.length})</summary>
           <ul>
             {d.gaps.map((g) => (
               <li key={g} className="mono">

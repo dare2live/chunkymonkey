@@ -33,6 +33,33 @@ export interface DuePlanPreview {
 /** Typed daily_update outcome — SSOT from data/reports/daily_*.json (plan §C2). */
 export type RunOutcome = "success" | "soft_waiting_clock" | "hard_fail";
 
+/** CX-1 delta_manifest (report idle or live log parse) — UI display only.
+ *  Full report shape: { delta: { advanced_partitions[] }, process_plan: {step:{action,reason}} }.
+ *  Live log shape: { advanced_n, formal[], dc, state_changes }.
+ */
+export interface DeltaManifestPreview {
+  schema_version?: number;
+  run_date?: string;
+  delta?: {
+    advanced_partitions?: Array<Record<string, unknown> | string>;
+    late_window_policy?: string;
+    state_changes?: Record<string, unknown>;
+    dc_frontier_advanced?: boolean | null;
+    [key: string]: unknown;
+  };
+  process_plan?: Record<string, { action?: string; reason?: string } | unknown>;
+  stage_timing_s?: Record<string, number>;
+  budget_status?: Record<string, string>;
+  /** Live compact line fields */
+  advanced_n?: number;
+  formal?: Array<{ domain?: string; action?: string }>;
+  dc?: { action?: string; reason?: string };
+  state_changes?: Record<string, unknown>;
+  late_window_policy?: string;
+  raw?: string;
+  [key: string]: unknown;
+}
+
 export interface OpsJobStatus {
   job: string;
   label: string;
@@ -53,6 +80,73 @@ export interface OpsJobStatus {
   run_outcome_reason?: string | null;
   report_path?: string | null;
   report_date?: string | null;
+  delta_manifest?: DeltaManifestPreview | null;
+  delta_manifest_live?: DeltaManifestPreview | null;
+  stage_timing_s?: Record<string, number> | null;
+  budget_status?: Record<string, string> | null;
+  latency_budgets?: Record<string, number> | null;
+}
+
+/** Pipeline stage order for overall progress (P2 UX). */
+export const PIPELINE_PHASE_ORDER = [
+  "preflight",
+  "acquire",
+  "clean",
+  "process",
+  "store",
+] as const;
+
+export type PipelinePhaseId = (typeof PIPELINE_PHASE_ORDER)[number];
+
+/** Overall 0–100 from activity phase; decorative only if phase unknown. */
+export function overallProgressPct(
+  phase: string | null | undefined,
+  active: boolean,
+  outcome?: RunOutcome | null,
+): number {
+  if (!active) {
+    if (outcome === "success" || outcome === "soft_waiting_clock") return 100;
+    // hard_fail ≠ complete — keep bar short so % never reads as success.
+    if (outcome === "hard_fail") return 35;
+    return 0;
+  }
+  const idx = PIPELINE_PHASE_ORDER.indexOf(phase as PipelinePhaseId);
+  if (idx < 0) return 8;
+  return Math.min(96, Math.round(((idx + 0.45) / PIPELINE_PHASE_ORDER.length) * 100));
+}
+
+/** Per Cap-E node progress: running → mid, else idle/done from tone. */
+export function nodeProgressPct(
+  tone: "idle" | "running" | "ok" | "alert" | "disabled",
+): number {
+  switch (tone) {
+    case "running":
+      return 55;
+    case "ok":
+      return 100;
+    case "alert":
+      return 35; // stopped-with-alert, not "complete"
+    default:
+      return 0;
+  }
+}
+
+/** Classify a log line for waterfall tint (stage / soft / hard). */
+export function classifyLogLine(
+  line: string,
+): "acquire" | "clean" | "process" | "store" | "preflight" | "soft" | "fail" | "delta" | "plain" {
+  if (/\[delta_manifest\]|delta_manifest/i.test(line)) return "delta";
+  if (/PREFLIGHT BLOCK|AUTH BLOCK|TIER0 BLOCK|WRITER BLOCK|FAIL rc=[2-5]|HARD_FAIL/i.test(line))
+    return "fail";
+  if (/soft_waiting_clock|SOFT_WAITING|pending_publish|DONE soft_waiting/i.test(line))
+    return "soft";
+  if (/①\s*获取|ACQUIRE/.test(line)) return "acquire";
+  if (/②\s*清洗|CLEAN|land_then_accept/i.test(line)) return "clean";
+  if (/③\s*加工|PROCESS/.test(line)) return "process";
+  if (/④\s*存储|post-acquire Store/i.test(line)) return "store";
+  if (/Preflight|Sync execution policy|Calendar foundation|Authorization/i.test(line))
+    return "preflight";
+  return "plain";
 }
 
 export interface OpsJobRunResp {

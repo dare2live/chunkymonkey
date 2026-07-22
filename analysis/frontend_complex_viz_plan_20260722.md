@@ -1,6 +1,6 @@
 # Frontend complex data-viz plan — decision-assist overlay (2026-07-22)
 
-> Status: evidence-only / **Phase 1 MVP FIXED** (潜伏象限 shipped on `#/market` 资金决策辅助; evidence `analysis/phase3_latent_quadrant_mvp_20260722.md`). Terrain hero / Enrich still deferred.
+> Status: evidence-only / **Phase 1 MVP FIXED** + **Phase 2 Enrich FIXED** (2026-07-23: Capital Terrain 2.5D CSS hero + Cap D Sankey/parcoords on `#/market`; quadrant remains decision floor; kill switch = collapse terrain if values bury).
 > Consumer anchor (§mio #10): serves the owner's **buy/sell decision** step — "哪个方向强 + 具体股" and "资金在潜伏而价格没起". Not a dashboard for its own sake.
 > Authority it obeys: `goal.md` north star (辅助买卖决策; 结论=Tier3/产品面, 不融进 Tier0); `AGENTS.md` §5 (Tier3 conclusions), §4 (PIT); backlog Cap A/C/D/F (`analysis/product_decision_assist_backlog_20260721.md`); Cap A service `services/moneyflow_assist.py`; Cap D `services/decision_intersection.py`.
 > Non-authority: does **not** re-open Optuna/Release, does **not** rewrite pulse sensing, does **not** fuse labels into accepted truth.
@@ -156,11 +156,11 @@ Net: **Primary = "Capital Terrain" as the named metaphor/hero, but its decision 
 - Stale/unknown honesty: thin windows grey "未形成结论", never faked as 0; evidence `phase3_latent_quadrant_mvp_20260722.md`.
 - **What NOT to build:** no new backend endpoint (board already returns everything), no 3D, no new taxonomy.
 
-### Phase 2 — Enrich
-- **Capital Terrain hero** (per spike verdict: 2.5D first) as the overview above the quadrant; click ridge → quadrant/drill focus.
-- **交集 Sankey/UpSet + parallel-coordinates** tab wired to `GET /decision/intersection/strongest` (shipped) — the cross-cutting layer.
-- Optional: sentiment context ribbon (small-multiple) as page header.
-- **What NOT to build (hard):** force/hairball graph (§3F), any browser-side intersection re-computation, any surface that renders `unknown` as 0, cross-chain `net_amount` ranking, Optuna/Release, pulse-sensing rewrite, second orchestration.
+### Phase 2 — Enrich — **FIXED 2026-07-23**
+- **Capital Terrain hero** (2.5D CSS isometric towers; no echarts-gl) above quadrant; click tower → drill/focus. Height=`relative_ratio_pct`, hue=`window_return_pct`; thin/unknown omitted (never 0).
+- **交集 Sankey + parallel-coordinates** on intersection tab from Cap D rows only (≤16 stocks; membership links only; why list → L3 `<details>`).
+- Sensing tab density cut (L1 pulse only; L2/L3 collapsed) — peer big-picture residual closed same knife.
+- **What NOT built:** force/hairball, browser ∩ recompute, unknown→0, cross-chain net_amount rank, echarts-gl, Optuna/Release.
 
 ### Explicit non-goals (tonight & this track)
 No production edge changes tonight (plan-only). No echarts-gl commitment before the spike. No fusing labels into Tier0. No mass backfill / margin thaw. No greenfield rewrite of pulse.
@@ -194,4 +194,4 @@ No production edge changes tonight (plan-only). No echarts-gl commitment before 
 - Owner decision needed before Phase 1: schedule this against the paused E/F remeasure track, or run parallel (it touches only frontend + read-only Tier3, non-overlapping).
 - Pointer added to `goal.md` (viz plan) — this doc is the owner for the viz-metaphor decision.
 
-Label: **Phase 1 MVP FIXED** (quadrant on market assist tab). Residual owner: Enrich (terrain hero + Sankey/parcoords) only if owner schedules; kill switch intact if terrain buries values.
+Label: **Phase 1+2 FIXED** (quadrant + terrain 2.5D + Sankey/parcoords). Kill switch intact: terrain is context-only; quadrant remains decision floor.

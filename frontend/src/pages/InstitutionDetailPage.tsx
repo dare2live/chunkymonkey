@@ -247,7 +247,11 @@ export function InstitutionDetailPage() {
         <h1 title={holder}>{holder}</h1>
       </div>
       <p className="page-lead">
-        机构档案 · episode 与维度热力。标的代码可点进股票档案；行业维度 facet 宇宙后续接选股面。
+        机构档案 · episode 与维度热力。标的代码可点进股票档案。
+      </p>
+      <p className="page-desc assist-disclaimer">
+        诚实边界：本页只读已发布 holders/episode 画像；org_holding provider land 仍 BLOCKED
+        （禁全市场 by-period mass re-pull）— 无 NOTICE_DATE 全景时不伪造机构 bulk 覆盖。
       </p>
       <KpiCard holder={holder} />
       <details open className="dossier-l2">

@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/client";
 import {
+  classifyLogLine,
   deriveActivityFallback,
   fetchOpsJob,
   fetchPipelineNodes,
@@ -14,8 +15,12 @@ import {
   nodeActivityView,
   nodeCardTone,
   nodeLooksActive,
+  nodeProgressPct,
+  overallProgressPct,
+  PIPELINE_PHASE_ORDER,
   runLandAccept,
   runOpsJob,
+  type DeltaManifestPreview,
   type LandAcceptParams,
   type OpsJobStatus,
   type PipelineNode,
@@ -63,6 +68,181 @@ function toneLabel(tone: ReturnType<typeof nodeCardTone>): string {
     default:
       return "idle";
   }
+}
+
+function ProgressBar(props: {
+  pct: number;
+  label: string;
+  live?: boolean;
+  tone?: "live" | "ok" | "soft" | "fail" | "idle";
+}) {
+  const tone = props.tone ?? (props.live ? "live" : "idle");
+  return (
+    <div className={`ops-progress ops-progress-${tone}`}>
+      <div className="ops-progress-head">
+        <span>{props.label}</span>
+        <span className="mono">{Math.round(props.pct)}%</span>
+      </div>
+      <div className="ops-progress-track" aria-hidden="true">
+        <div
+          className={`ops-progress-fill${props.live ? " ops-progress-pulse" : ""}`}
+          style={{ width: `${Math.max(0, Math.min(100, props.pct))}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PhaseRail(props: { phase: string | null | undefined; active: boolean }) {
+  const cur = props.phase ?? "idle";
+  const idx = PIPELINE_PHASE_ORDER.indexOf(cur as (typeof PIPELINE_PHASE_ORDER)[number]);
+  const finished =
+    !props.active &&
+    (cur === "ok" || cur === "soft_waiting" || cur === "fail" || cur === "alert");
+  return (
+    <div className="ops-phase-rail" aria-label="pipeline phases">
+      {PIPELINE_PHASE_ORDER.map((id, i) => {
+        const here = props.active && cur === id;
+        const done = finished || (idx >= 0 && i < idx) || (!props.active && idx >= 0 && i <= idx);
+        return (
+          <span
+            key={id}
+            className={`ops-phase-chip${done ? " done" : ""}${here ? " here" : ""}`}
+          >
+            {id}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function formatAdvancedPart(p: Record<string, unknown> | string): string {
+  if (typeof p === "string") return p;
+  const domain = String(p.domain ?? p.data_domain ?? p.name ?? "?");
+  const action = p.action != null ? String(p.action) : p.status != null ? String(p.status) : "";
+  return action ? `${domain}:${action}` : domain;
+}
+
+function DeltaManifestCard(props: { manifest: DeltaManifestPreview | null | undefined; live?: boolean }) {
+  const m = props.manifest;
+  if (!m || typeof m !== "object") return null;
+  if (m.raw && !m.delta && m.advanced_n == null && !m.process_plan) {
+    return (
+      <div className="ops-delta">
+        <div className="ops-delta-label">
+          delta_manifest{props.live ? "（live）" : ""} · 未解析 JSON
+        </div>
+        <pre className="ops-delta-body mono">{String(m.raw).slice(0, 400)}</pre>
+      </div>
+    );
+  }
+
+  // Full report: nested delta.advanced_partitions; live: advanced_n + formal[].
+  const nestedAdv = Array.isArray(m.delta?.advanced_partitions)
+    ? m.delta!.advanced_partitions!
+    : [];
+  const advancedLabels = nestedAdv.map(formatAdvancedPart);
+  const advancedN =
+    typeof m.advanced_n === "number"
+      ? m.advanced_n
+      : advancedLabels.length > 0
+        ? advancedLabels.length
+        : null;
+
+  const planObj =
+    m.process_plan && typeof m.process_plan === "object" && !Array.isArray(m.process_plan)
+      ? m.process_plan
+      : null;
+  const planLines: string[] = [];
+  if (planObj) {
+    for (const [step, raw] of Object.entries(planObj)) {
+      if (step === "state_change_force" || step === "any_state_changed") continue;
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        const r = raw as { action?: string; reason?: string };
+        planLines.push(`${step}:${r.action ?? "?"}${r.reason ? `(${r.reason})` : ""}`);
+      }
+    }
+  } else if (m.dc && typeof m.dc === "object") {
+    planLines.push(`dc_industry_view:${m.dc.action ?? "?"}${m.dc.reason ? `(${m.dc.reason})` : ""}`);
+  }
+
+  const stateSrc = m.delta?.state_changes ?? m.state_changes;
+  const anyChanged =
+    stateSrc && typeof stateSrc === "object"
+      ? Boolean((stateSrc as { any_changed?: boolean }).any_changed)
+      : null;
+  const latePolicy =
+    m.delta?.late_window_policy ?? m.late_window_policy ?? null;
+  const timing = m.stage_timing_s && typeof m.stage_timing_s === "object" ? m.stage_timing_s : null;
+  const budget = m.budget_status && typeof m.budget_status === "object" ? m.budget_status : null;
+  const formal = Array.isArray(m.formal) ? m.formal : [];
+
+  return (
+    <div className="ops-delta">
+      <div className="ops-delta-label">
+        增量识别{props.live ? "（live）" : "（上次报告）"} · 非 in-flight 进度表
+      </div>
+      <div className="ops-delta-body mono">
+        {advancedN != null && advancedN > 0 ? (
+          <div>
+            advanced_n={advancedN}
+            {advancedLabels.length > 0
+              ? ` · ${advancedLabels.slice(0, 8).join(", ")}`
+              : formal.length > 0
+                ? ` · formal ${formal
+                    .slice(0, 6)
+                    .map((f) => `${f.domain ?? "?"}:${f.action ?? "?"}`)
+                    .join(", ")}`
+                : ""}
+          </div>
+        ) : advancedN === 0 ? (
+          <div>advanced_n=0（无分区前进）</div>
+        ) : (
+          <div>advanced: 未知（报告无 advanced 字段）</div>
+        )}
+        {latePolicy != null && <div>late_window: {String(latePolicy)}</div>}
+        {anyChanged != null && <div>state_changes.any_changed: {String(anyChanged)}</div>}
+        {planLines.length > 0 && <div>process: {planLines.slice(0, 8).join(" · ")}</div>}
+        {timing && (
+          <div>
+            timing_s:{" "}
+            {Object.entries(timing)
+              .slice(0, 6)
+              .map(([k, v]) => `${k}=${v}`)
+              .join(" · ")}
+          </div>
+        )}
+        {budget && (
+          <div>
+            budget:{" "}
+            {Object.entries(budget)
+              .slice(0, 6)
+              .map(([k, v]) => `${k}=${v}`)
+              .join(" · ")}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function WaterfallLog(props: { lines: string[] }) {
+  if (!props.lines.length) {
+    return <div className="state-hint">尚无日志（未跑过或日志文件不存在）</div>;
+  }
+  return (
+    <div className="ops-waterfall mono" role="log">
+      {props.lines.map((line, i) => {
+        const kind = classifyLogLine(line);
+        return (
+          <div key={`${i}-${line.slice(0, 24)}`} className={`ops-waterfall-line wf-${kind}`}>
+            {line}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export function WorkbenchPage() {
@@ -239,6 +419,22 @@ export function WorkbenchPage() {
             ? "ops-activity ops-activity-ok"
             : "ops-activity";
 
+  const live = jobLooksActive(status);
+  const overallPct = overallProgressPct(activity?.phase, live, runOutcome);
+  const progressTone = live
+    ? "live"
+    : hardFail
+      ? "fail"
+      : softWaiting
+        ? "soft"
+        : runOutcome === "success"
+          ? "ok"
+          : "idle";
+  const deltaManifest =
+    (live ? status?.delta_manifest_live : status?.delta_manifest) ??
+    status?.delta_manifest ??
+    status?.delta_manifest_live;
+
   return (
     <div className="page">
       <div className="page-head">
@@ -327,6 +523,13 @@ export function WorkbenchPage() {
             {activity?.progress_line && (
               <div className="ops-activity-progress mono">{activity.progress_line}</div>
             )}
+            <ProgressBar
+              pct={overallPct}
+              label={live ? "全链进度（阶段推算）" : "全链进度（上次结果）"}
+              live={live}
+              tone={progressTone}
+            />
+            <PhaseRail phase={activity?.phase} active={live} />
             <div className="ops-activity-meta mono">
               阶段={activity?.phase_label ?? "—"}
               {" · "}
@@ -337,14 +540,12 @@ export function WorkbenchPage() {
               {activity?.log_age_s != null ? `（${Math.floor(activity.log_age_s)}s 前）` : ""}
               {" · "}
               轮询={polledAt ? new Date(polledAt).toLocaleTimeString("zh-CN", { hour12: false }) : "—"}
-              {jobLooksActive(status) && status?.owner
-                ? ` · writer=${status.owner}`
-                : ""}
-              {jobLooksActive(status) && status?.owner_pid != null
-                ? ` pid=${status.owner_pid}`
-                : ""}
+              {live && status?.owner ? ` · writer=${status.owner}` : ""}
+              {live && status?.owner_pid != null ? ` pid=${status.owner_pid}` : ""}
             </div>
           </div>
+
+          <DeltaManifestCard manifest={deltaManifest} live={Boolean(live && status?.delta_manifest_live)} />
 
           <div className="kpi-grid" style={{ marginBottom: 10 }}>
             <div className="kpi">
@@ -393,16 +594,12 @@ export function WorkbenchPage() {
           </div>
 
           <div className="ops-log-head">
-            <span>最近日志尾</span>
+            <span>瀑布日志</span>
             <button className="btn" onClick={() => void refresh()} disabled={triggering}>
               刷新状态
             </button>
           </div>
-          {tail.length === 0 ? (
-            <div className="state-hint">尚无日志（未跑过或日志文件不存在）</div>
-          ) : (
-            <pre className="ops-log-tail mono">{tail.join("\n")}</pre>
-          )}
+          <WaterfallLog lines={tail} />
         </Card>
       ) : (
         <Card
@@ -455,6 +652,22 @@ export function WorkbenchPage() {
                         ? act?.summary ?? "空闲 · 尚无日志"
                         : node.disabled_reason ?? "不可独立运行"}
                     </div>
+                    {node.runnable && (
+                      <ProgressBar
+                        pct={nodeProgressPct(tone)}
+                        label={nodeBusy ? "节点进度" : "节点状态"}
+                        live={nodeBusy}
+                        tone={
+                          nodeBusy
+                            ? "live"
+                            : tone === "alert"
+                              ? "fail"
+                              : tone === "ok"
+                                ? "ok"
+                                : "idle"
+                        }
+                      />
+                    )}
                     <div className="ops-step-meta mono">
                       {node.job ? `job=${node.job}` : "job=—"}
                       {node.status?.log_mtime != null

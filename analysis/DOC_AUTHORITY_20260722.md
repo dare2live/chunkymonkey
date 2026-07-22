@@ -30,7 +30,7 @@
 | `architecture_fix_treadmill_first_principles_20260722.md` | 三时钟控制面 + `run_outcome` + ops≠刀 |
 | `foundation_phase_reeval_20260721.md` | FND-GATE F1–F10 spec（`foundation_done.yaml` 引用）；roadmap 部分由 #6 supersede |
 | `hs_a_whitelist_includes_st_20260722.md` | 沪深A 白名单含 ST universe 护栏 |
-| `workbench_incremental_orchestrator_ux_20260722.md` | acquire UX P0–P3；**P0.1 CX-4 PASS**（`cx4_sla_quality_acceptance_20260723.md`）· **P1 CX-1 PASS**· **P3 CX-2 PASS** |
+| `workbench_incremental_orchestrator_ux_20260722.md` | acquire UX P0–P3；**P0.1 CX-4 / P1 CX-1 / P2 progress UX / P3 CX-2 PASS** |
 | `product_decision_assist_backlog_20260721.md` | Cap A–F 能力定义（近端 CLOSED；defs 有效） |
 
 ## 2. Living guardrails / 前端设计（读 as needed）
@@ -38,7 +38,7 @@
 | 文件 | 角色 |
 |---|---|
 | `frontend_big_picture_minimal_20260722.md` | 前端 L1/L2/L3 披露 + facet registry/跳转图 |
-| `frontend_complex_viz_plan_20260722.md` | viz metaphor（潜伏象限 FIXED；地形 defer） |
+| `frontend_complex_viz_plan_20260722.md` | viz metaphor（象限 + 地形 2.5D + Cap D 桑基/parcoords Enrich FIXED） |
 | `../project_state_ledger` → `project_state_ledger.md` | 唯一历史账本（关键词查询，非启动全文） |
 
 ---

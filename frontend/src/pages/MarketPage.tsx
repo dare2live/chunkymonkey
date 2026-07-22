@@ -22,8 +22,13 @@ import {
   type IntersectionSectorRef,
   type MoneyflowBoardRow,
 } from "../api/decision";
+import { CapitalTerrain } from "../components/CapitalTerrain";
 import { FacetChipRow } from "../components/FacetChip";
 import type { FacetRef } from "../facet/registry";
+import {
+  intersectionParcoordsOption,
+  intersectionSankeyOption,
+} from "../viz/intersectionCharts";
 import {
   fetchDcRotation,
   fetchDrill,
@@ -1709,6 +1714,20 @@ function MoneyflowAssistPanel(props: { initialBehavior?: string | null }) {
                   </span>
                 )}
               </div>
+              {!behaviorFilter && (
+                <CapitalTerrain
+                  rows={viewRows}
+                  selected={selected}
+                  onSelect={(code, name) => {
+                    setSelected(code);
+                    setDrill({
+                      chain: chain as PulseChain,
+                      code,
+                      name,
+                    });
+                  }}
+                />
+              )}
               {quadrantOpt && !behaviorFilter && (
                 <EChart
                   option={quadrantOpt}
@@ -1883,8 +1902,17 @@ function IntersectionPanel() {
     () => fetchIntersectionStrongest({ horizon, limit: 20 }),
     [horizon],
   );
+  const sankeyOpt = useMemo(
+    () => (state.data?.status === "ok" ? intersectionSankeyOption(state.data.rows) : null),
+    [state.data],
+  );
+  const parOpt = useMemo(
+    () => (state.data?.status === "ok" ? intersectionParcoordsOption(state.data.rows) : null),
+    [state.data],
+  );
   return (
     <div className="assist-panel">
+      <p className="page-lead">三链会员交集 — 桑基看归属，平行坐标比强弱，列表给 why。</p>
       <p className="page-desc assist-disclaimer">
         决策辅助层：东财行业∩概念∩申万行业三条强势链（抢筹/潜伏迹象）的会员交集 —
         非买卖指令、非原始排名榜。任一链 as-of 过期或不一致即整面判定 stale（宁缺勿假）。
@@ -1925,9 +1953,24 @@ function IntersectionPanel() {
           >
             {(d) => (
               <>
-                {d.rows.map((r) => (
-                  <IntersectionRowCard key={r.stock_code} row={r} />
-                ))}
+                {sankeyOpt && (
+                  <div className="intersection-viz">
+                    <h3 className="dossier-subhead">L1 · 归属桑基（行业→股→概念/申万）</h3>
+                    <EChart option={sankeyOpt} height={320} />
+                  </div>
+                )}
+                {parOpt && (
+                  <details className="dossier-l2" open>
+                    <summary>L2 · 平行坐标（会员数 × 行为分）</summary>
+                    <EChart option={parOpt} height={260} />
+                  </details>
+                )}
+                <details className="dossier-gaps">
+                  <summary>L3 · 个股 why 列表 ({d.rows.length})</summary>
+                  {d.rows.map((r) => (
+                    <IntersectionRowCard key={r.stock_code} row={r} />
+                  ))}
+                </details>
                 <p className="muted dossier-note">{d.disclaimer}</p>
               </>
             )}
@@ -2152,29 +2195,35 @@ function ScreenerPanel(props: {
 
 function SensingPanel() {
   return (
-    <>
+    <div className="sensing-panel sensing-sparse">
       <p className="page-lead">钱在哪、流向哪、市场温度如何 — 感知层只描述现状。</p>
       <p className="page-desc">
-        不构成任何操作建议。细节曲线与下钻在点击后展开。
+        L1 只留脉搏。资金分布 / 情绪 / 异动默认收起，点开再展开（降密度）。
       </p>
       <PulseBand />
-      <div className="section-label">钱在哪 — 资金分布与轮动</div>
-      <div className="grid-2">
-        <HeatmapCard />
-        <RotationCard />
-      </div>
-      <div className="section-label">情绪周期</div>
-      <div className="grid-2">
-        <LadderCard />
-        <SentimentCard />
-      </div>
-      <div className="section-label">异动观察</div>
-      <div className="grid-3">
-        <FlowBoardCard />
-        <StrongestCard />
-        <WarningsCard />
-      </div>
-    </>
+      <details className="dossier-l2 sensing-section">
+        <summary>L2 · 钱在哪 — 资金分布与轮动</summary>
+        <div className="grid-2">
+          <HeatmapCard />
+          <RotationCard />
+        </div>
+      </details>
+      <details className="dossier-l2 sensing-section">
+        <summary>L2 · 情绪周期</summary>
+        <div className="grid-2">
+          <LadderCard />
+          <SentimentCard />
+        </div>
+      </details>
+      <details className="dossier-gaps sensing-section">
+        <summary>L3 · 异动观察</summary>
+        <div className="grid-3">
+          <FlowBoardCard />
+          <StrongestCard />
+          <WarningsCard />
+        </div>
+      </details>
+    </div>
   );
 }
 

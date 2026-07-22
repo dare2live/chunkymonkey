@@ -122,8 +122,9 @@ L1: KPI. L2: dim heatmap. L3: episode table. Episode stock codes → dossier (**
 
 ## 8. Residual
 
-- Terrain hero still deferred (viz Enrich).
-- Sensing-tab further density cut optional.
-- CX-3 closed: sector-membership + stock flow-streak serve bricks live (see `cx3_capability_bricks_acceptance_20260722.md`).
+- ~~Terrain hero~~ **FIXED** (Enrich 2.5D; see complex_viz plan).
+- ~~Sensing density~~ **FIXED** (L1 pulse; L2/L3 details).
+- CX-3 closed: sector-membership + stock flow-streak serve bricks live.
+- Cap F dossier L1/L2 polish shipped; org mass land honesty remains **BLOCKED** (no fake).
 
-Label: **FIXED (skeleton + CX-3 facet bricks)** for L1/L2/L3 + facet jumps on shipped bricks.
+Label: **FIXED (skeleton + CX-3 + Enrich + sensing sparse + dossier L1/L2 polish)**.

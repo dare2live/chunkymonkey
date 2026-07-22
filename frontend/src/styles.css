@@ -1143,11 +1143,183 @@ select:focus {
   color: var(--text);
 }
 
+/* P2 progress UX */
+.ops-progress {
+  margin: 10px 0 6px;
+}
+
+.ops-progress-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.ops-progress-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border-soft);
+  overflow: hidden;
+}
+
+.ops-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.35s ease;
+}
+
+.ops-progress-live .ops-progress-fill {
+  background: var(--accent);
+}
+
+.ops-progress-ok .ops-progress-fill {
+  background: #2e7d32;
+}
+
+.ops-progress-soft .ops-progress-fill {
+  background: var(--warn);
+}
+
+.ops-progress-fail .ops-progress-fill {
+  background: var(--up);
+}
+
+.ops-progress-idle .ops-progress-fill {
+  background: var(--text-faint);
+}
+
+.ops-progress-pulse {
+  animation: ops-pulse-bar 1.4s ease-in-out infinite;
+}
+
+@keyframes ops-pulse-bar {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.ops-phase-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 2px;
+}
+
+.ops-phase-chip {
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border-soft);
+  color: var(--text-faint);
+  background: transparent;
+}
+
+.ops-phase-chip.done {
+  color: var(--text-dim);
+  border-color: var(--border);
+  background: var(--bg-panel);
+}
+
+.ops-phase-chip.here {
+  color: var(--accent);
+  border-color: rgba(59, 102, 212, 0.45);
+  background: rgba(59, 102, 212, 0.08);
+  font-weight: 600;
+}
+
+.ops-delta {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  background: var(--bg-panel-2);
+}
+
+.ops-delta-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.ops-delta-body {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ops-waterfall {
+  margin: 0;
+  padding: 6px 0;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  background: var(--bg-panel-2);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.ops-waterfall-line {
+  padding: 3px 10px 3px 12px;
+  border-left: 3px solid transparent;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-dim);
+}
+
+.ops-waterfall-line.wf-preflight {
+  border-left-color: var(--text-faint);
+}
+
+.ops-waterfall-line.wf-acquire {
+  border-left-color: var(--accent);
+  color: var(--text);
+}
+
+.ops-waterfall-line.wf-clean {
+  border-left-color: #5b7a9d;
+  color: var(--text);
+}
+
+.ops-waterfall-line.wf-process {
+  border-left-color: #7a6a4a;
+  color: var(--text);
+}
+
+.ops-waterfall-line.wf-store {
+  border-left-color: #2e7d32;
+  color: var(--text);
+}
+
+.ops-waterfall-line.wf-soft {
+  border-left-color: var(--warn);
+}
+
+.ops-waterfall-line.wf-fail {
+  border-left-color: var(--up);
+  color: var(--up);
+}
+
+.ops-waterfall-line.wf-delta {
+  border-left-color: var(--accent);
+  background: rgba(59, 102, 212, 0.05);
+}
+
 /* Capability E: modular pipeline step cards */
 .ops-step-flow {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   align-items: stretch;
 }
 
@@ -1155,9 +1327,9 @@ select:focus {
   display: flex;
   align-items: stretch;
   gap: 8px;
-  flex: 1 1 200px;
-  min-width: 180px;
-  max-width: 280px;
+  flex: 1 1 220px;
+  min-width: 200px;
+  max-width: 300px;
 }
 
 .ops-step-arrow {
@@ -1185,10 +1357,11 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px;
+  padding: 12px 12px 10px;
   border: 1px solid var(--border-soft);
-  border-radius: 5px;
-  background: var(--bg-panel-2);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  box-shadow: 0 1px 0 rgba(28, 28, 26, 0.03);
 }
 
 .ops-step-running {
@@ -1566,4 +1739,157 @@ details.dossier-gaps > summary::before {
 .dossier-l2[open] > summary::before,
 details.dossier-gaps[open] > summary::before {
   content: "˅ ";
+}
+
+/* Capital Terrain 2.5D hero */
+.terrain-hero {
+  margin: 0 0 14px;
+  padding: 12px 12px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #fafaf8 0%, #f2f1ee 100%);
+  overflow: hidden;
+}
+
+.terrain-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.terrain-title {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+.terrain-field {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  min-height: 140px;
+  padding: 8px 4px 0;
+  overflow-x: auto;
+  perspective: 900px;
+}
+
+.terrain-tower {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  width: 36px;
+  flex: 0 0 auto;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.terrain-column {
+  position: relative;
+  width: 22px;
+  height: 110px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  transform: rotateX(12deg) rotateZ(-8deg);
+  transform-style: preserve-3d;
+}
+
+.terrain-face {
+  display: block;
+  width: 18px;
+  height: var(--tower-h, 40%);
+  background: var(--tower-fill, rgba(91, 122, 157, 0.45));
+  border: 1px solid rgba(28, 28, 26, 0.08);
+  box-shadow: 2px 3px 0 rgba(28, 28, 26, 0.06);
+}
+
+.terrain-side {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  width: 6px;
+  height: var(--tower-h, 40%);
+  background: color-mix(in srgb, var(--tower-fill, #5b7a9d) 70%, #1c1c1a);
+  transform: skewY(-35deg) translateX(10px);
+  opacity: 0.55;
+}
+
+.terrain-top {
+  position: absolute;
+  bottom: calc(var(--tower-h, 40%) - 3px);
+  width: 18px;
+  height: 5px;
+  background: color-mix(in srgb, var(--tower-fill, #5b7a9d) 55%, #fff);
+  transform: skewX(-45deg) translateX(3px);
+  opacity: 0.85;
+}
+
+.terrain-tower.latent .terrain-face {
+  outline: 1px solid rgba(91, 122, 157, 0.35);
+}
+
+.terrain-tower.selected .terrain-face {
+  outline: 2px solid var(--accent);
+}
+
+.terrain-tower:hover .terrain-face {
+  filter: brightness(1.05);
+}
+
+.terrain-label {
+  font-size: 9px;
+  color: var(--text-faint);
+  max-width: 36px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
+}
+
+.terrain-empty {
+  margin: 0 0 10px;
+}
+
+.intersection-viz {
+  margin-bottom: 10px;
+}
+
+.sensing-sparse .sensing-section {
+  margin-top: 10px;
+}
+
+.dossier-observation-hero {
+  font-size: 17px;
+  line-height: 1.45;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+}
+
+.dossier-l1-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.dossier-l1-strip em {
+  font-style: normal;
+  color: var(--text-faint);
+  margin-right: 4px;
+  font-size: 11px;
+}
+
+.dossier-honesty {
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0 0 10px;
 }

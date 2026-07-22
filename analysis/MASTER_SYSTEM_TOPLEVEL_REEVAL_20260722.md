@@ -164,9 +164,9 @@ PARTIAL」这种无 consumer 的残差追绿**性质不同**。
 
 | 面 | 定位 | Tier | 现状 |
 |---|---|---|---|
-| 工作台 workbench | ops 可操作（一键更新 / 分步节点） | 观测/控制 | shipped；acquire UX P0/P0.1/P1/P3 PASS（CX-4/CX-1/CX-2）；P2 progress polish = residual PLAN only |
-| 市场 market（资金决策辅助 default / 交集 / 选股 / 感知） | L1 极简 → L2 → L3 | Tier2 evidence + Tier3 consumer | shipped subset |
-| 股票档案 / 机构档案 dossier | per-stock / per-holder 决策辅助 | Tier3 consumer | PARTIAL（机构 ~54% honesty） |
+| 工作台 workbench | ops 可操作（一键更新 / 分步节点） | 观测/控制 | shipped；P0–P3 + **P2 progress UX FIXED**（瀑布日志 / 全链+节点进度 / delta_manifest 面） |
+| 市场 market（资金决策辅助 default / 交集 / 选股 / 感知） | L1 极简 → L2 → L3 | Tier2 evidence + Tier3 consumer | Enrich：**地形 2.5D FIXED** + Cap D 桑基/平行坐标 FIXED；感知 L1 稀疏 |
+| 股票档案 / 机构档案 dossier | per-stock / per-holder 决策辅助 | Tier3 consumer | Cap F polish **PARTIAL→shipped L1/L2**；机构 org mass land 仍 **BLOCKED**（诚实声明） |
 | `#/explore` facet 图 | 计算 facet → universe → dossier | Tier3 navigation | **HAVE（CX-3）** sector_membership + flow_streak live |
 | **候选每日简报 daily briefing** | 把 conclusion/why/observation 聚成叙事 | **Tier3 narrative consumer（optional）** | **HAVE（CX-3）** `daily_briefing` serve + UI |
 
@@ -178,7 +178,7 @@ PARTIAL」这种无 consumer 的残差追绿**性质不同**。
 
 ## 6. Acquire 之后的计算：delta-manifest 选择性加工 + 状态传感器（分期）
 
-> 权威：`workbench_incremental_orchestrator_ux_20260722.md`（P0+P0.1 FIXED；P1/P3 via CX-1/CX-2 PASS；P2 polish residual）。
+> 权威：`workbench_incremental_orchestrator_ux_20260722.md`（P0–P3 FIXED；P2 progress UX shipped 2026-07-23）。
 
 - **裁决（Occam）**：空增量仍加工 = **半设计半冗余**。`segments`/`technical_states` 无缺日秒退（良好）；
   `market_pulse` 迟到窗回补**必须跑**（t+1 迟到列自愈，owner「derive lag 不许跳」）；`dc_view` 全量
