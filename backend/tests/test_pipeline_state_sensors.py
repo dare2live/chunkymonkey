@@ -165,6 +165,33 @@ def test_holders_notice_diff_rank_and_exit():
     assert out["sample"]["rank"][0]["curr_rank"] == 2
 
 
+def test_holders_without_accepted_partition_fail_closed(tmp_path):
+    from services.pipeline.state_sensors import detect_holders_state_changes
+
+    conn = duckdb.connect(str(tmp_path / "h2.duckdb"))
+    conn.execute(
+        """
+        CREATE TABLE canonical_top10_float_holders_period (
+            stock_code VARCHAR, report_date VARCHAR, holder_set VARCHAR,
+            holder_rank INTEGER, row_seq INTEGER, holder_name VARCHAR,
+            hold_ratio_float DOUBLE, notice_date VARCHAR, is_exit_row BOOLEAN
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO canonical_top10_float_holders_period VALUES
+          ('600000','20260630','float',1,1,'基金A',11.0,'20260723', FALSE)
+        """
+    )
+    # No accepted_partition table → fail closed (no MAX(notice_date) invent).
+    out = detect_holders_state_changes(conn)
+    assert out["changed"] is False
+    assert out["status"] in {"skipped_no_accepted", "unavailable"}
+    assert out["tier0_write"] is False
+    conn.close()
+
+
 def test_delist_diff_and_as_of_roundtrip(tmp_path):
     from services.pipeline.state_sensors import (
         delist_diff,

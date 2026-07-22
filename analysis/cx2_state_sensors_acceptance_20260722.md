@@ -43,6 +43,7 @@
 3. **Real ST detection** — unit fixture proves enter/exit; live historical pair `20260714→20260715` detects enter `002759.SZ`.
 4. **Holders exit/rank not silent** — live `20260723` reports `exit_n=2` + `rank_changed_n≥1` (not ratio-only).
 5. **No phantom process step** — `holders_consumers` absent from `process_plan`.
+6. **Holders as_of fail-closed** — no `MAX(notice_date)` invent when accepted partition missing (`skipped_no_accepted` / `unavailable`).
 
 ---
 
@@ -51,7 +52,7 @@
 ```text
 pytest backend/tests/test_pipeline_state_sensors.py \
        backend/tests/test_pipeline_delta_manifest.py
-→ 19 passed
+→ 20 passed
 ```
 
 Live probe (read-only, `persist_dim_as_of=False`):
@@ -61,6 +62,7 @@ Live probe (read-only, `persist_dim_as_of=False`):
 | stock_st latest pair `20260721→20260722` | `changed=false` (honest empty day) |
 | stock_st historical `20260714→20260715` | `entered_n=1` (`002759.SZ`) |
 | holders accepted `20260723` | `ratio_changed_n=5`, `rank_changed_n=1`, `exit_n=2` |
+| holders without accepted partition | `skipped_no_accepted` / `unavailable` — **no** `MAX(notice_date)` invent |
 | delist same-set | `changed=false` when before==after |
 | process_plan pulse | `late_window_mandatory`; DC may skip; no `holders_consumers` |
 

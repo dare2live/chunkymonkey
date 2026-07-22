@@ -340,8 +340,8 @@ def _holders_as_of_partition(
     *,
     dataset_id: str = HOLDERS_DATASET,
     table: str = HOLDERS_TABLE,
-) -> str | None:
-    """Prefer latest accepted notice partition; fall back to MAX(notice_date)."""
+) -> tuple[str | None, str | None]:
+    """Return (as_of, miss_reason). Accepted partition only — no MAX fallback."""
     try:
         row = conn.execute(
             """
@@ -354,14 +354,14 @@ def _holders_as_of_partition(
             [dataset_id],
         ).fetchone()
         if row and _yyyymmdd(row[0]):
-            return _yyyymmdd(row[0])
-    except Exception:  # rule-compliance: ok evidence=sensor-fallback-to-MAX(notice_date); never invent partition
-        pass
-    try:
-        latest = conn.execute(f"SELECT MAX(notice_date) FROM {table}").fetchone()[0]
-    except Exception:  # rule-compliance: ok evidence=read-only sensor returns None on missing table
-        return None
-    return str(latest) if latest else None
+            return _yyyymmdd(row[0]), None
+        return None, "skipped_no_accepted"
+    except Exception as exc:  # rule-compliance: ok evidence=fail-closed sensor; never invent as_of via MAX(notice_date)
+        try:
+            conn.execute(f"SELECT 1 FROM {table} LIMIT 1")
+        except Exception as table_exc:
+            return None, f"holders_read_failed:{type(table_exc).__name__}"
+        return None, f"accepted_partition_read_failed:{type(exc).__name__}"
 
 
 def detect_holders_state_changes(
@@ -371,23 +371,23 @@ def detect_holders_state_changes(
     dataset_id: str = HOLDERS_DATASET,
 ) -> dict[str, Any]:
     """Accepted notice as_of: ratio + rank + exit (read-only)."""
-    latest_s = _holders_as_of_partition(conn, dataset_id=dataset_id, table=table)
+    latest_s, miss = _holders_as_of_partition(conn, dataset_id=dataset_id, table=table)
     if latest_s is None:
-        # Distinguish empty vs read failure when table probe fails.
-        try:
-            conn.execute(f"SELECT 1 FROM {table} LIMIT 1")
-        except Exception as exc:
+        if miss and (
+            miss.startswith("holders_read_failed")
+            or miss.startswith("accepted_partition_read_failed")
+        ):
             return {
                 "status": "unavailable",
                 "changed": False,
-                "reason": f"holders_read_failed:{type(exc).__name__}",
+                "reason": miss,
                 "detection": HOLDERS_DETECTION,
                 "tier0_write": False,
             }
         return {
-            "status": "skipped_empty",
+            "status": "skipped_no_accepted",
             "changed": False,
-            "reason": "no_holders_notice_date",
+            "reason": miss or "no_accepted_holders_partition",
             "detection": HOLDERS_DETECTION,
             "tier0_write": False,
         }
