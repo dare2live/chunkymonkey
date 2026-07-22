@@ -6,6 +6,7 @@
 > Foundation dependency evidence: `analysis/foundation_e2e_frontend_update_20260721.md` (PARTIAL) → unblock+click follow-ups FIXED/PARTIAL.
 > **Phase-order authority:** `analysis/product_plan_reeval_stock_dossier_20260721.md` — supersedes §7; defs A–E here + **F 股票档案**.
 > **Execution closeout:** `analysis/product_plan_execution_closeout_20260721.md` (0r.5b→5B FIXED subsets).
+> **Complex-viz overlay (PLAN ONLY):** `analysis/frontend_complex_viz_plan_20260722.md` — 潜伏地形/象限/交集 metaphor; consumes shipped Cap A board + Cap D intersection; no new backend for MVP.
 
 ## 1. Problem / north star
 
