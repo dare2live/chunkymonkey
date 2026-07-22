@@ -12,6 +12,22 @@ export interface OpsJobActivity {
   blocking_reason: string | null;
 }
 
+export interface DuePlanItem {
+  domain: string;
+  watermark: string | null;
+  days_ago: number;
+  sla_days?: number | null;
+  status?: string | null;
+  will_fetch: boolean;
+}
+
+export interface DuePlanPreview {
+  source: string | null;
+  as_of: string | null;
+  items: DuePlanItem[];
+  error?: string;
+}
+
 export interface OpsJobStatus {
   job: string;
   label: string;
@@ -26,6 +42,7 @@ export interface OpsJobStatus {
   log_tail: string[];
   log_mtime: number | null;
   current_activity?: OpsJobActivity | null;
+  due_plan?: DuePlanPreview | null;
 }
 
 export interface OpsJobRunResp {

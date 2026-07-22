@@ -456,6 +456,26 @@ def _affected_stocks_since(client, since_date: str) -> list[str]:
     return sorted(codes)
 
 
+def _provider_newest_update_date(client) -> Optional[str]:
+    """Newest provider UPDATE_DATE as YYYYMMDD (1-row probe). None if empty/error."""
+    try:
+        r = client.get_v1(
+            REPORT_FREE,
+            page=1,
+            page_size=1,
+            filter_expr="",
+            extra_params={"sortColumns": "UPDATE_DATE", "sortTypes": "-1"},
+        )
+    except Exception:  # noqa: BLE001 — probe only; fall through to full incremental
+        return None
+    data = r.get("data") or []
+    if not data:
+        return None
+    raw = str(data[0].get("UPDATE_DATE") or "").strip()
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    return digits[:8] if len(digits) >= 8 else None
+
+
 INCREMENT_SAFETY_DAYS = 7   # evidence: 水位回退重扫边界 catch 同日晚披露 + 东财修正 (幂等无害)
 
 CANONICAL_TABLE = "canonical_top10_float_holders_period"
@@ -545,15 +565,50 @@ def sync_holders_aif10_incremental(
     wm, wm_source = formal_holders_watermark(conn)   # YYYYMMDD, formal frontier
     base = wm or fallback_since                        # 存量空 (未backfill) → 回退起点
     since_date = (datetime.strptime(base, "%Y%m%d") - timedelta(days=safety_days)).strftime("%Y-%m-%d")
+    # Skip rewrite amp when provider frontier ≤ formal wm (UI catchup re-click).
+    # Same-day late corrections with identical UPDATE_DATE may wait until wm moves —
+    # heartbeat + skip beats silent 11m duplicate 742k rewrite (measured 20260722).
+    provider_max = _provider_newest_update_date(client)
+    if wm and provider_max and provider_max <= wm:
+        print(
+            f"holders_aif10: skip watermark_unchanged wm={wm} "
+            f"provider_max={provider_max} source={wm_source}"
+        )
+        return {
+            "ok": 0,
+            "fail": 0,
+            "rows_written": 0,
+            "exit_rows": 0,
+            "affected_stocks": 0,
+            "net_new_notice_rows": 0,
+            "notice_partitions_touched": 0,
+            "rewrite_amplification_rows": 0,
+            "watermark": wm,
+            "watermark_source": wm_source,
+            "provider_max_update_date": provider_max,
+            "since_date": since_date,
+            "skipped": True,
+            "skip_reason": "watermark_unchanged",
+            "errors": [],
+        }
     affected = _affected_stocks_since(client, since_date)
     if not affected:
         return {"ok": 0, "fail": 0, "rows_written": 0, "exit_rows": 0,
                 "affected_stocks": 0, "net_new_notice_rows": 0,
                 "notice_partitions_touched": 0, "rewrite_amplification_rows": 0,
                 "watermark": wm, "watermark_source": wm_source,
+                "provider_max_update_date": provider_max,
                 "since_date": since_date, "errors": []}
-    result = sync_holders_aif10(conn, symbols=affected, start_period=start_period,
-                                progress_every=0)
+    print(
+        f"holders_aif10: start incremental affected={len(affected)} "
+        f"wm={wm} provider_max={provider_max} since={since_date}"
+    )
+    result = sync_holders_aif10(
+        conn,
+        symbols=affected,
+        start_period=start_period,
+        progress_every=10,
+    )
     net_new_rows, notice_parts = _net_new_notice_since(conn, wm)
     result["affected_stocks"] = len(affected)
     result["net_new_notice_rows"] = net_new_rows
@@ -562,5 +617,6 @@ def sync_holders_aif10_incremental(
     result["rewrite_amplification_rows"] = result.get("rows_written", 0)
     result["watermark"] = wm
     result["watermark_source"] = wm_source
+    result["provider_max_update_date"] = provider_max
     result["since_date"] = since_date
     return result

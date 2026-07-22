@@ -1010,6 +1010,29 @@ select:focus {
   color: var(--text-dim);
 }
 
+.ops-due-plan {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  background: var(--bg-panel-2);
+}
+
+.ops-due-plan-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.ops-due-plan-list {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .ops-log-head {
   display: flex;
   align-items: center;

@@ -321,6 +321,29 @@ export function WorkbenchPage() {
             </div>
           </div>
 
+          <div className="ops-due-plan">
+            <div className="ops-due-plan-label">
+              到期计划（SLA 水位预览 · 非 planner 裁决）
+              {status?.due_plan?.as_of ? (
+                <span className="mono"> · as_of={status.due_plan.as_of}</span>
+              ) : null}
+            </div>
+            {!status?.due_plan?.items?.length ? (
+              <div className="state-hint">暂无落后域，或尚无 watermark SLA 文件</div>
+            ) : (
+              <pre className="ops-due-plan-list mono">
+                {status.due_plan.items
+                  .map(
+                    (row) =>
+                      `${row.domain.padEnd(18)} wm=${String(row.watermark ?? "—")}  ` +
+                      `days_ago=${row.days_ago}  ` +
+                      `${row.will_fetch ? "will-fetch≈all-due" : "on_demand/formal"}`,
+                  )
+                  .join("\n")}
+              </pre>
+            )}
+          </div>
+
           <div className="ops-log-head">
             <span>最近日志尾</span>
             <button className="btn" onClick={() => void refresh()} disabled={triggering}>

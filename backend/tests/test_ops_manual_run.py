@@ -68,6 +68,22 @@ def test_status_exposes_writer_lock_as_authority_and_pgrep_as_hint(tmp_path, mon
         lambda: SimpleNamespace(busy=False, owner=None, owner_pid=None),
     )
     monkeypatch.setattr(ops_manual_run, "_is_running", lambda _spec: True)
+    monkeypatch.setattr(
+        ops_manual_run,
+        "_due_plan_preview",
+        lambda **_k: {
+            "source": "data/audit/watermark_sla_before_20260722.json",
+            "as_of": "2026-07-22T01:00:00Z",
+            "items": [
+                {
+                    "domain": "ths_hot",
+                    "watermark": "20260720",
+                    "days_ago": 2,
+                    "will_fetch": True,
+                }
+            ],
+        },
+    )
 
     payload = ops_manual_run._status_payload("daily_update", spec)
 
@@ -77,6 +93,51 @@ def test_status_exposes_writer_lock_as_authority_and_pgrep_as_hint(tmp_path, mon
     assert payload["process_hint_running"] is True
     assert "current_activity" in payload
     assert payload["current_activity"]["phase"] in {"running", "idle"}
+    assert payload["due_plan"]["items"][0]["domain"] == "ths_hot"
+    assert payload["due_plan"]["items"][0]["will_fetch"] is True
+
+
+def test_due_plan_preview_marks_lagged_all_due_domains(tmp_path, monkeypatch):
+    audit = tmp_path / "data" / "audit"
+    audit.mkdir(parents=True)
+    sla = audit / "watermark_sla_before_20260722.json"
+    sla.write_text(
+        __import__("json").dumps(
+            {
+                "run_at": "2026-07-22T01:00:00Z",
+                "sources": [
+                    {
+                        "data_domain": "sync:ths_hot",
+                        "watermark_date": "20260720",
+                        "watermark_days_ago": 2,
+                        "sla_days": 2,
+                        "status": "NO_PROBE_RULE",
+                    },
+                    {
+                        "data_domain": "sync:daily",
+                        "watermark_date": "20260721",
+                        "watermark_days_ago": 1,
+                        "status": "OK",
+                    },
+                    {
+                        "data_domain": "sync:moneyflow_dc",
+                        "watermark_date": "20260722",
+                        "watermark_days_ago": 0,
+                        "status": "OK",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ops_manual_run, "_REPO", tmp_path)
+    plan = ops_manual_run._due_plan_preview()
+    domains = {row["domain"]: row for row in plan["items"]}
+    assert "ths_hot" in domains
+    assert domains["ths_hot"]["will_fetch"] is True
+    assert domains["ths_hot"]["watermark"] == "20260720"
+    assert domains["daily"]["will_fetch"] is False
+    assert "moneyflow_dc" not in domains
 
 
 def test_current_activity_prefers_latest_phase_over_prior_fail(tmp_path, monkeypatch):

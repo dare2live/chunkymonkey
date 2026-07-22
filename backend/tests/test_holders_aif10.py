@@ -17,6 +17,7 @@ from services.holders_aif10 import (  # noqa: E402
     _net_new_notice_since,
     fetch_holders_top10_by_notice_date,
     formal_holders_watermark,
+    sync_holders_aif10_incremental,
     DEFAULT_START_PERIOD,
 )
 
@@ -218,3 +219,30 @@ def test_fetch_holders_top10_by_notice_date_maps_provider_shape(monkeypatch):
     assert rows[0]["stock_code"] == "600388"
     assert rows[0]["notice_date"] == "20260717"
     assert rows[0]["is_exit_row"] is False
+
+
+def test_incremental_skips_when_provider_watermark_unchanged(monkeypatch):
+    """Re-click must not rewrite ~742k rows when provider max ≤ formal wm."""
+    import types
+
+    class _Client:
+        def get_v1(self, *_a, **_k):
+            return {"data": [{"UPDATE_DATE": "2026-07-22 00:00:00"}], "pages": 1}
+
+    fake_mod = types.ModuleType("aif10_scraper")
+    fake_mod.default_client = _Client()
+    fake_mod.fetch_all_pages = lambda *_a, **_k: []
+    monkeypatch.setitem(sys.modules, "aif10_scraper", fake_mod)
+    monkeypatch.setattr(
+        "services.holders_aif10.formal_holders_watermark",
+        lambda _conn: ("20260722", "test_wm"),
+    )
+    monkeypatch.setattr(
+        "services.holders_aif10._affected_stocks_since",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must skip before scan")),
+    )
+    out = sync_holders_aif10_incremental(object())
+    assert out["skipped"] is True
+    assert out["skip_reason"] == "watermark_unchanged"
+    assert out["rows_written"] == 0
+    assert out["provider_max_update_date"] == "20260722"

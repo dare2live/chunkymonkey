@@ -746,3 +746,241 @@ def test_pre_publish_same_day_zero_is_typed_pending_not_tombstone():
     assert before is True
     assert after is False
     assert other_day is False
+
+
+def test_formal_security_day_same_day_empty_after_window_is_pending(monkeypatch):
+    """stock_st: vendor vacuum after available_after=09:20 → pending, not error.
+
+    Measured UI Run B (20260722 09:23): pre-window helper false → hard zero_rows
+    blocked --all-due. Formal land_then_accept must soft-pending same-day empty.
+    """
+    from types import SimpleNamespace
+
+    from services.data_sources.security_day_acquire import SecurityDayAcquireResult
+
+    spec = {
+        "domain": "stock_st",
+        "source": "tushare",
+        "api": "stock_st",
+        "available_after": "09:20",
+        "date_param": "trade_date",
+        "availability_policy": {
+            "axis": "trading_day",
+            "rule": "same_day_at",
+            "at": "09:20",
+        },
+        "data_start": "20220104",
+        "security_day_partition": {
+            "contract_version": "1",
+            "coverage_start": "20220104",
+            "schema_hash": "x",
+        },
+        "execution_policy": {"mode": "enabled", "reason": "test"},
+        "sync_policy": "on_demand",
+    }
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda _spec, **_kwargs: sr.DomainEligibility(
+            "20260722", False, "manual_calendar_eligible"
+        ),
+    )
+    monkeypatch.setattr(
+        sr,
+        "resolve_operation_window",
+        lambda eligibility, **kwargs: SimpleNamespace(
+            effective_end=kwargs.get("requested_end") or eligibility.eligible_end
+        ),
+    )
+    monkeypatch.setattr(sr, "apply_fetch_socket_timeout", lambda _spec: None)
+    monkeypatch.setattr(sr, "_adapter", lambda _src: SimpleNamespace())
+    # Clock past 09:20 → pre_available_after helper is false.
+    monkeypatch.setattr(
+        sr,
+        "_is_pre_publish_same_day_zero",
+        lambda *_a, **_k: False,
+    )
+    monkeypatch.setattr(
+        sr,
+        "_is_same_day_partition",
+        lambda *_a, **_k: True,
+    )
+    monkeypatch.setattr(
+        "services.data_sources.security_day_acquire.resolve_security_day_acquire",
+        lambda *_a, **_k: SecurityDayAcquireResult(
+            rows=(),
+            acquire_mode="provider_tushare",
+            lineage_note="test",
+            source_ref="tushare:stock_st",
+        ),
+    )
+    monkeypatch.setattr(
+        sr,
+        "_target_conn",
+        lambda _spec: (_ for _ in ()).throw(AssertionError("no DB on pending")),
+    )
+
+    out = sr._publish_security_day_accepted_partition(
+        "stock_st",
+        spec,
+        trade_date="20260722",
+        trigger_mode="manual",
+    )
+    assert out["status"] == "ok"
+    assert out["failed_batches"] == 0
+    assert out["pending_publish"] is True
+    assert out["pending_publish_reason"] == "same_day_vendor_vacuum"
+    assert out["rows"] == 0
+
+
+def test_formal_daily_after_window_empty_still_fail_closed(monkeypatch):
+    """daily after 18:00 same-day empty must NOT soft-pending (true window)."""
+    from types import SimpleNamespace
+
+    from services.data_sources.security_day_acquire import SecurityDayAcquireResult
+
+    spec = {
+        "domain": "daily",
+        "source": "tushare",
+        "api": "daily",
+        "available_after": "18:00",
+        "date_param": "trade_date",
+        "data_start": "20190102",
+        "security_day_partition": {
+            "contract_version": "1",
+            "coverage_start": "20190102",
+            "schema_hash": "x",
+        },
+        "execution_policy": {"mode": "enabled", "reason": "test"},
+        "sync_policy": "on_demand",
+    }
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda _spec, **_kwargs: sr.DomainEligibility(
+            "20260722", False, "manual_calendar_eligible"
+        ),
+    )
+    monkeypatch.setattr(
+        sr,
+        "resolve_operation_window",
+        lambda eligibility, **kwargs: SimpleNamespace(
+            effective_end=kwargs.get("requested_end") or eligibility.eligible_end
+        ),
+    )
+    monkeypatch.setattr(sr, "apply_fetch_socket_timeout", lambda _spec: None)
+    monkeypatch.setattr(sr, "_adapter", lambda _src: SimpleNamespace())
+    monkeypatch.setattr(sr, "_is_pre_publish_same_day_zero", lambda *_a, **_k: False)
+    monkeypatch.setattr(sr, "_is_same_day_partition", lambda *_a, **_k: True)
+    monkeypatch.setattr(
+        "services.data_sources.security_day_acquire.resolve_security_day_acquire",
+        lambda *_a, **_k: SecurityDayAcquireResult(
+            rows=(),
+            acquire_mode="provider_tushare",
+            lineage_note="test",
+            source_ref="tushare:daily",
+        ),
+    )
+
+    class _BoomConn:
+        def close(self):
+            pass
+
+    # Empty after true window proceeds to land_then_accept (may error) — not pending.
+    monkeypatch.setattr(sr, "_target_conn", lambda _spec: _BoomConn())
+
+    def _boom_publish(*_a, **_k):
+        from services.data_sources.security_day_partition import SecurityDayError
+
+        raise SecurityDayError("daily capture rejects empty provider rows trade_date=20260722")
+
+    monkeypatch.setattr(
+        "services.data_sources.security_day_transport.land_then_accept_authorized_security_day",
+        _boom_publish,
+    )
+    monkeypatch.setattr(
+        "services.data_sources.nominal_ohlcv_contract.nominal_ohlcv_contract_for_spec",
+        lambda _spec: object(),
+    )
+
+    out = sr._publish_security_day_accepted_partition(
+        "daily",
+        spec,
+        trade_date="20260722",
+        trigger_mode="manual",
+    )
+    assert out.get("pending_publish") is not True
+    assert out["failed_batches"] == 1
+
+
+def test_formal_security_day_pre_publish_empty_is_pending_not_error(monkeypatch):
+    """Formal daily: morning zero_rows before available_after → pending_publish."""
+    from types import SimpleNamespace
+
+    from services.data_sources.security_day_acquire import SecurityDayAcquireResult
+
+    spec = {
+        "domain": "daily",
+        "source": "tushare",
+        "api": "daily",
+        "available_after": "18:00",
+        "date_param": "trade_date",
+        "availability_policy": {
+            "axis": "trading_day",
+            "rule": "same_day_at",
+            "at": "18:00",
+        },
+        "data_start": "20190102",
+        "security_day_partition": {
+            "contract_version": "1",
+            "coverage_start": "20190102",
+            "schema_hash": "x",
+        },
+        "execution_policy": {"mode": "enabled", "reason": "test"},
+        "sync_policy": "on_demand",
+    }
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda _spec, **_kwargs: sr.DomainEligibility(
+            "20260722", False, "manual_calendar_eligible"
+        ),
+    )
+    monkeypatch.setattr(
+        sr,
+        "resolve_operation_window",
+        lambda eligibility, **kwargs: SimpleNamespace(
+            effective_end=kwargs.get("requested_end") or eligibility.eligible_end
+        ),
+    )
+    monkeypatch.setattr(sr, "apply_fetch_socket_timeout", lambda _spec: None)
+    monkeypatch.setattr(sr, "_adapter", lambda _src: SimpleNamespace())
+    monkeypatch.setattr(
+        sr,
+        "_is_pre_publish_same_day_zero",
+        lambda *_a, **_k: True,
+    )
+    monkeypatch.setattr(
+        "services.data_sources.security_day_acquire.resolve_security_day_acquire",
+        lambda *_a, **_k: SecurityDayAcquireResult(
+            rows=(),
+            acquire_mode="provider_tushare",
+            lineage_note="test",
+            source_ref="tushare:daily",
+        ),
+    )
+    monkeypatch.setattr(
+        sr,
+        "_target_conn",
+        lambda _spec: (_ for _ in ()).throw(AssertionError("no DB on pending")),
+    )
+
+    out = sr._publish_security_day_accepted_partition(
+        "daily",
+        spec,
+        trade_date="20260722",
+        trigger_mode="manual",
+    )
+    assert out["status"] == "ok"
+    assert out["pending_publish"] is True
+    assert out["pending_publish_reason"] == "pre_available_after_zero_rows"

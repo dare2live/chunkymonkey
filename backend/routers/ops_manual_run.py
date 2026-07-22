@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -361,6 +362,65 @@ def _derive_current_activity(
     }
 
 
+def _due_plan_preview(*, limit: int = 12) -> dict[str, Any]:
+    """Read-only due preview from newest watermark SLA JSON (no DuckDB).
+
+    Surfaces domain / watermark / days_ago / will_fetch heuristic so workbench
+    can show catchup intent before/during「数据更新」(ths_hot etc.).
+    Not a planner verdict — planner still owns --all-due selection.
+    """
+    audit = _REPO / "data" / "audit"
+    candidates = sorted(
+        audit.glob("watermark_sla_before_*.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    latest = audit / "watermark_sla_latest.json"
+    path = candidates[0] if candidates else (latest if latest.exists() else None)
+    if path is None:
+        return {"source": None, "as_of": None, "items": []}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {"source": str(path), "as_of": None, "items": [], "error": "unreadable"}
+    sources = payload.get("sources") if isinstance(payload, dict) else None
+    if not isinstance(sources, list):
+        return {"source": str(path), "as_of": payload.get("run_at") if isinstance(payload, dict) else None, "items": []}
+    items: list[dict[str, Any]] = []
+    for entry in sources:
+        if not isinstance(entry, dict):
+            continue
+        domain = str(entry.get("data_domain") or "")
+        if not domain.startswith("sync:"):
+            continue
+        days_ago = entry.get("watermark_days_ago")
+        try:
+            days_n = int(days_ago) if days_ago is not None else 0
+        except (TypeError, ValueError):
+            days_n = 0
+        if days_n < 1:
+            continue
+        short = domain.removeprefix("sync:")
+        # on_demand formals never ride --all-due; mark honestly.
+        will_fetch = short not in {"daily", "stock_st", "margin"}
+        items.append(
+            {
+                "domain": short,
+                "watermark": entry.get("watermark_date"),
+                "days_ago": days_n,
+                "sla_days": entry.get("sla_days"),
+                "status": entry.get("status"),
+                "will_fetch": will_fetch,
+            }
+        )
+    items.sort(key=lambda row: (-int(row.get("days_ago") or 0), str(row.get("domain"))))
+    return {
+        "source": str(path.relative_to(_REPO)) if path.is_relative_to(_REPO) else str(path),
+        "as_of": payload.get("run_at") if isinstance(payload, dict) else None,
+        "items": items[: max(1, int(limit))],
+    }
+
+
 def _status_payload(job: str, spec: dict[str, Any]) -> dict[str, Any]:
     lock = writer_lock_status()
     process_hint = _is_running(spec)
@@ -385,7 +445,7 @@ def _status_payload(job: str, spec: dict[str, Any]) -> dict[str, Any]:
         owner_pid=lock.owner_pid,
         alert_summary=alert_text,
     )
-    return {
+    out: dict[str, Any] = {
         "job": job,
         "label": spec["label"],
         "running": lock.busy,
@@ -400,6 +460,9 @@ def _status_payload(job: str, spec: dict[str, Any]) -> dict[str, Any]:
         "log_mtime": mtime,
         "current_activity": activity,
     }
+    if job == "daily_update":
+        out["due_plan"] = _due_plan_preview()
+    return out
 
 
 @router.get("/jobs")

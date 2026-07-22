@@ -1904,6 +1904,53 @@ def _publish_security_day_accepted_partition(
         fetch_rows=_fetch_rows,
     )
 
+    if domain == "daily":
+        publication = "accepted_nominal_ohlcv_partition"
+    elif domain == "stock_st":
+        publication = "accepted_stock_st_partition"
+    else:
+        raise SyncWindowError(
+            f"domain={domain} is not a security-day accepted publication"
+        )
+
+    # Same-day vendor vacuum → typed pending_publish (not failed_batches /
+    # not tombstone).
+    # (a) Any formal domain before available_after (daily 18:00 morning).
+    # (b) stock_st only after optimistic available_after=09:20 while still
+    #     same-day empty (measured UI Run B 09:23). Daily/other after their
+    #     true window stay fail-closed below. Non-today empty always fails closed.
+    if not acquired.rows:
+        probe_params = {"trade_date": partition}
+        if _is_pre_publish_same_day_zero(spec, probe_params):
+            pending_reason = "pre_available_after_zero_rows"
+        elif domain == "stock_st" and _is_same_day_partition(spec, probe_params):
+            pending_reason = "same_day_vendor_vacuum"
+        else:
+            pending_reason = None
+        if pending_reason is not None:
+            log.info(
+                "pending_publish domain=%s trade_date=%s reason=%s "
+                "(same-day zero_rows; retry when vendor publishes)",
+                domain,
+                partition,
+                pending_reason,
+            )
+            return {
+                "domain": domain,
+                "status": "ok",
+                "batches": 0,
+                "rows": 0,
+                "failed_batches": 0,
+                "pending_publish": True,
+                "pending_publish_reason": pending_reason,
+                "publication": publication,
+                "transport": "land_then_accept",
+                "acquire_mode": acquired.acquire_mode,
+                "eligible_end": eligibility.eligible_end,
+                "eligibility_reason": eligibility.reason,
+                "partition_value": partition,
+            }
+
     def _acquired_rows(_params: Mapping[str, Any]):
         return list(acquired.rows)
 
@@ -1912,7 +1959,6 @@ def _publish_security_day_accepted_partition(
             nominal_ohlcv_contract_for_spec,
         )
 
-        publication = "accepted_nominal_ohlcv_partition"
         contract = nominal_ohlcv_contract_for_spec(spec)
         publish = lambda conn: land_then_accept_authorized_security_day(
             "daily",
@@ -1922,10 +1968,9 @@ def _publish_security_day_accepted_partition(
             fetch_rows=_acquired_rows,
             bootstrap=True,
         )
-    elif domain == "stock_st":
+    else:
         from services.data_sources.stock_st_contract import stock_st_contract_for_spec
 
-        publication = "accepted_stock_st_partition"
         contract = stock_st_contract_for_spec(spec)
         publish = lambda conn: land_then_accept_authorized_security_day(
             "stock_st",
@@ -1934,10 +1979,6 @@ def _publish_security_day_accepted_partition(
             trade_date=partition,
             fetch_rows=_acquired_rows,
             bootstrap=True,
-        )
-    else:
-        raise SyncWindowError(
-            f"domain={domain} is not a security-day accepted publication"
         )
 
     conn = _target_conn(spec)
@@ -3200,6 +3241,32 @@ def _parse_available_after(spec: dict[str, Any]) -> tuple[int, int] | str | None
     return hh, mm
 
 
+def _batch_date_yyyymmdd(spec: dict[str, Any], params: dict[str, Any]) -> str:
+    date_param = str(spec.get("date_param") or "trade_date")
+    return str(
+        params.get(date_param) or params.get("end_date") or ""
+    ).replace("-", "")
+
+
+def _is_same_day_partition(
+    spec: dict[str, Any],
+    params: dict[str, Any],
+    *,
+    now: Any = None,
+) -> bool:
+    """True when the batch/partition date equals Asia/Shanghai today."""
+    from zoneinfo import ZoneInfo
+
+    now_local = now or datetime.now(ZoneInfo("Asia/Shanghai"))
+    if getattr(now_local, "tzinfo", None) is None:
+        now_local = now_local.replace(tzinfo=ZoneInfo("Asia/Shanghai"))
+    else:
+        now_local = now_local.astimezone(ZoneInfo("Asia/Shanghai"))
+    batch_date = _batch_date_yyyymmdd(spec, params)
+    today = now_local.strftime("%Y%m%d")
+    return bool(batch_date) and batch_date == today
+
+
 def _is_pre_publish_same_day_zero(
     spec: dict[str, Any],
     params: dict[str, Any],
@@ -3225,12 +3292,7 @@ def _is_pre_publish_same_day_zero(
         now_local = now_local.astimezone(ZoneInfo("Asia/Shanghai"))
     if (now_local.hour, now_local.minute) >= availability:
         return False
-    date_param = str(spec.get("date_param") or "trade_date")
-    batch_date = str(
-        params.get(date_param) or params.get("end_date") or ""
-    ).replace("-", "")
-    today = now_local.strftime("%Y%m%d")
-    return bool(batch_date) and batch_date == today
+    return _is_same_day_partition(spec, params, now=now_local)
 
 
 def _normalize_trigger_mode(trigger_mode: TriggerMode | str | None) -> TriggerMode:

@@ -692,6 +692,84 @@ def test_formal_on_demand_catchup_pulls_single_missing_eligible_day(
         assert kwargs["registry"] is registry
 
 
+def test_formal_on_demand_catchup_soft_skips_pending_publish(
+    monkeypatch, tmp_path, capsys
+):
+    """Morning UI: same-day empty formal must not TIER0-block --all-due drain."""
+    from services.data_sources import sync_runner
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    registry = {
+        "domains": {
+            "daily": {
+                "domain": "daily",
+                "sync_policy": "on_demand",
+                "execution_policy": {
+                    "mode": "enabled",
+                    "reason": "authorized_manual_generation",
+                },
+            },
+            "stock_st": {
+                "domain": "stock_st",
+                "sync_policy": "on_demand",
+                "execution_policy": {
+                    "mode": "enabled",
+                    "reason": "authorized_manual_generation",
+                },
+            },
+        }
+    }
+
+    class _Conn:
+        def execute(self, *_a, **_k):
+            return SimpleNamespace(fetchone=lambda: None)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(sync_runner, "load_registry", lambda: registry)
+    monkeypatch.setattr(
+        sync_runner, "domain_spec", lambda reg, domain: reg["domains"][domain]
+    )
+    monkeypatch.setattr(
+        sync_runner,
+        "eligible_end_date",
+        lambda _spec, **_kwargs: SimpleNamespace(
+            eligible_end="20260722", reason="manual_calendar_eligible"
+        ),
+    )
+
+    def _run(domain, **kwargs):
+        reason = (
+            "pre_available_after_zero_rows"
+            if domain == "daily"
+            else "same_day_vendor_vacuum"
+        )
+        return {
+            "domain": domain,
+            "status": "ok",
+            "failed_batches": 0,
+            "pending_publish": True,
+            "pending_publish_reason": reason,
+            "rows": 0,
+        }
+
+    monkeypatch.setattr(sync_runner, "run_domain", _run)
+    monkeypatch.setattr(
+        "services.duck_adapter.connect", lambda *_a, **_k: _Conn()
+    )
+    ctx = PipelineContext(date="20260722", log_path=tmp_path / "run.log")
+    try:
+        acquire._sync_formal_on_demand_security_days(ctx)
+    finally:
+        ctx.close()
+    out = capsys.readouterr().out
+    assert "pending_publish" in out
+    assert "same_day_vendor_vacuum" in out
+    assert "20260722" in out
+
+
 def test_unrelated_sync_failure_degrades_only_after_margin_gate_passes(
     monkeypatch, tmp_path
 ):

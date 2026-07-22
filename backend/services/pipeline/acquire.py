@@ -290,6 +290,27 @@ def _sync_formal_on_demand_security_days(ctx: PipelineContext) -> None:
         )
         failed = int(result.get("failed_batches") or 0)
         status = str(result.get("status") or "")
+        # Same-day vendor vacuum (pending_publish): soft-skip so registry
+        # --all-due drain (ths_hot etc.) is not kidnapped by today's empty
+        # formal daily/ST. Non-pending failures stay hard Tier0 blocks.
+        if result.get("pending_publish"):
+            print(
+                json.dumps(
+                    {
+                        "domain": domain,
+                        "action": "pending_publish",
+                        "eligible_end": eligible_end,
+                        "eligibility_reason": eligibility_reason,
+                        "dataset_id": dataset_id,
+                        "pending_publish_reason": result.get(
+                            "pending_publish_reason",
+                            "same_day_vendor_vacuum",
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            continue
         if status != "ok" or failed:
             raise Tier0AcquireError(
                 f"formal {domain} land_then_accept failed for {eligible_end}: "
