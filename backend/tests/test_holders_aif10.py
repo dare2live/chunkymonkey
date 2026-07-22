@@ -226,7 +226,9 @@ def test_incremental_skips_when_provider_watermark_unchanged(monkeypatch):
     import types
 
     class _Client:
-        def get_v1(self, *_a, **_k):
+        def get_v1(self, *_a, **kwargs):
+            # Empty filter must not be used (vendor returns 0); accept bounded probe.
+            assert "UPDATE_DATE>=" in str(kwargs.get("filter_expr") or "")
             return {"data": [{"UPDATE_DATE": "2026-07-22 00:00:00"}], "pages": 1}
 
     fake_mod = types.ModuleType("aif10_scraper")

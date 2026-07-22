@@ -456,14 +456,24 @@ def _affected_stocks_since(client, since_date: str) -> list[str]:
     return sorted(codes)
 
 
-def _provider_newest_update_date(client) -> Optional[str]:
-    """Newest provider UPDATE_DATE as YYYYMMDD (1-row probe). None if empty/error."""
+def _provider_newest_update_date(
+    client, *, since_yyyymmdd: str | None = None
+) -> Optional[str]:
+    """Newest provider UPDATE_DATE as YYYYMMDD (1-row probe). None if empty/error.
+
+    Eastmoney datacenter returns 0 rows with empty filter; bound the sort probe
+    with UPDATE_DATE>= floor derived from DEFAULT_START_PERIOD (measured 2026-07-22).
+    """
+    digits = "".join(ch for ch in str(since_yyyymmdd or DEFAULT_START_PERIOD) if ch.isdigit())
+    if len(digits) < 8:
+        digits = DEFAULT_START_PERIOD
+    since_iso = f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
     try:
         r = client.get_v1(
             REPORT_FREE,
             page=1,
             page_size=1,
-            filter_expr="",
+            filter_expr=f"(UPDATE_DATE>='{since_iso}')",  # rule-compliance: ok evidence=DEFAULT_START_PERIOD floor; empty filter returns 0 (measured 20260722)
             extra_params={"sortColumns": "UPDATE_DATE", "sortTypes": "-1"},
         )
     except Exception:  # noqa: BLE001 — probe only; fall through to full incremental

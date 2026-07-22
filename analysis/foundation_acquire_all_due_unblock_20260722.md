@@ -76,5 +76,5 @@ Re-click「数据更新」after rebuild lands. Expect:
 
 - Measure real `stock_st` publish clock → raise `availability_policy.at` when known
 - `ths_hot` live fill past `20260720` still clock/ops
-- holders probe `provider_max=None` falls through to rewrite amp（skip path needs healthy probe）
+- holders probe empty-filter returned 0 → `provider_max=None` rewrite amp; **FIXED** bounded `UPDATE_DATE>=` probe (measured)
 - Formal hard-fail no longer aborts clean/process — intentional； continuity/SLA still fail-closed on truth
