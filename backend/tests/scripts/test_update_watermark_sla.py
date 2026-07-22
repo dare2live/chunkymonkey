@@ -72,7 +72,9 @@ def test_daily_domains_probe_trade_date_quarterly_no_probe():
     q = queries["sync:moneyflow"]
     assert "trade_date" in q["query"] and q["db"] == "tushare_raw"
     assert q["sla_days"] is not None  # registry per-domain SLA 优先于 tier 默认
-    assert queries["sync:daily"].get("verified_complete_spec")
+    # Formal daily/ST: accepted_partition frontier (not legacy verified_complete_spec).
+    assert queries["sync:daily"].get("formal_accepted_frontier")
+    assert "accepted_partition" in queries["sync:daily"]["query"]
     assert queries["sync:fina_mainbz"].get("no_probe")  # by_ts_code 季度域显式 no_probe
 
 
@@ -133,10 +135,41 @@ def test_registered_margin_without_watermark_probes_and_alerts_on_no_acceptance(
         sla.date(2026, 7, 17),
     )
 
-    assert result["status"] == "NO_COMPLETE_BATCH"
+    # CX-4: margin is execution_policy=disabled → observe lag, do not light sla_warn.
+    assert result["status"] == "FROZEN_NO_COMPLETE_BATCH_OBSERVED"
     assert result["probe_state"] == "no_complete_batch"
     assert result["actual_date"] is None
+    assert result["alert"] is False
+    assert result["observe_only"] is True
+
+
+def test_registered_live_domain_without_watermark_still_alerts():
+    """Non-frozen sync domains keep fail-closed MISSING / NO_COMPLETE alerts."""
+    queries = sla._sync_registry_queries()
+    # moneyflow is live (not disabled) — invent a verified-empty probe path via
+    # temporary qspec without observe_only.
+    qspec = {
+        "db": "tushare_raw",
+        "verified_complete_spec": {
+            "target_table": "raw_probe",
+            "grain": ["ts_code", "trade_date"],
+            "date_param": "trade_date",
+            "min_rows_per_batch": 2,
+        },
+        "sla_days": 2,
+    }
+    raw = duck_mem()
+    raw.execute("CREATE TABLE raw_probe (ts_code TEXT, trade_date TEXT)")
+    result = sla._registered_domain_without_watermark_result(
+        {"tushare_raw": raw},
+        {"sync:x": qspec},
+        "sync:x",
+        qspec,
+        sla.date(2026, 7, 17),
+    )
+    assert result["status"] == "NO_COMPLETE_BATCH"
     assert result["alert"] is True
+    assert not result.get("observe_only")
 
 
 def test_accepted_margin_sla_audits_projection_without_mutating_it():
@@ -211,6 +244,146 @@ def test_query_actual_returns_none_when_db_unreachable():
 
 def test_no_mapping_is_a_blocking_probe_failure():
     assert sla._probe_gate("no_mapping") == ("NO_QUERY_MAPPING", True)
+
+
+def test_cx4_legacy_observer_is_typed_no_probe_not_alert():
+    """unknown≠stale: strangler observer must not light sla_warn via NO_QUERY_MAPPING."""
+    q = sla.DATA_SOURCE_QUERIES["holders_top10_float_legacy_observer"]
+    assert q.get("no_probe") == "legacy_observer_not_publication_truth"
+    probe = sla._query_actual_frontier({"smartmoney": object()}, sla.DATA_SOURCE_QUERIES,
+                                       "holders_top10_float_legacy_observer")
+    assert probe.state == "no_probe"
+    assert sla._probe_gate(probe.state) == ("NO_PROBE_RULE", False)
+
+
+def test_cx4_qfii_has_real_probe_and_disclosure_sla():
+    assert "query" in sla.DATA_SOURCE_QUERIES["qfii_holding_quarterly"]
+    assert sla.SLA_DAYS_OVERRIDE["qfii_holding_quarterly"] == 160
+    smart = duck_mem()
+    smart.execute(
+        "CREATE TABLE raw_qfii_holding_quarterly(report_date VARCHAR, ts_code VARCHAR)"
+    )
+    smart.execute(
+        "INSERT INTO raw_qfii_holding_quarterly VALUES ('2026-03-31', '600000.SH')"
+    )
+    probe = sla._query_actual_frontier(
+        {"smartmoney": smart}, sla.DATA_SOURCE_QUERIES, "qfii_holding_quarterly"
+    )
+    assert probe.state == "observed"
+    assert str(probe.actual_date).startswith("2026-03-31")
+    # Within disclosure window: age 114d < 160+3 → not actionable stale.
+    assert sla._days_since("2026-03-31", sla.date(2026, 7, 23)) == 114
+    assert 114 <= sla.SLA_DAYS_OVERRIDE["qfii_holding_quarterly"] + 3
+
+
+def test_cx4_margin_disabled_is_observe_only():
+    queries = sla._sync_registry_queries()
+    assert queries["sync:margin"].get("observe_only") is True
+    assert queries["sync:margin"].get("observe_reason") == "scope_blocked"
+    # Live daily/ST must stay alertable (on_demand alone ≠ frozen).
+    assert not queries["sync:daily"].get("observe_only")
+    assert not queries["sync:stock_st"].get("observe_only")
+
+
+def test_cx4_retired_lhb_tombstone_purge_allowlist_only():
+    smart = duck_mem()
+    ensure_source_watermark_schema(smart)
+    upsert_watermark(
+        smart,
+        {
+            "data_domain": "lhb_daily",
+            "source_name": "aif10_lhb",
+            "source_tier": 2,
+            "last_data_date": "2026-06-26",
+            "row_count": 1,
+        },
+    )
+    # Live holders row must survive.
+    upsert_watermark(
+        smart,
+        {
+            "data_domain": "holders_top10_float",
+            "source_name": "miaoxiang",
+            "source_tier": 1,
+            "last_data_date": "20260717",
+            "row_count": 10,
+        },
+    )
+    purged = sla._purge_retired_watermark_tombs(smart, dry_run=False)
+    assert len(purged) == 1
+    assert purged[0]["data_domain"] == "lhb_daily"
+    assert purged[0]["action"] == "deleted"
+    left = smart.execute(
+        "SELECT data_domain, source_name FROM mart_data_source_watermark "
+        "ORDER BY data_domain"
+    ).fetchall()
+    assert [(r[0], r[1]) for r in left] == [("holders_top10_float", "miaoxiang")]
+
+
+def test_cx4_refuses_tombstone_purge_if_domain_still_in_specs(monkeypatch):
+    monkeypatch.setattr(
+        sla,
+        "RETIRED_WATERMARK_TOMBSTONES",
+        frozenset({("holders_top10_float", "miaoxiang")}),
+    )
+    smart = duck_mem()
+    ensure_source_watermark_schema(smart)
+    with pytest.raises(RuntimeError, match="refusing tombstone purge"):
+        sla._purge_retired_watermark_tombs(smart, dry_run=True)
+
+
+def test_cx4_purge_dry_run_preserves_qfii_row():
+    smart = duck_mem()
+    ensure_source_watermark_schema(smart)
+    upsert_watermark(
+        smart,
+        {
+            "data_domain": "lhb_daily",
+            "source_name": "aif10_lhb",
+            "source_tier": 2,
+            "last_data_date": "2026-06-26",
+            "row_count": 1,
+        },
+    )
+    upsert_watermark(
+        smart,
+        {
+            "data_domain": "qfii_holding_quarterly",
+            "source_name": "aif10_qfii",
+            "source_tier": 2,
+            "last_data_date": "2026-03-31",
+            "row_count": 9,
+        },
+    )
+    dry = sla._purge_retired_watermark_tombs(smart, dry_run=True)
+    assert len(dry) == 1 and dry[0]["action"] == "would_delete"
+    assert (
+        smart.execute(
+            "SELECT COUNT(*) FROM mart_data_source_watermark "
+            "WHERE data_domain='lhb_daily' AND source_name='aif10_lhb'"
+        ).fetchone()[0]
+        == 1
+    )
+    sla._purge_retired_watermark_tombs(smart, dry_run=False)
+    assert (
+        smart.execute(
+            "SELECT COUNT(*) FROM mart_data_source_watermark "
+            "WHERE data_domain='qfii_holding_quarterly'"
+        ).fetchone()[0]
+        == 1
+    )
+
+
+def test_cx4_manual_domain_specs_have_sla_mapping():
+    """Inventory gate: live DOMAIN_SPECS cannot silently fall into NO_QUERY_MAPPING."""
+    sla._assert_manual_domain_sla_inventory()
+
+
+def test_cx4_unknown_domain_still_alerts_no_mapping():
+    """Kill: must not silence true unknown (no_mapping → alert)."""
+    probe = sla._query_actual_frontier({}, {}, "totally_unknown_domain_cx4")
+    assert probe.state == "no_mapping"
+    assert sla._probe_gate(probe.state) == ("NO_QUERY_MAPPING", True)
 
 
 def test_verified_probe_empty_and_query_error_fail_closed():

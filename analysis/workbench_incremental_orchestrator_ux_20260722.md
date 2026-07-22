@@ -131,7 +131,7 @@
 | Phase | 内容 | 授权 | 完成长什么样 | Kill criteria | Status |
 |---|---|---|---|---|---|
 | **P0 通知真话** | 软态单渲染 + **同签名合并**（本刀）；文档写清 SLA 4 源为何软 | 本轮已授权 | 空点重跑不刷屏；软变化才再弹 | 若仍每次重跑刷屏 → 签名口径错，回 §2 | **FIXED** |
-| **P0.1 SLA 语义去误报** | `aif10_lhb` 墓碑行清理 + `qfii`/`miaoxiang_fact` 给 typed probe/no_probe（unknown≠stale） | owner 排期（DB 写需 pre-knife） | SLA n_alerts 只剩**真** actionable；冻结/季频/退役不再点亮 sla_warn | 若清理误删活源 watermark → 回退；若把真 stale 也静音 → abort | **PLAN** |
+| **P0.1 SLA 语义去误报** | `aif10_lhb` 墓碑行清理 + `qfii`/`miaoxiang_fact` 给 typed probe/no_probe（unknown≠stale） | owner 排期（DB 写需 pre-knife） | SLA n_alerts 只剩**真** actionable；冻结/季频/退役不再点亮 sla_warn | 若清理误删活源 watermark → 回退；若把真 stale 也静音 → abort | **FIXED**（CX-4 PASS；证据 `cx4_sla_quality_acceptance_20260723.md`） |
 | **P1 空增量不做无谓重算** | acquire → typed delta manifest；process 按 delta 选择性重算；**pulse 迟到窗恒跑** | owner 排期 | 无新增量时 dc_view skip + 秒级收尾；迟到列仍自愈 | §3.4 三条 | **FIXED（CX-1 PASS）** — 证据 `cx1_acquire_efficiency_acceptance_20260722.md` |
 | **P2 进度 UX** | 每域「改了啥 + 从哪拉」结构化事件；process「在算什么」；瀑布日志；per-node + overall 进度条；卡在加工只点 process 卡 | owner 排期 | 工作台直播 acquire/process 明细 + 双进度条；分步卡独立跑（Cap E 扩展） | 若沦为装饰不反映真状态 → 回退纯日志尾 | **PLAN**（Cap E 已部分：`/api/v3/ops/pipeline/nodes` + 分步卡） |
 | **P3 状态变更传感器** | ST 戴帽/摘帽、holder 比例变化（排名不变也算）、退市等「非增量但状态变」的 typed 探测，纳入 delta manifest 触发选择性更新 | owner 排期 | 状态变化即使无新行也能触发对应域重算；PIT 安全 | 不得把状态变化融进 Tier0 真相；停牌/涨跌停/T+1 硬约束不破 | **FIXED（CX-2 PASS）** — 证据 `cx2_state_sensors_acceptance_20260722.md` |
@@ -157,8 +157,8 @@
 | 范围 | 标签 |
 |---|---|
 | A 通知刷屏（同软签名合并 + 三态解释 + SLA 4 源三诊） | **FIXED**（code + test，下次 UI 日更生效） |
-| B 空增量仍加工根因 + 是否短路裁决 | **FIXED（诊断/裁决）**：半设计半冗余；一刀切不安全 → P1 delta manifest（未实现，plan + kill criteria） |
-| C 产品/架构 UX 计划（P0–P3） | **PLAN**（P0 已落；P0.1–P3 待 owner 排期） |
+| B 空增量仍加工根因 + 是否短路裁决 | **FIXED（诊断/裁决）** → P1 delta manifest **CX-1 PASS** |
+| C 产品/架构 UX 计划（P0–P3） | **PARTIAL→mostly FIXED**（P0+P0.1 FIXED；P1/P3 via CX-1/CX-2 PASS；进度条 polish residual） |
 | E mio + closeout 反 residual-whack | **held**（无 margin/continuity/org/Optuna 触碰） |
 
 一句话：**改的是「通知的词」和「加工的账」——通知按软签名合并不再刷屏；空增量该跳的（DC 全量重建）计划安全跳、绝不跳的（pulse 迟到列自愈）继续跑；产品下一步是让一键更新说清「哪变了、从哪拉、在算啥」而不是再清一个 residual。**

@@ -28,10 +28,8 @@ import json
 import logging
 import sys
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from pathlib import Path
-
-import duckdb
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
@@ -62,13 +60,22 @@ SLA_DAYS = {1: 1, 2: 2, 3: 3}
 
 # Override: 季度数据 (报告期 quarterly) 单独配置 SLA, 不走 tier
 # 季报披露窗: Q1=4/30 / Q2=8/31 / Q3=10/31 / Q4=4/30(年报)
-# 真实 publish lag 1-2 month 后, SLA 100d 覆盖最坏情况
-# rule-compliance: ok evidence=a-share-disclosure-window
+# QFII 用 report_date 水位: Q1→Q2 最坏跨度 ≈ Mar31→Aug31 披露截止 ≈ 153d → 160d 覆盖
+# holders 仍 100d (notice_date / page 更密)。rule-compliance: ok evidence=a-share-disclosure-window
 SLA_DAYS_OVERRIDE = {
     # financial_gpcw_8q override 已删 2026-06-28 (fact_financial_derived U4 退役, DATA_SOURCE_QUERIES 条目同删)
     "holders_top10_float": 100,      # top10 股东季报
-    "qfii_holding_quarterly": 100,   # qfii 季报
+    "qfii_holding_quarterly": 160,   # qfii 季报 (report_date → next disclosure deadline)
 }
+
+# CX-4 / P0.1: retired DOMAIN_SPECS rows that still haunt mart_data_source_watermark.
+# Allowlist-only delete — never invent tombstones from NO_QUERY_MAPPING alone.
+RETIRED_WATERMARK_TOMBSTONES = frozenset(
+    {
+        # LHB 2026-06-29 → tushare top_list/top_inst; DOMAIN_SPECS entry removed.
+        ("lhb_daily", "aif10_lhb"),
+    }
+)
 
 # data_domain → actual table + date column
 DATA_SOURCE_QUERIES = {
@@ -80,6 +87,17 @@ DATA_SOURCE_QUERIES = {
     "holders_top10_float": {
         "db": "smartmoney",
         "query": "SELECT MAX(CAST(report_date AS VARCHAR)) FROM fact_top10_holder_period",
+    },
+    # Strangler observer only — not publication truth. Typed no_probe so unknown≠alert.
+    "holders_top10_float_legacy_observer": {
+        "db": "smartmoney",
+        "no_probe": "legacy_observer_not_publication_truth",
+    },
+    "qfii_holding_quarterly": {
+        "db": "smartmoney",
+        "query": (
+            "SELECT MAX(CAST(report_date AS VARCHAR)) FROM raw_qfii_holding_quarterly"
+        ),
     },
     "industry_dc": {
         # 2026-06-23 单一供应商=东财 (Stage②): 查东财 serving 表 dim_stock_dc_industry.updated_at
@@ -93,6 +111,24 @@ DATA_SOURCE_QUERIES = {
 
 class SyncRegistrySLAError(RuntimeError):
     """The registry cannot prove the complete sync-domain SLA inventory."""
+
+
+def _assert_manual_domain_sla_inventory() -> None:
+    """Every live DOMAIN_SPECS domain must have probe or typed no_probe."""
+    from services.source_watermarks import DOMAIN_SPECS
+
+    missing = sorted(
+        {
+            str(spec["data_domain"])
+            for spec in DOMAIN_SPECS
+            if str(spec.get("data_domain") or "") not in DATA_SOURCE_QUERIES
+        }
+    )
+    if missing:
+        raise SyncRegistrySLAError(
+            "DOMAIN_SPECS missing SLA mapping (probe or no_probe): "
+            + ", ".join(missing)
+        )
 
 
 def _sync_registry_queries(*, registry_path: Path | None = None) -> dict[str, dict]:
@@ -176,6 +212,20 @@ def _sync_registry_queries(*, registry_path: Path | None = None) -> dict[str, di
             else:
                 # 季度 (by_ts_code) / 日历 (full_refresh) 无日频新鲜度语义 — 显式标注, 不静默当 OK
                 out[f"sync:{name}"] = {"db": "tushare_raw", "no_probe": f"batch_mode={mode}"}
+
+            # Any disabled domain: observe lag, do not light actionable sla_warn.
+            # Key = execution_policy.mode only (on_demand enabled domains stay alertable).
+            entry = out.get(f"sync:{name}")
+            exec_pol = contract_spec.get("execution_policy") or {}
+            if (
+                isinstance(entry, dict)
+                and isinstance(exec_pol, dict)
+                and exec_pol.get("mode") == "disabled"
+            ):
+                entry["observe_only"] = True
+                entry["observe_reason"] = str(
+                    exec_pol.get("reason") or "execution_disabled"
+                )
     except Exception as exc:  # noqa: BLE001 — incomplete inventory is a blocking SLA failure
         raise SyncRegistrySLAError(
             f"sync_registry unverified: {type(exc).__name__}"
@@ -272,6 +322,9 @@ def _registered_domain_without_watermark_result(
     status, alert = _probe_gate(probe.state)
     if probe.state in ("verified", "observed"):
         status, alert = "MISSING_WATERMARK", True
+    if qspec.get("observe_only") and alert:
+        status = f"FROZEN_{status or 'NEVER_SYNCED'}_OBSERVED"
+        alert = False
     actual_days = _days_since(probe.actual_date, today)
     return {
         "data_domain": data_domain,
@@ -288,6 +341,7 @@ def _registered_domain_without_watermark_result(
         "watermark_reconcile": None,
         "probe_state": probe.state,
         "probe_error": probe.error,
+        "observe_only": bool(qspec.get("observe_only")),
     }
 
 
@@ -357,6 +411,60 @@ def _days_since(date_str: str | None, today: date) -> int | None:
     return (today - d).days
 
 
+def _purge_retired_watermark_tombs(
+    conn, *, dry_run: bool = False
+) -> list[dict[str, str | int]]:
+    """Delete allowlisted retired watermark PKs only (CX-4 / P0.1).
+
+    Never deletes from live DOMAIN_SPECS or invents tombs from probe status.
+    """
+    from services.source_watermarks import DOMAIN_SPECS
+
+    live_keys = {
+        (str(spec["data_domain"]), str(spec["source_name"])) for spec in DOMAIN_SPECS
+    }
+    purged: list[dict[str, str | int]] = []
+    for data_domain, source_name in sorted(RETIRED_WATERMARK_TOMBSTONES):
+        if (data_domain, source_name) in live_keys:
+            raise RuntimeError(
+                f"refusing tombstone purge for live DOMAIN_SPECS entry "
+                f"{data_domain}/{source_name}"
+            )
+        rows = conn.execute(
+            "SELECT data_domain, source_name, source_tier, last_data_date "
+            "FROM mart_data_source_watermark "
+            "WHERE data_domain = ? AND source_name = ?",
+            [data_domain, source_name],
+        ).fetchall()
+        if not rows:
+            continue
+        if not dry_run:
+            conn.execute(
+                "DELETE FROM mart_data_source_watermark "
+                "WHERE data_domain = ? AND source_name = ?",
+                [data_domain, source_name],
+            )
+        for row in rows:
+            purged.append(
+                {
+                    "data_domain": str(row[0]),
+                    "source_name": str(row[1]),
+                    "source_tier": int(row[2]),
+                    "last_data_date": str(row[3]) if row[3] is not None else "",
+                    "action": "would_delete" if dry_run else "deleted",
+                }
+            )
+            log.info(
+                "  [TOMBSTONE:%s] %s/%s tier=%s last_data_date=%s",
+                "dry-run" if dry_run else "purge",
+                row[0],
+                row[1],
+                row[2],
+                row[3],
+            )
+    return purged
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Watermark SLA auto-update + alert")
     parser.add_argument("--dry-run", action="store_true")
@@ -366,6 +474,7 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        _assert_manual_domain_sla_inventory()
         registry_queries = _sync_registry_queries()
     except Exception as exc:  # noqa: BLE001 — never retain a stale green artifact on inventory loss
         try:
@@ -395,6 +504,10 @@ def main() -> int:
         log.warning(f"tushare_raw 不可达 (回填链占锁?): {e}")
     conns = {"market": market_conn, "smartmoney": smart_conn, "tushare_raw": raw_conn}
     try:
+        tombstone_purges = _purge_retired_watermark_tombs(
+            smart_conn, dry_run=args.dry_run
+        )
+
         watermark_rows = smart_conn.execute(
             "SELECT data_domain, source_name, source_tier, last_data_date, updated_at, "
             "row_count, parser_version "
@@ -450,12 +563,21 @@ def main() -> int:
                     expected_parser_version=qspec["parser_version"],
                 )
                 if projection_drift:
-                    status = "ACCEPTED_PROJECTION_DRIFT"
-                    alert = True
-                    log.warning(
-                        f"  [ALERT] {data_domain}/{source_name}: accepted projection "
-                        f"drift={projection_drift}"
-                    )
+                    if qspec.get("observe_only"):
+                        status = "FROZEN_PROJECTION_DRIFT_OBSERVED"
+                        alert = False
+                        log.info(
+                            f"  [OBSERVE] {data_domain}/{source_name}: accepted "
+                            f"projection drift={projection_drift} "
+                            f"(observe_only={qspec.get('observe_reason')})"
+                        )
+                    else:
+                        status = "ACCEPTED_PROJECTION_DRIFT"
+                        alert = True
+                        log.warning(
+                            f"  [ALERT] {data_domain}/{source_name}: accepted projection "
+                            f"drift={projection_drift}"
+                        )
             elif not qspec.get("accepted_margin"):
                 reconcile = _watermark_reconcile_direction(
                     watermark_date,
@@ -487,12 +609,22 @@ def main() -> int:
             if actual_days is not None and actual_days > sla:
                 # 注意: 周末 / 节假日 不 alert. 简单 SLA 不区分.
                 if actual_days > sla + 3:  # 3 day buffer for weekend
-                    status = "DATA_STALE_VS_SLA"
-                    alert = True
-                    log.warning(
-                        f"  [ALERT] {data_domain}/{source_name}: actual {actual_date} "
-                        f"({actual_days}d ago) > SLA {sla}d (tier {source_tier})"
-                    )
+                    if qspec.get("observe_only"):
+                        # Frozen/disabled domain: record lag, do not light sla_warn.
+                        status = "FROZEN_STALE_OBSERVED"
+                        alert = False
+                        log.info(
+                            f"  [OBSERVE] {data_domain}/{source_name}: actual "
+                            f"{actual_date} ({actual_days}d ago) > SLA {sla}d "
+                            f"(observe_only={qspec.get('observe_reason')})"
+                        )
+                    else:
+                        status = "DATA_STALE_VS_SLA"
+                        alert = True
+                        log.warning(
+                            f"  [ALERT] {data_domain}/{source_name}: actual {actual_date} "
+                            f"({actual_days}d ago) > SLA {sla}d (tier {source_tier})"
+                        )
 
             if alert:
                 n_alert += 1
@@ -512,6 +644,7 @@ def main() -> int:
                 "probe_state": probe.state,
                 "probe_error": probe.error,
                 "projection_drift": projection_drift,
+                "observe_only": bool(qspec.get("observe_only")),
             })
 
         # registry 域 ∪ watermark 行: 从未成功 sync 的注册域没有 watermark 行 →
@@ -535,6 +668,7 @@ def main() -> int:
                 "dry_run": args.dry_run,
                 "n_updates": n_update,
                 "n_alerts": n_alert,
+                "tombstone_purges": tombstone_purges,
                 "sources": results,
             }, f, ensure_ascii=False, indent=2)
         log.info(f"=== SLA check done: {n_update} watermark updated, {n_alert} alerts ===")

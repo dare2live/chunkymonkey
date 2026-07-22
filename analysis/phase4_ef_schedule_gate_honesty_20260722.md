@@ -25,13 +25,14 @@ Do **not** start until `goal.md` next-step explicitly schedules E/F. Then:
 5. **Gate honesty** — unmeasured=`unknown` never 0; holdout lift gates stay; do not self-upgrade Continuity READY from code.
 6. **Evidence** — dated analysis + ledger pointer; update `goal.md` only after measured closeout.
 
-## Current honest state
+## Current honest state (post CX-4, 2026-07-23)
 
 | Gate | State |
 |---|---|
+| CX-1…CX-4 | **PASS** (see `cx_closeout_rx_honesty_20260723.md`) |
 | F0–F3 ladder | **FIXED** (protocol-complete measured reject) |
-| E/F remeasure | **BLOCKED / paused** — waiting owner schedule |
-| Optuna / Release / 松 holdout | **BANNED** (unchanged) |
+| E/F remeasure (RX) | **BLOCKED / paused** — waiting owner schedule |
+| Optuna / Release / 松 holdout | **BANNED** (unchanged; Phase N) |
 | Continuity READY / margin / org | ops residuals ≠ knives (treadmill C3) |
 
 ## Kill criteria
