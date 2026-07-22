@@ -74,6 +74,8 @@ def test_status_exposes_writer_lock_as_authority_and_pgrep_as_hint(tmp_path, mon
         lambda **_k: {
             "source": "data/audit/watermark_sla_before_20260722.json",
             "as_of": "2026-07-22T01:00:00Z",
+            "snapshot_kind": "preflight",
+            "label": "跑前预检快照",
             "items": [
                 {
                     "domain": "ths_hot",
@@ -87,7 +89,8 @@ def test_status_exposes_writer_lock_as_authority_and_pgrep_as_hint(tmp_path, mon
 
     payload = ops_manual_run._status_payload("daily_update", spec)
 
-    assert payload["running"] is False
+    # daily_update: process_hint alone counts as running (chain alive).
+    assert payload["running"] is True
     assert payload["writer_busy"] is False
     assert payload["owner"] is None and payload["owner_pid"] is None
     assert payload["process_hint_running"] is True
@@ -95,6 +98,74 @@ def test_status_exposes_writer_lock_as_authority_and_pgrep_as_hint(tmp_path, mon
     assert payload["current_activity"]["phase"] in {"running", "idle"}
     assert payload["due_plan"]["items"][0]["domain"] == "ths_hot"
     assert payload["due_plan"]["items"][0]["will_fetch"] is True
+
+
+def test_step_job_idle_when_global_writer_busy_elsewhere(tmp_path, monkeypatch):
+    """Global flock held by daily_update must NOT paint every step card as running."""
+    spec = dict(ops_manual_run.MANUAL_JOBS["pipeline_acquire"])
+    spec["log"] = str(tmp_path / "missing_acquire.log")
+    spec["extra_flags"] = []
+    monkeypatch.setattr(ops_manual_run, "_FLAG_DIR", tmp_path)
+    monkeypatch.setattr(
+        ops_manual_run,
+        "writer_lock_status",
+        lambda: SimpleNamespace(busy=True, owner="pipeline.run", owner_pid=16662),
+    )
+    monkeypatch.setattr(ops_manual_run, "_is_running", lambda _spec: False)
+
+    payload = ops_manual_run._status_payload("pipeline_acquire", spec)
+    act = payload["current_activity"]
+    assert payload["running"] is False
+    assert payload["process_hint_running"] is False
+    assert payload["writer_busy"] is True
+    assert payload["owner_pid"] == 16662  # lock truth still exposed for 409 UI
+    assert act["phase"] == "idle"
+    assert "正在" not in act["summary"]
+    assert "本 job 未跑" in act["summary"]
+    assert "16662" in act["summary"]  # occupancy note, not「正在运行」
+
+
+def test_live_daily_update_hides_previous_run_outcome(tmp_path, monkeypatch):
+    """Mid-run must not paint prior report run_outcome as current (hard_fail flicker)."""
+    reports = tmp_path / "data" / "reports"
+    reports.mkdir(parents=True)
+    (reports / "daily_20260721.json").write_text(
+        __import__("json").dumps(
+            {
+                "date": "20260721",
+                "run_outcome": "hard_fail",
+                "run_outcome_label": "硬失败",
+                "run_outcome_reason": "hard_tier0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    spec = dict(ops_manual_run.MANUAL_JOBS["daily_update"])
+    log = tmp_path / "daily.log"
+    log.write_text(
+        "[20:41:18] === ① 获取 ACQUIRE (纯采集 →L0, 不计算) ===\n",
+        encoding="utf-8",
+    )
+    spec["log"] = str(log)
+    spec["extra_flags"] = []
+    monkeypatch.setattr(ops_manual_run, "_FLAG_DIR", tmp_path)
+    monkeypatch.setattr(ops_manual_run, "_REPO", tmp_path)
+    monkeypatch.setattr(
+        ops_manual_run,
+        "writer_lock_status",
+        lambda: SimpleNamespace(busy=True, owner="pipeline.run", owner_pid=99),
+    )
+    monkeypatch.setattr(ops_manual_run, "_is_running", lambda _spec: True)
+    monkeypatch.setattr(
+        ops_manual_run,
+        "_due_plan_preview",
+        lambda **_k: {"source": None, "as_of": None, "items": [], "snapshot_kind": None, "label": None},
+    )
+
+    payload = ops_manual_run._status_payload("daily_update", spec)
+    assert "run_outcome" not in payload or payload.get("run_outcome") is None
+    assert "正在" in payload["current_activity"]["summary"]
+    assert payload["current_activity"]["phase"] == "acquire"
 
 
 def test_due_plan_preview_marks_lagged_all_due_domains(tmp_path, monkeypatch):
@@ -138,7 +209,57 @@ def test_due_plan_preview_marks_lagged_all_due_domains(tmp_path, monkeypatch):
     assert domains["ths_hot"]["watermark"] == "20260720"
     assert domains["daily"]["will_fetch"] is False
     assert "moneyflow_dc" not in domains
+    assert plan["snapshot_kind"] == "preflight"
 
+
+def test_due_plan_prefers_newer_post_acquire_over_before(tmp_path, monkeypatch):
+    audit = tmp_path / "data" / "audit"
+    audit.mkdir(parents=True)
+    before = audit / "watermark_sla_before_20260722.json"
+    after = audit / "watermark_sla_20260722.json"
+    before.write_text(
+        __import__("json").dumps(
+            {
+                "run_at": "2026-07-22T12:41:00+00:00",
+                "sources": [
+                    {
+                        "data_domain": "sync:express",
+                        "watermark_date": "20221231",
+                        "watermark_days_ago": 1299,
+                        "status": "NO_PROBE_RULE",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    after.write_text(
+        __import__("json").dumps(
+            {
+                "run_at": "2026-07-22T12:48:00+00:00",
+                "sources": [
+                    {
+                        "data_domain": "sync:ths_hot",
+                        "watermark_date": "20260721",
+                        "watermark_days_ago": 1,
+                        "status": "OK",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    # Ensure post file is newer on mtime.
+    import os
+    import time
+
+    os.utime(before, (time.time() - 100, time.time() - 100))
+    os.utime(after, (time.time(), time.time()))
+    monkeypatch.setattr(ops_manual_run, "_REPO", tmp_path)
+    plan = ops_manual_run._due_plan_preview()
+    assert plan["snapshot_kind"] == "post_acquire"
+    assert plan["as_of"] == "2026-07-22T12:48:00+00:00"
+    assert plan["items"][0]["domain"] == "ths_hot"
 
 def test_current_activity_prefers_latest_phase_over_prior_fail(tmp_path, monkeypatch):
     log = tmp_path / "daily.log"

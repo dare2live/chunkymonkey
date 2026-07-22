@@ -27,6 +27,7 @@
 > **ths_hot UI catchup（20260722 晨）**：`analysis/foundation_ths_hot_ui_catchup_20260722.md` — 前端路径 PASS；Run B daily=`pending_publish` 后 **stock_st** 09:20 后仍 `zero_rows` 硬阻断 → `--all-due` 未跑；ths_hot max 仍 `20260720`
 > **acquire all-due 解阻（2026-07-22）**：`analysis/foundation_acquire_all_due_unblock_20260722.md` — **FIXED** live：drain-first + formal soft；`ths_hot` `20260721`=443 rows；`20260722` pending@22:30；job DONE degraded（continuity/same-day vacuum）
 > **drain 流式 + probe-first UI 复核（20260722 晚）**：`analysis/foundation_ui_click_verify_after_drain_fix_20260722.md` — workbench 点击 **PARTIAL**：`[drain i/42]` 直播 + manual `ths_hot`/`daily` 探源；终态 `run_outcome=soft_waiting_clock`；taxonomy `c1efecc78` 已上 HEAD 未走 UI
+> **工作台 UI 真话修复（20260722 晚）**：`analysis/workbench_ui_truthfulness_fix_20260722.md` — 分步节点 IDLE≠正在运行/共享死 pid **FIXED**；soft_waiting=已结束文案 + due-plan 跑后快照 **FIXED**
 > **地基 UI 点击跟跑（20260721 晚）**：`analysis/foundation_daily_update_ui_click_20260721.md` — workbench 可观测性（current_activity）+ org incremental skip；click DONE degraded；RCA `foundation_daily_update_degraded_rca_20260721.md`
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 > **产品排期执行 closeout（0r.5b→5B 全量，2026-07-21 晚）**：`analysis/product_plan_execution_closeout_20260721.md` — mandate FIXED；2026-07-22 residual-clear 见 reconcile

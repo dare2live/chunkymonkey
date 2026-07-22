@@ -345,8 +345,17 @@ def _derive_current_activity(
     alert_summary: str | None,
     run_outcome: str | None = None,
     run_outcome_label: str | None = None,
+    job_owns_activity: bool = True,
 ) -> dict[str, Any]:
-    active = bool(writer_busy or process_hint)
+    """Derive UI activity for one job.
+
+    ``job_owns_activity``: this job's process is the live chain (daily_update /
+    its process_hint). Step cards must pass False when only the *global* writer
+    flock is held by another job — otherwise every card paints「正在：运行中」
+    with the same dead/foreign pid while badges stay IDLE.
+    """
+    # Live "正在…" only when *this* job owns the run. Global flock alone ≠ running.
+    active = bool(process_hint or (job_owns_activity and writer_busy))
     run_lines = _slice_current_run(tail)
     progress = ""
     for line in reversed(run_lines):
@@ -391,18 +400,29 @@ def _derive_current_activity(
         phase_label = "硬失败"
         blocking_reason = alert_summary
     elif run_outcome == "soft_waiting_clock":
-        # Amber observation — structurally not FAIL (plan §C2).
-        summary = f"等时钟 / 软观测: {run_outcome_label or 'soft_waiting_clock'}"
+        # Finished-run observation — not "still waiting forever" (plan §C2).
+        summary = "最近一次已结束 · 结果=soft_waiting_clock（等时钟/软观测，非仍在跑）"
         if alert_summary and "hard_fail" not in alert_summary:
             summary += f" — {alert_summary[:120]}"
         phase_id = "soft_waiting"
-        phase_label = "等时钟 / 软观测"
+        phase_label = "已结束 · 等时钟/软观测"
         blocking_reason = None  # do not surface as 阻断
     elif run_outcome == "success":
         summary = "最近成功 · run_outcome=success"
         phase_id = "ok"
         phase_label = "成功"
         blocking_reason = None
+    elif writer_busy and not active:
+        # Global lock held by another chain — this job is idle.
+        summary = "空闲 · 全局 writer 占用中"
+        if owner:
+            summary += f"（{owner}"
+            if owner_pid is not None:
+                summary += f" pid={owner_pid}"
+            summary += "）"
+        summary += " — 本 job 未跑"
+        phase_id = "idle"
+        phase_label = "空闲（writer 占用）"
     elif alert_summary:
         summary = f"告警: {alert_summary}"
         phase_id = "alert"
@@ -426,27 +446,69 @@ def _derive_current_activity(
 def _due_plan_preview(*, limit: int = 12) -> dict[str, Any]:
     """Read-only due preview from newest watermark SLA JSON (no DuckDB).
 
-    Surfaces domain / watermark / days_ago / will_fetch heuristic so workbench
-    can show catchup intent before/during「数据更新」(ths_hot etc.).
-    Not a planner verdict — planner still owns --all-due selection.
+    Prefers the newest among ``watermark_sla_before_*.json`` (preflight) and
+    dated ``watermark_sla_YYYYMMDD.json`` (post-acquire). Surfaces domain /
+    watermark / days_ago / will_fetch heuristic so workbench can show catchup
+    intent. Not a planner verdict — planner still owns --all-due selection.
+    Not an in-flight progress meter.
     """
     audit = _REPO / "data" / "audit"
-    candidates = sorted(
-        audit.glob("watermark_sla_before_*.json"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
+    candidates: list[Path] = []
+    if audit.is_dir():
+        candidates.extend(audit.glob("watermark_sla_before_*.json"))
+        # Dated post-acquire (exclude before_/latest).
+        for path in audit.glob("watermark_sla_*.json"):
+            name = path.name
+            if name.startswith("watermark_sla_before_"):
+                continue
+            if name == "watermark_sla_latest.json":
+                continue
+            # watermark_sla_YYYYMMDD.json
+            if re.fullmatch(r"watermark_sla_\d{8}\.json", name):
+                candidates.append(path)
     latest = audit / "watermark_sla_latest.json"
-    path = candidates[0] if candidates else (latest if latest.exists() else None)
-    if path is None:
-        return {"source": None, "as_of": None, "items": []}
+    if latest.exists():
+        candidates.append(latest)
+    if not candidates:
+        return {
+            "source": None,
+            "as_of": None,
+            "snapshot_kind": None,
+            "label": "暂无 SLA 快照",
+            "items": [],
+        }
+    path = max(candidates, key=lambda p: p.stat().st_mtime)
+    name = path.name
+    if "before" in name:
+        snapshot_kind = "preflight"
+        kind_label = "跑前预检快照"
+    elif re.fullmatch(r"watermark_sla_\d{8}\.json", name):
+        snapshot_kind = "post_acquire"
+        kind_label = "跑后水位快照"
+    else:
+        snapshot_kind = "latest"
+        kind_label = "latest 水位快照"
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
-        return {"source": str(path), "as_of": None, "items": [], "error": "unreadable"}
+        return {
+            "source": str(path),
+            "as_of": None,
+            "snapshot_kind": snapshot_kind,
+            "label": kind_label,
+            "items": [],
+            "error": "unreadable",
+        }
     sources = payload.get("sources") if isinstance(payload, dict) else None
+    as_of = payload.get("run_at") if isinstance(payload, dict) else None
     if not isinstance(sources, list):
-        return {"source": str(path), "as_of": payload.get("run_at") if isinstance(payload, dict) else None, "items": []}
+        return {
+            "source": str(path),
+            "as_of": as_of,
+            "snapshot_kind": snapshot_kind,
+            "label": kind_label,
+            "items": [],
+        }
     items: list[dict[str, Any]] = []
     for entry in sources:
         if not isinstance(entry, dict):
@@ -475,9 +537,12 @@ def _due_plan_preview(*, limit: int = 12) -> dict[str, Any]:
             }
         )
     items.sort(key=lambda row: (-int(row.get("days_ago") or 0), str(row.get("domain"))))
+    rel = str(path.relative_to(_REPO)) if path.is_relative_to(_REPO) else str(path)
     return {
-        "source": str(path.relative_to(_REPO)) if path.is_relative_to(_REPO) else str(path),
-        "as_of": payload.get("run_at") if isinstance(payload, dict) else None,
+        "source": rel,
+        "as_of": as_of,
+        "snapshot_kind": snapshot_kind,
+        "label": kind_label,
         "items": items[: max(1, int(limit))],
     }
 
@@ -497,11 +562,18 @@ def _status_payload(job: str, spec: dict[str, Any]) -> dict[str, Any]:
         tail = log.read_text(errors="ignore").splitlines()[-_LOG_TAIL_LINES:]
         mtime = log.stat().st_mtime
     alert_text = _alert_summary(fail_flag)
+    # daily_update owns the full-chain flock; step jobs only own activity when
+    # *their* process_hint is true (global lock may be held by daily_update).
+    job_owns_activity = job == "daily_update" or process_hint
+    live = bool(process_hint or (job == "daily_update" and lock.busy))
     report = _latest_daily_report() if job == "daily_update" else None
-    run_outcome = str(report.get("run_outcome") or "") if report else None
-    run_outcome_label = (
-        str(report.get("run_outcome_label") or "") if report else None
-    )
+    # While a live run is in flight, do not paint the *previous* report's
+    # run_outcome as current (mid-run hard_fail flicker).
+    run_outcome = None
+    run_outcome_label = None
+    if report and not live:
+        run_outcome = str(report.get("run_outcome") or "") or None
+        run_outcome_label = str(report.get("run_outcome_label") or "") or None
     activity = _derive_current_activity(
         tail=tail,
         mtime=mtime,
@@ -512,14 +584,18 @@ def _status_payload(job: str, spec: dict[str, Any]) -> dict[str, Any]:
         alert_summary=alert_text,
         run_outcome=run_outcome,
         run_outcome_label=run_outcome_label,
+        job_owns_activity=job_owns_activity,
     )
     out: dict[str, Any] = {
         "job": job,
         "label": spec["label"],
-        "running": lock.busy,
+        # ``running`` for step jobs = process_hint only (not global flock).
+        # daily_update ORs flock because the chain's writer child may outlive
+        # a flaky pgrep on scripts/daily_update.sh while still owning the lock.
+        "running": bool(process_hint) if job != "daily_update" else bool(lock.busy or process_hint),
         "writer_busy": lock.busy,
-        "owner": lock.owner,
-        "owner_pid": lock.owner_pid,
+        "owner": lock.owner if lock.busy else None,
+        "owner_pid": lock.owner_pid if lock.busy else None,
         "process_hint_running": process_hint,
         "alert_flags": flags,
         "alert_summary": alert_text,
@@ -530,10 +606,14 @@ def _status_payload(job: str, spec: dict[str, Any]) -> dict[str, Any]:
     }
     if job == "daily_update":
         out["due_plan"] = _due_plan_preview()
-        if report:
+        if report and not live:
             out["run_outcome"] = report.get("run_outcome")
             out["run_outcome_label"] = report.get("run_outcome_label")
             out["run_outcome_reason"] = report.get("run_outcome_reason")
+            out["report_path"] = report.get("_report_path")
+            out["report_date"] = report.get("date")
+        elif report and live:
+            # Live run: keep path/date as lineage breadcrumb only.
             out["report_path"] = report.get("_report_path")
             out["report_date"] = report.get("date")
     return out

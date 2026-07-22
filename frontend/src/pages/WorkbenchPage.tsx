@@ -8,8 +8,10 @@ import {
   deriveActivityFallback,
   fetchOpsJob,
   fetchPipelineNodes,
+  formatDuePlanAsOf,
   formatLogMtime,
   jobLooksActive,
+  nodeActivityView,
   nodeCardTone,
   nodeLooksActive,
   runLandAccept,
@@ -283,10 +285,12 @@ export function WorkbenchPage() {
       )}
       {softWaiting && !jobLooksActive(status) && tab === "oneclick" && (
         <div className="banner-soft">
-          等时钟 / 软观测（非 FAIL）: {status?.run_outcome_label || "soft_waiting_clock"}
+          最近一次已结束 · 结果=等时钟/软观测（非 FAIL，也非仍在跑）:{" "}
+          {status?.run_outcome_label || "soft_waiting_clock"}
           {status?.run_outcome_reason ? ` · ${status.run_outcome_reason}` : ""}
+          {status?.report_date ? ` · report=${status.report_date}` : ""}
           {alerts.length > 0
-            ? ` （doctor flag 仍在: ${alerts.join(", ")} — 观测用，非硬阻断）`
+            ? ` （上次跑留下的观测 flag: ${alerts.join(", ")} — 非硬阻断；成功跑会自清，或手工 rm /tmp/…）`
             : null}
         </div>
       )}
@@ -333,8 +337,12 @@ export function WorkbenchPage() {
               {activity?.log_age_s != null ? `（${Math.floor(activity.log_age_s)}s 前）` : ""}
               {" · "}
               轮询={polledAt ? new Date(polledAt).toLocaleTimeString("zh-CN", { hour12: false }) : "—"}
-              {status?.owner ? ` · writer=${status.owner}` : ""}
-              {status?.owner_pid != null ? ` pid=${status.owner_pid}` : ""}
+              {jobLooksActive(status) && status?.owner
+                ? ` · writer=${status.owner}`
+                : ""}
+              {jobLooksActive(status) && status?.owner_pid != null
+                ? ` pid=${status.owner_pid}`
+                : ""}
             </div>
           </div>
 
@@ -357,9 +365,15 @@ export function WorkbenchPage() {
 
           <div className="ops-due-plan">
             <div className="ops-due-plan-label">
-              到期计划（SLA 水位预览 · 非 planner 裁决）
+              到期计划（{status?.due_plan?.label || "SLA 水位快照"} · 非 planner 裁决 · 非 in-flight 进度）
+              {status?.due_plan?.snapshot_kind ? (
+                <span className="mono"> · kind={status.due_plan.snapshot_kind}</span>
+              ) : null}
               {status?.due_plan?.as_of ? (
-                <span className="mono"> · as_of={status.due_plan.as_of}</span>
+                <span className="mono"> · as_of={formatDuePlanAsOf(status.due_plan.as_of)}</span>
+              ) : null}
+              {status?.due_plan?.source ? (
+                <span className="mono"> · src={status.due_plan.source}</span>
               ) : null}
             </div>
             {!status?.due_plan?.items?.length ? (
@@ -410,15 +424,7 @@ export function WorkbenchPage() {
                   ? "running"
                   : "idle"
                 : nodeCardTone(node);
-              const act = deriveActivityFallback(
-                node.status
-                  ? {
-                      ...node.status,
-                      writer_busy: false,
-                      running: false,
-                    }
-                  : null,
-              );
+              const act = nodeActivityView(node.status);
               const nodeBusy = nodeLooksActive(node.status);
               const canRun =
                 node.runnable &&

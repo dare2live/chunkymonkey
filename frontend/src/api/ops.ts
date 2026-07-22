@@ -25,6 +25,8 @@ export interface DuePlanPreview {
   source: string | null;
   as_of: string | null;
   items: DuePlanItem[];
+  snapshot_kind?: "preflight" | "post_acquire" | "latest" | null;
+  label?: string | null;
   error?: string;
 }
 
@@ -120,10 +122,37 @@ export function jobLooksActive(s: OpsJobStatus | null | undefined): boolean {
   return Boolean(s.writer_busy || s.process_hint_running || s.running);
 }
 
-/** Per-node activity: prefer this job's process hint (writer_busy is global flock). */
+/** Per-node activity: this job's process hint only (never global flock / running). */
 export function nodeLooksActive(s: OpsJobStatus | null | undefined): boolean {
   if (!s) return false;
   return Boolean(s.process_hint_running);
+}
+
+/**
+ * Sanitize API current_activity for step cards: never show「正在…」/ foreign pid
+ * when this node is not actually running.
+ */
+export function nodeActivityView(s: OpsJobStatus | null | undefined): OpsJobActivity | null {
+  if (!s) return null;
+  const active = nodeLooksActive(s);
+  const raw = deriveActivityFallback({
+    ...s,
+    // Global flock must not paint every card as the live chain.
+    writer_busy: false,
+    running: active,
+    process_hint_running: active,
+    // Drop foreign pid unless this node owns the process.
+    owner: active ? s.owner : null,
+    owner_pid: active ? s.owner_pid : null,
+    current_activity: active
+      ? s.current_activity
+      : s.current_activity &&
+          (s.current_activity.phase === "running" ||
+            Boolean(s.current_activity.summary?.startsWith("正在")))
+        ? null
+        : s.current_activity,
+  });
+  return raw;
 }
 
 export function nodeCardTone(
@@ -133,12 +162,7 @@ export function nodeCardTone(
   const s = node.status;
   if (!s) return "idle";
   if (nodeLooksActive(s)) return "running";
-  const act = deriveActivityFallback({
-    ...s,
-    // Avoid painting every card "running" from global writer flock.
-    writer_busy: false,
-    running: false,
-  });
+  const act = nodeActivityView(s);
   if (act?.phase === "alert" || s.alert_summary) return "alert";
   if (act?.phase === "fail") return "alert";
   if (s.log_mtime != null && act && act.phase !== "idle") return "ok";
@@ -154,7 +178,10 @@ export function deriveActivityFallback(s: OpsJobStatus | null | undefined): OpsJ
   const tail = s.log_tail ?? [];
   let start = 0;
   for (let i = 0; i < tail.length; i++) {
-    if (tail[i].includes("=== ChunkyMonkey daily update") || tail[i].includes("=== ChunkyMonkey pipeline stage")) {
+    if (
+      tail[i].includes("=== ChunkyMonkey daily update") ||
+      tail[i].includes("=== ChunkyMonkey pipeline stage")
+    ) {
       start = i;
     }
   }
@@ -173,7 +200,7 @@ export function deriveActivityFallback(s: OpsJobStatus | null | undefined): OpsJ
     ["store", "④ 存储 STORE", /④\s*存储|post-acquire Store/i],
     ["preflight", "预检 preflight", /Preflight|Sync execution policy|Calendar foundation|Authorization/i],
     ["fail", "硬失败 / 阻断", /PREFLIGHT BLOCK|AUTH BLOCK|TIER0 BLOCK|WRITER BLOCK|FAIL rc=[2-5]|HARD_FAIL/i],
-    ["soft_waiting", "等时钟 / 软观测", /soft_waiting_clock|SOFT_WAITING|pending_publish|DONE soft_waiting/i],
+    ["soft_waiting", "已结束 · 等时钟/软观测", /soft_waiting_clock|SOFT_WAITING|pending_publish|DONE soft_waiting/i],
   ];
   for (const line of [...run].reverse()) {
     for (const [id, label, re] of checks) {
@@ -203,9 +230,9 @@ export function deriveActivityFallback(s: OpsJobStatus | null | undefined): OpsJ
     phase = "fail";
     phaseLabel = "硬失败";
   } else if (s.run_outcome === "soft_waiting_clock") {
-    summary = `等时钟 / 软观测: ${s.run_outcome_label || "soft_waiting_clock"}`;
+    summary = `最近一次已结束 · 结果=等时钟/软观测（${s.run_outcome_label || "soft_waiting_clock"}）`;
     phase = "soft_waiting";
-    phaseLabel = "等时钟 / 软观测";
+    phaseLabel = "已结束 · 等时钟/软观测";
     blocking = null; // never paint soft wait as FAIL
   } else if (s.run_outcome === "success") {
     summary = "最近成功 · run_outcome=success";
@@ -239,5 +266,17 @@ export function formatLogMtime(mtime: number | null | undefined): string {
     return new Date(mtime * 1000).toLocaleString("zh-CN", { hour12: false });
   } catch {
     return String(mtime);
+  }
+}
+
+/** Format due-plan as_of (usually UTC ISO) for local display. */
+export function formatDuePlanAsOf(asOf: string | null | undefined): string {
+  if (!asOf) return "—";
+  try {
+    const d = new Date(asOf);
+    if (Number.isNaN(d.getTime())) return asOf;
+    return `${d.toLocaleString("zh-CN", { hour12: false })}（源 ${asOf}）`;
+  } catch {
+    return asOf;
   }
 }
