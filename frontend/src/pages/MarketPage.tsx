@@ -9,7 +9,7 @@
  *  配色: 浅色纸感, echarts 颜色走 theme.ts UI 常量 (与 styles.css :root 同步)。 */
 import type { EChartsOption } from "echarts";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ASSIST_HORIZONS,
   fetchIntersectionStrongest,
@@ -1585,9 +1585,14 @@ function latentQuadrantOption(rows: MoneyflowBoardRow[]): EChartsOption {
   };
 }
 
-function MoneyflowAssistPanel() {
+function MoneyflowAssistPanel(props: { initialBehavior?: string | null }) {
   const [chain, setChain] = useState<AssistChain>("dc_industry");
   const [horizon, setHorizon] = useState<AssistHorizon>(20);
+  const [behaviorFilter, setBehaviorFilter] = useState<string | null>(
+    props.initialBehavior && props.initialBehavior !== "unknown"
+      ? props.initialBehavior
+      : null,
+  );
   const [drill, setDrill] = useState<DrillTarget | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const state = useFetch(
@@ -1609,10 +1614,21 @@ function MoneyflowAssistPanel() {
 
   return (
     <div className="assist-panel">
+      <p className="page-lead">
+        潜伏 = 相对净流入高 × 窗口涨跌低（象限左上）。点气泡看结论，点表格行下钻。
+      </p>
       <p className="page-desc assist-disclaimer">
         决策辅助层：供应商资金不平衡代理 → 行为迹象（潜伏/抢筹/出货）。
-        潜伏 = 相对净流入高 × 窗口涨跌低（象限左上）。非买卖指令；未经策略验证。沪深A（含 ST）serve。
+        非买卖指令；未经策略验证。沪深A（含 ST）serve。
       </p>
+      {behaviorFilter && (
+        <div className="banner-info">
+          已按行为筛选：{behaviorFilter}{" "}
+          <button type="button" className="btn" onClick={() => setBehaviorFilter(null)}>
+            清除
+          </button>
+        </div>
+      )}
       <div className="tab-group assist-filters">
         {(
           [
@@ -1662,7 +1678,15 @@ function MoneyflowAssistPanel() {
         }
       >
         <FetchGate state={state} empty={(d) => d.rows.length === 0} emptyHint="当前链/窗口无可用板块行">
-          {(d) => (
+          {(d) => {
+            const viewRows = behaviorFilter
+              ? d.rows.filter((r) => r.behavior.behavior === behaviorFilter)
+              : d.rows;
+            const viewForChart = {
+              ...d,
+              rows: viewRows,
+            };
+            return (
             <>
               {d.status !== "ok" && (
                 <div className="state-hint">
@@ -1680,10 +1704,29 @@ function MoneyflowAssistPanel() {
                   </span>
                 )}
               </div>
-              {quadrantOpt && (
+              {quadrantOpt && !behaviorFilter && (
                 <EChart
                   option={quadrantOpt}
                   height={380}
+                  onClick={(p) => {
+                    const data = p.data as {
+                      sector_code?: string;
+                      name?: string;
+                    } | undefined;
+                    if (!data?.sector_code) return;
+                    setSelected(data.sector_code);
+                    setDrill({
+                      chain: chain as PulseChain,
+                      code: data.sector_code,
+                      name: data.name ?? null,
+                    });
+                  }}
+                />
+              )}
+              {behaviorFilter && (
+                <EChart
+                  option={latentQuadrantOption(viewForChart.rows)}
+                  height={320}
                   onClick={(p) => {
                     const data = p.data as {
                       sector_code?: string;
@@ -1706,6 +1749,8 @@ function MoneyflowAssistPanel() {
                 </p>
               )}
               {drill && <DrillPanel target={drill} onClose={() => setDrill(null)} />}
+              <details className="dossier-gaps">
+                <summary>L3 · 板块明细表 ({viewRows.length})</summary>
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -1719,7 +1764,7 @@ function MoneyflowAssistPanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {d.rows.map((r: MoneyflowBoardRow) => {
+                    {viewRows.map((r: MoneyflowBoardRow) => {
                       const thin = r.horizon.status !== "known";
                       return (
                         <tr
@@ -1768,8 +1813,10 @@ function MoneyflowAssistPanel() {
                 </table>
                 <p className="muted dossier-note">{d.disclaimer}</p>
               </div>
+              </details>
             </>
-          )}
+            );
+          }}
         </FetchGate>
       </Card>
     </div>
@@ -1949,15 +1996,32 @@ function ScreenerRowCard({ row, onOpen }: { row: ScreenerRow; onOpen: (code: str
   );
 }
 
-function ScreenerPanel() {
+function ScreenerPanel(props: {
+  initialFormName?: string | null;
+  initialAxisPos?: ScreenerAxisPos | null;
+  initialAxisTrend?: ScreenerAxisTrend | null;
+  initialAxisPurity?: ScreenerAxisPurity | null;
+  initialAxisVol?: ScreenerAxisVol | null;
+  initialBreakout?: boolean;
+}) {
   const navigate = useNavigate();
   const optionsState = useFetch(fetchScreenerOptions, []);
-  const [formNames, setFormNames] = useState<string[]>([]);
-  const [axisPos, setAxisPos] = useState<ScreenerAxisPos | null>(null);
-  const [axisTrend, setAxisTrend] = useState<ScreenerAxisTrend | null>(null);
-  const [axisPurity, setAxisPurity] = useState<ScreenerAxisPurity | null>(null);
-  const [axisVol, setAxisVol] = useState<ScreenerAxisVol | null>(null);
-  const [breakoutOnly, setBreakoutOnly] = useState(false);
+  const [formNames, setFormNames] = useState<string[]>(
+    props.initialFormName ? [props.initialFormName] : [],
+  );
+  const [axisPos, setAxisPos] = useState<ScreenerAxisPos | null>(
+    props.initialAxisPos ?? null,
+  );
+  const [axisTrend, setAxisTrend] = useState<ScreenerAxisTrend | null>(
+    props.initialAxisTrend ?? null,
+  );
+  const [axisPurity, setAxisPurity] = useState<ScreenerAxisPurity | null>(
+    props.initialAxisPurity ?? null,
+  );
+  const [axisVol, setAxisVol] = useState<ScreenerAxisVol | null>(
+    props.initialAxisVol ?? null,
+  );
+  const [breakoutOnly, setBreakoutOnly] = useState(Boolean(props.initialBreakout));
 
   const resultState = useFetch(
     () =>
@@ -2064,8 +2128,9 @@ function ScreenerPanel() {
 function SensingPanel() {
   return (
     <>
+      <p className="page-lead">钱在哪、流向哪、市场温度如何 — 感知层只描述现状。</p>
       <p className="page-desc">
-        感知层只描述资金现状与市场温度 (钱在哪 / 流向哪 / 什么形态), 不构成任何操作建议。
+        不构成任何操作建议。细节曲线与下钻在点击后展开。
       </p>
       <PulseBand />
       <div className="section-label">钱在哪 — 资金分布与轮动</div>
@@ -2088,21 +2153,37 @@ function SensingPanel() {
   );
 }
 
-// ── 页面 (C tabs: 市场感知 | 资金决策辅助) ─────────────────────────────────
+// ── 页面 (C tabs: 资金决策辅助 default | 交集 | 选股 | 感知) ─────────────────
 
 const MARKET_PAGE_TABS = [
-  { key: "sensing", label: "市场感知" },
   { key: "assist", label: "资金决策辅助" },
   { key: "intersection", label: "交集最强" },
   { key: "screener", label: "形态/阶段选股" },
+  { key: "sensing", label: "市场感知" },
 ] as const;
 type MarketPageTab = (typeof MARKET_PAGE_TABS)[number]["key"];
 
+function parseMarketTab(raw: string | null): MarketPageTab {
+  const keys = MARKET_PAGE_TABS.map((t) => t.key);
+  return raw && (keys as string[]).includes(raw) ? (raw as MarketPageTab) : "assist";
+}
+
 export function MarketPage() {
-  const [pageTab, setPageTab] = useState<MarketPageTab>("sensing");
+  const [params] = useSearchParams();
+  const [pageTab, setPageTab] = useState<MarketPageTab>(() => parseMarketTab(params.get("tab")));
+
+  const initialBehavior = params.get("behavior");
+  const initialFormName = params.get("form_name");
+  const initialAxisPos = params.get("axis_pos") as ScreenerAxisPos | null;
+  const initialAxisTrend = params.get("axis_trend") as ScreenerAxisTrend | null;
+  const initialAxisPurity = params.get("axis_purity") as ScreenerAxisPurity | null;
+  const initialAxisVol = params.get("axis_vol") as ScreenerAxisVol | null;
+  const initialBreakout = params.get("breakout") === "1";
+
   return (
     <div className="page">
       <h1>市场</h1>
+      <p className="page-lead">每日大局：谁在潜伏、哪条链共振、形态落在哪一侧。</p>
       <div className="tab-group dossier-tabs">
         {MARKET_PAGE_TABS.map((t) => (
           <button
@@ -2116,9 +2197,20 @@ export function MarketPage() {
         ))}
       </div>
       {pageTab === "sensing" && <SensingPanel />}
-      {pageTab === "assist" && <MoneyflowAssistPanel />}
+      {pageTab === "assist" && (
+        <MoneyflowAssistPanel initialBehavior={initialBehavior} />
+      )}
       {pageTab === "intersection" && <IntersectionPanel />}
-      {pageTab === "screener" && <ScreenerPanel />}
+      {pageTab === "screener" && (
+        <ScreenerPanel
+          initialFormName={initialFormName}
+          initialAxisPos={initialAxisPos}
+          initialAxisTrend={initialAxisTrend}
+          initialAxisPurity={initialAxisPurity}
+          initialAxisVol={initialAxisVol}
+          initialBreakout={initialBreakout}
+        />
+      )}
     </div>
   );
 }

@@ -13,6 +13,8 @@ import {
 } from "../api/decision";
 import { fetchStockDossier, type StockDossierResponse, type StockFormStage } from "../api/stock";
 import { Card, FetchGate } from "../components/Card";
+import { FacetChipRow } from "../components/FacetChip";
+import { chipsFromDossier } from "../facet/registry";
 import { fmtInt, fmtPct } from "../format";
 import { useFetch } from "../hooks/useFetch";
 
@@ -55,15 +57,29 @@ function AxisGrid(props: { form: StockFormStage }) {
 
 function OverviewPanel(props: { d: StockDossierResponse }) {
   const { d } = props;
+  const f = d.form_stage;
+  const chips = chipsFromDossier({
+    stockCode: d.stock_code,
+    formName: f?.form_name,
+    axisPos: f?.axis_pos,
+    axisTrend: f?.axis_trend,
+    axisPurity: f?.axis_purity,
+    axisVol: f?.axis_vol,
+    breakout: f?.is_breakout_event,
+  });
   return (
     <>
       <p className="dossier-observation">
         {d.observation.text ?? "观察结论未知 — 形态/阶段砖块不足。"}
       </p>
+      <div className="facet-chip-block">
+        <span className="facet-chip-label">可探索 facet</span>
+        <FacetChipRow facets={chips} emptyHint="暂无可跳转形态/轴标签" />
+      </div>
       <div className="dossier-meta muted">
         <span>observation {d.observation.version}</span>
         <span>surface {d.surface}</span>
-        {d.form_stage?.trade_date && <span>form as-of {d.form_stage.trade_date}</span>}
+        {f?.trade_date && <span>form as-of {f.trade_date}</span>}
         {d.holders.report_date && <span>holders {d.holders.report_date}</span>}
       </div>
       {d.gaps.length > 0 && (
@@ -85,8 +101,21 @@ function OverviewPanel(props: { d: StockDossierResponse }) {
 function FormPanel(props: { d: StockDossierResponse }) {
   const f = props.d.form_stage;
   if (!f) return <div className="state-hint">无形态/阶段行</div>;
+  const chips = chipsFromDossier({
+    stockCode: props.d.stock_code,
+    formName: f.form_name,
+    axisPos: f.axis_pos,
+    axisTrend: f.axis_trend,
+    axisPurity: f.axis_purity,
+    axisVol: f.axis_vol,
+    breakout: f.is_breakout_event,
+  });
   return (
     <>
+      <div className="facet-chip-block">
+        <span className="facet-chip-label">点标签 → 同形态/轴宇宙</span>
+        <FacetChipRow facets={chips} />
+      </div>
       <div className="kpi-grid">
         <div className="kpi">
           <label>形态</label>
@@ -110,14 +139,17 @@ function FormPanel(props: { d: StockDossierResponse }) {
       </div>
       <h3 className="dossier-subhead">阶段轴</h3>
       <AxisGrid form={f} />
-      <p className="muted dossier-note">{f.resolver_note}</p>
-      {f.hybrid_residual_fields && f.hybrid_residual_fields.length > 0 && (
-        <p className="muted dossier-note" title={(f.hybrid_residual_fields || []).join(", ")}>
-          形态读模式：hybrid — accepted 覆盖 name/pos/trend/breakout；残差轴仍 fact（
-          {f.hybrid_residual_fields.slice(0, 4).join(", ")}
-          {f.hybrid_residual_fields.length > 4 ? "…" : ""}）— 非纯 accepted
-        </p>
-      )}
+      <details className="dossier-gaps">
+        <summary>明细 · resolver / hybrid</summary>
+        <p className="muted dossier-note">{f.resolver_note}</p>
+        {f.hybrid_residual_fields && f.hybrid_residual_fields.length > 0 && (
+          <p className="muted dossier-note" title={(f.hybrid_residual_fields || []).join(", ")}>
+            形态读模式：hybrid — accepted 覆盖 name/pos/trend/breakout；残差轴仍 fact（
+            {f.hybrid_residual_fields.slice(0, 4).join(", ")}
+            {f.hybrid_residual_fields.length > 4 ? "…" : ""}）— 非纯 accepted
+          </p>
+        )}
+      </details>
     </>
   );
 }
@@ -244,11 +276,20 @@ function MoneyflowPanel(props: { code: string }) {
     <FetchGate state={state}>
       {(m: StockMoneyflowResp) => {
         const dc = m.planes.moneyflow_dc;
+        const chips = chipsFromDossier({
+          stockCode: props.code,
+          behavior: m.behavior.behavior,
+          behaviorZh: m.behavior.behavior_zh,
+        });
         return (
           <>
             <p className="dossier-observation">
               {m.conclusion ?? "本股资金结论未知 — 窗未满、分母缺失或板块未形成行为标签。"}
             </p>
+            <div className="facet-chip-block">
+              <span className="facet-chip-label">点行为 → 同行为板块宇宙（Cap A board）</span>
+              <FacetChipRow facets={chips} emptyHint="行为未形成 — 不可跳转" />
+            </div>
             <div className="dossier-meta muted">
               <span>{m.behavior.behavior_zh}</span>
               <span>{m.behavior_version}</span>
@@ -259,37 +300,40 @@ function MoneyflowPanel(props: { code: string }) {
               )}
               {dc.as_of && <span>DC as-of {dc.as_of}</span>}
             </div>
-            <h3 className="dossier-subhead">{dc.label}</h3>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>窗口</th>
-                    <th>状态</th>
-                    <th>相对比率</th>
-                    <th>窗口涨跌</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dc.horizons.map((h) => (
-                    <tr key={h.horizon}>
-                      <td className="mono">{h.horizon}日</td>
-                      <td>{h.status === "known" ? "已知" : "未知"}</td>
-                      <td className="mono">
-                        {h.relative_ratio_pct != null ? `${h.relative_ratio_pct.toFixed(2)}%` : "—"}
-                      </td>
-                      <td className="mono">
-                        {h.window_return_pct != null ? `${h.window_return_pct.toFixed(2)}%` : "—"}
-                      </td>
+            <details open className="dossier-l2">
+              <summary>L2 · 多窗相对流入（东财面）</summary>
+              <h3 className="dossier-subhead">{dc.label}</h3>
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>窗口</th>
+                      <th>状态</th>
+                      <th>相对比率</th>
+                      <th>窗口涨跌</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {dc.horizons.map((h) => (
+                      <tr key={h.horizon}>
+                        <td className="mono">{h.horizon}日</td>
+                        <td>{h.status === "known" ? "已知" : "未知"}</td>
+                        <td className="mono">
+                          {h.relative_ratio_pct != null ? `${h.relative_ratio_pct.toFixed(2)}%` : "—"}
+                        </td>
+                        <td className="mono">
+                          {h.window_return_pct != null ? `${h.window_return_pct.toFixed(2)}%` : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
             <p className="muted dossier-note">{m.disclaimer}</p>
             {m.gaps.length > 0 && (
               <details className="dossier-gaps">
-                <summary>已知缺口 ({m.gaps.length})</summary>
+                <summary>L3 · 已知缺口 ({m.gaps.length})</summary>
                 <ul>
                   {m.gaps.map((g) => (
                     <li key={g} className="mono">
@@ -326,9 +370,16 @@ function IntersectionPanel(props: { code: string }) {
           );
         }
         const d = m.detail;
+        const chips = chipsFromDossier({
+          stockCode: props.code,
+          inIntersection: true,
+        });
         return (
           <>
             <p className="dossier-observation">{d.why}</p>
+            <div className="facet-chip-block">
+              <FacetChipRow facets={chips} />
+            </div>
             <div className="dossier-meta muted">
               <span>as-of 东财 {m.as_of.dc_industry ?? "—"}</span>
               <span>概念 {m.as_of.dc_concept ?? "—"}</span>
@@ -400,7 +451,7 @@ export function StockDossierPage() {
       <div className="page-head dossier-head">
         <div>
           <Link className="back-link" to="/market">
-            ← 市场感知
+            ← 市场
           </Link>
           <h1>{titleBits}</h1>
           {state.data && <p className="dossier-crumb">{industryLine(state.data)}</p>}

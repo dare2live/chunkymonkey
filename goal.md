@@ -17,7 +17,7 @@
 > **§15-VERIFY 证据（F8 PASS）**：`analysis/section15_verify_20260721.md`
 > **地基 E2E（UI 更新路径 20260721）**：`analysis/foundation_e2e_frontend_update_20260721.md` — 初判 PARTIAL（UI 缺按钮 + margin 预检死锁）；后续 unblock 见下
 > **地基 daily_update 解阻（20260721）**：`analysis/foundation_daily_update_unblock_20260721.md` — margin=`on_demand`+frozen；formal daily/ST 编排器 land_then_accept；DC/pulse 已至 `20260721`；工作台「数据更新」**FIXED**
-> **前端复杂可视化计划（潜伏象限 MVP FIXED；地形 Enrich 延后）**：`analysis/frontend_complex_viz_plan_20260722.md` — Phase 1 象限已上 `#/market` 资金决策辅助；证据 `phase3_latent_quadrant_mvp_20260722.md`
+> **前端复杂可视化 + 大局极简/L1–L3 facet（20260722）**：象限 MVP `analysis/frontend_complex_viz_plan_20260722.md`；披露映射+chip跳转 `analysis/frontend_big_picture_minimal_20260722.md`（assist 默认 tab；`#/explore`）
 > **产品决策辅助 backlog（defs；E=DONE）**：`analysis/product_decision_assist_backlog_20260721.md` — A 资金流；**B 形态/阶段选股 FIXED 子集** — `analysis/capability_b_stock_screener_20260721.md`；C tabs；**D 交集最强 FIXED 子集** — `analysis/capability_d_intersection_strongest_20260721.md`；**E step cards FIXED** — `analysis/capability_e_pipeline_step_cards_20260721.md`；**F 股票档案**
 > **产品全量排期权威（20260721 重评）**：`analysis/product_plan_reeval_stock_dossier_20260721.md` — **CLOSED**：0r.1–0r.4 **FIXED**（ths_hot=`pending_publish`）+ 0r.5b→5B **FIXED**；closeout residuals cleared 2026-07-22 — `plan_residual_reconcile_20260722.md`；市场感知只沪深A serve；holders 审计 `holders_stock_dossier_lineage_audit_20260721.md`（勿重审）
 > **地基 BJ/dual-path/沪深A（20260721）**：`analysis/foundation_bj_dualpath_ashare_whitelist_20260721.md` — serve whitelist + formal continuity + share_float **FIXED**；ths_hot mechanism **FIXED**（live catchup ops）

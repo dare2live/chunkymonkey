@@ -1,11 +1,12 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
+// 产品洞察面在前, ops 面 (工作台) 收尾 — 每日打开先看趋势/关系/大局, 而非运维。
 const NAV_ITEMS = [
-  { to: "/institutions", label: "机构档案", enabled: true, prefix: "/institutions" },
+  { to: "/market", label: "市场", enabled: true, prefix: "/market" },
   { to: "/stock/600519", label: "股票档案", enabled: true, prefix: "/stock" },
+  { to: "/institutions", label: "机构档案", enabled: true, prefix: "/institutions" },
   { to: "/paper", label: "观察账本", enabled: true, prefix: "/paper" },
   { to: "/workbench", label: "工作台", enabled: true, prefix: "/workbench" },
-  { to: "/market", label: "市场感知", enabled: true, prefix: "/market" },
 ];
 
 export function Layout() {
@@ -14,7 +15,7 @@ export function Layout() {
     <div className="layout">
       <header className="topbar">
         <span className="brand">ChunkyMonkey</span>
-        <span className="brand-sub">edge 前端 v1</span>
+        <span className="brand-sub">每日市场洞察</span>
       </header>
       <div className="layout-main">
         <nav className="sidenav">

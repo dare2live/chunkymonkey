@@ -203,7 +203,9 @@ function EpisodesCard(props: { holder: string }) {
               <tbody>
                 {p.episodes.map((e) => (
                   <tr key={`${e.stock}|${e.open_date}|${e.status}`} className={e.seeded ? "low-sample" : ""}>
-                    <td className="mono">{e.stock}</td>
+                    <td className="mono">
+                      <Link to={`/stock/${e.stock}`}>{e.stock}</Link>
+                    </td>
                     <td>
                       {fmtDate(e.open_date)}
                       {e.seeded && (
@@ -244,9 +246,18 @@ export function InstitutionDetailPage() {
         </Link>
         <h1 title={holder}>{holder}</h1>
       </div>
+      <p className="page-lead">
+        机构档案 · episode 与维度热力。标的代码可点进股票档案；行业维度 facet 宇宙后续接选股面。
+      </p>
       <KpiCard holder={holder} />
-      <DimHeatmapCard holder={holder} />
-      <EpisodesCard holder={holder} />
+      <details open className="dossier-l2">
+        <summary>L2 · 维度表现</summary>
+        <DimHeatmapCard holder={holder} />
+      </details>
+      <details className="dossier-gaps">
+        <summary>L3 · episode 明细</summary>
+        <EpisodesCard holder={holder} />
+      </details>
     </div>
   );
 }

@@ -244,6 +244,7 @@ export function InstitutionsPage() {
   return (
     <div className="page">
       <h1>机构档案</h1>
+      <p className="page-lead">超额中位与披露事件流 — 点机构进档案，点标的进股票档案。</p>
       <RankingCard />
       <SignalsCard />
     </div>

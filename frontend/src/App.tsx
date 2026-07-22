@@ -1,5 +1,6 @@
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
+import { FacetExplorePage } from "./pages/FacetExplorePage";
 import { InstitutionDetailPage } from "./pages/InstitutionDetailPage";
 import { InstitutionsPage } from "./pages/InstitutionsPage";
 import { MarketPage } from "./pages/MarketPage";
@@ -13,15 +14,16 @@ export function App() {
     <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<Navigate to="/institutions" replace />} />
+          <Route path="/" element={<Navigate to="/market" replace />} />
           <Route path="/institutions" element={<InstitutionsPage />} />
           <Route path="/institutions/:holder" element={<InstitutionDetailPage />} />
           <Route path="/paper" element={<PaperPage />} />
           <Route path="/workbench" element={<WorkbenchPage />} />
           <Route path="/market" element={<MarketPage />} />
+          <Route path="/explore" element={<FacetExplorePage />} />
           <Route path="/stock/:code" element={<StockDossierPage />} />
           <Route path="/stock" element={<Navigate to="/stock/600519" replace />} />
-          <Route path="*" element={<Navigate to="/institutions" replace />} />
+          <Route path="*" element={<Navigate to="/market" replace />} />
         </Route>
       </Routes>
     </HashRouter>
