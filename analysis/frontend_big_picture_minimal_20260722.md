@@ -1,11 +1,11 @@
 # Frontend big-picture / editorial-minimal pass (2026-07-22)
 
-> Status: **evidence-only** / design + implemented polish + L1/L2/L3 facet-jump skeleton.
+> Status: evidence-only. Design + implemented polish + L1/L2/L3 facet-jump skeleton.
 > Companion: `analysis/frontend_complex_viz_plan_20260722.md` (viz metaphors — quadrant FIXED,
-> terrain deferred). Peer owns incremental-orchestrator / workbench **logic** — this pass
+> terrain deferred). Peer owns incremental-orchestrator / workbench logic — this pass
 > touches product surfaces + shared CSS only.
-> Authority: `goal.md` north star (辅助买卖决策); `$mio`; taste skills; brick pipeline as
-> honesty floor (UI exploration ≤ brick honesty). Not a live owner — live control stays `goal.md`.
+> Obeys `goal.md` north star (辅助买卖决策); `$mio`; taste skills; brick pipeline as honesty
+> floor (UI exploration only as honest as shipped bricks). Not a control-plane owner.
 
 ---
 
