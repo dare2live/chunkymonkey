@@ -45,15 +45,27 @@ def main() -> int:
         )
         with log.open("a") as fh:
             fh.write(f"[{start} -> {end}] FAIL rc={rc} job={job} (alert flag: {flag})\n")
-        subprocess.run(
-            [
-                "/usr/bin/osascript",
-                "-e",
-                f'display notification "{job} failed rc={rc} — see {log}" '
-                f'with title "ChunkyMonkey job FAIL"',
-            ],
-            capture_output=True,
-        )
+        # Soft degrade (pipeline exit 1 + degraded flag) already fires one macOS
+        # banner from store._degraded_summary. Do not also scream "job FAIL".
+        # Hard blocks (rc=2/3/4/5) still notify once here.
+        degraded_flag = Path(f"/tmp/chunkymonkey_ALERT_{job}_degraded.flag")
+        soft_degrade = rc == 1 and degraded_flag.exists()
+        if soft_degrade:
+            with log.open("a") as fh:
+                fh.write(
+                    f"[{end}] soft-degrade rc=1: skip FAIL notification "
+                    f"(coalesced into degraded banner; flag kept)\n"
+                )
+        else:
+            subprocess.run(
+                [
+                    "/usr/bin/osascript",
+                    "-e",
+                    f'display notification "{job} failed rc={rc} — see {log}" '
+                    f'with title "ChunkyMonkey job FAIL"',
+                ],
+                capture_output=True,
+            )
     else:
         with log.open("a") as fh:
             fh.write(f"[{start} -> {end}] OK job={job}\n")

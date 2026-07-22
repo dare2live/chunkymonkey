@@ -110,6 +110,8 @@ decision          strategy release, batches, candidates
 paper_execution   orders, fills, positions, NAV
 product           read-only APIs and UI read models
 ops/governance    jobs, alerts, projections and gates
+                  (soft-degrade macOS: store._degraded_summary 单条;
+                   dispatcher --skip-macos; wrapper 跳过 rc=1 FAIL 横幅)
 ```
 
 First establish `DatasetContract` and writer ownership around existing files. Move physical files only when a bounded-context migration has a passing shadow comparison.

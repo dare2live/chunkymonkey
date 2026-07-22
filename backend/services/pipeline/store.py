@@ -47,7 +47,7 @@ def run_store(ctx: PipelineContext) -> None:
     # Step 5: data-health 报告 + 告警送达
     _write_report_and_alert(ctx)
 
-    # degraded 汇总送达 (链 exit 0 不经 wrapper 告警, 必须自己送)
+    # degraded 汇总送达: 软降级唯一 macOS 横幅 (wrapper 对 rc=1+degraded flag 不再弹 FAIL)
     _degraded_summary(ctx)
 
 
@@ -107,12 +107,27 @@ def _write_report_and_alert(ctx: PipelineContext) -> None:
     report_json.write_text(json.dumps(output, indent=2, ensure_ascii=False, default=str))
     ctx.log(f"Report written: {report_json}")
 
-    # 告警送达 (SLA stale = 数据断流, 必须送达)
+    # 告警送达 (SLA stale = 数据断流, 必须送达)。软降级路径会再发一条 coalesced
+    # macOS banner (_degraded_summary)，故此处跳过 macos，避免 WARN+降级+FAIL 三连炸。
     active = [k for k in ("sla_warn",) if bool(output.get(k))]
     if active:
-        ctx.log(f"Alerts present (active={','.join(active)}); dispatching notification")
+        dispatch_cmd = [
+            sys.executable,
+            "-m",
+            "backend.services.notification.dispatcher",
+            "--report",
+            str(report_json),
+        ]
+        if _has_degraded:
+            dispatch_cmd.append("--skip-macos")
+            ctx.log(
+                f"Alerts present (active={','.join(active)}); "
+                "dispatching notification (macos coalesced into degraded banner)"
+            )
+        else:
+            ctx.log(f"Alerts present (active={','.join(active)}); dispatching notification")
         proc = subprocess.run(
-            [sys.executable, "-m", "backend.services.notification.dispatcher", "--report", str(report_json)],
+            dispatch_cmd,
             cwd=str(REPO), capture_output=True, text=True, env=ctx._subprocess_env(),
             pass_fds=ctx._subprocess_pass_fds())
         if ctx._log_fh:
@@ -131,9 +146,20 @@ def _degraded_summary(ctx: PipelineContext) -> None:
         ctx.log(f"DEGRADED SUMMARY: 本次 {n} 步降级 (明细 {DEGRADED_FLAG}):")
         for m in msgs:
             ctx.log(f"  {m}")
+        # Pipeline exit 1 still writes ALERT_<job>.flag via manual_job_wrapper, but
+        # wrapper skips the FAIL banner when this degraded flag is present.
+        sla_hint = ""
+        try:
+            report = json.loads((REPO / f"data/reports/daily_{ctx.date}.json").read_text())
+            if report.get("sla_warn") or (report.get("alert_flags") or {}).get("sla_warn"):
+                stale = (report.get("sla_summary") or {}).get("stale_sources") or []
+                sla_hint = f"; SLA stale={','.join(str(s) for s in stale[:4])}" if stale else "; SLA warn"
+        except Exception:  # noqa: BLE001
+            pass
         try:
             subprocess.run(["osascript", "-e",
-                            f'display notification "daily_update {n} 步降级, 详见 ALERT flag" '
+                            f'display notification "daily_update {n} 步降级{sla_hint}, '
+                            f'详见 ALERT flag / data/reports/daily_{ctx.date}.json" '
                             f'with title "ChunkyMonkey degraded"'], capture_output=True)
         except Exception:  # noqa: BLE001
             pass

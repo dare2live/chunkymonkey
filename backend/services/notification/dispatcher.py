@@ -178,11 +178,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Dispatch ChunkyMonkey notifications")
     parser.add_argument("--report", required=True, help="Daily JSON report path")
     parser.add_argument("--config", default=None, help="Trigger config YAML path")
+    parser.add_argument(
+        "--skip-macos",
+        action="store_true",
+        help="Skip macOS channel (soft-degrade runs already show one coalesced banner)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
     config = load_trigger_config(args.config)
-    dispatch_report(args.report, trigger_config=config)
+    macos_config = {"enabled": False} if args.skip_macos else None
+    dispatch_report(args.report, trigger_config=config, macos_config=macos_config)
     return 0
 
 

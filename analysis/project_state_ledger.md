@@ -3135,3 +3135,8 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - Judgment：主因=foundation/product CLOSED 后队列与 ceiling 错位；次因=编排交互边偶发真债；架构有罪=再生误读边+floor 绿幻觉，非应 greenfield。
 - Next：用产品 + ops 时钟 + owner 排期 E/F；默认禁止清 PARTIAL 代码刀。
 - Evidence：`analysis/why_patch_treadmill_20260722.md`；adversarial 576ee281 / a1c0b123。
+
+### 2026-07-22 — daily_update 通知刷屏分诊 + soft-degrade coalesce
+- Owner：Script Editor macOS 三连（FAIL+WARN+降级）= 假失败刷屏；rc=4 preflight / rc=5 stock_st·daily kidnap / rc=1 soft degrade 映射已知 RCA。
+- Fix：`manual_job_wrapper` 对 rc=1+degraded flag 跳过 FAIL 横幅；`dispatcher --skip-macos`；`store._degraded_summary` 附 SLA 摘要。硬挡 rc=4/5 仍通知。
+- Evidence：`analysis/daily_update_notification_spam_triage_20260722.md`；tests `test_manual_job_wrapper` / `test_notification_dispatcher_skip_macos`。
