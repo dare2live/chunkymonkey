@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import re
+import sys
 import threading
 import time
 from collections import defaultdict, deque
@@ -3806,7 +3807,13 @@ def _main_unlocked(
         from services.data_sources.sources.tushare import TuShareAuthorizationError
 
         results = []
-        for d in selected:
+        _total = len(selected)
+        for _idx, d in enumerate(selected, 1):
+            # Live per-domain progress on stderr (stdout stays pure final JSON).
+            # The pipeline drain wrapper streams stderr into the parent log so
+            # the workbench「数据更新」shows domain-by-domain progress instead of a
+            # single static line for the whole ~40 min drain (owner 2026-07-22).
+            print(f"[drain {_idx}/{_total}] domain={d} …", file=sys.stderr, flush=True)
             try:
                 res = drain_domain(
                     d,
@@ -4072,6 +4079,4 @@ def _calendar_preflight(domains: list[str]) -> None:
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(main())

@@ -3,6 +3,7 @@
 锁住: (1) 包/各阶段可 import (防 port 笔误回归); (2) PipelineContext degraded/log 机制;
 (3) run.main 编排顺序 preflight→获取→清洗→加工→存储 (monkeypatch 阶段, 不碰真 DB/网络)。
 """
+import io
 import json
 import sys
 from datetime import datetime, timedelta
@@ -475,7 +476,9 @@ def test_run_returns_one_when_any_stage_degrades(monkeypatch, tmp_path):
     rc = run_mod.main(["--dry", "--skip-sync", "--date", "20260101"])
 
     assert rc == 1
-    assert "DONE with degraded" in (tmp_path / "run.log").read_text()
+    # Completion line is now typed-outcome-keyed (run_outcome refactor): a lone
+    # non-hard degrade rolls to soft_waiting_clock, exit 1.
+    assert "DONE soft_waiting_clock" in (tmp_path / "run.log").read_text()
 
 
 def test_tier0_acquire_block_stops_every_downstream_stage(monkeypatch, tmp_path):
@@ -510,10 +513,11 @@ def test_sync_registry_margin_partial_is_a_tier0_block(monkeypatch, tmp_path):
 
     monkeypatch.setattr(acquire, "_margin_hard_gate_required", lambda registry=None: True)
     monkeypatch.setattr(
-        "subprocess.run",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            returncode=1,
-            stdout=json.dumps(
+        acquire,
+        "_run_drain_subprocess",
+        lambda _ctx, _cmd: (
+            1,
+            json.dumps(
                 [
                     {
                         "domain": "margin",
@@ -523,7 +527,7 @@ def test_sync_registry_margin_partial_is_a_tier0_block(monkeypatch, tmp_path):
                     }
                 ]
             ),
-            stderr="",
+            "",
         ),
     )
     monkeypatch.setattr(
@@ -539,17 +543,66 @@ def test_sync_registry_margin_partial_is_a_tier0_block(monkeypatch, tmp_path):
         ctx.close()
 
 
+def test_drain_subprocess_streams_stderr_live_to_log(monkeypatch, tmp_path, capsys):
+    """Owner 2026-07-22: drain must not buffer ~40 min of output until it ends.
+
+    stderr (per-domain progress) streams into the parent log *as it arrives*;
+    stdout stays a single JSON list parsed by the caller. Regression against the
+    old ``subprocess.run(capture_output=True)`` that made the UI look hung.
+    """
+    import subprocess as _sp
+
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    stderr_lines = [
+        "[drain 1/2] domain=adj_factor …\n",
+        "[drain 2/2] domain=moneyflow …\n",
+    ]
+    written_when_first_stderr_seen: dict[str, str] = {}
+
+    class _FakePopen:
+        def __init__(self, *_a, **_k):
+            self.returncode = 0
+            self.stdout = io.StringIO(
+                json.dumps([{"domain": "adj_factor", "status": "clean"}])
+            )
+            self.stderr = iter(stderr_lines)
+
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(_sp, "Popen", _FakePopen)
+    ctx = PipelineContext(date="20260722", log_path=tmp_path / "run.log")
+    try:
+        rc, out, err = acquire._run_drain_subprocess(ctx, ["fake", "cmd"])
+    finally:
+        ctx.close()
+    assert rc == 0
+    assert "adj_factor" in out  # child stdout captured whole for json.loads
+    log_text = (tmp_path / "run.log").read_text()
+    # Per-domain progress reached the date-suffixed pipeline log (not buffered).
+    assert "[drain 1/2] domain=adj_factor" in log_text
+    assert "[drain 2/2] domain=moneyflow" in log_text
+    assert err.count("[drain") == 2
+    # …and our stdout (the wrapper's job log the workbench reads) — live UI progress.
+    ui_stdout = capsys.readouterr().out
+    assert "[drain 1/2] domain=adj_factor" in ui_stdout
+    assert "[drain 2/2] domain=moneyflow" in ui_stdout
+
+
 def test_sync_registry_drain_skips_margin_gate_when_disabled(monkeypatch, tmp_path):
     from services.pipeline import acquire
     from services.pipeline.context import PipelineContext
 
     monkeypatch.setattr(acquire, "_margin_hard_gate_required", lambda registry=None: False)
     monkeypatch.setattr(
-        "subprocess.run",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            returncode=0,
-            stdout=json.dumps([{"domain": "adj_factor", "status": "clean"}]),
-            stderr="",
+        acquire,
+        "_run_drain_subprocess",
+        lambda _ctx, _cmd: (
+            0,
+            json.dumps([{"domain": "adj_factor", "status": "clean"}]),
+            "",
         ),
     )
     monkeypatch.setattr(
@@ -919,10 +972,11 @@ def test_unrelated_sync_failure_degrades_only_after_margin_gate_passes(
 
     monkeypatch.setattr(acquire, "_margin_hard_gate_required", lambda registry=None: True)
     monkeypatch.setattr(
-        "subprocess.run",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            returncode=1,
-            stdout=json.dumps(
+        acquire,
+        "_run_drain_subprocess",
+        lambda _ctx, _cmd: (
+            1,
+            json.dumps(
                 [
                     {
                         "domain": "margin",
@@ -933,7 +987,7 @@ def test_unrelated_sync_failure_degrades_only_after_margin_gate_passes(
                     {"domain": "other", "status": "partial"},
                 ]
             ),
-            stderr="",
+            "",
         ),
     )
     gates = []

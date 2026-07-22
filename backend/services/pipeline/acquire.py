@@ -391,34 +391,87 @@ def _require_margin_drain_closed(results: list[dict]) -> None:
         )
 
 
-def _sync_registry_drain(ctx: PipelineContext) -> None:
-    """sync_runner --all-due --drain (module 调用, subprocess 隔离)。"""
-    import subprocess, sys as _sys
+def _run_drain_subprocess(
+    ctx: PipelineContext, cmd: list[str]
+) -> tuple[int, str, str]:
+    """Run the drain subprocess, **streaming stderr live** into the parent log.
+
+    Root cause fixed (2026-07-22, owner mandate): the previous
+    ``subprocess.run(..., capture_output=True)`` buffered ~40 min of drain
+    output until the child returned, so the workbench「数据更新」/``current_activity``
+    saw one static ``$ ...sync_runner --all-due`` line and looked hung. The drain
+    was never stuck — only its per-domain progress was starved.
+
+    stdout stays a single machine-readable JSON list (parsed by the caller for
+    per-domain evidence); human/domain progress is Python ``logging`` +
+    per-domain lines on **stderr**, which we pump line-by-line to ``ctx._log_fh``
+    as it arrives. A reader thread drains stderr while the main thread reads the
+    full stdout, avoiding pipe-buffer deadlock. Returns ``(returncode, stdout,
+    stderr)`` so the caller keeps its existing auth / JSON-parse contract.
+    """
+    import subprocess, sys as _sys, threading
     from .context import REPO
-    cmd = [_sys.executable, "-m", "services.data_sources.sync_runner",
-           "--all-due", "--drain", "--max-dates", "30"]
-    ctx.log(f"  $ {' '.join(cmd)}")
-    proc = subprocess.run(
+
+    proc = subprocess.Popen(
         cmd,
         cwd=str(REPO),
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
+        bufsize=1,  # line-buffered: stderr progress reaches the log promptly
         env=ctx._subprocess_env(),
         pass_fds=ctx._subprocess_pass_fds(),
     )
+    stderr_chunks: list[str] = []
+
+    def _pump_stderr() -> None:
+        if proc.stderr is None:
+            return
+        for line in proc.stderr:
+            stderr_chunks.append(line)
+            # Dual-write like ctx.log: our own stdout is the wrapper's job log
+            # (/tmp/chunkymonkey_<job>.log, read by the workbench current_activity),
+            # while _log_fh is the date-suffixed pipeline log. Both must receive
+            # per-domain drain progress live so「数据更新」isn't a static line.
+            _sys.stdout.write(line)
+            _sys.stdout.flush()
+            if ctx._log_fh:
+                ctx._log_fh.write(line)
+                ctx._log_fh.flush()
+
+    pump = threading.Thread(target=_pump_stderr, daemon=True)
+    pump.start()
+    stdout_data = proc.stdout.read() if proc.stdout else ""
+    proc.wait()
+    pump.join(timeout=10)
+    return int(proc.returncode or 0), stdout_data, "".join(stderr_chunks)
+
+
+def _sync_registry_drain(ctx: PipelineContext) -> None:
+    """sync_runner --all-due --drain (module 调用, subprocess 隔离)。
+
+    Drain stderr streams live to the parent log (see ``_run_drain_subprocess``);
+    stdout is the final per-domain JSON evidence parsed below.
+    """
+    import sys as _sys
+    cmd = [_sys.executable, "-m", "services.data_sources.sync_runner",
+           "--all-due", "--drain", "--max-dates", "30"]
+    ctx.log(f"  $ {' '.join(cmd)}")
+    returncode, stdout_data, stderr_data = _run_drain_subprocess(ctx, cmd)
     if ctx._log_fh:
-        ctx._log_fh.write((proc.stdout or "") + (proc.stderr or "")); ctx._log_fh.flush()
-    if proc.returncode == 3:
+        # stderr already streamed live; append the final stdout JSON evidence.
+        ctx._log_fh.write(stdout_data or ""); ctx._log_fh.flush()
+    if returncode == 3:
         from services.data_sources.sources.tushare import (
             AUTH_FAILURE_REASONS,
             TuShareAuthorizationError,
         )
 
-        output = (proc.stdout or "") + (proc.stderr or "")
+        output = (stdout_data or "") + (stderr_data or "")
         reason = next((item for item in AUTH_FAILURE_REASONS if item in output), "auth_denied")
         raise TuShareAuthorizationError(reason)
     try:
-        results = json.loads(proc.stdout or "")
+        results = json.loads(stdout_data or "")
     except (TypeError, ValueError) as exc:
         raise Tier0AcquireError(
             "sync_registry did not return parseable per-domain evidence"
@@ -438,7 +491,7 @@ def _sync_registry_drain(ctx: PipelineContext) -> None:
             "margin drain/shadow hard-gate SKIP "
             "(disabled + on_demand; product stays frozen)"
         )
-    if proc.returncode != 0:
+    if returncode != 0:
         ctx.degraded("sync_registry drain 有残余缺口或域错误 (见 log)")
 
 

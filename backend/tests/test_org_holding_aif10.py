@@ -31,6 +31,53 @@ def test_enumerate_quarter_ends_kline_aligned():
     assert qs == ["2018-12-31", "2019-03-31", "2019-06-30", "2019-09-30", "2019-12-31"]
 
 
+# ── 增量 planner 随披露日历自进 (非 hard-frozen; owner 2026-07-22) ──────
+def test_latest_plannable_advances_across_disclosure_deadline():
+    """org 增量 planner 不是「冻在某期」— 随法定披露截止日自动前移。
+
+    2026-07-22 latest=Q1(03-31, 截止 04-30 已过); Q2(06-30) 截止 08-31 未到 →
+    仍 03-31。跨 08-31 后自动前移到 06-30。证伪「hard-frozen to Mar 31」误读。
+    """
+    from datetime import date
+
+    assert m.latest_plannable_report_date(date(2026, 7, 22)) == "2026-03-31"
+    assert m.latest_plannable_report_date(date(2026, 8, 30)) == "2026-03-31"
+    assert m.latest_plannable_report_date(date(2026, 8, 31)) == "2026-06-30"
+    assert m.latest_plannable_report_date(date(2026, 10, 31)) == "2026-09-30"
+    assert m.latest_plannable_report_date(date(2027, 4, 30)) == "2027-03-31"
+
+
+def test_next_period_unlock_points_to_following_quarter_and_deadline():
+    # 已 plannable Q1 → 下一期 Q2(06-30) 于其披露截止 08-31 解锁 (证明会前进)。
+    assert m.next_period_unlock("2026-03-31") == ("2026-06-30", "2026-08-31")
+    assert m.next_period_unlock("2026-06-30") == ("2026-09-30", "2026-10-31")
+    assert m.next_period_unlock("2026-12-31") == ("2027-03-31", "2027-04-30")
+
+
+def test_incremental_skip_message_shows_next_unlock(monkeypatch):
+    """日常增量 skip 时日志须暴露「下一期何时解锁」, 不再像永久冻结。"""
+    import asyncio
+    from datetime import date
+
+    monkeypatch.setattr(m, "latest_plannable_report_date", lambda today=None: "2026-03-31")
+
+    class _Conn:
+        def execute(self, sql, *a, **k):
+            class _Cur:
+                def fetchall(_self):
+                    return [("2026-03-31",)]
+                def fetchone(_self):
+                    return (1,)
+            return _Cur()
+
+    monkeypatch.setattr(m, "ensure_tables", lambda _conn: None)
+    out = asyncio.run(m.sync_org_holding_incremental(_Conn()))
+    assert out["status"] == "skipped"
+    assert out["next_period"] == "2026-06-30"
+    assert out["next_period_unlock"] == "2026-08-31"
+    assert "next period 2026-06-30 unlocks 2026-08-31" in out["message"]
+
+
 # ── 字段映射 (real-shape fixture: MAIN_ORGHOLDDETAIL 真实字段名+形态) ──
 def _real_shape_raw():
     return [

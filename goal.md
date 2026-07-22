@@ -76,9 +76,7 @@
 - **FND-GATE FIXED** — `backend/scripts/check_foundation_done.py` + `backend/config/foundation_done.yaml`；doctor/moth/CI wired；typed walls（S7 23 / org BLOCKED / Type-B defer）PASS
 - **§15-VERIFY / F8 PASS** — 连续 3 L3 刀 e0-hist→fnd-gate→section15-verify；commits/knife=1.0；pre-knife 全 true；证据 `analysis/section15_verify_20260721.md`
 
-**近端 focus**：product schedule authority = `analysis/product_plan_reeval_stock_dossier_20260721.md`。Foundation **0r.1–0r.4 FIXED**。跑步机控制面 **Phases 0–3 FIXED**（`run_outcome` + drain-first 断言 + 潜伏象限 MVP）；**默认禁止**再开 foundation/product「清 PARTIAL / Continuity READY」代码刀。下一步 = **用已 ship 产品面**（含 `#/market` 潜伏象限）+ ops 日更/时钟观测 + owner 显式排期 E/F remeasure（checklist `phase4_ef_schedule_gate_honesty_20260722.md`）。仍禁 Type-B enrichment / S7 假 COMPAT / 擅自 E/F remeasure / G/H/Release / org invent / Optuna / 松 holdout / margin thaw。
-
-**Tier0B SW L1 PIT exclusivity（2026-07-22）**：**FIXED** — `v_sw_industry_pit` 合成 effective `out_date`（重分类闭合旧成员 / 同日双 L1 取较新 `built_at`），覆盖 002310/000406/000956/000817；清 `dim_stock_segment_daily` grain dup。证据见 peer drain 文 §7b + `tests/scripts/test_build_sw_industry_view.py`。残留：`test_org_holding_aif10` `:memory:` upsert 2 例失败（optional CI；非本刀；formal dual-write 路径返 0）。
+**近端 focus**：product schedule authority = `analysis/product_plan_reeval_stock_dossier_20260721.md`。Foundation **0r.1–0r.4 FIXED**。跑步机控制面 **Phases 0–3 FIXED**（`run_outcome` + drain-first 断言 + 潜伏象限 MVP）；**默认禁止**再开 foundation/product「清 PARTIAL / Continuity READY」代码刀。下一步 = **用已 ship 产品面**（含 `#/market` 潜伏象限）+ ops 日更/时钟观测 + owner 显式排期 E/F remeasure（checklist `phase4_ef_schedule_gate_honesty_20260722.md`）。仍禁 Type-B enrichment / S7 假 COMPAT / 擅自 E/F remeasure / G/H/Release / org invent / Optuna / 松 holdout / margin thaw。**SW L1 PIT exclusivity FIXED**（`v_sw_industry_pit` effective out_date；002310 等）；**drain 流式 + manual probe-first FIXED**（证据 `business_clock_and_drain_rework_20260722.md`）。org `:memory:` upsert 2 例仍 optional-CI 残差。
 
 **Deferred product（顺序已重评）**：0r.5b → E done → **F** → A/C → **D done** → **B done**（0r.1–0r.4 mechanism FIXED）。全量产品排期（0r.5b→5B）+ closeout residual-clear 已闭合。Defs 见 backlog；排期见 `product_plan_reeval_stock_dossier_20260721.md`；残差核对见 `plan_residual_reconcile_20260722.md`。禁 Optuna/Release/松 holdout；结论=Tier3/产品面，不融进 Tier0。
 
@@ -120,7 +118,7 @@ A→H 仍为后置地图；E/F remeasure **仅** owner schedule 后开。
 
 **Product 系统 + Agent-OS 演进裁决（owner，针对 Fable5 提案）**：后续演进 = **strangler + 聚焦**，非 greenfield 重写。仅三把杠杆：(1) 单一读 SSOT 经 resolver（禁旁路直读）；(2) 本地 L2/L3 pytest = CI test-list 唯一 SSOT；(3) god-seam strangler，按 blast radius 分步收编，不整体推倒。
 
-手动 sync：`trigger_mode=manual` 不受 `same_day_at 18:00` 挡；自动更新与 consumer `available_at` 仍受 clock；交易日历对两者硬约束。
+手动 sync：`trigger_mode=manual` 不受 `same_day_at 18:00` 挡；自动更新与 consumer `available_at` 仍受 clock；交易日历对两者硬约束。见近端 focus（drain 流式 + probe-first FIXED）。
 
 ## 边做边测
 

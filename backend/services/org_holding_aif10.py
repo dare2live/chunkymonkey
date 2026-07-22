@@ -106,6 +106,28 @@ def disclosure_deadline(report_date: str) -> Optional[str]:
     return deadline
 
 
+def next_period_unlock(report_date: str) -> tuple[Optional[str], Optional[str]]:
+    """给定已 plannable 的季度末, 返回 *下一个* 季度末及其法定披露截止日。
+
+    org_holding 是季报派生 (by-period ~830k)。日常增量当最新 plannable 期已在库时
+    正确 skip; 但「skip」易被误读为「永久冻结在某期」。本函数暴露「下一期何时解锁」,
+    让日志/审计能证明 planner 是随披露日历自进 (2026-03-31 已在库 → 下一期
+    2026-06-30 于其披露截止 2026-08-31 解锁), 而非 hard-frozen。纯日期算, 无 I/O。
+    """
+    iso = _normalize_date(report_date)
+    if not iso:
+        return (None, None)
+    d = date.fromisoformat(iso)
+    ordered = [f"{d.year}-{md}" for md in QUARTER_ENDS] + [
+        f"{d.year + 1}-{md}" for md in QUARTER_ENDS
+    ]
+    for cand in ordered:
+        cd = date.fromisoformat(cand)
+        if cd > d:
+            return (cand, disclosure_deadline(cand))
+    return (None, None)
+
+
 def enumerate_quarter_ends(start_date: str, end_date: str) -> list[str]:
     """返回 [start_date, end_date] 区间所有季度末 (YYYY-MM-DD)。"""
     start = date.fromisoformat(_normalize_date(start_date))
@@ -525,14 +547,22 @@ async def sync_org_holding_incremental(conn: Any) -> dict:
         }
     if gap.get("local_has_plannable"):
         missing_older = [p for p in (gap.get("missing_periods") or []) if p != target]
+        next_period, next_unlock = next_period_unlock(target)
+        # Honesty (owner 2026-07-22): make it explicit this is disclosure-clock
+        # advancement, not an eternal freeze. Next quarter becomes plannable at
+        # its statutory disclosure deadline; fetching it earlier (partial early
+        # filers) would poison the period under the no-refresh rule.
         msg = (
             f"check: plannable={target} local=present; skip fetch "
-            f"(older_missing={len(missing_older)}; not auto mass-filled)"
+            f"(older_missing={len(missing_older)}; not auto mass-filled; "
+            f"next period {next_period} unlocks {next_unlock})"
         )
         return {
             "count": 0,
             "status": "skipped",
             "report_date": target,
+            "next_period": next_period,
+            "next_period_unlock": next_unlock,
             "gap": gap,
             "message": msg,
         }
