@@ -2665,6 +2665,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/pipeline/delta_manifest.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_dc_member_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_dc_member_publish_b1.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_dc_member_daily"
@@ -4771,6 +4777,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_pipeline_delta_manifest.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_technical_states.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
@@ -5473,6 +5485,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/pipeline/delta_manifest.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_dc_index"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_build_dc_industry_view.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_dc_index"
@@ -5546,6 +5564,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/dc_member_publish.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_dc_member"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/pipeline/delta_manifest.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_dc_member"
     },
@@ -7141,9 +7165,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1139,
-    "generated_at": "2026-07-22T10:29:46.231936+00:00",
-    "node_count": 415,
+    "edge_count": 1143,
+    "generated_at": "2026-07-22T15:44:10.347282+00:00",
+    "node_count": 417,
     "version": 2
   },
   "nodes": [
@@ -8134,6 +8158,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/pipeline/delta_manifest.py"
+      },
+      "id": "consumer:backend/services/pipeline/delta_manifest.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/pipeline/process.py"
       },
       "id": "consumer:backend/services/pipeline/process.py",
@@ -8969,6 +9001,14 @@
         "path": "backend/tests/test_pipeline.py"
       },
       "id": "consumer:backend/tests/test_pipeline.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/test_pipeline_delta_manifest.py"
+      },
+      "id": "consumer:backend/tests/test_pipeline_delta_manifest.py",
       "kind": "consumer"
     },
     {

@@ -102,6 +102,17 @@ def write_report_and_alert(
         "run_outcome_exit_code": outcome_info["exit_code"],
         "run_outcome_classified": outcome_info["classified"][:20],
     }
+    # CX-1: delta manifest + stage timings + observational latency budgets.
+    from .delta_manifest import finalize_manifest_for_report
+
+    delta_manifest = finalize_manifest_for_report(
+        getattr(ctx, "delta_manifest", None),
+        stage_timing_s=getattr(ctx, "stage_timing_s", None),
+    )
+    output["delta_manifest"] = delta_manifest
+    output["stage_timing_s"] = dict(delta_manifest.get("stage_timing_s") or {})
+    output["latency_budgets"] = dict(delta_manifest.get("latency_budgets") or {})
+    output["budget_status"] = dict(delta_manifest.get("budget_status") or {})
     alert_flags = {"sla_warn": False}
 
     if sla_report.exists():

@@ -612,10 +612,28 @@ def _status_payload(job: str, spec: dict[str, Any]) -> dict[str, Any]:
             out["run_outcome_reason"] = report.get("run_outcome_reason")
             out["report_path"] = report.get("_report_path")
             out["report_date"] = report.get("date")
+            # CX-1: idle truth for acquire incremental recognition + budgets.
+            if report.get("delta_manifest") is not None:
+                out["delta_manifest"] = report.get("delta_manifest")
+            if report.get("stage_timing_s") is not None:
+                out["stage_timing_s"] = report.get("stage_timing_s")
+            if report.get("budget_status") is not None:
+                out["budget_status"] = report.get("budget_status")
+            if report.get("latency_budgets") is not None:
+                out["latency_budgets"] = report.get("latency_budgets")
         elif report and live:
             # Live run: keep path/date as lineage breadcrumb only.
             out["report_path"] = report.get("_report_path")
             out["report_date"] = report.get("date")
+            # Live stream truth: prefer in-log [delta_manifest] JSON if present.
+            for line in reversed(tail):
+                if "[delta_manifest]" in line:
+                    raw = line.split("[delta_manifest]", 1)[-1].strip()
+                    try:
+                        out["delta_manifest_live"] = json.loads(raw)
+                    except json.JSONDecodeError:
+                        out["delta_manifest_live"] = {"raw": raw[:500]}
+                    break
     return out
 
 

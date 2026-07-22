@@ -38,6 +38,9 @@ class PipelineContext:
     writer_lease_id: str | None = None
     writer_lock_fd: int | None = None
     degraded_msgs: list[str] = field(default_factory=list)
+    # CX-1: typed acquire→process delta + per-stage wall clock (seconds).
+    delta_manifest: dict[str, Any] | None = None
+    stage_timing_s: dict[str, float] = field(default_factory=dict)
     _log_fh: object = None
 
     def __post_init__(self):

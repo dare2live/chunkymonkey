@@ -152,6 +152,13 @@ def build_current_dims() -> None:
         c.execute("COMMIT")
         transaction_open = False
         print(f"[done] {DIM_IND} + {DIM_CON} (东财当前快照, idx={idx_last} mem={mem_last})")
+        # CX-1: persist published source frontier for empty-increment skip guard.
+        try:
+            from services.pipeline.delta_manifest import write_dc_as_of
+
+            write_dc_as_of(str(idx_last))
+        except Exception as exc:  # noqa: BLE001 — marker is observational; publish already committed
+            print(f"[warn] dc_industry_view_as_of write failed: {exc}")
     except BaseException:
         if transaction_open:
             try:

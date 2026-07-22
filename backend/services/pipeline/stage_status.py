@@ -159,15 +159,46 @@ def run_and_record(ctx, stage: str, fn) -> bool:
 
     check_pass/fail 判定 = 本阶段是否新增 ctx.degraded_msgs (与 run.py/context degraded 续跑模型一致,
     不改变阶段失败行为, 只附加状态记录)。
+    CX-1: also records wall-clock seconds onto ``ctx.stage_timing_s[stage]``.
     """
+    import time
+
     before = len(ctx.degraded_msgs)
+    t0 = time.perf_counter()
     try:
         fn(ctx)
     except Exception:
         # 硬崩 (非 degrade 续跑路径) 也留状态痕迹再抛 — 否则 manifest 缺该阶段行, 崩溃在
         # 状态面不可见 (全栈审计LOW)。gate_result 不附: 崩溃时 clean gate 产物可能是上轮残留。
+        elapsed = round(time.perf_counter() - t0, 3)
+        try:
+            timings = getattr(ctx, "stage_timing_s", None)
+            if timings is None:
+                ctx.stage_timing_s = {}
+                timings = ctx.stage_timing_s
+            timings[stage] = elapsed
+        except Exception:  # noqa: BLE001
+            pass
         _record_stage_best_effort(ctx, stage, STATUS_CHECK_FAIL)
         raise
+    elapsed = round(time.perf_counter() - t0, 3)
+    try:
+        timings = getattr(ctx, "stage_timing_s", None)
+        if timings is None:
+            ctx.stage_timing_s = {}
+            timings = ctx.stage_timing_s
+        timings[stage] = elapsed
+        # Exclude prior "total" key so multi-stage sums do not compound.
+        timings["total"] = round(
+            sum(
+                float(v)
+                for k, v in timings.items()
+                if k != "total" and v is not None
+            ),
+            3,
+        )
+    except Exception:  # noqa: BLE001 — timing is observational
+        pass
     passed = len(ctx.degraded_msgs) == before
     status = STATUS_CHECK_PASS if passed else STATUS_CHECK_FAIL
     gate = _clean_gate_result() if stage == "clean" else None

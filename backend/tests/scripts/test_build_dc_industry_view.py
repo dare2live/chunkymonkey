@@ -65,6 +65,10 @@ def _build_fixture(tmp_path, monkeypatch):
             else {"min_memberships": 2, "min_stocks": 2, "min_nodes": 2}
         ),
     )
+    # CX-1 as_of marker must not write into the live reports tree during unit tests.
+    from services.pipeline import delta_manifest as dm
+
+    monkeypatch.setattr(dm, "DC_AS_OF_PATH", tmp_path / "dc_industry_view_as_of.json")
     build_dc_industry_view.build_current_dims()
     return smart_db, raw_db
 

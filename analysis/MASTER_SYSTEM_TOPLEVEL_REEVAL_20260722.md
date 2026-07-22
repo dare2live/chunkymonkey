@@ -89,7 +89,7 @@
 | §15 一刀一 commit 套在 ops 残差上 | 逼 agent 把时钟翻成代码刀 | ops 残差默认非刀（窄 carve-out） | **已烧** |
 | 63 篇 analysis 各挂 PARTIAL / 各像 plan | PARTIAL fog + 多 bible | 合一本文件 + DOC_AUTHORITY 索引；余降 evidence | **本轮烧** |
 | 「清 residual」措辞当推进 | 变刀燃料 | 换轴为「能力验收 / 用产品 / owner 排期」 | **本轮烧** |
-| 空增量仍全量重算 dc_view | 真冗余 | delta manifest 选择性加工（named consumer=acquire UX） | **PLAN（P1）** |
+| 空增量仍全量重算 dc_view | 真冗余 | delta manifest 选择性加工（named consumer=acquire UX） | **PASS（CX-1）** |
 
 **不是残差追绿，是能力缺口**：owner 本轮明确「底座必须**已有或去补**支撑未来产品的能力」。因此
 delta manifest / 状态传感器 / briefing 砖 / facet serve 砖，**有 named product consumer**，属**正当
@@ -212,7 +212,7 @@ PARTIAL」这种无 consumer 的残差追绿**性质不同**。
 |---|---|---|---|---|---|
 | **F0 底座闭合基线** | transport S1–S6 / S7 墙 / E0 / brick L0–L4 / qfq lineage / FND-GATE | 已完成 | FND-GATE `phase_closure_ready=true`（F1–F10 PASS） | 任一 F* 回退红 → 停一切上层 | **FIXED** |
 | **F1 控制面真话** | typed `run_outcome` + drain-first + ops≠刀 | 已完成 | Phase 1/2 断言绿；软态不画 FAIL/不刷屏 | 三连炸/仍 FAIL → 回退桩 | **FIXED** |
-| **CX-1 acquire 高效** | delta manifest（P1）+ acquire UX 流式/增量识别（P2）+ 性能预算落 `daily_*.json` | **owner 排期** | §7.1 D 全绿 + B 预算达标；迟到列仍自愈 | 跳过致迟到列 stale / ST 戴帽漏 → abort | **PLAN** |
+| **CX-1 acquire 高效** | delta manifest（P1）+ acquire UX 流式/增量识别（P2）+ 性能预算落 `daily_*.json` | **owner 排期** | §7.1 D 全绿 + B 预算达标；迟到列仍自愈 | 跳过致迟到列 stale / ST 戴帽漏 → abort | **PASS**（证据 `cx1_acquire_efficiency_acceptance_20260722.md`；live process≤90s 下次空增量 OBSERVE） |
 | **CX-2 状态传感器** | ST/holder/退市 state-change → delta manifest（P3） | **owner 排期** | 状态变即使无新行也触发对应域重算；PIT 安全 | 融进 Tier0 / 破 T+1 → abort | **PLAN** |
 | **CX-3 能力补砖** | briefing 输入砖 + facet serve 砖（sector membership / stock-level flow streak universe） | **owner 排期** | §7.1 A 全绿：briefing/facet consumer 读真砖，无 stub | 砖 stale/UNTRUSTED 仍出叙事 → fail-closed | **PLAN**（部分 stub 已诚实标注） |
 | **CX-4 SLA/质量收口** | P0.1 SLA 去误报（墓碑清 / unknown≠stale）+ coverage/continuity 诚实提升 | **owner 排期** | §7.1 C：`run_outcome` 软态只含真等时钟 | 误删活源 watermark / 静音真 stale → 回退 | **PLAN** |
@@ -239,10 +239,10 @@ PARTIAL」这种无 consumer 的残差追绿**性质不同**。
 | 股票档案 dossier | stock↔holders↔form↔收益 lineage | **PARTIAL** | HS-A gate + canonical streak FIXED；stock↔holders↔form ~98%；机构 deep-link honesty-gated |
 | 机构档案 | org/holders episode + 披露时点 | **PARTIAL** | `institution_profile.py` live；~54% honesty；**`org_holding` provider land BLOCKED**（~830k by-period，无 NOTICE_DATE）；holders F6 PASS（126d overlap） |
 | **候选每日简报 briefing** | conclusion + why + observation 聚合叙事砖 | **MISSING surface / inputs HAVE** | 输入砖在（moneyflow conclusion / intersection why / screener why）；**聚合 serve 面未建**（CX-3） |
-| delta 选择性加工 | acquire typed delta manifest | **MISSING（PLAN P1）** | 现 process 固定顺序无短路；`dc_view` 全量重建冗余 |
-| ST/holder 状态变更传感 | 非增量状态变探测 | **PARTIAL / PLAN** | `stock_st` membership accepted HAVE；org period incremental（gap report）HAVE；**戴帽摘帽/比例变化→delta 触发=missing（P3）** |
+| delta 选择性加工 | acquire typed delta manifest | **HAVE（CX-1 PASS）** | `delta_manifest` → DC frontier skip；pulse late window always；证据 `cx1_acquire_efficiency_acceptance_20260722.md` |
+| ST/holder 状态变更传感 | 非增量状态变探测 | **PARTIAL / PLAN** | `stock_st` membership accepted HAVE；org period incremental（gap report）HAVE；**戴帽摘帽/比例变化→delta 触发=missing（P3 / CX-2）** |
 | serve 新鲜度 / continuity | typed soft + 域水位对齐 | **PARTIAL** | `run_outcome` 三态 FIXED；部分域 lag（诚实 soft_waiting）；SLA 误报待清（P0.1） |
-| 性能预算可观测 | per-stage 墙钟 + budget | **PARTIAL** | `daily_*.json` 有 phase_status；**per-stage budget 断言未建**（CX-1 B） |
+| 性能预算可观测 | per-stage 墙钟 + budget | **HAVE（CX-1）** | `daily_*.json` `stage_timing_s` + `budget_status`；live empty-increment OBSERVE |
 
 **一句话**：**资金 regime / 交集 / 选股 / 分层砖 = HAVE**；**dossier / 机构 / facet = PARTIAL**（诚实缺
 org land + 部分 serve 砖）；**briefing / delta / 状态传感器 / 性能预算 = MISSING/PLAN**——这些正是
@@ -260,7 +260,7 @@ CX-1..CX-4 要补的**能力刀**（有 named consumer），不是残差追绿�
 - 产品 consumer subset：Cap A/B/D/E FIXED；Cap F dossier PARTIAL；前端 L1/L2/L3 + facet skeleton
   （`b29a134f2`）。
 
-**NEXT（owner 排期驱动，按 §7 顺序）**：CX-1（acquire 高效 + 性能预算）→ CX-2（状态传感器）→
+**NEXT（owner 排期驱动，按 §7 顺序）**：~~CX-1（acquire 高效 + 性能预算）~~ **PASS** → CX-2（状态传感器）→
 CX-3（briefing/facet 补砖）→ CX-4（SLA/质量收口）→ **验收全过后** RX（E/F 研究窗，owner 签字）→
 Phase N（Optuna，仍 BANNED 直到 RX 开 + 底座验收过）。
 

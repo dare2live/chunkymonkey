@@ -1,0 +1,19 @@
+# CX-1 latency budgets for daily_update stages (seconds).
+# Measured anchors (not guesses):
+#   - qfq rebuild ~6.45s → clean_qfq_from_accepted_s=30 headroom
+#   - empty-increment process after DC skip: fixture-bound; live quiet window was multi-min
+#     before skip — process_empty_increment_s=90 is acceptance ceiling, not target.
+# Budgets are observational in report (budget_status); they do not abort the chain.
+schema_version: 1
+budgets_s:
+  process_empty_increment_s: 90
+  process_with_dc_rebuild_s: 360
+  clean_qfq_from_accepted_s: 30
+  acquire_soft_ceiling_s: 7200
+dc_provenance_domains:
+  - dc_index
+  - dc_member
+  - dc_daily
+  - sync:dc_index
+  - sync:dc_member
+  - sync:dc_daily

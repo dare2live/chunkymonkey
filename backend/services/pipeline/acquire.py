@@ -19,6 +19,11 @@ class Tier0AcquireError(RuntimeError):
 
 
 def run_acquire(ctx: PipelineContext) -> None:
+    from .delta_manifest import empty_manifest
+
+    if ctx.delta_manifest is None:
+        ctx.delta_manifest = empty_manifest(run_date=ctx.date)
+
     if ctx.skip_sync:
         ctx.log("=== ① 获取 ACQUIRE: SKIP (--skip-sync) ===")
         # Margin hard-gate only while the product is enabled; frozen/disabled skips.
@@ -26,6 +31,7 @@ def run_acquire(ctx: PipelineContext) -> None:
             _assert_margin_shadow_parity(ctx)
         elif not ctx.dry:
             ctx.log("margin hard-gate SKIP (execution_policy disabled / not in all-due)")
+        _finalize_acquire_delta(ctx, drain_results=[], formal_outcomes=[])
         return
     # 独立 stage 入口也必须走与全链相同的授权硬门；全链已探针时复用 ctx 缓存。
     from .preflight import ensure_pipeline_sync_ready, ensure_tushare_authorized
@@ -34,6 +40,7 @@ def run_acquire(ctx: PipelineContext) -> None:
     ctx.log("=== ① 获取 ACQUIRE (纯采集 →L0, 不计算) ===")
     if ctx.dry:
         ctx.log("DRY: 跳过实际 sync (获取阶段全是写操作)")
+        _finalize_acquire_delta(ctx, drain_results=[], formal_outcomes=[])
         return
 
     # HS300 benchmark K线: 主源 = tushare raw_tushare_index_daily 000300 (sync_runner registry 同步,
@@ -71,12 +78,12 @@ def run_acquire(ctx: PipelineContext) -> None:
     # hard-gate / kidnap published-domain catchup (ths_hot etc.). S3 intent =
     # caller-only orchestrator with per-domain fail-closed siblings — not a
     # fused "today's K/ST empty ⇒ abort whole acquire" dragon.
-    _sync_registry_drain(ctx)
+    drain_results = _sync_registry_drain(ctx)
 
     # Step 2.95: formal on_demand daily/ST — latest eligible land_then_accept.
     # Per-domain soft (pending) / degraded (hard fail); never aborts drain
     # (drain already ran) and never raises Tier0AcquireError for domain outcomes.
-    _sync_formal_on_demand_security_days(ctx)
+    formal_outcomes = _sync_formal_on_demand_security_days(ctx)
 
     # Step 2.96: 交易日历 dim 传导 (R1 根因3, 2026-07-03): raw_tushare_trade_cal (2.94 已刷)
     #   → reference.dim_trading_calendar 增量 MERGE。dim 曾无生产 writer (唯一写方=已封存的
@@ -91,6 +98,8 @@ def run_acquire(ctx: PipelineContext) -> None:
     #   与上一步 dim_trading_calendar 同一模式补齐。
     ctx.step(_refresh_active_a_stock_master,
              degraded_msg="dim_active_a_stock 刷新失败 — universe 身份真相源可能继续 stale")  # rule-compliance: ok evidence=写方本身非universe消费
+
+    _finalize_acquire_delta(ctx, drain_results=drain_results, formal_outcomes=formal_outcomes)
 
 
 # ── 步骤实现 (in-process, 直调 service) ──────────────────────────
@@ -249,34 +258,45 @@ def _sync_formal_on_demand_security_days(ctx: PipelineContext) -> list[dict]:
                 )
             policy = sync_runner.execution_policy_for_spec(spec)
             if policy.mode != "enabled":
+                outcome = {
+                    "domain": domain,
+                    "action": "skip",
+                    "reason": f"execution_policy_{policy.mode}",
+                    "policy_reason": policy.reason,
+                }
                 ctx.log(
                     f"formal {domain}: SKIP catchup "
                     f"(execution_policy {policy.mode}/{policy.reason})"
                 )
+                outcomes.append(outcome)
                 continue
             eligibility = sync_runner.eligible_end_date(spec, trigger_mode="manual")
             eligible_end = eligibility.eligible_end
             if eligible_end is None:
+                outcome = {
+                    "domain": domain,
+                    "action": "skip",
+                    "reason": "no_eligible_end",
+                    "eligibility_reason": eligibility.reason,
+                }
                 ctx.log(
                     f"formal {domain}: SKIP catchup "
                     f"(no eligible_end; reason={eligibility.reason})"
                 )
+                outcomes.append(outcome)
                 continue
             dataset_id = _formal_security_day_dataset_id(domain)
             if _accepted_partition_exists(conn, dataset_id, eligible_end):
-                print(
-                    json.dumps(
-                        {
-                            "domain": domain,
-                            "action": "skip",
-                            "reason": "latest_eligible_already_accepted",
-                            "eligible_end": eligible_end,
-                            "eligibility_reason": eligibility.reason,
-                            "dataset_id": dataset_id,
-                        },
-                        ensure_ascii=False,
-                    )
-                )
+                outcome = {
+                    "domain": domain,
+                    "action": "skip",
+                    "reason": "latest_eligible_already_accepted",
+                    "eligible_end": eligible_end,
+                    "eligibility_reason": eligibility.reason,
+                    "dataset_id": dataset_id,
+                }
+                print(json.dumps(outcome, ensure_ascii=False))
+                outcomes.append(outcome)
                 continue
             planned.append(
                 (domain, eligible_end, str(eligibility.reason), dataset_id)
@@ -447,11 +467,12 @@ def _run_drain_subprocess(
     return int(proc.returncode or 0), stdout_data, "".join(stderr_chunks)
 
 
-def _sync_registry_drain(ctx: PipelineContext) -> None:
+def _sync_registry_drain(ctx: PipelineContext) -> list[dict]:
     """sync_runner --all-due --drain (module 调用, subprocess 隔离)。
 
     Drain stderr streams live to the parent log (see ``_run_drain_subprocess``);
     stdout is the final per-domain JSON evidence parsed below.
+    Returns the per-domain evidence list (possibly empty on soft paths).
     """
     import sys as _sys
     cmd = [_sys.executable, "-m", "services.data_sources.sync_runner",
@@ -493,6 +514,71 @@ def _sync_registry_drain(ctx: PipelineContext) -> None:
         )
     if returncode != 0:
         ctx.degraded("sync_registry drain 有残余缺口或域错误 (见 log)")
+    return results
+
+
+def _finalize_acquire_delta(
+    ctx: PipelineContext,
+    *,
+    drain_results: list[dict],
+    formal_outcomes: list[dict],
+) -> None:
+    """Attach typed delta_manifest after acquire evidence is known (CX-1)."""
+    from .delta_manifest import (
+        build_advanced_partitions,
+        decide_dc_action,
+        empty_manifest,
+        load_latency_budgets,
+        plan_process_steps,
+        probe_dc_source_frontier,
+        read_dc_as_of,
+    )
+
+    manifest = ctx.delta_manifest or empty_manifest(run_date=ctx.date)
+    manifest["run_date"] = ctx.date
+    summary = dict(manifest.get("acquire_summary") or {})
+    summary["drain"] = list(drain_results or [])
+    summary["formal"] = list(formal_outcomes or [])
+    manifest["acquire_summary"] = summary
+
+    advanced = build_advanced_partitions(
+        formal=list(formal_outcomes or []),
+        drain=list(drain_results or []),
+    )
+    budgets = load_latency_budgets()
+    current_frontier = probe_dc_source_frontier()
+    previous_frontier = read_dc_as_of()
+    dc_decision = decide_dc_action(
+        current_frontier=current_frontier,
+        previous_frontier=previous_frontier,
+        advanced_partitions=advanced,
+        provenance_domains=budgets["dc_provenance_domains"],
+    )
+    delta = dict(manifest.get("delta") or {})
+    delta["advanced_partitions"] = advanced
+    delta["dc_source_frontier"] = current_frontier
+    delta["dc_frontier_advanced"] = dc_decision.get("dc_frontier_advanced")
+    delta["late_window_policy"] = "always_run"
+    delta.setdefault("state_changes", {})
+    manifest["delta"] = delta
+    manifest["process_plan"] = plan_process_steps(dc_decision=dc_decision)
+    ctx.delta_manifest = manifest
+    # Stream-truth single line for workbench regex / log tail consumers.
+    ctx.log(
+        "[delta_manifest] "
+        + json.dumps(
+            {
+                "formal": [
+                    {"domain": r.get("domain"), "action": r.get("action")}
+                    for r in (formal_outcomes or [])
+                ],
+                "advanced_n": len(advanced),
+                "dc": manifest["process_plan"]["dc_industry_view"],
+                "late_window_policy": "always_run",
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 def _assert_margin_shadow_parity(ctx: PipelineContext) -> None:
