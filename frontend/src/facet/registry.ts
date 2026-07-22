@@ -1,5 +1,5 @@
 /** Facet registry — every shown computed facet is a jump target.
- *  Jumps consume shipped serve bricks (Cap A/B/D/F); no browser-side recompute. */
+ *  Jumps consume shipped serve bricks (Cap A/B/D/F + CX-3); no browser-side recompute. */
 
 export type FacetKind =
   | "behavior"
@@ -10,7 +10,9 @@ export type FacetKind =
   | "axis_vol"
   | "breakout"
   | "intersection"
-  | "holder";
+  | "holder"
+  | "sector_membership"
+  | "flow_streak";
 
 export type FacetJumpStatus = "live" | "stub";
 
@@ -22,6 +24,10 @@ export interface FacetRef {
   horizon?: number;
   /** Origin stock/sector for back-link. */
   from?: string;
+  /** Sector membership chain (dc_industry|dc_concept|sw_industry). */
+  chain?: "dc_industry" | "dc_concept" | "sw_industry";
+  /** Stock flow-streak direction. */
+  direction?: "inflow" | "outflow";
 }
 
 const AXIS_ZH: Record<string, Record<string, string>> = {
@@ -49,6 +55,8 @@ export function facetStatus(kind: FacetKind): FacetJumpStatus {
     case "breakout":
     case "intersection":
     case "holder":
+    case "sector_membership":
+    case "flow_streak":
       return "live";
     default:
       return "stub";
@@ -64,6 +72,8 @@ export function facetExplorePath(ref: FacetRef): string {
   q.set("value", ref.value);
   if (ref.horizon != null) q.set("horizon", String(ref.horizon));
   if (ref.from) q.set("from", ref.from);
+  if (ref.chain) q.set("chain", ref.chain);
+  if (ref.direction) q.set("direction", ref.direction);
   return `/explore?${q.toString()}`;
 }
 
@@ -109,6 +119,10 @@ export function chipsFromDossier(opts: {
   behavior?: string | null;
   behaviorZh?: string | null;
   inIntersection?: boolean;
+  sectorCode?: string | null;
+  sectorName?: string | null;
+  sectorChain?: "dc_industry" | "dc_concept" | "sw_industry" | null;
+  flowStreak?: number | null;
 }): FacetRef[] {
   const chips: FacetRef[] = [];
   const from = opts.stockCode;
@@ -149,6 +163,26 @@ export function chipsFromDossier(opts: {
   }
   if (opts.inIntersection) {
     chips.push({ kind: "intersection", value: "1", label: "三链交集", from });
+  }
+  if (opts.sectorCode) {
+    chips.push({
+      kind: "sector_membership",
+      value: opts.sectorCode,
+      label: opts.sectorName ?? opts.sectorCode,
+      chain: opts.sectorChain ?? "dc_industry",
+      from,
+    });
+  }
+  if (opts.flowStreak != null && opts.flowStreak !== 0) {
+    const abs = Math.abs(opts.flowStreak);
+    const direction = opts.flowStreak > 0 ? "inflow" : "outflow";
+    chips.push({
+      kind: "flow_streak",
+      value: String(abs),
+      label: `连续${abs}日净${direction === "inflow" ? "流入" : "流出"}`,
+      direction,
+      from,
+    });
   }
   return chips;
 }

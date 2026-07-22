@@ -280,6 +280,14 @@ function MoneyflowPanel(props: { code: string }) {
           stockCode: props.code,
           behavior: m.behavior.behavior,
           behaviorZh: m.behavior.behavior_zh,
+          sectorCode: m.sector_context?.sector_code,
+          sectorName: m.sector_context?.sector_name,
+          sectorChain: (m.sector_context?.chain as
+            | "dc_industry"
+            | "dc_concept"
+            | "sw_industry"
+            | undefined) ?? "dc_industry",
+          flowStreak: m.flow_streak ?? null,
         });
         return (
           <>
@@ -287,7 +295,7 @@ function MoneyflowPanel(props: { code: string }) {
               {m.conclusion ?? "本股资金结论未知 — 窗未满、分母缺失或板块未形成行为标签。"}
             </p>
             <div className="facet-chip-block">
-              <span className="facet-chip-label">点行为 → 同行为板块宇宙（Cap A board）</span>
+              <span className="facet-chip-label">点行为/板块/连续净流入 → 同 facet 宇宙</span>
               <FacetChipRow facets={chips} emptyHint="行为未形成 — 不可跳转" />
             </div>
             <div className="dossier-meta muted">
@@ -296,6 +304,12 @@ function MoneyflowPanel(props: { code: string }) {
               {m.sector_context?.sector_name && (
                 <span>
                   板块 {m.sector_context.sector_name} · {m.sector_context.flow_regime ?? "—"}
+                </span>
+              )}
+              {m.flow_streak != null && m.flow_streak !== 0 && (
+                <span>
+                  个股连续净
+                  {m.flow_streak > 0 ? "流入" : "流出"} {Math.abs(m.flow_streak)} 日
                 </span>
               )}
               {dc.as_of && <span>DC as-of {dc.as_of}</span>}
@@ -386,29 +400,41 @@ function IntersectionPanel(props: { code: string }) {
               <span>申万 {m.as_of.sw_industry ?? "—"}</span>
             </div>
             <h3 className="dossier-subhead">强势东财行业链</h3>
-            <ul>
-              {d.industry_sectors.map((s) => (
-                <li key={s.sector_code}>
-                  {s.sector_name ?? s.sector_code} · {s.behavior_zh}
-                </li>
-              ))}
-            </ul>
+            <div className="facet-chip-block">
+              <FacetChipRow
+                facets={d.industry_sectors.map((s) => ({
+                  kind: "sector_membership" as const,
+                  value: s.sector_code,
+                  label: s.sector_name ?? s.sector_code,
+                  chain: "dc_industry" as const,
+                  from: props.code,
+                }))}
+              />
+            </div>
             <h3 className="dossier-subhead">强势概念链</h3>
-            <ul>
-              {d.concept_sectors.map((s) => (
-                <li key={s.sector_code}>
-                  {s.sector_name ?? s.sector_code} · {s.behavior_zh}
-                </li>
-              ))}
-            </ul>
+            <div className="facet-chip-block">
+              <FacetChipRow
+                facets={d.concept_sectors.map((s) => ({
+                  kind: "sector_membership" as const,
+                  value: s.sector_code,
+                  label: s.sector_name ?? s.sector_code,
+                  chain: "dc_concept" as const,
+                  from: props.code,
+                }))}
+              />
+            </div>
             <h3 className="dossier-subhead">强势申万行业链</h3>
-            <ul>
-              {(d.sw_sectors ?? []).map((s) => (
-                <li key={s.sector_code}>
-                  {s.sector_name ?? s.sector_code} · {s.behavior_zh}
-                </li>
-              ))}
-            </ul>
+            <div className="facet-chip-block">
+              <FacetChipRow
+                facets={(d.sw_sectors ?? []).map((s) => ({
+                  kind: "sector_membership" as const,
+                  value: s.sector_code,
+                  label: s.sector_name ?? s.sector_code,
+                  chain: "sw_industry" as const,
+                  from: props.code,
+                }))}
+              />
+            </div>
             <p className="muted dossier-note">{m.disclaimer}</p>
           </>
         );

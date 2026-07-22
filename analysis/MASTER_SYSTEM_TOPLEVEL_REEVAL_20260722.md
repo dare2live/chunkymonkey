@@ -167,8 +167,8 @@ PARTIAL」这种无 consumer 的残差追绿**性质不同**。
 | 工作台 workbench | ops 可操作（一键更新 / 分步节点） | 观测/控制 | shipped；acquire UX P1–P3 待补 |
 | 市场 market（资金决策辅助 default / 交集 / 选股 / 感知） | L1 极简 → L2 → L3 | Tier2 evidence + Tier3 consumer | shipped subset |
 | 股票档案 / 机构档案 dossier | per-stock / per-holder 决策辅助 | Tier3 consumer | PARTIAL（机构 ~54% honesty） |
-| `#/explore` facet 图 | 计算 facet → universe → dossier | Tier3 navigation | skeleton FIXED；部分 stub |
-| **候选每日简报 daily briefing** | 把 conclusion/why/observation 聚成叙事 | **Tier3 narrative consumer（optional）** | **MISSING surface（砖已在，聚合面未建）** |
+| `#/explore` facet 图 | 计算 facet → universe → dossier | Tier3 navigation | **HAVE（CX-3）** sector_membership + flow_streak live |
+| **候选每日简报 daily briefing** | 把 conclusion/why/observation 聚成叙事 | **Tier3 narrative consumer（optional）** | **HAVE（CX-3）** `daily_briefing` serve + UI |
 
 **原则**：产品面**只读 serve / 只消费已发布砖**；behavior/结论进 Tier3/产品，**永不**回写 Tier0；
 `unknown` 永不画成 0；stale 保持诚实。briefing 是「已就绪砖的叙事消费者」，**不是**新数据真相层——
@@ -214,7 +214,7 @@ PARTIAL」这种无 consumer 的残差追绿**性质不同**。
 | **F1 控制面真话** | typed `run_outcome` + drain-first + ops≠刀 | 已完成 | Phase 1/2 断言绿；软态不画 FAIL/不刷屏 | 三连炸/仍 FAIL → 回退桩 | **FIXED** |
 | **CX-1 acquire 高效** | delta manifest（P1）+ acquire UX 流式/增量识别（P2）+ 性能预算落 `daily_*.json` | **owner 排期** | §7.1 D 全绿 + B 预算达标；迟到列仍自愈 | 跳过致迟到列 stale / ST 戴帽漏 → abort | **PASS**（证据 `cx1_acquire_efficiency_acceptance_20260722.md`；live process≤90s 下次空增量 OBSERVE） |
 | **CX-2 状态传感器** | ST/holder/退市 state-change → delta manifest（P3） | **owner 排期** | 状态变即使无新行也触发对应域重算；PIT 安全 | 融进 Tier0 / 破 T+1 → abort | **PASS**（证据 `cx2_state_sensors_acceptance_20260722.md`） |
-| **CX-3 能力补砖** | briefing 输入砖 + facet serve 砖（sector membership / stock-level flow streak universe） | **owner 排期** | §7.1 A 全绿：briefing/facet consumer 读真砖，无 stub | 砖 stale/UNTRUSTED 仍出叙事 → fail-closed | **PLAN**（部分 stub 已诚实标注） |
+| **CX-3 能力补砖** | briefing 输入砖 + facet serve 砖（sector membership / stock-level flow streak universe） | **owner 排期** | §7.1 A 全绿：briefing/facet consumer 读真砖，无 stub | 砖 stale/UNTRUSTED 仍出叙事 → fail-closed | **PASS**（证据 `cx3_capability_bricks_acceptance_20260722.md`） |
 | **CX-4 SLA/质量收口** | P0.1 SLA 去误报（墓碑清 / unknown≠stale）+ coverage/continuity 诚实提升 | **owner 排期** | §7.1 C：`run_outcome` 软态只含真等时钟 | 误删活源 watermark / 静音真 stale → 回退 | **PLAN** |
 | **RX 研究窗** | E/F remeasure（同 protocol）→ 再 G 公式 → H 发布纸面 | **owner 签字后** | `ExperimentVerdict`（诚实 reject 亦算交付）；PIT/purged-WF/holdout 门 | Optuna/Release/松 holdout/margin thaw → abort | **BLOCKED（paused）** |
 | **Phase N 寻优** | Optuna / α·β 因子堆叠 = 底座之上纯计算 | **仅 CX-* 验收全过 + owner 显式开研究窗后** | 冻结 snapshot + 搜索空间非空 + 穿透真实后果期望 | 底座验收未过即开 → 触死线，abort | **BANNED（未到）** |
@@ -235,17 +235,16 @@ PARTIAL」这种无 consumer 的残差追绿**性质不同**。
 | 资金多档位 + 行为 regime（潜伏/抢筹/出货） | Tier2 `flow_regime` + 7 档 horizon + 相对分母 | **HAVE** | `moneyflow_assist.py`（horizons[1,3,5,10,20,30,60]；`behavior_from_regime` versioned unknown-allowed；sector_mv 分母） |
 | 交集最强 | DC∩概念∩申万 membership + 强度 | **HAVE** | `decision_assist.py /intersection/strongest`；Cap D FIXED |
 | 形态/阶段选股 | Tier1 form/axis serve | **HAVE（subset）** | `stock_screener.py /form_stage`；Cap B FIXED subset |
-| facet explore 跳转 | 每个计算 facet → universe serve 砖 | **PARTIAL** | skeleton FIXED（behavior/form/axis/breakout/intersection/holder live）；sector-membership facet=stub（sector 名仍 text）；stock-level 连续净流入 streak universe=**missing serve 砖** |
+| facet explore 跳转 | 每个计算 facet → universe serve 砖 | **HAVE（CX-3）** | behavior/form/axis/breakout/intersection/holder + sector_membership + stock flow_streak live；证据 `cx3_capability_bricks_acceptance_20260722.md` |
 | 股票档案 dossier | stock↔holders↔form↔收益 lineage | **PARTIAL** | HS-A gate + canonical streak FIXED；stock↔holders↔form ~98%；机构 deep-link honesty-gated |
 | 机构档案 | org/holders episode + 披露时点 | **PARTIAL** | `institution_profile.py` live；~54% honesty；**`org_holding` provider land BLOCKED**（~830k by-period，无 NOTICE_DATE）；holders F6 PASS（126d overlap） |
-| **候选每日简报 briefing** | conclusion + why + observation 聚合叙事砖 | **MISSING surface / inputs HAVE** | 输入砖在（moneyflow conclusion / intersection why / screener why）；**聚合 serve 面未建**（CX-3） |
+| **候选每日简报 briefing** | conclusion + why + observation 聚合叙事砖 | **HAVE（CX-3）** | `daily_briefing` serve + `#/briefing` / Market assist panel；stale/UNTRUSTED → narrative=null |
 | delta 选择性加工 | acquire typed delta manifest | **HAVE（CX-1 PASS）** | `delta_manifest` → DC frontier skip；pulse late window always；证据 `cx1_acquire_efficiency_acceptance_20260722.md` |
 | ST/holder 状态变更传感 | 非增量状态变探测 | **HAVE（CX-2 PASS）** | `state_sensors` → `delta.state_changes`；证据 `cx2_state_sensors_acceptance_20260722.md` |
 | serve 新鲜度 / continuity | typed soft + 域水位对齐 | **PARTIAL** | `run_outcome` 三态 FIXED；部分域 lag（诚实 soft_waiting）；SLA 误报待清（P0.1） |
 | 性能预算可观测 | per-stage 墙钟 + budget | **HAVE（CX-1）** | `daily_*.json` `stage_timing_s` + `budget_status`；live empty-increment OBSERVE |
 
-**一句话**：**资金 regime / 交集 / 选股 / 分层砖 = HAVE**；**dossier / 机构 / facet = PARTIAL**（诚实缺
-org land + 部分 serve 砖）；**briefing = MISSING surface**；**delta / 状态传感器 / 性能预算 = HAVE（CX-1/CX-2）**——余下 CX-3..CX-4 是有 named consumer 的能力刀，不是残差追绿。
+**一句话**：**资金 regime / 交集 / 选股 / 分层砖 / briefing / facet serve = HAVE（含 CX-3）**；**dossier / 机构 = PARTIAL**（诚实缺 org land）；**delta / 状态传感器 / 性能预算 = HAVE（CX-1/CX-2）**——余下 CX-4 是有 named consumer 的能力刀，不是残差追绿。
 
 ---
 
@@ -260,7 +259,7 @@ org land + 部分 serve 砖）；**briefing = MISSING surface**；**delta / 状�
   （`b29a134f2`）。
 
 **NEXT（owner 排期驱动，按 §7 顺序）**：~~CX-1（acquire 高效 + 性能预算）~~ **PASS** → ~~CX-2（状态传感器）~~ **PASS** →
-CX-3（briefing/facet 补砖）→ CX-4（SLA/质量收口）→ **验收全过后** RX（E/F 研究窗，owner 签字）→
+~~CX-3（briefing/facet 补砖）~~ **PASS** → CX-4（SLA/质量收口）→ **验收全过后** RX（E/F 研究窗，owner 签字）→
 Phase N（Optuna，仍 BANNED 直到 RX 开 + 底座验收过）。
 
 **NOT NEXT（禁）**：默认清 PARTIAL 代码刀 / Continuity READY 追绿 / mass org re-pull / S7 假 COMPAT /

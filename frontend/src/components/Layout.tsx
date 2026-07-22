@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 // 产品洞察面在前, ops 面 (工作台) 收尾 — 每日打开先看趋势/关系/大局, 而非运维。
 const NAV_ITEMS = [
   { to: "/market", label: "市场", enabled: true, prefix: "/market" },
+  { to: "/briefing", label: "每日简报", enabled: true, prefix: "/briefing" },
   { to: "/stock/600519", label: "股票档案", enabled: true, prefix: "/stock" },
   { to: "/institutions", label: "机构档案", enabled: true, prefix: "/institutions" },
   { to: "/paper", label: "观察账本", enabled: true, prefix: "/paper" },

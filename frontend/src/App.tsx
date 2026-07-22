@@ -1,5 +1,6 @@
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
+import { BriefingPage } from "./pages/BriefingPage";
 import { FacetExplorePage } from "./pages/FacetExplorePage";
 import { InstitutionDetailPage } from "./pages/InstitutionDetailPage";
 import { InstitutionsPage } from "./pages/InstitutionsPage";
@@ -20,6 +21,7 @@ export function App() {
           <Route path="/paper" element={<PaperPage />} />
           <Route path="/workbench" element={<WorkbenchPage />} />
           <Route path="/market" element={<MarketPage />} />
+          <Route path="/briefing" element={<BriefingPage />} />
           <Route path="/explore" element={<FacetExplorePage />} />
           <Route path="/stock/:code" element={<StockDossierPage />} />
           <Route path="/stock" element={<Navigate to="/stock/600519" replace />} />

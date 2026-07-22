@@ -1,6 +1,8 @@
-"""Decision-assist APIs — Tier3/product consume (Cap A moneyflow).
+"""Decision-assist APIs — Tier3/product consume (Cap A moneyflow + CX-3 bricks).
 
 Separate from /api/v3/pulse so market sensing keeps 「零买卖暗示」.
+CX-3 adds briefing aggregation, sector-membership facet serve, and stock
+flow-streak universe — all read-only, fail-closed on stale/UNTRUSTED inputs.
 """
 from __future__ import annotations
 
@@ -8,9 +10,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from services import daily_briefing as briefing
 from services import decision_intersection as di
 from services import market_pulse as mp
+from services import market_pulse_serve_read as pulse_serve
 from services import moneyflow_assist as mfa
+from services import sector_membership_serve as sms
+from services import stock_flow_streak as sfs
 from services.data_access import resolver
 from services.duck_adapter import connect as duck_connect
 from services.universe import classify_exclusion
@@ -24,6 +30,11 @@ def get_assist_conn():
         yield con
     finally:
         con.close()
+
+
+def get_membership_conn():
+    """Same attach boundary as pulse members (dc_member + optional SW raw)."""
+    yield from pulse_serve.open_members_conn()
 
 
 def _require_chain(chain: str) -> None:
@@ -107,3 +118,44 @@ def intersection_stock(
     if horizon not in hs:
         raise HTTPException(status_code=400, detail=f"horizon must be one of {hs}")
     return di.build_intersection_for_stock(conn, stock_code=digits, horizon=horizon, cfg=cfg)
+
+
+@router.get("/briefing/daily")
+def briefing_daily(
+    horizon: int = Query(default=20),
+    conn=Depends(get_assist_conn),
+) -> dict[str, Any]:
+    """CX-3 daily briefing — aggregate Cap A/B/D conclusion/why; fail-closed."""
+    try:
+        return briefing.build_daily_briefing(conn, horizon=horizon)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/sector/members")
+def sector_members(
+    sector_code: str = Query(...),
+    chain: str = Query(default="dc_industry"),
+    conn=Depends(get_membership_conn),
+) -> dict[str, Any]:
+    """CX-3 sector-membership facet universe (trust-wrapped pulse members brick)."""
+    try:
+        return sms.build_sector_membership(conn, chain=chain, sector_code=sector_code)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/moneyflow/stock_streak")
+def moneyflow_stock_streak(
+    direction: str = Query(default="inflow"),
+    min_streak: int = Query(default=5, ge=1, le=120),
+    limit: int = Query(default=50, ge=1, le=200),
+    conn=Depends(get_assist_conn),
+) -> dict[str, Any]:
+    """CX-3 stock-level continuous net-inflow/outflow streak universe."""
+    try:
+        return sfs.build_stock_flow_streak_universe(
+            conn, direction=direction, min_streak=min_streak, limit=limit,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e

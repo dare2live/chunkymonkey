@@ -1,0 +1,19 @@
+# stock_flow_streak.yaml — Cap CX-3 stock-level net-inflow streak universe
+# Tier3/product serve brick (NOT Tier0/Tier2 truth).
+# Authority: analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md §7.2 CX-3
+# Source: fact_stock_moneyflow_dc_daily.net_amount (vendor imbalance proxy, 万元).
+# Fail-closed when moneyflow_dc as_of lags SLA — never narrate a stale streak board.
+version: 1
+surface_version: stock_flow_streak_universe_v0
+disclaimer: "个股连续净流入/流出天数来自东财主力代理净额符号段，非守恒资金、非买卖指令；未经 B0→B5 策略验证。"
+vendor: moneyflow_dc
+table: fact_stock_moneyflow_dc_daily
+# Same-sign streak semantics mirror sector pulse flow_streak: net>0 inflow, net<0 outflow, 0 breaks.
+default_direction: inflow
+default_min_streak: 5
+default_limit: 50
+max_limit: 200
+# Calendar lookback for streak reconstruction (must cover long silent accumulations).
+lookback_calendar_days: 120
+# Freshness vs latest completed trade date; lag > this → status=stale + empty rows.
+sla_max_lag_calendar_days: 1

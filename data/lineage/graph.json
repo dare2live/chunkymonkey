@@ -1471,6 +1471,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/stock_flow_streak.py",
+      "kind": "consume",
+      "src": "table:reference.dim_active_a_stock"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/universe.py",
       "kind": "consume",
       "src": "table:reference.dim_active_a_stock"
@@ -1658,6 +1664,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_continuity_guard.py",
+      "kind": "consume",
+      "src": "table:reference.dim_trading_calendar"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_cx3_capability_bricks.py",
       "kind": "consume",
       "src": "table:reference.dim_trading_calendar"
     },
@@ -2659,6 +2671,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/sector_membership_serve.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_dc_member_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/segments.yaml",
       "kind": "consume",
       "src": "table:smartmoney.fact_dc_member_daily"
@@ -2732,6 +2750,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_top_inst_seat_publish_b2.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_dc_member_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_cx3_capability_bricks.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_dc_member_daily"
     },
@@ -3037,6 +3061,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_cx3_capability_bricks.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_form_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_market_pulse.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_form_daily"
@@ -3193,6 +3223,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/daily_briefing.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/market_pulse.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_daily"
@@ -3277,6 +3313,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/stock_flow_streak.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/check_grain_uniqueness.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
@@ -3313,6 +3355,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/stock_flow_streak.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/stock_moneyflow_publish.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
@@ -3332,6 +3380,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_stock_moneyflow_publish_b2.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_cx3_capability_bricks.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
     },
@@ -4214,6 +4268,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_sector_pulse_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_cx3_capability_bricks.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_sector_pulse_daily"
     },
@@ -5935,6 +5995,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_cx3_capability_bricks.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_index_member_all"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_decision_intersection.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_index_member_all"
@@ -7123,6 +7189,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/sector_membership_serve.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_sw_industry_pit"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/segments.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.v_sw_industry_pit"
@@ -7195,6 +7267,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_cx3_capability_bricks.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_sw_industry_pit"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_decision_intersection.py",
       "kind": "consume",
       "src": "table:tushare_raw.v_sw_industry_pit"
@@ -7219,9 +7297,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1152,
-    "generated_at": "2026-07-22T15:56:17.665970+00:00",
-    "node_count": 419,
+    "edge_count": 1165,
+    "generated_at": "2026-07-22T16:10:16.592730+00:00",
+    "node_count": 424,
     "version": 2
   },
   "nodes": [
@@ -7340,9 +7418,25 @@
     {
       "attrs": {
         "ctype": "config",
+        "path": "backend/config/sector_membership_serve.yaml"
+      },
+      "id": "consumer:backend/config/sector_membership_serve.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
         "path": "backend/config/segments.yaml"
       },
       "id": "consumer:backend/config/segments.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/stock_flow_streak.yaml"
+      },
+      "id": "consumer:backend/config/stock_flow_streak.yaml",
       "kind": "consumer"
     },
     {
@@ -7623,6 +7717,14 @@
         "path": "backend/services/continuity_guard.py"
       },
       "id": "consumer:backend/services/continuity_guard.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/daily_briefing.py"
+      },
+      "id": "consumer:backend/services/daily_briefing.py",
       "kind": "consumer"
     },
     {
@@ -8364,6 +8466,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/stock_flow_streak.py"
+      },
+      "id": "consumer:backend/services/stock_flow_streak.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/stock_limit_publish.py"
       },
       "id": "consumer:backend/services/stock_limit_publish.py",
@@ -8935,6 +9045,14 @@
         "path": "backend/tests/test_continuity_guard.py"
       },
       "id": "consumer:backend/tests/test_continuity_guard.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/test_cx3_capability_bricks.py"
+      },
+      "id": "consumer:backend/tests/test_cx3_capability_bricks.py",
       "kind": "consumer"
     },
     {

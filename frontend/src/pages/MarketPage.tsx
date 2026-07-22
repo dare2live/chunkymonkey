@@ -12,13 +12,18 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ASSIST_HORIZONS,
+  fetchDailyBriefing,
   fetchIntersectionStrongest,
   fetchMoneyflowBoard,
   type AssistChain,
   type AssistHorizon,
+  type DailyBriefingResp,
   type IntersectionRow,
+  type IntersectionSectorRef,
   type MoneyflowBoardRow,
 } from "../api/decision";
+import { FacetChipRow } from "../components/FacetChip";
+import type { FacetRef } from "../facet/registry";
 import {
   fetchDcRotation,
   fetchDrill,
@@ -1825,7 +1830,22 @@ function MoneyflowAssistPanel(props: { initialBehavior?: string | null }) {
 
 // ── Cap 4D：交集最强股（东财行业∩概念∩申万行业三链会员交集，非原始排名表） ──
 
+function sectorChips(
+  sectors: IntersectionSectorRef[],
+  chain: "dc_industry" | "dc_concept" | "sw_industry",
+  from: string,
+): FacetRef[] {
+  return sectors.map((s) => ({
+    kind: "sector_membership",
+    value: s.sector_code,
+    label: s.sector_name ?? s.sector_code,
+    chain,
+    from,
+  }));
+}
+
 function IntersectionRowCard({ row }: { row: IntersectionRow }) {
+  const from = row.stock_code;
   return (
     <div className="table-wrap">
       <table className="data-table">
@@ -1835,14 +1855,19 @@ function IntersectionRowCard({ row }: { row: IntersectionRow }) {
               <b>{row.stock_name ?? "—"}</b>
               <span className="mono muted"> {row.stock_code}</span>
             </td>
-            <td className="muted">
-              东财行业：{row.industry_sectors.map((s) => s.sector_name ?? s.sector_code).join("、")}
+            <td>
+              <span className="muted">东财行业：</span>
+              <FacetChipRow facets={sectorChips(row.industry_sectors, "dc_industry", from)} />
             </td>
-            <td className="muted">
-              概念：{row.concept_sectors.map((s) => s.sector_name ?? s.sector_code).join("、")}
+            <td>
+              <span className="muted">概念：</span>
+              <FacetChipRow facets={sectorChips(row.concept_sectors, "dc_concept", from)} />
             </td>
-            <td className="muted">
-              申万：{(row.sw_sectors ?? []).map((s) => s.sector_name ?? s.sector_code).join("、")}
+            <td>
+              <span className="muted">申万：</span>
+              <FacetChipRow
+                facets={sectorChips(row.sw_sectors ?? [], "sw_industry", from)}
+              />
             </td>
           </tr>
         </tbody>
@@ -2168,6 +2193,57 @@ function parseMarketTab(raw: string | null): MarketPageTab {
   return raw && (keys as string[]).includes(raw) ? (raw as MarketPageTab) : "assist";
 }
 
+// ── CX-3 daily briefing (Cap A/B/D narrative aggregate; fail-closed) ─────────
+
+function DailyBriefingPanel() {
+  const state = useFetch(() => fetchDailyBriefing(20), []);
+  return (
+    <Card title="每日简报（已发布砖聚合）">
+      <FetchGate state={state}>
+        {(d: DailyBriefingResp) => {
+          if (d.status === "stale" || d.status === "unavailable") {
+            return (
+              <div className="state-hint">
+                输入砖不可信（{d.reason ?? d.status}）— 简报叙事关闭，不编造结论。
+              </div>
+            );
+          }
+          return (
+            <>
+              <p className="page-lead dossier-observation">
+                {d.narrative ?? "当前窗无可叙条目（诚实空态）。"}
+              </p>
+              <details className="dossier-l2">
+                <summary>L2 · 分节原文</summary>
+                {(d.sections || []).map((sec) => (
+                  <div key={sec.id} className="briefing-section">
+                    <h3 className="dossier-subhead">
+                      {sec.title}
+                      {sec.items?.length ? ` · ${sec.items.length}` : ""}
+                    </h3>
+                    {!(sec.items || []).length ? (
+                      <div className="state-hint">本节空</div>
+                    ) : (
+                      <ul>
+                        {sec.items.map((it, i) => (
+                          <li key={`${sec.id}-${i}`} className="assist-conclusion">
+                            {it.text}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </details>
+              <p className="muted dossier-note">{d.disclaimer}</p>
+            </>
+          );
+        }}
+      </FetchGate>
+    </Card>
+  );
+}
+
 export function MarketPage() {
   const [params] = useSearchParams();
   const [pageTab, setPageTab] = useState<MarketPageTab>(() => parseMarketTab(params.get("tab")));
@@ -2198,7 +2274,10 @@ export function MarketPage() {
       </div>
       {pageTab === "sensing" && <SensingPanel />}
       {pageTab === "assist" && (
-        <MoneyflowAssistPanel initialBehavior={initialBehavior} />
+        <>
+          <DailyBriefingPanel />
+          <MoneyflowAssistPanel initialBehavior={initialBehavior} />
+        </>
       )}
       {pageTab === "intersection" && <IntersectionPanel />}
       {pageTab === "screener" && (

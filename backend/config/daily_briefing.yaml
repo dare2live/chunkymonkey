@@ -1,0 +1,16 @@
+# daily_briefing.yaml — CX-3 Tier3 narrative consumer (NOT Tier0/Tier2 truth)
+# Authority: analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md §7.2 CX-3
+# Aggregates Cap A moneyflow conclusions + Cap D intersection why + Cap B screener why.
+# Any Cap A/B/D input untrusted/stale → status=stale, narrative=null (fail-closed).
+version: 1
+surface_version: daily_briefing_v1
+disclaimer: "每日简报是已发布 Cap A/B/D 结论的叙事聚合，非买卖指令；未经 B0→B5 策略验证。"
+
+default_horizon: 20
+board_sample_per_behavior: 3
+board_chain: dc_industry
+board_level: L1
+intersection_sample: 5
+screener_breakout_sample: 3
+# Same SLA family as Cap D / facet bricks — lag → untrusted → no narrative.
+sla_max_lag_calendar_days: 1

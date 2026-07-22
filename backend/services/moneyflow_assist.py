@@ -15,6 +15,7 @@ from typing import Any
 import yaml
 
 from services import market_pulse as mp
+from services import stock_flow_streak as sfs
 
 _CFG_PATH = Path(__file__).resolve().parent.parent / "config" / "moneyflow_assist.yaml"
 
@@ -419,6 +420,9 @@ def build_stock_moneyflow(
             f"所属板块呈{primary_beh.get('behavior_zh')}（{c.get('disclaimer')}）"
         )
 
+    # CX-3: expose signed stock-level flow streak for facet chip (serve brick; no UI invent).
+    streak_block = sfs.compute_stock_flow_streak(conn, code)
+
     return {
         "status": "ok",
         "surface": "moneyflow_decision_assist_stock",
@@ -446,6 +450,9 @@ def build_stock_moneyflow(
         "sector_context": sector_ctx,
         "behavior": primary_beh,
         "conclusion": conclusion,
+        "flow_streak": streak_block.get("flow_streak"),
+        "flow_streak_direction": streak_block.get("direction"),
+        "flow_streak_as_of": streak_block.get("as_of"),
         "horizons": hs,
         "gaps": _stock_gaps(dc_plane, circ_mv, sector_ctx),
     }

@@ -107,6 +107,10 @@ export interface StockMoneyflowResp {
   } | null;
   behavior: AssistBehaviorBlock;
   conclusion: string | null;
+  /** Signed consecutive same-sign DC net days (+in / -out); CX-3 serve brick. */
+  flow_streak?: number | null;
+  flow_streak_direction?: "inflow" | "outflow" | null;
+  flow_streak_as_of?: string | null;
   horizons: number[];
   gaps: string[];
 }
@@ -194,5 +198,132 @@ export function fetchStockIntersection(
 ): Promise<IntersectionStockResp> {
   return apiGet<IntersectionStockResp>(
     `/api/v3/decision/intersection/stock/${encodeURIComponent(code)}?horizon=${horizon}`,
+  );
+}
+
+// ── CX-3: briefing + facet serve bricks ─────────────────────────────────────
+
+export type BriefingTrust = "trusted" | "untrusted";
+
+export interface BriefingInputTrust {
+  trust: BriefingTrust;
+  reason: string | null;
+  as_of: string | null | Record<string, string | null>;
+  count?: number | null;
+  status?: string | null;
+  chain?: string | null;
+}
+
+export interface BriefingSectionItem {
+  kind: string;
+  text: string;
+  sector_code?: string;
+  sector_name?: string | null;
+  behavior?: string;
+  stock_code?: string;
+  stock_name?: string | null;
+}
+
+export interface BriefingSection {
+  id: string;
+  title: string;
+  source?: string;
+  count?: number;
+  items: BriefingSectionItem[];
+}
+
+export interface DailyBriefingResp {
+  status: "ok" | "stale" | "unavailable";
+  surface: string;
+  surface_version: string;
+  disclaimer: string;
+  horizon: number;
+  as_of: string | null;
+  inputs: {
+    moneyflow: BriefingInputTrust;
+    intersection: BriefingInputTrust;
+    screener: BriefingInputTrust;
+  };
+  sections: BriefingSection[];
+  narrative: string | null;
+  reason: string | null;
+  tier0_write: boolean;
+}
+
+export function fetchDailyBriefing(horizon: AssistHorizon | number = 20): Promise<DailyBriefingResp> {
+  return apiGet<DailyBriefingResp>(`/api/v3/decision/briefing/daily?horizon=${horizon}`);
+}
+
+export interface SectorMembershipRow {
+  stock_code: string;
+  ts_code: string;
+  stock_name: string | null;
+}
+
+export interface SectorMembershipResp {
+  status: "ok" | "stale";
+  reason: string | null;
+  surface: string;
+  surface_version: string;
+  disclaimer: string;
+  chain: AssistChain;
+  sector_code: string;
+  as_of: string | null;
+  membership_pit: boolean;
+  honesty_note?: string;
+  count: number;
+  rows: SectorMembershipRow[];
+}
+
+export function fetchSectorMembership(opts: {
+  sector_code: string;
+  chain?: AssistChain;
+}): Promise<SectorMembershipResp> {
+  const q = new URLSearchParams();
+  q.set("sector_code", opts.sector_code);
+  if (opts.chain) q.set("chain", opts.chain);
+  return apiGet<SectorMembershipResp>(`/api/v3/decision/sector/members?${q.toString()}`);
+}
+
+export type FlowStreakDirection = "inflow" | "outflow";
+
+export interface FlowStreakRow {
+  stock_code: string;
+  stock_name: string | null;
+  flow_streak: number;
+  direction: FlowStreakDirection;
+  streak_days: number;
+  as_of: string;
+  cum_net_vendor: number | null;
+  cum_net_unit: string;
+  why: string;
+}
+
+export interface FlowStreakUniverseResp {
+  status: "ok" | "stale";
+  reason: string | null;
+  surface: string;
+  surface_version: string;
+  disclaimer: string;
+  vendor: string;
+  direction: FlowStreakDirection;
+  min_streak: number;
+  as_of: string | null;
+  count: number;
+  rows: FlowStreakRow[];
+}
+
+export function fetchFlowStreakUniverse(opts: {
+  direction?: FlowStreakDirection;
+  min_streak?: number;
+  limit?: number;
+}): Promise<FlowStreakUniverseResp> {
+  const q = new URLSearchParams();
+  if (opts.direction) q.set("direction", opts.direction);
+  if (opts.min_streak !== undefined) q.set("min_streak", String(opts.min_streak));
+  if (opts.limit !== undefined) q.set("limit", String(opts.limit));
+  const qs = q.toString();
+  return apiGet<FlowStreakUniverseResp>(
+    `/api/v3/decision/moneyflow/stock_streak${qs ? `?${qs}` : ""}`,
   );
 }

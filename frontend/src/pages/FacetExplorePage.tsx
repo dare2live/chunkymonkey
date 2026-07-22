@@ -1,13 +1,17 @@
 /**
  * Facet explore — L2 universe for a computed facet.
- * Consumes Cap A board / Cap B screener / Cap D intersection; no ad-hoc math.
+ * Consumes Cap A/B/D + CX-3 sector membership / stock flow-streak; no ad-hoc math.
  */
 import { Link, useSearchParams } from "react-router-dom";
 import {
+  fetchFlowStreakUniverse,
   fetchIntersectionStrongest,
   fetchMoneyflowBoard,
+  fetchSectorMembership,
   type AssistBehavior,
+  type AssistChain,
   type AssistHorizon,
+  type FlowStreakDirection,
 } from "../api/decision";
 import {
   fetchScreenerFormStage,
@@ -36,8 +40,19 @@ function parseKind(raw: string | null): FacetKind | null {
     "axis_vol",
     "breakout",
     "intersection",
+    "sector_membership",
+    "flow_streak",
   ];
   return raw && (allowed as string[]).includes(raw) ? (raw as FacetKind) : null;
+}
+
+function parseChain(raw: string | null): AssistChain {
+  const allowed: AssistChain[] = ["dc_industry", "dc_concept", "sw_industry"];
+  return raw && (allowed as string[]).includes(raw) ? (raw as AssistChain) : "dc_industry";
+}
+
+function parseDirection(raw: string | null): FlowStreakDirection {
+  return raw === "outflow" ? "outflow" : "inflow";
 }
 
 function BehaviorUniverse(props: { value: string; horizon: number }) {
@@ -267,14 +282,135 @@ function IntersectionUniverse() {
   );
 }
 
+function SectorMembershipUniverse(props: { sectorCode: string; chain: AssistChain }) {
+  const state = useFetch(
+    () => fetchSectorMembership({ sector_code: props.sectorCode, chain: props.chain }),
+    [props.sectorCode, props.chain],
+  );
+  return (
+    <FetchGate
+      state={state}
+      empty={(d) => d.status === "ok" && d.rows.length === 0}
+      emptyHint="该板块暂无成分（诚实空态）"
+    >
+      {(d) => (
+        <>
+          <p className="page-lead">
+            板块成分 · {props.sectorCode} · {props.chain} · as-of{" "}
+            {d.as_of ? fmtDate(d.as_of) : "—"} · {d.count} 只
+            {d.membership_pit ? "" : "（申万展示快照，非 PIT）"}
+          </p>
+          {d.status === "stale" ? (
+            <div className="state-hint">成分砖过期（{d.reason}）— 不展示假名单</div>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>股票</th>
+                    <th>代码</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.rows.map((r) => (
+                    <tr key={r.ts_code || r.stock_code}>
+                      <td>
+                        <Link to={`/stock/${r.stock_code}`}>
+                          <b>{r.stock_name ?? "—"}</b>
+                        </Link>
+                      </td>
+                      <td className="mono muted">{r.stock_code}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="muted dossier-note">{d.disclaimer}</p>
+        </>
+      )}
+    </FetchGate>
+  );
+}
+
+function FlowStreakUniverse(props: {
+  minStreak: number;
+  direction: FlowStreakDirection;
+}) {
+  const state = useFetch(
+    () =>
+      fetchFlowStreakUniverse({
+        direction: props.direction,
+        min_streak: props.minStreak,
+        limit: 80,
+      }),
+    [props.minStreak, props.direction],
+  );
+  return (
+    <FetchGate
+      state={state}
+      empty={(d) => d.status === "ok" && d.rows.length === 0}
+      emptyHint="当前窗无满足连续净流入/流出的个股（诚实空态）"
+    >
+      {(d) => (
+        <>
+          <p className="page-lead">
+            个股连续净{props.direction === "inflow" ? "流入" : "流出"} ≥ {props.minStreak} 日 ·
+            as-of {d.as_of ? fmtDate(d.as_of) : "—"} · {d.count} 只
+          </p>
+          {d.status === "stale" ? (
+            <div className="state-hint">资金砖过期（{d.reason}）— 不展示假宇宙</div>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>股票</th>
+                    <th>连续天数</th>
+                    <th>why</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.rows.map((r) => (
+                    <tr key={r.stock_code}>
+                      <td>
+                        <Link to={`/stock/${r.stock_code}`}>
+                          <b>{r.stock_name ?? "—"}</b>
+                          <span className="mono muted"> {r.stock_code}</span>
+                        </Link>
+                      </td>
+                      <td className="mono">{r.streak_days}</td>
+                      <td className="assist-conclusion">{r.why}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="muted dossier-note">{d.disclaimer}</p>
+        </>
+      )}
+    </FetchGate>
+  );
+}
+
 export function FacetExplorePage() {
   const [params] = useSearchParams();
   const kind = parseKind(params.get("kind"));
   const value = (params.get("value") || "").trim();
   const from = (params.get("from") || "").trim();
   const horizon = Number(params.get("horizon") || "20") || 20;
+  const chain = parseChain(params.get("chain"));
+  const direction = parseDirection(params.get("direction"));
+  const minStreak = Math.max(1, Number(value) || 5);
 
-  if (!kind || (kind !== "intersection" && kind !== "breakout" && !value)) {
+  if (
+    !kind ||
+    (kind !== "intersection" &&
+      kind !== "breakout" &&
+      kind !== "flow_streak" &&
+      !value)
+  ) {
     return (
       <div className="page">
         <h1>探索</h1>
@@ -311,6 +447,12 @@ export function FacetExplorePage() {
           kind === "axis_vol" ||
           kind === "breakout") && <ScreenerUniverse kind={kind} value={value || "1"} />}
         {kind === "intersection" && <IntersectionUniverse />}
+        {kind === "sector_membership" && (
+          <SectorMembershipUniverse sectorCode={value} chain={chain} />
+        )}
+        {kind === "flow_streak" && (
+          <FlowStreakUniverse minStreak={minStreak} direction={direction} />
+        )}
       </Card>
     </div>
   );

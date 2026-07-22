@@ -70,8 +70,8 @@ universe, then into related dossiers.
 | `breakout` | Cap B `is_breakout_event` | `#/explore?kind=breakout` | **live** |
 | `intersection` | Cap D `intersection/strongest` | `#/explore?kind=intersection` + market tab | **live** |
 | `holder` | dossier holders / inst profile | `#/institutions/:holder` (existing) | **live** |
-| industry/concept sector membership as stock-universe facet | Cap D sector refs | chip on intersection lists → (future) membership board | **stub** (sector name still text; stock codes live) |
-| stock-level「连续N日净流入」streak universe | would need stock-level flow board | — | **stub** — today stock moneyflow exposes sector `behavior` chip (live) instead of inventing browser streak |
+| industry/concept sector membership as stock-universe facet | CX-3 `decision/sector/members` | chip on intersection lists → `#/explore?kind=sector_membership` | **live** (SLA fail-closed) |
+| stock-level「连续N日净流入」streak universe | CX-3 `decision/moneyflow/stock_streak` | dossier chip → `#/explore?kind=flow_streak` | **live** (SLA fail-closed) |
 
 **Jump graph (shipped skeleton):**
 
@@ -122,9 +122,8 @@ L1: KPI. L2: dim heatmap. L3: episode table. Episode stock codes → dossier (**
 
 ## 8. Residual
 
-- Stock-level multi-day inflow streak universe (needs serve brick, not UI invention).
-- Industry/concept membership facet chips on intersection sector names.
 - Terrain hero still deferred (viz Enrich).
 - Sensing-tab further density cut optional.
+- CX-3 closed: sector-membership + stock flow-streak serve bricks live (see `cx3_capability_bricks_acceptance_20260722.md`).
 
-Label: **FIXED (skeleton)** for L1/L2/L3 + facet jumps on shipped bricks; residual stubs listed above.
+Label: **FIXED (skeleton + CX-3 facet bricks)** for L1/L2/L3 + facet jumps on shipped bricks.

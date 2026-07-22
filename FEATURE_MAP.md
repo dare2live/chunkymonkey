@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-22 23:56
+> Snapshot: 2026-07-23 00:09
 
 ## 1. 入口面
 
@@ -28,7 +28,7 @@
 
 | router | prefix | 端点数 |
 |---|---|---|
-| decision_assist | `/api/v3/decision` | 4 |
+| decision_assist | `/api/v3/decision` | 7 |
 | institution_profile | `—` | 3 |
 | market_pulse | `/api/v3/pulse` | 9 |
 | ops_manual_run | `/api/v3/ops` | 5 |
@@ -171,7 +171,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 9,351 | calls 边 10,904 | imports 边 3,106 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,481 | calls 边 11,226 | imports 边 3,149 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -179,7 +179,7 @@
 |---|---|
 | services.duck_adapter | 67 |
 | services.data_sources | 27 |
-| services.universe | 21 |
+| services.universe | 22 |
 | services.data_sources.security_day_partition | 19 |
 | services.data_sources.accepted_schema | 18 |
 | services.institution_follow_b0_measure | 18 |
@@ -198,8 +198,8 @@
 | 文件 | 调用方文件数 |
 |---|---|
 | backend/services/duck_adapter.py | 32 |
+| backend/services/universe.py | 18 |
 | backend/services/institution_follow_edge_gates.py | 17 |
-| backend/services/universe.py | 17 |
 | backend/services/source_watermarks.py | 13 |
 | backend/services/data_sources/disclosure_boundaries.py | 11 |
 | backend/services/database_manifest.py | 11 |
@@ -207,8 +207,8 @@
 | backend/services/tier12_consumer_cutover.py | 9 |
 | backend/services/tier12_publish_writer.py | 9 |
 | backend/services/institution_follow_b0_measure.py | 8 |
+| frontend/src/components/Card.tsx | 8 |
 | backend/services/data_sources/accepted_schema.py | 7 |
-| backend/services/data_sources/calendar_contract.py | 7 |
 
 ### LOC top 10 (God module 候选)
 
@@ -227,7 +227,7 @@
 
 ## 5. 概览
 
-- chunkyctl 子命令 8 | launchd 任务 0 | router 7 (端点 29)
+- chunkyctl 子命令 8 | launchd 任务 0 | router 7 (端点 32)
 - sync_registry 数据域 47
 - 产表 34 (多 writer 12)
 
