@@ -198,6 +198,52 @@ def test_dossier_institution_profile_honesty():
     assert body["lineage"]["institution_profile_coverage"]["coverage"] == 0.5
 
 
+def test_dossier_institution_link_status_rich_schema_and_episode_only():
+    """Rich mart_inst_profile (low_sample/n_closed) + episode-only → typed statuses."""
+    con = _fixture_conn()
+    con.execute("ATTACH ':memory:' AS fs")
+    con.execute(
+        """
+        CREATE TABLE fs.mart_inst_profile (
+            holder VARCHAR, low_sample BOOLEAN, n_closed INTEGER
+        )
+        """
+    )
+    # 机构甲: profile exists but low_sample; 机构乙: no profile row.
+    con.execute(
+        "INSERT INTO fs.mart_inst_profile VALUES ('机构甲', TRUE, 3)"
+    )
+    con.execute(
+        """
+        CREATE TABLE fs.fact_inst_episode (
+            holder VARCHAR, stock VARCHAR, open_date VARCHAR, close_date VARCHAR,
+            status VARCHAR, n_adds INTEGER, n_trims INTEGER,
+            ret_c1 DOUBLE, alpha_c1 DOUBLE, seeded BOOLEAN, is_passive BOOLEAN
+        )
+        """
+    )
+    con.execute(
+        """
+        INSERT INTO fs.fact_inst_episode VALUES
+        ('机构乙','600519','20260331',NULL,'holding',0,0,NULL,NULL,FALSE,FALSE)
+        """
+    )
+    client = _client(con)
+    body = client.get("/api/v3/stock/600519/dossier").json()
+    rows = {r["holder_name_norm"]: r for r in body["holders"]["rows"]}
+    assert rows["机构甲"]["has_institution_profile"] is True
+    assert rows["机构甲"]["institution_profile_low_sample"] is True
+    assert rows["机构甲"]["institution_link_status"] == "profile_low_sample"
+    assert rows["机构乙"]["has_institution_profile"] is False
+    assert rows["机构乙"]["institution_link_status"] == "episode_only_no_profile"
+    assert rows["机构乙"]["episode"] is not None
+    prof = body["holders"]["institution_profile"]
+    assert prof["holders_with_profile"] == 1
+    assert prof["holders_episode_only"] == 1
+    assert prof["holders_profile_low_sample"] == 1
+    assert "institution_episode_without_profile_mart_row" in body["holders"]["gaps"]
+
+
 def test_dossier_episode_overlay_measured_only():
     """2F deepen: this-stock episode cycle/return; return measured only for closed."""
     con = _fixture_conn()
