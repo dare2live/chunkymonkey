@@ -14,17 +14,20 @@
 | **5B cutover-with-F** | deferred until F flips | **FIXED** hybrid — shared `form_production_read` for F + 5B; ACCEPTED_CUTOVER overlays form_name/pos/trend/breakout; purity/vol/sub stay on fact brick (accepted payload gap, disclosed) | `services/form_production_read.py`; dossier `_load_form` + screener overlay |
 | **dossier axis-label drift** | clean/mixed/light unused | **FIXED** — trending/choppy + heavy/shrink/normal (matches live + screener yaml) | `stock_dossier.py` `_AXIS_*`; dossier API test asserts 结构嘈杂/放量 |
 
-### Live ops note (ths_hot watermark)
+### Live ops note (ths_hot watermark) — corrected 2026-07-22
 
-- Domain is **Tushare** (`source: tushare`, API `ths_hot` → `raw_tushare_ths_hot`); content is 同花顺热榜 via TuShare/tinyshare — **not** a separate THS cookie/login path.
-- `raw_tushare_ths_hot` max was **`20260720`** at session start (missing `20260721` from early-window run).
-- This session **could not** provider-drain (`missing_token` = TuShare auth from `.env`: `TUSHARE_TOKEN` / `TUSHARE_PRO_TOKEN` / `TS_TOKEN`) — **ops catchup** remains: with that token loaded the usual way (`chunkyctl` / `daily_update.sh` source `.env`), run normal sync (`run_domain ths_hot` or drain via `daily_update` acquire) for `20260721` (and later days post-22:30). Mechanism no longer misclassifies pre-window vacuum as hard failure.
+- Domain is **Tushare** (`source: tushare`, API `ths_hot` → `raw_tushare_ths_hot`); content is 同花顺热榜 via TuShare/tinyshare — **not** a separate THS cookie/login path. Same provider as the rest of `sync_registry` drain.
+- **UI click run 2026-07-21 (~21:53–22:08)** already had a working TuShare token: many Tushare domains drained OK (`margin_detail`/`kpl_list`/`cyq_perf`/`moneyflow`/…). Same job `ths_hot` itself wrote **2214 rows / 6 batches** and only failed `trade_date=20260721` with **`err=zero_rows`** at **22:04** — before registry `available_after: "22:30"`. That is **pre-publish empty**, later typed as `pending_publish` — **not** `missing_token`.
+- Holders incremental that night was **东财妙想** (`holders_aif10`), not TuShare — do not cite holders as TuShare proof; use the drained Tushare domains above.
+- `raw_tushare_ths_hot` max stayed **`20260720`** (missing `20260721`) because the early-window zero was mis-classed as hard fail at the time; mechanism is now FIXED.
+- A later agent shell reported `missing_token` only because that shell **did not** `source .env` (agent env ≠ `daily_update.sh` / workbench / `chunkyctl`, which all load `.env`). **Do not** treat that as the owner-run blocker. Residual wording that led with “缺 token” **overstated** the blocker.
+- **Ops catchup** remains: post-22:30 (or next open day) normal sync/`daily_update` acquire for `ths_hot` `20260721`+ — same token path as every other Tushare domain.
 
 ## 2. Remaining open (owner / priority)
 
 | Item | Owner | Priority | Notes |
 |---|---|---|---|
-| ths_hot **live catchup** `20260721`(+) | ops / owner **TuShare** token | P1 | Code FIXED; watermark catchup needs `TUSHARE_TOKEN` (usual `.env`), not THS cookie |
+| ths_hot **live catchup** `20260721`(+) | ops / owner (post-22:30 drain) | P1 | Code FIXED; blocker was pre-`available_after` `zero_rows`, not missing TuShare token |
 | Accept enrich full form axes (purity/vol/sub → accepted) | Tier1 publish | P2 | Unblocks pure accepted-only form read (hybrid stays honest until then) |
 | Optional dossier F header intersection badge | product | P3 | Plan §3.5 "later" — still deferred by design |
 | Cap E parameterized S1/S2 UI | product | P3 | Honest disabled+reason; not a silent gap |
@@ -48,7 +51,7 @@
 
 ## 4. Recommended next order
 
-1. **Ops:** TuShare-token (`TUSHARE_TOKEN`) `ths_hot` catchup for `20260721`+ (post-22:30); confirm continuity/group coverage ≠ 热基.
+1. **Ops:** post-22:30 `ths_hot` catchup for `20260721`+ via usual `daily_update`/`chunkyctl` (already sources `.env`); confirm continuity/group coverage ≠ 热基.
 2. **P2 (optional):** Tier1 accept enrich for `axis_purity`/`axis_vol`/`form_sub` → then thin the hybrid overlay.
 3. **Stay paused:** E/F remeasure, Optuna, Release, Type-B, S7 blanket COMPAT.
 4. **P3 polish only if owner asks:** intersection badge, trading-day SLA, Cap E S1/S2 params UI.
@@ -56,5 +59,5 @@
 ## 5. Verdict
 
 **FIXED** for the four closeout residuals (code + tests + UI + docs).  
-**PARTIAL** only on ths_hot *live watermark catchup* (TuShare `missing_token` / `.env`).  
+**PARTIAL** only on ths_hot *live watermark catchup* (gap day from pre-22:30 `zero_rows` / `pending_publish`; **not** owner-run missing token).  
 **Reconcile:** no hostile drift vs product/foundation plans; next work is ops catchup + owner-scheduled research, not reopening the product mandate.

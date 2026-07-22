@@ -26,7 +26,7 @@ Cap E stays shipped; do not rebuild workbench into dossier files.
 **Execution closeout:** mandate 0r.5b→5B **FIXED** subsets — see
 `analysis/product_plan_execution_closeout_20260721.md`. Closeout residuals **cleared**
 2026-07-22 (`plan_residual_reconcile_20260722.md`). **Next** = ops ths_hot catchup
-(token) + owner-scheduled E/F remeasure only (still paused otherwise).
+(post-22:30 drain; not missing token) + owner-scheduled E/F remeasure only (still paused otherwise).
 
 | Question | Answer |
 |---|---|
@@ -59,7 +59,7 @@ Cap E stays shipped; do not rebuild workbench into dossier files.
 | Holders **lineage / association / process·serve** | **PARTIAL** audit DONE | see §1.2 — consume, don't re-audit |
 | Dossier period streak / Δ plane | **FIXED** | canonical-only streak (was fact-lag bug) |
 | Drain `share_float` bare BJ normalize | **FIXED** | e.g. `874075` → `874075.BJ`; shape gate not loosened |
-| Drain `ths_hot` same-day empty | **FIXED** mechanism / ops catchup open | typed `pending_publish` pre-22:30; post-window fail-closed; live `20260721` needs token drain |
+| Drain `ths_hot` same-day empty | **FIXED** mechanism / ops catchup open | typed `pending_publish` pre-22:30; post-window fail-closed; live `20260721` needs post-22:30 drain (UI run had token; failed `zero_rows`) |
 
 ### 1.2 Holders audit fold-in (peer DONE — facts only)
 

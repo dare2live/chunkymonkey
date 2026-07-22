@@ -102,7 +102,7 @@ was skipped or silently deferred without a written reason.
 
 | Residual | Phase | Status (2026-07-22) |
 |---|---|---|
-| 0r.4 ths_hot 发布窗 | 0r.4 | **FIXED** mechanism (`pending_publish`); live `20260721` catchup = ops (token) |
+| 0r.4 ths_hot 发布窗 | 0r.4 | **FIXED** mechanism (`pending_publish`); live `20260721` catchup = ops (post-22:30; not missing token) |
 | sw_industry 3rd chain intersection | 4D | **FIXED** — L1 PIT `l1_code` rollup; 3-way freshness |
 | `resolve_tier12_production_read` cutover for screener+F | 5B/2F | **FIXED** hybrid via `form_production_read` (full accepted-only blocked on payload axes) |
 | Dossier axis-label dict (`clean`/`mixed`/`light`) | 2F | **FIXED** → trending/choppy + heavy/shrink/normal |

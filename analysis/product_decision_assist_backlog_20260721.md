@@ -123,7 +123,7 @@ Parallel research (E/F remeasure) remains **owner-scheduled** and orthogonal; th
 - **0r.1–0r.4 FIXED** (`6afea30fc` + 2026-07-22 ths_hot `pending_publish`); live ths_hot day catchup = ops.
 - **A/C FIXED** (`4f70adc08`); **D FIXED** (3-chain); **B FIXED** (+F cutover hybrid); **E shipped** (`799b7412d`) — **do not revert**.
 - **Closeout residuals cleared** 2026-07-22 — see `plan_residual_reconcile_20260722.md`.
-- **Next** = ops ths_hot catchup (token) + owner-scheduled E/F remeasure only.
+- **Next** = ops ths_hot catchup (post-22:30; not missing token) + owner-scheduled E/F remeasure only.
 - **Stays deferred until owner opens:** Optuna, StrategyRelease, holdout loosen, Type-B enrichment, E/F remeasure (unless separately scheduled).
 
 Label: **CLOSED** — closeout residuals cleared; foundation 0r.1–0r.4 mechanism closed; product A–F mandate subsets shipped.
