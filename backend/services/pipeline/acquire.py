@@ -66,14 +66,19 @@ def run_acquire(ctx: PipelineContext) -> None:
     # Step 2l (profit_forecast EPS 快照) 已退役 2026-06-27 (通达信全删 M4: akshare 退役, 用户决cut):
     #   raw_profit_forecast_snapshot_daily 0 live 读者 (snapshot 设计防leakage但无消费); 档B 若需景气度走 tushare forecast/report_rc。
 
-    # Step 2.94: formal on_demand daily/ST — modular land_then_accept for latest
-    #   eligible day only (never rides --all-due; never mass history fill).
-    _sync_formal_on_demand_security_days(ctx)
-
-    # Step 2.95: sync_registry 域日历 gap 重放 = 增量 + 修洞统一机制 (终败/漏跑/历史空洞)
+    # Step 2.94: registry --all-due drain FIRST (published automatic domains).
+    # Structural (2026-07-22 RCA): formal on_demand daily/ST catchup must NOT
+    # hard-gate / kidnap published-domain catchup (ths_hot etc.). S3 intent =
+    # caller-only orchestrator with per-domain fail-closed siblings — not a
+    # fused "today's K/ST empty ⇒ abort whole acquire" dragon.
     _sync_registry_drain(ctx)
 
-    # Step 2.96: 交易日历 dim 传导 (R1 根因3, 2026-07-03): raw_tushare_trade_cal (2.95 已刷)
+    # Step 2.95: formal on_demand daily/ST — latest eligible land_then_accept.
+    # Per-domain soft (pending) / degraded (hard fail); never aborts drain
+    # (drain already ran) and never raises Tier0AcquireError for domain outcomes.
+    _sync_formal_on_demand_security_days(ctx)
+
+    # Step 2.96: 交易日历 dim 传导 (R1 根因3, 2026-07-03): raw_tushare_trade_cal (2.94 已刷)
     #   → reference.dim_trading_calendar 增量 MERGE。dim 曾无生产 writer (唯一写方=已封存的
     #   一次性迁移脚本), horizon 倒计时中 — 本步是 dim 的唯一日常刷新契约。
     ctx.step(_build_trading_calendar,
@@ -209,12 +214,19 @@ def _accepted_partition_exists(conn, dataset_id: str, partition_value: str) -> b
     return row is not None
 
 
-def _sync_formal_on_demand_security_days(ctx: PipelineContext) -> None:
+def _sync_formal_on_demand_security_days(ctx: PipelineContext) -> list[dict]:
     """Pull latest eligible formal daily/ST via modular land_then_accept.
 
     on_demand domains never enter --all-due. This is the S3 orchestrator bridge:
     one trade_date = eligible_end when missing from accepted_partition.
     Does **not** fill historical holes (log-not-fill / explicit backfill knife).
+
+    Per-domain outcomes (structural 2026-07-22):
+    - pending_publish / skip → soft continue (typed state, not pipeline abort)
+    - land_then_accept hard fail → ``ctx.degraded`` + continue sibling domains
+    - wiring bugs (wrong sync_policy) still raise Tier0AcquireError
+    Never raises for ordinary domain catchup outcomes (avoids exit-5 kidnap of
+    clean/process after drain has already run, and of siblings within this step).
     """
 
     from services.data_sources import sync_runner
@@ -222,6 +234,7 @@ def _sync_formal_on_demand_security_days(ctx: PipelineContext) -> None:
 
     registry = sync_runner.load_registry()
     planned: list[tuple[str, str, str, str]] = []  # domain, eligible_end, reason, dataset_id
+    outcomes: list[dict] = []
     conn = connect(ctx.db("tushare_raw"), read_only=True)
     try:
         for domain in FORMAL_ON_DEMAND_SECURITY_DAY_DOMAINS:
@@ -290,34 +303,51 @@ def _sync_formal_on_demand_security_days(ctx: PipelineContext) -> None:
         )
         failed = int(result.get("failed_batches") or 0)
         status = str(result.get("status") or "")
-        # Same-day vendor vacuum (pending_publish): soft-skip so registry
-        # --all-due drain (ths_hot etc.) is not kidnapped by today's empty
-        # formal daily/ST. Non-pending failures stay hard Tier0 blocks.
         if result.get("pending_publish"):
-            print(
-                json.dumps(
-                    {
-                        "domain": domain,
-                        "action": "pending_publish",
-                        "eligible_end": eligible_end,
-                        "eligibility_reason": eligibility_reason,
-                        "dataset_id": dataset_id,
-                        "pending_publish_reason": result.get(
-                            "pending_publish_reason",
-                            "same_day_vendor_vacuum",
-                        ),
-                    },
-                    ensure_ascii=False,
-                )
-            )
+            outcome = {
+                "domain": domain,
+                "action": "pending_publish",
+                "eligible_end": eligible_end,
+                "eligibility_reason": eligibility_reason,
+                "dataset_id": dataset_id,
+                "pending_publish_reason": result.get(
+                    "pending_publish_reason",
+                    "same_day_vendor_vacuum",
+                ),
+            }
+            print(json.dumps(outcome, ensure_ascii=False))
+            outcomes.append(outcome)
             continue
         if status != "ok" or failed:
-            raise Tier0AcquireError(
+            outcome = {
+                "domain": domain,
+                "action": "failed",
+                "eligible_end": eligible_end,
+                "eligibility_reason": eligibility_reason,
+                "dataset_id": dataset_id,
+                "status": status,
+                "failed_batches": failed,
+                "error": result.get("error"),
+            }
+            print(json.dumps(outcome, ensure_ascii=False, default=str))
+            outcomes.append(outcome)
+            # Domain-local fail-closed: degrade, do not abort siblings / chain.
+            ctx.degraded(
                 f"formal {domain} land_then_accept failed for {eligible_end}: "
                 f"status={status!r} failed_batches={failed} "
                 f"error={result.get('error')!r}"
             )
+            continue
         print(json.dumps(result, ensure_ascii=False, default=str))
+        outcomes.append(
+            {
+                "domain": domain,
+                "action": "accepted",
+                "eligible_end": eligible_end,
+                "dataset_id": dataset_id,
+            }
+        )
+    return outcomes
 
 
 def _margin_hard_gate_required(registry: dict | None = None) -> bool:

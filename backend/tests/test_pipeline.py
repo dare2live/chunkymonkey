@@ -761,13 +761,148 @@ def test_formal_on_demand_catchup_soft_skips_pending_publish(
     )
     ctx = PipelineContext(date="20260722", log_path=tmp_path / "run.log")
     try:
-        acquire._sync_formal_on_demand_security_days(ctx)
+        outcomes = acquire._sync_formal_on_demand_security_days(ctx)
     finally:
         ctx.close()
     out = capsys.readouterr().out
     assert "pending_publish" in out
     assert "same_day_vendor_vacuum" in out
     assert "20260722" in out
+    assert all(o.get("action") == "pending_publish" for o in outcomes)
+    assert not ctx.degraded_msgs
+
+
+def test_formal_hard_fail_degrades_not_raises_and_continues_sibling(
+    monkeypatch, tmp_path, capsys
+):
+    """Structural: formal domain hard-fail must not raise Tier0AcquireError."""
+    from services.data_sources import sync_runner
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    registry = {
+        "domains": {
+            "daily": {
+                "domain": "daily",
+                "sync_policy": "on_demand",
+                "execution_policy": {
+                    "mode": "enabled",
+                    "reason": "authorized_manual_generation",
+                },
+            },
+            "stock_st": {
+                "domain": "stock_st",
+                "sync_policy": "on_demand",
+                "execution_policy": {
+                    "mode": "enabled",
+                    "reason": "authorized_manual_generation",
+                },
+            },
+        }
+    }
+
+    class _Conn:
+        def execute(self, *_a, **_k):
+            return SimpleNamespace(fetchone=lambda: None)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(sync_runner, "load_registry", lambda: registry)
+    monkeypatch.setattr(
+        sync_runner, "domain_spec", lambda reg, domain: reg["domains"][domain]
+    )
+    monkeypatch.setattr(
+        sync_runner,
+        "eligible_end_date",
+        lambda _spec, **_kwargs: SimpleNamespace(
+            eligible_end="20260722", reason="manual_calendar_eligible"
+        ),
+    )
+    seen: list[str] = []
+
+    def _run(domain, **kwargs):
+        seen.append(domain)
+        if domain == "daily":
+            return {
+                "domain": domain,
+                "status": "error",
+                "failed_batches": 1,
+                "error": "daily capture rejects empty provider rows",
+            }
+        return {
+            "domain": domain,
+            "status": "ok",
+            "failed_batches": 0,
+            "pending_publish": True,
+            "pending_publish_reason": "same_day_vendor_vacuum",
+            "rows": 0,
+        }
+
+    monkeypatch.setattr(sync_runner, "run_domain", _run)
+    monkeypatch.setattr(
+        "services.duck_adapter.connect", lambda *_a, **_k: _Conn()
+    )
+    ctx = PipelineContext(date="20260722", log_path=tmp_path / "run.log")
+    try:
+        outcomes = acquire._sync_formal_on_demand_security_days(ctx)
+    finally:
+        ctx.close()
+    assert seen == ["daily", "stock_st"], "sibling stock_st must still run"
+    assert any(o.get("action") == "failed" and o.get("domain") == "daily" for o in outcomes)
+    assert any(o.get("action") == "pending_publish" for o in outcomes)
+    assert any("formal daily" in msg for msg in ctx.degraded_msgs)
+
+
+def test_acquire_runs_registry_drain_before_formal_and_despite_formal_hard(
+    monkeypatch, tmp_path
+):
+    """RCA regression: --all-due must not be kidnapped by formal catchup order/raise."""
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    order: list[str] = []
+
+    monkeypatch.setattr(
+        "services.pipeline.preflight.ensure_pipeline_sync_ready", lambda _c: None
+    )
+    monkeypatch.setattr(
+        "services.pipeline.preflight.ensure_tushare_authorized", lambda _c: None
+    )
+    monkeypatch.setattr(
+        acquire, "_sync_holders_aif10", lambda _c: order.append("holders")
+    )
+    monkeypatch.setattr(acquire, "_sync_qfii", lambda: order.append("qfii"))
+    monkeypatch.setattr(acquire, "_sync_org_holding", lambda: order.append("org"))
+    monkeypatch.setattr(
+        acquire,
+        "_sync_registry_drain",
+        lambda _c: order.append("drain"),
+    )
+
+    def _formal(ctx):
+        order.append("formal")
+        ctx.degraded("formal daily land_then_accept failed for 20260722: simulated")
+        return [{"domain": "daily", "action": "failed"}]
+
+    monkeypatch.setattr(acquire, "_sync_formal_on_demand_security_days", _formal)
+    monkeypatch.setattr(
+        acquire, "_build_trading_calendar", lambda: order.append("calendar")
+    )
+    monkeypatch.setattr(
+        acquire, "_refresh_active_a_stock_master", lambda: order.append("active")
+    )
+
+    ctx = PipelineContext(date="20260722", log_path=tmp_path / "run.log")
+    try:
+        acquire.run_acquire(ctx)
+    finally:
+        ctx.close()
+    assert order.index("drain") < order.index("formal"), order
+    assert "drain" in order and "formal" in order
+    assert "calendar" in order
+    # Structural: formal hard → degraded, not Tier0AcquireError abort.
+    assert any("formal daily" in msg for msg in ctx.degraded_msgs)
 
 
 def test_unrelated_sync_failure_degrades_only_after_margin_gate_passes(

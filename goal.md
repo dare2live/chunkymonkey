@@ -49,7 +49,7 @@
 - **工作台可观测性（2026-07-21 晚）**：运行中展示 `current_activity`（阶段/进度行/日志时间/告警原因），不再只显示「更新中」；证据见 `foundation_daily_update_ui_click_20260721.md`。
 - **Capability E（2026-07-21 / 22）**：**FIXED** — workbench「分步节点」+ `GET /api/v3/ops/pipeline/nodes`；可独立跑 `pipeline_acquire|clean|process|store` + `derive_qfq`；**S1/S2 参数化 UI** `POST /api/v3/ops/pipeline/land-accept/run`（daily/stock_st）；预检仍嵌链内；一键「数据更新」仍主路径。证据 `capability_e_pipeline_step_cards_20260721.md`。
 - **完整地基 push（2026-07-22）**：formal **daily** 盘前 `zero_rows` → `pending_publish` soft-skip **已测**；相对完整目标仍 **PARTIAL** — 见 `foundation_full_goal_push_20260722.md`。form 读 typed hybrid residual；机构 deep-link `institution_link_status` 诚实。
-- **acquire `--all-due` 解阻（2026-07-22）**：**FIXED** — stock_st same-day vacuum（含 post-09:20）→ typed `pending_publish`；acquire soft-continue 到 registry drain；holders watermark skip + heartbeat；workbench due-plan preview。证据 `foundation_acquire_all_due_unblock_20260722.md`。ths_hot live fill 仍 clock/ops。
+- **acquire `--all-due` 解阻（2026-07-22）**：**FIXED（structural）** — RCA=formal catchup `raise Tier0` 串行硬门绑架 drain；重建=drain 先于 formal + formal 域内 degrade/pending 不 abort；typed `pending_publish` 保留为域契约。证据 `foundation_acquire_all_due_unblock_20260722.md`。ths_hot live fill 仍 clock/ops。
 - **0r.1–0r.4 foundation（2026-07-21 / 22）**：**FIXED** — 沪深A serve whitelist + formal continuity/SLA + share_float bare BJ normalize；ths_hot typed `pending_publish`（非 known_empty；live `20260721` catchup=ops）。证据 `foundation_bj_dualpath_ashare_whitelist_20260721.md` + `plan_residual_reconcile_20260722.md`。
 - **F 更长窗 / S7 daily expand**：accepted daily **`20190102`→`20260721`**；ST **`20220104`→`20260721`**。E/F remeasure 仍 paused。
 

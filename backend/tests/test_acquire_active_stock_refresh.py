@@ -43,6 +43,11 @@ def test_run_acquire_wires_active_stock_refresh_step(monkeypatch):
     monkeypatch.setattr(acquire, "_sync_qfii", lambda: calls.append("qfii"))
     monkeypatch.setattr(acquire, "_sync_org_holding", lambda: calls.append("org_holding"))
     monkeypatch.setattr(acquire, "_sync_registry_drain", lambda ctx: calls.append("drain"))
+    monkeypatch.setattr(
+        acquire,
+        "_sync_formal_on_demand_security_days",
+        lambda ctx: calls.append("formal") or [],
+    )
     monkeypatch.setattr(acquire, "_build_trading_calendar", lambda: calls.append("calendar"))
     monkeypatch.setattr(acquire, "_refresh_active_a_stock_master", lambda: calls.append("active_stock"))
     monkeypatch.setattr(
@@ -68,5 +73,7 @@ def test_run_acquire_wires_active_stock_refresh_step(monkeypatch):
     acquire.run_acquire(_FakeCtx())
     assert calls[0] == "auth", "独立 acquire 必须先过授权硬门"
     assert "active_stock" in calls, "dim_active_a_stock 刷新步骤必须真的被 run_acquire 调用"
+    # Published drain before formal on_demand (structural sibling isolation).
+    assert calls.index("drain") < calls.index("formal"), calls
     # 顺序断言: 紧随 calendar 之后 (raw stock_basic 已被 drain 同步完, 立即重建派生表)
     assert calls.index("active_stock") == calls.index("calendar") + 1
