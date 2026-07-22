@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Body, HTTPException
 from services.writer_lock import writer_lock_status
 
 router = APIRouter()
@@ -29,6 +29,14 @@ _PY = _REPO / ".venv" / "bin" / "python"
 _WRAPPER = _REPO / "scripts" / "manual_job_wrapper.py"
 
 _CHUNKYCTL = _REPO / "scripts" / "chunkyctl"
+
+# Parameterized S1/S2 (Capability E residual). Narrow whitelist — not a second DAG.
+_LAND_ACCEPT_DOMAINS = frozenset({"daily", "stock_st"})
+_LAND_ACCEPT_MODES = frozenset(
+    {"land_only", "land_then_accept", "accept_from_landing"}
+)
+_LAND_ACCEPT_DATE_RE = re.compile(r"^\d{8}$")
+_LAND_ACCEPT_MAX_WINDOW_DAYS = 40  # rule-compliance: ok evidence=≤40d hard gate mirrors sync CLI
 
 # job 注册表: 名称 -> 定义 (argv 不含解释器/wrapper 前缀; pattern 用于 pgrep 活性判定)
 MANUAL_JOBS: dict[str, dict[str, Any]] = {
@@ -40,6 +48,16 @@ MANUAL_JOBS: dict[str, dict[str, Any]] = {
         "label": "数据底座五段手动链 (preflight/获取/清洗/加工/存储)",
     },
     # Capability E: 独立阶段 = chunkyctl pipeline / derive (caller-only; 非第二编排器)
+    # sync_land_accept argv is built per request (see run_land_accept); placeholder only.
+    "sync_land_accept": {
+        "argv": [str(_CHUNKYCTL), "sync", "--domain", "daily", "--land-only",
+                 "--start", "19700101", "--end", "19700101"],
+        "pattern": "chunkyctl sync --domain",
+        "log": "/tmp/chunkymonkey_sync_land_accept.log",
+        "extra_flags": [],
+        "label": "S1/S2 参数化: land-only / land-then-accept / accept-from-landing",
+        "parameterized": True,
+    },
     "pipeline_acquire": {
         "argv": [str(_CHUNKYCTL), "pipeline", "acquire"],
         "pattern": "services.pipeline.stage_runner acquire",
@@ -106,10 +124,21 @@ PIPELINE_NODE_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "land_accept",
         "label": "S1 land / S2 accept",
-        "description": "按域 land-only / accept-from-landing / land-then-accept",
-        "job": None,
-        "runnable": False,
-        "disabled_reason": "需 domain + start/end 或 batch-id；用 CLI: chunkyctl sync --domain …",
+        "description": "按域 land-only / accept-from-landing / land-then-accept（参数化）",
+        "job": "sync_land_accept",
+        "runnable": True,
+        "parameterized": True,
+        "disabled_reason": None,
+        "params_schema": {
+            "domains": ["daily", "stock_st"],
+            "modes": ["land_only", "land_then_accept", "accept_from_landing"],
+            "requires": {
+                "land_only": ["domain", "start", "end"],
+                "land_then_accept": ["domain", "start", "end"],
+                "accept_from_landing": ["domain", "batch_id"],
+            },
+            "endpoint": "POST /api/v3/ops/pipeline/land-accept/run",
+        },
     },
     {
         "id": "clean",
@@ -176,8 +205,9 @@ def _is_running(spec: dict[str, Any]) -> bool:
     return r.returncode == 0
 
 
-def _spawn(job: str, spec: dict[str, Any]) -> int:
-    argv = [str(_PY), str(_WRAPPER), job, *spec["argv"]]
+def _spawn(job: str, spec: dict[str, Any], *, argv_override: list[str] | None = None) -> int:
+    body_argv = argv_override if argv_override is not None else list(spec["argv"])
+    argv = [str(_PY), str(_WRAPPER), job, *body_argv]
     stdout_path = Path(f"/tmp/chunkymonkey_{job}.stdout.log")
     env = os.environ.copy()
     # 链式 Python print 默认块缓冲 → 前端长时间只见「更新中」; 强制行缓冲
@@ -192,6 +222,56 @@ def _spawn(job: str, spec: dict[str, Any]) -> int:
             env=env,
         )
     return proc.pid
+
+
+def _compact_yyyymmdd(value: Any) -> str:
+    return "".join(ch for ch in str(value or "") if ch.isdigit())[:8]
+
+
+def build_land_accept_argv(payload: dict[str, Any]) -> list[str]:
+    """Validate UI/API params → chunkyctl sync argv (fail-closed whitelist)."""
+
+    domain = str(payload.get("domain") or "").strip()
+    mode = str(payload.get("mode") or "").strip()
+    if domain not in _LAND_ACCEPT_DOMAINS:
+        raise HTTPException(
+            400,
+            f"domain must be one of {sorted(_LAND_ACCEPT_DOMAINS)}; got {domain!r}",
+        )
+    if mode not in _LAND_ACCEPT_MODES:
+        raise HTTPException(
+            400,
+            f"mode must be one of {sorted(_LAND_ACCEPT_MODES)}; got {mode!r}",
+        )
+    argv = [str(_CHUNKYCTL), "sync", "--domain", domain]
+    if mode == "accept_from_landing":
+        batch_id = str(payload.get("batch_id") or "").strip()
+        if not batch_id:
+            raise HTTPException(400, "accept_from_landing requires batch_id")
+        argv.extend(["--accept-from-landing", "--batch-id", batch_id])
+        return argv
+
+    start = _compact_yyyymmdd(payload.get("start"))
+    end = _compact_yyyymmdd(payload.get("end"))
+    if not _LAND_ACCEPT_DATE_RE.match(start) or not _LAND_ACCEPT_DATE_RE.match(end):
+        raise HTTPException(400, "start/end must be YYYYMMDD")
+    if start > end:
+        raise HTTPException(400, "start must be <= end")
+    # Calendar-day span guard (trading-day ≤40 enforced inside sync_runner).
+    from datetime import datetime as _dt
+
+    span = (_dt.strptime(end, "%Y%m%d") - _dt.strptime(start, "%Y%m%d")).days + 1
+    if span > _LAND_ACCEPT_MAX_WINDOW_DAYS:
+        raise HTTPException(
+            400,
+            f"window {start}..{end} spans {span} calendar days; "
+            f"max {_LAND_ACCEPT_MAX_WINDOW_DAYS} (use CLI for explicit backfill knives)",
+        )
+    flag = "--land-only" if mode == "land_only" else "--land-then-accept"
+    argv.extend([flag, "--start", start, "--end", end])
+    if payload.get("from_local_raw"):
+        argv.append("--from-local-raw")
+    return argv
 
 
 def _alert_summary(flag_path: Path) -> str | None:
@@ -332,7 +412,7 @@ def list_jobs():
 def pipeline_nodes():
     """Capability E: workbench step-card catalog + live status for runnable nodes.
 
-    Disabled nodes stay listed with reasons (no fake one-click for parameterized S1/S2).
+    Parameterized S1/S2 uses POST /pipeline/land-accept/run (not bare /jobs/.../run).
     Primary full-chain remains daily_update — not replaced by this catalog.
     """
     nodes: list[dict[str, Any]] = []
@@ -350,6 +430,31 @@ def pipeline_nodes():
     }
 
 
+@router.post("/pipeline/land-accept/run")
+def run_land_accept(payload: dict[str, Any] = Body(...)):
+    """Capability E parameterized S1/S2 — whitelist domain/mode/dates only."""
+
+    job = "sync_land_accept"
+    spec = _job_or_404(job)
+    lock = writer_lock_status()
+    if lock.busy:
+        raise HTTPException(
+            409,
+            f"writer busy: owner={lock.owner or 'unknown'} "
+            f"pid={lock.owner_pid or 'unknown'}",
+        )
+    argv = build_land_accept_argv(payload or {})
+    pid = _spawn(job, spec, argv_override=argv)
+    return {
+        "job": job,
+        "accepted": True,
+        "pid": pid,
+        "argv": argv,
+        "mode": str((payload or {}).get("mode") or ""),
+        "domain": str((payload or {}).get("domain") or ""),
+    }
+
+
 @router.get("/jobs/{job}")
 def job_status(job: str):
     return _status_payload(job, _job_or_404(job))
@@ -358,6 +463,11 @@ def job_status(job: str):
 @router.post("/jobs/{job}/run")
 def run_job(job: str):
     spec = _job_or_404(job)
+    if spec.get("parameterized"):
+        raise HTTPException(
+            400,
+            f"job={job} is parameterized; use POST /api/v3/ops/pipeline/land-accept/run",
+        )
     lock = writer_lock_status()
     if lock.busy:
         raise HTTPException(

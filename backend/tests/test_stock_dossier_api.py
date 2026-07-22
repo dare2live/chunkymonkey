@@ -187,7 +187,9 @@ def test_dossier_institution_profile_honesty():
     body = client.get("/api/v3/stock/600519/dossier").json()
     rows = {r["holder_name_norm"]: r for r in body["holders"]["rows"]}
     assert rows["机构甲"]["has_institution_profile"] is True
+    assert rows["机构甲"]["institution_link_status"] == "profile"
     assert rows["机构乙"]["has_institution_profile"] is False
+    assert rows["机构乙"]["institution_link_status"] == "none"
     prof = body["holders"]["institution_profile"]
     assert prof["holders_total"] == 2
     assert prof["holders_with_profile"] == 1

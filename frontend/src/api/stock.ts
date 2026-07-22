@@ -35,6 +35,9 @@ export interface StockFormStage {
   base_days: number | null;
   source: string;
   resolver_note?: string;
+  production_read_status?: string;
+  hybrid_residual_fields?: string[];
+  field_sources?: Record<string, string>;
 }
 
 export interface StockHolderRow {
@@ -52,6 +55,12 @@ export interface StockHolderRow {
   return_pct: number | null;
   holding_cycle_days: number | null;
   has_institution_profile?: boolean;
+  institution_profile_low_sample?: boolean;
+  institution_link_status?:
+    | "profile"
+    | "profile_low_sample"
+    | "episode_only_no_profile"
+    | "none";
   episode?: HolderEpisode | null;
 }
 
@@ -71,6 +80,8 @@ export interface HolderEpisode {
 export interface InstitutionProfileCoverage {
   holders_total: number;
   holders_with_profile: number;
+  holders_episode_only?: number;
+  holders_profile_low_sample?: number;
   coverage: number | null;
   note: string;
 }

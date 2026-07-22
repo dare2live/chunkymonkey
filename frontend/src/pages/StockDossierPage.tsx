@@ -111,6 +111,13 @@ function FormPanel(props: { d: StockDossierResponse }) {
       <h3 className="dossier-subhead">阶段轴</h3>
       <AxisGrid form={f} />
       <p className="muted dossier-note">{f.resolver_note}</p>
+      {f.hybrid_residual_fields && f.hybrid_residual_fields.length > 0 && (
+        <p className="muted dossier-note" title={(f.hybrid_residual_fields || []).join(", ")}>
+          形态读模式：hybrid — accepted 覆盖 name/pos/trend/breakout；残差轴仍 fact（
+          {f.hybrid_residual_fields.slice(0, 4).join(", ")}
+          {f.hybrid_residual_fields.length > 4 ? "…" : ""}）— 非纯 accepted
+        </p>
+      )}
     </>
   );
 }
@@ -129,6 +136,9 @@ function HoldersPanel(props: { d: StockDossierResponse }) {
           <span title={cov.note}>
             机构档案覆盖 {cov.holders_with_profile}/{cov.holders_total}（
             {(cov.coverage * 100).toFixed(0)}%）
+            {cov.holders_episode_only
+              ? ` · episode-only ${cov.holders_episode_only}（无假链）`
+              : ""}
           </span>
         )}
       </div>
@@ -162,12 +172,28 @@ function HoldersPanel(props: { d: StockDossierResponse }) {
                           to={`/institutions/${encodeURIComponent(
                             r.holder_name_norm || r.holder_name || "",
                           )}`}
+                          title={
+                            r.institution_link_status === "profile_low_sample"
+                              ? "有画像但 low_sample（样本量不足）"
+                              : "机构档案"
+                          }
                         >
                           {r.holder_name}
+                          {r.institution_profile_low_sample ? " ·低样本" : ""}
                         </Link>
                       ) : (
-                        <span className="holder-name" title="无机构档案（覆盖~54%）— 不做假链接">
+                        <span
+                          className="holder-name"
+                          title={
+                            r.institution_link_status === "episode_only_no_profile"
+                              ? "本股有 episode，mart 无画像行 — 不做假链接"
+                              : "无机构档案 — 不做假链接"
+                          }
+                        >
                           {r.holder_name}
+                          {r.institution_link_status === "episode_only_no_profile"
+                            ? " ·无档案"
+                            : ""}
                         </span>
                       )
                     ) : (

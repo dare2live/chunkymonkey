@@ -7,7 +7,10 @@ Hybrid honesty (accepted payload is a subset of fact axes today):
 - When ``resolve_tier12_production_read`` → ``ACCEPTED_CUTOVER`` for the row's
   trade_date: overlay ``form_name`` / ``axis_pos`` / ``axis_trend`` /
   ``is_breakout_event`` from accepted stock_states.
-- Axes absent from accepted payload stay on the fact brick (not invented).
+- Axes absent from accepted payload stay on the fact brick as **typed residual**
+  (``field_sources`` / ``hybrid_residual_fields``) — not invented, not claimed
+  pure-accepted. Enrich-into-accept deferred until a versioned contract +
+  re-accept knife is scheduled (Occam 2026-07-22).
 """
 from __future__ import annotations
 
@@ -43,6 +46,20 @@ _FORM_COLS = [
 ]
 
 _OVERLAY_FIELDS = ("form_name", "axis_pos", "axis_trend", "is_breakout_event")
+# Present on fact brick; not in accepted StockStateDaily payload today.
+_FACT_RESIDUAL_FIELDS = (
+    "form_sub",
+    "weekly_name",
+    "monthly_name",
+    "axis_purity",
+    "axis_vol",
+    "axis_volregime",
+    "axis_pos_memb",
+    "axis_trend_memb",
+    "axis_purity_memb",
+    "axis_vol_memb",
+    "base_days",
+)
 
 
 def _code6(code: Any) -> str:
@@ -93,22 +110,33 @@ def load_form_row(conn, code: str, as_of: str | None = None) -> dict[str, Any] |
     out = dict(zip(_FORM_COLS, row))
     status, by_code = _accepted_states_for_day(str(out.get("trade_date") or ""))
     accepted = by_code.get(_code6(code))
+    field_sources: dict[str, str] = {
+        field: "fact_stock_form_daily" for field in _FORM_COLS if field != "trade_date"
+    }
     if accepted:
         for field in _OVERLAY_FIELDS:
             if accepted.get(field) is not None:
                 out[field] = accepted[field]
+                field_sources[field] = "accepted_partition"
         out["source"] = "accepted_partition+fact_stock_form_daily"
         out["production_read_status"] = status
+        out["hybrid_residual_fields"] = list(_FACT_RESIDUAL_FIELDS)
+        out["field_sources"] = field_sources
         out["resolver_note"] = (
-            "ACCEPTED_CUTOVER overlay on form_name/axis_pos/axis_trend/"
-            "is_breakout_event; purity/vol/sub remain fact brick"
+            "typed hybrid: ACCEPTED_CUTOVER overlay on "
+            + "/".join(_OVERLAY_FIELDS)
+            + "; residual axes stay fact brick "
+            f"({','.join(_FACT_RESIDUAL_FIELDS[:4])}…); "
+            "not pure accepted-only"
         )
     else:
         out["source"] = "fact_stock_form_daily"
         out["production_read_status"] = status
+        out["hybrid_residual_fields"] = list(_FORM_COLS[1:])
+        out["field_sources"] = field_sources
         out["resolver_note"] = (
             "production-read boundary checked; legacy/fact brick in use "
-            f"(status={status})"
+            f"(status={status}); no accepted overlay"
         )
     return out
 
@@ -123,6 +151,8 @@ def overlay_form_rows(
         "production_read_status": "legacy_scaffold",
         "overlay_applied": False,
         "overlay_fields": list(_OVERLAY_FIELDS),
+        "hybrid_residual_fields": list(_FACT_RESIDUAL_FIELDS),
+        "read_mode": "fact_only",
     }
     if not rows or not as_of:
         return rows, meta
@@ -146,6 +176,7 @@ def overlay_form_rows(
         out.append(rec)
     meta["overlay_applied"] = applied > 0
     meta["overlay_row_count"] = applied
+    meta["read_mode"] = "hybrid_accepted_plus_fact_residual" if applied else "fact_only"
     return out, meta
 
 

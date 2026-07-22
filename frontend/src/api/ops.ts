@@ -41,7 +41,14 @@ export interface PipelineNode {
   description: string;
   job: string | null;
   runnable: boolean;
+  parameterized?: boolean;
   disabled_reason: string | null;
+  params_schema?: {
+    domains: string[];
+    modes: string[];
+    requires: Record<string, string[]>;
+    endpoint: string;
+  };
   status: OpsJobStatus | null;
 }
 
@@ -60,6 +67,26 @@ export function runOpsJob(job: string): Promise<OpsJobRunResp> {
 
 export function fetchPipelineNodes(): Promise<PipelineNodesResp> {
   return apiGet<PipelineNodesResp>("/api/v3/ops/pipeline/nodes");
+}
+
+export interface LandAcceptParams {
+  domain: "daily" | "stock_st";
+  mode: "land_only" | "land_then_accept" | "accept_from_landing";
+  start?: string;
+  end?: string;
+  batch_id?: string;
+  from_local_raw?: boolean;
+}
+
+export interface LandAcceptRunResp extends OpsJobRunResp {
+  argv: string[];
+  mode: string;
+  domain: string;
+}
+
+/** Capability E parameterized S1/S2 — not bare /jobs/.../run. */
+export function runLandAccept(params: LandAcceptParams): Promise<LandAcceptRunResp> {
+  return apiPost<LandAcceptRunResp>("/api/v3/ops/pipeline/land-accept/run", params);
 }
 
 /** True while flock or process hint says the chain is still alive. */

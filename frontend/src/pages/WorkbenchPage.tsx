@@ -12,7 +12,9 @@ import {
   jobLooksActive,
   nodeCardTone,
   nodeLooksActive,
+  runLandAccept,
   runOpsJob,
+  type LandAcceptParams,
   type OpsJobStatus,
   type PipelineNode,
 } from "../api/ops";
@@ -22,6 +24,8 @@ const DAILY_UPDATE_JOB = "daily_update";
 const POLL_MS = 2500;
 
 type WorkbenchTab = "oneclick" | "steps";
+type LandMode = LandAcceptParams["mode"];
+type LandDomain = LandAcceptParams["domain"];
 
 function activeAlertNames(flags: Record<string, boolean> | undefined): string[] {
   if (!flags) return [];
@@ -69,6 +73,12 @@ export function WorkbenchPage() {
   const [triggering, setTriggering] = useState(false);
   const [triggeringJob, setTriggeringJob] = useState<string | null>(null);
   const [polledAt, setPolledAt] = useState<number | null>(null);
+  const [landDomain, setLandDomain] = useState<LandDomain>("daily");
+  const [landMode, setLandMode] = useState<LandMode>("land_then_accept");
+  const [landStart, setLandStart] = useState("");
+  const [landEnd, setLandEnd] = useState("");
+  const [landBatchId, setLandBatchId] = useState("");
+  const [landFromRaw, setLandFromRaw] = useState(false);
   const pollRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
@@ -146,6 +156,41 @@ export function WorkbenchPage() {
     try {
       const resp = await runOpsJob(job);
       setActionMsg(`节点 ${job} 已受理 pid=${resp.pid}`);
+      await refresh();
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setActionError(e.message);
+      } else {
+        setActionError(e instanceof Error ? e.message : String(e));
+      }
+      await refresh();
+    } finally {
+      setTriggering(false);
+      setTriggeringJob(null);
+    }
+  };
+
+  const onRunLandAccept = async () => {
+    setTriggering(true);
+    setTriggeringJob("sync_land_accept");
+    setActionError(null);
+    setActionMsg(null);
+    const params: LandAcceptParams = {
+      domain: landDomain,
+      mode: landMode,
+    };
+    if (landMode === "accept_from_landing") {
+      params.batch_id = landBatchId.trim();
+    } else {
+      params.start = landStart.trim();
+      params.end = landEnd.trim();
+      if (landFromRaw) params.from_local_raw = true;
+    }
+    try {
+      const resp = await runLandAccept(params);
+      setActionMsg(
+        `S1/S2 ${resp.domain}/${resp.mode} 已受理 pid=${resp.pid}`,
+      );
       await refresh();
     } catch (e) {
       if (e instanceof ApiError) {
@@ -298,12 +343,16 @@ export function WorkbenchPage() {
           }
         >
           <p className="state-hint" style={{ textAlign: "left", padding: "0 0 10px" }}>
-            对齐真实 `chunkyctl pipeline|derive`；S1/S2 需域与日期参数，按钮禁用并给出原因。任意 writer
-            占用时独立运行会 409。
+            对齐真实 `chunkyctl pipeline|derive|sync`；S1/S2 用下方参数表单（白名单 daily/stock_st，≤40d）。
+            writer 占用时独立运行会 409。
           </p>
           <div className="ops-step-flow">
             {nodes.map((node, idx) => {
-              const tone = nodeCardTone(node);
+              const tone = node.parameterized
+                ? nodeLooksActive(node.status)
+                  ? "running"
+                  : "idle"
+                : nodeCardTone(node);
               const act = deriveActivityFallback(
                 node.status
                   ? {
@@ -317,8 +366,16 @@ export function WorkbenchPage() {
               const canRun =
                 node.runnable &&
                 Boolean(node.job) &&
+                !node.parameterized &&
                 !busy &&
                 !writerBusy;
+              const canLand =
+                node.parameterized &&
+                !busy &&
+                !writerBusy &&
+                (landMode === "accept_from_landing"
+                  ? Boolean(landBatchId.trim())
+                  : Boolean(landStart.trim() && landEnd.trim()));
               return (
                 <div key={node.id} className="ops-step-item">
                   {idx > 0 && <div className="ops-step-arrow" aria-hidden="true">→</div>}
@@ -344,33 +401,118 @@ export function WorkbenchPage() {
                         ? ` · writer=${node.status.owner}`
                         : ""}
                     </div>
-                    <div className="ops-step-actions">
-                      {node.runnable && node.job ? (
+                    {node.parameterized ? (
+                      <div className="ops-land-form">
+                        <label>
+                          domain
+                          <select
+                            value={landDomain}
+                            onChange={(e) => setLandDomain(e.target.value as LandDomain)}
+                            disabled={busy}
+                          >
+                            <option value="daily">daily</option>
+                            <option value="stock_st">stock_st</option>
+                          </select>
+                        </label>
+                        <label>
+                          mode
+                          <select
+                            value={landMode}
+                            onChange={(e) => setLandMode(e.target.value as LandMode)}
+                            disabled={busy}
+                          >
+                            <option value="land_then_accept">land_then_accept</option>
+                            <option value="land_only">land_only (S1)</option>
+                            <option value="accept_from_landing">accept_from_landing (S2)</option>
+                          </select>
+                        </label>
+                        {landMode === "accept_from_landing" ? (
+                          <label className="ops-land-wide">
+                            batch-id
+                            <input
+                              className="mono"
+                              value={landBatchId}
+                              onChange={(e) => setLandBatchId(e.target.value)}
+                              placeholder="landing batch id"
+                              disabled={busy}
+                            />
+                          </label>
+                        ) : (
+                          <>
+                            <label>
+                              start
+                              <input
+                                className="mono"
+                                value={landStart}
+                                onChange={(e) => setLandStart(e.target.value)}
+                                placeholder="YYYYMMDD"
+                                disabled={busy}
+                              />
+                            </label>
+                            <label>
+                              end
+                              <input
+                                className="mono"
+                                value={landEnd}
+                                onChange={(e) => setLandEnd(e.target.value)}
+                                placeholder="YYYYMMDD"
+                                disabled={busy}
+                              />
+                            </label>
+                            <label className="ops-land-check">
+                              <input
+                                type="checkbox"
+                                checked={landFromRaw}
+                                onChange={(e) => setLandFromRaw(e.target.checked)}
+                                disabled={busy}
+                              />
+                              from-local-raw
+                            </label>
+                          </>
+                        )}
                         <button
                           type="button"
                           className="btn"
-                          disabled={!canRun}
-                          title={
-                            !canRun
-                              ? writerBusy || busy
-                                ? "writer 占用或任务进行中"
-                                : undefined
-                              : `POST /api/v3/ops/jobs/${node.job}/run`
-                          }
-                          onClick={() => void onRunNode(node.job!)}
+                          disabled={!canLand}
+                          title="POST /api/v3/ops/pipeline/land-accept/run"
+                          onClick={() => void onRunLandAccept()}
                         >
-                          {triggeringJob === node.job
+                          {triggeringJob === "sync_land_accept"
                             ? "提交中…"
                             : nodeBusy
                               ? "运行中…"
-                              : "独立运行"}
+                              : "按参数运行"}
                         </button>
-                      ) : (
-                        <button type="button" className="btn" disabled title={node.disabled_reason ?? undefined}>
-                          不可运行
-                        </button>
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="ops-step-actions">
+                        {node.runnable && node.job ? (
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={!canRun}
+                            title={
+                              !canRun
+                                ? writerBusy || busy
+                                  ? "writer 占用或任务进行中"
+                                  : undefined
+                                : `POST /api/v3/ops/jobs/${node.job}/run`
+                            }
+                            onClick={() => void onRunNode(node.job!)}
+                          >
+                            {triggeringJob === node.job
+                              ? "提交中…"
+                              : nodeBusy
+                                ? "运行中…"
+                                : "独立运行"}
+                          </button>
+                        ) : (
+                          <button type="button" className="btn" disabled title={node.disabled_reason ?? undefined}>
+                            不可运行
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );

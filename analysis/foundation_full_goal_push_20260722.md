@@ -4,7 +4,7 @@
 > Authority: `goal.md`, `plan_residual_reconcile_20260722.md`, assessment PARTIAL
 > ([Assess foundation goal](0ced2e66-d285-40d8-8a1f-a19f5f8262f9)), `$mio`  
 > Peer ops: `foundation_ths_hot_ui_catchup_20260722.md`  
-> Label vs「一直讨论想要的」完整地基目标: **PARTIAL** (stronger than scheme-exit YES; not full YES)
+> Label vs「一直讨论想要的」完整地基目标: **PARTIAL** (scheme-exit YES; full goal not YES)
 
 ---
 
@@ -21,52 +21,59 @@ Not “FND-GATE green / scheme ~94% exit” alone. Discussion-level goal also wa
 
 ---
 
-## 2. Moved this session (PARTIAL → FIXED / stronger)
+## 2. Coordination (acquire vs product honesty)
+
+| Lane | Owner | Status |
+|---|---|---|
+| Formal on_demand → must not kidnap `--all-due` / ths_hot | **peer acquire knife** | Run A: daily hard-block. Run B: daily `pending_publish` soft-skip (disk WIP) then **stock_st** empty after `available_after=09:20` hard-blocks; `--all-due` never runs; ths_hot max still `20260720`. **Do not duplicate / do not revert peer lane.** |
+| Cap E S1/S2 parameterized UI | this knife | **FIXED** (committed with honesty surfaces) |
+| Form hybrid typed residual | this knife | **FIXED honesty** (not pure accepted) |
+| Institution link honesty | this knife | **FIXED honesty** (~54% coverage unchanged) |
+
+Adversarial fork (form): Occam → `THIN_TYPED_RESIDUAL_ONLY`. Do **not** bump `stock_state_stage_pattern_v1` / re-accept for purity/vol/sub without a scheduled contract knife.
+
+---
+
+## 3. Moved this session (product / honesty)
 
 | Item | Was | Now | Evidence |
 |---|---|---|---|
-| Formal daily/ST morning empty hard-blocks acquire | **BLOCKED** UI catchup (Run A rc=5) | **FIXED** — pre-`available_after` zero_rows → typed `pending_publish`; acquire soft-continues to `--all-due` | `sync_runner._publish_security_day_accepted_partition`; `acquire._sync_formal_on_demand_security_days`; tests `test_formal_security_day_pre_publish_empty_is_pending_not_error`, `test_formal_on_demand_catchup_soft_skips_pre_publish_pending` |
-| Cap E S1/S2 parameterized UI | disabled+reason | **FIXED** subset — whitelist UI/API `POST /api/v3/ops/pipeline/land-accept/run` (daily/stock_st, ≤40d) | `ops_manual_run.py` + Workbench form; `test_ops_manual_run` |
-| Form hybrid | prose note only | **FIXED honesty** — typed `field_sources` + `hybrid_residual_fields` + dossier UX; **not** pure accepted | `form_production_read.py`; Occam fork → `THIN_TYPED_RESIDUAL_ONLY` (enrich+re-accept deferred) |
-| Institution ~54% | deep-link gate only | **FIXED honesty** — `institution_link_status` (`profile` / `profile_low_sample` / `episode_only_no_profile` / `none`); no fake links | `stock_dossier.py` + StockDossierPage |
-| ths_hot mechanism | FIXED | unchanged | `pending_publish` for registry drain |
-| Peer UI catchup evidence | — | **documented FAIL Run A** + 卡点 | `foundation_ths_hot_ui_catchup_20260722.md` |
-
-Adversarial fork (form): Occam counter-argue → **do not** bump `stock_state_stage_pattern_v1` / re-accept for purity/vol/sub without scheduled contract knife. Typed residual is the honest ceiling until then.
+| Cap E S1/S2 parameterized UI | disabled+reason | **FIXED** — `POST /api/v3/ops/pipeline/land-accept/run` + workbench form (daily/stock_st, ≤40d) | `ops_manual_run.py`, WorkbenchPage, `test_ops_manual_run` |
+| Form hybrid | prose note only | **FIXED honesty** — `field_sources` + `hybrid_residual_fields` + dossier UX | `form_production_read.py` |
+| Institution ~54% | deep-link gate only | **FIXED honesty** — `institution_link_status` (`profile` / `profile_low_sample` / `episode_only_no_profile` / `none`); no fake links | `stock_dossier.py`, StockDossierPage |
+| Peer UI ths_hot catchup | — | **FAIL documented** (×2 runs; drain never reached) | `foundation_ths_hot_ui_catchup_20260722.md` |
 
 ---
 
-## 3. Remaining true BLOCKED / open
+## 4. Remaining true BLOCKED / open
 
 | Item | Label | Owner |
 |---|---|---|
-| `ths_hot` live watermark still `20260720` | **ops PARTIAL** | UI re-click after pending-publish lands (or post-18:00); not missing token |
-| Pure accepted-only form (purity/vol/sub in accepted) | **BLOCKED** until versioned enrich + re-accept scheduled | Tier1 publish |
-| Institution profile population ~54% | **PARTIAL** — honesty FIXED; coverage needs mart rebuild / norm (not Type-B invent) | ops rebuild_all when free |
-| Continuity / live readiness READY | **not claimed** — code dual-path FIXED ≠ Continuity READY | ops/clock |
+| Formal on_demand empty (esp. stock_st post-09:20) blocks `--all-due` | **open / peer knife** | acquire reorder or broader soft-skip — **not this commit** |
+| `ths_hot` live watermark still `20260720` | **ops PARTIAL** | after peer acquire fix + UI re-click |
+| Pure accepted-only form (purity/vol/sub in accepted) | **BLOCKED** until versioned enrich + re-accept | Tier1 publish |
+| Institution profile population ~54% | **PARTIAL** — honesty FIXED; coverage = rebuild/norm (not Type-B invent) | ops |
+| Continuity / live readiness READY | **not claimed** from commit | ops/clock |
 | S7 23 ssot / org provider / Type-B enrichment | typed walls / BLOCKED / DEFER | unchanged |
 | E/F remeasure / Optuna / Release | **paused / banned** | owner schedule only |
-| RCA #2 BJ in accepted nominal | by-design landing; serve whitelist FIXED; audit still FAIL on qfq extras | publication decision or accept filter (not loosened) |
-| Watermark `NO_QUERY_MAPPING` lhb/qfii | cosmetic/config debt | accept-as-known |
+| RCA #2 BJ in accepted nominal | serve whitelist FIXED; audit may still FAIL | publication decision |
+| Watermark `NO_QUERY_MAPPING` lhb/qfii | cosmetic/config | accept-as-known |
 
 ---
 
-## 4. Continuity / live readiness (honest)
+## 5. Continuity / live readiness (honest)
 
 | Surface | Status |
 |---|---|
 | FND-GATE / phase_closure_ready | scheme exit still PASS (when DB unlocked) |
 | Continuity overall READY | **do not claim** from this commit |
-| Morning UI daily_update | Run A **FAIL** (pre-fix); post-fix expects soft-skip → drain can attempt ths_hot |
-| Strategy schedulable | still **paused** — checklist only if owner asks |
+| Morning UI daily_update | Run A/B **FAIL rc=5**; ths_hot not filled |
+| Strategy schedulable | still **paused** |
 
 ---
 
-## 5. Verdict vs full foundation goal
+## 6. Verdict vs full foundation goal
 
 **PARTIAL** — scheme-exit YES remains; discussion-level full goal **not YES**.
 
-Moved: morning acquire false Tier0 block, Cap E S1/S2 UI, form/institution honesty surfaces.  
-Still open: ths_hot live day, pure accepted form, profile coverage lift, Continuity READY, strategy schedule.
-
-Next verification: UI「数据更新」re-click after this lands → confirm acquire soft-skips `20260722` daily and `raw_tushare_ths_hot` advances past `20260720` (or typed pending if still pre-window for that domain).
+This knife ships Cap E S1/S2 UI + form/institution honesty. Acquire/drain unblock for ths_hot remains with the peer lane. Pure accepted form, profile coverage lift, Continuity READY, and strategy schedule stay open/paused.

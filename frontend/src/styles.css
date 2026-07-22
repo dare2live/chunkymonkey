@@ -1163,6 +1163,48 @@ select:focus {
   padding-top: 4px;
 }
 
+.ops-land-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 8px;
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.ops-land-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.ops-land-form input,
+.ops-land-form select {
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.ops-land-form .ops-land-wide {
+  grid-column: 1 / -1;
+}
+
+.ops-land-form .ops-land-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.ops-land-form .btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
 /* ── 股票档案 MVP (`#/stock/:code`) — keep separate from workbench step cards ── */
 
 .dossier-page .dossier-head {

@@ -147,10 +147,72 @@ def test_pipeline_nodes_catalog_marks_parameterized_s1_s2_disabled(monkeypatch):
     assert by_id["acquire"]["job"] == "pipeline_acquire"
     assert by_id["acquire"]["status"]["job"] == "pipeline_acquire"
 
-    assert by_id["land_accept"]["runnable"] is False
-    assert by_id["land_accept"]["status"] is None
-    assert "batch-id" in (by_id["land_accept"]["disabled_reason"] or "")
+    assert by_id["land_accept"]["runnable"] is True
+    assert by_id["land_accept"]["parameterized"] is True
+    assert by_id["land_accept"]["job"] == "sync_land_accept"
+    assert by_id["land_accept"]["status"]["job"] == "sync_land_accept"
+    schema = by_id["land_accept"]["params_schema"]
+    assert "daily" in schema["domains"]
+    assert "land_only" in schema["modes"]
 
     assert by_id["preflight"]["runnable"] is False
     assert by_id["derive"]["job"] == "derive_qfq"
     assert by_id["store"]["runnable"] is True
+
+
+def test_build_land_accept_argv_whitelist():
+    argv = ops_manual_run.build_land_accept_argv(
+        {
+            "domain": "daily",
+            "mode": "land_then_accept",
+            "start": "20260720",
+            "end": "20260721",
+            "from_local_raw": True,
+        }
+    )
+    assert "--domain" in argv and "daily" in argv
+    assert "--land-then-accept" in argv
+    assert "--from-local-raw" in argv
+    assert argv[argv.index("--start") + 1] == "20260720"
+
+    batch_argv = ops_manual_run.build_land_accept_argv(
+        {"domain": "stock_st", "mode": "accept_from_landing", "batch_id": "st:1"}
+    )
+    assert "--accept-from-landing" in batch_argv
+    assert batch_argv[batch_argv.index("--batch-id") + 1] == "st:1"
+
+
+def test_build_land_accept_argv_rejects_wide_window_and_unknown_domain():
+    with pytest.raises(HTTPException) as wide:
+        ops_manual_run.build_land_accept_argv(
+            {
+                "domain": "daily",
+                "mode": "land_only",
+                "start": "20260101",
+                "end": "20260315",
+            }
+        )
+    assert wide.value.status_code == 400
+
+    with pytest.raises(HTTPException) as bad_dom:
+        ops_manual_run.build_land_accept_argv(
+            {
+                "domain": "ths_hot",
+                "mode": "land_only",
+                "start": "20260721",
+                "end": "20260721",
+            }
+        )
+    assert bad_dom.value.status_code == 400
+
+
+def test_parameterized_job_rejects_bare_run(monkeypatch):
+    monkeypatch.setattr(
+        ops_manual_run,
+        "writer_lock_status",
+        lambda: SimpleNamespace(busy=False, owner=None, owner_pid=None),
+    )
+    with pytest.raises(HTTPException) as exc:
+        ops_manual_run.run_job("sync_land_accept")
+    assert exc.value.status_code == 400
+    assert "land-accept" in str(exc.value.detail)
