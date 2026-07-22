@@ -41,6 +41,9 @@ class PipelineContext:
     # CX-1: typed acquire→process delta + per-stage wall clock (seconds).
     delta_manifest: dict[str, Any] | None = None
     stage_timing_s: dict[str, float] = field(default_factory=dict)
+    # CX-2: dim_active code sets around identity refresh (delist sensor input).
+    dim_active_codes_before: set[str] | None = None
+    dim_active_codes_after: set[str] | None = None
     _log_fh: object = None
 
     def __post_init__(self):

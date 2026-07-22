@@ -1447,6 +1447,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/pipeline/state_sensors.py",
+      "kind": "consume",
+      "src": "table:reference.dim_active_a_stock"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/rally_gt.py",
       "kind": "consume",
       "src": "table:reference.dim_active_a_stock"
@@ -1855,6 +1861,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/pipeline/state_sensors.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/tier12_consumer_cutover.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -1975,6 +1987,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_pipeline_state_sensors.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_stock_dossier_api.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -2065,6 +2083,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/pipeline/state_sensors.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/source_watermarks.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
@@ -2078,6 +2102,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_institution_profile.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_pipeline_state_sensors.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
     },
@@ -4537,6 +4567,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/pipeline/state_sensors.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/tier12_consumer_cutover.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -4652,6 +4688,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_tier12_consumer_cutover.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_pipeline_state_sensors.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -4814,6 +4856,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/stock_st_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_stock_st_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/pipeline/state_sensors.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_stock_st_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_pipeline_state_sensors.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_stock_st_daily"
     },
@@ -7165,9 +7219,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1143,
-    "generated_at": "2026-07-22T15:44:10.347282+00:00",
-    "node_count": 417,
+    "edge_count": 1152,
+    "generated_at": "2026-07-22T15:56:17.665970+00:00",
+    "node_count": 419,
     "version": 2
   },
   "nodes": [
@@ -8182,6 +8236,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/pipeline/state_sensors.py"
+      },
+      "id": "consumer:backend/services/pipeline/state_sensors.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/pipeline/store.py"
       },
       "id": "consumer:backend/services/pipeline/store.py",
@@ -9009,6 +9071,14 @@
         "path": "backend/tests/test_pipeline_delta_manifest.py"
       },
       "id": "consumer:backend/tests/test_pipeline_delta_manifest.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/test_pipeline_state_sensors.py"
+      },
+      "id": "consumer:backend/tests/test_pipeline_state_sensors.py",
       "kind": "consumer"
     },
     {

@@ -82,6 +82,7 @@ blocking_paths:
 - tests/services/test_notification_dispatcher_skip_macos.py
 - tests/services/test_run_outcome.py
 - tests/test_pipeline_delta_manifest.py
+- tests/test_pipeline_state_sensors.py
 - tests/scripts/test_check_universe_filter.py
 - tests/scripts/test_manual_job_wrapper.py
 - tests/scripts/test_check_calendar_usage.py

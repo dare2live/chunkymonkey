@@ -134,7 +134,7 @@
 | **P0.1 SLA 语义去误报** | `aif10_lhb` 墓碑行清理 + `qfii`/`miaoxiang_fact` 给 typed probe/no_probe（unknown≠stale） | owner 排期（DB 写需 pre-knife） | SLA n_alerts 只剩**真** actionable；冻结/季频/退役不再点亮 sla_warn | 若清理误删活源 watermark → 回退；若把真 stale 也静音 → abort | **PLAN** |
 | **P1 空增量不做无谓重算** | acquire → typed delta manifest；process 按 delta 选择性重算；**pulse 迟到窗恒跑** | owner 排期 | 无新增量时 dc_view skip + 秒级收尾；迟到列仍自愈 | §3.4 三条 | **FIXED（CX-1 PASS）** — 证据 `cx1_acquire_efficiency_acceptance_20260722.md` |
 | **P2 进度 UX** | 每域「改了啥 + 从哪拉」结构化事件；process「在算什么」；瀑布日志；per-node + overall 进度条；卡在加工只点 process 卡 | owner 排期 | 工作台直播 acquire/process 明细 + 双进度条；分步卡独立跑（Cap E 扩展） | 若沦为装饰不反映真状态 → 回退纯日志尾 | **PLAN**（Cap E 已部分：`/api/v3/ops/pipeline/nodes` + 分步卡） |
-| **P3 状态变更传感器** | ST 戴帽/摘帽、holder 比例变化（排名不变也算）、退市等「非增量但状态变」的 typed 探测，纳入 delta manifest 触发选择性更新 | owner 排期 | 状态变化即使无新行也能触发对应域重算；PIT 安全 | 不得把状态变化融进 Tier0 真相；停牌/涨跌停/T+1 硬约束不破 | **PLAN** |
+| **P3 状态变更传感器** | ST 戴帽/摘帽、holder 比例变化（排名不变也算）、退市等「非增量但状态变」的 typed 探测，纳入 delta manifest 触发选择性更新 | owner 排期 | 状态变化即使无新行也能触发对应域重算；PIT 安全 | 不得把状态变化融进 Tier0 真相；停牌/涨跌停/T+1 硬约束不破 | **FIXED（CX-2 PASS）** — 证据 `cx2_state_sensors_acceptance_20260722.md` |
 
 ### 「delta vs 全量」的决策法（Occam + cite）
 - 默认 **delta**（只重算受影响派生 + 恒定迟到窗）。

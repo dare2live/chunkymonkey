@@ -96,8 +96,10 @@ def run_acquire(ctx: PipelineContext) -> None:
     #   daily_update 步骤调用, 25 个消费方(universe 身份真相源)读的这张表只能靠人工手动
     #   跑脚本刷新, 实测发现已静默 stale 8 天。本步是 dim_active_a_stock 的唯一日常刷新契约,
     #   与上一步 dim_trading_calendar 同一模式补齐。
-    ctx.step(_refresh_active_a_stock_master,
-             degraded_msg="dim_active_a_stock 刷新失败 — universe 身份真相源可能继续 stale")  # rule-compliance: ok evidence=写方本身非universe消费
+    ctx.step(
+        lambda: _refresh_active_a_stock_master(ctx),
+        degraded_msg="dim_active_a_stock 刷新失败 — universe 身份真相源可能继续 stale",
+    )  # rule-compliance: ok evidence=写方本身非universe消费
 
     _finalize_acquire_delta(ctx, drain_results=drain_results, formal_outcomes=formal_outcomes)
 
@@ -183,16 +185,46 @@ def _build_trading_calendar() -> None:
     print(f"calendar_builder: {build_latest()}")
 
 
-def _refresh_active_a_stock_master() -> None:
+def _refresh_active_a_stock_master(ctx: PipelineContext) -> None:
     """raw_tushare_stock_basic → reference.dim_active_a_stock 全量重写 (rule-compliance: ok evidence=写方本身非universe消费)
     (2026-07-06 全面数据审计根因根治): 写函数 refresh_active_a_stock_master 一直存在且正确,
     但从未被任何 daily_update 步骤调用过——25 个消费方(universe 身份真相源)读的这张表此前
     只能靠人工手动跑脚本刷新, 实测发现已静默 stale 8 天。stock_basic 域已由上一步
     _sync_registry_drain 的 --all-due 覆盖同步 (full_refresh 批模式), 本步紧随其后重建派生表,
-    与 _build_trading_calendar (raw trade_cal → dim_trading_calendar) 同一模式。"""
+    与 _build_trading_calendar (raw trade_cal → dim_trading_calendar) 同一模式。
+
+    CX-2: capture before/after code sets for delist state sensor (observer only).
+    """
+    from services.data_access import resolver
+    from services.pipeline.state_sensors import load_dim_active_codes
     from services.security_master import refresh_active_a_stock_master
+
+    before: set[str] | None = None
+    try:
+        ref_ro = resolver.connect_ro("reference")
+        try:
+            before = load_dim_active_codes(ref_ro)
+        finally:
+            ref_ro.close()
+    except Exception as exc:  # noqa: BLE001 — sensor baseline best-effort
+        ctx.log(f"dim_active before-snapshot unavailable: {type(exc).__name__}")
+        before = None
+    ctx.dim_active_codes_before = before
+
     n = refresh_active_a_stock_master(None)
     print(f"security_master: refresh_active_a_stock_master rows={n}")
+
+    after: set[str] | None = None
+    try:
+        ref_ro = resolver.connect_ro("reference")
+        try:
+            after = load_dim_active_codes(ref_ro)
+        finally:
+            ref_ro.close()
+    except Exception as exc:  # noqa: BLE001
+        ctx.log(f"dim_active after-snapshot unavailable: {type(exc).__name__}")
+        after = None
+    ctx.dim_active_codes_after = after
 
 
 # stock_st = day-level ST *membership evidence* for HS-A (ST names stay in
@@ -523,7 +555,9 @@ def _finalize_acquire_delta(
     drain_results: list[dict],
     formal_outcomes: list[dict],
 ) -> None:
-    """Attach typed delta_manifest after acquire evidence is known (CX-1)."""
+    """Attach typed delta_manifest after acquire evidence is known (CX-1/CX-2)."""
+    from services.duck_adapter import connect
+
     from .delta_manifest import (
         build_advanced_partitions,
         decide_dc_action,
@@ -533,6 +567,7 @@ def _finalize_acquire_delta(
         probe_dc_source_frontier,
         read_dc_as_of,
     )
+    from .state_sensors import collect_state_changes
 
     manifest = ctx.delta_manifest or empty_manifest(run_date=ctx.date)
     manifest["run_date"] = ctx.date
@@ -554,14 +589,64 @@ def _finalize_acquire_delta(
         advanced_partitions=advanced,
         provenance_domains=budgets["dc_provenance_domains"],
     )
+
+    # CX-2 state sensors — read-only; never fuse into Tier0 writers.
+    stock_st_conn = None
+    holders_conn = None
+    state_changes: dict = {}
+    try:
+        if not ctx.dry:
+            stock_st_conn = connect(ctx.db("tushare_raw"), read_only=True)
+            holders_conn = connect(ctx.db("smartmoney"), read_only=True)
+        state_changes = collect_state_changes(
+            stock_st_conn=stock_st_conn,
+            holders_conn=holders_conn,
+            delist_before=ctx.dim_active_codes_before,
+            delist_after=ctx.dim_active_codes_after,
+            persist_dim_as_of=not ctx.dry,
+        )
+    except Exception as exc:  # noqa: BLE001 — sensors must not abort acquire
+        ctx.log(f"state_sensors unavailable: {type(exc).__name__}: {exc}")
+        state_changes = {
+            "stock_st": {
+                "status": "unavailable",
+                "changed": False,
+                "reason": str(exc)[:200],
+                "tier0_write": False,
+            },
+            "holders": {
+                "status": "unavailable",
+                "changed": False,
+                "tier0_write": False,
+            },
+            "delist": {
+                "status": "unavailable",
+                "changed": False,
+                "tier0_write": False,
+            },
+            "any_changed": False,
+            "force_reasons": [],
+        }
+    finally:
+        for conn in (stock_st_conn, holders_conn):
+            if conn is None:
+                continue
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+
     delta = dict(manifest.get("delta") or {})
     delta["advanced_partitions"] = advanced
     delta["dc_source_frontier"] = current_frontier
     delta["dc_frontier_advanced"] = dc_decision.get("dc_frontier_advanced")
     delta["late_window_policy"] = "always_run"
-    delta.setdefault("state_changes", {})
+    delta["state_changes"] = state_changes
     manifest["delta"] = delta
-    manifest["process_plan"] = plan_process_steps(dc_decision=dc_decision)
+    manifest["process_plan"] = plan_process_steps(
+        dc_decision=dc_decision,
+        state_changes=state_changes,
+    )
     ctx.delta_manifest = manifest
     # Stream-truth single line for workbench regex / log tail consumers.
     ctx.log(
@@ -575,6 +660,32 @@ def _finalize_acquire_delta(
                 "advanced_n": len(advanced),
                 "dc": manifest["process_plan"]["dc_industry_view"],
                 "late_window_policy": "always_run",
+                "state_changes": {
+                    "any_changed": state_changes.get("any_changed"),
+                    "stock_st": {
+                        "changed": (state_changes.get("stock_st") or {}).get("changed"),
+                        "entered_n": (state_changes.get("stock_st") or {}).get(
+                            "entered_n"
+                        ),
+                        "exited_n": (state_changes.get("stock_st") or {}).get("exited_n"),
+                    },
+                    "holders": {
+                        "changed": (state_changes.get("holders") or {}).get("changed"),
+                        "ratio_changed_n": (state_changes.get("holders") or {}).get(
+                            "ratio_changed_n"
+                        ),
+                        "rank_changed_n": (state_changes.get("holders") or {}).get(
+                            "rank_changed_n"
+                        ),
+                        "exit_n": (state_changes.get("holders") or {}).get("exit_n"),
+                    },
+                    "delist": {
+                        "changed": (state_changes.get("delist") or {}).get("changed"),
+                        "removed_n": (state_changes.get("delist") or {}).get(
+                            "removed_n"
+                        ),
+                    },
+                },
             },
             ensure_ascii=False,
         )

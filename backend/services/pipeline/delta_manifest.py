@@ -1,8 +1,11 @@
-"""CX-1 typed delta manifest + process plan + latency budget evaluation.
+"""CX-1/CX-2 typed delta manifest + process plan + latency budget evaluation.
 
 Single calculation point for acquire→process selective recompute decisions.
 Does NOT build a DAG/event-bus: linear run.py remains the orchestrator; this
 module is a typed audit artifact consumed by process + store + workbench.
+
+CX-2: ``delta.state_changes`` is populated by read-only sensors
+(``state_sensors``) — never a Tier0 writer.
 """
 from __future__ import annotations
 
@@ -10,6 +13,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+from .state_sensors import any_state_changed, state_change_force_reasons
 
 REPO = Path(__file__).resolve().parents[3]
 BUDGETS_PATH = REPO / "backend/config/pipeline_latency_budgets.yaml"
@@ -222,8 +227,30 @@ def decide_dc_action(
 def plan_process_steps(
     *,
     dc_decision: dict[str, Any],
+    state_changes: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Typed process plan. Pulse late window is ALWAYS run (kill criterion)."""
+    """Typed process plan. Pulse late window is ALWAYS run (kill criterion).
+
+    CX-2: when state sensors report changes, segments/technical_states cite
+    ``state_change:*`` reasons so future skip logic cannot silently ignore
+    ST/holder/delist. DC skip remains frontier-driven (ST ≠ DC provenance).
+    T+1 / limit / suspend constraints are untouched here.
+    """
+    force = state_change_force_reasons(state_changes)
+    st_or_delist = bool(
+        (state_changes or {}).get("stock_st", {}).get("changed")
+        or (state_changes or {}).get("delist", {}).get("changed")
+    )
+    seg_reason = (
+        "state_change_triggered:" + ",".join(force)
+        if st_or_delist
+        else "build_latest_idempotent"
+    )
+    form_reason = (
+        "state_change_triggered:" + ",".join(force)
+        if st_or_delist
+        else "build_latest_idempotent"
+    )
     return {
         "dc_industry_view": {
             "action": dc_decision["action"],
@@ -231,7 +258,7 @@ def plan_process_steps(
         },
         "segments": {
             "action": "run",
-            "reason": "build_latest_idempotent",
+            "reason": seg_reason,
         },
         "market_pulse": {
             "action": "run",
@@ -239,8 +266,10 @@ def plan_process_steps(
         },
         "technical_states": {
             "action": "run",
-            "reason": "build_latest_idempotent",
+            "reason": form_reason,
         },
+        "state_change_force": force,
+        "any_state_changed": any_state_changed(state_changes),
     }
 
 

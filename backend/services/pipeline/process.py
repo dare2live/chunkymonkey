@@ -38,7 +38,10 @@ def run_process(ctx: PipelineContext) -> None:
             previous_frontier=read_dc_as_of(),
             advanced_partitions=list((manifest.get("delta") or {}).get("advanced_partitions") or []),
         )
-        process_plan = plan_process_steps(dc_decision=dc_decision)
+        process_plan = plan_process_steps(
+            dc_decision=dc_decision,
+            state_changes=(manifest.get("delta") or {}).get("state_changes"),
+        )
         delta = dict(manifest.get("delta") or {})
         delta["dc_source_frontier"] = current
         delta["dc_frontier_advanced"] = dc_decision.get("dc_frontier_advanced")
