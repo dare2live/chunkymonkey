@@ -22,6 +22,8 @@
 > **产品全量排期权威（20260721 重评）**：`analysis/product_plan_reeval_stock_dossier_20260721.md` — **CLOSED**：0r.1–0r.4 **FIXED**（ths_hot=`pending_publish`）+ 0r.5b→5B **FIXED**；closeout residuals cleared 2026-07-22 — `plan_residual_reconcile_20260722.md`；市场感知只沪深A serve；holders 审计 `holders_stock_dossier_lineage_audit_20260721.md`（勿重审）
 > **地基 BJ/dual-path/沪深A（20260721）**：`analysis/foundation_bj_dualpath_ashare_whitelist_20260721.md` — serve whitelist + formal continuity + share_float **FIXED**；ths_hot mechanism **FIXED**（live catchup ops）
 > **残差核对（20260722）**：`analysis/plan_residual_reconcile_20260722.md` — 四项 closeout residual **FIXED**/hybrid；次序=ops ths_hot + owner E/F remeasure
+> **完整地基目标 push（20260722）**：`analysis/foundation_full_goal_push_20260722.md` — vs「一直讨论想要的」仍 **PARTIAL**；morning formal daily soft-skip + Cap E S1/S2 UI + form/机构 honesty **FIXED**；ths_hot live / pure accepted / Continuity READY 仍 open
+> **ths_hot UI catchup（20260722 晨）**：`analysis/foundation_ths_hot_ui_catchup_20260722.md` — 前端路径 PASS；Run B daily=`pending_publish` 后 **stock_st** 09:20 后仍 `zero_rows` 硬阻断 → `--all-due` 未跑；ths_hot max 仍 `20260720`
 > **地基 UI 点击跟跑（20260721 晚）**：`analysis/foundation_daily_update_ui_click_20260721.md` — workbench 可观测性（current_activity）+ org incremental skip；click DONE degraded；RCA `foundation_daily_update_degraded_rca_20260721.md`
 > **旧 A→H 研究轨附录**（非近端主线）：`analysis/forward_program_efgh_20260720.md`
 > **产品排期执行 closeout（0r.5b→5B 全量，2026-07-21 晚）**：`analysis/product_plan_execution_closeout_20260721.md` — mandate FIXED；2026-07-22 residual-clear 见 reconcile
@@ -44,7 +46,8 @@
 - **Accept frontier 复核（2026-07-21 E2E）**：收盘后模块化 `land_then_accept` 单日增量 daily/ST **`20260721` accepted**；当时 UI/`daily_update` 因缺按钮 + margin `scope_blocked` 预检 **FAIL**。
 - **daily_update 解阻（2026-07-21 follow-up）**：margin 预检 **FIXED**（`on_demand`+frozen，禁 thaw）；编排器 formal daily/ST catchup **FIXED**；DC/pulse **`20260721`**；工作台「数据更新」**FIXED**（`#/workbench` → `POST /api/v3/ops/jobs/daily_update/run` + 状态/日志尾；证据 `foundation_daily_update_unblock_20260721.md` Knife 4）。
 - **工作台可观测性（2026-07-21 晚）**：运行中展示 `current_activity`（阶段/进度行/日志时间/告警原因），不再只显示「更新中」；证据见 `foundation_daily_update_ui_click_20260721.md`。
-- **Capability E（2026-07-21）**：**FIXED 子集** — workbench「分步节点」step cards + `GET /api/v3/ops/pipeline/nodes`；可独立跑 `pipeline_acquire|clean|process|store` + `derive_qfq`；预检/S1·S2 参数化路径 disabled+reason；一键「数据更新」仍主路径。证据 `capability_e_pipeline_step_cards_20260721.md`。
+- **Capability E（2026-07-21 / 22）**：**FIXED** — workbench「分步节点」+ `GET /api/v3/ops/pipeline/nodes`；可独立跑 `pipeline_acquire|clean|process|store` + `derive_qfq`；**S1/S2 参数化 UI** `POST /api/v3/ops/pipeline/land-accept/run`（daily/stock_st）；预检仍嵌链内；一键「数据更新」仍主路径。证据 `capability_e_pipeline_step_cards_20260721.md`。
+- **完整地基 push（2026-07-22）**：formal **daily** 盘前 `zero_rows` → `pending_publish` soft-skip **已测**；**stock_st** 在 `available_after=09:20` 之后仍空则仍硬阻断（UI Run B rc=5，`--all-due`/ths_hot 未跑）— 见 `foundation_ths_hot_ui_catchup_20260722.md`。form 读 typed hybrid residual；机构 deep-link `institution_link_status` 诚实。相对完整目标仍 **PARTIAL** — 见 `foundation_full_goal_push_20260722.md`。
 - **0r.1–0r.4 foundation（2026-07-21 / 22）**：**FIXED** — 沪深A serve whitelist + formal continuity/SLA + share_float bare BJ normalize；ths_hot typed `pending_publish`（非 known_empty；live `20260721` catchup=ops）。证据 `foundation_bj_dualpath_ashare_whitelist_20260721.md` + `plan_residual_reconcile_20260722.md`。
 - **F 更长窗 / S7 daily expand**：accepted daily **`20190102`→`20260721`**；ST **`20220104`→`20260721`**。E/F remeasure 仍 paused。
 

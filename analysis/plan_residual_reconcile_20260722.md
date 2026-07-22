@@ -27,10 +27,10 @@
 
 | Item | Owner | Priority | Notes |
 |---|---|---|---|
-| ths_hot **live catchup** `20260721`(+) | ops / owner (post-22:30 drain) | P1 | Code FIXED; blocker was pre-`available_after` `zero_rows`, not missing TuShare token |
-| Accept enrich full form axes (purity/vol/sub → accepted) | Tier1 publish | P2 | Unblocks pure accepted-only form read (hybrid stays honest until then) |
+| ths_hot **live catchup** `20260721`(+) | ops / owner (UI `daily_update`) | P1 | Still gap (`raw` max=`20260720`). Run A: daily hard-block; Run B: daily `pending_publish` OK then **stock_st** empty after 09:20 hard-block — `--all-due` never ran. Evidence `foundation_ths_hot_ui_catchup_20260722.md` |
+| Accept enrich full form axes (purity/vol/sub → accepted) | Tier1 publish | P2 | **Deferred** (Occam): typed hybrid residual FIXED; pure accepted needs versioned contract + re-accept |
 | Optional dossier F header intersection badge | product | P3 | Plan §3.5 "later" — still deferred by design |
-| Cap E parameterized S1/S2 UI | product | P3 | Honest disabled+reason; not a silent gap |
+| Cap E parameterized S1/S2 UI | product | — | **FIXED** 2026-07-22 (land-accept parameterized endpoint + workbench form) |
 | Trading-day-exact SLA (vs calendar-day) for 3A/4D/5B | product | P3 | Conservative calendar lag OK |
 | **E/F remeasure** | owner schedule only | paused | Hard ban until explicit schedule |
 | Optuna / StrategyRelease / Type-B enrichment / S7 fake COMPAT / org invent / margin thaw | — | **banned** | Unchanged |
@@ -51,7 +51,7 @@
 
 ## 4. Recommended next order
 
-1. **Ops:** post-22:30 `ths_hot` catchup for `20260721`+ via usual `daily_update`/`chunkyctl` (already sources `.env`); confirm continuity/group coverage ≠ 热基.
+1. **Ops:** UI「数据更新」catchup for `ths_hot` `20260721`+ after **stock_st** same-day empty also soft-skips as `pending_publish` (daily already does); or wait until ST vendor publishes. Confirm continuity/group coverage ≠ 热基. See `foundation_ths_hot_ui_catchup_20260722.md`.
 2. **P2 (optional):** Tier1 accept enrich for `axis_purity`/`axis_vol`/`form_sub` → then thin the hybrid overlay.
 3. **Stay paused:** E/F remeasure, Optuna, Release, Type-B, S7 blanket COMPAT.
 4. **P3 polish only if owner asks:** intersection badge, trading-day SLA, Cap E S1/S2 params UI.
