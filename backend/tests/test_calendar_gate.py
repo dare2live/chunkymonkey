@@ -175,26 +175,60 @@ def _is_wall_clock_date_string(node: ast.AST) -> bool:
     return False
 
 
-def _assignment_target_names(node: ast.AST) -> set[str]:
-    """Names bound by an Assign / AnnAssign / AugAssign that contains ``node``."""
-    names: set[str] = set()
+def _simple_target_name(target: ast.AST) -> str | None:
+    if isinstance(target, ast.Name):
+        return target.id
+    if isinstance(target, ast.Attribute):
+        return target.attr
+    return None
 
-    def _collect_target(target: ast.AST) -> None:
-        if isinstance(target, ast.Name):
-            names.add(target.id)
-        elif isinstance(target, (ast.Tuple, ast.List)):
-            for elt in target.elts:
-                _collect_target(elt)
 
+def _expr_contains(haystack: ast.AST, needle: ast.AST) -> bool:
+    return any(child is needle for child in ast.walk(haystack))
+
+
+def _assign_binds_node_allowlisted(assign: ast.Assign, node: ast.AST) -> bool:
+    """Allowlist only the binding that actually contains ``node``.
+
+    Fail-closed for exotic targets. Tuple unpack matches by position so a
+    sibling ``end_date`` cannot be muted by ``run_id`` on the same Assign.
+    """
+    if not _expr_contains(assign.value, node):
+        return False
+    if len(assign.targets) != 1:
+        return False
+    target = assign.targets[0]
+    name = _simple_target_name(target)
+    if name is not None:
+        return name in _WALLCLOCK_ASSIGN_ALLOWLIST
+    if isinstance(target, (ast.Tuple, ast.List)) and isinstance(
+        assign.value, (ast.Tuple, ast.List)
+    ):
+        for i, elt in enumerate(assign.value.elts):
+            if _expr_contains(elt, node):
+                if i >= len(target.elts):
+                    return False
+                elt_name = _simple_target_name(target.elts[i])
+                return bool(elt_name and elt_name in _WALLCLOCK_ASSIGN_ALLOWLIST)
+    return False
+
+
+def _call_bound_allowlisted(node: ast.AST) -> bool:
+    """True when this wall-clock call is bound to an allowlisted identifier."""
     for parent in getattr(node, "_calendar_gate_parents", ()):
         if isinstance(parent, ast.Assign):
-            for t in parent.targets:
-                _collect_target(t)
-        elif isinstance(parent, ast.AnnAssign) and parent.target is not None:
-            _collect_target(parent.target)
-        elif isinstance(parent, ast.AugAssign):
-            _collect_target(parent.target)
-    return names
+            return _assign_binds_node_allowlisted(parent, node)
+        if isinstance(parent, ast.AnnAssign) and parent.value is not None:
+            if _expr_contains(parent.value, node):
+                name = _simple_target_name(parent.target)
+                return bool(name and name in _WALLCLOCK_ASSIGN_ALLOWLIST)
+            return False
+        if isinstance(parent, ast.AugAssign):
+            if _expr_contains(parent.value, node):
+                name = _simple_target_name(parent.target)
+                return bool(name and name in _WALLCLOCK_ASSIGN_ALLOWLIST)
+            return False
+    return False
 
 
 def _annotate_parents(tree: ast.AST) -> None:
@@ -218,7 +252,7 @@ def _find_violations(path: Path) -> list[tuple[int, str]]:
         snippet = src.splitlines()[line - 1].strip() if line > 0 else "?"
         if any(tok in snippet for tok in _WALLCLOCK_SNIPPET_ALLOWLIST):
             continue
-        if _assignment_target_names(node) & _WALLCLOCK_ASSIGN_ALLOWLIST:
+        if _call_bound_allowlisted(node):
             continue
         violations.append((line, snippet))
     return violations

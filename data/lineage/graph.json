@@ -6445,6 +6445,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/margin_pulse_promote.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin"
@@ -7609,9 +7615,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1218,
-    "generated_at": "2026-07-23T08:25:32.405147+00:00",
-    "node_count": 434,
+    "edge_count": 1219,
+    "generated_at": "2026-07-23T08:28:35.693610+00:00",
+    "node_count": 435,
     "version": 2
   },
   "nodes": [
@@ -7709,6 +7715,14 @@
         "path": "backend/config/legacy_raw_plane.yaml"
       },
       "id": "consumer:backend/config/legacy_raw_plane.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/margin_pulse_promote.yaml"
+      },
+      "id": "consumer:backend/config/margin_pulse_promote.yaml",
       "kind": "consumer"
     },
     {

@@ -229,11 +229,36 @@ else
     echo "[commit-tier] skip rule_compliance (tier=$COMMIT_TIER)"
 fi
 
+# 3.35 Always-on: ci_pytest_surface classification drift.
+# Binding (2026-07-21×3 + 2026-07-20×2 CI red): public CI always runs
+# test_ci_pytest_surface_drift, but L1 docs commits skipped ci_pytest locally —
+# so an unclassified test_*.py left on main kept every subsequent push red until
+# someone fixed the yaml. Cheap always-on check closes that loop for all tiers.
+echo
+echo "=== Step 3.35: CI pytest surface classification (always-on) ==="
+if [[ ! -f "backend/tests/scripts/test_ci_pytest_surface_drift.py" ]]; then
+    echo "ERROR: missing backend/tests/scripts/test_ci_pytest_surface_drift.py"
+    exit 3
+fi
+if ! (
+    PYTHONPATH=backend "$PY" -m pytest \
+        backend/tests/scripts/test_ci_pytest_surface_drift.py \
+        -p no:cacheprovider --tb=line -q
+); then
+    echo
+    echo "ERROR: ci_pytest_surface drift — tracked test_*.py 未登记到 blocking/nightly/optional。"
+    echo "正解: 把新测试写入 backend/config/ci_pytest_surface.yaml 对应列表 (optional 须带 reason)。"
+    echo "此门对 L1 也强制: public CI 不论 commit tier 都会跑 drift test。"
+    exit 3
+fi
+echo "[ci-surface-drift] PASS (always-on; L1 included)"
+
 # 3.4 Offline CI pytest surface (L2/L3 only; same blocking list as public CI).
 # Owner: backend/config/ci_pytest_surface.yaml + backend/scripts/run_ci_pytest.py.
 # Binding finding (2026-07-20): safe_commit previously ran zero pytest locally, so
 # stale assertions only exploded on public CI. This gate closes that gap without
-# changing accept/PIT/cutover semantics. L1 docs commits skip (no code surface).
+# changing accept/PIT/cutover semantics. L1 docs commits skip full blocking suite
+# (surface classification still runs in 3.35 above).
 # Gate redesign #1 (2026-07-21): L2/L3 + CI run `--tier blocking` only
 # (nightly_paths stay async; do not expand to full 985 here).
 echo
