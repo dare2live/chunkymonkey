@@ -76,7 +76,7 @@
 | **F2** | Margin **ops catchup** 推进 `local_max`→`eligible_end` | ops 轴② | token 下 bounded catchup 实测水位前进；Continuity 诚实 | all-due / mass / product thaw | **CLOSED** 2026-07-23：v3 `local_max=20260722` = 当时 `eligible_end`（accepted n=4 since `coverage_start=20260717`）；无 blocker |
 | **F3** | Holders landing **retention/archive** + smartmoney compact | later L3 | skip-land 无新风暴后；archive 非 latest ACCEPTED；再 compact | bare DELETE landing 当去重 | later（非 exit-gate） |
 | **F4** | Margin **1c** pulse consumer shadow（optional） | optional | shadow 证据后才切 trusted 标签 | 无 shadow 假 TRUSTED | optional（非 exit-gate） |
-| **F5** | BOARD / codegraph / maps **sync** | hygiene | `build_agent_board` 重生；BOARD=投影非执法 | 手改 BOARD 当真相 | open → 近端 |
+| **F5** | BOARD / codegraph / maps **sync** | hygiene | `build_agent_board` 重生；BOARD=投影非执法 | 手改 BOARD 当真相 | **FIXED** 2026-07-23：next 指针离 Knife4；投影反映 F1/F2 收口 + §6 exit |
 | **F6** | S7 publication/sunset（按需） | Tier0 | **仅** owner 新 block | 假 COMPAT / blanket pre-accept | 无 owner block → skip |
 | **F7** | Type-B enrichment | DEFER | registry in-scheme 已够近端 | 当近端刀 | DEFER |
 | **F8** | qfq incremental/partitioned write | product later | 另开产品刀；今日 full CTAS+compact 已 ops-safe | 用「定期 compact」代替语义 | later |
@@ -124,3 +124,5 @@
 §15：一逻辑刀 = 一次 Rule10 + 一次 `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh`；L3 先 `chunkyctl pre-knife`；CI 异步；并行仅 moth 非重叠。
 
 **Foundation exit（给 STRATEGY 的绿灯条件）**：F1 收口（或 owner skip）+ F2 无 blocker（或诚实 BLOCKED+owner）+ F5 投影不谎报下一轨 + 上表禁令未破。
+
+**Exit status 2026-07-23**：F1 **FIXED** · F2 **CLOSED** · F5 **FIXED** · 禁令未破 → **foundation exit MET**（STRATEGY 仍须 `goal.md` 显式 schedule RX 才开；本轨不自动开 STRATEGY）。非 exit-gate 残留（F3 later / F4 optional / F7 DEFER / F8 later）不挡 exit。

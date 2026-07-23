@@ -262,21 +262,26 @@ def test_acquire_margin_catchup_schedules_partial_gap(monkeypatch, tmp_path):
 def test_run_acquire_wires_margin_catchup(monkeypatch, tmp_path):
     """Click-update acquire path must invoke margin planner (not only one-shot CLI)."""
     from services.pipeline import acquire as acquire_mod
+    from services.pipeline import context as context_mod
     from services.pipeline import preflight as preflight_mod
     from services.pipeline.context import PipelineContext
 
     called = {"n": 0}
 
+    # Isolate real /tmp alert flag — prior monkeypatch arity bugs polluted doctor WARN.
+    monkeypatch.setattr(context_mod, "DEGRADED_FLAG", tmp_path / "degraded.flag")
+
     monkeypatch.setattr(preflight_mod, "ensure_pipeline_sync_ready", lambda ctx: None)
     monkeypatch.setattr(preflight_mod, "ensure_tushare_authorized", lambda ctx: None)
     monkeypatch.setattr(acquire_mod, "_sync_holders_aif10", lambda ctx: None)
-    monkeypatch.setattr(acquire_mod, "_sync_qfii", lambda ctx: None)
+    # Production `_sync_qfii` / `_build_trading_calendar` take no args (ctx.step(fn)).
+    monkeypatch.setattr(acquire_mod, "_sync_qfii", lambda: None)
     monkeypatch.setattr(acquire_mod, "_sync_org_holding", lambda ctx: None)
     monkeypatch.setattr(acquire_mod, "_sync_registry_drain", lambda ctx: [])
     monkeypatch.setattr(
         acquire_mod, "_sync_formal_on_demand_security_days", lambda ctx: []
     )
-    monkeypatch.setattr(acquire_mod, "_build_trading_calendar", lambda ctx: None)
+    monkeypatch.setattr(acquire_mod, "_build_trading_calendar", lambda: None)
     monkeypatch.setattr(
         acquire_mod, "_refresh_active_a_stock_master", lambda ctx: None
     )
@@ -309,4 +314,4 @@ def test_run_acquire_wires_margin_catchup(monkeypatch, tmp_path):
         ctx.close()
 
     assert called["n"] == 1
-
+    assert not (tmp_path / "degraded.flag").exists()
