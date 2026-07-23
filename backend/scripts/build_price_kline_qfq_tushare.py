@@ -19,6 +19,8 @@ v_price_kline_qfq 视图 FROM 本表 = 当前 qfq analysis/serving 兼容读面�
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,6 +34,9 @@ MARKET_DB = "data/market.duckdb"  # rule-compliance: ok evidence=回测K线库 (
 TUSHARE_DB = str(REPO / "data" / "tushare_raw.duckdb")  # rule-compliance: ok evidence=tushare raw 源库 (ATTACH read-only, 一次性 build 脚本)
 TARGET = "price_kline_qfq_tushare"
 START = "20190101"  # rule-compliance: ok evidence=raw_tushare_daily 实测起点 2019-01-02 (全量回测窗起点)
+# DROP+CTAS leaves ~half the file as free blocks; CHECKPOINT does not shrink.
+# Default post-build compact reclaim (escape: --no-compact / CHUNKY_QFQ_SKIP_COMPACT=1).
+_COMPACT_SCRIPT = REPO / "backend" / "scripts" / "db_compact.py"
 
 # Accepted canonical wins on overlap; legacy raw fills pre-canary history only.
 # Project-universe whitelist: qfq is 沪深A analysis surface — never copy BJ/B.
@@ -179,9 +184,54 @@ def cross_check(conn) -> dict:
     }
 
 
+def _load_db_compact():
+    spec = importlib.util.spec_from_file_location("db_compact", _COMPACT_SCRIPT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load db_compact at {_COMPACT_SCRIPT}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def compact_market_after_ctas(*, remove_bak: bool = True) -> int:
+    """Reclaim free blocks after DROP+CTAS. Caller must close market writers first.
+
+    Only runs against the production market path from database_manifest (skip if
+    MARKET_DB was redirected, e.g. tests/tmp).
+    """
+
+    compact = _load_db_compact()
+    prod = Path(compact._db_path("market")).resolve()
+    market_path = Path(MARKET_DB)
+    if not market_path.is_absolute():
+        market_path = (REPO / market_path).resolve()
+    else:
+        market_path = market_path.resolve()
+    if market_path != prod:
+        print(
+            f"[compact] skip — MARKET_DB={market_path} != production {prod}",
+            flush=True,
+        )
+        return 0
+    rc = int(compact.run("market", execute=True))
+    if rc != 0:
+        return rc
+    if remove_bak:
+        bak = prod.with_name(f"{prod.stem}_precompact_bak{prod.suffix}")
+        if bak.exists():
+            bak.unlink()
+            print(f"[compact] removed {bak}", flush=True)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check-only", action="store_true")  # rule-compliance: ok evidence=只对账不重建
+    ap.add_argument(
+        "--no-compact",
+        action="store_true",
+        help="Skip post-CTAS market db_compact (default: compact after successful full rebuild)",
+    )
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument(
         "--from-accepted",
@@ -198,10 +248,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = ap.parse_args(argv)
     from_accepted = not bool(args.allow_legacy_fill)
+    rebuilt = False
     conn = connect(MARKET_DB, read_only=False)
     try:
         if not args.check_only:
             n = build(conn, from_accepted=from_accepted)
+            rebuilt = True
             mode_name = "from_accepted" if from_accepted else "canonical_plus_legacy_fill"
             r = conn.execute(
                 f"SELECT min(date),max(date),count(DISTINCT code), "
@@ -232,7 +284,23 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"[verdict] {'PASS 自完整性检查通过' if ok else 'REVIEW 行数/覆盖缩水或含非法价格/缺 lineage, 先查再消费'}"
     )
-    return 0 if ok else 2
+    if not ok:
+        return 2
+    skip_compact = bool(args.no_compact) or os.environ.get(
+        "CHUNKY_QFQ_SKIP_COMPACT", ""
+    ).strip() in {"1", "true", "TRUE", "yes", "YES"}
+    if rebuilt and not skip_compact:
+        # Exclusive rewrite; must run only after market conn closed above.
+        crc = compact_market_after_ctas(remove_bak=True)
+        if crc != 0:
+            print(
+                f"[compact] FAIL rc={crc} — qfq rows OK but free-block residual remains",
+                flush=True,
+            )
+            return 3
+    elif rebuilt and skip_compact:
+        print("[compact] skipped (--no-compact or CHUNKY_QFQ_SKIP_COMPACT)", flush=True)
+    return 0
 
 
 if __name__ == "__main__":

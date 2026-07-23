@@ -10,7 +10,7 @@
 |---|---|---|---|---|
 | `raw_tushare_stk_factor_pro` ~5.2 GiB | **DELETED**（owner 签字） | lifecycle DROP + export/import compact（§6） | 已执行；registry 墓碑防回流 | **否**：表已不存在 |
 | holders landing ~32× `row_hash` | **KEEP (by design)** + policy residue | **勿 DROP landing**；先立法 retention / content-hash skip 再冷归档旧 batch | 高：改 immutable landing 语义；canonical 仍依赖 accept 链 | **是**：2026-07-23 仍 land/accept |
-| market free-block ~0.7 GiB | **NEED_OWNER_SIGN**（窗口） | 停 derive 后 `db_compact.py --db market --execute` | 中：独占写锁；峰值≈旧+新 | **文件仍被碰**：mtime=`2026-07-23 13:48`；表内容 `ingested_at`=`2026-07-22 14:30`（全量 DROP+CTAS 后未 compact） |
+| market free-block ~0.7 GiB | **COMPACTED**（2026-07-23 Knife 3） | `db_compact.py --db market --execute` + post-CTAS hook | 已执行；free 2940→1；file 1.439→0.719 GiB | **复发已钩**：qfq 全量 CTAS 成功后默认 compact（`--no-compact` 逃生） |
 
 ---
 
@@ -159,8 +159,8 @@ python backend/scripts/db_compact.py --db market --execute
 | Size after | **4.682 GiB**（5 027 672 064 B）；回收 **≈5.356 GiB**；59 表行数对账 OK；factor 表不存在；deletion_record 保留 |
 | Anti-refill | `sync_registry.yaml` 域条目**墓碑注释**（无 `target_table`）；`legacy_raw_plane` role=`retired`；S7 wall 23→22 ssot / sync_orphan 14→13 |
 
-**Label（本条）**：`FIXED` — orphan 表删除 + 盘回收 + 防回流墓碑。holders landing / market compact 仍 **KEEP / NEED_OWNER_SIGN**（未动）。
+**Label（本条）**：`FIXED` — orphan 表删除 + 盘回收 + 防回流墓碑。holders landing 仍 **KEEP**；market compact **FIXED**（Knife 3；见 `market_compact_knife3_20260723.md`）。
 
 ## Label
 
-**PARTIAL（整体 addendum）** — factor orphan **FIXED**；holders KEEP；market compact 仍待签字。
+**PARTIAL（整体 addendum）** — factor orphan **FIXED**；market compact **FIXED**；holders KEEP（retention later）。

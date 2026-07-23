@@ -77,6 +77,7 @@ Root cause: many 2026-06/07 lifecycle + purge batches dropped tables (qfq rebuil
 |---|---|
 | `experiment_store.duckdb` ~30 free blocks (~7.5 MiB file bloat) | Optional tiny compact; not in this reclaim |
 | Future DROP batches | Always follow with `python backend/scripts/db_compact.py --db <alias> --execute` then delete bak after parity check |
+| **qfq DROP+CTAS (market)** | **FIXED 2026-07-23 Knife 3** — `build_price_kline_qfq_tushare` defaults to post-rebuild `db_compact --db market` + remove bak; escape `--no-compact` / `CHUNKY_QFQ_SKIP_COMPACT=1`. Manual compact still: `python backend/scripts/db_compact.py --db market --execute` |
 | `data/archive/**` growth | Expected under lifecycle; prune only with per-subdir obsolete proof + eng_gov §10 |
 | `tushare_raw.duckdb` free_blocks≈133 | Intentional skip this reclaim (Tier0 write plane; compact only with explicit owner focus) |
 

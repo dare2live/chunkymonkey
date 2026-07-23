@@ -114,6 +114,57 @@ def test_build_writes_physical_lineage_columns(tmp_path: Path, monkeypatch) -> N
         market.close()
 
 
+def test_main_compacts_market_after_successful_rebuild(monkeypatch) -> None:
+    """Post-CTAS compact is default; --no-compact / env escape skips it."""
+
+    mod = _load_module()
+    calls: list[dict] = []
+
+    def _fake_build(conn, *, from_accepted=True, batch_id=None, ingested_at=None):
+        return 8_000_000
+
+    def _fake_cross_check(conn):
+        return {
+            "n_rows": 8_000_000,
+            "n_codes": 5_100,
+            "max_date": "2026-07-22",
+            "n_bad_price": 0,
+            "n_missing_lineage": 0,
+        }
+
+    class _Conn:
+        def execute(self, *_a, **_k):
+            class _R:
+                def fetchone(self):
+                    return ("2019-01-02", "2026-07-22", 5100, 1, "2026-07-22", "2026-07-22")
+
+            return _R()
+
+        def close(self):
+            return None
+
+    def _fake_compact(*, remove_bak=True):
+        calls.append({"remove_bak": remove_bak})
+        return 0
+
+    monkeypatch.setattr(mod, "connect", lambda *_a, **_k: _Conn())
+    monkeypatch.setattr(mod, "build", _fake_build)
+    monkeypatch.setattr(mod, "cross_check", _fake_cross_check)
+    monkeypatch.setattr(mod, "compact_market_after_ctas", _fake_compact)
+    monkeypatch.delenv("CHUNKY_QFQ_SKIP_COMPACT", raising=False)
+
+    assert mod.main(["--from-accepted"]) == 0
+    assert calls == [{"remove_bak": True}]
+
+    calls.clear()
+    assert mod.main(["--from-accepted", "--no-compact"]) == 0
+    assert calls == []
+
+    monkeypatch.setenv("CHUNKY_QFQ_SKIP_COMPACT", "1")
+    assert mod.main(["--from-accepted"]) == 0
+    assert calls == []
+
+
 def test_form_source_sql_joins_canonical_and_limit_without_raw() -> None:
     from services.technical_states import src_temp_sql
 
