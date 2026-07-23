@@ -74,6 +74,11 @@ RETIRED_WATERMARK_TOMBSTONES = frozenset(
     {
         # LHB 2026-06-29 → tushare top_list/top_inst; DOMAIN_SPECS entry removed.
         ("lhb_daily", "aif10_lhb"),
+        # Owner sunset 2026-07-23: registry tombstoned; leftover wm → NO_QUERY_MAPPING.
+        ("sync:stk_factor_pro", "tushare"),
+        ("sync:express", "tushare"),
+        ("sync:fina_mainbz", "tushare"),
+        ("sync:stk_holdernumber", "tushare"),
     }
 )
 

@@ -152,6 +152,7 @@ def test_acquire_margin_catchup_skips_when_current(monkeypatch, tmp_path):
     from services.pipeline import margin_catchup_acquire
 
     run_calls = []
+    project_calls = []
 
     class _Conn:
         def execute(self, sql, *_a, **_k):
@@ -183,6 +184,11 @@ def test_acquire_margin_catchup_skips_when_current(monkeypatch, tmp_path):
         lambda domain, **kwargs: run_calls.append((domain, kwargs))
         or {"status": "ok"},
     )
+    monkeypatch.setattr(
+        sr,
+        "_project_margin_accepted_ops_watermark",
+        lambda *a, **k: project_calls.append(k) or None,
+    )
     monkeypatch.setattr("services.duck_adapter.connect", lambda *_a, **_k: _Conn())
 
     ctx = PipelineContext(date="20260723", log_path=tmp_path / "run.log")
@@ -195,7 +201,9 @@ def test_acquire_margin_catchup_skips_when_current(monkeypatch, tmp_path):
     assert outcomes[0]["action"] == "skip"
     assert outcomes[0]["reason"] == "latest_eligible_already_present"
     assert outcomes[0]["local_max"] == "20260722"
+    assert outcomes[0]["ops_watermark_projected"] is True
     assert run_calls == []
+    assert project_calls and project_calls[0]["through"] == "20260722"
 
 
 def test_acquire_margin_catchup_schedules_partial_gap(monkeypatch, tmp_path):

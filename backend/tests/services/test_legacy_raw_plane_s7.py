@@ -195,14 +195,14 @@ def test_s7_derive_runtime_still_bans_acquire_imports() -> None:
 
 
 def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
-    """S7 inventory after stk_factor_pro sunset: 22 ssot / 1 fill / 22 compat / 1 retired."""
+    """S7 inventory after orphan sunset batch: 19 ssot / 1 fill / 22 compat / 4 retired."""
 
     mod = _load_check_mod()
     counts = mod.role_counts()
-    assert counts["ssot"] == 22, counts
+    assert counts["ssot"] == 19, counts
     assert counts["fill"] == 1, counts
     assert counts["compatibility"] == 22, counts
-    assert counts.get("retired", 0) == 1, counts
+    assert counts.get("retired", 0) == 4, counts
     assert sum(counts.values()) == 46, counts
 
 
@@ -240,25 +240,27 @@ def test_s7_residual_ssot_map_is_typed_hard_stops_only() -> None:
             "daily_info",
             "dc_daily",
             "dividend",
-            "express",
-            "fina_mainbz",
             "hm_detail",
             "hm_list",
             "income",
             "kpl_list",
             "moneyflow_hsgt",
-            "stk_holdernumber",
             "ths_hot",
         },
     }
     assert by_kind == expected, by_kind
-    assert sum(len(v) for v in by_kind.values()) == 22
+    assert sum(len(v) for v in by_kind.values()) == 19
     retired = {
         table.removeprefix("raw_tushare_")
         for table, meta in inv["tables"].items()
         if meta.get("role") == "retired"
     }
-    assert retired == {"stk_factor_pro"}, retired
+    assert retired == {
+        "stk_factor_pro",
+        "express",
+        "fina_mainbz",
+        "stk_holdernumber",
+    }, retired
 
 
 def test_s7_limit_list_d_publication_is_fact_stock_limit_daily() -> None:

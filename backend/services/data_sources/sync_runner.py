@@ -391,6 +391,44 @@ def _require_authorized_margin_catchup_window(
     return days
 
 
+def _project_margin_accepted_ops_watermark(
+    spec: dict[str, Any],
+    contract,
+    *,
+    through: str,
+    provider_succeeded: bool = False,
+) -> None:
+    """Rebuild sync:margin Ops watermark from accepted facts (single writer).
+
+    Catchup skip and land/accept must both refresh this projection; otherwise
+    SLA audits stale v2 watermarks as ACCEPTED_PROJECTION_DRIFT after v3 accepts.
+    """
+    from services.data_sources.margin_projections import project_margin_accepted_state
+
+    through_c = str(through or "").replace("-", "")
+    cov = str(contract.coverage_start).replace("-", "")
+    if len(through_c) != 8 or not through_c.isdigit():
+        raise PopulationScopeExecutionError(
+            "margin",
+            reason="invalid_projection_window",
+            detail=f"margin projection through must be YYYYMMDD; got {through!r}",
+        )
+    expected = trading_days(cov, through_c) if through_c >= cov else []
+    raw = _target_conn(spec)
+    ops = _smartmoney_conn()
+    try:
+        project_margin_accepted_state(
+            raw,
+            ops,
+            expected,
+            contract=contract,
+            provider_succeeded=provider_succeeded,
+        )
+    finally:
+        raw.close()
+        ops.close()
+
+
 def _publish_margin_bounded_catchup(
     spec: dict[str, Any],
     *,
@@ -495,6 +533,15 @@ def _publish_margin_bounded_catchup(
             )
     finally:
         conn.close()
+
+    # Ops watermark must track accepted v3 frontier (even on partial windows).
+    project_through = last_ok or str(contract.coverage_start).replace("-", "")
+    _project_margin_accepted_ops_watermark(
+        spec,
+        contract,
+        through=project_through,
+        provider_succeeded=failed == 0 and last_ok is not None,
+    )
 
     completed_ok = sum(1 for r in day_results if int(r.get("failed_batches") or 0) == 0)
     return {

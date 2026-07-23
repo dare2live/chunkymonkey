@@ -171,7 +171,7 @@ def test_legacy_plane_limit_list_d_is_compatibility() -> None:
     assert meta["publication_surface"] == "fact_stock_limit_daily"
     assert mod.collect_violations() == []
     counts = mod.role_counts()
-    assert counts["ssot"] == 22
+    assert counts["ssot"] == 19
     assert counts["compatibility"] == 22
 
 

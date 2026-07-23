@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-23 18:56
+> Snapshot: 2026-07-23 23:09
 
 ## 1. 入口面
 
@@ -53,9 +53,7 @@
 | dc_index | tushare | dc_index | raw_tushare_dc_index | by_trade_date | 2 |
 | dc_member | tushare | dc_member | raw_tushare_dc_member | by_trade_date | 2 |
 | dividend | tushare | dividend | raw_tushare_dividend | by_trade_date | 5 |
-| express | tushare | express_vip | raw_tushare_express | by_period | 5 |
 | fina_indicator | tushare | fina_indicator | raw_tushare_fina_indicator | by_ts_code | 5 |
-| fina_mainbz | tushare | fina_mainbz | raw_tushare_fina_mainbz | by_ts_code | 130 |
 | forecast | tushare | forecast | raw_tushare_forecast | by_ann_date | 5 |
 | hm_detail | tushare | hm_detail | raw_tushare_hm_detail | by_trade_date | 2 |
 | hm_list | tushare | hm_list | raw_tushare_hm_list | full_refresh | 30 |
@@ -76,7 +74,6 @@
 | moneyflow_mkt_dc | tushare | moneyflow_mkt_dc | raw_tushare_moneyflow_mkt_dc | by_date_range | 1 |
 | report_rc | tushare | report_rc | raw_tushare_report_rc | by_ann_date | 3 |
 | share_float | tushare | share_float | raw_tushare_share_float | by_ann_date | 3 |
-| stk_holdernumber | tushare | stk_holdernumber | raw_tushare_stk_holdernumber | by_ts_code | 90 |
 | stk_holdertrade | tushare | stk_holdertrade | raw_tushare_stk_holdertrade | by_ann_date | 30 |
 | stk_limit | tushare | stk_limit | raw_tushare_stk_limit | by_trade_date | 1 |
 | stk_surv | tushare | stk_surv | raw_tushare_stk_surv | by_ann_date | 5 |
@@ -170,7 +167,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 9,893 | calls 边 11,732 | imports 边 3,268 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,900 | calls 边 11,730 | imports 边 3,267 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -213,7 +210,7 @@
 
 | 文件 | 行数 |
 |---|---|
-| backend/services/data_sources/sync_runner.py | 4364 |
+| backend/services/data_sources/sync_runner.py | 4411 |
 | backend/services/market_pulse.py | 1597 |
 | backend/scripts/check_continuity_integrity.py | 1124 |
 | backend/services/data_sources/holders_top10_acceptance.py | 800 |
@@ -227,6 +224,6 @@
 ## 5. 概览
 
 - chunkyctl 子命令 8 | launchd 任务 0 | router 7 (端点 32)
-- sync_registry 数据域 46
+- sync_registry 数据域 43
 - 产表 34 (多 writer 12)
 

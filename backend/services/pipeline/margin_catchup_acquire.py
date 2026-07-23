@@ -123,6 +123,14 @@ def run_margin_bounded_catchup(ctx: PipelineContext) -> list[dict[str, Any]]:
         probe = sync_runner.trading_days(local_max, eligible_end)
         after = [d for d in probe if d > local_max]
         if not after:
+            # Accepted frontier is current, but Ops watermark may still lag (v2→v3).
+            # Re-project every skip so SLA does not false-alert ACCEPTED_PROJECTION_DRIFT.
+            sync_runner._project_margin_accepted_ops_watermark(
+                spec,
+                contract,
+                through=local_max,
+                provider_succeeded=True,
+            )
             outcome = {
                 "domain": "margin",
                 "action": "skip",
@@ -130,11 +138,12 @@ def run_margin_bounded_catchup(ctx: PipelineContext) -> list[dict[str, Any]]:
                 "eligible_end": eligible_end,
                 "local_max": local_max,
                 "contract_version": str(contract.contract_version),
+                "ops_watermark_projected": True,
             }
             print(json.dumps(outcome, ensure_ascii=False))
             ctx.log(
                 f"margin catchup SKIP local_max={local_max} "
-                f"eligible_end={eligible_end}"
+                f"eligible_end={eligible_end} (ops watermark reprojected)"
             )
             return [outcome]
         start = after[0]

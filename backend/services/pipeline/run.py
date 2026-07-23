@@ -23,7 +23,13 @@ from .clean import run_clean
 from .context import REPO, PipelineContext
 from .preflight import PipelinePreflightError, run_preflight
 from .process import run_process
-from .run_outcome import OUTCOME_HARD_FAIL, derive_run_outcome
+from .run_outcome import (
+    OUTCOME_HARD_FAIL,
+    OUTCOME_INTEGRITY,
+    OUTCOME_SOFT_WAITING,
+    OUTCOME_SUCCESS,
+    derive_run_outcome,
+)
 from .stage_status import run_and_record
 from .store import run_store, write_report_and_alert
 
@@ -127,13 +133,27 @@ def _run_locked(
         outcome = derived["run_outcome"]
         if outcome == OUTCOME_HARD_FAIL:
             ctx.log(f"=== daily_update HARD_FAIL ({len(ctx.degraded_msgs)} 项; exit {rc}) ===")
-        elif rc != 0:
+        elif outcome == OUTCOME_SOFT_WAITING:
             ctx.log(
                 f"=== daily_update DONE soft_waiting_clock "
                 f"({len(ctx.degraded_msgs)} 项; exit {rc}) ==="
             )
+        elif outcome == OUTCOME_INTEGRITY:
+            ctx.log(
+                f"=== daily_update DONE integrity_observe "
+                f"({len(ctx.degraded_msgs)} 项; exit {rc}) ==="
+            )
+        elif outcome == OUTCOME_SUCCESS:
+            ctx.log(
+                "=== daily_update DONE success "
+                "(数据底座: preflight / 获取 / 清洗 / 加工 / 存储) ==="
+            )
         else:
-            ctx.log("=== daily_update DONE success (数据底座: preflight / 获取 / 清洗 / 加工 / 存储) ===")
+            # Fail closed on unknown renderer labels (must not invent soft_waiting).
+            ctx.log(
+                f"=== daily_update DONE {outcome} "
+                f"({len(ctx.degraded_msgs)} 项; exit {rc}) ==="
+            )
         return rc
     finally:
         ctx.close()

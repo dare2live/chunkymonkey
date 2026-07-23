@@ -1,11 +1,12 @@
 # 盘后一键更新 E2E 跟跑 — 2026-07-23
 
 > **生命周期**：evidence-only（analysis 层；**非** owner bible）
-> Verdict: **PARTIAL**
+> Verdict: **PARTIAL → FIXED (class-B in-flow residuals)**
 > Scope: 验证 UI「数据更新」同路径端到端（非新功能刀）
 > Trigger: `POST /api/v3/ops/jobs/daily_update/run` → `manual_job_wrapper` → `scripts/daily_update.sh` → `python -m services.pipeline.run`
 > Wall clock: 22:26:26 → 22:53:00 CST (~26.5 min)
 > Evidence (local, gitignored): `data/audit/post_close_e2e_before_20260723.json`, `data/audit/post_close_e2e_after_20260723.json`, `data/reports/daily_20260723.json`, `/tmp/chunkymonkey_daily_update_20260723.log`
+> Follow-up knife: post-close class-B residuals（本笔记 §9）
 
 ## 1. Path / boot
 
@@ -38,52 +39,59 @@
 | Stage | Verdict | Evidence |
 |---|---|---|
 | boot / preflight | **OK** | calendar/auth/policy PASS；SLA alerts deferred |
-| acquire | **PARTIAL** | formal daily/ST OK；org/holders 增量语义正确；drain 42 中 3 域 `unsupported` → soft DEGRADED |
+| acquire | **PARTIAL → FIXED path** | formal daily/ST OK；org/holders 增量语义正确；drain unsupported×3 已退役 |
 | clean / derive | **OK** | qfq incremental max=2026-07-23；data_audit 6 PASS / 0 FAIL |
 | process | **OK** | DC + segments + pulse + form + institution_profile 全跑通 |
-| store / serve-pulse | **PARTIAL** | continuity **PASS**；pulse 已到 20260723；SLA 仍 2 alerts（见下） |
+| store / serve-pulse | **PARTIAL → FIXED path** | continuity **PASS**；pulse 已到 20260723；SLA 投影/墓碑债已修路径 |
 | Incremental recognition | **OK（主路径）** | 当日 due 的日更/脉冲/资金流/股东增量均识别并抓取；已齐域正确 skip |
 
-## 4. Run outcome
+## 4. Run outcome（当日实跑）
 
 - Report SSOT: `run_outcome=integrity_observe` / `ops_observe_non_hard_degraded` / exit 1
 - Degraded（2）:
-  1. `sync_registry drain 有残余缺口或域错误` — soft
-  2. `post-acquire watermark SLA alert` — other
+  1. `sync_registry drain 有残余缺口或域错误` — soft（根因 = unsupported×3；已退役）
+  2. `post-acquire watermark SLA alert` — other（根因 = margin 投影漂移 + stk_factor_pro 墓碑；已修路径）
 - Continuity: **PASS**（119 checks）
 - **无 hard_fail / 无路径崩溃 / 无「当日应拉未拉」class-A**
 
-> 日志尾 `DONE soft_waiting_clock` 与报告 `integrity_observe` 不一致：`run.py` 在 `rc!=0` 时硬编码 soft 文案（class-B 日志误标，非业务 outcome 错）。
+> 日志尾 `DONE soft_waiting_clock` 与报告 `integrity_observe` 不一致：已修 — DONE 文案跟 typed `run_outcome`。
 
-## 5. Drain 残余（软 DEGRADED 根因）
+## 5. Drain 残余（当日软 DEGRADED 根因；已 FIXED）
 
-`--all-due --drain` returncode≠0，因以下域 typed **unsupported**（非 fetch fail）：
+当日 `--all-due --drain` returncode≠0，因以下域 typed **unsupported**（非 fetch fail）：
 
-| domain | status | batch_mode |
-|---|---|---|
-| `express` | unsupported | by_period |
-| `fina_mainbz` | unsupported | （同批） |
-| `stk_holdernumber` | unsupported | by_ts_code |
+| domain | status | batch_mode | 处置 |
+|---|---|---|---|
+| `express` | unsupported | by_period | **registry tombstone + inventory retired** |
+| `fina_mainbz` | unsupported | by_ts_code | **同上** |
+| `stk_holdernumber` | unsupported | by_ts_code | **同上** |
 
-其余 ~39 域 drained/ok（含 moneyflow/hsgt/dc/sw/limit/adj_factor 等 gap_days=1 回填）。margin 在 all-due 外（on_demand + frozen）；catchup 亦 skip（local_max=eligible_end=20260722）。
-
-## 6. SLA / 异常清单
+## 6. SLA / 异常清单（当日 → 路径修复）
 
 | 级别 | 项 | 说明 | 处置 |
 |---|---|---|---|
-| class-B | `sync:margin` `ACCEPTED_PROJECTION_DRIFT` | wm=20260716 vs accepted=20260722；parser v2≠v3；**今日无应拉窗口** | 水位投影未跟 v3 accepted；非 should-fetch-didn't |
-| class-B | `sync:stk_factor_pro` `NO_QUERY_MAPPING` | owner sunset / no_mapping；alert=true | 预期残留 |
-| class-B | drain `unsupported`×3 → 每跑 soft DEGRADED | express / fina_mainbz / stk_holdernumber | registry/drain 分类债；非增量漏抓 |
-| class-B | DONE 日志文案误标 soft_waiting_clock | 报告已正确写 integrity_observe | 日志 renderer 债 |
-| observe | holders 进度曾 `fail=1` | 终态 `errors=[]`，wm 前进 | 可观测瞬时失败，未构成终态 FAIL |
-| observe | org older_missing=27 | 依法 log-not-fill，不进 daily pipeline | 符合 owner ban |
+| class-B | `sync:margin` `ACCEPTED_PROJECTION_DRIFT` | wm=20260716/v2 vs accepted=20260722/v3 | **FIXED**：skip/publish 均 `project_margin_accepted_state` |
+| class-B | `sync:stk_factor_pro` `NO_QUERY_MAPPING` | sunset residue | **FIXED**：wm tombstone purge allowlist |
+| class-B | drain `unsupported`×3 | orphan 无消费者 | **FIXED**：retire like stk_factor_pro |
+| class-B | DONE 日志误标 soft_waiting_clock | 报告已正确 | **FIXED**：log 跟 `run_outcome` |
+| observe | holders 进度曾 `fail=1` | 终态 `errors=[]` | 可观测瞬时失败 |
+| observe | org older_missing=27 | 依法 log-not-fill | 符合 owner ban |
 
 ## 7. 增量是否正常？
 
 **是（主链路）**：盘后点击同路径下，formal daily/ST、qfq、pulse、moneyflow/hsgt、DC/SW、holders 增量、org check-skip 均按契约识别；已当前沿正确 skip（margin T+1 eligible、org plannable 已齐）。
 
-**PARTIAL 原因**：每跑仍有 soft DEGRADED（unsupported drain + margin wm 投影漂移 + stk_factor_pro sunset），outcome=integrity_observe 而非 clean success——属 class-B 观测债，**未发现 class-A（应拉未拉 / 假 due / 路径崩溃）**，故本刀不改代码。
+## 8. Label（当日 E2E）
 
-## 8. Label
+**PARTIAL** — 端到端可跟跑、增量识别主路径 OK；残差为 class-B 观测债（非 class-A）。
 
-**PARTIAL** — 端到端可跟跑、增量识别主路径 OK；残差 owner = drain unsupported 三域分类 + margin accepted-projection watermark reconcile + DONE 日志 outcome 文案；下次 verification = 再点一次「数据更新」应见多数日域 already-current skip，且不应再 land 20260723 formal（除非新交易日）。
+## 9. Follow-up knife — class-B in-flow residuals FIXED
+
+| # | 残差 | 根因 | 修法（流程内，非补跑） | 状态 |
+|---|---|---|---|---|
+| 1 | drain unsupported×3 | orphan 仍进 `--all-due` | registry tombstone + `legacy_raw_plane` retired + S7 wall 19 ssot / 4 retired | **FIXED** |
+| 2 | margin ACCEPTED_PROJECTION_DRIFT | accept/skip 不写 Ops 投影 | `_project_margin_accepted_ops_watermark` 挂 publish + skip | **FIXED** |
+| 3 | stk_factor_pro NO_QUERY_MAPPING | wm 墓碑 | `RETIRED_WATERMARK_TOMBSTONES` 含 sync:stk_factor_pro(+三 orphan) | **FIXED** |
+| 4 | DONE 误标 soft_waiting_clock | `rc!=0` 硬编码 | DONE 文案 = typed `run_outcome` | **FIXED** |
+
+下次 verification：再点「数据更新」——不应再因上述 4 项 soft DEGRADED；margin skip 应带 `ops_watermark_projected=true`；DONE 文案应与报告 `run_outcome` 一致。

@@ -30,9 +30,6 @@ publication_watchlist:
   - raw_tushare_income
   - raw_tushare_balancesheet
   - raw_tushare_dividend
-  - raw_tushare_express
-  - raw_tushare_fina_mainbz
-  - raw_tushare_stk_holdernumber
   - raw_tushare_moneyflow_hsgt
 
 roles:
@@ -118,9 +115,8 @@ tables:
     note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
 
   raw_tushare_express:
-    role: ssot
-    kind: sync_orphan
-    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
+    role: retired
+    note: "Owner DELETE 2026-07-23: sync_orphan sunset (no consumers; by_period unsupported on --all-due); sync_registry tombstoned; table retained as cold residual until optional lifecycle. See analysis/post_close_update_e2e_20260723.md."
 
   raw_tushare_fina_indicator:
     role: ssot
@@ -128,9 +124,8 @@ tables:
     note: "S7 hard-stop: DataAccess fundamentals L0 declared; no live serve consumer; no accepted fina plane"
 
   raw_tushare_fina_mainbz:
-    role: ssot
-    kind: sync_orphan
-    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
+    role: retired
+    note: "Owner DELETE 2026-07-23: sync_orphan sunset (no consumers; by_ts_code unsupported on --all-due); sync_registry tombstoned; table retained as cold residual until optional lifecycle. See analysis/post_close_update_e2e_20260723.md."
 
   raw_tushare_forecast:
     role: ssot
@@ -242,9 +237,8 @@ tables:
     note: "Owner DELETE 2026-07-23: sync_orphan sunset; table DROPped + tushare_raw compacted; sync_registry tombstoned (no refill). See analysis/db_bloat_deep_dive_20260723.md §6."
 
   raw_tushare_stk_holdernumber:
-    role: ssot
-    kind: sync_orphan
-    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
+    role: retired
+    note: "Owner DELETE 2026-07-23: sync_orphan sunset (no consumers; by_ts_code unsupported on --all-due); sync_registry tombstoned; table retained as cold residual until optional lifecycle. See analysis/post_close_update_e2e_20260723.md."
 
   raw_tushare_stk_holdertrade:
     role: compatibility

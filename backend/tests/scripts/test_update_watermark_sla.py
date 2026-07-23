@@ -75,7 +75,7 @@ def test_daily_domains_probe_trade_date_quarterly_no_probe():
     # Formal daily/ST: accepted_partition frontier (not legacy verified_complete_spec).
     assert queries["sync:daily"].get("formal_accepted_frontier")
     assert "accepted_partition" in queries["sync:daily"]["query"]
-    assert queries["sync:fina_mainbz"].get("no_probe")  # by_ts_code 季度域显式 no_probe
+    assert queries["sync:fina_indicator"].get("no_probe")  # by_ts_code 季度域显式 no_probe
 
 
 def test_margin_sla_uses_accepted_state_not_legacy_raw_max():
@@ -135,12 +135,12 @@ def test_registered_margin_without_watermark_probes_and_alerts_on_no_acceptance(
         sla.date(2026, 7, 17),
     )
 
-    # CX-4: margin is execution_policy=disabled → observe lag, do not light sla_warn.
-    assert result["status"] == "FROZEN_NO_COMPLETE_BATCH_OBSERVED"
+    # Knife 1b: margin is enabled/on_demand (not execution_disabled) → alertable.
+    assert result["status"] == "NO_COMPLETE_BATCH"
     assert result["probe_state"] == "no_complete_batch"
     assert result["actual_date"] is None
-    assert result["alert"] is False
-    assert result["observe_only"] is True
+    assert result["alert"] is True
+    assert result["observe_only"] is False
 
 
 def test_registered_live_domain_without_watermark_still_alerts():
@@ -283,6 +283,53 @@ def test_cx4_margin_enabled_catchup_is_alertable_not_observe_only():
     # Live daily/ST must stay alertable (on_demand alone ≠ frozen).
     assert not queries["sync:daily"].get("observe_only")
     assert not queries["sync:stock_st"].get("observe_only")
+
+
+def test_cx4_retired_sync_orphan_watermark_tombs_purge():
+    """Sunset sync:* orphans (stk_factor_pro/express/…) purge NO_QUERY_MAPPING residue."""
+    smart = duck_mem()
+    ensure_source_watermark_schema(smart)
+    for domain in (
+        "sync:stk_factor_pro",
+        "sync:express",
+        "sync:fina_mainbz",
+        "sync:stk_holdernumber",
+    ):
+        upsert_watermark(
+            smart,
+            {
+                "data_domain": domain,
+                "source_name": "tushare",
+                "source_tier": 2,
+                "last_data_date": "20260618",
+                "row_count": 1,
+            },
+        )
+    upsert_watermark(
+        smart,
+        {
+            "data_domain": "sync:moneyflow",
+            "source_name": "tushare",
+            "source_tier": 2,
+            "last_data_date": "20260722",
+            "row_count": 10,
+        },
+    )
+    purged = sla._purge_retired_watermark_tombs(smart, dry_run=False)
+    purged_domains = {row["data_domain"] for row in purged}
+    assert purged_domains == {
+        "sync:stk_factor_pro",
+        "sync:express",
+        "sync:fina_mainbz",
+        "sync:stk_holdernumber",
+    }
+    left = {
+        str(row[0])
+        for row in smart.execute(
+            "SELECT data_domain FROM mart_data_source_watermark"
+        ).fetchall()
+    }
+    assert left == {"sync:moneyflow"}
 
 
 def test_cx4_retired_lhb_tombstone_purge_allowlist_only():

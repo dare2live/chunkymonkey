@@ -476,9 +476,37 @@ def test_run_returns_one_when_any_stage_degrades(monkeypatch, tmp_path):
     rc = run_mod.main(["--dry", "--skip-sync", "--date", "20260101"])
 
     assert rc == 1
-    # Completion line is now typed-outcome-keyed (run_outcome refactor): a lone
-    # non-hard degrade rolls to soft_waiting_clock, exit 1.
-    assert "DONE soft_waiting_clock" in (tmp_path / "run.log").read_text()
+    # Lone non-hard "other" degrade → integrity_observe (not soft_waiting mislabel).
+    assert "DONE integrity_observe" in (tmp_path / "run.log").read_text()
+    assert "DONE soft_waiting_clock" not in (tmp_path / "run.log").read_text()
+
+
+def test_run_done_log_uses_soft_waiting_when_named_clock(monkeypatch, tmp_path):
+    from services.pipeline import run as run_mod
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(
+        run_mod,
+        "PipelineContext",
+        lambda **kw: PipelineContext(**{**kw, "log_path": tmp_path / "run.log"}),
+    )
+    monkeypatch.setattr("services.pipeline.context.DEGRADED_FLAG", tmp_path / "flag")
+    monkeypatch.setattr(run_mod, "run_preflight", lambda ctx: None)
+    monkeypatch.setattr(
+        run_mod,
+        "run_acquire",
+        lambda ctx: ctx.degraded(
+            "domain daily pending_publish reason=pre_available_after_zero_rows"
+        ),
+    )
+    for name in ("run_clean", "run_process", "run_store"):
+        monkeypatch.setattr(run_mod, name, lambda ctx: None)
+
+    rc = run_mod.main(["--dry", "--skip-sync", "--date", "20260101"])
+    assert rc == 1
+    log = (tmp_path / "run.log").read_text()
+    assert "DONE soft_waiting_clock" in log
+    assert "DONE integrity_observe" not in log
 
 
 def test_tier0_acquire_block_stops_every_downstream_stage(monkeypatch, tmp_path):
