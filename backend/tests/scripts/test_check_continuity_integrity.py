@@ -703,14 +703,14 @@ def test_real_registry_parses_with_ths_hot_group_col():
     margin = next(s for s in specs if s["domain"] == "margin")
     assert margin["accepted_margin"] is True
     assert margin["table"] == "canonical_margin_exchange_daily"
-    assert margin["data_start"] == "20260715"
+    assert margin["data_start"] == "20260717"
     assert margin["availability_policy"] == {
         "axis": "trading_day",
         "rule": "next_trading_session_at",
         "at": "09:00",
     }
-    assert margin["execution_policy_mode"] == "disabled"
-    assert margin["execution_policy_reason"] == "scope_blocked"
+    assert margin["execution_policy_mode"] == "enabled"
+    assert margin["execution_policy_reason"] == "bounded_calendar_catchup"
     assert all(s["gap_tolerance"] in cci.GAP_TOLERANCE_VALUES for s in specs)
 
 
@@ -721,8 +721,9 @@ def test_margin_continuity_weekend_frontier_uses_typed_contract(monkeypatch):
         item for item in cci.load_domain_specs() if item["domain"] == "margin"
     )
     spec["sla"] = 0
+    # v3 coverage_start=20260717 — obligations are generation-local.
     accepted_state = SimpleNamespace(
-        dates=frozenset({"20260715", "20260716"}),
+        dates=frozenset({"20260717", "20260720"}),
         partitions=(),
         batch_by_partition={},
     )
@@ -737,10 +738,10 @@ def test_margin_continuity_weekend_frontier_uses_typed_contract(monkeypatch):
     results, failures = cci.run_checks(
         [spec],
         lambda _alias: conn,
-        ["20260715", "20260716", "20260717"],
-        "20260717",
+        ["20260717", "20260720", "20260721"],
+        "20260720",
         only="calendar_gaps",
-        now=datetime(2026, 7, 18, 12, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        now=datetime(2026, 7, 21, 12, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
     )
 
     assert failures == []

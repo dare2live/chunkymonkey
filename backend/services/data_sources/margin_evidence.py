@@ -272,8 +272,16 @@ def load_margin_evidence_snapshot(
             load_error=f"formal margin query columns missing={missing_columns}",
         )
 
-    scope_sql = "a.dataset_id = ?"
-    scope_params: list[Any] = [DATASET_ID]
+    # Current-generation only: older contract_version rows (e.g. v2 BSE-in-
+    # canonical) stay durable read-only evidence but must not enter v3 proofs.
+    scope_sql = (
+        "a.dataset_id = ? AND a.contract_version = ? AND a.contract_hash = ?"
+    )
+    scope_params: list[Any] = [
+        DATASET_ID,
+        str(contract.contract_version),
+        str(contract.contract_hash),
+    ]
     if partition_value is not None:
         scope_sql += " AND a.partition_value = ?"
         scope_params.append(partition_value)

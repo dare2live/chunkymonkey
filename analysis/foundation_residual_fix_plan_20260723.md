@@ -3,7 +3,7 @@
 > Status: evidence-only / live plan (execution board for residual knives)  
 > Parents: `margin_calendar_catchup_blocker_20260723.md` · `dossier_100_usable_20260723.md` ·
 > `serve_derive_closed_loop_law_20260723.md` · goal.md near-end focus  
-> Label: **IN PROGRESS** (Knife 1a shipping)
+> Label: **IN PROGRESS** (Knife 1a DONE · Knife 1b shipping)
 
 ---
 
@@ -23,33 +23,24 @@
 ### Problem
 v2 treated venue aggregates (**SSE/SZSE/BSE**) as business-facing canonical; pulse summed BSE into 两融总额. Freeze = `on_demand` + `scope_blocked` + live-write wall + formal runtime retired. Calendar still computes eligible_end; catchup blocked until scope is correct (not “no calendar”).
 
-### Slice 1a (this commit) — scope typing / fail-closed
-**In scope**
-- Registry `population_scope`: accepted claim = **SSE+SZSE** `external_aggregate` only (never `project_universe_pit`)
-- Fail-closed binder: margin accepted venues must be exactly `{SSE,SZSE}`; reject BSE-in-accepted-scope; reject project-universe relabel
-- Keep `execution_policy.mode=disabled` / live-write freeze / `formal_runtime_retired`
-- Keep `batch_completeness` / `split_by` BSE shape as **immutable v2 transport evidence** (changing it would rehash and break read of 1823 accepted partitions)
-- Continuity stays `observe_frozen_stale` (no READY cosmetics)
-- Pulse `rzrqye` stays UNTRUSTED / unknown — **no product thaw**
+### Slice 1a — DONE (`e6b3e44c5`)
+**Shipped**
+- Registry `population_scope`: accepted claim = **SSE+SZSE** `external_aggregate` only
+- Fail-closed binder: reject BSE-in-accepted-scope / project-universe relabel
+- Kept v2 transport/BSE evidence shape + live-write freeze + formal runtime retired
+- Continuity stayed `observe_frozen_stale`; pulse `rzrqye` UNTRUSTED
 
-**Out of scope (1a)**
-- Enable land/accept; mass backfill; all-due re-entry; consumer cutover claiming trusted rzrqye
-
-**Exit 1a**
-1. Live registry `population_scope.venue_ids == [SSE, SZSE]`
-2. `assert_margin_accepted_population_scope` red on BSE / project_universe
-3. Enabled mode still refuses runtime; disabled + observe path unchanged
-4. Targeted tests green; Rule10 + safe_commit
-
-### Slice 1b — next knife (bounded calendar incremental)
-**In scope**
-- New **contract_version ≥3** (or successor generation): transport `split_by` / completeness = SSE+SZSE only; no BSE required
-- Lift live-write + formal runtime **only** for calendar-eligible incremental land/accept (`on_demand`, not `--all-due`)
-- Cap catchup window (eligible lag only); first-error stop; no mass history replay in one go
-- Keep pulse rzrqye UNTRUSTED until explicit consumer knife proves SSE+SZSE sum lineage
+### Slice 1b — THIS knife — DONE (see `margin_v3_bounded_catchup_1b_20260723.md`)
+**In scope / shipped**
+- `contract_version=3`: transport `split_by` / completeness = SSE+SZSE only; no BSE
+- Evidence reads filter current generation; v2 partitions remain read-only wrong-scope evidence
+- `coverage_start=20260717`; execution `enabled` / `bounded_calendar_catchup` / `on_demand`
+- Bounded land/accept path (explicit `--start/--end`, cap 10d, first-error stop); drain inapplicable; not `--all-due`
+- Acquire bounded catchup; product hard-gate stays off (`product_blocking` absent)
+- Continuity honest (no READY cosmetics); rzrqye stays UNTRUSTED
 
 **Exit 1b**
-1. `local_max` advances toward `eligible_end` on manual/bounded path
+1. `local_max` advances toward `eligible_end` on manual/bounded path — **verify live after catchup run**
 2. Continuity observe clears or shrinks without claiming READY by deleting checks
 3. No BSE rows in new-generation canonical; old v2 partitions remain read-only wrong-scope evidence
 
@@ -86,6 +77,7 @@ Consumer cutover for pulse margin fields (trusted external_aggregate SSE+SZSE la
 | Freeze why + calendar lag | `analysis/margin_calendar_catchup_blocker_20260723.md` |
 | Cap F 100% usable | `analysis/dossier_100_usable_20260723.md` |
 | Serve→derive law | `analysis/serve_derive_closed_loop_law_20260723.md` |
+| Knife 1b v3 catchup | `analysis/margin_v3_bounded_catchup_1b_20260723.md` |
 | v2 BLOCK / PROCEED scope | ledger 2026-07-18 margin superseding verdict |
 | Live: accepted 1823d / BSE 827 in v2 canonical | `tushare_raw` read-only (do not rewrite) |
 

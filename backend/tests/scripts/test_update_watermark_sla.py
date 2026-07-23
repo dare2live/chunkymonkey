@@ -276,10 +276,10 @@ def test_cx4_qfii_has_real_probe_and_disclosure_sla():
     assert 114 <= sla.SLA_DAYS_OVERRIDE["qfii_holding_quarterly"] + 3
 
 
-def test_cx4_margin_disabled_is_observe_only():
+def test_cx4_margin_enabled_catchup_is_alertable_not_observe_only():
+    """Knife 1b: enabled bounded catchup must not hide lag behind observe_only."""
     queries = sla._sync_registry_queries()
-    assert queries["sync:margin"].get("observe_only") is True
-    assert queries["sync:margin"].get("observe_reason") == "scope_blocked"
+    assert not queries["sync:margin"].get("observe_only")
     # Live daily/ST must stay alertable (on_demand alone ≠ frozen).
     assert not queries["sync:daily"].get("observe_only")
     assert not queries["sync:stock_st"].get("observe_only")

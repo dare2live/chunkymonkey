@@ -39,23 +39,12 @@ pytestmark = pytest.mark.usefixtures("deterministic_margin_calendar")
 
 
 DATASET_ID = "tier0.market_data.margin_exchange_daily"
-PARTITION = "20260715"
-AVAILABLE_AT = datetime(2026, 7, 16, 1, 0, tzinfo=timezone.utc)
-SECOND_PARTITION = "20260716"
-SECOND_AVAILABLE_AT = datetime(2026, 7, 17, 1, 0, tzinfo=timezone.utc)
+PARTITION = "20260717"
+AVAILABLE_AT = datetime(2026, 7, 20, 1, 0, tzinfo=timezone.utc)
+SECOND_PARTITION = "20260720"
+SECOND_AVAILABLE_AT = datetime(2026, 7, 21, 1, 0, tzinfo=timezone.utc)
 
 _ROWS: dict[str, dict[str, Any]] = {
-    "BSE": {
-        "trade_date": PARTITION,
-        "exchange_id": "BSE",
-        "rzye": 8_741_512_642,
-        "rzmre": 570_023_780,
-        "rzche": 667_187_196,
-        "rqye": 41_976,
-        "rqmcl": 200,
-        "rzrqye": 8_741_554_618,
-        "rqyl": 1_980,
-    },
     "SSE": {
         "trade_date": PARTITION,
         "exchange_id": "SSE",
@@ -263,7 +252,7 @@ def test_cross_connection_snapshot_cannot_make_tampered_evidence_green(conn):
         _replace_legacy_shadow(other, _ROWS)
         other.execute(
             "UPDATE landing_tushare_margin SET row_hash = 'tampered' "
-            "WHERE batch_id = 'accepted-margin-20260715' AND row_ordinal = 1"
+            "WHERE batch_id = 'accepted-margin-20260717' AND row_ordinal = 1"
         )
 
         report = reconcile_margin_partition(other, PARTITION)
@@ -381,10 +370,10 @@ def test_exact_parity_is_green_and_reconcile_attempts_no_writes(conn):
     assert report.ok is True
     assert report.dataset_id == DATASET_ID
     assert report.partition_value == PARTITION
-    assert report.accepted_batch_id == "accepted-margin-20260715"
-    assert report.accepted_row_count == 3
-    assert report.canonical_row_count == 3
-    assert report.legacy_row_count == 3
+    assert report.accepted_batch_id == "accepted-margin-20260717"
+    assert report.accepted_row_count == 2
+    assert report.canonical_row_count == 2
+    assert report.legacy_row_count == 2
     assert report.issues == ()
     assert spy.statements
 
@@ -392,7 +381,7 @@ def test_exact_parity_is_green_and_reconcile_attempts_no_writes(conn):
 @pytest.mark.parametrize(
     "tamper",
     [
-        "UPDATE ingest_batch SET config_hash = 'bad' WHERE batch_id = 'accepted-margin-20260715'",
+        "UPDATE ingest_batch SET config_hash = 'bad' WHERE batch_id = 'accepted-margin-20260717'",
         "UPDATE canonical_margin_exchange_daily SET rzye = rzye + 1 WHERE exchange_id = 'SSE'",
         "UPDATE raw_tushare_margin SET rzye = rzye + 1 WHERE exchange_id = 'SSE'",
     ],
@@ -414,7 +403,7 @@ def test_batch_reconcile_rejects_snapshot_scope_drift(conn):
         partition_value=PARTITION,
         include_legacy=True,
     )
-    wrong_scope = replace(snapshot, partition_value="20260716")
+    wrong_scope = replace(snapshot, partition_value="20260720")
 
     report = _reconcile_margin_partitions_snapshot(
         conn,
@@ -523,7 +512,7 @@ def test_reconcile_marks_stale_or_ambiguous_landing_nonrecoverable(conn):
 def test_reconcile_reproves_retained_landing_lineage(conn):
     conn.execute(
         "UPDATE landing_tushare_margin SET row_hash = 'bad' "
-        "WHERE batch_id = 'accepted-margin-20260715' AND row_ordinal = 1"
+        "WHERE batch_id = 'accepted-margin-20260717' AND row_ordinal = 1"
     )
 
     report = reconcile_margin_partition(conn, PARTITION)
@@ -569,7 +558,7 @@ def test_coherent_premature_publication_cannot_fake_parity(conn):
         SELECT source_name, contract_version, contract_hash, config_hash,
                request_json, fragment_outcomes_json
           FROM ingest_batch
-         WHERE batch_id = 'accepted-margin-20260715'
+         WHERE batch_id = 'accepted-margin-20260717'
         """
     ).fetchone()
     row_signatures = [
@@ -578,7 +567,7 @@ def test_coherent_premature_publication_cannot_fake_parity(conn):
             """
             SELECT fragment_ordinal, row_ordinal, row_hash
               FROM landing_tushare_margin
-             WHERE batch_id = 'accepted-margin-20260715'
+             WHERE batch_id = 'accepted-margin-20260717'
              ORDER BY fragment_ordinal, row_ordinal
             """
         ).fetchall()
@@ -599,7 +588,7 @@ def test_coherent_premature_publication_cannot_fake_parity(conn):
         """
         UPDATE ingest_batch
            SET observed_at = ?, available_at = ?, payload_hash = ?
-         WHERE batch_id = 'accepted-margin-20260715'
+         WHERE batch_id = 'accepted-margin-20260717'
         """,
         [premature, premature, payload_hash],
     )
@@ -652,14 +641,14 @@ def test_public_reconcile_types_publication_calendar_loader_failure(
 
 
 def test_mutually_consistent_stale_acceptance_fails_current_contract_gate(conn):
-    """Two matching stale hashes are not evidence for the current contract."""
+    """Stale-generation pointers are invisible to the current contract filter."""
     conn.execute(
         """
         UPDATE ingest_batch
            SET contract_version = 'stale-v0',
                contract_hash = 'stale-contract',
                config_hash = 'stale-config'
-         WHERE batch_id = 'accepted-margin-20260715'
+         WHERE batch_id = 'accepted-margin-20260717'
         """
     )
     conn.execute(
@@ -684,7 +673,9 @@ def test_mutually_consistent_stale_acceptance_fails_current_contract_gate(conn):
     report = reconcile_margin_partition(conn, PARTITION)
 
     assert report.status is MarginReconcileStatus.FAILED
-    assert MarginReconcileCode.CURRENT_CONTRACT_MISMATCH in _codes(report)
+    # v3 evidence reads filter by current contract_version/hash, so stale
+    # pointers look missing rather than mismatched-in-scope.
+    assert MarginReconcileCode.ACCEPTED_PARTITION_MISSING in _codes(report)
     assert MarginReconcileCode.ACCEPTANCE_EVIDENCE_MISMATCH not in _codes(report)
 
 
@@ -717,7 +708,7 @@ def test_missing_accepted_partition_fails_closed(conn):
 def test_pointer_to_nonaccepted_batch_fails_closed(conn):
     conn.execute(
         "UPDATE ingest_batch SET status = 'LANDED' WHERE batch_id = ?",
-        ["accepted-margin-20260715"],
+        ["accepted-margin-20260717"],
     )
 
     report = reconcile_margin_partition(conn, PARTITION)
@@ -728,7 +719,7 @@ def test_pointer_to_nonaccepted_batch_fails_closed(conn):
 def test_pointer_to_wrong_batch_partition_fails_closed(conn):
     conn.execute(
         "UPDATE ingest_batch SET partition_value = '20260714' WHERE batch_id = ?",
-        ["accepted-margin-20260715"],
+        ["accepted-margin-20260717"],
     )
 
     report = reconcile_margin_partition(conn, PARTITION)
@@ -740,7 +731,7 @@ def test_canonical_row_from_nonaccepted_batch_fails_closed(conn):
     conn.execute(
         "UPDATE canonical_margin_exchange_daily "
         "SET ingest_batch_id = 'unaccepted-shadow', config_hash = 'wrong-config' "
-        "WHERE exchange_id = 'BSE'"
+        "WHERE exchange_id = 'SZSE'"
     )
 
     report = reconcile_margin_partition(conn, PARTITION)
@@ -751,14 +742,14 @@ def test_canonical_row_from_nonaccepted_batch_fails_closed(conn):
 
 def test_missing_legacy_row_is_typed(conn):
     conn.execute(
-        "DELETE FROM raw_tushare_margin WHERE trade_date = ? AND exchange_id = 'BSE'",
+        "DELETE FROM raw_tushare_margin WHERE trade_date = ? AND exchange_id = 'SZSE'",
         [PARTITION],
     )
 
     report = reconcile_margin_partition(conn, PARTITION)
 
     assert MarginReconcileCode.LEGACY_ROW_MISSING in _codes(report)
-    assert report.legacy_row_count == 2
+    assert report.legacy_row_count == 1
 
 
 def test_extra_legacy_row_is_typed(conn):
@@ -768,28 +759,28 @@ def test_extra_legacy_row_is_typed(conn):
         SELECT trade_date, 'XSE', rzye, rzmre, rzche, rqye, rqmcl, rzrqye, rqyl,
                built_at
           FROM raw_tushare_margin
-         WHERE exchange_id = 'BSE'
+         WHERE exchange_id = 'SZSE'
         """
     )
 
     report = reconcile_margin_partition(conn, PARTITION)
 
     assert MarginReconcileCode.LEGACY_ROW_EXTRA in _codes(report)
-    assert report.legacy_row_count == 4
+    assert report.legacy_row_count == 3
 
 
 def test_duplicate_legacy_grain_is_typed_and_not_silently_collapsed(conn):
     conn.execute(
         """
         INSERT INTO raw_tushare_margin
-        SELECT * FROM raw_tushare_margin WHERE exchange_id = 'BSE'
+        SELECT * FROM raw_tushare_margin WHERE exchange_id = 'SZSE'
         """
     )
 
     report = reconcile_margin_partition(conn, PARTITION)
 
     assert MarginReconcileCode.LEGACY_DUPLICATE_GRAIN in _codes(report)
-    assert report.legacy_row_count == 4
+    assert report.legacy_row_count == 3
 
 
 @pytest.mark.parametrize(

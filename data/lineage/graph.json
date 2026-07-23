@@ -4891,6 +4891,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/pipeline/margin_catchup_acquire.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_check_continuity_integrity.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_margin_exchange_daily"
@@ -6373,6 +6379,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/pipeline/margin_catchup_acquire.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_check_continuity_integrity.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin"
@@ -7417,9 +7429,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1186,
-    "generated_at": "2026-07-23T06:24:55.956946+00:00",
-    "node_count": 427,
+    "edge_count": 1188,
+    "generated_at": "2026-07-23T06:34:09.498240+00:00",
+    "node_count": 428,
     "version": 2
   },
   "nodes": [
@@ -8477,6 +8489,14 @@
         "path": "backend/services/pipeline/frozen_domain_observe.py"
       },
       "id": "consumer:backend/services/pipeline/frozen_domain_observe.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/pipeline/margin_catchup_acquire.py"
+      },
+      "id": "consumer:backend/services/pipeline/margin_catchup_acquire.py",
       "kind": "consumer"
     },
     {

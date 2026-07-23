@@ -8,8 +8,8 @@
   5. 0 行 = 失败重试 (宪法 v2 第 6 条; allow_empty_batch 条目除外)
 
 写锁纪律: raw 表写 tushare_raw.duckdb (manifest 注册), 与 smartmoney 主库锁解耦;
-margin v2 当前只保留冻结契约与 accepted-state 只读证据；旧 provider/write
-状态机已退役，不能绕过执行策略与 population-scope 门。
+margin v3 = on_demand bounded calendar-eligible land/accept (SSE+SZSE);
+v2 wrong-scope evidence remains read-only; 禁 --all-due / mass backfill。
 
 watermark/failure_queue 在 smartmoney (既有表), 写入窗口短。
 
@@ -296,6 +296,16 @@ def _refuse_formal_domain_runtime(domain: str, execution) -> dict[str, Any]:
             detail="execution contract domain does not match selected domain",
         )
     if domain == "margin":
+        version = str(attested.dataset.contract_version)
+        if version >= "3":
+            raise PopulationScopeExecutionError(
+                domain,
+                reason="formal_runtime_misrouted",
+                detail=(
+                    "margin v3 must use the bounded catchup path "
+                    "(explicit --start/--end); refused legacy fallthrough"
+                ),
+            )
         raise PopulationScopeExecutionError(
             domain,
             reason="formal_runtime_retired",
@@ -313,6 +323,205 @@ def _refuse_formal_domain_runtime(domain: str, execution) -> dict[str, Any]:
             "implemented for this domain"
         ),
     )
+
+
+# Margin v3 catchup: calendar-eligible lag only. Cap covers a few open days of
+# freeze debt without inviting mass history replay.
+AUTHORIZED_MARGIN_CATCHUP_MAX_WINDOW_DAYS = 10
+
+
+def _require_authorized_margin_catchup_window(
+    *,
+    backfill: bool,
+    resume: bool,
+    start: str | None,
+    end: str | None,
+    max_dates: int | None,
+    eligible_end: str | None,
+    coverage_start: str,
+) -> list[str]:
+    """Resolve explicit YYYYMMDD window for margin v3 bounded catchup."""
+
+    if max_dates is not None:
+        raise SyncWindowError("--max-dates is only valid for --drain")
+    if backfill or resume:
+        raise SyncWindowError(
+            "domain=margin bounded catchup refuses --backfill/--resume "
+            "(no mass history replay)"
+        )
+    if start is None or end is None:
+        raise SyncWindowError(
+            "domain=margin bounded catchup requires explicit --start/--end "
+            f"(<= {AUTHORIZED_MARGIN_CATCHUP_MAX_WINDOW_DAYS} trading days, "
+            "calendar-eligible only)"
+        )
+    start_c = str(start).replace("-", "")
+    end_c = str(end).replace("-", "")
+    for label, value in (("start", start_c), ("end", end_c)):
+        if len(value) != 8 or not value.isdigit():
+            raise SyncWindowError(
+                f"domain=margin trade_date {label} must be YYYYMMDD; got {value!r}"
+            )
+    if start_c > end_c:
+        raise SyncWindowError(
+            f"domain=margin start must be <= end; got start={start_c} end={end_c}"
+        )
+    cov = str(coverage_start).replace("-", "")
+    if start_c < cov:
+        raise SyncWindowError(
+            f"domain=margin v3 catchup start must be >= coverage_start={cov}; "
+            f"got {start_c} (older days remain v2 read-only evidence)"
+        )
+    if eligible_end is not None and end_c > str(eligible_end).replace("-", ""):
+        raise SyncWindowError(
+            f"domain=margin end={end_c} exceeds eligible_end={eligible_end} "
+            "(refuse future / unpublished partitions)"
+        )
+    days = trading_days(start_c, end_c)
+    if not days:
+        raise SyncWindowError(
+            f"domain=margin no trading days in [{start_c},{end_c}]"
+        )
+    if len(days) > AUTHORIZED_MARGIN_CATCHUP_MAX_WINDOW_DAYS:
+        raise SyncWindowError(
+            f"domain=margin catchup window max "
+            f"{AUTHORIZED_MARGIN_CATCHUP_MAX_WINDOW_DAYS} trading days; "
+            f"got {len(days)} in [{start_c},{end_c}] — refuse mass backfill"
+        )
+    return days
+
+
+def _publish_margin_bounded_catchup(
+    spec: dict[str, Any],
+    *,
+    trade_dates: list[str],
+    trigger_mode: TriggerMode | str = "manual",
+) -> dict[str, Any]:
+    """Land+accept margin v3 partitions day-by-day; stop on first hard error."""
+
+    from services.data_sources.margin_catchup import (
+        MarginCatchupError,
+        land_then_accept_margin_day,
+    )
+    from services.data_sources.sources.tushare import (
+        QuotaExhaustedError,
+        TuShareAuthorizationError,
+    )
+
+    formal_contract = _formal_dataset_contract_for_spec(spec)
+    formal_execution = _require_formal_population_execution(spec, formal_contract)
+    if formal_execution is None:
+        raise PopulationScopeExecutionError(
+            "margin",
+            reason="execution_contract_not_propagated",
+            detail="margin v3 catchup requires a propagated DatasetExecutionContract",
+        )
+    from services.data_sources.population_scope import verify_execution_contract
+
+    attested = verify_execution_contract(formal_execution)
+    contract = attested.dataset
+    if str(contract.contract_version) < "3":
+        raise PopulationScopeExecutionError(
+            "margin",
+            reason="formal_runtime_retired",
+            detail="margin catchup refuses contract_version<3",
+        )
+
+    eligibility = eligible_end_date(spec, trigger_mode=trigger_mode)
+    apply_fetch_socket_timeout(spec)
+    adapter = _adapter(str(spec["source"]))
+    conn = _target_conn(spec)
+    day_results: list[dict[str, Any]] = []
+    total_rows = 0
+    failed = 0
+    last_ok: str | None = None
+    try:
+        for trade_date in trade_dates:
+            try:
+                result = land_then_accept_margin_day(
+                    conn,
+                    adapter,
+                    spec,
+                    trade_date,
+                    fetch_logical_batch=_fetch_logical_batch,
+                    quota_wall_classifier=_is_quota_wall,
+                    contract=contract,
+                )
+            except TuShareAuthorizationError:
+                raise
+            except QuotaExhaustedError as exc:
+                failed += 1
+                day_results.append(
+                    {
+                        "partition_value": trade_date,
+                        "status": "quota_halt",
+                        "failed_batches": 1,
+                        "error": str(exc)[:300],
+                    }
+                )
+                break
+            except MarginCatchupError as exc:
+                failed += 1
+                day_results.append(
+                    {
+                        "partition_value": trade_date,
+                        "status": "error",
+                        "failed_batches": 1,
+                        "error": str(exc)[:300],
+                    }
+                )
+                break
+            if result.status != "ACCEPTED":
+                failed += 1
+                day_results.append(
+                    {
+                        "partition_value": trade_date,
+                        "status": result.status,
+                        "failed_batches": 1,
+                        "batch_id": result.batch_id,
+                        "rejection_code": result.rejection_code,
+                        "error": result.detail,
+                    }
+                )
+                break
+            total_rows += int(result.row_count or 0)
+            last_ok = trade_date
+            day_results.append(
+                {
+                    "partition_value": trade_date,
+                    "status": "ACCEPTED",
+                    "failed_batches": 0,
+                    "batch_id": result.batch_id,
+                    "rows": result.row_count,
+                    "content_hash": result.content_hash,
+                }
+            )
+    finally:
+        conn.close()
+
+    completed_ok = sum(1 for r in day_results if int(r.get("failed_batches") or 0) == 0)
+    return {
+        "domain": "margin",
+        "status": "ok" if failed == 0 else "partial",
+        "batches": completed_ok,
+        "rows": total_rows,
+        "failed_batches": failed,
+        "publication": "accepted_margin_exchange_daily_partition",
+        "transport": "land_then_accept",
+        "contract_version": str(contract.contract_version),
+        "eligible_end": eligibility.eligible_end,
+        "eligibility_reason": eligibility.reason,
+        "partition_values": [
+            str(r.get("partition_value") or "")
+            for r in day_results
+            if int(r.get("failed_batches") or 0) == 0
+        ],
+        "trade_dates": list(trade_dates),
+        "day_results": day_results,
+        "last_date": last_ok,
+        "window_days_requested": len(trade_dates),
+        "window_days_completed": completed_ok,
+    }
 
 
 def _refuse_formal_legacy_raw_path(domain: str) -> None:
@@ -2910,6 +3119,29 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             trade_dates=trade_dates,
             trigger_mode=mode,
         )
+    if domain == "margin":
+        formal_contract = _formal_dataset_contract_for_spec(spec)
+        if formal_contract is None:
+            raise PopulationScopeExecutionError(
+                "margin",
+                reason="invalid_dataset_contract",
+                detail="margin catchup requires a formal dataset contract",
+            )
+        eligibility = eligible_end_date(spec, trigger_mode=mode)
+        trade_dates = _require_authorized_margin_catchup_window(
+            backfill=backfill,
+            resume=resume,
+            start=start,
+            end=end,
+            max_dates=max_dates,
+            eligible_end=eligibility.eligible_end,
+            coverage_start=str(formal_contract.coverage_start),
+        )
+        return _publish_margin_bounded_catchup(
+            spec,
+            trade_dates=trade_dates,
+            trigger_mode=mode,
+        )
     formal_contract = _formal_dataset_contract_for_spec(spec)
     formal_execution = _require_formal_population_execution(spec, formal_contract)
     if formal_execution is not None:
@@ -3458,6 +3690,12 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
             "domain": domain,
             "status": "drain_inapplicable",
             "reason": "accepted_partition_is_authorized_short_window_only",
+        }
+    if domain == "margin":
+        return {
+            "domain": domain,
+            "status": "drain_inapplicable",
+            "reason": "accepted_partition_is_bounded_calendar_catchup_only",
         }
     formal_contract = _formal_dataset_contract_for_spec(spec)
     formal_execution = _require_formal_population_execution(spec, formal_contract)

@@ -28,8 +28,8 @@ from services.data_sources.margin_validation import canonical_content_hash
 from services.duck_adapter import connect
 
 
-PARTITION = "20260715"
-SECOND_PARTITION = "20260716"
+PARTITION = "20260717"
+SECOND_PARTITION = "20260720"
 
 
 def _row(exchange: str, partition: str = PARTITION) -> dict:
@@ -53,7 +53,7 @@ def _accept(
     batch_id: str = "accepted-state",
     available: datetime | None = None,
 ) -> None:
-    available = available or datetime(2026, 7, 16, 1, 0, tzinfo=timezone.utc)
+    available = available or datetime(2026, 7, 20, 1, 0, tzinfo=timezone.utc)
     batch = MarginLandingBatch(
         batch_id=batch_id,
         partition_value=partition,
@@ -65,7 +65,7 @@ def _accept(
                 request={"trade_date": partition, "exchange_id": exchange},
                 rows=(_row(exchange, partition),),
             )
-            for exchange in ("SSE", "SZSE", "BSE")
+            for exchange in ("SSE", "SZSE")
         ),
     )
     land_margin_batch(conn, batch)
@@ -96,7 +96,7 @@ def test_frontier_is_derived_from_proven_accepted_partition():
         frontier = latest_accepted_margin_frontier(conn)
         assert frontier is not None
         assert frontier.last_date == PARTITION
-        assert frontier.row_count == 3
+        assert frontier.row_count == 2
         assert frontier.last_success_at is not None
     finally:
         conn.close()
@@ -116,14 +116,14 @@ def test_typed_accepted_state_and_readiness_are_derived_from_live_evidence():
 
         readiness = evaluate_margin_readiness(
             conn,
-            [PARTITION, "20260716"],
-            eligible_end="20260716",
+            [PARTITION, "20260720"],
+            eligible_end="20260720",
             eligibility_reason="t_plus_one",
             reconcile=False,
         )
         assert readiness.accepted_state == state
-        assert readiness.expected == (PARTITION, "20260716")
-        assert readiness.missing == ("20260716",)
+        assert readiness.expected == (PARTITION, "20260720")
+        assert readiness.missing == ("20260720",)
         assert readiness.unexpected == ()
         assert readiness.reconcile_failures == ()
         assert readiness.ready is False
@@ -256,7 +256,7 @@ def test_state_projection_and_readiness_reprove_publication_calendar(monkeypatch
                 request={"trade_date": partition, "exchange_id": exchange},
                 rows=({**_row(exchange), "trade_date": partition},),
             )
-            for exchange in ("SSE", "SZSE", "BSE")
+            for exchange in ("SSE", "SZSE")
         ),
     )
     conn = connect(":memory:")
@@ -292,7 +292,7 @@ def test_state_projection_and_readiness_reprove_publication_calendar(monkeypatch
     "tamper",
     [
         "UPDATE ingest_batch SET canonical_hash = 'bad' WHERE batch_id = 'accepted-state'",
-        "DELETE FROM canonical_margin_exchange_daily WHERE exchange_id = 'BSE'",
+        "DELETE FROM canonical_margin_exchange_daily WHERE exchange_id = 'SZSE'",
         "UPDATE canonical_margin_exchange_daily SET rzye = rzye + 1 WHERE exchange_id = 'SSE'",
         "UPDATE landing_tushare_margin SET payload_json = '{}' WHERE row_ordinal = 1",
         "UPDATE canonical_margin_exchange_daily SET available_at = available_at + INTERVAL 1 SECOND WHERE exchange_id = 'SSE'",

@@ -30,7 +30,9 @@ def test_live_registry_accepted_scope_is_sse_szse_only():
     bound = assert_margin_accepted_population_scope(spec)
     assert bound.venue_ids == MARGIN_ACCEPTED_VENUE_IDS
     assert bound.kind == "external_aggregate"
-    # Disabled freeze still allows v2 BSE transport evidence shape.
+    # Knife 1b: enabled v3 transport must match accepted SSE+SZSE claim.
+    assert spec["execution_policy"]["mode"] == "enabled"
+    assert spec["split_by"]["values"] == ["SSE", "SZSE"]
     assert_margin_transport_matches_accepted_scope(spec)
 
 

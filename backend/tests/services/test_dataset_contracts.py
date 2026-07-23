@@ -189,7 +189,8 @@ def test_repository_margin_entry_loads_as_the_formal_contract() -> None:
     assert contract.schema_hash == MARGIN_SCHEMA_HASH
 
 
-def test_frozen_margin_v2_transport_contract_is_exact_and_read_only() -> None:
+def test_disabled_v2_transport_fixture_still_parses_with_bse_evidence_shape() -> None:
+    """Historical v2 shape remains readable while mode=disabled (not live registry)."""
     contract = margin_ingest.contract_for_spec(_frozen_margin_transport_spec())
 
     assert contract is not None
@@ -203,8 +204,21 @@ def test_frozen_margin_v2_transport_contract_is_exact_and_read_only() -> None:
         "SSE",
         "SZSE",
     )
+    # Live catchup lives in margin_catchup, not the retired ingest executor.
     assert not hasattr(margin_ingest, "execute_partition")
     assert not hasattr(margin_ingest, "execute_partition_outcome")
+
+
+def test_live_margin_v3_transport_is_sse_szse_only() -> None:
+    contract = load_dataset_contract("margin")
+    assert contract.contract_version == "3"
+    assert contract.coverage_start == "20260717"
+    assert contract.batch_completeness.required_groups == ("SSE", "SZSE")
+    assert contract.batch_completeness.required_groups_since == ()
+    assert contract.batch_completeness.required_groups_for("20230213") == (
+        "SSE",
+        "SZSE",
+    )
 
 
 @pytest.mark.parametrize(

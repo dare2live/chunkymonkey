@@ -67,16 +67,16 @@ def _forbidden(name: str):
     return fail
 
 
-def test_live_margin_v2_is_disabled_but_read_only_contract_still_loads():
+def test_live_margin_v3_bounded_catchup_stays_out_of_all_due():
     registry = sr.load_registry()
     spec = sr.domain_spec(registry, "margin")
 
-    assert spec["dataset_contract"]["contract_version"] == "2"
+    assert spec["dataset_contract"]["contract_version"] == "3"
     assert spec["execution_policy"] == {
-        "mode": "disabled",
-        "reason": "scope_blocked",
+        "mode": "enabled",
+        "reason": "bounded_calendar_catchup",
     }
-    # Frozen product stays out of all-due so daily_update preflight cannot deadlock.
+    # Catchup is on_demand — never --all-due / daily_update drain deadlock.
     assert spec.get("sync_policy") == "on_demand"
     assert "margin" not in sr.automatic_domains(registry)
     assert spec["population_scope"] == {
@@ -87,12 +87,15 @@ def test_live_margin_v2_is_disabled_but_read_only_contract_still_loads():
         "method": "tushare_margin_exchange_summary_sse_szse",
         "unit": "provider_declared_fields",
     }
-    # v2 transport evidence may still list BSE while execution stays disabled.
-    assert spec["split_by"]["values"] == ["SSE", "SZSE", "BSE"]
-    assert spec["batch_completeness"]["required_groups_since"] == {"BSE": "20230213"}
+    assert spec["split_by"]["values"] == ["SSE", "SZSE"]
+    assert spec["batch_completeness"]["required_groups_since"] in ({}, None) or (
+        spec["batch_completeness"]["required_groups_since"] == {}
+    )
     contract = margin_ingest.contract_for_spec(spec)
     assert contract is not None
-    assert contract.contract_version == "2"
+    assert contract.contract_version == "3"
+    assert contract.coverage_start == "20260717"
+    assert not spec.get("product_blocking")
 
 
 def test_live_trade_calendar_authorized_manual_generation_uses_formal_path(
@@ -151,15 +154,7 @@ def test_live_trade_calendar_authorized_manual_generation_uses_formal_path(
     assert result["failed_batches"] == 0
 
 
-@pytest.mark.parametrize(
-    ("writer", "args"),
-    [
-        (margin_acceptance.land_margin_batch, (object(),)),
-        (margin_acceptance.accept_margin_batch, ("batch",)),
-        (margin_acceptance.recover_margin_batch, ("batch",)),
-    ],
-)
-def test_direct_margin_writer_functions_cannot_mutate_frozen_live_db(writer, args):
+def test_v2_contract_still_blocks_live_db_write_gate():
     class _Cursor:
         def fetchall(self):
             return [(0, "tushare_raw", str(margin_acceptance._FROZEN_LIVE_DB))]
@@ -169,8 +164,31 @@ def test_direct_margin_writer_functions_cannot_mutate_frozen_live_db(writer, arg
             assert sql == "PRAGMA database_list"
             return _Cursor()
 
-    with pytest.raises(MarginAcceptanceError, match="live writes are frozen"):
-        writer(_LiveConnection(), *args)
+    from types import SimpleNamespace
+
+    with pytest.raises(MarginAcceptanceError, match="v2 live writes are frozen"):
+        margin_acceptance._block_frozen_live_write(
+            _LiveConnection(),
+            contract=SimpleNamespace(contract_version="2"),
+        )
+
+
+def test_v3_contract_lifts_live_db_write_freeze_gate():
+    class _Cursor:
+        def fetchall(self):
+            pytest.fail("v3 must not probe live DB identity for freeze")
+
+    class _LiveConnection:
+        def execute(self, sql, *_args, **_kwargs):
+            return _Cursor()
+
+    from types import SimpleNamespace
+
+    # Gate returns without raising; writers still validate batch/contract elsewhere.
+    margin_acceptance._block_frozen_live_write(
+        _LiveConnection(),
+        contract=SimpleNamespace(contract_version="3"),
+    )
 
 
 @pytest.mark.parametrize("entrypoint", ["run", "drain"])
@@ -336,11 +354,9 @@ def test_enabled_margin_cannot_delete_contract_and_fall_into_legacy_runner(monke
     assert caught.value.reason == "invalid_dataset_contract"
 
 
-def test_parsed_scope_propagates_then_refuses_retired_formal_runtime(monkeypatch):
-    for name in ("eligible_end_date", "_adapter", "_target_conn", "_smartmoney_conn"):
+def test_margin_v3_catchup_requires_explicit_start_end(monkeypatch):
+    for name in ("_adapter", "_target_conn", "_smartmoney_conn"):
         monkeypatch.setattr(sr, name, _forbidden(name))
-    # Corrected accepted scope + transport aligned (v3-shaped) still hits retired
-    # formal runtime until Knife 1b registers a live writer path.
     registry = _enabled_formal_margin_registry(
         population_scope={
             "kind": "external_aggregate",
@@ -352,20 +368,48 @@ def test_parsed_scope_propagates_then_refuses_retired_formal_runtime(monkeypatch
         }
     )
     margin = registry["domains"]["margin"]
+    margin["dataset_contract"] = {
+        **margin["dataset_contract"],
+        "contract_version": "3",
+        "coverage_start": "20260717",
+    }
     margin["split_by"] = {"param": "exchange_id", "values": ["SSE", "SZSE"]}
     margin["batch_completeness"] = {
         **margin["batch_completeness"],
         "required_groups": ["SSE", "SZSE"],
         "required_groups_since": {},
     }
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda *_a, **_k: sr.DomainEligibility(
+            "20260722", True, "next_trading_session_published"
+        ),
+    )
 
-    with pytest.raises(
-        sr.PopulationScopeExecutionError,
-        match="propagated to margin consumer",
-    ) as caught:
+    with pytest.raises(sr.SyncWindowError, match="requires explicit --start/--end"):
         sr.run_domain("margin", registry=registry)
 
-    assert caught.value.reason == "formal_runtime_retired"
+
+def test_margin_v3_refuses_backfill_mass_replay(monkeypatch):
+    for name in ("_adapter", "_target_conn", "_smartmoney_conn"):
+        monkeypatch.setattr(sr, name, _forbidden(name))
+    registry = sr.load_registry()
+    monkeypatch.setattr(
+        sr,
+        "eligible_end_date",
+        lambda *_a, **_k: sr.DomainEligibility(
+            "20260722", True, "next_trading_session_published"
+        ),
+    )
+    with pytest.raises(sr.SyncWindowError, match="refuses --backfill"):
+        sr.run_domain(
+            "margin",
+            registry=registry,
+            backfill=True,
+            start="20260717",
+            end="20260722",
+        )
 
 
 def test_enabled_margin_rejects_bse_in_accepted_population_scope(monkeypatch):
@@ -395,23 +439,39 @@ def test_enabled_margin_rejects_bse_in_accepted_population_scope(monkeypatch):
 def test_enabled_margin_rejects_bse_transport_even_with_corrected_scope(monkeypatch):
     for name in ("eligible_end_date", "_adapter", "_target_conn", "_smartmoney_conn"):
         monkeypatch.setattr(sr, name, _forbidden(name))
-    # Live registry still has v2 BSE transport; enabling without 1b align fails.
+    # Injected registry keeping v2 BSE transport must fail closed when enabled.
+    registry = _enabled_formal_margin_registry(
+        population_scope={
+            "kind": "external_aggregate",
+            "venue_field": "exchange_id",
+            "venue_ids": ["SSE", "SZSE"],
+            "population_label": "sse_szse_venue_reported_margin",
+            "method": "tushare_margin_exchange_summary_sse_szse",
+            "unit": "provider_declared_fields",
+        }
+    )
+    margin = registry["domains"]["margin"]
+    margin["dataset_contract"] = {
+        **margin["dataset_contract"],
+        "contract_version": "3",
+        "coverage_start": "20260717",
+    }
+    # Force wrong transport even on v3 metadata.
+    margin["split_by"] = {"param": "exchange_id", "values": ["SSE", "SZSE", "BSE"]}
+    margin["batch_completeness"] = {
+        **margin["batch_completeness"],
+        "required_groups": ["SSE", "SZSE"],
+        "required_groups_since": {"BSE": "20230213"},
+    }
     with pytest.raises(
         sr.PopulationScopeExecutionError,
         match="forbids BSE in batch_completeness",
     ) as caught:
         sr.run_domain(
             "margin",
-            registry=_enabled_formal_margin_registry(
-                population_scope={
-                    "kind": "external_aggregate",
-                    "venue_field": "exchange_id",
-                    "venue_ids": ["SSE", "SZSE"],
-                    "population_label": "sse_szse_venue_reported_margin",
-                    "method": "tushare_margin_exchange_summary_sse_szse",
-                    "unit": "provider_declared_fields",
-                }
-            ),
+            registry=registry,
+            start="20260717",
+            end="20260717",
         )
 
     assert caught.value.reason == "invalid_population_scope"

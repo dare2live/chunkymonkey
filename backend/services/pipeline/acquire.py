@@ -89,11 +89,15 @@ def run_acquire(ctx: PipelineContext) -> None:
     # (drain already ran) and never raises Tier0AcquireError for domain outcomes.
     formal_outcomes = _sync_formal_on_demand_security_days(ctx)
 
-    # Step 2.955: frozen margin — observe calendar lag only (no thaw / no all-due).
+    # Step 2.955: margin v3 bounded calendar catchup (on_demand; not --all-due).
+    # Disabled residual still observes lag only. Product rzrqye stays UNTRUSTED.
     from . import frozen_domain_observe as _frozen_obs
+    from . import margin_catchup_acquire as _margin_catchup
 
-    formal_outcomes = list(formal_outcomes) + _frozen_obs.observe_frozen_on_demand_domains(
-        ctx
+    formal_outcomes = (
+        list(formal_outcomes)
+        + _margin_catchup.run_margin_bounded_catchup(ctx)
+        + _frozen_obs.observe_frozen_on_demand_domains(ctx)
     )
 
     # Step 2.96: 交易日历 dim 传导 (R1 根因3, 2026-07-03): raw_tushare_trade_cal (2.94 已刷)

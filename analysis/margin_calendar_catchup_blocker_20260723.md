@@ -2,7 +2,7 @@
 
 > Status: evidence-only  
 > Owner pushback: 为什么是故意的？不强拉是什么意思？交易日历在啊  
-> Label: **FIXED** (honesty path) / catchup **BLOCKED** until population-scope knife
+> Label: **FIXED** (honesty path) / catchup path **UNBLOCKED** by Knife 1b (`margin_v3_bounded_catchup_1b_20260723.md`); product rzrqye still UNTRUSTED
 
 ---
 
@@ -55,8 +55,8 @@ continuity-integrity: overall=WARN fail=0 observe=1  # was FAIL solely from marg
 
 | Item | Status |
 |---|---|
-| Bounded calendar land/accept for margin | **BLOCKED** — needs population-scope correction (SSE/SZSE-only project claim or new generation), then optional incremental catchup |
-| Product thaw / all-due re-entry | **Banned** until that knife |
+| Bounded calendar land/accept for margin | **OPEN** — Knife 1b v3 SSE+SZSE on_demand bounded catchup |
+| Product thaw / all-due re-entry | **Banned** until shadow/consumer knife (1c) |
 | Mass backfill | **Banned** |
 | Continuity READY product claim | **Not** upgraded by this knife (checker may WARN from other domains) |
 

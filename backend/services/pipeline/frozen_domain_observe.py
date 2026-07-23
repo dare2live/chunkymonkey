@@ -1,4 +1,4 @@
-"""Observe calendar lag for frozen on_demand domains (margin).
+"""Observe calendar lag for frozen on_demand domains (margin when disabled).
 
 Kept out of ``acquire.py`` to avoid the god-file ratchet (>800 LOC).
 """
@@ -13,27 +13,30 @@ FROZEN_ON_DEMAND_OBSERVE_DOMAINS: tuple[str, ...] = ("margin",)
 
 
 def margin_hard_gate_required(registry: dict | None = None) -> bool:
-    """True only when margin is enabled for live acquire gating.
+    """True only when margin product trust is claimed as acquire-blocking.
 
-    Frozen ``mode=disabled`` (scope_blocked) must not deadlock daily_update.
-    Explicit margin sync remains blocked by sync_runner execution policy.
+    Knife 1b enables ``bounded_calendar_catchup`` land/accept while pulse
+    ``rzrqye`` stays UNTRUSTED. Equating hard-gate to ``mode=enabled`` would
+    re-deadlock daily_update (margin is on_demand, not in --all-due drain).
+    Product thaw is a later knife with explicit shadow evidence.
     """
 
     from services.data_sources import sync_runner
 
     reg = registry if registry is not None else sync_runner.load_registry()
     spec = sync_runner.domain_spec(reg, "margin")
-    return sync_runner.execution_policy_for_spec(spec).mode == "enabled"
+    policy = sync_runner.execution_policy_for_spec(spec)
+    if policy.mode != "enabled":
+        return False
+    # Explicit product-blocking flag only (absent = catchup-only, not thaw).
+    return bool(spec.get("product_blocking"))
 
 
 def observe_frozen_on_demand_domains(ctx: PipelineContext) -> list[dict[str, Any]]:
-    """Log calendar-eligible lag for frozen on_demand domains (margin).
+    """Log calendar-eligible lag for still-disabled on_demand domains.
 
-    Owner distinction: calendar-driven *incremental* catchup ≠ mass refresh, but
-    margin v2 live land/accept is retired (wrong-scope BSE-in-canonical). Knife 1a
-    corrected accepted population_scope to SSE+SZSE external_aggregate; land/accept
-    stays frozen until 1b generation+transport align. We record eligible_end vs
-    local_max as typed ``observe_frozen`` — not all-due pull, not product thaw.
+    When margin is enabled for bounded catchup (1b), acquire runs the catchup
+    path instead — this observe helper stays for any residual disabled domain.
     """
 
     from services.data_sources import sync_runner
@@ -78,7 +81,7 @@ def observe_frozen_on_demand_domains(ctx: PipelineContext) -> list[dict[str, Any
                 "local_max": local_max,
                 "catchup_blocked": True,
                 "note": (
-                    "calendar frontier known; v2 land/accept frozen (scope_blocked); "
+                    "calendar frontier known; land/accept still disabled; "
                     "not in --all-due; pulse rzrqye stays NULL/unknown on new days"
                 ),
             }

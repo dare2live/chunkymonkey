@@ -231,20 +231,16 @@ domains:
 
   margin:                          # 交易所汇总: B4 市场感知大盘水位原料 (accepted=SSE+SZSE)
     execution_policy:
-      mode: disabled
-      reason: scope_blocked
-    # Frozen product (2026-07-18 BLOCK v2): wrong-scope generation treated venue
-    # aggregate (incl. BSE) as business canonical — live land/accept retired.
-    # Knife 1a (2026-07-23): accepted population_scope corrected to SSE+SZSE
-    # external_aggregate (never project_universe_pit). Transport split_by /
-    # required_groups_since still describe immutable v2 evidence shape — do NOT
-    # rehash completeness here (would break read of 1823 accepted partitions).
-    # Knife 1b: new contract generation + align transport + bounded catchup.
-    # sync_policy=on_demand means NOT in --all-due / daily_update preflight
-    # ("不强拉" = 不进自动 drain 链, 不是"日历不驱动 / 永不可见").
-    # Calendar still defines eligible_end; acquire logs observe_frozen
-    # (eligible vs local_max); continuity = observe_frozen_stale (not FAIL).
-    # Explicit sync still hard-stops until 1b. Bounded catchup ≠ mass backfill.
+      mode: enabled
+      reason: bounded_calendar_catchup
+    # Knife 1b (2026-07-23): contract_version=3 transport = SSE+SZSE only.
+    # v2 (BSE-in-canonical) partitions remain read-only wrong-scope evidence;
+    # accepted-state reads filter to the current contract generation.
+    # Land/accept unfrozen ONLY for on_demand bounded calendar-eligible
+    # incremental catchup — NOT --all-due, NOT full-history replay, NOT mass
+    # backfill. Product hard-gate / rzrqye stay UNTRUSTED until shadow knife.
+    # sync_policy=on_demand = 不进自动 drain ("不强拉"); calendar still drives
+    # eligible_end for explicit/manual + acquire latest-eligible catchup.
     sync_policy: on_demand
     # Accepted business claim = 沪深交易所两融汇总 (external_aggregate).
     # Not project_universe_pit; BSE must not enter the accepted claim set.
@@ -264,17 +260,9 @@ domains:
     partition_by: [trade_date]
     split_by:
       param: exchange_id
-      # FROZEN v2 transport evidence (BSE included). Knife 1b must shrink to
-      # [SSE, SZSE] under a new contract_version before enabling execution.
-      values: [SSE, SZSE, BSE]
-      # 2026-07-08 根因修复(owner=
-      # analysis/gap_root_cause_20260708.md): 裸调 pro.margin(trade_date=d) 在2026年偶发
-      # (~0.5%交易日, 20260403/0430/0618/0626/0703共5例)漏返BSE/SZSE——vendor网关对"无过滤条件
-      # 汇总查询"存在补全遗漏怪癖, 非分页截断非披露滞后。显式按 exchange_id 三分片查询100%拿全
-      # (含上述全部历史"漏返"日期实测验证并已重拉补齐, 原 known_group_gaps 墓碑因此整段撤销——
-      # 当时判"永久缺失"是错的, 只是没换对查询形态)。每个交易日只执行当日契约要求的分片：
-      # 2023-02-13 前 SSE/SZSE 两片，自北交所两融启动日起再加 BSE；必需分片全部成功并满足
-      # required_groups 后才进入一次原子写，任一必需片失败则整日零写入。
+      # v3 transport matches accepted external_aggregate claim (no BSE).
+      # Explicit per-venue fetch avoids vendor bare-query omissions (2026-07-08).
+      values: [SSE, SZSE]
     pit_anchor: "trade_date; 同 margin_detail 下一交易日盘前披露 -> JOIN t-1"
     available_after: "t+1"
     availability_policy:
@@ -283,21 +271,20 @@ domains:
       at: "09:00"                 # margin_detail 声明“上午 9 点前”；09:00 取保守可验证边界
     data_start: "20190102"        # 实测首日 2 行 (SSE/SZSE)
     freshness_sla_trading_days: 2
-    min_rows_per_batch: 2         # 全历史基础交易所为 SSE/SZSE；BSE 由下方时点契约加严
+    min_rows_per_batch: 2         # SSE+SZSE only under v3
     allow_empty_batch: false
     batch_completeness:
       group_from: {column: exchange_id, transform: identity}
       required_groups: [SSE, SZSE]
-      # FROZEN v2: BSE required_since remains for immutable accepted evidence
-      # hashes. Corrected accepted population_scope excludes BSE; enabling
-      # execution (1b) must drop this under a new contract_version.
-      required_groups_since: {BSE: "20230213"}
+      # v3: no BSE obligation (v2 required_groups_since remains in frozen evidence).
+      required_groups_since: {}
     dataset_contract:
       dataset_id: tier0.market_data.margin_exchange_daily
-      contract_version: "2"
+      contract_version: "3"
       schema_id: tier0.market_data.margin_exchange_daily.canonical
       schema_hash: 8935c9be0741707330b7db9fc775a5ec2e71ab24dbf1095124d3d36dcd48f6ff
-      coverage_start: "20260715"
+      # v3 obligations begin after last v2 canonical day (local_max=20260716).
+      coverage_start: "20260717"
       canonical_table: canonical_margin_exchange_daily
       owner: tier0.market_data
       writer: services.data_sources.margin_acceptance

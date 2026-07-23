@@ -35,14 +35,14 @@ from services.source_watermarks import (
 )
 
 
-PARTITION = "20260715"
+PARTITION = "20260717"
 
 
 def test_projection_ready_is_derived_from_real_typed_evidence():
     ready = MarginProjectionResult(
         frontier=PARTITION,
-        row_count=3,
-        accepted_at=datetime(2026, 7, 16, 1, 5, tzinfo=timezone.utc),
+        row_count=2,
+        accepted_at=datetime(2026, 7, 20, 1, 5, tzinfo=timezone.utc),
         expected=(PARTITION,),
         accepted=(PARTITION,),
         missing=(),
@@ -82,7 +82,7 @@ def _batch(
     *,
     batch_id: str,
     stamp: datetime,
-    exchanges: tuple[str, ...] = ("SSE", "SZSE", "BSE"),
+    exchanges: tuple[str, ...] = ("SSE", "SZSE"),
 ) -> MarginLandingBatch:
     return MarginLandingBatch(
         batch_id=batch_id,
@@ -119,7 +119,7 @@ def _seed_legacy(raw, partition: str = PARTITION) -> None:
     raw.execute("DELETE FROM raw_tushare_margin WHERE trade_date=?", [partition])
     raw.executemany(
         "INSERT INTO raw_tushare_margin VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [tuple(_row(exchange, partition).values()) for exchange in ("SSE", "SZSE", "BSE")],
+        [tuple(_row(exchange, partition).values()) for exchange in ("SSE", "SZSE")],
     )
 
 
@@ -131,7 +131,7 @@ def _accept(
     legacy: bool = True,
     stamp: datetime | None = None,
 ) -> None:
-    stamp = stamp or datetime(2026, 7, 16, 1, 5, tzinfo=timezone.utc)
+    stamp = stamp or datetime(2026, 7, 20, 1, 5, tzinfo=timezone.utc)
     batch = _batch(
         partition,
         batch_id=batch_id,
@@ -214,13 +214,14 @@ def _full_read_counts(partitions: tuple[str, ...]) -> tuple[int, int]:
 
 def test_projection_read_count_is_bounded_by_surfaces_not_partition_count():
     partitions = []
-    cursor = datetime(2026, 7, 15)
+    # v3 coverage_start=20260717 — only generation-local partitions are projected.
+    cursor = datetime(2026, 7, 17)
     while len(partitions) < 20:
         if cursor.weekday() < 5:
             partitions.append(cursor.strftime("%Y%m%d"))
         cursor += timedelta(days=1)
 
-    one_partition = _full_read_counts(("20260715",))
+    one_partition = _full_read_counts(("20260717",))
     twenty_partitions = _full_read_counts(tuple(partitions))
 
     assert twenty_partitions == one_partition == (6, 6)
@@ -288,13 +289,13 @@ def test_projection_replaces_old_watermark_with_exact_accepted_fact_and_resolves
         ensure_margin_acceptance_schema(raw)
         _accept(raw)
         _seed_old_raw_watermark(ops)
-        first = project_margin_accepted_state(raw, ops, [PARTITION, "20260716"])
+        first = project_margin_accepted_state(raw, ops, [PARTITION, "20260720"])
         assert first.accepted == (PARTITION,)
-        assert first.missing == ("20260716",)
+        assert first.missing == ("20260720",)
         first_payload = _gap_payload(ops)
         assert first_payload["expected_count"] == 2
         assert first_payload["accepted_count"] == 1
-        assert first_payload["missing_sample"] == ["20260716"]
+        assert first_payload["missing_sample"] == ["20260720"]
         assert ops.execute(
             "SELECT status FROM mart_data_source_failure_queue "
             "WHERE data_domain='sync:margin' AND error_type=?",
@@ -304,12 +305,12 @@ def test_projection_replaces_old_watermark_with_exact_accepted_fact_and_resolves
         result = project_margin_accepted_state(raw, ops, [PARTITION])
 
         assert result.frontier == PARTITION
-        assert result.row_count == 3
+        assert result.row_count == 2
         watermark = ops.execute(
             "SELECT last_data_date, row_count, last_success_at "
             "FROM mart_data_source_watermark WHERE data_domain='sync:margin'"
         ).fetchone()
-        assert tuple(watermark[index] for index in range(2)) == (PARTITION, 3)
+        assert tuple(watermark[index] for index in range(2)) == (PARTITION, 2)
         accepted_at = raw.execute(
             f"SELECT accepted_at FROM {ACCEPTED_TABLE} WHERE partition_value=?",
             [PARTITION],
@@ -431,7 +432,7 @@ def test_projection_creates_the_only_margin_watermark_and_removes_stale_keys():
 def test_projection_expected_minus_accepted_gap_uses_latest_landed_then_rejected_evidence():
     raw = connect(":memory:")
     ops = connect(":memory:")
-    missing_partition = "20260716"
+    missing_partition = "20260720"
     try:
         ensure_margin_acceptance_schema(raw)
         older = _batch(
@@ -494,10 +495,12 @@ def test_projection_expected_minus_accepted_gap_uses_latest_landed_then_rejected
 def test_gap_failure_payload_stays_valid_json_for_many_missing_partitions():
     raw = connect(":memory:")
     ops = connect(":memory:")
-    expected = [
-        (datetime(2026, 7, 15) + timedelta(days=offset)).strftime("%Y%m%d")
-        for offset in range(20)
-    ]
+    expected = []
+    cursor = datetime(2026, 7, 17)
+    while len(expected) < 20:
+        if cursor.weekday() < 5:
+            expected.append(cursor.strftime("%Y%m%d"))
+        cursor += timedelta(days=1)
     try:
         project_margin_accepted_state(raw, ops, expected)
 
@@ -685,9 +688,9 @@ def _ops_projection_snapshot(ops) -> dict[str, object]:
 @pytest.mark.parametrize(
     ("quota_error", "fail_on_drop", "legacy", "expected"),
     [
-        (None, 1, True, [PARTITION, "20260716"]),
-        ("provider quota exhausted", 2, True, [PARTITION, "20260716"]),
-        ("provider quota exhausted", 3, True, [PARTITION, "20260716"]),
+        (None, 1, True, [PARTITION, "20260720"]),
+        ("provider quota exhausted", 2, True, [PARTITION, "20260720"]),
+        ("provider quota exhausted", 3, True, [PARTITION, "20260720"]),
         (None, 2, True, [PARTITION]),
         (None, 3, False, [PARTITION]),
     ],
@@ -728,16 +731,16 @@ def test_cross_database_projection_failure_is_atomic_and_rebuildable_from_raw_tr
             [PARTITION],
         ).fetchone()[0] == 1
 
-        result = project_margin_accepted_state(raw, ops, [PARTITION, "20260716"])
+        result = project_margin_accepted_state(raw, ops, [PARTITION, "20260720"])
 
         assert result.frontier == PARTITION
-        assert result.missing == ("20260716",)
+        assert result.missing == ("20260720",)
         watermark = ops.execute(
             "SELECT last_data_date, row_count FROM mart_data_source_watermark "
             "WHERE data_domain='sync:margin'"
         ).fetchone()
-        assert tuple(watermark[index] for index in range(2)) == (PARTITION, 3)
-        assert _gap_payload(ops)["missing_sample"] == ["20260716"]
+        assert tuple(watermark[index] for index in range(2)) == (PARTITION, 2)
+        assert _gap_payload(ops)["missing_sample"] == ["20260720"]
     finally:
         raw.close()
         ops.close()

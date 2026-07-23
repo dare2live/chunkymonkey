@@ -1,8 +1,8 @@
-"""Frozen read-only contract and accepted-state helpers for margin v2.
+"""Formal margin contract parser and accepted-state helpers.
 
-The old margin-specific provider/write runtime is retired. This module keeps
-only the exact external-aggregate contract parser and projections derived from
-accepted facts; importing it cannot start provider or database writes.
+Knife 1b: contract_version>=3 enables bounded catchup via ``margin_catchup``.
+This module still owns only contract parse + read projections — it does not
+start provider I/O on import.
 """
 from __future__ import annotations
 

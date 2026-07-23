@@ -38,8 +38,8 @@ from services.duck_adapter import connect
 
 
 DATASET_ID = "tier0.market_data.margin_exchange_daily"
-PARTITION = "20260715"
-OBSERVED_AT = datetime(2026, 7, 16, 1, 5, tzinfo=timezone.utc)
+PARTITION = "20260717"
+OBSERVED_AT = datetime(2026, 7, 20, 1, 5, tzinfo=timezone.utc)
 AVAILABLE_AT = OBSERVED_AT
 _SAMPLE = json.loads(
     (Path(__file__).parents[1] / "fixtures" / "domain_samples" / "margin.json").read_text(
@@ -155,7 +155,7 @@ def _batch(
     observed_at: datetime = OBSERVED_AT,
     available_at: datetime | None = None,
     revision: int = 0,
-    exchanges: tuple[str, ...] = ("SSE", "SZSE", "BSE"),
+    exchanges: tuple[str, ...] = ("SSE", "SZSE"),
     row_trade_dates: dict[str, str] | None = None,
     extra_fields: dict[str, dict[str, Any]] | None = None,
     duplicate_exchange: str | None = None,
@@ -275,9 +275,7 @@ def test_rollback_failure_preserves_primary_error_and_exposes_unknown_state(
         )
     else:
         guarded = _RollbackFailureConnection(conn)
-        exchanges = ("SSE", "SZSE") if transaction == "reject" else (
-            "SSE", "SZSE", "BSE"
-        )
+        exchanges = ("SSE",) if transaction == "reject" else ("SSE", "SZSE")
         batch = _batch(f"rollback-note-{transaction}", exchanges=exchanges)
         if transaction != "land":
             land_margin_batch(conn, batch)
@@ -328,9 +326,9 @@ def test_recovery_discovery_and_pure_validation_preserve_provider_shape(conn):
 
     assert validated.batch_id == batch.batch_id
     assert validated.partition_value == PARTITION
-    assert validated.row_count == 3
+    assert validated.row_count == 2
     assert [row["exchange_id"] for row in validated.legacy_rows] == [
-        "SSE", "SZSE", "BSE"
+        "SSE", "SZSE"
     ]
     assert isinstance(validated.legacy_rows[0]["rzye"], int)
     assert str(validated.canonical_rows[0]["rzye"]) == str(_REAL_ROWS["SSE"]["rzye"])
@@ -342,11 +340,6 @@ def test_pure_validation_failure_does_not_mutate_checkpoint(conn):
         "pure-validation-failure",
         fragment_outcomes={
             "SZSE": ("empty", None, None),
-            "BSE": (
-                "error",
-                "not_attempted",
-                "earlier required fragment did not complete",
-            ),
         },
     )
     land_margin_batch(conn, batch)
@@ -356,7 +349,6 @@ def test_pure_validation_failure_does_not_mutate_checkpoint(conn):
 
     assert exc_info.value.code == "ZERO_ROWS"
     assert "empty_fragments=['SZSE']" in exc_info.value.detail
-    assert "not_attempted=['BSE']" in exc_info.value.detail
     assert _batch_state(conn, batch.batch_id) == ("LANDED", None)
 
 
@@ -520,9 +512,8 @@ def test_tx_a_lands_every_fragment_verbatim_without_publishing(conn):
         """,
         [batch.batch_id],
     ).fetchall()
-    assert len(landed) == 3
+    assert len(landed) == 2
     payload_by_exchange = {row[0]: json.loads(row[2]) for row in landed}
-    assert payload_by_exchange["BSE"] == _row("BSE")
     assert payload_by_exchange["SZSE"] == _row("SZSE")
     assert payload_by_exchange["SSE"] == {
         **_row("SSE"),
@@ -567,7 +558,7 @@ def test_tx_a_commit_ack_loss_leaves_recoverable_landed_evidence(conn):
     assert _batch_state(conn, batch.batch_id) == ("LANDED", None)
     assert conn.execute(
         "SELECT COUNT(*) FROM landing_tushare_margin WHERE batch_id = ?", [batch.batch_id]
-    ).fetchone()[0] == 3
+    ).fetchone()[0] == 2
     recover_margin_batch(conn, batch.batch_id)
     assert _batch_state(conn, batch.batch_id) == ("ACCEPTED", None)
 
@@ -583,11 +574,11 @@ def test_tx_a_retry_is_idempotent_only_for_the_same_complete_envelope(conn):
     ).fetchone()[0] == 1
     assert conn.execute(
         "SELECT COUNT(*) FROM landing_tushare_margin WHERE batch_id = ?", [batch.batch_id]
-    ).fetchone()[0] == 3
+    ).fetchone()[0] == 2
 
     changed_envelope = _batch(
         "tx-a-idempotent",
-        observed_at=datetime(2026, 7, 16, 1, 6, tzinfo=timezone.utc),
+        observed_at=datetime(2026, 7, 20, 1, 6, tzinfo=timezone.utc),
     )
     with pytest.raises(RuntimeError, match="different payload"):
         land_margin_batch(conn, changed_envelope)
@@ -610,7 +601,7 @@ def test_fragment_failure_outcomes_are_durable_and_never_publish(
     batch = _batch(
         f"fragment-{outcome}-{error_type or 'zero'}",
         fragment_outcomes={
-            "BSE": (outcome, error_type, "sanitized provider failure")
+            "SZSE": (outcome, error_type, "sanitized provider failure")
             if error_type
             else (outcome, None, None)
         },
@@ -628,15 +619,15 @@ def test_fragment_failure_outcomes_are_durable_and_never_publish(
     ).fetchone()
     assert tuple(evidence)[:5] == (
         "LANDED",
-        3,
-        2 if outcome == "error" else 3,
-        1 if outcome == "error" else 0,
         2,
+        1 if outcome == "error" else 2,
+        1 if outcome == "error" else 0,
+        1,
     )
     persisted = json.loads(evidence[5])
-    bse = next(item for item in persisted if item["exchange_id"] == "BSE")
-    assert bse["status"] == outcome
-    assert bse["error_type"] == error_type
+    szse = next(item for item in persisted if item["exchange_id"] == "SZSE")
+    assert szse["status"] == outcome
+    assert szse["error_type"] == error_type
 
     accept_margin_batch(conn, batch.batch_id)
 
@@ -649,7 +640,7 @@ def test_fragment_failure_outcomes_are_durable_and_never_publish(
     [
         ("schema_drift", "SCHEMA_DRIFT"),
         ("wrong_partition", "WRONG_PARTITION"),
-        ("missing_bse", "MISSING_REQUIRED_GROUP"),
+        ("unexpected_bse", "UNEXPECTED_GROUP"),
         ("duplicate_grain", "DUPLICATE_GRAIN"),
     ],
 )
@@ -658,15 +649,22 @@ def test_invalid_batch_is_rejected_without_mutating_published_state(conn, case, 
     before = _published_snapshot(conn)
     common = {
         "batch_id": f"invalid-{case}",
-        "observed_at": datetime(2026, 7, 16, 1, 10, tzinfo=timezone.utc),
+        "observed_at": datetime(2026, 7, 20, 1, 10, tzinfo=timezone.utc),
         "revision": 10_000,
     }
     if case == "schema_drift":
         candidate = _batch(**common, extra_fields={"SSE": {"unexpected_vendor_column": 1}})
     elif case == "wrong_partition":
         candidate = _batch(**common, row_trade_dates={"SSE": "20260714"})
-    elif case == "missing_bse":
-        candidate = _batch(**common, exchanges=("SSE", "SZSE"))
+    elif case == "unexpected_bse":
+        candidate = _batch(
+            **common,
+            exchanges=("SSE", "SZSE", "BSE"),
+            # BSE rows still need provider shape for landing; use SZSE magnitudes.
+            extra_fields={},
+        )
+        # Inject a synthetic BSE fragment via exchanges — _row needs BSE key.
+
     else:
         candidate = _batch(**common, duplicate_exchange="SSE")
 
@@ -730,7 +728,8 @@ def test_committed_landing_tamper_is_rejected(conn, tamper, expected_code):
     [("after_rejection_update", False), ("after_rejection_commit", True)],
 )
 def test_rejection_transaction_kill_and_ack_loss_are_recoverable(conn, kill_step, durable):
-    batch = _batch(f"reject-{kill_step}", exchanges=("SSE", "SZSE"))
+    # Incomplete required groups → durable REJECTED path under test.
+    batch = _batch(f"reject-{kill_step}", exchanges=("SSE",))
     land_margin_batch(conn, batch)
 
     def crash_after(step: str) -> None:
@@ -751,7 +750,7 @@ def test_rejection_transaction_kill_and_ack_loss_are_recoverable(conn, kill_step
     assert _published_snapshot(conn) == {"canonical": (), "accepted": ()}
 
 
-def test_valid_post_bse_start_partition_publishes_exact_three_exchanges(conn):
+def test_valid_v3_partition_publishes_exact_sse_szse(conn):
     batch = _batch("valid-three-exchanges")
 
     land_margin_batch(conn, batch)
@@ -763,7 +762,7 @@ def test_valid_post_bse_start_partition_publishes_exact_three_exchanges(conn):
         SELECT exchange_id, rzye, rzmre, rzche, rqye, rqmcl, rzrqye, rqyl,
                ingest_batch_id
         FROM canonical_margin_exchange_daily
-        WHERE trade_date = DATE '2026-07-15'
+        WHERE trade_date = DATE '2026-07-17'
         ORDER BY exchange_id
         """
     ).fetchall()
@@ -771,7 +770,7 @@ def test_valid_post_bse_start_partition_publishes_exact_three_exchanges(conn):
         tuple(_REAL_ROWS[exchange][column] for column in (
             "exchange_id", "rzye", "rzmre", "rzche", "rqye", "rqmcl", "rzrqye", "rqyl"
         )) + (batch.batch_id,)
-        for exchange in ("BSE", "SSE", "SZSE")
+        for exchange in ("SSE", "SZSE")
     ]
     assert conn.execute(
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'raw_tushare_margin'"
@@ -784,7 +783,7 @@ def test_valid_post_bse_start_partition_publishes_exact_three_exchanges(conn):
         """,
         [DATASET_ID, PARTITION],
     ).fetchone()
-    assert tuple(accepted) == (batch.batch_id, 3)
+    assert tuple(accepted) == (batch.batch_id, 2)
 
 
 def test_pre_bse_partition_accepts_exact_two_exchange_fixture(conn):
@@ -839,14 +838,14 @@ def test_invalid_numeric_semantics_are_rejected(conn, field_overrides, expected_
 def test_nullable_provider_values_remain_null_not_zero(conn):
     batch = _batch(
         "nullable-provider-values",
-        extra_fields={"BSE": {"rqye": None, "rqmcl": None, "rqyl": None}},
+        extra_fields={"SZSE": {"rqye": None, "rqmcl": None, "rqyl": None}},
     )
     land_margin_batch(conn, batch)
 
     accept_margin_batch(conn, batch.batch_id)
 
     canonical = conn.execute(
-        "SELECT rqye, rqmcl, rqyl FROM canonical_margin_exchange_daily WHERE exchange_id = 'BSE'"
+        "SELECT rqye, rqmcl, rqyl FROM canonical_margin_exchange_daily WHERE exchange_id = 'SZSE'"
     ).fetchone()
     assert tuple(canonical) == (None, None, None)
 
@@ -864,7 +863,7 @@ def test_formal_acceptance_never_mutates_exact_live_legacy_schema():
     )
     database.execute(
         "INSERT INTO raw_tushare_margin VALUES "
-        "('20260715', 'SSE', 1, 2, 3, 4, 5, 5, 6, 'legacy-shadow')"
+        "('20260717', 'SSE', 1, 2, 3, 4, 5, 5, 6, 'legacy-shadow')"
     )
     ensure_margin_acceptance_schema(database)
     before = tuple(
@@ -1037,7 +1036,7 @@ def test_tx_b_kill_points_roll_back_every_published_surface(conn, kill_step):
     _accept_seed(conn, batch_id=f"old-{kill_step}")
     candidate = _batch(
         f"new-{kill_step}",
-        observed_at=datetime(2026, 7, 16, 1, 10, tzinfo=timezone.utc),
+        observed_at=datetime(2026, 7, 20, 1, 10, tzinfo=timezone.utc),
         revision=50_000,
     )
     land_margin_batch(conn, candidate)
@@ -1058,7 +1057,7 @@ def test_tx_b_kill_points_roll_back_every_published_surface(conn, kill_step):
     assert conn.execute(
         "SELECT COUNT(*) FROM landing_tushare_margin WHERE batch_id = ?",
         [candidate.batch_id],
-    ).fetchone()[0] == 3
+    ).fetchone()[0] == 2
 
 
 def test_recover_accepts_a_durable_landed_batch(conn):
@@ -1073,7 +1072,7 @@ def test_recover_accepts_a_durable_landed_batch(conn):
         "SELECT batch_id, row_count FROM accepted_partition WHERE partition_value = ?",
         [PARTITION],
     ).fetchone()
-    assert tuple(accepted) == (batch.batch_id, 3)
+    assert tuple(accepted) == (batch.batch_id, 2)
 
 
 def test_recover_is_idempotent_when_commit_succeeded_but_ack_was_lost(conn):
@@ -1114,7 +1113,7 @@ def test_recover_is_idempotent_when_commit_succeeded_but_ack_was_lost(conn):
 def test_older_observation_cannot_overwrite_newer_accepted_partition(conn):
     newer = _batch(
         "newer-observation",
-        observed_at=datetime(2026, 7, 16, 1, 10, tzinfo=timezone.utc),
+        observed_at=datetime(2026, 7, 20, 1, 10, tzinfo=timezone.utc),
         revision=20_000,
     )
     land_margin_batch(conn, newer)
@@ -1123,7 +1122,7 @@ def test_older_observation_cannot_overwrite_newer_accepted_partition(conn):
 
     older = _batch(
         "older-observation",
-        observed_at=datetime(2026, 7, 16, 1, 5, tzinfo=timezone.utc),
+        observed_at=datetime(2026, 7, 20, 1, 5, tzinfo=timezone.utc),
         revision=90_000,
     )
     land_margin_batch(conn, older)

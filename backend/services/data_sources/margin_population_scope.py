@@ -2,9 +2,8 @@
 
 Accepted business claim for margin is an ``external_aggregate`` over SSE+SZSE
 only. Venue aggregates must never be relabelled as ``project_universe_pit``.
-BSE may exist in immutable v2 frozen evidence / legacy transport shape while
-execution stays disabled; enabling live land/accept requires transport to match
-the corrected accepted venues (Knife 1b).
+BSE may remain in immutable v2 evidence; Knife 1b requires transport to match
+accepted venues when execution is enabled (contract v3+).
 """
 from __future__ import annotations
 

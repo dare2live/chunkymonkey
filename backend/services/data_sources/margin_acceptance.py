@@ -39,9 +39,15 @@ from services.data_sources.margin_validation import (
 _FROZEN_LIVE_DB = get_database_manifest().path_for("tushare_raw").resolve()
 
 
-def _block_frozen_live_write(conn) -> None:
-    """Make the wrong-scope v2 generation physically read-only in the live DB."""
+def _block_frozen_live_write(conn, *, contract=None) -> None:
+    """Refuse live DB writes for retired wrong-scope generations (< v3).
 
+    Knife 1b unfreezes contract_version>=3 (SSE+SZSE) for bounded catchup only.
+    v2 evidence stays immutable read-only in the live DB.
+    """
+
+    if contract is not None and str(getattr(contract, "contract_version", "")) >= "3":
+        return
     try:
         databases = conn.execute("PRAGMA database_list").fetchall()
     except Exception as exc:
@@ -52,7 +58,8 @@ def _block_frozen_live_write(conn) -> None:
         raw_path = str(row[-1] or "")
         if raw_path and Path(raw_path).expanduser().resolve() == _FROZEN_LIVE_DB.resolve():
             raise MarginAcceptanceError(
-                "margin v2 live writes are frozen: execution_blocked / scope_blocked"
+                "margin v2 live writes are frozen: use contract_version>=3 "
+                "bounded catchup (SSE+SZSE); wrong-scope v2 remains read-only"
             )
 
 
@@ -74,7 +81,7 @@ class MarginLandingBatch:
     available_at: datetime | str
     fragments: Iterable[MarginFragment]
     source: str = "tushare"
-    contract_version: str = "2"
+    contract_version: str = "3"
 
 
 @dataclass(frozen=True)
@@ -225,8 +232,8 @@ def land_margin_batch(
     after_step: Callable[[str], None] | None = None,
 ) -> str:
     """Tx-A: persist the complete provider response without semantic filtering."""
-    _block_frozen_live_write(conn)
     contract = _contract(contract)
+    _block_frozen_live_write(conn, contract=contract)
     ensure_margin_acceptance_schema(conn)
     batch_id = str(batch.batch_id or "").strip()
     if not batch_id:
@@ -588,8 +595,8 @@ def accept_margin_batch(
     after_step: Callable[[str], None] | None = None,
 ) -> AcceptanceOutcome:
     """Tx-B: validate committed landing, then atomically publish canonical + pointer."""
-    _block_frozen_live_write(conn)
     contract = _contract(contract)
+    _block_frozen_live_write(conn, contract=contract)
     ensure_margin_acceptance_schema(conn)
     batch = _load_margin_batch(conn, batch_id)
     status, partition = str(batch["status"]), _partition(batch["partition_value"])
@@ -691,8 +698,8 @@ def recover_margin_batch(
     after_step: Callable[[str], None] | None = None,
 ) -> AcceptanceOutcome:
     """Recover a LANDED batch or prove an ACK-lost ACCEPTED batch is already durable."""
-    _block_frozen_live_write(conn)
     contract = _contract(contract)
+    _block_frozen_live_write(conn, contract=contract)
     ensure_margin_acceptance_schema(conn)
     row = conn.execute(
         f"SELECT status, partition_value, canonical_hash, canonical_row_count "
