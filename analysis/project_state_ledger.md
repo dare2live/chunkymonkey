@@ -3140,3 +3140,10 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - Owner：Script Editor macOS 三连（FAIL+WARN+降级）= 假失败刷屏；rc=4 preflight / rc=5 stock_st·daily kidnap / rc=1 soft degrade 映射已知 RCA。
 - Fix：`manual_job_wrapper` 对 rc=1+degraded flag 跳过 FAIL 横幅；`dispatcher --skip-macos`；`store._degraded_summary` 附 SLA 摘要。硬挡 rc=4/5 仍通知。
 - Evidence：`analysis/daily_update_notification_spam_triage_20260722.md`；tests `test_manual_job_wrapper` / `test_notification_dispatcher_skip_macos`。
+
+### 2026-07-23 — holders coverage alignment (notice frontier canary)
+
+- Evidence: `analysis/holders_stock_coverage_alignment_20260723.md` (**GAPS→HS_A ALIGNED**).
+- Canary: provider max=`20260723`=local wm date, but same-day late filers missing (**16** HS_A code×notice in `UPDATE_DATE≥2026-07-16`).
+- Sparse repair: `ingest_holders_aif10.py --symbols` 16 codes; ok=16 fail=0; post HS_A miss=0; BSE 12 pairs OUT_OF_SCOPE (∉ dim).
+- No mass / no org / no Optuna. Residual: `watermark_unchanged` skip hides same-day lag.
