@@ -232,13 +232,23 @@ function HoldersPanel(props: { d: StockDossierResponse }) {
                             r.holder_name_norm || r.holder_name || "",
                           )}`}
                           title={
-                            r.institution_link_status === "profile_low_sample"
-                              ? "有画像但 low_sample（样本量不足）"
-                              : "机构档案"
+                            r.institution_metrics_status === "passive_product"
+                              ? "被动产品档案（不参与技能排名）"
+                              : r.institution_metrics_status === "holding_only"
+                                ? "仅有持有中 episode，超额未知"
+                                : r.institution_link_status === "profile_low_sample"
+                                  ? "有画像但 low_sample（样本量不足）"
+                                  : "机构档案"
                           }
                         >
                           {r.holder_name}
-                          {r.institution_profile_low_sample ? " ·低样本" : ""}
+                          {r.institution_metrics_status === "passive_product"
+                            ? " ·被动"
+                            : r.institution_metrics_status === "holding_only"
+                              ? " ·持有中"
+                              : r.institution_profile_low_sample
+                                ? " ·低样本"
+                                : ""}
                         </Link>
                       ) : (
                         <span

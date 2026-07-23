@@ -17,7 +17,22 @@ function KpiCard(props: { holder: string }) {
       <FetchGate state={state}>
         {(p) => (
           <>
-            {p.low_sample && (
+            {p.metrics_status === "passive_product" && (
+              <div className="banner-warn">
+                被动产品（ETF/指数/联接）：申赎驱动，不参与选股技能排名；档案可查持仓时间线，超额指标为未知
+              </div>
+            )}
+            {p.metrics_status === "holding_only" && (
+              <div className="banner-warn">
+                仅有持有中 episode，尚无可测已了结超额；收益/胜率显示为未知，不伪造
+              </div>
+            )}
+            {p.metrics_status === "no_closed_alpha" && (
+              <div className="banner-warn">
+                无可测已了结超额（seeded/无价关闭等）；指标为未知，不进正式排名
+              </div>
+            )}
+            {p.low_sample && p.metrics_status !== "passive_product" && p.metrics_status !== "holding_only" && (
               <div className="banner-warn">样本不足 (已了结 episode &lt; 10), 指标仅供参考, 不进正式排名</div>
             )}
             <div className="kpi-grid">
@@ -28,6 +43,10 @@ function KpiCard(props: { holder: string }) {
               <div className="kpi">
                 <label>已了结 episode</label>
                 <b>{fmtInt(p.n_closed)}</b>
+              </div>
+              <div className="kpi">
+                <label>全部 episode</label>
+                <b>{fmtInt(p.n_episodes ?? null)}</b>
               </div>
               <div className="kpi">
                 <label>超额中位 (vs HS300)</label>

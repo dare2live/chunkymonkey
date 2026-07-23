@@ -18,7 +18,8 @@ def mem(monkeypatch):
     c.executescript("""
         CREATE TABLE mart_inst_profile (holder TEXT, holder_type TEXT, n_closed INT,
             median_alpha DOUBLE, avg_alpha DOUBLE, win_rate_alpha DOUBLE, median_ret DOUBLE,
-            avg_hold_days DOUBLE, low_sample BOOLEAN);
+            avg_hold_days DOUBLE, low_sample BOOLEAN, n_episodes INT, n_holding INT,
+            is_passive_holder BOOLEAN, metrics_status TEXT);
         CREATE TABLE mart_inst_profile_dim (holder TEXT, dim_type TEXT, dim_value TEXT,
             n_closed INT, median_alpha DOUBLE, win_rate_alpha DOUBLE, low_sample BOOLEAN);
         CREATE TABLE fact_inst_episode (holder TEXT, stock TEXT, open_date TEXT,
@@ -26,8 +27,14 @@ def mem(monkeypatch):
             n_adds INT, n_trims INT, sw_l1_at_open TEXT, seeded BOOLEAN, is_passive BOOLEAN,
             holder_type TEXT);
     """)
-    c.execute("INSERT INTO mart_inst_profile VALUES ('牛散A','个人',50,0.15,0.2,0.7,0.12,200,false)")
-    c.execute("INSERT INTO mart_inst_profile VALUES ('小散B','个人',3,0.5,0.5,1.0,0.5,100,true)")
+    c.execute(
+        "INSERT INTO mart_inst_profile VALUES "
+        "('牛散A','个人',50,0.15,0.2,0.7,0.12,200,false,51,1,false,'ranked')"
+    )
+    c.execute(
+        "INSERT INTO mart_inst_profile VALUES "
+        "('小散B','个人',3,0.5,0.5,1.0,0.5,100,true,3,0,false,'low_sample')"
+    )
     c.execute("INSERT INTO mart_inst_profile_dim VALUES ('牛散A','industry_pit','煤炭',5,0.6,1.0,true)")
     c.execute("INSERT INTO fact_inst_episode VALUES "
               "('牛散A','600000','20990101','20990102',NULL,'holding',NULL,NULL,0,0,'银行',false,false,'个人')")
@@ -168,9 +175,11 @@ def test_recent_signals_anchors_on_notice_date_not_report_date(mem):
         f"('未披露E','600002','{stale_report}','{stale_notice}',NULL,'holding',NULL,NULL,0,0,'银行',"
         "false,false,'个人')"
     )
-    mem.execute("INSERT INTO mart_inst_profile VALUES "
-                "('迟披露D','个人',20,0.3,0.3,0.8,0.3,150,false), "
-                "('未披露E','个人',20,0.3,0.3,0.8,0.3,150,false)")
+    mem.execute(
+        "INSERT INTO mart_inst_profile VALUES "
+        "('迟披露D','个人',20,0.3,0.3,0.8,0.3,150,false,20,1,false,'ranked'), "
+        "('未披露E','个人',20,0.3,0.3,0.8,0.3,150,false,20,1,false,'ranked')"
+    )
     sigs = ip.recent_signals(days=30, min_holder_episodes=10)
     holders = {s["holder"] for s in sigs}
     assert "迟披露D" in holders    # notice_date 5天前(窗口内) → 真的是最新信号, 该出现

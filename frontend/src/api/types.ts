@@ -12,6 +12,13 @@
 // ── Tier3 机构披露研究 evidence ───────────────────────────────────────────
 
 /** GET /api/v3/inst/profiles → {status, profiles: InstProfileRow[]} */
+export type InstMetricsStatus =
+  | "ranked"
+  | "low_sample"
+  | "holding_only"
+  | "no_closed_alpha"
+  | "passive_product";
+
 export interface InstProfileRow {
   holder: string;
   holder_type: string | null;
@@ -22,6 +29,10 @@ export interface InstProfileRow {
   median_ret: number | null;
   avg_hold_days: number | null;
   low_sample: boolean;
+  n_episodes?: number;
+  n_holding?: number;
+  is_passive_holder?: boolean;
+  metrics_status?: InstMetricsStatus | string | null;
 }
 
 /** profile.dims[] — dim_type 实测三值: industry_pit / year / holder_type */

@@ -10,7 +10,8 @@
   alpha_c1 口径 (方法学披露, 2026-07-03 审计修6): 基准 = 期界点到点收盘 (open/close 期各取
     <= 期界日最近 HS300 收盘), 成本 = 整窗 VWAP — 两窗不严格对齐, alpha 含窗口错位噪声;
   avg_hold_days = 披露期界日历天 (open_date→close_date), 非真实持仓天数 (期内实际买卖点不可知)。
-  纪律: 被动产品(ETF/指数/联接=申赎驱动非选股观点)标记剔除; n<MIN_EPISODES 标 low_sample 不排名;
+  纪律: 被动产品(ETF/指数/联接=申赎驱动非选股观点)不进技能排名指标; n<MIN_EPISODES 标 low_sample 不排名;
+        但有 episode 的 holder 仍写 display 档案行 (deep-link), metrics 未知则 NULL。
         行业维度用 PIT 行业 (v_sw_industry_pit as-of 建仓日, 非当前行业)。
 
 复权口径红线: 成本与卖价全用 qfq (v_price_kline_qfq), 收益=含分红总收益 (禁 raw amount/volume 混算)。
@@ -312,33 +313,70 @@ def build_episodes(con) -> dict:
     return stats
 
 
+# Rankable closed episodes only — alpha/returns never invented from holding/seeded/passive.
+_RANKABLE_EP = (
+    "status = 'closed' AND NOT seeded AND NOT is_passive AND alpha_c1 IS NOT NULL"
+)
+
+
 def build_profiles(con) -> dict[str, int]:
-    """机构画像: 总体 + 维度 (industry_pit / year / holder_type)。closed+非seeded+非passive 进评级。"""
-    base_where = "status='closed' AND NOT seeded AND NOT is_passive AND alpha_c1 IS NOT NULL"
+    """机构画像: 总体 + 维度 (industry_pit / year / holder_type)。
+
+    Display contract (2026-07-23 coverage lift): every non-empty holder with ≥1
+    episode gets a ``mart_inst_profile`` row so dossier can deep-link 机构档案.
+    Rankable metrics (median_alpha / win_rate / n_closed) still only aggregate
+    closed + non-seeded + non-passive + measurable alpha; otherwise NULL /
+    ``low_sample`` / typed ``metrics_status`` — fail-closed, no fake returns.
+
+    Passive products: kept as display rows (``metrics_status=passive_product``)
+    for deep-link honesty; excluded from skill ranking because ``n_closed`` stays 0
+    (list_profiles still gates on ``n_closed >= MIN_EPISODES``). Empty names dropped.
+    """
+    rankable = _RANKABLE_EP
     con.execute(f"""
     CREATE OR REPLACE TABLE mart_inst_profile AS
-    SELECT holder, ANY_VALUE(holder_type) AS holder_type,
-           COUNT(*) AS n_closed,
-           median(alpha_c1) AS median_alpha,
-           AVG(alpha_c1) AS avg_alpha,
-           SUM(CASE WHEN alpha_c1 > 0 THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS win_rate_alpha,
-           median(ret_c1) AS median_ret,
-           AVG(date_diff('day', strptime(open_date,'%Y%m%d'), strptime(close_date,'%Y%m%d'))) AS avg_hold_days,
-           COUNT(*) < {MIN_EPISODES} AS low_sample
-    FROM fact_inst_episode WHERE {base_where}
+    WITH base AS (
+        SELECT *
+        FROM fact_inst_episode
+        WHERE holder IS NOT NULL AND length(trim(CAST(holder AS VARCHAR))) > 0
+    )
+    SELECT holder,
+           ANY_VALUE(holder_type) AS holder_type,
+           COUNT(*) FILTER (WHERE {rankable}) AS n_closed,
+           median(alpha_c1) FILTER (WHERE {rankable}) AS median_alpha,
+           AVG(alpha_c1) FILTER (WHERE {rankable}) AS avg_alpha,
+           (SUM(CASE WHEN ({rankable}) AND alpha_c1 > 0 THEN 1 ELSE 0 END) * 1.0
+            / NULLIF(COUNT(*) FILTER (WHERE {rankable}), 0)) AS win_rate_alpha,
+           median(ret_c1) FILTER (WHERE {rankable}) AS median_ret,
+           AVG(date_diff('day',
+                         strptime(open_date, '%Y%m%d'),
+                         strptime(close_date, '%Y%m%d')))
+               FILTER (WHERE {rankable}) AS avg_hold_days,
+           (COUNT(*) FILTER (WHERE {rankable}) < {MIN_EPISODES}) AS low_sample,
+           COUNT(*) AS n_episodes,
+           COUNT(*) FILTER (WHERE status = 'holding') AS n_holding,
+           BOOL_AND(COALESCE(is_passive, FALSE)) AS is_passive_holder,
+           CASE
+               WHEN BOOL_AND(COALESCE(is_passive, FALSE)) THEN 'passive_product'
+               WHEN COUNT(*) FILTER (WHERE {rankable}) >= {MIN_EPISODES} THEN 'ranked'
+               WHEN COUNT(*) FILTER (WHERE {rankable}) > 0 THEN 'low_sample'
+               WHEN COUNT(*) FILTER (WHERE status = 'holding') > 0 THEN 'holding_only'
+               ELSE 'no_closed_alpha'
+           END AS metrics_status
+    FROM base
     GROUP BY holder
     """)
     con.execute(f"""
     CREATE OR REPLACE TABLE mart_inst_profile_dim AS
     WITH dims AS (
         SELECT holder, 'industry_pit' AS dim_type, COALESCE(sw_l1_at_open,'未知') AS dim_value, alpha_c1
-        FROM fact_inst_episode WHERE {base_where}
+        FROM fact_inst_episode WHERE {rankable}
         UNION ALL
         SELECT holder, 'year', substr(open_date,1,4), alpha_c1
-        FROM fact_inst_episode WHERE {base_where}
+        FROM fact_inst_episode WHERE {rankable}
         UNION ALL
         SELECT holder, 'holder_type', COALESCE(holder_type,'未知'), alpha_c1
-        FROM fact_inst_episode WHERE {base_where}
+        FROM fact_inst_episode WHERE {rankable}
     )
     SELECT holder, dim_type, dim_value,
            COUNT(*) AS n_closed,
@@ -379,23 +417,30 @@ def _ro_conn():
 
 def list_profiles(*, holder_type: str | None = None, min_episodes: int = MIN_EPISODES,
                   order_by: str = "median_alpha", limit: int = 50) -> list[dict[str, Any]]:
-    """机构排名列表 (默认剔 low_sample; order_by 白名单防注入)。"""
+    """机构排名列表 (默认剔 low_sample / 无 rankable metrics; order_by 白名单防注入)。
+
+    Thin display rows (holding_only / passive_product / n_closed=0) stay out of
+    the ranked list unless the caller lowers ``min_episodes`` and the row has
+    measurable ``median_alpha`` — never sort NULLs as zero skill.
+    """
     order_whitelist = {"median_alpha", "win_rate_alpha", "n_closed", "avg_alpha"}
     if order_by not in order_whitelist:
         raise ValueError(f"order_by 只允许 {sorted(order_whitelist)}")
     con = _ro_conn()
     try:
-        where, params = ["n_closed >= ?"], [int(min_episodes)]
+        where, params = ["n_closed >= ?", "median_alpha IS NOT NULL"], [int(min_episodes)]
         if holder_type:
             where.append("holder_type = ?")
             params.append(holder_type)
         rows = con.execute(f"""
             SELECT holder, holder_type, n_closed, median_alpha, avg_alpha, win_rate_alpha,
-                   median_ret, avg_hold_days, low_sample
+                   median_ret, avg_hold_days, low_sample, n_episodes, n_holding,
+                   is_passive_holder, metrics_status
             FROM mart_inst_profile WHERE {' AND '.join(where)}
             ORDER BY {order_by} DESC LIMIT ?""", [*params, int(limit)]).fetchall()
         cols = ["holder", "holder_type", "n_closed", "median_alpha", "avg_alpha",
-                "win_rate_alpha", "median_ret", "avg_hold_days", "low_sample"]
+                "win_rate_alpha", "median_ret", "avg_hold_days", "low_sample",
+                "n_episodes", "n_holding", "is_passive_holder", "metrics_status"]
         return [dict(zip(cols, r)) for r in rows]
     finally:
         con.close()
@@ -407,12 +452,15 @@ def get_profile(holder: str) -> dict[str, Any] | None:
     try:
         head = con.execute(
             "SELECT holder, holder_type, n_closed, median_alpha, avg_alpha, win_rate_alpha, "
-            "median_ret, avg_hold_days, low_sample FROM mart_inst_profile WHERE holder = ?",
+            "median_ret, avg_hold_days, low_sample, n_episodes, n_holding, "
+            "is_passive_holder, metrics_status "
+            "FROM mart_inst_profile WHERE holder = ?",
             [holder]).fetchone()
         if head is None:
             return None
         cols = ["holder", "holder_type", "n_closed", "median_alpha", "avg_alpha",
-                "win_rate_alpha", "median_ret", "avg_hold_days", "low_sample"]
+                "win_rate_alpha", "median_ret", "avg_hold_days", "low_sample",
+                "n_episodes", "n_holding", "is_passive_holder", "metrics_status"]
         out: dict[str, Any] = dict(zip(cols, head))
         out["dims"] = [dict(zip(["dim_type", "dim_value", "n_closed", "median_alpha",
                                  "win_rate_alpha", "low_sample"], r)) for r in con.execute(

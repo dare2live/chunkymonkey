@@ -51,10 +51,9 @@ def get_dossier_conn():
 def _institution_profile_holders(conn, holder_norms: list[str]) -> dict[str, dict[str, Any]]:
     """Map holder_name_norm → profile honesty flags (deep-link gate).
 
-    Profile coverage is ~54% (holders_stock_dossier_lineage_audit_20260721 §2.1);
-    the dossier must only deep-link a holder chip to 机构档案 when a profile row
-    actually exists — never claim full 股东↔机构 linkage. ``low_sample`` profiles
-    still deep-link (row exists) but are flagged for UX honesty.
+    After 2026-07-23 coverage lift, display rows exist for nearly all holders
+    with episodes; thin/passive rows still deep-link but carry ``low_sample`` /
+    ``metrics_status``. Only link when a profile row actually exists.
     """
     names = [n for n in {h for h in holder_norms if h}]
     if not names:
@@ -64,29 +63,51 @@ def _institution_profile_holders(conn, holder_norms: list[str]) -> dict[str, dic
         try:
             rows = conn.execute(
                 f"""
-                SELECT holder, low_sample, n_closed
+                SELECT holder, low_sample, n_closed, metrics_status
                 FROM fs.mart_inst_profile
                 WHERE holder IN ({placeholders})
                 """,
                 names,
             ).fetchall()
-            rich = True
-        except Exception:  # noqa: BLE001 — older/test schema without low_sample
-            rows = conn.execute(
-                f"SELECT holder FROM fs.mart_inst_profile WHERE holder IN ({placeholders})",
-                names,
-            ).fetchall()
-            rich = False
+            schema = "metrics_status"
+        except Exception:  # noqa: BLE001 — pre-lift schema without metrics_status
+            try:
+                rows = conn.execute(
+                    f"""
+                    SELECT holder, low_sample, n_closed
+                    FROM fs.mart_inst_profile
+                    WHERE holder IN ({placeholders})
+                    """,
+                    names,
+                ).fetchall()
+                schema = "rich"
+            except Exception:  # noqa: BLE001 — older/test schema without low_sample
+                rows = conn.execute(
+                    f"SELECT holder FROM fs.mart_inst_profile WHERE holder IN ({placeholders})",
+                    names,
+                ).fetchall()
+                schema = "bare"
         out: dict[str, dict[str, Any]] = {}
         for r in rows:
             holder = str(r[0])
-            if rich:
+            if schema == "metrics_status":
                 out[holder] = {
                     "low_sample": bool(r[1]) if r[1] is not None else False,
                     "n_closed": int(r[2]) if r[2] is not None else 0,
+                    "metrics_status": str(r[3]) if r[3] is not None else None,
+                }
+            elif schema == "rich":
+                out[holder] = {
+                    "low_sample": bool(r[1]) if r[1] is not None else False,
+                    "n_closed": int(r[2]) if r[2] is not None else 0,
+                    "metrics_status": None,
                 }
             else:
-                out[holder] = {"low_sample": False, "n_closed": 0}
+                out[holder] = {
+                    "low_sample": False,
+                    "n_closed": 0,
+                    "metrics_status": None,
+                }
         return out
     except Exception:  # noqa: BLE001 — feature_store absent → all unknown, fail-open
         return {}
@@ -411,7 +432,7 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
         d["holding_cycle_days"] = None
         out_rows.append(d)
 
-    # 机构档案 honesty: deep-link only when a profile row truly exists (~54% coverage).
+    # 机构档案 honesty: deep-link only when a profile row truly exists.
     profiled = _institution_profile_holders(conn, holder_norms)
     # 2F deepen: this-stock episode overlay (建仓期/状态/加减仓/收益 — measured only).
     episodes = _load_holder_episodes(conn, code, holder_norms)
@@ -427,6 +448,9 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
         d["has_institution_profile"] = has_profile
         d["institution_profile_low_sample"] = (
             bool(profile.get("low_sample")) if profile else False
+        )
+        d["institution_metrics_status"] = (
+            profile.get("metrics_status") if profile else None
         )
         ep = episodes.get(key) if key else None
         d["episode"] = ep
@@ -477,8 +501,8 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
             "note": (
                 "deep-link 机构档案 only when has_institution_profile=true; "
                 "episode_only_no_profile = 本股 episode 有、mart 无行（勿假链）；"
-                "population ~54% (audit §2.1); gap often rebuild lag / norm — "
-                "not invent Type-B enrichment"
+                "post-20260723 display rows ≈ episode coverage; thin/passive "
+                "rows carry low_sample + metrics_status — never invent alpha"
             ),
         },
         "episode_overlay": {

@@ -56,6 +56,7 @@ export interface StockHolderRow {
   holding_cycle_days: number | null;
   has_institution_profile?: boolean;
   institution_profile_low_sample?: boolean;
+  institution_metrics_status?: string | null;
   institution_link_status?:
     | "profile"
     | "profile_low_sample"

@@ -11,7 +11,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
-from services.institution_profile import build_episodes, run_episode_state_machine
+from services.institution_profile import (
+    build_episodes,
+    build_profiles,
+    run_episode_state_machine,
+)
 
 
 def _row(holder="H", stock="600000", period="20240331", status="新进", is_exit=False,
@@ -200,5 +204,74 @@ def test_build_episodes_dedups_source_duplicate_keys():
         assert len(rows) == 1, f"重复键必须只计一次 (修前 2 个 episode): {rows}"
         assert rows[0][0] == "holding"
         assert rows[0][1] == pytest.approx(100.0), "稳定序: holder_rank 最小的主行胜出"
+    finally:
+        c.close()
+
+
+# ── 2026-07-23 coverage lift: display profile for every episode holder ─────────
+
+
+def test_build_profiles_includes_holding_only_and_keeps_metrics_null():
+    """holding-only / passive / thin holders get display rows; alpha stays NULL."""
+    c = duck_mem()
+    try:
+        c.execute("""
+            CREATE TABLE fact_inst_episode (
+                holder VARCHAR, stock VARCHAR, holder_type VARCHAR,
+                open_date VARCHAR, close_date VARCHAR, status VARCHAR,
+                seeded BOOLEAN, is_passive BOOLEAN,
+                ret_c1 DOUBLE, alpha_c1 DOUBLE, sw_l1_at_open VARCHAR
+            )
+        """)
+        c.executemany(
+            "INSERT INTO fact_inst_episode VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            [
+                # rankable closed ×11 → ranked
+                *[
+                    ("牛散A", f"60000{i}", "个人", "20200101", "20200630",
+                     "closed", False, False, 0.1, 0.05, "银行")
+                    for i in range(11)
+                ],
+                # holding only → display, metrics NULL
+                ("持有中B", "600100", "基金", "20240101", None,
+                 "holding", False, False, None, None, "煤炭"),
+                # passive only → display, metrics_status=passive_product
+                ("被动ETF", "600200", "基金", "20240101", "20240630",
+                 "closed", False, True, 0.2, 0.1, "电子"),
+                # empty name → dropped
+                ("", "600300", "个人", "20240101", None,
+                 "holding", False, False, None, None, None),
+                (None, "600301", "个人", "20240101", None,
+                 "holding", False, False, None, None, None),
+                # seeded closed only → no_closed_alpha (not rankable)
+                ("种子C", "600400", "个人", "20200101", "20200630",
+                 "closed", True, False, 0.3, 0.2, "医药"),
+            ],
+        )
+        out = build_profiles(c)
+        assert out["profiles"] == 4  # A/B/ETF/C — empty dropped
+        rows = {
+            r[0]: r
+            for r in c.execute(
+                "SELECT holder, n_closed, median_alpha, low_sample, "
+                "n_episodes, is_passive_holder, metrics_status "
+                "FROM mart_inst_profile"
+            ).fetchall()
+        }
+        assert set(rows) == {"牛散A", "持有中B", "被动ETF", "种子C"}
+        assert rows["牛散A"][1] == 11 and rows["牛散A"][2] == pytest.approx(0.05)
+        assert rows["牛散A"][3] is False and rows["牛散A"][6] == "ranked"
+        assert rows["持有中B"][1] == 0 and rows["持有中B"][2] is None
+        assert rows["持有中B"][3] is True and rows["持有中B"][6] == "holding_only"
+        assert rows["被动ETF"][1] == 0 and rows["被动ETF"][2] is None
+        assert rows["被动ETF"][5] is True and rows["被动ETF"][6] == "passive_product"
+        assert rows["种子C"][1] == 0 and rows["种子C"][2] is None
+        assert rows["种子C"][6] == "no_closed_alpha"
+        # dims stay rankable-only (牛散A only)
+        dim_holders = {
+            r[0]
+            for r in c.execute("SELECT DISTINCT holder FROM mart_inst_profile_dim").fetchall()
+        }
+        assert dim_holders == {"牛散A"}
     finally:
         c.close()

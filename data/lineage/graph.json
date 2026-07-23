@@ -925,6 +925,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_institution_profile.py",
+      "kind": "consume",
+      "src": "table:feature_store.mart_inst_profile"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_institution_profile_api.py",
       "kind": "consume",
       "src": "table:feature_store.mart_inst_profile"
@@ -962,6 +968,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_brick_registry_b5.py",
+      "kind": "consume",
+      "src": "table:feature_store.mart_inst_profile_dim"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_institution_profile.py",
       "kind": "consume",
       "src": "table:feature_store.mart_inst_profile_dim"
     },
@@ -7333,8 +7345,8 @@
     }
   ],
   "meta": {
-    "edge_count": 1171,
-    "generated_at": "2026-07-23T00:35:18.373468+00:00",
+    "edge_count": 1173,
+    "generated_at": "2026-07-23T02:07:05.065561+00:00",
     "node_count": 424,
     "version": 2
   },
