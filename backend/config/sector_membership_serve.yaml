@@ -1,6 +1,6 @@
 # sector_membership_serve.yaml — Cap CX-3 decision-facing sector membership facet
 # Thin trust wrapper over pulse membership leaf (list_sector_members).
-# Authority: analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md §7.2 CX-3
+# Authority: analysis/FOUNDATION_EXECUTION_PLAN.md §2 (CX-3 DONE)
 # DC chains: observation-date fact_dc_member_daily snapshot + SLA fail-closed.
 # SW chain: display snapshot (is_new='Y') — honesty note, not PIT (feature side uses v_sw_industry_pit).
 version: 1

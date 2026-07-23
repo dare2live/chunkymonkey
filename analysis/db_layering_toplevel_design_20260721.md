@@ -1,7 +1,8 @@
 # DB 分层顶层设计（2026-07-21）
 
 > **生命周期**：evidence-only / **DB 分层排序与物理边界权威**（由 `goal.md` 指针授权；不替代 `docs/MASTER_TOPLEVEL_DESIGN.md` 业务 Tier 立法）  
-> **证据输入**：`plan_reeval_first_principles_20260720.md`、`data_foundation_modularity_gap_20260720.md`、`database_manifest.yaml`、`data_layers.yaml`、`legacy_raw_plane.yaml`  
+> **证据输入**：`database_manifest.yaml`、`data_layers.yaml`、`legacy_raw_plane.yaml`；执行面 `FOUNDATION_EXECUTION_PLAN.md`  
+
 > **禁令延续**：第二 DB  cargo cult、dual-write 迁移窗、plugin bus、按加工阶段机械拆库
 
 ---
@@ -246,7 +247,7 @@ ST 是 **E1 日级 membership 证据**（`stock_st` accepted partition），不�
 | 文档 | 关系 |
 |---|---|
 | `docs/MASTER_TOPLEVEL_DESIGN.md` | 业务 Tier + transport 轴 **立法**；本文件是其 DB 物理化附录 |
-| `analysis/plan_reeval_first_principles_20260720.md` | Transport strangler S1–S7 **排序**；本文件不重复 S 切片细节 |
+| `analysis/FOUNDATION_EXECUTION_PLAN.md` | 底座执行 backlog；本文件不重复 S 切片细节 |
 | `backend/config/database_manifest.yaml` | 物理库 **执行真相**；drift 时以 manifest 为准改本文件叙述 |
 | `backend/config/data_layers.yaml` | 物理表 asset_class（A/B/raw/infra）；目标迁入 module contract 后瘦化 |
 | `goal.md` | 指针本文件为 **DB 分层 authority** |

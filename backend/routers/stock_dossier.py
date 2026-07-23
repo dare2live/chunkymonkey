@@ -682,7 +682,8 @@ def dossier(
         "lineage": {
             "status": "attested_usable",
             "audit": "analysis/dossier_100_usable_20260723.md",
-            "prior_audit": "analysis/holders_stock_dossier_lineage_audit_20260721.md",
+            "prior_audit": "analysis/FOUNDATION_EXECUTION_PLAN.md",
+
             "holders_parse_integrity": "PASS",
             "stock_holder_assoc_readiness": "FIXED",
             "institution_join": inst_join,

@@ -19,10 +19,15 @@
 |---|---|
 | `../PROJECT_INDEX.md` | 短项目导航与当前资产判断，不是规则 owner |
 | `../FEATURE_MAP.md` | 机器生成的入口/数据域/writer 地图；可重建，不手改 |
-| `../BOARD.md` | 机器生成的 agent 状态投影（cutover/E/accepted）；可重建，不手改，非执法输入 |
+| `../BOARD.md` | 机器生成的 agent 状态投影（cutover/E/accepted）；可重建，不手改，**投影-only，非执法输入** |
+| `../analysis/FOUNDATION_EXECUTION_PLAN.md` | 数据底座执行 backlog（evidence-only；`goal.md` 指向） |
+| `../analysis/STRATEGY_EXECUTION_PLAN.md` | 后续策略执行 backlog（RX 前 BLOCKED；evidence-only） |
+| `../analysis/DOC_CLEANUP_20260723.md` | 2026-07-23 文档收敛台账（kept/deleted） |
 | `../analysis/project_state_ledger.md` | 唯一历史账本；按关键词查询，不作为启动全文 |
 
 `CLAUDE.md` 是 legacy compatibility pointer，Codex 默认不读。旧 session handoff / workflow checkpoint 体系已经退役；新会话从 git、Moth、CodeGraph 和 live data 重建状态。跨 Cursor 账号续作时另读 owner 明示的 `../analysis/account_switch_handoff_20260720.md`（入 git，非旧 checkpoint 体系）。
+
+**执行方案仅两份**（底座 / 策略）；禁止再写平行「主方案 / 支线方案 / 第三 bible」。立法仍只认上表三份 owner contracts。
 
 ## 文档生命周期
 

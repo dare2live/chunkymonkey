@@ -1,8 +1,8 @@
 # 数据地基阶段重评（2026-07-21）
 
 > **生命周期**：evidence-only / **foundation closure sequencing**（由 `goal.md` 授权近端排序；不替代 `docs/MASTER_TOPLEVEL_DESIGN.md` 立法）  
-> **证据输入**：tip `650aea42f`；live gates；`plan_reeval_first_principles_20260720.md`；`data_brick_architecture_20260721.md`；`data_foundation_modularity_gap_20260720.md`；`db_layering_toplevel_design_20260721.md`；git log 近 25 刀（S1–S7 / B1–B2 / B5 / E0 / qfq）  
-> **禁令延续**：E/F remeasure 不排近端；G/H/Release/Optuna；假 COMPAT/假 FIXED；org provider land invent；第五产品
+> **证据输入**：live gates；`data_brick_architecture_20260721.md`；`db_layering_toplevel_design_20260721.md`；执行面 `FOUNDATION_EXECUTION_PLAN.md` / `STRATEGY_EXECUTION_PLAN.md`  
+> **禁令延续**：E/F 仅 STRATEGY 开门后；G/H/Release/Optuna；假 COMPAT/假 FIXED；org invent；第五产品
 
 ---
 

@@ -1,10 +1,11 @@
 # PROJECT_INDEX — Current Project Map
 
 > 状态：live navigation，非规则 owner
-> 更新：2026-07-23
-> 当前目标看 `goal.md`（**foundation solidify CLOSED / phase_closure_ready**；完整地基目标仍 **PARTIAL** — `analysis/foundation_full_goal_push_20260722.md`；S1–S6 FIXED；S7 near-FIXED 23/46 typed wall；**E0-HIST/F6 PASS**；**FND-GATE PASS**；org **incremental-check-every-run**（mass/by-date invent banned）；Type-B **defer**；策略 paused；`BOARD.md`；`scripts/chunkyctl agent-boot`）。
-> 架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口与 writer 清单看 `FEATURE_MAP.md` 和 CodeGraph。
-> 生成状态板：`PYTHONPATH=backend python backend/scripts/build_agent_board.py`（勿手改 BOARD.md；Next 投影跟 `goal.md` foundation closed：owner-scheduled E/F only，非 A→H）。
+> 更新：2026-07-23（文档收敛）
+> 当前目标看 `goal.md`（foundation CLOSED / `phase_closure_ready`；策略 paused）。
+> **执行方案仅两份**：底座 `analysis/FOUNDATION_EXECUTION_PLAN.md` · 策略 `analysis/STRATEGY_EXECUTION_PLAN.md`（RX 前 BLOCKED）。台账 `analysis/DOC_CLEANUP_20260723.md`。
+> 架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口看 `FEATURE_MAP.md` / CodeGraph。
+> `BOARD.md` = 生成投影，**勿手改、非执法**（`build_agent_board.py`）。
 
 ## 1. Authority
 
@@ -14,9 +15,10 @@ AGENTS.md
   -> docs/MASTER_TOPLEVEL_DESIGN.md
   -> docs/strategy_validation_contract.md
   -> docs/engineering_governance.md
+  -> analysis/FOUNDATION_EXECUTION_PLAN.md | STRATEGY_EXECUTION_PLAN.md  (execution only)
 ```
 
-历史只查 `analysis/project_state_ledger.md`。`CLAUDE.md`、生成 handoff/checkpoint 和 dated analysis 不是 live authority。
+历史只查 `analysis/project_state_ledger.md`。`CLAUDE.md`、dated analysis 不是 live authority。
 
 ## 2. Product map
 
@@ -25,7 +27,8 @@ AGENTS.md
 | T0 market data | `backend/services/data_sources/`, `pipeline/`, `calendar.py`, `market_*` | A1–A5 代码完整；accepted daily `20190102`→`20260720`（1829d）+ ST `20220104`→`20260720`（1099d；asymmetric ST raw floor；chunked ≤40d local-raw land→accept）；**S1–S6 FIXED / S7 near-FIXED**：default sync = acquire→caller-only land→accept；`security_day_acquire`；CLI land/accept/derive；derive+form+pipeline clean 默认 accepted-only（`--allow-legacy-fill` 逃生）；`legacy_raw_plane.yaml`+gate（**22/46 ssot + 1 retired** = 2 blocked + 7 serve_l0_declared + 13 sync_orphan + `stk_factor_pro` owner sunset 2026-07-23；B1 `dc_member`→`fact_dc_member_daily` observation-date PIT；B2 limit+moneyflow(+dc)+index_daily+top_inst→fact_*；SW→PIT；pulse builders→mart；daily_basic→dim；stk_limit→form；stock_basic→dim；adj→qfq）；**B5 PARTIAL**（registry/qfq **FIXED** subset；Type-B enrichment **defer**）；form/qfq/segments/pulse 至 `20260720`（legacy raw daily 仍停 `20260716`，formal 不写 raw）；margin **1b FIXED** `contract_version=3` SSE+SZSE via acquire on_demand catchup（禁 all-due/mass；补跑仅验证）；rzrqye UNTRUSTED；无 mass fetch / cutover |
 | T0 classification | `taxonomy.yaml`, SW/DC raw tables, `build_sw_industry_view.py` → `v_sw_industry_pit`, DC snapshot builder | namespace 已分离；**SW L1 PIT exclusivity FIXED**（effective `out_date` 闭合重分类/同日双 L1；002310 等）；DC versioned PIT/membership 仍待 Phase 2 |
 | T1 stock state | `technical_states/`, `segments.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `form_production_read.py`, `market_pulse_tier12_read.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py` | 多轴状态可复用；C accept 分 `publish_scope=canary|project_universe`；`resolve_tier12_production_read` + B1/pulse 接线；**cutover yaml=true** → ACCEPTED_CUTOVER；**form enrich v1** + dossier/screener **typed hybrid**（accepted overlay name/pos/trend/breakout；purity/vol/sub=`hybrid_residual_fields`，非纯 accepted）；re-accept `20260717`/`20260720`；无 accept 日 fail-closed→LEGACY/fact |
-| T2 market sensing | `market_pulse.py`, `market_pulse_serve_read.py`, `universe_serve_filter.py`, `market_pulse_tier12_read.py`, `market_pulse_b_pit_read.py`, `b_pit_mart_cutover.py`, `project_universe_breadth.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py`, API/frontend | **沪深A serve 白名单 FIXED**（证据 `analysis/foundation_bj_dualpath_ashare_whitelist_20260721.md`）；展示可用但 breadth/margin UNTRUSTED（B-ext）；sentiment 旁路 `tier12_production_read` + `b_pit_mart_production_read`；B-pit shadow MATCH 120/120；**mart cutover=true（owner opt-in 2026-07-20）→ MART_CUTOVER（project_universe_pit）**；C envelope 可 project_universe scope；窗外/无 shadow 日仍 fail-closed→legacy；drill form 单轨 production-read（无 legacy JOIN+accepted 双写） |
+| T2 market sensing | `market_pulse.py`, `market_pulse_serve_read.py`, `universe_serve_filter.py`, `market_pulse_tier12_read.py`, `market_pulse_b_pit_read.py`, `b_pit_mart_cutover.py`, `project_universe_breadth.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py`, API/frontend | **沪深A serve 白名单 FIXED**（`analysis/hs_a_whitelist_includes_st_20260722.md`）；breadth/margin UNTRUSTED（B-ext；rzrqye 产品信任门）；B-pit **MART_CUTOVER**；窗外/无 shadow 日 fail-closed→legacy；form 单轨 production-read |
+
 | T3 institution | `institution_profile.py` + `institution_follow_b0/b1/b2/b4` (+ `_measure`) + `institution_follow_edge_gates.py` + `disclosure_transport.py` + `disclosure_research_read.py` + `disclosure_enrichment_projection.py` + `disclosure_dataset_snapshot.py` + dual-write/shadow/boundaries + `*_acceptance.py` + `org_holding_aif10.py` + router/tests | **首个正式策略包**；E0-HIST/F6 PASS；org = **period-gap + population gate**（`under_populated_accepted`；mass/by-date invent banned）；**`mart_inst_profile` display coverage FIXED** + **daily process delta-gates `rebuild_all`**（闭环法 `serve_derive_closed_loop_law_20260723.md` / `pipeline.closed_loop`）；HS-A latest top10 profile≈episode；E PARTIAL：B0/B1/B2 reject；≠ StrategyRelease |
 | T3 main rally | `main_rally_dataset_snapshot.py`, `main_rally_b0.py`, `main_rally_b0_measure.py`, `main_rally_b1.py`, `main_rally_b1_measure.py`, `main_rally_b2.py`, `main_rally_b2_measure.py`, `rally_gt.py`, `rally_detect.py`, rally config/tests | GT 资产成熟；**F0+F1+F2+F3 FIXED**：`main_rally_v1` freeze + B0 setup-entry short-horizon + B1(+Tier1 stock state) + B2(+Tier2 market sensing/`MarketContextSnapshot` project-board breadth, 独立 ablate on B0, 非叠加 B1) measured，同 B0 folds/costs、`REQUIRE_HOLDOUT_LIFT_VS_B0` → 三者均 reject/`claimable=false`（共享 `research_runtime`；非 full-episode；F0–F3 可 checkpoint） |
 | T3 formulas | `bestchoice/FROZEN.md` + `evidence_manifest.json` | 冻结 challenger；Phase G 前不吸收 |
@@ -60,7 +63,8 @@ AGENTS.md
 | 形态/阶段选股面 (5B) | Tier3 `GET /api/v3/screener/options` + `/form_stage`；config `stock_screener.yaml`；`stock_screener.py` + 共享 `form_production_read`（与档案 F 同一 production-read：fact brick + ACCEPTED_CUTOVER overlay；`sql_where_active_a_share`）；全局 `MAX(trade_date)` SLA → `status=stale`；UI `#/market`「形态/阶段选股」→`#/stock/:code`；证据 `capability_b_stock_screener_20260721.md`；pytest `tests/test_stock_screener.py` ∈ blocking |
 | Holders / frontier primitive | Shared `frontier_decision.decide_frontier`（`skip_behind`/`equal_day_population_gap`/`advance_window`/`pending_clock`/`hard_fail`）；holders=`notice_date` sparse；`by_ann_date`=`ann_reprobe` 保留 wm 当天；`by_trade_date`=`atomic_skip`；org=`period` hook 禁 by-date invent；映射+验收 `analysis/data_frontier_detection_system_20260723.md` + `unified_frontier_detection_acceptance_20260723.md`；holders 路径仍 `acquire._sync_holders_aif10`（`e040f4889`） |
 | Serve→derive closed loop | Law `analysis/serve_derive_closed_loop_law_20260723.md` + config `serve_derive_closed_loop.yaml`；process `institution_profile` delta-gate + as_of seed；org `repair_accept_from_local_raw` / F6 `min_org_accepted_stocks`；`integrity_observe`；证据 `closed_loop_residual_closure_20260723.md`；pytest `tests/test_pipeline_closed_loop.py` |
-| Rewrite must-keep vs delete | Verdict `analysis/rewrite_mechanism_verdict_20260723.md`：KEEP = sync replace / qfq CTAS+in-module compact / landing+skip / delta rebuild；**DELETED** = `rewrite_legacy` True path + `ingest_stk_holdertrade_canary.py`；禁 periodic dedupe/compact fixer；holders `--accept-legacy-partition` = noop mirror only |
+| Rewrite must-keep vs delete | 裁决折入 `analysis/FOUNDATION_EXECUTION_PLAN.md` §4：KEEP = sync replace / qfq CTAS+in-module compact / landing+skip / delta rebuild；**DELETED** = `rewrite_legacy` True + canary CLI；禁 periodic dedupe/compact fixer |
+
 | Manual single-domain sync/canary/replay | `scripts/chunkyctl sync --domain DOMAIN`；`trade_cal` full generation；`daily`/`stock_st` 须显式 `--start/--end`（同日或 ≤40 交易日）；`--drain` 对三域 inapplicable；其它 disabled/formal 仍 fail closed |
 | Shared tooling snapshot | `moth snapshot --repo .` |
 | Business/tool assertions | `moth assert --repo .` |

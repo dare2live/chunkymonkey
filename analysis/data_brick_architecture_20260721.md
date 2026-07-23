@@ -1,7 +1,8 @@
 # 数据积木架构权威设计（2026-07-21）
 
 > **生命周期**：evidence-only / **变量分层 + 积木组合 + 模块独立 operability 权威**（由 `goal.md` 指针授权；不替代 `docs/MASTER_TOPLEVEL_DESIGN.md` 业务 Tier 立法；物理 DuckDB 边界见 `analysis/db_layering_toplevel_design_20260721.md`）  
-> **证据输入**：`plan_reeval_first_principles_20260720.md`、`data_foundation_modularity_gap_20260720.md`、`db_layering_toplevel_design_20260721.md`、`docs/strategy_validation_contract.md`、live S1–S7/E0 状态（`goal.md`）  
+> **证据输入**：`db_layering_toplevel_design_20260721.md`、`docs/strategy_validation_contract.md`、live S1–S7/E0（`goal.md`）；执行面 `FOUNDATION_EXECUTION_PLAN.md`  
+
 > **禁令延续**：greenfield 第五产品、plugin bus、第二 DB、dual-write 迁移窗、YAML-as-language、无限变量 DAG、Optuna-as-truth
 
 ---
@@ -282,7 +283,7 @@ flowchart TB
 |---|---|
 | `docs/MASTER_TOPLEVEL_DESIGN.md` | 业务 Tier + transport **立法** |
 | `analysis/db_layering_toplevel_design_20260721.md` | 物理 DuckDB + E0–R1 **附录** |
-| `analysis/plan_reeval_first_principles_20260720.md` | S1–S7 **排序** |
+| `analysis/FOUNDATION_EXECUTION_PLAN.md` | 底座执行 backlog（S1–S7 排序历史见 git） |
 | `docs/strategy_validation_contract.md` | L4 / PIT / 纸面 **立法** |
 | `goal.md` | 执行板 + 指针本文件 |
 

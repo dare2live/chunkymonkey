@@ -4,7 +4,8 @@ Consumes ``mart_sector_pulse_daily`` + ``fact_stock_moneyflow(_dc)_daily``.
 Never writes behavior labels into Tier0/Tier2. Moneyflow = vendor imbalance
 proxy (AGENTS.md), not conserved cash.
 
-Authority: analysis/decision_3a_moneyflow_assist_20260721.md
+Authority: analysis/product_decision_assist_backlog_20260721.md (Cap A) +
+analysis/FOUNDATION_EXECUTION_PLAN.md §2.
 """
 from __future__ import annotations
 

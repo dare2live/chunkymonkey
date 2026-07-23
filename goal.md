@@ -1,75 +1,38 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改）。
-> 完成证据追加到 `analysis/project_state_ledger.md`。
-> **跨账号交接全文**：`analysis/account_switch_handoff_20260720.md`
-> **design notes（analysis 层 living roadmap；不改 north star）**：`analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md`（整体优化方案合一 + 底座关键路径/分阶段验收）· 索引 `analysis/DOC_AUTHORITY_20260722.md`
-> **历史排序母体（superseded as roadmap）**：`analysis/plan_reeval_first_principles_20260720.md`
-> **重评事实包（无裁决；superseded as roadmap）**：`analysis/plan_reeval_evidence_pack_20260720.md`
-> **模块化缺口证据**：`analysis/data_foundation_modularity_gap_20260720.md`
-> **DB 分层权威（逻辑 E0→R1 vs 物理 DuckDB；禁按加工阶段拆库）**：`analysis/db_layering_toplevel_design_20260721.md`
-> **数据积木/变量分层权威（L0–L4、组合规则、模块 operability）**：`analysis/data_brick_architecture_20260721.md`
-> **DB 存储卫生（free-block / archive 机制 + 2026-07-21 reclaim）**：`analysis/db_storage_hygiene_20260721.md`
-> **吞吐瓶颈诊断（墙钟 vs 真相门；§15 adoption）**：`analysis/throughput_bottleneck_diagnosis_20260721.md`
-> **§15 效率复测（measured validation）**：`analysis/process_efficiency_validation_20260721.md`
-> **Gate 栈 Occam 重设计**：`analysis/gate_redesign_occams_20260721.md`
-> **地基阶段重评（FND-GATE F1–F10 spec；roadmap 见 MASTER reeval）**：`analysis/foundation_phase_reeval_20260721.md`
-> **§15-VERIFY / 地基 E2E·解阻·点击**（20260721）：`section15_verify` · `foundation_e2e_frontend_update` · `foundation_daily_update_unblock` · `foundation_daily_update_ui_click` · RCA `foundation_daily_update_degraded_rca`
-> **活子权威**：积木/DB/三时钟/沪深A含ST/Cap defs/前端 L1–L3·facet/工作台增量 UX — 见 `DOC_AUTHORITY_20260722.md` §1–2；历史证据同索引 §3–4
-> **跑步机控制面**：`architecture_fix_treadmill_first_principles_20260722.md`（Phases 0–3 FIXED；ops≠刀）
+> 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改；**非执法输入**）。
+> 完成证据：`analysis/project_state_ledger.md`（关键词查）。交接：`analysis/account_switch_handoff_20260720.md`。
+> **执行方案（仅两份；abolished 主方案/支线）**：底座 `analysis/FOUNDATION_EXECUTION_PLAN.md` · 策略 `analysis/STRATEGY_EXECUTION_PLAN.md`（RX 前 BLOCKED）。
+> **清理台账**：`analysis/DOC_CLEANUP_20260723.md`。Owner 立法仍只认 `docs/README.md` 三份 contracts。
+> **活契约引用（非第二 backlog）**：`analysis/foundation_phase_reeval_20260721.md` · `analysis/data_brick_architecture_20260721.md` · `analysis/db_layering_toplevel_design_20260721.md` · `analysis/architecture_fix_treadmill_first_principles_20260722.md` · `analysis/serve_derive_closed_loop_law_20260723.md` · `analysis/org_holding_incremental_loop_20260723.md` · `analysis/hs_a_whitelist_includes_st_20260722.md`。
 
 ## 当前 objective
 
 **轨道 = foundation solidify CLOSED**（2026-07-21；母体 = transport strangler S1–S7 + brick L0–L3 + E0 + DB 分层；**phase_closure_ready=true**）。模块化 **S1–S6 FIXED**；**S7 near-FIXED**（22 ssot + 1 retired = typed hard-stop 墙；B1+B2 done；禁假 COMPAT；`stk_factor_pro` 2026-07-23 owner sunset）。**E0-HIST / F6 PASS**（holders≥120 trading-day overlap）。**FND-GATE PASS**（F1–F10 全 PASS；F8 §15-VERIFY **PASS**）。**§15 behavior PASS**（连续 3 刀 commits/knife=1.0 + pre-knife）。**B5** registry/qfq **FIXED 子集**；Type-B enrichment **defer**。A→H = **后置研究地图**；**E/F remeasure paused**（可 schedule，未开）。WP0–WP4 闭合；WP6 shadow 开放。**§15 knife-merge binding 不变**。
 
-已落地硬事实（勿回滚）：
-- C + B-pit **`cutover_allowed=true`**（commit `b38e9ac5`）→ resolver `ACCEPTED_CUTOVER` / `MART_CUTOVER`
-- daily+ST+form/qfq/**pulse** 前沿 **`20260721`**（E2E 模块化 + unblock 后 DC/moneyflow/limit_cpt catchup；见 `foundation_daily_update_unblock_20260721.md`）
-- Phase D research_runtime **FIXED**（persist + fold + measured offline）
-- Delivery-OS：eng_gov **§15** knife-merge binding（一刀=一次 Rule10+一次 safe_commit；异步 CI 禁 sync `gh watch`；L3 `chunkyctl pre-knife`；并行仅 moth 证非重叠；L1 docs skip CI）— **不**放宽 L3/Rule10/PIT/≤40d
-- Tier1 accept **form enrich v1**：`stock_state_stage_pattern_v1` + exact-day `fact_stock_form_daily`；re-accept `20260717` (4989) + `20260720` (4991)；cutover yaml 未回翻
-- Phase F **F0+F1 FIXED**：`main_rally_v1` DatasetSnapshot freeze + B0 setup-entry short-horizon measured → `reject` / `claimable=false`（非 full-episode；禁 Optuna / StrategyRelease）
-- Phase F **F2 FIXED**：B1 = B0 + Tier1 stock-state FeatureBlock（同 B0 snapshot/folds/costs/paper，经 `resolve_tier12_production_read`/`load_stock_state_by_day`）→ 同窗口 measured **`reject`** / **`claimable=false`**（edge gates unmet；holdout vs B0 无 strict lift，`REQUIRE_HOLDOUT_LIFT_VS_B0` 生效）。F2 reject/`claimable=false` 为 protocol-complete 交付，非 stop。
-- Phase F **F3 FIXED**：B2 = B0 + Tier2 market-sensing FeatureBlock（`MarketContextSnapshot` project-board breadth risk-on gate，mirrors `institution_follow_b2`；legacy `market_pulse` mart 遇 UNTRUSTED 拒绝、缺 `available_at` fail-closed；独立 ablate on B0，非叠加 B1）→ 同窗口 measured **`reject`** / **`claimable=false`**（coverage sufficient 121/121d, risk_on 53/121d；edge gates unmet + holdout lift vs B0 unmet）。**F0–F3 ladder 可 checkpoint**（三个 ablation 均诚实 reject，非叠加寻优）。
-- **Dual-track 复核（2026-07-20 续作）**：`rg`+人工复查 `routers`/`services`/`scripts`/前端 API，residual **NONE**——无新旁路可删/退役；既有 resolver 边界（`resolve_tier12_production_read`、`resolve_b_pit_mart_production_read`）仍是唯一读路径。证据见 `data/lineage/legacy_retire_notes.md`「2026-07-20 re-audit」。
-- **Accept frontier 复核（2026-07-20）**：当时墙钟仍 `2026-07-20`，`20260721` `operation_window_blocked`——已过时。
-- **Accept frontier 复核（2026-07-21 E2E）**：收盘后模块化 `land_then_accept` 单日增量 daily/ST **`20260721` accepted**；当时 UI/`daily_update` 因缺按钮 + margin `scope_blocked` 预检 **FAIL**。
-- **daily_update 解阻（2026-07-21 follow-up）**：margin 预检 **FIXED**（`on_demand`+frozen，禁 thaw）；编排器 formal daily/ST catchup **FIXED**；DC/pulse **`20260721`**；工作台「数据更新」**FIXED**（`#/workbench` → `POST /api/v3/ops/jobs/daily_update/run` + 状态/日志尾；证据 `foundation_daily_update_unblock_20260721.md` Knife 4）。
-- **工作台可观测性（2026-07-21 晚）**：运行中展示 `current_activity`（阶段/进度行/日志时间/告警原因），不再只显示「更新中」；证据见 `foundation_daily_update_ui_click_20260721.md`。
-- **Capability E（2026-07-21 / 22）**：**FIXED** — workbench「分步节点」+ `GET /api/v3/ops/pipeline/nodes`；可独立跑 `pipeline_acquire|clean|process|store` + `derive_qfq`；**S1/S2 参数化 UI** `POST /api/v3/ops/pipeline/land-accept/run`（daily/stock_st）；预检仍嵌链内；一键「数据更新」仍主路径。证据 `capability_e_pipeline_step_cards_20260721.md`。
-- **完整地基 push（2026-07-22）**：formal **daily** 盘前 `zero_rows` → `pending_publish` soft-skip **已测**；相对完整目标仍 **PARTIAL** — 见 `foundation_full_goal_push_20260722.md`。form 读 typed hybrid residual；机构 deep-link `institution_link_status` 诚实。
-- **acquire `--all-due` 解阻（2026-07-22）**：**FIXED（structural + live）** — RCA=formal catchup `raise Tier0` 串行硬门绑架 drain；重建=drain 先于 formal + formal 域内 degrade/pending 不 abort；typed `pending_publish` 保留为域契约。UI 09:52→10:37：drain 后 daily=`pending_publish`、stock_st=`20260722` accepted 209、`ths_hot` max=`20260721`（443 rows；当日 `pending_publish`@22:30）。证据 `foundation_acquire_all_due_unblock_20260722.md`。Continuity READY / 全链绿仍 open（DONE degraded）。
-- **0r.1–0r.4 foundation（2026-07-21 / 22）**：**FIXED** — 沪深A serve whitelist + formal continuity/SLA + share_float bare BJ normalize；ths_hot typed `pending_publish`（非 known_empty；live `20260721` catchup=ops）。证据 `foundation_bj_dualpath_ashare_whitelist_20260721.md` + `plan_residual_reconcile_20260722.md`。
-- **F 更长窗 / S7 daily expand**：accepted daily **`20190102`→`20260721`**；ST **`20220104`→`20260721`**。E/F remeasure 仍 paused。
+已落地硬事实（勿回滚；细节见 FOUNDATION §2 + git）：
+- C + B-pit **`cutover_allowed=true`**（`b38e9ac5`）→ `ACCEPTED_CUTOVER` / `MART_CUTOVER`；dual-track residual **NONE**
+- accepted daily **`20190102`→`20260721`**；ST **`20220104`→`20260721`**；form/qfq/pulse 跟 formal；工作台一键更新 + Cap E 分步节点 FIXED
+- Phase D runtime FIXED；Phase F F0–F3 ladder measured **reject** / `claimable=false`（可 checkpoint；≠ Release）
+- Delivery-OS：eng_gov **§15**（一刀=Rule10+safe_commit；异步 CI；L3 pre-knife；不放宽 PIT/≤40d）
+- CX-1…CX-4 PASS；Cap A/B/D/E/F usable；margin v3 path + holders skip-land + qfq in-module compact FIXED
 
-启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`。
+启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`（投影）。
 
 ## 下一步
 
-**近端排序 authority** = `analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md`（整体优化方案合一；FND-GATE spec 仍 = `foundation_phase_reeval_20260721.md`）。积木分层 = `data_brick_architecture_20260721.md`。历史母体 = `plan_reeval_first_principles_20260720.md`（superseded as roadmap）。
+**执行权威（what next）** = 仅两份方案：
+1. **数据底座** → `analysis/FOUNDATION_EXECUTION_PLAN.md`（有序 TODO；近端第一条 = **Continuity Knife4**）
+2. **后续策略** → `analysis/STRATEGY_EXECUTION_PLAN.md`（**BLOCKED** until foundation exit **且**本文件显式 schedule RX）
 
-**foundation-done 已闭合**（F1–F10 PASS；`phase_closure_ready=true`）。下一轨仅在 owner 显式 schedule 后开：
+**foundation-done 已闭合**（F1–F10 PASS；`phase_closure_ready=true`；CX-1…CX-4 PASS）。FND-GATE spec = `analysis/foundation_phase_reeval_20260721.md`。无「主方案 vs 支线」——残差一律进上述 backlog。
 
-1. **scheduled E/F remeasure**（同 protocol；仍禁 Optuna/松门/Release）— **未开**；保持 paused
+**已闭合（勿回滚）**：S1–S6 FIXED；S7 near-FIXED（禁假 COMPAT；无 owner 新 block 不开 S7 刀）；E0-HIST/F6 PASS；org **incremental-check-every-run**（mass/by-date invent banned）；B5 registry/qfq FIXED 子集（Type-B **defer**）；Cap F dossier usable FIXED；margin 1a+1b path FIXED（SSE+SZSE v3；rzrqye UNTRUSTED；禁 thaw）；holders skip-land FIXED；qfq in-module compact FIXED；Serve→derive 闭环 FIXED；跑步机 0–3 FIXED；§15-VERIFY PASS。
 
-**已闭合（勿回滚）**：
+**近端 focus**：按 FOUNDATION **F1 Continuity 诚实残差** → **F2** margin token catchup 推 `local_max` → **F5** BOARD 重生。**RX / Optuna / Release 未开**（见 STRATEGY）。仍禁 S7 假 COMPAT / org invent / 松 holdout / margin thaw / Continuity 洗绿。
 
-- **S1–S6 FIXED** — transport modular；default sync caller-only；derive/serve 独立 CLI
-- **S7 near-FIXED** — 22 ssot + 1 retired typed hard-stop wall（2 blocked + 7 serve_l0 + 13 sync_orphan；`stk_factor_pro` owner sunset）；B1+B2 done；daily **1829d** / ST **1099d**；**本阶段不再开 S7 刀** unless owner 新 publication/sunset block
-- **E0 transport FIXED 子集** — S1/S2 CLI + stk/holders provider land；**org_holding by-date invent banned**（daily = incremental-by-period check）
-- **E0-HIST / F6 PASS** — local-raw chunked ≤40d empty_skip：holders **152**（`20251020`→`20260717`；**126** trading-day overlap daily）；stk **194**（`20251020`→`20260715`；**161** overlap）；org **2** unchanged
-- **B5 FIXED 子集** — registry gate 绿 + qfq lineage + live derive；**Type-B enrichment defer**（registry in-scheme；enrichment 非近端）
-- **FND-GATE FIXED** — `backend/scripts/check_foundation_done.py` + `backend/config/foundation_done.yaml`；doctor/moth/CI wired；typed walls（S7 22 ssot+1 retired / org BLOCKED / Type-B defer）PASS
-- **§15-VERIFY / F8 PASS** — 连续 3 L3 刀 e0-hist→fnd-gate→section15-verify；commits/knife=1.0；pre-knife 全 true；证据 `analysis/section15_verify_20260721.md`
-
-**近端 focus**：roadmap = `analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md` §7。**CX-1…CX-4 PASS**。Foundation **0r.1–0r.4 FIXED**。跑步机控制面 **Phases 0–3 FIXED**；**Serve→derive 闭环 FIXED**（机构档案 process delta-gate + org `repair_accept_from_local_raw` + F6 `min_org_accepted_stocks` + `integrity_observe` + as_of seed；live org max_stocks=5524；FND-GATE PASS）。**Cap F 股票档案 100% usable FIXED**（`stock_dossier_cap_f_usable`；证据 `dossier_100_usable_20260723.md`）。**margin 1a+1b**：accepted claim = SSE+SZSE `external_aggregate`；`contract_version=3` transport 对齐；`on_demand` bounded calendar catchup enabled（禁 all-due/mass）；v2 BSE evidence read-only；rzrqye UNTRUSTED；continuity honest（证据 `foundation_residual_fix_plan_20260723.md` + `margin_v3_bounded_catchup_1b_20260723.md`）— **禁**假 Continuity READY / product thaw。下一步 = token 下跑 catchup 推进 `local_max`，或 Knife **1c** shadow；**RX / E/F remeasure BLOCKED until owner签字**；**Optuna = Phase N BANNED**。仍禁 Type-B enrichment / S7 假 COMPAT / 擅自 E/F / G/H/Release / org invent / 松 holdout / margin thaw。**SW L1 PIT exclusivity FIXED**；**drain 流式 + probe-first FIXED**。
-
-**Deferred product（顺序已重评；roadmap 见 MASTER reeval）**：0r.5b→5B + Cap F usable mandate CLOSED。Defs 见 backlog；历史排期证据见 `product_plan_reeval_stock_dossier_20260721.md`（superseded as roadmap）。禁 Optuna/Release/松 holdout；结论=Tier3/产品面，不融进 Tier0。
-
-**护栏**：frontier=`20260721`（含 pulse sector/flow/strongest）；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；**org mass/by-date invent banned + 每次更新检增量**（非 forever ignore；见下裁决 + `org_holding_incremental_loop_20260723.md`）；**禁 daily 全宇宙逐公司扫股东公告**（holders notice 稀疏已 ship；见 `shareholder_update_check_design_20260723.md`）；margin 禁 thaw（on_demand≠无日历；observe≠catchup）；**市场感知/档案 serve = 沪深A 白名单含 ST**（serve filter `6afea30fc` + population denylist 纠偏见 `hs_a_whitelist_includes_st_20260722.md`）。
-
-A→H 仍为后置地图；E/F remeasure **仅** owner schedule 后开。
+**护栏**：formal frontier 与 drain soft 窗分立叙述；PIT+≤40d；§15 不放宽；org 增量见 `org_holding_incremental_loop_20260723.md`；禁全宇宙扫股东公告（`shareholder_update_check_design_20260723.md`）；serve=沪深A 含 ST。
 
 ## 禁令
 

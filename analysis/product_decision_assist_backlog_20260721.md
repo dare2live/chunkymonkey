@@ -1,12 +1,9 @@
 # Product decision-assist backlog (2026-07-21)
 
 > 状态：evidence-only / **capability definitions**（A–F defs still valid; near-term knives **CLOSED**)
-> Owner asks captured 2026-07-21（+ C/D follow-up same day）. Sequencing hard-gated on foundation E2E.
-> Layer authority: `analysis/data_brick_architecture_20260721.md` (L0–L3) + MASTER Tier0–4.
-> Foundation dependency evidence: `analysis/foundation_e2e_frontend_update_20260721.md` (PARTIAL) → unblock+click follow-ups FIXED/PARTIAL.
-> **Phase-order authority:** `analysis/product_plan_reeval_stock_dossier_20260721.md` — supersedes §7; defs A–E here + **F 股票档案**.
-> **Execution closeout:** `analysis/product_plan_execution_closeout_20260721.md` (0r.5b→5B FIXED subsets).
-> **Complex-viz overlay (PLAN ONLY):** `analysis/frontend_complex_viz_plan_20260722.md` — 潜伏地形/象限/交集 metaphor; consumes shipped Cap A board + Cap D intersection; no new backend for MVP.
+> Layer authority: `analysis/data_brick_architecture_20260721.md` (L0–L3) + `docs/MASTER_TOPLEVEL_DESIGN.md` Tier0–4.
+> Execution backlog: `analysis/FOUNDATION_EXECUTION_PLAN.md`（产品残差）· Cap F 证据 `dossier_100_usable_20260723.md`.
+> **Complex-viz:** `analysis/frontend_complex_viz_plan_20260722.md`（consumes Cap A/D；无新 backend MVP）.
 
 ## 1. Problem / north star
 
@@ -59,7 +56,7 @@ Not a display-only pulse card. Intended surface:
 - **Also** show a workbench **stepper / flowchart of modular stages** so when stuck, owner can click **one stage** independently (S1 land / S2 accept / derive / process / store-ish ops that already exist as caller-only APIs/CLIs).
 - Aligns with brick transport: acquire → land/raw → accept → derive → process → serve — UI mirrors boundaries; does **not** invent a second orchestration DAG.
 - **Status (2026-07-21):** **DONE (shipped subset)** — workbench tabs「一键更新 / 分步节点」; runnable jobs = `pipeline_acquire|clean|process|store` + `derive_qfq` via `POST /api/v3/ops/jobs/{job}/run`; catalog `GET /api/v3/ops/pipeline/nodes`. **Disabled (honest):** 预检（嵌在链内）、S1/S2 land·accept（需 domain+dates/batch-id）。NON-goal remains: beautiful polish / parameterized S1-S2 UI / moneyflow tabs.
-- Evidence: `analysis/capability_e_pipeline_step_cards_20260721.md` (`799b7412d`).
+- Evidence: commit `799b7412d`（Cap E pipeline step cards；详见 git）.
 
 ## 5c. Capability F — 股票档案 (+股东关联)
 
@@ -71,7 +68,7 @@ Not a display-only pulse card. Intended surface:
 
 ## 6. Dependencies on foundation (must be true first)
 
-Gate: **after** data-foundation E2E verify/optimize. Peer evidence may still be updating `analysis/foundation_e2e_frontend_update_20260721.md` — do not open A/C/D implementation while that path is PARTIAL without owner schedule.
+Gate: foundation E2E / Cap mandate **CLOSED**（见 `FOUNDATION_EXECUTION_PLAN.md` §2）；defs 仍有效，近端刀不开。
 
 **Must be true before Capability A build:**
 
@@ -90,7 +87,7 @@ Gate: **after** data-foundation E2E verify/optimize. Peer evidence may still be 
 
 ## 7. Proposed phase order
 
-> **Superseded for near-term knives** by `analysis/product_plan_reeval_stock_dossier_20260721.md` §2.
+> **Near-term knives CLOSED** — 执行面见 `analysis/FOUNDATION_EXECUTION_PLAN.md`。
 > Historical table kept for audit; do not schedule from this section alone.
 
 | Phase | Work | Status |

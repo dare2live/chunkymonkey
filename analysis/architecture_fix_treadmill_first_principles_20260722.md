@@ -1,10 +1,8 @@
 # 补丁跑步机 — 第一原理架构修复方案（2026-07-22）
 
-> Status: evidence-only / **Phases 0–3 FIXED**; Phase 4 checklist FIXED / E-F compute BLOCKED — closeout `analysis/architecture_fix_treadmill_closeout_20260722.md`
-> Authority chain: `AGENTS.md` → `goal.md` → `docs/README.md` owners → 本文件（treadmill 控制面/ops/product ceiling 的架构裁决）
-> Diagnosis owner（勿重打）: `analysis/why_patch_treadmill_20260722.md`（evidence-only 判断，本文件是它的 architecture 续作）
-> Skills applied: `$architect-controller`（立法→控制→执行）· `$first-principles-thinking` · `$thinking-occams-razor` · `$mio`（真金白银 / 消费者锚定 / 别为制度假绿 / 别被"做完了"锁死）
-> 业主指令: **act as architect from first principles**；**该改就改，不必守现架构**；adversarial 2–3 角色论证；default NO production rewrite this turn。
+> Status: evidence-only / **Phases 0–3 FIXED**；E/F = `analysis/STRATEGY_EXECUTION_PLAN.md`（BLOCKED）
+> Authority chain: `AGENTS.md` → `goal.md` → `docs/README.md` owners → 本文件（三时钟控制面；执行 backlog 见 FOUNDATION）
+> Skills applied: `$architect-controller` · `$first-principles-thinking` · `$thinking-occams-razor` · `$mio`
 
 ---
 
@@ -213,4 +211,4 @@ RunOutcome ∈ {
 
 **改的是「词」和「队列」，不是「地基」**：给 code / data-clock / usage 三条时钟各自 typed 的真话（`run_outcome` 三态 + 单一 FND-GATE 权威 + ops 残差默认非刀），本轮只落文档+指针，代码分 owner 排期的 strangler phase 推进；做成 = **下次日更软等显 SOFT_WAITING 不再假 FAIL/刷屏，且 agent 不再把时钟/诚实翻译成代码刀**。
 
-Label: **Phases 0–3 FIXED**; Phase 4 checklist FIXED / E-F compute BLOCKED. Closeout: `analysis/architecture_fix_treadmill_closeout_20260722.md`. Residual owner: owner usage of viz + optional E/F schedule signature.
+Label: **Phases 0–3 FIXED**；E/F = `analysis/STRATEGY_EXECUTION_PLAN.md`（BLOCKED）。Residual owner: owner usage of viz + RX schedule signature.

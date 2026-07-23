@@ -39,17 +39,16 @@ BANS = [
 def _next_knives(*, b_on: bool, c_on: bool) -> list[str]:
     """Project near-term knives from goal.md mainline (not A→H research map).
 
-    BOARD is projection-only; ``goal.md`` + ``plan_reeval_first_principles`` win
-    on ordering. Cutover yaml only gates opt-in lines when gates are false.
+    BOARD is projection-only; ``goal.md`` + FOUNDATION/STRATEGY execution plans
+    win on ordering. Cutover yaml only gates opt-in lines when gates are false.
     """
     knives = [
+        "FOUNDATION backlog: analysis/FOUNDATION_EXECUTION_PLAN.md (next=Continuity Knife4)",
+        "STRATEGY blocked: analysis/STRATEGY_EXECUTION_PLAN.md until foundation exit + goal RX schedule",
         "foundation phase_closure_ready — F1–F10 PASS (analysis/foundation_phase_reeval_20260721.md)",
-        "§15-VERIFY FIXED: F8 PASS commits/knife=1.0 on e0-hist→fnd-gate→section15-verify",
-        "FND-GATE FIXED: check_foundation_done F1–F10 (phase_closure_ready=true)",
-        "E0-HIST/F6 PASS: holders152/126d + stk194/161d; org incremental-check-every-run (mass banned)",
-        "S7 22/46 ssot + 1 retired = typed hard-stop wall — no fake COMPAT; owner publication/sunset only",
-        "Type-B enrichment DEFER (B5 registry/qfq FIXED subset; not near-term knife)",
-        "E/F remeasure paused until owner schedules post-foundation (F0–F3 baseline frozen)",
+        "FND-GATE / §15-VERIFY FIXED; org incremental-check-every-run (mass banned)",
+        "S7 typed hard-stop wall — no fake COMPAT; Type-B enrichment DEFER",
+        "E/F remeasure paused until owner schedules (Optuna/Release banned)",
     ]
     if not (b_on and c_on):
         knives.insert(

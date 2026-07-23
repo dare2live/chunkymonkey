@@ -11,8 +11,8 @@ Input honesty (plan §3.5): membership + strength must share a serve as-of; a
 stale or mismatched as-of degrades the whole surface to ``status=stale`` with
 empty rows — never a fake freshness claim (mirrors ``/pulse/strongest``).
 
-Authority: analysis/decision_4d_intersection_strongest_20260721.md (+ 2026-07-22
-sw_industry 3-chain residual clear).
+Authority: analysis/product_decision_assist_backlog_20260721.md (Cap D) +
+analysis/FOUNDATION_EXECUTION_PLAN.md §2.
 """
 from __future__ import annotations
 
