@@ -40,8 +40,9 @@ e0_breadth:
   daily_db: tushare_raw
   org_db: smartmoney
   min_holders_daily_overlap: 120
-  # org: mass by-date invent banned; incremental land/accept may grow partitions
-  # with the disclosure calendar (no artificial thin ceiling)
+  # org: mass by-date invent banned; population floor blocks canary false-green
+  min_org_accepted_stocks: 500
+  org_population_dataset_id: tier0.disclosure.org_holding_detail_period
 
 # B5 / qfq (F4) — Type-B enrichment defer is a typed wall, not F4 FAIL
 b5:

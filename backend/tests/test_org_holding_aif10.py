@@ -250,7 +250,7 @@ def test_org_holding_period_gap_under_populated_canary(monkeypatch):
     gap = m.org_holding_period_gap_report(
         con, today=date(2026, 5, 15), start_period="2025-12-31"
     )
-    assert gap["action"] == "skip_current"
+    assert gap["action"] == "repair_accept_from_local_raw"
     assert gap["status"] == "under_populated_accepted"
     assert gap["population"]["under_populated"] is True
     assert gap["population"]["accepted_stocks"] == 2

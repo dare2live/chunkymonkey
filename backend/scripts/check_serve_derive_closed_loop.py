@@ -46,10 +46,22 @@ def main() -> int:
         elif token == "technical_states":
             if "technical_states" not in process_src:
                 gaps.append("process.py missing technical_states")
-    if "under_populated_accepted" not in (
-        REPO / "backend/services/org_holding_aif10.py"
+    org_src = (REPO / "backend/services/org_holding_aif10.py").read_text(
+        encoding="utf-8"
+    )
+    pop_src = (REPO / "backend/services/org_holding_population.py").read_text(
+        encoding="utf-8"
+    )
+    if "repair_accept_from_local_raw" not in org_src and "repair_accept_from_local_raw" not in pop_src:
+        gaps.append("org population repair action missing")
+    if "min_org_accepted_stocks" not in (
+        REPO / "backend/config/foundation_done.yaml"
     ).read_text(encoding="utf-8"):
-        gaps.append("org_holding missing under_populated_accepted")
+        gaps.append("F6 min_org_accepted_stocks missing")
+    if "seed_institution_as_of_from_holders" not in (
+        REPO / "backend/services/pipeline/closed_loop.py"
+    ).read_text(encoding="utf-8"):
+        gaps.append("institution as_of seed helper missing")
     if "integrity_observe" not in (
         REPO / "backend/services/pipeline/run_outcome.py"
     ).read_text(encoding="utf-8"):

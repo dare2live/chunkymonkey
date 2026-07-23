@@ -63,15 +63,18 @@
 
 ---
 
-## 5. Residual（诚实）
+## 5. Residual closure（2026-07-23 follow-up）
 
-- org **期内晚披露 repair** 仍另刀（禁 daily 全市场扫）  
-- F6 未因 canary 直接 FAIL（避免假拆 phase_closure）；人口诚实进 gap/acquire degrade  
-- `by_trade_date` equal-day 仍 evidence-gated  
-- inventory 其它 surface 漂移 → 扩 YAML + check，不另起平行法
+| 项 | 状态 |
+|---|---|
+| org under_populated repair | **FIXED** — dense raw → `repair_accept_from_local_raw`；thin raw → `repair_fetch_period`（单期） |
+| F6 org population floor | **FIXED** — `min_org_accepted_stocks`（默认 500）；canary FAIL |
+| institution as_of surprise rebuild | **FIXED** — `seed_institution_as_of_from_holders` |
+| 期内晚披露 / by-date invent | 仍 **BANNED**（非本闭环残差；见 shareholder_update_check） |
+| `by_trade_date` equal-day | 仍 evidence-gated（frontier 刀残差，非本闭环） |
 
 ---
 
 ## 6. Label
 
-**FIXED（立法 + 首批强制）** — 闭环不变量已成文并接线；下一刀只修 inventory 增项或 org repair，不再「发现滞后再手工 rebuild」。
+**FIXED（立法 + 强制 + 残差收口）** — serve→derive 闭环可验收；org canary 不可再假绿；档案 as_of 已可种子化。

@@ -66,11 +66,11 @@ surfaces:
     serve: "formal org holding (research/product if served)"
     derive: null
     process_step: null
-    binding: acquire_period_gap_only
+    binding: acquire_period_gap_with_population_repair
     freshness_axis: report_period
-    status: population_gated
-    # Existence skip banned when under_populated; no by-date invent; no mass refresh.
-    notes: "repair knife separate; daily must not claim ok on canary accept"
+    status: wired_population_repair
+    # under_populated + dense raw → repair_accept_from_local_raw; thin → repair_fetch_period.
+    notes: "no by-date invent; no full-history mass; F6 min_org_accepted_stocks floor"
 
   - id: qfq_price
     serve: "qfq analysis view"

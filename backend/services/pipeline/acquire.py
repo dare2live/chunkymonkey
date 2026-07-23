@@ -196,10 +196,12 @@ def _sync_org_holding(ctx: PipelineContext) -> None:
     summary["incremental"] = incremental
     ctx.delta_manifest["acquire_summary"] = summary
 
-    if str(result.get("status") or "") == "under_populated_accepted":
+    if str(result.get("action") or "").startswith("repair_") and str(
+        result.get("status") or ""
+    ) != "completed":
         ctx.degraded(
-            "org_holding under_populated_accepted — thin/canary accept; "
-            "mass refresh banned; repair knife required"
+            "org_holding under_populated_accepted repair failed — "
+            "population still thin; mass history refresh banned"
         )
     try:
         out = Path(__file__).resolve().parents[3] / "data" / "reports"

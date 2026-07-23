@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import yaml
 
@@ -145,3 +145,35 @@ def wired_process_steps(cfg: dict[str, Any] | None = None) -> list[str]:
         ):
             out.append(str(surf["process_step"]))
     return out
+
+
+def seed_institution_as_of_from_holders(
+    *,
+    holders_conn: Optional[Any] = None,
+    path: Path | None = None,
+) -> dict[str, Any]:
+    """Seed as_of from live holders notice frontier so process won't surprise-rebuild.
+
+    Does not rebuild episodes/profiles — only writes the frontier marker when a
+    holders notice date is readable.
+    """
+    from services.duck_adapter import connect
+    from services.database_manifest import get_database_manifest
+
+    own = holders_conn is None
+    conn = holders_conn
+    if conn is None:
+        db = get_database_manifest().path_for("smartmoney")
+        conn = connect(str(db), read_only=True)
+    try:
+        row = conn.execute(
+            "SELECT MAX(notice_date) FROM canonical_top10_float_holders_period"
+        ).fetchone()
+    finally:
+        if own and conn is not None:
+            conn.close()
+    frontier = str(row[0]) if row and row[0] else None
+    if not frontier:
+        return {"status": "skipped", "reason": "no_holders_notice"}
+    write_institution_as_of(frontier, path=path)
+    return {"status": "seeded", "holders_notice_frontier": frontier}

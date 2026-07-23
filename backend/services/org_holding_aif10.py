@@ -422,9 +422,10 @@ def sync_period(
 
     Default ``allow_existing_refresh=False`` is fail-closed: if the period
     already has local rows, refuse before any provider I/O (no ~830k re-pull).
-    Explicit historical backfill may pass ``allow_existing_refresh=True`` only
-    when the caller intentionally opts into a mass refresh — never from
-    ``daily_update`` / ``sync_org_holding_incremental``.
+    Explicit opt-in ``allow_existing_refresh=True`` only for:
+    - intentional historical backfill CLI, or
+    - ``repair_fetch_period`` on the *single* latest plannable period when
+      local raw is under-populated (closed-loop; still not full-history mass).
     """
     ensure_tables(conn)
     iso = _normalize_date(report_date)
@@ -552,7 +553,7 @@ def org_holding_period_gap_report(
     by-date provider invent stay banned. Intermediate holes = log-not-fill.
 
     Closed-loop 2026-07-23: partition existence ≠ population. Thin/canary accept
-    → status under_populated_accepted (still no mass refresh).
+    → repair_accept_from_local_raw when dense raw present (no mass provider refresh).
     """
     ensure_tables(conn)
     target = latest_plannable_report_date(today=today)
@@ -579,7 +580,10 @@ def org_holding_period_gap_report(
     accepted_has = accepted_has_org_holding_partition(conn, target)
     available = _plannable_available_yyyymmdd(target)
     next_period, next_unlock = next_period_unlock(target)
-    from services.org_holding_population import population_for_period
+    from services.org_holding_population import (
+        decide_org_gap_action,
+        population_for_period,
+    )
 
     population = population_for_period(
         conn,
@@ -587,18 +591,11 @@ def org_holding_period_gap_report(
         local_has=local_has,
         accepted_has=accepted_has,
     )
-    if accepted_has:
-        action = "skip_current"
-        if population.get("under_populated"):
-            status = "under_populated_accepted"
-        else:
-            status = "ok"
-    elif local_has:
-        action = "accept_from_local_raw"
-        status = "plannable_raw_unaccepted"
-    else:
-        action = "fetch_then_accept"
-        status = "plannable_missing"
+    action, status = decide_org_gap_action(
+        accepted_has=accepted_has,
+        local_has=local_has,
+        population=population,
+    )
     # Optional typed frontier hook for future repair tooling only.
     # Period equal → skip_behind remap (existence), never by-date population invent.
     from services.data_sources.frontier_decision import org_holding_period_frontier_hook
@@ -684,29 +681,6 @@ async def sync_org_holding_incremental(conn: Any) -> dict:
     action = str(gap.get("action") or "skip_current")
     if action == "skip_current":
         missing_older = [p for p in (gap.get("missing_periods") or []) if p != target]
-        pop = dict(gap.get("population") or {})
-        if str(gap.get("status") or "") == "under_populated_accepted":
-            msg = (
-                f"under_populated_accepted: plannable={target} partition exists but "
-                f"accepted_stocks={pop.get('accepted_stocks')} "
-                f"raw_stocks={pop.get('raw_stocks')} "
-                f"reasons={pop.get('reasons')}; "
-                f"skip mass refresh; repair knife required "
-                f"(older_missing={len(missing_older)}; next period "
-                f"{gap.get('next_period')} unlocks {gap.get('next_period_unlock')})"
-            )
-            return {
-                "domain": "org_holding",
-                "count": 0,
-                "status": "under_populated_accepted",
-                "action": action,
-                "report_date": target,
-                "available_date": gap.get("available_date"),
-                "next_period": gap.get("next_period"),
-                "next_period_unlock": gap.get("next_period_unlock"),
-                "gap": gap,
-                "message": msg,
-            }
         msg = (
             f"check: plannable={target} raw=present accepted=present; skip "
             f"(older_missing={len(missing_older)}; not auto mass-filled; "
@@ -727,9 +701,16 @@ async def sync_org_holding_incremental(conn: Any) -> dict:
         }
 
     loop = asyncio.get_running_loop()
-    if action == "fetch_then_accept":
-        # sync_period: provider fetch → formal accept + raw mirror (one period).
-        result = await loop.run_in_executor(None, sync_period, conn, target)
+    if action in {"fetch_then_accept", "repair_fetch_period"}:
+        # One-period provider path. repair_fetch_period may refresh thin local raw
+        # for the *plannable* period only — never full-history mass.
+        allow_refresh = action == "repair_fetch_period"
+        result = await loop.run_in_executor(
+            None,
+            lambda: sync_period(
+                conn, target, allow_existing_refresh=allow_refresh
+            ),
+        )
         if result.get("status") == "source_unavailable":
             raise RuntimeError(f"org_holding_source_failed:{result.get('error')}")
         written = int(result.get("written_rows") or 0)
@@ -757,25 +738,25 @@ async def sync_org_holding_incremental(conn: Any) -> dict:
             ),
         }
 
-    # raw present, accepted missing → accept from local-raw only (no provider I/O).
+    # accept_from_local_raw | repair_accept_from_local_raw — no provider I/O.
     accept = await loop.run_in_executor(
         None, _accept_plannable_from_local_raw, conn, target
     )
     accept_ok = accept.get("status") == "accepted"
     return {
         "domain": "org_holding",
-        "count": 0,
+        "count": int(accept.get("canonical_rows") or 0),
         "status": "completed" if accept_ok else "partial",
         "action": action,
         "report_date": target,
         "available_date": gap.get("available_date"),
-        "written": 0,
+        "written": int(accept.get("canonical_rows") or 0),
         "fetch_status": None,
         "accept": accept,
         "gap": gap,
         "message": (
             f"check: plannable={target} action={action} "
-            f"accept={accept.get('status')} "
-            f"(incremental-by-period; not full-history / not by-date invent)"
+            f"accept={accept.get('status')} rows={accept.get('canonical_rows')} "
+            f"(local-raw repair/accept; not full-history / not by-date invent)"
         ),
     }

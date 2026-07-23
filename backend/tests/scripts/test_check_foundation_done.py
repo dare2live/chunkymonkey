@@ -150,3 +150,50 @@ def test_config_yaml_declares_typed_walls() -> None:
     assert "enrichment_projection_partial" in data["b5"]["type_b_defer_codes"]
     assert data["section_15"]["max_commits_per_knife"] == 1.5
     assert data["section_15"]["required_consecutive_l3_knives"] == 3
+    assert int(data["e0_breadth"]["min_org_accepted_stocks"]) >= 500
+
+
+def test_f6_fails_on_org_canary_population(monkeypatch) -> None:
+    mod = _load_mod()
+    cfg = mod.load_config()
+
+    def _thin(_cfg):
+        return {
+            "holders_partitions": 200,
+            "stk_partitions": 10,
+            "daily_partitions": 200,
+            "org_partitions": 2,
+            "org_max_accepted_stocks": 2,
+            "holders_daily_overlap": 150,
+            "stk_daily_overlap": 10,
+            "holders_range": ["20250101", "20260721"],
+            "stk_range": ["20250101", "20260715"],
+        }, None
+
+    monkeypatch.setattr(mod, "_e0_live_breadth", _thin)
+    result = mod.check_f6_e0_breadth(cfg, skip_live=False)
+    assert result["verdict"] == "FAIL"
+    assert "org_max_accepted_stocks=2" in result["detail"]
+
+
+def test_f6_passes_when_org_population_meets_floor(monkeypatch) -> None:
+    mod = _load_mod()
+    cfg = mod.load_config()
+
+    def _ok(_cfg):
+        return {
+            "holders_partitions": 200,
+            "stk_partitions": 10,
+            "daily_partitions": 200,
+            "org_partitions": 2,
+            "org_max_accepted_stocks": 5520,
+            "holders_daily_overlap": 150,
+            "stk_daily_overlap": 10,
+            "holders_range": ["20250101", "20260721"],
+            "stk_range": ["20250101", "20260715"],
+        }, None
+
+    monkeypatch.setattr(mod, "_e0_live_breadth", _ok)
+    result = mod.check_f6_e0_breadth(cfg, skip_live=False)
+    assert result["verdict"] == "PASS"
+    assert "max_stocks=5520" in result["detail"]

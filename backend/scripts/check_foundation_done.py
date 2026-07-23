@@ -446,11 +446,20 @@ def _e0_live_breadth(cfg: dict[str, Any]) -> tuple[dict[str, Any] | None, str | 
         stk = _parts(str(e0["stk_db"]), str(e0["stk_dataset_id"]))
         daily = _parts(str(e0["daily_db"]), str(e0["daily_dataset_id"]))
         org = _parts(str(e0["org_db"]), str(e0["org_dataset_id"]))
+        from services.org_holding_population import max_accepted_stocks_across_partitions
+
+        org_path = mf.path_for(str(e0["org_db"]))
+        org_con = duck_connect(str(org_path), read_only=True)
+        try:
+            org_max_stocks = max_accepted_stocks_across_partitions(org_con)
+        finally:
+            org_con.close()
         return {
             "holders_partitions": len(holders),
             "stk_partitions": len(stk),
             "daily_partitions": len(daily),
             "org_partitions": len(org),
+            "org_max_accepted_stocks": org_max_stocks,
             "holders_daily_overlap": len(holders & daily),
             "stk_daily_overlap": len(stk & daily),
             "holders_range": [min(holders), max(holders)] if holders else [],
@@ -461,16 +470,18 @@ def _e0_live_breadth(cfg: dict[str, Any]) -> tuple[dict[str, Any] | None, str | 
 
 
 def check_f6_e0_breadth(cfg: dict[str, Any], *, skip_live: bool) -> dict[str, Any]:
-    """F6: holders ≥120 trading-day overlap with daily; stk synced; org partitions observed."""
+    """F6: holders overlap; stk synced; org partitions + population floor."""
     e0 = cfg.get("e0_breadth") or {}
     min_overlap = int(e0.get("min_holders_daily_overlap", 120))
+    min_org_stocks = int(e0.get("min_org_accepted_stocks", 500))
 
     if skip_live:
         return _crit(
             "F6",
             "PASS",
             detail="live breadth skipped (--skip-live); offline surface only",
-            evidence={"min_holders_daily_overlap": min_overlap, "live": "skipped"},
+            evidence={"min_holders_daily_overlap": min_overlap,
+                      "min_org_accepted_stocks": min_org_stocks, "live": "skipped"},
         )
 
     measured, err = _e0_live_breadth(cfg)
@@ -486,6 +497,13 @@ def check_f6_e0_breadth(cfg: dict[str, Any], *, skip_live: bool) -> dict[str, An
         gaps.append("stk_partitions=0")
     if int(measured["stk_daily_overlap"]) < 1:
         gaps.append("stk_daily_overlap=0")
+    org_stocks = int(measured.get("org_max_accepted_stocks") or 0)
+    if int(measured["org_partitions"]) < 1:
+        gaps.append("org_partitions=0")
+    elif org_stocks < min_org_stocks:
+        gaps.append(
+            f"org_max_accepted_stocks={org_stocks} < {min_org_stocks} (canary/thin)"
+        )
     if gaps:
         return _crit(
             "F6",
@@ -501,6 +519,7 @@ def check_f6_e0_breadth(cfg: dict[str, Any], *, skip_live: bool) -> dict[str, An
             f"holders overlap {measured['holders_daily_overlap']}≥{min_overlap}; "
             f"stk overlap {measured['stk_daily_overlap']}; "
             f"org partitions={measured['org_partitions']} "
+            f"max_stocks={org_stocks}≥{min_org_stocks} "
             f"(incremental-by-period; mass by-date banned)"
         ),
         evidence=measured,

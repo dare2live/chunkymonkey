@@ -112,3 +112,63 @@ def test_wired_process_steps_include_institution():
     steps = wired_process_steps()
     assert "institution_profile" in steps
     assert "market_pulse" in steps
+
+
+def test_decide_org_gap_repair_when_dense_raw():
+    from services.org_holding_population import decide_org_gap_action
+
+    action, status = decide_org_gap_action(
+        accepted_has=True,
+        local_has=True,
+        population={
+            "under_populated": True,
+            "raw_stocks": 5520,
+            "accepted_stocks": 2,
+        },
+    )
+    assert action == "repair_accept_from_local_raw"
+    assert status == "under_populated_accepted"
+
+
+def test_decide_org_gap_repair_fetch_when_raw_thin():
+    from services.org_holding_population import decide_org_gap_action
+
+    action, status = decide_org_gap_action(
+        accepted_has=True,
+        local_has=True,
+        population={
+            "under_populated": True,
+            "raw_stocks": 10,
+            "accepted_stocks": 2,
+        },
+    )
+    assert action == "repair_fetch_period"
+    assert status == "under_populated_raw_thin"
+
+
+def test_seed_institution_as_of(tmp_path, monkeypatch):
+    from services.pipeline import closed_loop as cl
+
+    class _Conn:
+        def execute(self, sql, *a, **k):
+            class _Cur:
+                def fetchone(_self):
+                    return ("20260723",)
+
+            return _Cur()
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(
+        "services.database_manifest.get_database_manifest",
+        lambda: type("M", (), {"path_for": lambda self, _a: tmp_path / "x.duckdb"})(),
+    )
+    monkeypatch.setattr(
+        "services.duck_adapter.connect",
+        lambda *a, **k: _Conn(),
+    )
+    marker = tmp_path / "inst_as_of.json"
+    out = cl.seed_institution_as_of_from_holders(path=marker)
+    assert out["status"] == "seeded"
+    assert cl.read_institution_as_of(path=marker) == "20260723"
