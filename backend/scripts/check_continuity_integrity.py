@@ -594,13 +594,28 @@ def check_declared_vs_actual(conn, spec: dict, today: str) -> dict:
     status = "pass"
     if declared and len(declared) == 8:
         try:
-            drift = abs((date(int(declared[:4]), int(declared[4:6]), int(declared[6:8]))
-                         - date(int(actual_min[:4]), int(actual_min[4:6]), int(actual_min[6:8]))).days)
+            declared_dt = date(int(declared[:4]), int(declared[4:6]), int(declared[6:8]))
+            actual_dt = date(int(actual_min[:4]), int(actual_min[4:6]), int(actual_min[6:8]))
+            drift = abs((declared_dt - actual_dt).days)
         except ValueError:
             drift = 0
+            declared_dt = actual_dt = None
             parts.append(f"data_start={declared} 无法解析为日期")
-        if drift > DECLARED_DRIFT_CAL_DAYS:
-            if spec.get("data_start_reviewed"):
+        if drift > DECLARED_DRIFT_CAL_DAYS and declared_dt is not None and actual_dt is not None:
+            # accepted coverage_start = obligation frontier, not table MIN. Pre-coverage
+            # retention / prior-generation rows (actual_min < coverage_start) are expected
+            # and must not be labeled declared_drift (Knife4 typed wrong-door, 2026-07-23).
+            # Still WARN when actual_min > coverage_start (under-delivery inside obligation).
+            pre_coverage_retention = (
+                actual_dt < declared_dt
+                and (spec.get("accepted_margin") or spec.get("accepted_security_day"))
+            )
+            if pre_coverage_retention:
+                parts.append(
+                    f"coverage_start={declared} vs 表 MIN({col})={actual_min} "
+                    f"(pre-coverage retention {drift} 自然日, 义务窗≠全表历史起点, 非 drift)"
+                )
+            elif spec.get("data_start_reviewed"):
                 # 2026-07-08: 人工已核实此 drift 系源端问题(coverage_note 记录原因), 不需改动
                 # data_start, 不该每次重报同一件已结案的事——WARN 队列该是"未核实"清单。
                 parts.append(f"声明 data_start={declared} vs 实测 MIN({col})={actual_min} "

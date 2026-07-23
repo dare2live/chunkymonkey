@@ -522,6 +522,7 @@ domains:
                                # 稳定 ~1000 — 本日期前用 min_rows_before, 防 405 个历史真实完整日
                                # 成 drain 幻影缺口
     min_rows_before: 80        # 2024-2025 时代地板(histmin=86)
+    data_start_reviewed: true  # Knife4 2026-07-23: sparse_history 已核实, 见 coverage_note
     # coverage_note (2026-07-05 R4 workflow 复核 declared_vs_actual "2024年0.14x参照年2025"警告):
     # 非数据缺失, 是源端行业/概念分类体系逐年扩容(86→579→981个代码)导致的自然行数增长, 2024年
     # 按月分布无连续缺失窗口。不建议加 gap_tolerance(那是日期级空洞用的字段, 这里没有日期空洞)。
@@ -778,6 +779,8 @@ domains:
     gap_tolerance: annotate   # 2026-07-05 R4 workflow 实测确认: 90个空洞日高度集中于港股公众假期
                               # (圣诞12-25/26、复活节前后、回归纪念日7-1等) 及沪港通开通前空窗,
                               # tinyshare 逐日探测源端同样 0 行, 属机制性合法空批非采集缺口
+    # Knife4 2026-07-23: 2026 开市日本地缺且 vendor 实测 0 行 → 墓碑; 20260708/10 vendor 有数已补拉
+    known_empty_days: ["20260403", "20260407", "20260525", "20260701"]
 
   dividend:
     source: tushare
@@ -796,6 +799,12 @@ domains:
     allow_empty_batch: true   # 非分红季多数交易日无除权事件
     gap_tolerance: annotate   # 2026-07-05 R4 workflow 实测确认: 分红除权高度季节性(5-8月占绝大多数),
                               # 淡季(11-3月)tinyshare逐日探测源端同样0行, 属真实事件稀疏非采集缺口
+    data_start_reviewed: true  # Knife4 2026-07-23: 深史稀疏已核实, 见 coverage_note
+    # coverage_note: 2005-2010 年行数 ~0.2x 参照年2025 = 上市池/分红公司数历史增长, 非采集截断;
+    # 可用窗全史保留(复权主源), 回测深史须知样本偏稀, 勿当缺失回填。
+    row_dip_tolerance: true   # Knife4 2026-07-23: 骤降日 grain=[ts_code,end_date,div_proc] 与 vendor
+                              # 白名单精确对齐(0 miss); vendor 同 grain 偶发双行镜像, 本地去重后行数
+                              # 低于邻域中位 = 除权事件日频脉冲, 非截断/半空批
 
   adj_factor:
     source: tushare

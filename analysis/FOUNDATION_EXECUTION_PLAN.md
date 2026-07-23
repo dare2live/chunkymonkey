@@ -70,16 +70,25 @@
 
 > 无支线标签。依赖序自上而下。每项交付标签 `FIXED|PARTIAL|BLOCKED|CLOSED`。
 
-| # | 项 | 类型 | Exit criteria | 禁 |
-|---|---|---|---|---|
-| **F1** | **Continuity Knife4** — dividend/hsgt/其它 WARN | L2/L3 按需 | 逐项 `FIXED\|PARTIAL\|BLOCKED`+owner；仅修 typed 错门 | READY cosmetics / 删 observe 洗绿 |
-| **F2** | Margin **ops catchup** 推进 `local_max`→`eligible_end` | ops 轴② | token 下 bounded catchup 实测水位前进；Continuity 诚实 | all-due / mass / product thaw |
-| **F3** | Holders landing **retention/archive** + smartmoney compact | later L3 | skip-land 无新风暴后；archive 非 latest ACCEPTED；再 compact | bare DELETE landing 当去重 |
-| **F4** | Margin **1c** pulse consumer shadow（optional） | optional | shadow 证据后才切 trusted 标签 | 无 shadow 假 TRUSTED |
-| **F5** | BOARD / codegraph / maps **sync** | hygiene | `build_agent_board` 重生；BOARD=投影非执法 | 手改 BOARD 当真相 |
-| **F6** | S7 publication/sunset（按需） | Tier0 | **仅** owner 新 block | 假 COMPAT / blanket pre-accept |
-| **F7** | Type-B enrichment | DEFER | registry in-scheme 已够近端 | 当近端刀 |
-| **F8** | qfq incremental/partitioned write | product later | 另开产品刀；今日 full CTAS+compact 已 ops-safe | 用「定期 compact」代替语义 |
+| # | 项 | 类型 | Exit criteria | 禁 | 状态 |
+|---|---|---|---|---|---|
+| **F1** | **Continuity Knife4** — dividend/hsgt/其它 WARN | L2/L3 按需 | 逐项 `FIXED\|PARTIAL\|BLOCKED`+owner；仅修 typed 错门 | READY cosmetics / 删 observe 洗绿 | **FIXED** 2026-07-23：typed 错门修完；残留 2×annotate WARN 诚实保留（见下） |
+| **F2** | Margin **ops catchup** 推进 `local_max`→`eligible_end` | ops 轴② | token 下 bounded catchup 实测水位前进；Continuity 诚实 | all-due / mass / product thaw | **CLOSED** 2026-07-23：v3 `local_max=20260722` = 当时 `eligible_end`（accepted n=4 since `coverage_start=20260717`）；无 blocker |
+| **F3** | Holders landing **retention/archive** + smartmoney compact | later L3 | skip-land 无新风暴后；archive 非 latest ACCEPTED；再 compact | bare DELETE landing 当去重 | later（非 exit-gate） |
+| **F4** | Margin **1c** pulse consumer shadow（optional） | optional | shadow 证据后才切 trusted 标签 | 无 shadow 假 TRUSTED | optional（非 exit-gate） |
+| **F5** | BOARD / codegraph / maps **sync** | hygiene | `build_agent_board` 重生；BOARD=投影非执法 | 手改 BOARD 当真相 | open → 近端 |
+| **F6** | S7 publication/sunset（按需） | Tier0 | **仅** owner 新 block | 假 COMPAT / blanket pre-accept | 无 owner block → skip |
+| **F7** | Type-B enrichment | DEFER | registry in-scheme 已够近端 | 当近端刀 | DEFER |
+| **F8** | qfq incremental/partitioned write | product later | 另开产品刀；今日 full CTAS+compact 已 ops-safe | 用「定期 compact」代替语义 | later |
+
+**F1 逐项（Knife4）**：
+| 信号 | 裁决 | 证据 |
+|---|---|---|
+| margin `warn_declared_drift` | **FIXED** typed | `coverage_start`≠表 MIN；`check_declared_vs_actual` 对 accepted_* pre-coverage retention 不再 WARN |
+| moneyflow_ind_dc `warn_sparse_history` | **FIXED** reviewed | `data_start_reviewed` + 既有 coverage_note（分类扩容） |
+| dividend `warn_sparse_history` / `warn_row_dip` | **FIXED** reviewed | `data_start_reviewed` + `row_dip_tolerance`；vendor grain 白名单 0 miss |
+| moneyflow_hsgt 真缺口 20260708/10 | **FIXED** ops | bounded backfill 2 日；vendor-0 日进 `known_empty_days` |
+| dividend/hsgt `warn_interior_gaps` | **PARTIAL** 诚实 annotate | `gap_tolerance: annotate` 故意 WARN≠FAIL；非洗绿 |
 
 **近端默认序**：F1 →（并行 ops）F2 → F5；F3/F4/F6–F8 非默认插队。
 

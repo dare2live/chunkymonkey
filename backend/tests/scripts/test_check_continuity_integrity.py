@@ -567,6 +567,29 @@ def test_declared_drift_reviewed_flag_suppresses_warn_red_green():
         c.close()
 
 
+def test_accepted_margin_pre_coverage_retention_not_declared_drift():
+    """margin v3: coverage_start=义务窗起点, 表内可保留更早 canonical 行 — 不得记 declared_drift。
+    反向(actual_min > coverage_start)仍 WARN。"""
+    c = duck_mem()
+    try:
+        _mktable(c, {"20190102": 2, "20250110": 2, "20260717": 2})
+        retention = cci.check_declared_vs_actual(
+            c,
+            _mkspec(data_start="20260717", accepted_margin=True),
+            today="20260723",
+        )
+        assert retention["status"] == "pass"
+        assert "pre-coverage retention" in retention["detail"]
+        under = cci.check_declared_vs_actual(
+            c,
+            _mkspec(data_start="20180101", accepted_margin=True),
+            today="20260723",
+        )
+        assert under["status"] == "warn_declared_drift"
+    finally:
+        c.close()
+
+
 def test_sparse_history_years_flagged():
     """income 型深史稀疏: 2021 年行数 < 参照完整年 x 0.3 = WARN 列年份; 正常年不列。"""
     c = duck_mem()
