@@ -353,15 +353,23 @@ def land_disclosure_partition_from_rows(
         handed = propagate_disclosure_execution_contract("holders_top10", contract)
         if bootstrap:
             ensure_holders_top10_acceptance_schema(conn)
+        request_payload = dict(
+            request or {"api": API, "notice_date": part, "source": SOURCE}
+        )
         batch = HoldersTop10LandingBatch(
             batch_id=resolved_batch_id,
             partition_value=part,
             observed_at=event_at,
             available_at=event_at,
             rows=material,
-            request=dict(request or {"api": API, "notice_date": part, "source": SOURCE}),
+            request=request_payload,
         )
-        land_holders_top10_batch(conn, batch, handed, handoff=handed)
+        landed_id = land_holders_top10_batch(conn, batch, handed, handoff=handed)
+        # Skip-land may return an existing ACCEPTED batch_id (same payload_hash).
+        if landed_id != resolved_batch_id:
+            from dataclasses import replace
+
+            batch = replace(batch, batch_id=landed_id)
         return batch
 
     if domain == "org_holding":

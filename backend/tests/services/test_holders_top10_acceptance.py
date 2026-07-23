@@ -195,6 +195,138 @@ def test_publish_land_accept_roundtrip_fixture(conn) -> None:
     assert status == "ACCEPTED"
 
 
+def test_accepted_same_payload_hash_skips_reland(conn) -> None:
+    """Knife 2: ACCEPTED + same payload_hash → no new landing rows."""
+
+    from services.data_sources.disclosure_transport import (
+        land_then_accept_disclosure_partition,
+    )
+
+    contract = load_holders_top10_contract()
+    handed = propagate_disclosure_execution_contract("holders_top10", contract)
+    rows = [
+        _row(holder_rank=1, holder_name="香港中央结算有限公司"),
+        _row(holder_rank=2, holder_name="中国证券金融股份有限公司"),
+    ]
+    request = {"api": "RPT_F10_EH_FREEHOLDERS", "notice_date": PARTITION}
+    first_id = f"holders_top10:{PARTITION}:first"
+    first = land_holders_top10_batch(
+        conn,
+        HoldersTop10LandingBatch(
+            batch_id=first_id,
+            partition_value=PARTITION,
+            observed_at=OBSERVED,
+            available_at=OBSERVED,
+            rows=rows,
+            request=request,
+        ),
+        handed,
+        handoff=handed,
+    )
+    assert first == first_id
+    outcome = accept_holders_top10_batch(conn, first_id, handed, handoff=handed)
+    assert outcome.status == "ACCEPTED"
+
+    landing_before = conn.execute(f"SELECT COUNT(*) FROM {LANDING_TABLE}").fetchone()[0]
+    batches_before = conn.execute(
+        f"SELECT COUNT(*) FROM {INGEST_BATCH_TABLE}"
+    ).fetchone()[0]
+    canonical_before = conn.execute(
+        f"SELECT COUNT(*) FROM {CANONICAL_TABLE}"
+    ).fetchone()[0]
+
+    steps: list[str] = []
+    skipped = land_holders_top10_batch(
+        conn,
+        HoldersTop10LandingBatch(
+            batch_id=f"holders_top10:{PARTITION}:storm-uuid",
+            partition_value=PARTITION,
+            observed_at=OBSERVED,
+            available_at=OBSERVED,
+            rows=rows,
+            request=request,
+        ),
+        handed,
+        handoff=handed,
+        after_step=steps.append,
+    )
+    assert skipped == first_id
+    assert "skip_accepted_same_payload" in steps
+    assert conn.execute(f"SELECT COUNT(*) FROM {LANDING_TABLE}").fetchone()[0] == (
+        landing_before
+    )
+    assert conn.execute(f"SELECT COUNT(*) FROM {INGEST_BATCH_TABLE}").fetchone()[
+        0
+    ] == batches_before
+
+    # Transport fuse must accept via the skipped batch_id (not the unused uuid).
+    fused = land_then_accept_disclosure_partition(
+        "holders_top10",
+        conn,
+        partition=PARTITION,
+        rows=rows,
+        observed_at=OBSERVED,
+        available_at=OBSERVED,
+        batch_id=f"holders_top10:{PARTITION}:another-uuid",
+        request=request,
+        bootstrap=False,
+    )
+    assert fused.status == "ACCEPTED"
+    assert fused.batch_id == first_id
+    assert conn.execute(f"SELECT COUNT(*) FROM {LANDING_TABLE}").fetchone()[0] == (
+        landing_before
+    )
+    assert conn.execute(f"SELECT COUNT(*) FROM {CANONICAL_TABLE}").fetchone()[0] == (
+        canonical_before
+    )
+
+
+def test_new_payload_still_appends_landing(conn) -> None:
+    """Different content must keep append-only landing (no silent overwrite)."""
+
+    contract = load_holders_top10_contract()
+    handed = propagate_disclosure_execution_contract("holders_top10", contract)
+    request = {"api": "RPT_F10_EH_FREEHOLDERS", "notice_date": PARTITION}
+    first_id = f"holders_top10:{PARTITION}:v1"
+    land_holders_top10_batch(
+        conn,
+        HoldersTop10LandingBatch(
+            batch_id=first_id,
+            partition_value=PARTITION,
+            observed_at=OBSERVED,
+            available_at=OBSERVED,
+            rows=[_row(holder_rank=1, holder_name="A")],
+            request=request,
+        ),
+        handed,
+        handoff=handed,
+    )
+    assert (
+        accept_holders_top10_batch(conn, first_id, handed, handoff=handed).status
+        == "ACCEPTED"
+    )
+    second_id = f"holders_top10:{PARTITION}:v2"
+    landed = land_holders_top10_batch(
+        conn,
+        HoldersTop10LandingBatch(
+            batch_id=second_id,
+            partition_value=PARTITION,
+            observed_at=OBSERVED,
+            available_at=OBSERVED,
+            rows=[_row(holder_rank=1, holder_name="B")],
+            request=request,
+        ),
+        handed,
+        handoff=handed,
+    )
+    assert landed == second_id
+    assert conn.execute(f"SELECT COUNT(*) FROM {LANDING_TABLE}").fetchone()[0] == 2
+    assert (
+        accept_holders_top10_batch(conn, second_id, handed, handoff=handed).status
+        == "ACCEPTED"
+    )
+
+
 def test_disclosure_handoff_rejects_wrong_contract_for_other_domain() -> None:
     contract = load_holders_top10_contract()
     with pytest.raises(

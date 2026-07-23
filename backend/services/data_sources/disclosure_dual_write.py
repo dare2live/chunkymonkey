@@ -182,7 +182,8 @@ def write_holders_top10_formal_then_mirror(
             request={"api": API, "notice_date": partition, "source": SOURCE},
         )
         _require_accepted("holders_top10", outcome)
-        batch_ids.append(batch_id)
+        # Prefer accepted/skipped batch_id (may differ from freshly minted uuid).
+        batch_ids.append(str(getattr(outcome, "batch_id", None) or batch_id))
         canonical_total = max(canonical_total, int(outcome.row_count or 0))
 
     mirror_fn = _resolve_mirror(

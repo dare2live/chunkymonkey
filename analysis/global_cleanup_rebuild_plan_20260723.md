@@ -1,11 +1,11 @@
 # Global cleanup / rebuild plan — 2026-07-23
 
 > **生命周期**：evidence-only plan (execution board; no knife code in this commit)
-> Status: **PLAN ONLY** (no knife implementation in this commit)  
-> Authority: `goal.md` · `AGENTS.md` · eng_gov §15 · first-principles: orphan → **delete capability** (not tombstone patch); live domains keep **idempotent replay**  
-> Parents / evidence: `foundation_residual_fix_plan_20260723.md` · `db_bloat_deep_dive_20260723.md` · `db_refill_after_delete_audit_20260723.md` · `db_storage_hygiene_20260721.md` · `margin_calendar_catchup_blocker_20260723.md`  
-> Tooling snap (boot): moth `WARN` (dirty worktree + complexity 80 high leads); codegraph synced; agent-boot overall=warn  
-> Label: **READY_TO_EXECUTE** after knife #0/#1 uncommitted inventory is serialized
+> Status: **EXECUTING** (knives land one-by-one; this file is the board)
+> Authority: `goal.md` · `AGENTS.md` · eng_gov §15 · first-principles: orphan → **delete capability** (not tombstone patch); live domains keep **idempotent replay**
+> Parents / evidence: `foundation_residual_fix_plan_20260723.md` · `db_bloat_deep_dive_20260723.md` · `db_refill_after_delete_audit_20260723.md` · `db_storage_hygiene_20260721.md` · `margin_calendar_catchup_blocker_20260723.md`
+> Tooling snap (boot): moth `WARN` (dirty worktree + complexity 80 high leads); codegraph synced; agent-boot overall=warn
+> Label: **IN PROGRESS** — Knife 1 FIXED (`0f5af7e80`); Knife 2 FIXED path (skip-land); next = #3 compact or #4 continuity
 
 ---
 
@@ -13,11 +13,11 @@
 
 | # | Knife | Why | State now |
 |---|---|---|---|
-| **0** | Uncommitted inventory serialize | Same `sync_registry.yaml` / shared docs — moth overlap; **ban half-baked** | **OPEN** — margin 1b code+cfg in WT; factor retirement **committed** `a75288129` |
-| **1** | Margin 1b ship (+ live catchup verify) | Continuity `observe_frozen_stale` / calendar lag with product meaning | **CODE IN WT, uncommitted** |
-| **2** | Holders ACCEPTED+payload_hash → **skip-land** | ~32× landing re-land storm; largest ongoing bloat | Not started |
+| **0** | Uncommitted inventory serialize | Same `sync_registry.yaml` / shared docs — moth overlap; **ban half-baked** | **CLOSED** with Knife 1 ship |
+| **1** | Margin 1b ship (+ live catchup verify) | Continuity `observe_frozen_stale` / calendar lag with product meaning | **FIXED path** `0f5af7e80` — live catchup **BLOCKED** missing `TUSHARE_TOKEN` |
+| **2** | Holders ACCEPTED+payload_hash → **skip-land** | ~32× landing re-land storm; largest ongoing bloat | **FIXED path** (historical multiplicity retained) |
 | **3** | Market qfq free-block compact (+ recurrence policy) | ~0.7 GiB free after DROP+CTAS; ops window | Need owner window |
-| **4** | Continuity residuals (honest) | dividend/hsgt WARN — after margin path honest | Blocked on #1 verify |
+| **4** | Continuity residuals (honest) | dividend/hsgt WARN — after margin path honest | After #1 live verify / token catchup |
 | **∅** | Org mass / Optuna / READY cosmetics / S7 fake COMPAT / margin product thaw | Banned | — |
 
 Cross-link: residual margin board stays `analysis/foundation_residual_fix_plan_20260723.md` (pointer back from §8).
@@ -31,8 +31,8 @@ Risk tiers follow `commit_tiers.yaml` / eng_gov §15 (L3 = writer/PIT/schema/con
 | Area | Owner / file / symbol | Moth coupling (fan-in) | CodeGraph callers (blast) | Risk | Need |
 |---|---|---|---|---|---|
 | **Factor retirement (capability delete)** | `sync_registry.yaml` tombstone; `legacy_raw_plane` `retired`; `foundation_done.yaml` S7 22+1; lifecycle manifest; tests `test_legacy_raw_plane_s7` | `stk_factor_pro` **32** (mostly docs/tests after delete) | registry consumers via `sync_runner` / plane checks; **0** DataAccess | L3 (done) | **FIXED in `a75288129`** — live probe: table absent; `tushare_raw` ≈4.68 GiB |
-| **Margin 1b (bounded catchup)** | `sync_registry` margin `execution_policy`/`contract_version=3`; `margin_catchup.py`; `margin_catchup_acquire.py`; `sync_runner`; `acquire.py`; `frozen_domain_observe.py`; margin_* acceptance/evidence/ingest/scope; tests + `ci_pytest_surface` | `margin_catchup` **6**; `sync_registry` **90** (shared hub) | `assert_margin_accepted_population_scope` → ingest/runner; `MarginFragment` → catchup | **L3** | **Ship + live verify** `local_max→eligible_end`; no BSE in v3; no READY cosmetics |
-| **Holders skip-land** | `disclosure_transport.land_disclosure_partition_from_rows` (uuid `batch_id`); `land_holders_top10_batch`; planner/catchup that re-pulls ACCEPTED partitions | `land_holders_top10_batch` **6**; `disclosure_transport` **16** | land → disclosure_transport (6); contract loaders tested | **L3** | Skip when partition ACCEPTED **and** same `payload_hash`; keep append-only semantics for true new content |
+| **Margin 1b (bounded catchup)** | `sync_registry` margin `execution_policy`/`contract_version=3`; `margin_catchup.py`; `margin_catchup_acquire.py`; `sync_runner`; `acquire.py`; `frozen_domain_observe.py`; margin_* acceptance/evidence/ingest/scope; tests + `ci_pytest_surface` | `margin_catchup` **6**; `sync_registry` **90** (shared hub) | `assert_margin_accepted_population_scope` → ingest/runner; `MarginFragment` → catchup | **L3** | **FIXED path** `0f5af7e80`; live catchup BLOCKED on token |
+| **Holders skip-land** | `disclosure_transport.land_disclosure_partition_from_rows` (uuid `batch_id`); `land_holders_top10_batch`; planner/catchup that re-pulls ACCEPTED partitions | `land_holders_top10_batch` **6**; `disclosure_transport` **16** | land → disclosure_transport (6); contract loaders tested | **L3** | **FIXED path** — ACCEPTED+same `payload_hash` skip; historical ~32× remains until retention |
 | **Holders retention (later)** | landing archive of non-latest ACCEPTED batches; then `db_compact --db smartmoney` | same + lifecycle | — | L3 + ops | **After** skip-land proven; ban bare DELETE landing |
 | **QFQ derive / CTAS** | `build_price_kline_qfq_tushare.build` (`DROP`+CTAS+`CHECKPOINT`); triggers `pipeline/clean.py`, `derive_runtime`, ops `derive_qfq` | `build_price_kline_qfq_tushare` **23–24**; `derive_qfq` **9** | clean/derive_runtime entrypoints | L2/L3 (script+pipeline) | Rebuild **must** (latest-adj); daily full DROP without compact = **accidental cost** |
 | **db_compact / lifecycle** | `backend/scripts/db_compact.py`; `db_lifecycle_delete.py` | `db_compact` **13** | lifecycle → compact; tests `test_db_compact` | L3 ops | Compact after DROP/CTAS; **does not refill**; needs exclusive write lock |
@@ -92,10 +92,14 @@ Live probes (read-only): `raw_tushare_stk_factor_pro` **absent**; `market.duckdb
 - **Parallel**: only non-overlapping docs; **not** holders/qfq/registry peers
 - **Blast**: margin formal path + acquire observe + sync_runner policy; registry hub
 
-### Knife 2 — Holders skip-land (L3)
+### Knife 2 — Holders skip-land (L3) — **SHIPPED** (path)
 
-- **Scope**: `disclosure_transport` / `holders_top10_acceptance` (+ planner skip if it forces re-fetch); tests for ACCEPTED+same hash → no new landing rows
-- **Exit**: re-land of identical ACCEPTED partition does not grow landing; canonical unchanged; moth/codegraph callers updated; measured storm rate drops on next acquire window
+- **Scope**: `disclosure_transport` / `holders_top10_acceptance` / `disclosure_dual_write`; tests for ACCEPTED+same hash → no new landing rows
+- **Exit**:
+  1. Rule10 + `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh` + push async
+  2. Re-land identical ACCEPTED partition does not grow landing; canonical unchanged
+  3. Historical multiplicity (~32×) **not** deleted here — retention/archive = later knife
+  4. No org mass; no bare DELETE landing
 - **Ban**: DROP/DELETE landing as “dedupe”; changing PK to `row_hash`; touching org mass refresh
 - **Parallel**: OK vs market compact **if** moth shows non-overlap (different DB files) **and** no shared disclosure files
 - **Blast**: disclosure land path (fan-in 6–16); smartmoney write lock during tests/live
@@ -118,8 +122,8 @@ Live probes (read-only): `raw_tushare_stk_factor_pro` **absent**; `market.duckdb
 
 ### Optional later (not near-end)
 
-- Holders landing retention archive + smartmoney compact  
-- Margin 1c pulse consumer cutover (shadow)  
+- Holders landing retention archive + smartmoney compact
+- Margin 1c pulse consumer cutover (shadow)
 - Qfq incremental/partitioned write (product; larger than compact)
 
 ---
@@ -143,39 +147,33 @@ Scanner: `analyze_complexity.py` on `data_sources/` → many **nested-loop / sor
 
 ## 5. What NOT to touch
 
-- Org mass / by-date invent / unbounded page crawl  
-- Optuna / holdout loosen / StrategyRelease / E–F remeasure without owner  
-- S7 blanket pre-accept / fake COMPAT  
-- Margin product thaw of `rzrqye` / pulse trusted cutover without shadow knife  
-- Greenfield rewrite of sync_runner / disclosure stack  
-- Merging landing+canonical; bare DELETE landing “to save space”  
-- Reviving `stk_factor_pro` writer without new consumer + owner  
-- Plugin bus / second DB / dual-write migration window  
-- Continuity READY cosmetics  
-- Peer WIP unrelated files; agent self-downgrade of commit tier  
+- Org mass / by-date invent / unbounded page crawl
+- Optuna / holdout loosen / StrategyRelease / E–F remeasure without owner
+- S7 blanket pre-accept / fake COMPAT
+- Margin product thaw of `rzrqye` / pulse trusted cutover without shadow knife
+- Greenfield rewrite of sync_runner / disclosure stack
+- Merging landing+canonical; bare DELETE landing “to save space”
+- Reviving `stk_factor_pro` writer without new consumer + owner
+- Plugin bus / second DB / dual-write migration window
+- Continuity READY cosmetics
+- Peer WIP unrelated files; agent self-downgrade of commit tier
 
 ---
 
-## 6. Recommended next knife #1 (after this plan lands)
+## 6. Recommended next knife (after Knife 2 lands)
 
-**Ship Margin 1b** (serialize WT → Rule10 → safe_commit → push → live bounded catchup verify).
+**Knife 3 — Market qfq free-block compact** (owner ops window), or **Knife 4 Continuity residuals** after margin live catchup with token.
 
-Why first among remaining:
-
-1. Factor capability delete already **FIXED** on `main` — no half-open writer.  
-2. Margin v3 is **enabled in WT** with new modules untracked — highest **half-baked** integrity risk if left overnight.  
-3. Residual board already points catchup as the Continuity-meaningful path; holders/qfq are storage/ops and can follow once registry hub is free.
-
-Immediate follow-up after #1 green: **Knife 2 holders skip-land** (largest ongoing refill-adjacent bloat).
+Holders retention/archive of non-latest ACCEPTED landing batches stays **after** skip-land proves no new storm (do not bare-DELETE landing in the same knife as compact).
 
 ---
 
 ## 7. Delivery binding
 
-- One logical knife = one Rule10 + one `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh`; L3 `chunkyctl pre-knife <name>`; async CI (no sync `gh watch`)  
-- Parallel agents **only** when `moth coupling --repo . --impact <name>` proves non-overlap  
-- Post data/PIT/schema: `$post-fix-audit`  
-- Done labels: `FIXED|PARTIAL|BLOCKED` + residual owner + next verification  
+- One logical knife = one Rule10 + one `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh`; L3 `chunkyctl pre-knife <name>`; async CI (no sync `gh watch`)
+- Parallel agents **only** when `moth coupling --repo . --impact <name>` proves non-overlap
+- Post data/PIT/schema: `$post-fix-audit`
+- Done labels: `FIXED|PARTIAL|BLOCKED` + residual owner + next verification
 
 ---
 

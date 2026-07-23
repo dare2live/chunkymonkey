@@ -1,8 +1,7 @@
 """E0 formal land→validate→accept for miaoxiang holders_top10 (tracer).
 
-Requires disclosure execution handoff before any write.  Legacy
-``fact_top10_holder_period`` direct writes remain NONCONFORMING strangler until
-cutover; this module never publishes DatasetSnapshot readiness.
+Requires disclosure execution handoff. Legacy ``fact_top10_holder_period``
+direct writes stay NONCONFORMING; never publishes DatasetSnapshot readiness.
 """
 from __future__ import annotations
 
@@ -36,6 +35,9 @@ from services.data_sources.holders_top10_schema import (
     SCHEMA_CONTRACT,
     SOURCE,
     WRITER_ID,
+)
+from services.data_sources.holders_top10_skip_land import (
+    find_accepted_batch_with_same_payload,
 )
 from services.data_sources.security_day_partition import (
     sha256_text,
@@ -379,6 +381,17 @@ def land_holders_top10_batch(
             }
         )
     )
+    accepted_same = find_accepted_batch_with_same_payload(
+        conn,
+        partition=partition,
+        payload_hash=payload_hash,
+        contract_hash=contract.contract_hash,
+        config_hash=contract.config_hash,
+    )
+    if accepted_same is not None:
+        _call(after_step, "skip_accepted_same_payload")
+        return accepted_same
+
     existing = conn.execute(
         f"SELECT payload_hash, status FROM {INGEST_BATCH_TABLE} WHERE batch_id = ?",
         [batch_id],
