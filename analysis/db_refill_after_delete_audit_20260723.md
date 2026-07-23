@@ -1,9 +1,9 @@
 # DB refill-after-delete audit — 2026-07-23
 
-> **生命周期**：code/config inventory（evidence-only；本刀不 DROP / 不 compact / 不抢 `tushare_raw` 写锁）  
-> **Owner Q**：优化时发现「删了又写回同样数据」的脚本——为什么 / 是否必须 / 现在还有哪些  
-> **关联**：`analysis/db_size_bloat_audit_20260723.md` · `analysis/db_bloat_deep_dive_20260723.md` · `analysis/db_storage_hygiene_20260721.md` · peer lifecycle `analysis/lifecycle_delete_manifest_raw_tushare_stk_factor_pro_20260723.yaml`  
-> **Live note**：审计时 `data/tushare_raw.duckdb` ≈ **1.85 GiB**（此前 bloat 审计 ≈10 GiB）且被 PID 持写锁 → **peer 可能已在 DROP factor / compact**；下文以 **registry + writer 路径** 为准，不声称表当前是否仍存在。
+> **生命周期**：code/config inventory（evidence-only；本刀不 DROP / 不 compact / 不抢 `tushare_raw` 写锁）
+> **Owner Q**：优化时发现「删了又写回同样数据」的脚本——为什么 / 是否必须 / 现在还有哪些
+> **关联**：`analysis/db_size_bloat_audit_20260723.md` · `analysis/db_bloat_deep_dive_20260723.md` · `analysis/db_storage_hygiene_20260721.md` · peer lifecycle `analysis/lifecycle_delete_manifest_raw_tushare_stk_factor_pro_20260723.yaml`
+> **Live note（收口 2026-07-23）**：`raw_tushare_stk_factor_pro` **已 DROP**；`tushare_raw` **10.039 GiB → 4.682 GiB**；`sync_registry` **域条目已删除**（仅留退役注释，无 live writer）；`legacy_raw_plane` `role=retired`。显式 sync → `KeyError: 未注册的数据域`。业主纠偏：orphan 终态是 **删重建能力**，不是「对已删文档的重建机制打补丁」。详见 §0 / deep-dive §6。
 
 ---
 
@@ -13,9 +13,9 @@
 |---|---|
 | **为什么会有** | 三类合法动机叠在一起：(1) **幂等发布**——同 grain / 同分区先 DELETE 再 INSERT，防上游撤销/半批残留；(2) **派生全量重建**——前复权/机构档案等依赖「最新因子全史 rebase」，便宜路径是 DROP+CTAS / `CREATE OR REPLACE`；(3) **不可变 landing**——每批新 `batch_id`，同 payload 再 land = 证据追加，不是 in-place 覆盖。 |
 | **是否必须** | **必须的是语义**（replace_partition / accepted 派生 / snapshot 去假活跃），**不是必须每次物理全表 DROP**。holders 同 hash 重落、qfq 每日全量 CTAS 不跟 compact = **可改的执行债**，不是宪法。 |
-| **删行/表后会不会被 daily 灌回** | 见 §3 焦点表。关键：**`stk_factor_pro` 不进 `--all-due`/daily drain**；但 registry **仍 live `on_demand`** → 显式 sync 会 `CREATE TABLE IF NOT EXISTS` 再灌。Peer manifest 写「墓碑防回流」——**截至本刀工作树，registry 尚未墓碑**（协调点）。 |
+| **删行/表后会不会被 daily 灌回** | 见 §3。**factor 已收口**：表 DROPped + registry 墓碑 → daily/--all-due **否**；显式 `--start/--end` **亦否**（未注册域 KeyError）。holders / qfq 仍见 §4（本刀未改）。 |
 
-**Verdict: PARTIAL** — 清单完整；防回流钩子（factor tombstone）属 peer knife，本刀只文档。
+**Verdict: PARTIAL** — factor P0 **FIXED**；holders skip / qfq compact 仍 open。
 
 ---
 
@@ -39,7 +39,7 @@
 
 | 对象 | Path / trigger | 为什么存在 | Must vs accidental | 删底层行/表后 |
 |---|---|---|---|---|
-| **`raw_tushare_stk_factor_pro`** | `sync_registry.yaml` `stk_factor_pro` · `sync_policy: on_demand` · `batch_mode: by_ts_code` · writer=`sync_runner` | 实验/因子宽表 SSOT；S7 `sync_orphan`（无 DataAccess/serve） | **Accidental residual**（无生产消费者）；保留 registry 仅为显式实验 | **daily / `--all-due`：不会 refill**（`automatic_domains` 跳过 `on_demand`）。**显式** `--domain stk_factor_pro --start/--end`：**会** `CREATE TABLE IF NOT EXISTS` + 逐股回灌。Peer lifecycle 拟 DROP + 声称 registry 墓碑 — **工作树 registry 仍 live** → **回流门未关**。 |
+| **`raw_tushare_stk_factor_pro`** | ~~`sync_registry` live~~ → **墓碑注释**；`legacy_raw_plane` `retired`；lifecycle DROP+compact | 曾为实验/因子宽表 sync_orphan | **Accidental residual — DELETED** | **不会 refill**：域未注册；CLI/domain_spec KeyError。 |
 | **holders landing re-land** | `disclosure_transport.land_*` → `land_holders_top10_batch`；`batch_id` 默认 `domain:part:uuid`；acquire / formal disclosure catchup | 不可变 batch 证据面；accept 后 canonical `DELETE WHERE notice_date` 再写 | Landing 语义 **must**；**同 `row_hash`×32 重落 = accidental**（缺「已 ACCEPTED + 同 payload_hash → skip」） | 删 landing 行：下次 land **再 append**（新 batch）。删 canonical：accept 链可从仍在的 landing replay；若 landing 也空则须重新 provider land。**不会**因 compact 单独 refill。 |
 | **market qfq DROP+CTAS** | `pipeline/clean.py` → `build_price_kline_qfq_tushare.py`（daily Step 2.96）；亦 `chunkyctl derive qfq` / ops `derive_qfq` | latest-adj 全史 rebase；analysis 面非 execution truth | **Rebuild must**；**每次 DROP 不 compact = free-block 复发（accidental ops）** | 删 `price_kline_qfq_tushare` 或整表 DROP：下次 clean/derive **从 accepted nominal×adj 全量重建**（内容「看起来一样」）。**compact 只缩文件，不阻止下次 CTAS**。 |
 
@@ -74,12 +74,11 @@
 
 | 入口 | 会 refill？ | Evidence |
 |---|---|---|
-| `daily_update` → acquire `--all-due` | **否** | `sync_runner.automatic_domains`：`sync_policy != on_demand` 才入选；factor=`on_demand` |
-| `sync_runner --domain stk_factor_pro` 无窗 | **拒** | on_demand 要求显式 `--start` 与 `--end` |
-| 显式 `--domain stk_factor_pro --start/--end` | **是** | `CREATE TABLE IF NOT EXISTS` + by_ts_code fetch；registry 仍注册 `target_table` |
-| Peer lifecycle DROP 后 | **日常不会**；**显式仍会**直到 registry 墓碑/`execution_policy: disabled` 或域删除 | Manifest 声称墓碑；**本工作树 `sync_registry.yaml` 仍含完整 `stk_factor_pro` 块（L1208+）** |
+| `daily_update` → acquire `--all-due` | **否** | 域已从 registry 移除；本就不在 automatic_domains |
+| 显式 `--domain stk_factor_pro --start/--end` | **否** | `domain_spec` / CLI → `KeyError: 未注册的数据域 'stk_factor_pro'`（无 `CREATE TABLE` 路径） |
+| DROP + compact 后 | **否** | 表不存在 + 墓碑；见 deep-dive §6 |
 
-**协调**：factor DELETE 属 peer knife。本刀 **不改 registry**（避双写）。Owner 验收 DROP 后应确认：registry 墓碑或 `execution_policy.mode=disabled`，否则「磁盘刚腾出又被实验 sync 灌回」。
+**收口**：registry 域条目改为墓碑注释；`legacy_raw_plane` `retired`；S7 wall 22 ssot + 1 retired。
 
 ### 3.2 holders landing
 
@@ -106,7 +105,7 @@
 
 | 优先级 | 动作 | 效果 |
 |---:|---|---|
-| **P0（peer/factor）** | DROP 后立刻 **墓碑** `stk_factor_pro`：删域或 `execution_policy: disabled` + 测试/ continuity 改 WARN/退役 | 堵显式 refill；与 lifecycle manifest「防回流」对齐 |
+| **P0（peer/factor）** | DROP 后 **删 registry 域条目**（能力退役 → KeyError）；注释说明即可。`disabled` 只作过渡 fail-closed，**不是**终态 | 根治回流 = 无 writer；禁「留 live sync + 补丁防回流」 |
 | **P0（holders）** | land 路径：`ACCEPTED` + 同 `payload_hash` → **skip** | 停 ~32× 重落；不改 canonical 语义 |
 | **P1（qfq）** | clean 后 compact market，或 derive 改增量 | 停 free-block 复发 |
 | **P2** | `institution_profile` / DC：保持现有 delta skip；勿改回「每夜无条件 rebuild_all」 | 已部分 skip — 保持 |
@@ -131,12 +130,12 @@
 
 ## 6. Label / residual
 
-**PARTIAL** — 代码面 offender 表完整；live 表是否已 DROP 以 peer 锁内作业为准（文件已从 ~10 GiB 量级缩小，与 factor 退役一致但未在本刀内核验行数）。
+**PARTIAL** — factor P0 **FIXED**（DROP + compact + registry 墓碑；显式 sync KeyError）。holders / qfq 仍 open。
 
 **Residual owner**
 
-1. Peer factor knife：registry 墓碑与 lifecycle execute 同收口。  
-2. Holders skip-land 立法刀。  
+1. ~~Peer factor knife~~ **DONE**（本收口）。
+2. Holders skip-land 立法刀。
 3. qfq compact/增量刀（owner 窗）。
 
-**Next verification**：peer 收工后 `rg -n "stk_factor_pro" backend/config/sync_registry.yaml` 应为墓碑/缺失；`python -c` 只读确认表不存在；再跑一次 `--all-due` dry 域列表确认无 factor。
+**Verified**：表不存在；`tushare_raw` 4.682 GiB；registry 无 `stk_factor_pro` 域；`chunkyctl sync --domain stk_factor_pro --start/--end` → 未注册 KeyError。
