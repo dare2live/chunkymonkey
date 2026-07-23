@@ -413,14 +413,15 @@ export function WorkbenchPage() {
   const activity = deriveActivityFallback(status);
   const runOutcome = status?.run_outcome ?? null;
   const softWaiting = runOutcome === "soft_waiting_clock";
+  const integrityObserve = runOutcome === "integrity_observe";
   const hardFail = runOutcome === "hard_fail";
-  // Soft waiting must never surface as red FAIL / 阻断 (plan §C2).
+  // Soft/integrity must never surface as red FAIL / 阻断 (plan §C2 + closed-loop).
   const blocking =
     hardFail
       ? status?.alert_summary ||
         activity?.blocking_reason ||
         (alerts.length ? `flag: ${alerts.join(", ")}` : "hard_fail")
-      : softWaiting
+      : softWaiting || integrityObserve
         ? null
         : activity?.blocking_reason ||
           (runOutcome ? null : status?.alert_summary) ||
@@ -432,11 +433,13 @@ export function WorkbenchPage() {
       ? "ops-activity ops-activity-fail"
       : softWaiting
         ? "ops-activity ops-activity-soft"
-        : blocking
-          ? "ops-activity ops-activity-alert"
-          : runOutcome === "success"
-            ? "ops-activity ops-activity-ok"
-            : "ops-activity";
+        : integrityObserve
+          ? "ops-activity ops-activity-soft"
+          : blocking
+            ? "ops-activity ops-activity-alert"
+            : runOutcome === "success"
+              ? "ops-activity ops-activity-ok"
+              : "ops-activity";
 
   const live = jobLooksActive(status);
   const overallPct = overallProgressPct(activity?.phase, live, runOutcome);
@@ -444,7 +447,7 @@ export function WorkbenchPage() {
     ? "live"
     : hardFail
       ? "fail"
-      : softWaiting
+      : softWaiting || integrityObserve
         ? "soft"
         : runOutcome === "success"
           ? "ok"
@@ -506,6 +509,17 @@ export function WorkbenchPage() {
           {status?.report_date ? ` · report=${status.report_date}` : ""}
           {alerts.length > 0
             ? ` （上次跑留下的观测 flag: ${alerts.join(", ")} — 非硬阻断；成功跑会自清，或手工 rm /tmp/…）`
+            : null}
+        </div>
+      )}
+      {integrityObserve && !jobLooksActive(status) && tab === "oneclick" && (
+        <div className="banner-soft">
+          最近一次已结束 · 结果=完整性观测（非时钟、非硬 FAIL）:{" "}
+          {status?.run_outcome_label || "integrity_observe"}
+          {status?.run_outcome_reason ? ` · ${status.run_outcome_reason}` : ""}
+          {status?.report_date ? ` · report=${status.report_date}` : ""}
+          {alerts.length > 0
+            ? ` （观测 flag: ${alerts.join(", ")} — 需修数据/派生，不是等发布窗）`
             : null}
         </div>
       )}

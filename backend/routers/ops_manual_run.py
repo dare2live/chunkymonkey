@@ -400,20 +400,19 @@ def _derive_current_activity(
         phase_label = "硬失败"
         blocking_reason = alert_summary
     elif run_outcome == "soft_waiting_clock":
-        # Finished-run observation — not "still waiting forever" (plan §C2).
         summary = "最近一次已结束 · 结果=soft_waiting_clock（等时钟/软观测，非仍在跑）"
-        if alert_summary and "hard_fail" not in alert_summary:
-            summary += f" — {alert_summary[:120]}"
-        phase_id = "soft_waiting"
-        phase_label = "已结束 · 等时钟/软观测"
-        blocking_reason = None  # do not surface as 阻断
+        if alert_summary and "hard_fail" not in str(alert_summary):
+            summary += f" — {str(alert_summary)[:120]}"
+        phase_id, phase_label, blocking_reason = "soft_waiting", "已结束 · 等时钟/软观测", None
+    elif run_outcome == "integrity_observe":
+        summary = "最近一次已结束 · 结果=integrity_observe（完整性观测，非时钟）"
+        if alert_summary and "hard_fail" not in str(alert_summary):
+            summary += f" — {str(alert_summary)[:120]}"
+        phase_id, phase_label, blocking_reason = "integrity", "已结束 · 完整性观测", None
     elif run_outcome == "success":
         summary = "最近成功 · run_outcome=success"
-        phase_id = "ok"
-        phase_label = "成功"
-        blocking_reason = None
+        phase_id, phase_label, blocking_reason = "ok", "成功", None
     elif writer_busy and not active:
-        # Global lock held by another chain — this job is idle.
         summary = "空闲 · 全局 writer 占用中"
         if owner:
             summary += f"（{owner}"

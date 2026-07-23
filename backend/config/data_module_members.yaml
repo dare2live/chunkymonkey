@@ -52,7 +52,8 @@ member_service_files:
                              #   与 build_price_kline_qfq_tushare 同性质)。**2026-07-08 决议**: 产物表
                              #   (mart_inst_profile/mart_inst_profile_dim/fact_inst_episode) 不注册进
                              #   DataAccess entity — 三表按 holder(机构名)为键非 stock code, 且
-                             #   mart_inst_profile(_dim) 是手动 rebuild_all() 触发的全量快照无 PIT asof
+                             #   mart_inst_profile(_dim): daily process delta-gates rebuild_all()
+                             #   when holders notice frontier advances (closed-loop 20260723); 无 PIT asof
                              #   列, 不符合 GenericDriver 的 "code IN(...) AND asof<=t" 单表时间序列
                              #   模型, 硬塞需扩展 DataAccess 本体(违反§4.1"零摩擦"红线)且当前 0 真实
                              #   消费方(Phase A 未开工, speculative feature 不做)。**正解**: 消费方(未来

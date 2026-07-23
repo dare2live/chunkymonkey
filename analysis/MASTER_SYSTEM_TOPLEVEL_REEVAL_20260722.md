@@ -238,7 +238,7 @@ PARTIAL」这种无 consumer 的残差追绿**性质不同**。
 | 形态/阶段选股 | Tier1 form/axis serve | **HAVE（subset）** | `stock_screener.py /form_stage`；Cap B FIXED subset |
 | facet explore 跳转 | 每个计算 facet → universe serve 砖 | **HAVE（CX-3）** | behavior/form/axis/breakout/intersection/holder + sector_membership + stock flow_streak live；证据 `cx3_capability_bricks_acceptance_20260722.md` |
 | 股票档案 dossier | stock↔holders↔form↔收益 lineage | **PARTIAL** | HS-A gate + canonical streak FIXED；stock↔holders↔form ~98%；机构 deep-link honesty-gated |
-| 机构档案 | org/holders episode + 披露时点 | **PARTIAL** | `institution_profile.py` live；~54% honesty；**`org_holding` = by-period incremental every daily_update**（mass/~830k refresh + by-date invent banned；`org_holding_period_gap_report` + accept-from-local-raw）；holders F6 PASS（126d overlap） |
+| 机构档案 | org/holders episode + 披露时点 | **PARTIAL** | deep-link coverage ~99.8%（`f983a4550`+episode catch-up）；**daily process delta-gates** `rebuild_all`（闭环法 `serve_derive_closed_loop_law_20260723.md`）；**`org_holding` = period-gap + population gate**（`under_populated_accepted`；mass/by-date invent banned）；holders F6 PASS；更新检查见 `shareholder_update_check_design_20260723.md` |
 | **候选每日简报 briefing** | conclusion + why + observation 聚合叙事砖 | **HAVE（CX-3）** | `daily_briefing` serve + `#/briefing` / Market assist panel；stale/UNTRUSTED → narrative=null |
 | delta 选择性加工 | acquire typed delta manifest | **HAVE（CX-1 PASS）** | `delta_manifest` → DC frontier skip；pulse late window always；证据 `cx1_acquire_efficiency_acceptance_20260722.md` |
 | ST/holder 状态变更传感 | 非增量状态变探测 | **HAVE（CX-2 PASS）** | `state_sensors` → `delta.state_changes`；证据 `cx2_state_sensors_acceptance_20260722.md` |

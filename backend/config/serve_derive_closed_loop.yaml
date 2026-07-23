@@ -1,0 +1,89 @@
+# Serve → derive closed loop (machine inventory)
+#
+# Authority: analysis/serve_derive_closed_loop_law_20260723.md
+# Invariant: product serve surfaces that depend on wipeable L1/L2 derives must
+# either (a) be wired into daily process with skip-when-unchanged, or (b) be
+# honestly labeled BLOCKED/manual — never FIXED-fresh by partition existence alone.
+#
+# Gate semantics:
+#   existence = partition/row present
+#   population = stock/row mass vs expected / raw
+#   freshness = derived frontier ≥ source accepted frontier for named consumer
+
+version: 1
+
+org_population:
+  # Canary (2 stocks) must NOT count as ok skip. Mass refresh stays banned.
+  min_accepted_stocks: 500
+  # When raw has enough mass, accepted must not be a thin canary.
+  min_raw_stocks_for_ratio: 1000
+  min_accepted_over_raw_ratio: 0.5
+
+surfaces:
+  - id: market_pulse_panels
+    serve: "Tier2 pulse / sector / flow / strongest"
+    derive: services.market_pulse.build_latest
+    process_step: market_pulse
+    binding: daily_process
+    freshness_axis: trade_date
+    status: wired
+
+  - id: stock_segments
+    serve: "segment labels / filters"
+    derive: services.segments.build_latest
+    process_step: segments
+    binding: daily_process
+    freshness_axis: trade_date
+    status: wired
+
+  - id: stock_form
+    serve: "form / technical_states"
+    derive: services.technical_states.build_latest
+    process_step: technical_states
+    binding: daily_process
+    freshness_axis: trade_date
+    status: wired
+
+  - id: dc_industry_view
+    serve: "DC industry snapshot (legacy namespace)"
+    derive: scripts.build_dc_industry_view
+    process_step: dc_industry_view
+    binding: daily_process_delta
+    freshness_axis: dc_source_frontier
+    status: wired
+
+  - id: institution_profile_dossier
+    serve: "stock dossier deep-link / mart_inst_profile / fact_inst_episode"
+    derive: services.institution_profile.rebuild_all
+    process_step: institution_profile
+    binding: daily_process_delta
+    freshness_axis: holders_notice_date
+    source_domains: [holders_aif10]
+    status: wired
+    # Was manual-only (docstring + data_module_members); closed-loop law closes it.
+
+  - id: org_holding_formal
+    serve: "formal org holding (research/product if served)"
+    derive: null
+    process_step: null
+    binding: acquire_period_gap_only
+    freshness_axis: report_period
+    status: population_gated
+    # Existence skip banned when under_populated; no by-date invent; no mass refresh.
+    notes: "repair knife separate; daily must not claim ok on canary accept"
+
+  - id: qfq_price
+    serve: "qfq analysis view"
+    derive: chunkyctl derive qfq
+    process_step: null
+    binding: clean_stage_or_derive_cli
+    freshness_axis: trade_date
+    status: wired_via_clean
+
+integrity_msg_patterns:
+  - continuity/integrity
+  - data_audit
+  - 库存断流
+  - under_populated_accepted
+  - institution_profile.*失败
+  - 机构档案

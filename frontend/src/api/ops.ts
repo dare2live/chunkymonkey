@@ -37,7 +37,11 @@ export interface DuePlanPreview {
 }
 
 /** Typed daily_update outcome — SSOT from data/reports/daily_*.json (plan §C2). */
-export type RunOutcome = "success" | "soft_waiting_clock" | "hard_fail";
+export type RunOutcome =
+  | "success"
+  | "soft_waiting_clock"
+  | "integrity_observe"
+  | "hard_fail";
 
 /** CX-1 delta_manifest (report idle or live log parse) — UI display only.
  *  Full report shape: { delta: { advanced_partitions[] }, process_plan: {step:{action,reason}} }.
@@ -128,7 +132,12 @@ export function overallProgressPct(
   outcome?: RunOutcome | null,
 ): number {
   if (!active) {
-    if (outcome === "success" || outcome === "soft_waiting_clock") return 100;
+    if (
+      outcome === "success" ||
+      outcome === "soft_waiting_clock" ||
+      outcome === "integrity_observe"
+    )
+      return 100;
     // hard_fail ≠ complete — keep bar short so % never reads as success.
     if (outcome === "hard_fail") return 35;
     return 0;
@@ -161,7 +170,11 @@ export function classifyLogLine(
   if (/\[delta_manifest\]|delta_manifest/i.test(line)) return "delta";
   if (/PREFLIGHT BLOCK|AUTH BLOCK|TIER0 BLOCK|WRITER BLOCK|FAIL rc=[2-5]|HARD_FAIL/i.test(line))
     return "fail";
-  if (/soft_waiting_clock|SOFT_WAITING|pending_publish|DONE soft_waiting/i.test(line))
+  if (
+    /soft_waiting_clock|SOFT_WAITING|pending_publish|DONE soft_waiting|integrity_observe/i.test(
+      line,
+    )
+  )
     return "soft";
   if (/①\s*获取|ACQUIRE/.test(line)) return "acquire";
   if (/②\s*清洗|CLEAN|land_then_accept/i.test(line)) return "clean";
@@ -318,6 +331,7 @@ export function deriveActivityFallback(s: OpsJobStatus | null | undefined): OpsJ
     ["preflight", "预检 preflight", /Preflight|Sync execution policy|Calendar foundation|Authorization/i],
     ["fail", "硬失败 / 阻断", /PREFLIGHT BLOCK|AUTH BLOCK|TIER0 BLOCK|WRITER BLOCK|FAIL rc=[2-5]|HARD_FAIL/i],
     ["soft_waiting", "已结束 · 等时钟/软观测", /soft_waiting_clock|SOFT_WAITING|pending_publish|DONE soft_waiting/i],
+    ["integrity", "已结束 · 完整性观测", /integrity_observe|under_populated_accepted/i],
   ];
   for (const line of [...run].reverse()) {
     for (const [id, label, re] of checks) {
@@ -351,6 +365,11 @@ export function deriveActivityFallback(s: OpsJobStatus | null | undefined): OpsJ
     phase = "soft_waiting";
     phaseLabel = "已结束 · 等时钟/软观测";
     blocking = null; // never paint soft wait as FAIL
+  } else if (s.run_outcome === "integrity_observe") {
+    summary = `最近一次已结束 · 结果=完整性观测（非时钟；${s.run_outcome_label || "integrity_observe"}）`;
+    phase = "integrity";
+    phaseLabel = "已结束 · 完整性观测";
+    blocking = null; // not hard_fail; still not "等时钟"
   } else if (s.run_outcome === "success") {
     summary = "最近成功 · run_outcome=success";
     phase = "ok";

@@ -63,11 +63,17 @@ def test_incremental_skip_message_shows_next_unlock(monkeypatch):
 
     class _Conn:
         def execute(self, sql, *a, **k):
+            text = str(sql)
+            if "canonical_org_holding" in text:
+                raise RuntimeError("canonical unavailable in stub")
+
             class _Cur:
                 def fetchall(_self):
                     return [("2026-03-31",)]
+
                 def fetchone(_self):
                     return (1,)
+
             return _Cur()
 
     monkeypatch.setattr(m, "ensure_tables", lambda _conn: None)
@@ -205,6 +211,49 @@ def test_org_holding_period_gap_report_detects_missing_plannable():
     assert gap["action"] == "fetch_then_accept"
     assert "2026-03-31" in gap["missing_periods"]
     assert gap["status"] == "plannable_missing"
+    con.close()
+
+
+def test_org_holding_period_gap_under_populated_canary(monkeypatch):
+    """Partition exists + thin accepted population → under_populated_accepted."""
+    from datetime import date
+
+    con = duckdb.connect(":memory:")
+    m.ensure_tables(con)
+    con.execute(
+        """
+        CREATE TABLE canonical_org_holding_detail_period (
+            report_date VARCHAR,
+            available_date VARCHAR,
+            stock_code VARCHAR,
+            holder_code VARCHAR,
+            fund_derivecode VARCHAR
+        )
+        """
+    )
+    # canary: 2 stocks accepted while raw is dense
+    for code in ("600519", "000001"):
+        con.execute(
+            "INSERT INTO canonical_org_holding_detail_period VALUES "
+            "('2026-03-31', '20260430', ?, 'H1', '')",
+            [code],
+        )
+    for i in range(1200):
+        con.execute(
+            "INSERT INTO raw_org_holding_aif10 "
+            "(report_date, stock_code, holder_code, fund_derivecode) "
+            "VALUES ('2026-03-31', ?, 'H1', '')",
+            [f"{i:06d}"],
+        )
+    monkeypatch.setattr(m, "latest_plannable_report_date", lambda today=None: "2026-03-31")
+    monkeypatch.setattr(m, "accepted_has_org_holding_partition", lambda *_a, **_k: True)
+    gap = m.org_holding_period_gap_report(
+        con, today=date(2026, 5, 15), start_period="2025-12-31"
+    )
+    assert gap["action"] == "skip_current"
+    assert gap["status"] == "under_populated_accepted"
+    assert gap["population"]["under_populated"] is True
+    assert gap["population"]["accepted_stocks"] == 2
     con.close()
 
 

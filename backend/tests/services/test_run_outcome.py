@@ -5,6 +5,7 @@ import json
 
 from services.pipeline.run_outcome import (
     OUTCOME_HARD_FAIL,
+    OUTCOME_INTEGRITY,
     OUTCOME_SOFT_WAITING,
     OUTCOME_SUCCESS,
     classify_msg,
@@ -27,30 +28,44 @@ def test_classify_hard_blocks():
     assert classify_msg("WRITER BLOCK: busy owner=pipeline.run") == "hard"
 
 
-def test_classify_other_ops_degraded():
-    assert classify_msg("continuity/integrity 审查 FAIL — 库存断流") == "other"
+def test_classify_integrity_vs_other():
+    assert classify_msg("continuity/integrity 审查 FAIL — 库存断流") == "integrity"
+    assert classify_msg("org_holding under_populated_accepted — canary") == "integrity"
     assert classify_msg("post-acquire watermark SLA alert (见 data/audit/...)") == "other"
 
 
-def test_rollup_soft_named_and_other_is_soft_waiting():
+def test_rollup_soft_named_and_integrity_is_integrity():
     info = derive_run_outcome(
         [
             "sync_registry drain 有残余缺口或域错误 (见 log)",
             "continuity/integrity 审查 FAIL — 库存",
-            "post-acquire watermark SLA alert (见 x)",
         ]
     )
-    assert info["run_outcome"] == OUTCOME_SOFT_WAITING
+    assert info["run_outcome"] == OUTCOME_INTEGRITY
     assert info["exit_code"] == 1
-    assert info["run_outcome_reason"] == "soft_waiting_clock_with_ops_observe"
+    assert info["run_outcome_reason"] == "integrity_observe_with_soft_clock"
+    assert info["run_outcome_label"] == "完整性观测（非时钟）"
 
 
-def test_rollup_other_only_still_soft_not_fail():
-    """Continuity/SLA alone must not paint FAIL (adversarial Phase 1 call)."""
+def test_rollup_continuity_is_integrity_not_clock():
+    """Closed-loop: continuity FAIL must not narrate as 等时钟."""
     info = derive_run_outcome(["continuity/integrity 审查 FAIL"])
-    assert info["run_outcome"] == OUTCOME_SOFT_WAITING
+    assert info["run_outcome"] == OUTCOME_INTEGRITY
+    assert info["exit_code"] == 1
+    assert info["run_outcome_reason"] == "integrity_observe"
+
+
+def test_rollup_other_only_is_integrity_not_fail():
+    info = derive_run_outcome(["post-acquire watermark SLA alert (见 x)"])
+    assert info["run_outcome"] == OUTCOME_INTEGRITY
     assert info["exit_code"] == 1
     assert info["run_outcome_reason"] == "ops_observe_non_hard_degraded"
+
+
+def test_rollup_named_soft_only_stays_clock():
+    info = derive_run_outcome(["domain daily pending_publish reason=pre_available_after_zero_rows"])
+    assert info["run_outcome"] == OUTCOME_SOFT_WAITING
+    assert info["run_outcome_reason"] == "soft_waiting_clock"
 
 
 def test_rollup_hard_beats_soft():
@@ -197,9 +212,10 @@ def test_write_report_includes_run_outcome(tmp_path, monkeypatch):
     path = tmp_path / "data" / "reports" / "daily_20260722.json"
     assert path.exists()
     data = json.loads(path.read_text())
-    assert data["run_outcome"] == OUTCOME_SOFT_WAITING
+    # Closed-loop: integrity beats clock narration when both present.
+    assert data["run_outcome"] == OUTCOME_INTEGRITY
     assert data["run_outcome_exit_code"] == 1
-    assert out["run_outcome"] == OUTCOME_SOFT_WAITING
+    assert out["run_outcome"] == OUTCOME_INTEGRITY
     ctx.close()
 
 
@@ -225,8 +241,8 @@ def test_soft_banner_coalesces_identical_reclick(tmp_path, monkeypatch):
 
     def _one_run() -> str:
         ctx = PipelineContext(date="20260722", dry=True, skip_sync=True)
+        # Named soft clock only — coalesce path for soft_waiting_clock.
         ctx.degraded_msgs.append("sync_registry drain 有残余缺口或域错误 (见 log)")
-        ctx.degraded_msgs.append("post-acquire watermark SLA alert (见 x.json)")
         out = store_mod.write_report_and_alert(ctx)
         ctx.close()
         return out["run_outcome"]

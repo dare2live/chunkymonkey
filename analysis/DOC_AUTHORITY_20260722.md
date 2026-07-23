@@ -32,6 +32,9 @@
 | `hs_a_whitelist_includes_st_20260722.md` | 沪深A 白名单含 ST universe 护栏 |
 | `workbench_incremental_orchestrator_ux_20260722.md` | acquire UX P0–P3；**P0.1 CX-4 / P1 CX-1 / P2 progress UX / P3 CX-2 PASS** |
 | `org_holding_incremental_loop_20260723.md` | org = **incremental-check-every-run**；mass/by-date invent banned；非 forever BLOCKED |
+| `shareholder_update_check_design_20260723.md` | holders/org 更新检查审计；**禁** daily 全市场逐公司扫公告；holders notice 稀疏 = 已 ship；org 期内晚披露 = repair 刀门前不进 daily |
+| `data_frontier_detection_system_20260723.md` | 全项目 frontier 检测映射；`e040f4889` holders equal-wm 稀疏=系统路径；**无**统一人口检测框架；PARTIAL gaps (ann equal-day / org 期内 / typed policy 窄) |
+| `serve_derive_closed_loop_law_20260723.md` | **Serve→derive 闭环立法**：existence≠population≠freshness；`integrity_observe`；机构档案挂 process；机读清单 `serve_derive_closed_loop.yaml` |
 | `product_decision_assist_backlog_20260721.md` | Cap A–F 能力定义（近端 CLOSED；defs 有效） |
 
 ## 2. Living guardrails / 前端设计（读 as needed）

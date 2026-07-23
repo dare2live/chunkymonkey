@@ -16,6 +16,7 @@ from .context import REPO, PipelineContext
 from .preflight import run_watermark_sla_check
 from .run_outcome import (
     OUTCOME_HARD_FAIL,
+    OUTCOME_INTEGRITY,
     OUTCOME_SOFT_WAITING,
     OUTCOME_SUCCESS,
     derive_run_outcome,
@@ -149,7 +150,8 @@ def _dispatch_by_outcome(
     """Outcome-keyed notification: no --skip-macos heuristic.
 
     success → silent
-    soft_waiting_clock → non-macos channels only (one observation banner separately)
+    soft_waiting_clock / integrity_observe → non-macos channels only
+      (one observation banner separately)
     hard_fail → wrapper owns the single FAIL macOS banner (no store spam)
     """
     outcome = str(output.get("run_outcome") or "")
@@ -165,7 +167,10 @@ def _dispatch_by_outcome(
         ctx.log("No notification alerts (sla_warn off)")
         return
 
-    # Soft waiting: observation banner is the single macOS surface.
+    # Soft / integrity: observation banner is the single macOS surface.
+    dispatch_outcome = (
+        OUTCOME_INTEGRITY if outcome == OUTCOME_INTEGRITY else OUTCOME_SOFT_WAITING
+    )
     dispatch_cmd = [
         sys.executable,
         "-m",
@@ -173,11 +178,11 @@ def _dispatch_by_outcome(
         "--report",
         str(report_json),
         "--outcome",
-        OUTCOME_SOFT_WAITING,
+        dispatch_outcome,
     ]
     ctx.log(
         f"Alerts present (active={','.join(active)}); "
-        "dispatching non-macos (soft_waiting_clock → observation banner owns macOS)"
+        f"dispatching non-macos ({dispatch_outcome} → observation banner owns macOS)"
     )
 
     proc = subprocess.run(
@@ -250,7 +255,7 @@ def _outcome_summary_banner(ctx: PipelineContext, output: dict[str, Any]) -> Non
             f"(wrapper FAIL owns macOS; msgs={len(ctx.degraded_msgs)})"
         )
         return
-    if outcome != OUTCOME_SOFT_WAITING:
+    if outcome not in {OUTCOME_SOFT_WAITING, OUTCOME_INTEGRITY}:
         return
 
     msgs = (
@@ -259,7 +264,10 @@ def _outcome_summary_banner(ctx: PipelineContext, output: dict[str, Any]) -> Non
         else list(ctx.degraded_msgs)
     )
     n = len(msgs) or int(output.get("degraded_total") or 0)
-    ctx.log(f"SOFT_WAITING SUMMARY: 本次 {n} 步软观测 (明细 {DEGRADED_FLAG}):")
+    summary_tag = (
+        "INTEGRITY_OBSERVE" if outcome == OUTCOME_INTEGRITY else "SOFT_WAITING"
+    )
+    ctx.log(f"{summary_tag} SUMMARY: 本次 {n} 步观测 (明细 {DEGRADED_FLAG}):")
     for m in msgs:
         ctx.log(f"  {m}")
     sla_hint = ""
@@ -274,7 +282,7 @@ def _outcome_summary_banner(ctx: PipelineContext, output: dict[str, Any]) -> Non
     except Exception:  # noqa: BLE001
         pass
 
-    # Coalesce identical soft outcomes (idempotent re-click de-spam).
+    # Coalesce identical soft/integrity outcomes (idempotent re-click de-spam).
     signature = _soft_banner_signature(output)
     try:
         already = marker.read_text(encoding="utf-8").strip() if marker.exists() else ""
@@ -282,12 +290,21 @@ def _outcome_summary_banner(ctx: PipelineContext, output: dict[str, Any]) -> Non
         already = ""
     if already == signature:
         ctx.log(
-            "run_outcome=soft_waiting_clock — 与上次软观测一致, 合并通知 (不重复弹窗; "
+            f"run_outcome={outcome} — 与上次观测一致, 合并通知 (不重复弹窗; "
             f"signature={signature}; 明细见 data/reports/daily_{ctx.date}.json)"
         )
         return
 
-    label = output.get("run_outcome_label") or "等时钟 / 软观测"
+    label = output.get("run_outcome_label") or (
+        "完整性观测（非时钟）"
+        if outcome == OUTCOME_INTEGRITY
+        else "等时钟 / 软观测"
+    )
+    title = (
+        "ChunkyMonkey integrity_observe"
+        if outcome == OUTCOME_INTEGRITY
+        else "ChunkyMonkey soft_waiting_clock"
+    )
     try:
         subprocess.run(
             [
@@ -295,7 +312,7 @@ def _outcome_summary_banner(ctx: PipelineContext, output: dict[str, Any]) -> Non
                 "-e",
                 f'display notification "daily_update {label} · {n} 项{sla_hint}, '
                 f'见 data/reports/daily_{ctx.date}.json" '
-                f'with title "ChunkyMonkey soft_waiting_clock"',
+                f'with title "{title}"',
             ],
             capture_output=True,
         )

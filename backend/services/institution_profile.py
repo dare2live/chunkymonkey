@@ -392,7 +392,11 @@ def build_profiles(con) -> dict[str, int]:
 
 
 def rebuild_all() -> dict[str, Any]:
-    """全量重建 (L2 wipeable, declare-on-build)。daily 增量非必需 — holder 季频+临时低频, 手动/随管线全量重建即可。"""
+    """全量重建 (L2 wipeable, declare-on-build)。
+
+    Closed-loop 2026-07-23: daily ``process`` delta-gates this when holders
+    notice frontier advances (see ``pipeline.closed_loop``). Manual still OK.
+    """
     con = duck_connect(_db("feature_store"), read_only=False)
     try:
         _attach_sources(con)

@@ -142,14 +142,9 @@ def _sync_qfii() -> None:
 
 
 def _sync_org_holding(ctx: PipelineContext) -> None:
-    """机构持仓明细 aif10 — every-run incremental check (owner 2026-07-21/23).
+    """Org holding incremental check: fetch/accept one plannable period or skip.
 
-    Binding: check latest plannable vs local raw+accepted every daily_update;
-    missing → fetch one period then accept from local-raw; present → skip with
-    next-period unlock reason. NEVER full-period ~830k mass re-pull / unbounded
-    page crawl for "refresh". NEVER call ``backfill`` from this path.
-    Older historical gaps: log-not-fill (explicit backfill knife only).
-    By-date provider invent stays banned — this path is by-period incremental.
+    Mass ~830k refresh / by-date invent / backfill banned (owner 2026-07-21/23).
     """
     import asyncio
     from pathlib import Path
@@ -165,10 +160,7 @@ def _sync_org_holding(ctx: PipelineContext) -> None:
     conn = duck_connect(db_path("smartmoney"))
     try:
         gap = org_holding_period_gap_report(conn)
-        print(
-            "org_holding_gap_check: "
-            + json.dumps(gap, ensure_ascii=False, default=str)
-        )
+        print("org_holding_gap_check: " + json.dumps(gap, ensure_ascii=False, default=str))
         result = asyncio.run(sync_org_holding_incremental(conn))
         print(json.dumps(result, ensure_ascii=False, default=str))
     finally:
@@ -204,7 +196,11 @@ def _sync_org_holding(ctx: PipelineContext) -> None:
     summary["incremental"] = incremental
     ctx.delta_manifest["acquire_summary"] = summary
 
-    # Persist latest gap for workbench due_plan (RO preview without re-fetch).
+    if str(result.get("status") or "") == "under_populated_accepted":
+        ctx.degraded(
+            "org_holding under_populated_accepted — thin/canary accept; "
+            "mass refresh banned; repair knife required"
+        )
     try:
         out = Path(__file__).resolve().parents[3] / "data" / "reports"
         out.mkdir(parents=True, exist_ok=True)

@@ -127,5 +127,46 @@ def run_process(ctx: PipelineContext) -> None:
 
     ctx.step(_form_latest, degraded_msg="Tier1 形态状态增量失败 — form 标签与 Tier3 研究输入将 stale")
 
+    # Closed-loop: institution episode→profile must track holders land (not manual-only).
+    # Authority: analysis/serve_derive_closed_loop_law_20260723.md
+    inst_plan = dict(process_plan.get("institution_profile") or {})
+    if str(inst_plan.get("action") or "run") == "skip":
+        ctx.log(
+            f"[delta] skip institution_profile reason={inst_plan.get('reason')}"
+        )
+        outcomes["institution_profile"] = {
+            "action": "skip",
+            "reason": inst_plan.get("reason"),
+            "elapsed_s": 0.0,
+        }
+    else:
+        def _inst_rebuild():
+            from services.institution_profile import rebuild_all
+            from .closed_loop import write_institution_as_of
+
+            t0 = time.perf_counter()
+            result = rebuild_all()
+            frontier = inst_plan.get("holders_notice_frontier")
+            if not frontier:
+                holders = ((manifest.get("delta") or {}).get("state_changes") or {}).get(
+                    "holders"
+                ) or {}
+                frontier = holders.get("as_of")
+            if frontier:
+                write_institution_as_of(str(frontier), rebuild=result if isinstance(result, dict) else None)
+            elapsed = round(time.perf_counter() - t0, 3)
+            ctx.log(f"[institution_profile] {result} elapsed_s={elapsed}")
+            outcomes["institution_profile"] = {
+                "action": "run",
+                "reason": inst_plan.get("reason") or "holders_delta",
+                "elapsed_s": elapsed,
+                "result": result if isinstance(result, dict) else {"raw": result},
+            }
+
+        ctx.step(
+            _inst_rebuild,
+            degraded_msg="机构档案 institution_profile 重建失败 — dossier deep-link / episode 将 stale",
+        )
+
     manifest["process_outcome"] = outcomes
     ctx.delta_manifest = manifest

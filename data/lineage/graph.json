@@ -607,6 +607,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/serve_derive_closed_loop.yaml",
+      "kind": "consume",
+      "src": "table:feature_store.fact_inst_episode"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/routers/stock_dossier.py",
       "kind": "consume",
       "src": "table:feature_store.fact_inst_episode"
@@ -907,6 +913,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/serve_derive_closed_loop.yaml",
+      "kind": "consume",
+      "src": "table:feature_store.mart_inst_profile"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/routers/stock_dossier.py",
       "kind": "consume",
       "src": "table:feature_store.mart_inst_profile"
@@ -1004,6 +1016,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/institution_profile.py",
+      "kind": "consume",
+      "src": "table:feature_store.period_windows"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/pipeline/closed_loop.py",
       "kind": "consume",
       "src": "table:feature_store.period_windows"
     },
@@ -2072,6 +2090,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/org_holding_schema.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_org_holding_detail_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_org_holding_aif10.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_org_holding_detail_period"
     },
@@ -4406,6 +4430,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/org_holding_aif10.py",
+      "kind": "consume",
+      "src": "table:smartmoney.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/org_holding_population.py",
       "kind": "consume",
       "src": "table:smartmoney.raw_org_holding_aif10"
     },
@@ -7345,9 +7375,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1173,
-    "generated_at": "2026-07-23T02:07:05.065561+00:00",
-    "node_count": 424,
+    "edge_count": 1178,
+    "generated_at": "2026-07-23T02:44:53.487796+00:00",
+    "node_count": 427,
     "version": 2
   },
   "nodes": [
@@ -7477,6 +7507,14 @@
         "path": "backend/config/segments.yaml"
       },
       "id": "consumer:backend/config/segments.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/serve_derive_closed_loop.yaml"
+      },
+      "id": "consumer:backend/config/serve_derive_closed_loop.yaml",
       "kind": "consumer"
     },
     {
@@ -8338,6 +8376,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/org_holding_population.py"
+      },
+      "id": "consumer:backend/services/org_holding_population.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/paper_portfolio.py"
       },
       "id": "consumer:backend/services/paper_portfolio.py",
@@ -8357,6 +8403,14 @@
         "path": "backend/services/pipeline/clean.py"
       },
       "id": "consumer:backend/services/pipeline/clean.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/pipeline/closed_loop.py"
+      },
+      "id": "consumer:backend/services/pipeline/closed_loop.py",
       "kind": "consumer"
     },
     {

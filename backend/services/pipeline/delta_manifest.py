@@ -14,6 +14,10 @@ from typing import Any
 
 import yaml
 
+from .closed_loop import (
+    decide_institution_profile_action,
+    read_institution_as_of,
+)
 from .state_sensors import any_state_changed, state_change_force_reasons
 
 REPO = Path(__file__).resolve().parents[3]
@@ -251,6 +255,14 @@ def plan_process_steps(
         if st_or_delist
         else "build_latest_idempotent"
     )
+    holders_block = dict((state_changes or {}).get("holders") or {})
+    inst_decision = decide_institution_profile_action(
+        holders_changed=bool(holders_block.get("changed")),
+        holders_notice_frontier=(
+            str(holders_block["as_of"]) if holders_block.get("as_of") else None
+        ),
+        previous_as_of=read_institution_as_of(),
+    )
     return {
         "dc_industry_view": {
             "action": dc_decision["action"],
@@ -267,6 +279,12 @@ def plan_process_steps(
         "technical_states": {
             "action": "run",
             "reason": form_reason,
+        },
+        "institution_profile": {
+            "action": inst_decision["action"],
+            "reason": inst_decision["reason"],
+            "holders_notice_frontier": inst_decision.get("holders_notice_frontier")
+            or holders_block.get("as_of"),
         },
         "state_change_force": force,
         "any_state_changed": any_state_changed(state_changes),

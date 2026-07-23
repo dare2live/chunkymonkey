@@ -550,6 +550,9 @@ def org_holding_period_gap_report(
     Owner 2026-07-21/23: every manual/`daily_update` must *check* incremental
     gaps (not ignore forever). Fetch stays latest-period-only; mass history and
     by-date provider invent stay banned. Intermediate holes = log-not-fill.
+
+    Closed-loop 2026-07-23: partition existence ≠ population. Thin/canary accept
+    → status under_populated_accepted (still no mass refresh).
     """
     ensure_tables(conn)
     target = latest_plannable_report_date(today=today)
@@ -576,9 +579,20 @@ def org_holding_period_gap_report(
     accepted_has = accepted_has_org_holding_partition(conn, target)
     available = _plannable_available_yyyymmdd(target)
     next_period, next_unlock = next_period_unlock(target)
+    from services.org_holding_population import population_for_period
+
+    population = population_for_period(
+        conn,
+        report_date=target,
+        local_has=local_has,
+        accepted_has=accepted_has,
+    )
     if accepted_has:
         action = "skip_current"
-        status = "ok"
+        if population.get("under_populated"):
+            status = "under_populated_accepted"
+        else:
+            status = "ok"
     elif local_has:
         action = "accept_from_local_raw"
         status = "plannable_raw_unaccepted"
@@ -608,6 +622,7 @@ def org_holding_period_gap_report(
         "next_period_unlock": next_unlock,
         "action": action,
         "status": status,
+        "population": population,
         "frontier_outcome": frontier.outcome,
         "frontier_reason": frontier.reason,
     }
@@ -669,6 +684,29 @@ async def sync_org_holding_incremental(conn: Any) -> dict:
     action = str(gap.get("action") or "skip_current")
     if action == "skip_current":
         missing_older = [p for p in (gap.get("missing_periods") or []) if p != target]
+        pop = dict(gap.get("population") or {})
+        if str(gap.get("status") or "") == "under_populated_accepted":
+            msg = (
+                f"under_populated_accepted: plannable={target} partition exists but "
+                f"accepted_stocks={pop.get('accepted_stocks')} "
+                f"raw_stocks={pop.get('raw_stocks')} "
+                f"reasons={pop.get('reasons')}; "
+                f"skip mass refresh; repair knife required "
+                f"(older_missing={len(missing_older)}; next period "
+                f"{gap.get('next_period')} unlocks {gap.get('next_period_unlock')})"
+            )
+            return {
+                "domain": "org_holding",
+                "count": 0,
+                "status": "under_populated_accepted",
+                "action": action,
+                "report_date": target,
+                "available_date": gap.get("available_date"),
+                "next_period": gap.get("next_period"),
+                "next_period_unlock": gap.get("next_period_unlock"),
+                "gap": gap,
+                "message": msg,
+            }
         msg = (
             f"check: plannable={target} raw=present accepted=present; skip "
             f"(older_missing={len(missing_older)}; not auto mass-filled; "

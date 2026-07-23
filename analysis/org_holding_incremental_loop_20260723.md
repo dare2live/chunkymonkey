@@ -33,7 +33,9 @@ goal.md Q3 其实早已写清：每次更新 **必须 check** latest plannable v
 ## 3. 还缺什么（诚实残差）
 
 - 已落地但行数明显偏少的期（例：raw `2026-03-31` ≪ 全市场量级）在 no-refresh 下**不会**自动重拉 — 需显式 repair 刀，不进 daily loop
-- 机构档案 honesty/~54% episode 覆盖仍 PARTIAL（产品深度，非「不检增量」）
+- 期内晚披露 / 「逐公司扫最新公告」：**不**进 daily（供应商无 NOTICE_DATE；禁 mass）— 裁决见 `shareholder_update_check_design_20260723.md`
+- 机构档案 deep-link 已抬至 ~episode；新鲜度靠闭环 process 挂接（见 `serve_derive_closed_loop_law_20260723.md`）
+- 人口：partition 存在但 thin/canary → `under_populated_accepted`（不 mass 重拉）
 - F7 wall 名仍叫 `org_provider_land_blocked`（兼容 foundation 断言）；语义已改为 mass-ban + incremental-required
 
 ## 4. 验证
