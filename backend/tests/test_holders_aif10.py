@@ -14,6 +14,7 @@ from services.holders_aif10 import (  # noqa: E402
     _share_class,
     _clean,
     _derive_exits,
+    _local_stock_codes_for_notice_date,
     _net_new_notice_since,
     fetch_holders_top10_by_notice_date,
     formal_holders_watermark,
@@ -221,15 +222,15 @@ def test_fetch_holders_top10_by_notice_date_maps_provider_shape(monkeypatch):
     assert rows[0]["is_exit_row"] is False
 
 
-def test_incremental_skips_when_provider_watermark_unchanged(monkeypatch):
-    """Re-click must not rewrite ~742k rows when provider max ≤ formal wm."""
+def test_incremental_skips_when_provider_strictly_behind_wm(monkeypatch):
+    """Re-click must not rewrite when provider max is strictly behind formal wm."""
     import types
 
     class _Client:
         def get_v1(self, *_a, **kwargs):
             # Empty filter must not be used (vendor returns 0); accept bounded probe.
             assert "UPDATE_DATE>=" in str(kwargs.get("filter_expr") or "")
-            return {"data": [{"UPDATE_DATE": "2026-07-22 00:00:00"}], "pages": 1}
+            return {"data": [{"UPDATE_DATE": "2026-07-21 00:00:00"}], "pages": 1}
 
     fake_mod = types.ModuleType("aif10_scraper")
     fake_mod.default_client = _Client()
@@ -247,4 +248,114 @@ def test_incremental_skips_when_provider_watermark_unchanged(monkeypatch):
     assert out["skipped"] is True
     assert out["skip_reason"] == "watermark_unchanged"
     assert out["rows_written"] == 0
-    assert out["provider_max_update_date"] == "20260722"
+    assert out["provider_max_update_date"] == "20260721"
+
+
+def test_incremental_same_day_skips_when_local_coverage_complete(monkeypatch):
+    """Equal wm: probe same-day codes; skip only when none missing locally."""
+    import types
+
+    class _Client:
+        def get_v1(self, *_a, **kwargs):
+            assert "UPDATE_DATE>=" in str(kwargs.get("filter_expr") or "")
+            return {"data": [{"UPDATE_DATE": "2026-07-22 00:00:00"}], "pages": 1}
+
+    fake_mod = types.ModuleType("aif10_scraper")
+    fake_mod.default_client = _Client()
+    fake_mod.fetch_all_pages = lambda *_a, **_k: []
+    monkeypatch.setitem(sys.modules, "aif10_scraper", fake_mod)
+    monkeypatch.setattr(
+        "services.holders_aif10.formal_holders_watermark",
+        lambda _conn: ("20260722", "test_wm"),
+    )
+    monkeypatch.setattr(
+        "services.holders_aif10._affected_stocks_since",
+        lambda _client, since: ["600346", "688116"]
+        if since == "2026-07-22"
+        else (_ for _ in ()).throw(AssertionError(f"unexpected since={since}")),
+    )
+    monkeypatch.setattr(
+        "services.holders_aif10._local_stock_codes_for_notice_date",
+        lambda _conn, notice: {"600346", "688116"}
+        if notice == "20260722"
+        else set(),
+    )
+    monkeypatch.setattr(
+        "services.holders_aif10.sync_holders_aif10",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must not sync")),
+    )
+    out = sync_holders_aif10_incremental(object())
+    assert out["skipped"] is True
+    assert out["skip_reason"] == "same_day_coverage_complete"
+    assert out["same_day_missing_codes"] == 0
+    assert out["same_day_provider_codes"] == 2
+    assert out["rows_written"] == 0
+
+
+def test_incremental_same_day_sparse_syncs_missing_codes_only(monkeypatch):
+    """Equal wm late filers: sync only codes missing that notice locally (sparse)."""
+    import types
+
+    class _Client:
+        def get_v1(self, *_a, **kwargs):
+            assert "UPDATE_DATE>=" in str(kwargs.get("filter_expr") or "")
+            return {"data": [{"UPDATE_DATE": "2026-07-23 00:00:00"}], "pages": 1}
+
+    fake_mod = types.ModuleType("aif10_scraper")
+    fake_mod.default_client = _Client()
+    fake_mod.fetch_all_pages = lambda *_a, **_k: []
+    monkeypatch.setitem(sys.modules, "aif10_scraper", fake_mod)
+    monkeypatch.setattr(
+        "services.holders_aif10.formal_holders_watermark",
+        lambda _conn: ("20260723", "test_wm"),
+    )
+    monkeypatch.setattr(
+        "services.holders_aif10._affected_stocks_since",
+        lambda _client, since: ["600346", "603659", "688116"]
+        if since == "2026-07-23"
+        else (_ for _ in ()).throw(AssertionError(f"unexpected since={since}")),
+    )
+    monkeypatch.setattr(
+        "services.holders_aif10._local_stock_codes_for_notice_date",
+        lambda _conn, notice: {"600346", "688116"}
+        if notice == "20260723"
+        else set(),
+    )
+    captured: dict = {}
+
+    def fake_sync(_conn, *, symbols=None, **_k):
+        captured["symbols"] = list(symbols or [])
+        return {
+            "ok": 1,
+            "fail": 0,
+            "rows_written": 12,
+            "exit_rows": 0,
+            "errors": [],
+        }
+
+    monkeypatch.setattr("services.holders_aif10.sync_holders_aif10", fake_sync)
+    monkeypatch.setattr(
+        "services.holders_aif10._net_new_notice_since",
+        lambda _conn, _wm: (0, 0),
+    )
+    out = sync_holders_aif10_incremental(object())
+    assert out.get("skipped") is not True
+    assert out["same_day_sparse"] is True
+    assert out["same_day_missing_codes"] == 1
+    assert out["affected_stocks"] == 1
+    assert captured["symbols"] == ["603659"]
+    assert out["rows_written"] == 12
+    assert out["provider_max_update_date"] == "20260723"
+
+
+def test_local_stock_codes_for_notice_date_reads_canonical():
+    con = _wm_fixture()
+    con.execute(
+        "INSERT INTO canonical_top10_float_holders_period VALUES "
+        "('600346','20260630','20260723','机构甲',FALSE),"
+        "('600346','20260630','20260723','机构乙',FALSE),"
+        "('688116','20260630','20260722','机构丙',FALSE)"
+    )
+    assert _local_stock_codes_for_notice_date(con, "20260723") == {"600346"}
+    assert _local_stock_codes_for_notice_date(con, "20260722") == {"688116"}
+    assert _local_stock_codes_for_notice_date(con, "20260721") == set()

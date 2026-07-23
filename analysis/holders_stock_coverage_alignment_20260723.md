@@ -4,7 +4,7 @@
 > Scope: `holders_top10` / `holders_aif10` accepted canonical vs provider notice frontier  
 > Live DB: `data/smartmoney.duckdb` (+ `reference.dim_active_a_stock`), read-only probes + sparse repair  
 > Related: `holders_stock_dossier_lineage_audit_20260721.md` · `shareholder_update_check_design_20260723.md` · `foundation_holders_wm_ops_counters_20260721.md`  
-> Label: **GAPS → HS_A ALIGNED** (sparse repair); BSE residual OUT_OF_SCOPE
+> Label: **BUG FIXED** (`provider_max==wm` same-day sparse) · **HS_A ALIGNED** (16-code repair); BSE residual OUT_OF_SCOPE
 
 ---
 
@@ -19,7 +19,7 @@
 | Accepted ↔ canonical partition row sums | PASS (0 mismatch) | PASS | merge path preserved |
 | Overall | **GAPS** | **ALIGNED** (沪深A) | BSE = documented residual, not mass target |
 
-**One-line:** 水位日期对齐但**同日晚披露**被 `provider_max≤wm → skip` 漏掉；稀疏修 16 只沪深A 后近期窗口 HS_A **无遗漏**；北交所 12 对不进 dim、不修。
+**One-line:** 根因 `provider_max≤wm → skip` 漏同日晚披露 — **planner FIXED**（`==wm` 改 same-day sparse miss probe）；数据侧稀疏修 16 只沪深A 后近期窗口 HS_A **无遗漏**；北交所 12 对不进 dim、不修。
 
 ---
 
@@ -59,7 +59,9 @@ API: `../miaoxiang/aif10_scraper` `RPT_F10_EH_FREEHOLDERS` — **available** (fa
 ```
 
 Root cause (matches design residual in `shareholder_update_check_design_20260723.md`):  
-`sync_holders_aif10_incremental` skips when `provider_max ≤ formal wm`. Early filers on `20260723` advanced wm to that date; **same-day late filers** never enter `_affected_stocks_since` path until wm moves again. Partition `20260723` had been accepted with only **22** rows / **2** codes (`600346`,`688116`) while provider later showed **170** rows / **17** codes.
+`sync_holders_aif10_incremental` skipped when `provider_max ≤ formal wm`. Early filers on `20260723` advanced wm to that date; **same-day late filers** never entered `_affected_stocks_since` path until wm moved again. Partition `20260723` had been accepted with only **22** rows / **2** codes (`600346`,`688116`) while provider later showed **170** rows / **17** codes.
+
+**Planner fix (FIXED):** skip only when `provider_max < wm` (`watermark_unchanged`). When `provider_max == wm`, run `_affected_stocks_since(wm)` and sync **only codes missing that notice_date locally**; empty miss → `same_day_coverage_complete` (not permanent equal-wm skip). `provider_max > wm` keeps safety-window incremental. Fail-closed, sparse, no mass.
 
 ---
 
@@ -107,10 +109,7 @@ Post-repair:
 
 ## 5. Residual / next (no mass)
 
-1. **Same-day late-filer hole** — process residual of `watermark_unchanged` skip. Options (future, evidence-gated):  
-   - ops: when `provider_max == wm`, still run `_affected_stocks_since(wm)` (or `wm` calendar day) and sync **only codes missing that notice_date locally**; or  
-   - periodic by-notice `land-then-accept` for `wm` day only (≤40d, ~10–180 rows — not mass).  
-   **Not** daily 全宇宙逐股探 (banned in shareholder update-check design).
+1. **Same-day late-filer hole** — **FIXED** in `sync_holders_aif10_incremental` (equal-wm sparse miss probe; see §2). Tests: `test_incremental_same_day_*` / `test_incremental_skips_when_provider_strictly_behind_wm`.
 2. **BSE 12 pairs** — landing contract allows preserve; incremental uses active universe. Leave unless owner wants BJ in Tier0 holders.
 3. **Legacy fact** still max `20260717` (observer only) — expected under formal_only.
 4. **dim missing holders ~24** — IPO/coverage hygiene; separate from notice frontier.
@@ -119,4 +118,4 @@ Post-repair:
 
 ## 6. Label
 
-**FIXED** (沪深A recent-window coverage) · residual owner = holders acquire skip policy / optional BSE land · next verification = re-run provider window canary after next trading-day notices.
+**FIXED** (planner skip + 沪深A recent-window coverage) · residual owner = optional BSE land / dim IPO hygiene · next verification = re-run provider window canary after next trading-day notices (expect equal-wm late filers to sparse-sync without `--symbols` repair).

@@ -553,6 +553,63 @@ def _net_new_notice_since(conn, pre_wm: Optional[str]) -> tuple[int, int]:
     return int(row[0] or 0), int(row[1] or 0)
 
 
+def _yyyymmdd_to_iso(yyyymmdd: str) -> str:
+    digits = "".join(ch for ch in str(yyyymmdd or "") if ch.isdigit())
+    if len(digits) < 8:
+        raise ValueError(f"expected YYYYMMDD, got {yyyymmdd!r}")
+    part = digits[:8]
+    return f"{part[:4]}-{part[4:6]}-{part[6:8]}"
+
+
+def _local_stock_codes_for_notice_date(conn, notice_date: str) -> set[str]:
+    """Formal-canonical codes already landed for ``notice_date`` (YYYYMMDD).
+
+    Empty when canonical absent — fail-closed to treat all provider codes as
+    missing so same-day sparse probe still runs.
+    """
+    if not _table_present(conn, CANONICAL_TABLE):
+        return set()
+    digits = "".join(ch for ch in str(notice_date or "") if ch.isdigit())
+    if len(digits) < 8:
+        return set()
+    rows = conn.execute(
+        f"""
+        SELECT DISTINCT stock_code
+          FROM {CANONICAL_TABLE}
+         WHERE notice_date = ?
+        """,
+        [digits[:8]],
+    ).fetchall()
+    return {str(r[0]) for r in rows if r and r[0]}
+
+
+def _incremental_skip_result(
+    *,
+    wm: Optional[str],
+    wm_source: str,
+    provider_max: Optional[str],
+    since_date: str,
+    skip_reason: str,
+) -> dict:
+    return {
+        "ok": 0,
+        "fail": 0,
+        "rows_written": 0,
+        "exit_rows": 0,
+        "affected_stocks": 0,
+        "net_new_notice_rows": 0,
+        "notice_partitions_touched": 0,
+        "rewrite_amplification_rows": 0,
+        "watermark": wm,
+        "watermark_source": wm_source,
+        "provider_max_update_date": provider_max,
+        "since_date": since_date,
+        "skipped": True,
+        "skip_reason": skip_reason,
+        "errors": [],
+    }
+
+
 def sync_holders_aif10_incremental(
     conn, *, start_period: str = DEFAULT_START_PERIOD,
     safety_days: int = INCREMENT_SAFETY_DAYS,
@@ -566,6 +623,13 @@ def sync_holders_aif10_incremental(
     新披露日 (盯披露⊇盯报告期); 东财修正旧期会刷披露日但报告期不变 → 披露日是充分水位。
     mythos §10: 应有(新披露)−实有(MAX披露日)=缺口, 自适应手动不规则运行。
 
+    Skip rule (coverage alignment 2026-07-23):
+    - ``provider_max < wm`` → skip (``watermark_unchanged``); provider behind formal.
+    - ``provider_max == wm`` → same-day sparse: ``UPDATE_DATE>=wm`` codes missing that
+      notice locally; sync only those. Empty miss → skip
+      (``same_day_coverage_complete``). Never permanent-skip equal wm.
+    - ``provider_max > wm`` (or probe None) → safety-window affected incremental.
+
     Ops 计数分栏 (audit §5 #2): ``rows_written`` = per-stock 全史 rewrite 放大量,
     **不是**净新增披露; 另报 ``net_new_notice_rows`` / ``notice_partitions_touched``
     (canonical notice_date > 同步前水位) 与 ``affected_stocks`` (窗口内股票数) 区分。
@@ -575,32 +639,67 @@ def sync_holders_aif10_incremental(
     wm, wm_source = formal_holders_watermark(conn)   # YYYYMMDD, formal frontier
     base = wm or fallback_since                        # 存量空 (未backfill) → 回退起点
     since_date = (datetime.strptime(base, "%Y%m%d") - timedelta(days=safety_days)).strftime("%Y-%m-%d")
-    # Skip rewrite amp when provider frontier ≤ formal wm (UI catchup re-click).
-    # Same-day late corrections with identical UPDATE_DATE may wait until wm moves —
-    # heartbeat + skip beats silent 11m duplicate 742k rewrite (measured 20260722).
     provider_max = _provider_newest_update_date(client)
-    if wm and provider_max and provider_max <= wm:
+    # Strictly behind formal: nothing new to probe (re-click heartbeat).
+    if wm and provider_max and provider_max < wm:
         print(
             f"holders_aif10: skip watermark_unchanged wm={wm} "
             f"provider_max={provider_max} source={wm_source}"
         )
-        return {
-            "ok": 0,
-            "fail": 0,
-            "rows_written": 0,
-            "exit_rows": 0,
-            "affected_stocks": 0,
-            "net_new_notice_rows": 0,
-            "notice_partitions_touched": 0,
-            "rewrite_amplification_rows": 0,
-            "watermark": wm,
-            "watermark_source": wm_source,
-            "provider_max_update_date": provider_max,
-            "since_date": since_date,
-            "skipped": True,
-            "skip_reason": "watermark_unchanged",
-            "errors": [],
-        }
+        return _incremental_skip_result(
+            wm=wm,
+            wm_source=wm_source,
+            provider_max=provider_max,
+            since_date=since_date,
+            skip_reason="watermark_unchanged",
+        )
+    # Equal frontier: early filers already advanced wm; late same-day notices
+    # still need a sparse miss probe (not safety-window mass rewrite).
+    if wm and provider_max and provider_max == wm:
+        same_day_iso = _yyyymmdd_to_iso(wm)
+        provider_codes = _affected_stocks_since(client, same_day_iso)
+        local_codes = _local_stock_codes_for_notice_date(conn, wm)
+        missing = sorted(code for code in provider_codes if code not in local_codes)
+        if not missing:
+            print(
+                f"holders_aif10: skip same_day_coverage_complete wm={wm} "
+                f"provider_max={provider_max} provider_codes={len(provider_codes)} "
+                f"source={wm_source}"
+            )
+            out = _incremental_skip_result(
+                wm=wm,
+                wm_source=wm_source,
+                provider_max=provider_max,
+                since_date=same_day_iso,
+                skip_reason="same_day_coverage_complete",
+            )
+            out["same_day_provider_codes"] = len(provider_codes)
+            out["same_day_missing_codes"] = 0
+            return out
+        print(
+            f"holders_aif10: same-day late-filer sparse "
+            f"missing={len(missing)}/{len(provider_codes)} "
+            f"wm={wm} provider_max={provider_max} since={same_day_iso}"
+        )
+        result = sync_holders_aif10(
+            conn,
+            symbols=missing,
+            start_period=start_period,
+            progress_every=10,
+        )
+        net_new_rows, notice_parts = _net_new_notice_since(conn, wm)
+        result["affected_stocks"] = len(missing)
+        result["net_new_notice_rows"] = net_new_rows
+        result["notice_partitions_touched"] = notice_parts
+        result["rewrite_amplification_rows"] = result.get("rows_written", 0)
+        result["watermark"] = wm
+        result["watermark_source"] = wm_source
+        result["provider_max_update_date"] = provider_max
+        result["since_date"] = same_day_iso
+        result["same_day_sparse"] = True
+        result["same_day_provider_codes"] = len(provider_codes)
+        result["same_day_missing_codes"] = len(missing)
+        return result
     affected = _affected_stocks_since(client, since_date)
     if not affected:
         return {"ok": 0, "fail": 0, "rows_written": 0, "exit_rows": 0,

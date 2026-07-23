@@ -29,7 +29,7 @@
 
 | 域 | 更新检查机制 | 粒度 | daily_update 行为 | 残差 |
 |---|---|---|---|---|
-| **holders_aif10 / holders_top10**（十大流通） | `formal_holders_watermark` = canonical `MAX(notice_date)`；`_provider_newest_update_date` 1-row probe；`_affected_stocks_since(UPDATE_DATE≥wm−7d)` → **仅 affected 股** per-stock 全期幂等覆盖 | **notice_date 前沿 + 稀疏 per-code**（非全宇宙逐股探） | `acquire._sync_holders_aif10` → `sync_holders_aif10_incremental`；`provider_max≤wm` 则 skip | 同日同 UPDATE_DATE 的晚修正可能等到 wm 再动；rewrite 放大 ≠ 净新增（已分栏计数） |
+| **holders_aif10 / holders_top10**（十大流通） | `formal_holders_watermark` = canonical `MAX(notice_date)`；`_provider_newest_update_date` 1-row probe；`_affected_stocks_since(UPDATE_DATE≥wm−7d)` → **仅 affected 股** per-stock 全期幂等覆盖 | **notice_date 前沿 + 稀疏 per-code**（非全宇宙逐股探） | `acquire._sync_holders_aif10` → `sync_holders_aif10_incremental`；`provider_max<wm` skip；`==wm` same-day sparse miss；`>wm` safety-window | 同日晚披露 **FIXED**（equal-wm miss probe）；rewrite 放大 ≠ 净新增（已分栏计数） |
 | **holders formal land** | `fetch_holders_top10_by_notice_date` 全市场 by UPDATE_DATE（~10–120 行/日，非 mass） | by-notice partition | E0 / disclosure_transport；日常主路径仍是上列增量 | ≤40d；禁 mass dump |
 | **org_holding** | `org_holding_period_gap_report`：latest plannable vs raw+accepted | **by-period 存在性** | 每次跑：缺→`fetch_then_accept` 一期；raw 有未 accept→local accept；都有→`skip_current`+next unlock | **期内晚披露 / 偏少行** 不自动重拉；无 NOTICE_DATE；by-date invent banned |
 | **stk_holdertrade** | sync_registry `by_ann_date` + `MAX(ann_date)` watermark | 公告日全市场 | registry drain | ~71 行/日；多数日 0 合法 |
