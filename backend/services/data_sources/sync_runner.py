@@ -403,10 +403,7 @@ def _publish_margin_bounded_catchup(
         MarginCatchupError,
         land_then_accept_margin_day,
     )
-    from services.data_sources.sources.tushare import (
-        QuotaExhaustedError,
-        TuShareAuthorizationError,
-    )
+    from services.data_sources.sources.tushare import TuShareAuthorizationError
 
     formal_contract = _formal_dataset_contract_for_spec(spec)
     formal_execution = _require_formal_population_execution(spec, formal_contract)

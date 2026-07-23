@@ -35,14 +35,18 @@ catchup window=[20260717, 20260720, 20260721, 20260722]
 ```
 
 Live catchup attempt this knife: `authorization_blocked / missing_token` in agent
-env — path refuses closed (no fake write). Owner/CI with TuShare token:
+env — path refuses closed (no fake write). **Follow-up (owner correction)**:
+one-shot CLI is **verification only**. Product fix =
+`analysis/margin_catchup_live_20260723.md` — acquire Step 2.955
+`margin_catchup_acquire` on every click-update / `daily_update` (token via
+`.env` sourced by `daily_update.sh`; frontier = accepted v3; ImportError fix
+in `sync_runner`).
 
 ```bash
+# verification only — not the deliverable
 PYTHONPATH=backend python -m services.data_sources.sync_runner \
   --domain margin --start 20260717 --end 20260722
 ```
-
-then re-read `MAX(trade_date)` on `canonical_margin_exchange_daily` and Continuity.
 
 ---
 

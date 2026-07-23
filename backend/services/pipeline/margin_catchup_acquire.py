@@ -1,4 +1,8 @@
-"""Acquire-stage bounded margin v3 catchup (on_demand, not --all-due)."""
+"""Acquire-stage bounded margin v3 catchup (on_demand, not --all-due).
+
+Orchestrator bridge only: decide calendar gap → call ``sync_runner.run_domain``.
+Does not own transport writers, UI, dossier, holders, or org paths.
+"""
 from __future__ import annotations
 
 import json
@@ -7,12 +11,62 @@ from typing import Any
 from .context import PipelineContext
 
 
+def _accepted_local_max(
+    conn: Any,
+    *,
+    dataset_id: str,
+    contract_version: str,
+    canonical_table: str,
+) -> str | None:
+    """Frontier for the *current* contract generation (v3 SSE+SZSE claim).
+
+    Prefer ``accepted_partition`` filtered by contract_version so frozen v2 BSE
+    evidence cannot advance or mask the v3 calendar gap. Canonical rows of the
+    same contract_version are a fallback when accepted pointers are absent.
+    """
+
+    try:
+        row = conn.execute(
+            """
+            SELECT MAX(partition_value)
+            FROM accepted_partition
+            WHERE dataset_id = ?
+              AND CAST(contract_version AS VARCHAR) = ?
+            """,
+            [dataset_id, str(contract_version)],
+        ).fetchone()
+    except Exception:  # noqa: BLE001 — table may be absent in empty DBs
+        row = None
+    if row and row[0]:
+        return str(row[0]).replace("-", "")[:8]
+
+    if not canonical_table:
+        return None
+    try:
+        row = conn.execute(
+            f"""
+            SELECT MAX(trade_date)
+            FROM "{canonical_table}"
+            WHERE CAST(contract_version AS VARCHAR) = ?
+            """,
+            [str(contract_version)],
+        ).fetchone()
+    except Exception:  # noqa: BLE001
+        return None
+    if row and row[0]:
+        return str(row[0]).replace("-", "")[:8]
+    return None
+
+
 def run_margin_bounded_catchup(ctx: PipelineContext) -> list[dict[str, Any]]:
     """Catch up calendar-eligible margin days under contract v3.
 
     Plans ``[max(coverage_start, local_max+1) .. eligible_end]`` capped by the
     sync_runner window. Skips when disabled / already current / no gap.
     Never enters ``--all-due``. Pulse ``rzrqye`` stays UNTRUSTED.
+
+    Invoked from ``run_acquire`` on every click-update / ``daily_update`` —
+    not a one-shot operator backfill.
     """
 
     from services.data_sources import margin_ingest, sync_runner
@@ -51,31 +105,20 @@ def run_margin_bounded_catchup(ctx: PipelineContext) -> list[dict[str, Any]]:
         return [outcome]
 
     coverage_start = str(contract.coverage_start).replace("-", "")
-    local_max = None
     conn = connect(ctx.db("tushare_raw"), read_only=True)
     try:
-        for candidate in (
-            "canonical_margin_exchange_daily",
-            str(spec.get("target_table") or ""),
-            "raw_tushare_margin",
-        ):
-            if not candidate:
-                continue
-            try:
-                row = conn.execute(
-                    f'SELECT MAX(trade_date) FROM "{candidate}"'
-                ).fetchone()
-            except Exception:  # noqa: BLE001
-                continue
-            if row and row[0]:
-                local_max = str(row[0]).replace("-", "")[:8]
-                break
+        local_max = _accepted_local_max(
+            conn,
+            dataset_id=str(contract.dataset_id),
+            contract_version=str(contract.contract_version),
+            canonical_table=str(contract.canonical_table or ""),
+        )
     finally:
         conn.close()
 
     start = coverage_start
     if local_max is not None and local_max >= coverage_start:
-        # Next trading day after local evidence.
+        # Next trading day after accepted v3 evidence.
         probe = sync_runner.trading_days(local_max, eligible_end)
         after = [d for d in probe if d > local_max]
         if not after:
