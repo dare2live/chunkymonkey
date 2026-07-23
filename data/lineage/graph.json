@@ -1387,12 +1387,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/build_price_kline_qfq_tushare.py",
-      "kind": "consume",
-      "src": "table:market.v_price_kline_qfq"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/scripts/update_watermark_sla.py",
       "kind": "consume",
       "src": "table:market.v_price_kline_qfq"
@@ -7621,8 +7615,8 @@
     }
   ],
   "meta": {
-    "edge_count": 1220,
-    "generated_at": "2026-07-23T08:57:00.795015+00:00",
+    "edge_count": 1219,
+    "generated_at": "2026-07-23T11:00:38.266749+00:00",
     "node_count": 435,
     "version": 2
   },

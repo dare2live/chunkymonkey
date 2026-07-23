@@ -47,7 +47,7 @@ def _next_knives(*, b_on: bool, c_on: bool) -> list[str]:
         "STRATEGY blocked: analysis/STRATEGY_EXECUTION_PLAN.md until goal.md explicit RX schedule",
         "foundation phase_closure_ready — F1–F10 PASS (analysis/foundation_phase_reeval_20260721.md)",
         "FND-GATE / §15-VERIFY FIXED; org incremental-check-every-run (mass banned)",
-        "S7 typed hard-stop wall — no fake COMPAT; Type-B enrichment DEFER",
+        "S7 typed hard-stop wall — no fake COMPAT; Type-B enrichment FIXED",
         "E/F remeasure paused until owner schedules (Optuna/Release banned)",
     ]
     if not (b_on and c_on):

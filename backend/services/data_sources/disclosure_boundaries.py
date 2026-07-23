@@ -425,7 +425,9 @@ def attest_disclosure_research_surface(
             for item in read_policy.domains
         )
         return DisclosureResearchSurfaceReport(
-            overall_status="PARTIAL",
+            overall_status=(
+                "PARTIAL" if profile_status == "PARTIAL" else "ACCEPTED"
+            ),
             cutover_allowed=True,
             e0_phase="gate_closed_canary",
             domains=domains,

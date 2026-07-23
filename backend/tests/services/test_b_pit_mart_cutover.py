@@ -23,7 +23,9 @@ _REPO = Path(__file__).resolve().parents[3]
 _CFG_PATH = _REPO / "backend" / "config" / "b_pit_mart_cutover.yaml"
 _LIVE_SHADOW = _REPO / "data" / "lineage" / "b_pit_breadth_shadow"
 _DEF_V = "market_sensing_project_breadth_v0"
-_POLICY_HASH = "448b589a0e1e66095611108a0f6be807846e665a8b379b8bd89588d880f7f4dd"
+_POLICY_HASH = "2c2318a6d5bccd96af03478ff4e5871362110d9e22b9849adb243c06a1c73d0a"
+_WINDOW_START = "20260121"
+_WINDOW_END = "20260722"
 
 
 def _shadow_payload(
@@ -34,8 +36,8 @@ def _shadow_payload(
     day_count: int = 120,
     baseline_kind: str = "membership_restricted_proxy",
     policy_hash: str = _POLICY_HASH,
-    window_start: str = "20260116",
-    window_end: str = "20260717",
+    window_start: str = _WINDOW_START,
+    window_end: str = _WINDOW_END,
 ) -> dict:
     return {
         "kind": "b_pit_breadth_shadow_remeasure",
@@ -91,8 +93,8 @@ def _opt_in_cfg(artifact_root: Path, **overrides: object) -> BPitMartCutoverConf
         "expected_definition_version": _DEF_V,
         "expected_universe_policy_hash": _POLICY_HASH,
         "expected_match_baseline_kind": "membership_restricted_proxy",
-        "expected_window_start": "20260116",
-        "expected_window_end": "20260717",
+        "expected_window_start": _WINDOW_START,
+        "expected_window_end": _WINDOW_END,
         "require_ratios_match_all": True,
         "shadow_artifact_dir": str(artifact_root),
     }
@@ -108,8 +110,8 @@ def test_default_config_cutover_true_owner_opt_in() -> None:
     assert cfg.expected_definition_version == _DEF_V
     assert cfg.expected_universe_policy_hash == _POLICY_HASH
     assert cfg.expected_match_baseline_kind == "membership_restricted_proxy"
-    assert cfg.expected_window_start == "20260116"
-    assert cfg.expected_window_end == "20260717"
+    assert cfg.expected_window_start == _WINDOW_START
+    assert cfg.expected_window_end == _WINDOW_END
 
 
 def test_default_yaml_with_live_match_artifact_mart_cutover() -> None:

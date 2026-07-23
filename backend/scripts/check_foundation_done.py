@@ -366,16 +366,17 @@ def check_f4_b5_qfq(cfg: dict[str, Any], *, skip_live: bool) -> dict[str, Any]:
         "PASS",
         detail=(
             f"brick_registry PASS; qfq trust={expected_trust}; {live_note}; "
-            "Type-B enrichment defer typed"
+            "Type-B enrichment accepted"
         ),
         evidence={
             "l2_count": report.get("l2_count"),
             "l3_count": report.get("l3_count"),
             "type_b_count": report.get("type_b_count"),
             "type_b_defer_codes": sorted(defer_codes & reasons),
+            "type_b_edge_status": edge.get("status"),
             "missing_lineage": live_miss,
         },
-        wall="type_b_enrichment_defer",
+        wall=None if edge.get("status") != "partial" else "type_b_enrichment_defer",
     )
 
 

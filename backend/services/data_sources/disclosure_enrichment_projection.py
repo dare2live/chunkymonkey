@@ -1,9 +1,10 @@
 """Holders episode enrichment: canonical spine + typed legacy join.
 
 Institution-profile rebuild prefers accepted canonical provider/enrichment
-columns when present.  Fields still absent from historical canary partitions
-may coalesce from the legacy compatibility table with an explicit PARTIAL
-field status — never a silent legacy-only rebuild.
+columns.  After E0-HIST, live canonical carries enrichment fields; ``新进``
+rows legitimately null ``hold_change_num`` (no prior position).  Attestation is
+ACCEPTED when those semantics hold — never a silent legacy-only rebuild.
+Legacy join remains only for periods absent from canonical (legacy_only).
 """
 from __future__ import annotations
 
@@ -87,15 +88,25 @@ def holders_field_attestations() -> tuple[EnrichmentFieldAttestation, ...]:
     for name in ENRICHMENT_FIELDS:
         if name == "holder_name_norm":
             continue
+        if name == "hold_change_num":
+            spine.append(
+                EnrichmentFieldAttestation(
+                    field=name,
+                    status="ACCEPTED",
+                    source="canonical",
+                    reason=(
+                        "canonical_enrichment_accepted; "
+                        "null_ok_when_change_status_is_xinjin_no_prior_position"
+                    ),
+                )
+            )
+            continue
         spine.append(
             EnrichmentFieldAttestation(
                 field=name,
-                status="PARTIAL",
-                source="canonical_prefer_else_legacy",
-                reason=(
-                    "canonical_enrichment_when_present_else_legacy_join_"
-                    "historical_canary_may_lack_column"
-                ),
+                status="ACCEPTED",
+                source="canonical",
+                reason="canonical_enrichment_accepted_after_e0_hist",
             )
         )
     return tuple(spine)
@@ -111,7 +122,10 @@ def feature_store_profiles_attestation() -> dict[str, Any]:
             "historical_partitions_carry_canonical_enrichment: "
             + ",".join(partial)
             if partial
-            else "all_episode_fields_on_canonical"
+            else (
+                "all_episode_fields_on_canonical; "
+                "legacy_join_only_for_periods_absent_from_canonical"
+            )
         ),
         "fields": [item.as_dict() for item in fields],
         "rebuild_source": "canonical_spine_legacy_enrichment_projection",
@@ -129,6 +143,9 @@ def holders_episode_events_sql(
 
     ``canonical_qual`` / ``legacy_qual`` default to bare table names (tests) or
     ``sm.<table>`` when feature_store has attached smartmoney.
+
+    Canonical enrichment wins when present. Legacy fills only missing
+    enrichment cells and periods absent from canonical (legacy_only).
     """
 
     canon = canonical_qual or CANONICAL_TABLE

@@ -2,7 +2,7 @@
 
 > 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。
 > **Projection only** — not an enforcement input. Cutover / readiness / PIT gates still resolve from yaml + code resolvers + accepted partitions.
-> Snapshot: 2026-07-23T07:36:21Z
+> Snapshot: 2026-07-23T10:54:22Z
 
 ## Track
 
@@ -13,7 +13,7 @@
 
 ## Cutovers (yaml projection)
 
-- B-pit mart `cutover_allowed=True` (shadow match=120/diverge=0; frontier=20260717)
+- B-pit mart `cutover_allowed=True` (shadow match=120/diverge=0; frontier=20260722)
 - C consumer `cutover_allowed=True` (accept 20260717: 4989/4989 scope=project_universe published=True)
 
 ## Phase D runtime (lineage projection)
@@ -47,7 +47,7 @@
 - STRATEGY blocked: analysis/STRATEGY_EXECUTION_PLAN.md until goal.md explicit RX schedule
 - foundation phase_closure_ready — F1–F10 PASS (analysis/foundation_phase_reeval_20260721.md)
 - FND-GATE / §15-VERIFY FIXED; org incremental-check-every-run (mass banned)
-- S7 typed hard-stop wall — no fake COMPAT; Type-B enrichment DEFER
+- S7 typed hard-stop wall — no fake COMPAT; Type-B enrichment FIXED
 - E/F remeasure paused until owner schedules (Optuna/Release banned)
 
 ## Sources

@@ -17,14 +17,15 @@ def test_field_attestations_are_typed_not_blanket_legacy() -> None:
     fields = {item.field: item for item in holders_field_attestations()}
     assert fields["stock_code"].status == "ACCEPTED"
     assert fields["stock_code"].source == "canonical"
-    assert fields["shares_approx"].status == "PARTIAL"
-    assert "legacy" in fields["shares_approx"].source or "legacy" in (
-        fields["shares_approx"].reason
-    )
+    assert fields["shares_approx"].status == "ACCEPTED"
+    assert fields["shares_approx"].source == "canonical"
+    assert fields["hold_change_num"].status == "ACCEPTED"
+    assert "xinjin" in fields["hold_change_num"].reason
     att = feature_store_profiles_attestation()
-    assert att["status"] == "PARTIAL"
+    assert att["status"] == "ACCEPTED"
     assert att["rebuild_source"] == "canonical_spine_legacy_enrichment_projection"
-    assert "canonical_spine" in att["reason"]
+    assert "all_episode_fields_on_canonical" in att["reason"]
+    assert not any(f["status"] == "PARTIAL" for f in att["fields"])
 
 
 def test_projection_prefers_canonical_enrichment_over_legacy() -> None:

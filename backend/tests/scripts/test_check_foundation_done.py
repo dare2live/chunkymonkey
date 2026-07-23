@@ -45,7 +45,8 @@ def test_skip_live_aggregate_is_pass_when_f8_closed() -> None:
     assert by_id["F2"]["typed_wall"] == "s7_ssot_hard_stop"
     assert by_id["F7"]["verdict"] == "PASS"
     assert by_id["F7"]["typed_wall"] == "org_provider_land_blocked"
-    assert by_id["F4"]["typed_wall"] == "type_b_enrichment_defer"
+    assert by_id["F4"].get("typed_wall") is None
+    assert "Type-B enrichment accepted" in by_id["F4"]["detail"]
     assert by_id["F8"]["verdict"] == "PASS"
     assert mod.main(["--skip-live"]) == 0
 
@@ -147,7 +148,7 @@ def test_config_yaml_declares_typed_walls() -> None:
     assert kinds["sync_orphan"] == 13
     assert kinds["serve_l0_declared"] == 7
     assert kinds["blocked_no_publication"] == 2
-    assert "enrichment_projection_partial" in data["b5"]["type_b_defer_codes"]
+    assert data["b5"]["type_b_defer_codes"] == []
     assert data["section_15"]["max_commits_per_knife"] == 1.5
     assert data["section_15"]["required_consecutive_l3_knives"] == 3
     assert int(data["e0_breadth"]["min_org_accepted_stocks"]) >= 500

@@ -50,16 +50,14 @@ def test_three_domain_match_allows_cutover() -> None:
     assert cutover_allowed_from_shadow(shadow) is True
     policy = build_disclosure_read_policy(shadow)
     assert policy.cutover_allowed is True
-    assert policy.overall_status == "PARTIAL"
-    assert policy.feature_store_profiles_status == "PARTIAL"
+    assert policy.overall_status == "ACCEPTED"
+    assert policy.feature_store_profiles_status == "ACCEPTED"
     assert policy.feature_store_field_status
     assert any(
-        item["field"] == "shares_approx" and item["status"] == "PARTIAL"
+        item["field"] == "shares_approx" and item["status"] == "ACCEPTED"
         for item in policy.feature_store_field_status
     )
-    assert "typed_enrichment" in " ".join(policy.notes) or "enrichment" in (
-        policy.feature_store_profiles_reason
-    )
+    assert "all_episode_fields_on_canonical" in policy.feature_store_profiles_reason
     by_domain = {item.domain: item for item in policy.domains}
     assert by_domain["holders_top10"].source == "canonical"
     assert by_domain["holders_top10"].conformity == "ACCEPTED"

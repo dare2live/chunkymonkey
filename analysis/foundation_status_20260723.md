@@ -5,7 +5,7 @@
 
 ## 一句话
 
-**底座 exit + 100% usable 均 MET；无开放 class-A；可当研究地基用，STRATEGY 仍须 `goal.md` 显式 schedule RX。**
+**底座 exit + 100% usable 均 MET；F7/F8 + breadth 诚实门已落地；STRATEGY 仍须 `goal.md` 显式 schedule RX。**
 
 ## Live gates（本探针）
 
@@ -21,10 +21,13 @@
 | 面 | Live |
 |---|---|
 | margin accepted | `coverage_start=20260717`；尾部日 SSE+SZSE；`pulse_source_accepted=true` + `promote_allowed=true` |
-| rzrqye @20260722 | gate=`PROMOTED`；field=`READY` / `external_aggregate`；overall 仍 `UNTRUSTED`（breadth raw — 诚实） |
+| rzrqye @20260722 | gate=`PROMOTED`；field=`READY` / `external_aggregate` |
+| breadth @20260722 | B-pit `MART_CUTOVER` → field=`READY` / `project_universe_pit`（shadow 窗至 20260722） |
 | rzrqye pre-coverage `20260102` | `EMPTY_OK` / field `EMPTY`（正常空，非 fail-closed） |
 | rzrqye eligible-missing `20260723` | `CRITERIA_PENDING` / `UNTRUSTED`（应有却缺） |
 | holders landing | rows=235,821；uniq `row_hash`=224,910；avg copies≈**1.05×**（曾 ~32×；F3 仍成立） |
+| Type-B enrichment | `feature_store_profiles` **ACCEPTED**；`institution_profile_edge_v0` **declared** |
+| qfq | default **incremental**（`f_latest` 值变 rewrite；不变 append）；`--full`+compact 保留 |
 
 ## 对照 exit / usable
 
@@ -33,12 +36,12 @@
 | FOUNDATION §6 exit | **MET**（F1 FIXED；F2 CLOSED；F5 FIXED；禁令未破） |
 | 100% usable（无 class-A；空≠坏） | **MET** |
 | 开放 class-A | **无** |
+| F7 / F8 | **FIXED** |
 | STRATEGY | **BLOCKED** until `goal.md` 显式 RX |
 
-## 残留分层（非真缺口）
+## 残留分层
 
-- **正常空 / 诚实门**：rzrqye typed EMPTY；breadth overall UNTRUSTED；禁假 TRUSTED
-- **可选压盘**：F7 Type-B enrichment DEFER；F8 qfq incremental later
+- **正常空 / 诚实门**：rzrqye typed EMPTY；breadth 窗外/缺 B-pit 证据仍 UNTRUSTED（禁假 TRUSTED）
 - **真缺口 / class-A**：无
 
-Label：**FIXED / usable**；本笔记不启动新刀。
+Label：**FIXED / usable**；本笔记记录 F7/F8/breadth 收口。

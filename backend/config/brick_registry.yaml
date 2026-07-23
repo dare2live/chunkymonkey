@@ -16,7 +16,8 @@
 #   - status=partial requires typed partial_reasons; type_b_edge requires store=feature_store
 #
 # qfq physical lineage FIXED (batch_id/ingested_at/factor_as_of on rebuild).
-# B5 overall still PARTIAL: institution_profile_edge enrichment_projection_partial.
+# B5 registry/qfq FIXED; Type-B institution_profile_edge enrichment ACCEPTED
+# after E0-HIST (canonical enrichment filled; 新进 null hold_change_num typed OK).
 
 version: 1
 max_composite_hops: 2
@@ -201,13 +202,11 @@ feature_blocks:
       - backend/services/institution_profile.py
     config_hash: canonical_spine_legacy_enrichment_projection
     availability_axis: research_rebuild_only_no_decision_time_claim
-    status: partial
-    partial_reasons:
-      - code: enrichment_projection_partial
-        detail: >-
-          Episode rebuild uses disclosure_enrichment_projection (canonical spine
-          + typed legacy join); feature_store_profiles attestation remains PARTIAL.
-    notes: "Type-B edge; wipeable feature_store; not FeatureBlock strategy ladder"
+    status: declared
+    notes: >-
+      Type-B edge; wipeable feature_store; not FeatureBlock strategy ladder.
+      Enrichment ACCEPTED after E0-HIST (canonical carries fields; legacy_only
+      for periods absent from canonical).
 
   rally_gt_edge_v2:
     layer: L3

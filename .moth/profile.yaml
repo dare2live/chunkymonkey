@@ -13,12 +13,9 @@ evidence_paths:
   docs_map: docs/README.md
   feature_map: FEATURE_MAP.md
   project_state_ledger: analysis/project_state_ledger.md
-  codex_global_agents: /Users/dp/.codex/AGENTS.md
-  skill_codex_local_ops: /Users/dp/.codex/skills/codex-local-ops/SKILL.md
-  skill_architect_controller: /Users/dp/.codex/skills/architect-controller/SKILL.md
-  skill_chunkymonkey_governance: /Users/dp/.codex/skills/chunkymonkey-governance/SKILL.md
-  skill_chunkymonkey_debug_delivery: /Users/dp/.codex/skills/chunkymonkey-debug-delivery/SKILL.md
-  skill_chunkymonkey_review_gate: /Users/dp/.codex/skills/chunkymonkey-review-gate/SKILL.md
+  # Codex global AGENTS + skills live under ~/.codex — moth 0.3.0 require_repo_local
+  # rejects absolute paths outside the checkout (breaks staged-snapshot safe_commit).
+  # Agents still read those skills via $skill paths; do not reintroduce absolute evidence_paths.
   docs: docs
 instruction_sources:
   active:

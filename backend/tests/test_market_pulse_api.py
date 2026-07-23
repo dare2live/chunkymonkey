@@ -321,7 +321,7 @@ def test_sentiment_v2_fields(client):
     assert any("missing_accept" in r for r in t12["reasons"])
     assert "pulse_ui_attestation" in t12["notes"]
     # B-pit mart cutover ON, but fixture day is outside the attested shadow
-    # window [20260116, 20260717] → fail closed to legacy mart (BLOCKED).
+    # window [20260121, 20260722] → fail closed to legacy mart (BLOCKED).
     assert body["b_pit_mart_cutover_allowed"] is False
     bpit = body["b_pit_mart_production_read"]
     assert bpit["uses_legacy"] is True
@@ -330,6 +330,9 @@ def test_sentiment_v2_fields(client):
     assert bpit["source"] == "legacy_mart"
     assert any("trade_date_outside_shadow_window" in r for r in bpit["reasons"])
     assert "pulse_ui_attestation" in bpit["notes"]
+    # Fixture day lacks B-pit promote → breadth stays UNTRUSTED (honest).
+    assert by_field["adv_dec_ratio"]["status"] == "UNTRUSTED"
+    assert "breadth_untrusted_until_b_pit_mart_cutover" in scope["notes"]
 
 
 def test_flow_board_regime_groups_and_stripe(client):

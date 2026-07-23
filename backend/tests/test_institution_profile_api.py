@@ -74,7 +74,7 @@ def test_research_envelope_labels_disclosure_nonconforming(mem, monkeypatch):
     assert shadow["overall_status"] == "UNAVAILABLE"
     policy = body["disclosure_read_policy"]
     assert policy["cutover_allowed"] is False
-    assert policy["feature_store_profiles_status"] == "PARTIAL"
+    assert policy["feature_store_profiles_status"] == "ACCEPTED"
     assert {d["domain"] for d in shadow["domains"]} == {
         "holders_top10",
         "org_holding",
@@ -83,7 +83,7 @@ def test_research_envelope_labels_disclosure_nonconforming(mem, monkeypatch):
 
 
 def test_research_envelope_allows_cutover_on_three_domain_match(mem, monkeypatch):
-    """Three-domain MATCH → cutover_allowed; profiles stay PARTIAL residual."""
+    """Three-domain MATCH → cutover_allowed; profiles ACCEPTED after E0-HIST."""
     from services.data_sources.disclosure_shadow_compare import (
         DisclosureDomainShadowReport,
         DisclosureShadowCompareReport,
@@ -121,7 +121,7 @@ def test_research_envelope_allows_cutover_on_three_domain_match(mem, monkeypatch
     assert body["cutover_allowed"] is True
     assert body["disclosure_shadow"]["overall_status"] == "MATCH"
     assert body["disclosure_read_policy"]["cutover_allowed"] is True
-    assert body["disclosure_conformity"]["overall_status"] == "PARTIAL"
+    assert body["disclosure_conformity"]["overall_status"] == "ACCEPTED"
     assert body["disclosure_conformity"]["e0_phase"] == "gate_closed_canary"
     by_domain = {
         d["domain"]: d for d in body["disclosure_read_policy"]["domains"]

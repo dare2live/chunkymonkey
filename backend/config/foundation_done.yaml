@@ -7,9 +7,10 @@
 # Semantics:
 #   - Real gaps → FAIL (fail-closed)
 #   - Typed walls (S7 22 ssot hard-stop + 1 retired / org mass by-date provider land banned +
-#     daily incremental-by-period required / Type-B enrichment defer)
+#     daily incremental-by-period required)
 #     are PASS when the wall is honestly maintained — they must NOT block
 #     foundation-phase closure incorrectly
+#   - Type-B enrichment was a defer wall; FIXED 2026-07-23 (canonical ACCEPTED)
 #   - F8 §15 behavior PASS only when §15-VERIFY evidence lists
 #     ≥3 consecutive L3 knives with commits/knife ≤1.5 and pre_knife=true
 #     (do NOT loosen thresholds to force PASS)
@@ -45,14 +46,15 @@ e0_breadth:
   min_org_accepted_stocks: 500
   org_population_dataset_id: tier0.disclosure.org_holding_detail_period
 
-# B5 / qfq (F4) — Type-B enrichment defer is a typed wall, not F4 FAIL
+# B5 / qfq (F4) — Type-B enrichment FIXED (was defer wall; cleared 2026-07-23)
 b5:
   qfq_brick_id: price_kline_qfq_tushare
   qfq_trust: LINEAGE_OK
   qfq_db: market
   qfq_table: price_kline_qfq_tushare
-  type_b_defer_codes:
-    - enrichment_projection_partial
+  # Empty = no typed defer wall; institution_profile_edge must not be partial
+  # without a listed defer code (gate still enforces).
+  type_b_defer_codes: []
 
 # §15 behavior (F8) — PASS after §15-VERIFY (2026-07-21)
 # Evidence authority: analysis/section15_verify_20260721.md

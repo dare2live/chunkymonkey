@@ -81,8 +81,8 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | **F4** | Margin **1c** promote gate（shadow vs accepted） | L2/L3 | product-visible `promote_gate`；serve→accepted SSE+SZSE；READY as external_aggregate when criteria pass；应有却缺 UNTRUSTED；覆盖前 typed EMPTY | 无 shadow 假 TRUSTED / 把正常空 scare 成 fail-closed | **FIXED** 2026-07-23（`margin_f4_promote_gate_20260723.md`；gate=PROMOTED on accepted days；typed empty 2026-07-23 owner 纠偏） |
 | **F5** | BOARD / codegraph / maps **sync** | hygiene | `build_agent_board` 重生；BOARD=投影非执法 | 手改 BOARD 当真相 | **FIXED** 2026-07-23：投影反映 §6 exit + §6a 100% 定义 |
 | **F6** | S7 publication/sunset（按需） | Tier0 | **仅** owner 新 block | 假 COMPAT / blanket pre-accept | 无 owner block → skip |
-| **F7** | Type-B enrichment | DEFER | registry in-scheme 已够近端 | 当近端刀 | **DEFER / out of 100% bar（class-D 假残留若被算进）** |
-| **F8** | qfq incremental/partitioned write | product later | 另开产品刀；今日 full CTAS+compact 已 ops-safe | 用「定期 compact」代替语义 | **later / out of 100% bar** |
+| **F7** | Type-B enrichment | L3 | feature_store_profiles ACCEPTED；`institution_profile_edge_v0` declared；legacy_only 仅补 canonical 缺期 | 假 FIXED / Optuna | **FIXED** 2026-07-23（E0-HIST 后 canonical enrichment 齐；`新进` null `hold_change_num` typed OK） |
+| **F8** | qfq incremental/partitioned write | L3 | 默认 incremental：`f_latest` 值变 → 全历史 rewrite；值不变 → append；`--full` 保留 CTAS+compact | 用「定期 compact」代替语义；静默错历史 | **FIXED** 2026-07-23（`build_price_kline_qfq_tushare` auto/incremental/full） |
 
 **F1 逐项（Knife4）**：
 | 信号 | 裁决 | 证据 |
@@ -93,7 +93,9 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | moneyflow_hsgt 真缺口 20260708/10 | **FIXED** ops | bounded backfill 2 日；vendor-0 日进 `known_empty_days` |
 | dividend/hsgt `warn_interior_gaps` | **FIXED typed** | `hk_holidays` + `event_sparse`；live PASS warn=0；非假期仍 FAIL |
 
-**近端默认序**：F1/F3/F4 FIXED；F7/F8 非默认。
+**近端默认序**：F1/F3/F4/F7/F8 FIXED；无默认开放底座刀（STRATEGY 仍须 RX）。
+
+**Breadth 诚实门（2026-07-23）**：`attest_market_pulse_scope` 消费 B-pit `MART_CUTOVER` → `adv_dec_ratio` READY as `project_universe_pit`；typed EMPTY / 缺证据 UNTRUSTED（同 rzrqye 语义）。Shadow 窗刷新至 `20260121`–`20260722` MATCH 120/120。
 
 ---
 
@@ -102,7 +104,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | 类 | 裁决 |
 |---|---|
 | sync `replace_partition` / grain DELETE→INSERT | **KEEP**（幂等发布） |
-| qfq DROP+CTAS + **模块内** post-CTAS compact | **KEEP**（latest-adj + 防 free-block 复发） |
+| qfq DROP+CTAS **or** incremental + **模块内** post-full compact | **KEEP**（latest-adj；增量按 `f_latest` 值；防 free-block 复发） |
 | landing append + ACCEPTED 同 hash skip | **KEEP** |
 | derive delta-gate / rare `--rebuild` | **KEEP** |
 | orphan → **删能力**（非补丁防 refill） | **KEEP 模式**（factor 已示范） |
@@ -139,7 +141,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | 无开放 **class-A**（日常更新会再制造同类错误） | **MET**（本轮探针未发现） |
 | **class-B** rzrqye READY as external_aggregate on accepted days（应有却缺 UNTRUSTED；正常空 EMPTY） | **OK — 诚实** |
 | **class-C** holders ×32 历史堆 | **FIXED** F3 reclaim |
-| F7/F8 | **out of bar** |
+| F7/F8 | **FIXED**（仍非 Continuity READY 条件） |
 | 禁 Continuity READY 化妆 / retention/shadow 为冲清单 | **binding** |
 
 **100% usable status**：**MET**（≠ Continuity READY；≠ 零 WARN）。

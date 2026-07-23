@@ -1,12 +1,14 @@
 """Phase B-ext: population-scope attestation for market pulse surfaces.
 
-Legacy ``market_pulse`` marts still read raw daily breadth.  Margin ``rzrqye``
-may be READY as ``external_aggregate`` only after F4 serve→accepted cutover
-(``pulse_source_accepted`` + promote criteria).  Project-universe claims remain
-refused.  This module is read-only: it does not rewrite marts.
+Legacy ``market_pulse`` marts may still materialize breadth from canonical∪raw
+fill.  Product trust for ``adv_dec_ratio`` becomes READY only when B-pit
+production read is ``MART_CUTOVER`` (project_universe_pit evidence) — never from
+raw mart numbers alone.  Margin ``rzrqye`` may be READY as ``external_aggregate``
+only after F4 serve→accepted cutover (``pulse_source_accepted`` + promote
+criteria).  This module is read-only: it does not rewrite marts.
 
-Typed empty (owner 2026-07-23): when margin is not expected for the day
-(pre-coverage / not eligible / confirmed empty), ``rzrqye`` is ``EMPTY`` —
+Typed empty (owner 2026-07-23): when a field is not expected for the day
+(pre-coverage / not eligible / confirmed empty), status is ``EMPTY`` —
 normal absence, not UNTRUSTED fail-closed scare. Unexpected gaps stay UNTRUSTED.
 """
 from __future__ import annotations
@@ -55,7 +57,7 @@ class MarketPulseScopeReport:
 
 
 def _rank(status: TrustStatus) -> int:
-    # EMPTY = typed normal absence (OK) — does not scare above READY for margin.
+    # EMPTY = typed normal absence (OK) — does not scare above READY.
     order = {
         "READY": 0,
         "EMPTY": 0,
@@ -75,13 +77,19 @@ def attest_market_pulse_scope(
     margin_promoted: bool = False,
     margin_empty: bool = False,
     margin_empty_reason: str | None = None,
+    breadth_promoted: bool = False,
+    breadth_empty: bool = False,
+    breadth_empty_reason: str | None = None,
 ) -> MarketPulseScopeReport:
     """Attest pulse field population scope.
 
-    Breadth stays UNTRUSTED (raw).  Margin becomes READY only when serve reads
-    accepted SSE+SZSE **and** promote gate consumed (``margin_promoted``).
-    Typed empty (not expected / confirmed empty) → EMPTY. Unexpected missing
-    promote evidence → UNTRUSTED — never fake READY.
+    Breadth becomes READY only when B-pit production read consumed
+    (``breadth_promoted`` → project_universe_pit). Typed empty (not expected /
+    confirmed empty) → EMPTY. Unexpected missing promote evidence → UNTRUSTED —
+    never fake READY from raw mart numbers.
+
+    Margin becomes READY only when serve reads accepted SSE+SZSE **and**
+    promote gate consumed (``margin_promoted``). Same EMPTY / UNTRUSTED rules.
     """
 
     day = str(trade_date or "").replace("-", "")
@@ -92,6 +100,32 @@ def attest_market_pulse_scope(
             fields=(),
             notes=("invalid_trade_date",),
         )
+
+    if breadth_empty:
+        breadth_status: TrustStatus = "EMPTY"
+        breadth_kind = "project_universe_pit"
+        breadth_reason = (
+            f"{breadth_empty_reason or 'typed_empty_not_expected_or_confirmed'}; "
+            "normal_absence_not_fail_closed; "
+            "not_raw_tushare_daily_masquerade"
+        )
+        breadth_surface = "observation_membership.traded_on_observation_date"
+    elif breadth_promoted:
+        breadth_status = "READY"
+        breadth_kind = "project_universe_pit"
+        breadth_reason = (
+            "b_pit_mart_cutover_project_universe_pit_promoted; "
+            "not_raw_tushare_daily_breadth"
+        )
+        breadth_surface = "observation_membership.traded_on_observation_date"
+    else:
+        breadth_status = "UNTRUSTED"
+        breadth_kind = "raw_evidence"
+        breadth_reason = (
+            "breadth_reads_raw_or_unfiltered_nominal; not accepted "
+            "traded_on_observation_date project_universe_pit"
+        )
+        breadth_surface = "tr.raw_tushare_daily"
 
     if margin_empty:
         reason = margin_empty_reason or "typed_empty_not_expected_or_confirmed"
@@ -130,13 +164,10 @@ def attest_market_pulse_scope(
     fields: list[PulseFieldScopeAttestation] = [
         PulseFieldScopeAttestation(
             field="adv_dec_ratio",
-            status="UNTRUSTED",
-            population_kind="raw_evidence",
-            reason=(
-                "breadth_reads_raw_tushare_daily; not accepted "
-                "traded_on_observation_date project_universe_pit"
-            ),
-            source_surface="tr.raw_tushare_daily",
+            status=breadth_status,
+            population_kind=breadth_kind,
+            reason=breadth_reason,
+            source_surface=breadth_surface,
         ),
         PulseFieldScopeAttestation(
             field="rzrqye",
@@ -154,9 +185,14 @@ def attest_market_pulse_scope(
         ),
     ]
     notes: list[str] = [
-        "breadth_untrusted_raw_until_project_universe_cutover",
         "no_consumer_payload_rewrite_by_scope_attestation",
     ]
+    if breadth_empty:
+        notes.append("breadth_typed_empty_normal_absence")
+    elif breadth_promoted:
+        notes.append("breadth_promoted_project_universe_pit")
+    else:
+        notes.append("breadth_untrusted_until_b_pit_mart_cutover")
     if margin_empty:
         notes.append("rzrqye_typed_empty_normal_absence")
     elif margin_promoted and margin_source_accepted:

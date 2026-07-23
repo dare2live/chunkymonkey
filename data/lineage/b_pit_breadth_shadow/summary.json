@@ -2,7 +2,7 @@
   "artifact": "data/lineage/b_pit_breadth_shadow/manifest.json",
   "cutover_allowed": false,
   "frontier_compare": {
-    "baseline_adv_dec_ratio": 0.08444541675782105,
+    "baseline_adv_dec_ratio": 0.3923287671232877,
     "baseline_kind": "membership_restricted_proxy",
     "cutover_allowed": false,
     "issues": [
@@ -10,15 +10,15 @@
       "cutover_requires_accepted_live_partitions_and_gate",
       "match_baseline=membership_restricted_proxy"
     ],
-    "legacy_adv_dec_ratio": 0.08444541675782105,
-    "project_adv_dec_ratio": 0.08444541675782105,
+    "legacy_adv_dec_ratio": 0.3923287671232877,
+    "project_adv_dec_ratio": 0.3923287671232877,
     "ratio_delta": 0.0,
     "ratios_match": true,
-    "trade_date": "20260717"
+    "trade_date": "20260722"
   },
-  "frontier_day": "20260717",
-  "frontier_semantic_delta_vs_unfiltered": 0.011935307097407907,
-  "generated_at": "2026-07-20T07:12:09.430889+00:00",
+  "frontier_day": "20260722",
+  "frontier_semantic_delta_vs_unfiltered": 0.002408074981975483,
+  "generated_at": "2026-07-23T10:45:51.404938+00:00",
   "kind": "b_pit_breadth_shadow_remeasure",
   "match_baseline_kind": "membership_restricted_proxy",
   "window": {
@@ -26,7 +26,7 @@
     "day_count": 120,
     "diverge_day_count": 0,
     "error_day_count": 0,
-    "frontier_day": "20260717",
+    "frontier_day": "20260722",
     "issues": [
       "breadth_shadow_window_remeasure_only",
       "cutover_requires_accepted_live_partitions_and_gate",
@@ -37,7 +37,7 @@
     "max_abs_ratio_delta": 0.0,
     "mean_abs_ratio_delta": 0.0,
     "ratios_match_all": true,
-    "window_end": "20260717",
-    "window_start": "20260116"
+    "window_end": "20260722",
+    "window_start": "20260121"
   }
 }

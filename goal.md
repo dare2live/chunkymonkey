@@ -9,7 +9,7 @@
 
 ## 当前 objective
 
-**轨道 = foundation solidify CLOSED**（2026-07-21；母体 = transport strangler S1–S7 + brick L0–L3 + E0 + DB 分层；**phase_closure_ready=true**）。模块化 **S1–S6 FIXED**；**S7 near-FIXED**（22 ssot + 1 retired = typed hard-stop 墙；B1+B2 done；禁假 COMPAT；`stk_factor_pro` 2026-07-23 owner sunset）。**E0-HIST / F6 PASS**（holders≥120 trading-day overlap）。**FND-GATE PASS**（F1–F10 全 PASS；F8 §15-VERIFY **PASS**）。**§15 behavior PASS**（连续 3 刀 commits/knife=1.0 + pre-knife）。**B5** registry/qfq **FIXED 子集**；Type-B enrichment **defer**。A→H = **后置研究地图**；**E/F remeasure paused**（可 schedule，未开）。WP0–WP4 闭合；WP6 shadow 开放。**§15 knife-merge binding 不变**。
+**轨道 = foundation solidify CLOSED**（2026-07-21；母体 = transport strangler S1–S7 + brick L0–L3 + E0 + DB 分层；**phase_closure_ready=true**）。模块化 **S1–S6 FIXED**；**S7 near-FIXED**（22 ssot + 1 retired = typed hard-stop 墙；B1+B2 done；禁假 COMPAT；`stk_factor_pro` 2026-07-23 owner sunset）。**E0-HIST / F6 PASS**（holders≥120 trading-day overlap）。**FND-GATE PASS**（F1–F10 全 PASS；F8 §15-VERIFY **PASS**）。**§15 behavior PASS**（连续 3 刀 commits/knife=1.0 + pre-knife）。**B5** registry/qfq **FIXED**；Type-B enrichment **FIXED**；qfq incremental **FIXED**；breadth B-pit promote **FIXED**。A→H = **后置研究地图**；**E/F remeasure paused**（可 schedule，未开）。WP0–WP4 闭合；WP6 shadow 开放。**§15 knife-merge binding 不变**。
 
 已落地硬事实（勿回滚；细节见 FOUNDATION §2 + git）：
 - C + B-pit **`cutover_allowed=true`**（`b38e9ac5`）→ `ACCEPTED_CUTOVER` / `MART_CUTOVER`；dual-track residual **NONE**
@@ -28,9 +28,10 @@
 
 **foundation-done 已闭合**（F1–F10 PASS；`phase_closure_ready=true`；CX-1…CX-4 PASS）。FND-GATE spec = `analysis/foundation_phase_reeval_20260721.md`。无「主方案 vs 支线」——残差一律进上述 backlog。
 
-**已闭合（勿回滚）**：S1–S6 FIXED；S7 near-FIXED（禁假 COMPAT；无 owner 新 block 不开 S7 刀）；E0-HIST/F6 PASS；org **incremental-check-every-run**（mass/by-date invent banned）；B5 registry/qfq FIXED 子集（Type-B **defer**）；Cap F dossier usable FIXED；margin 1a+1b+**F4 serve→accepted** FIXED（SSE+SZSE；rzrqye READY as external_aggregate on accepted days；缺日 UNTRUSTED；禁假 TRUSTED/project_universe）；holders skip-land FIXED；qfq in-module compact FIXED；Serve→derive 闭环 FIXED；跑步机 0–3 FIXED；§15-VERIFY PASS；**Continuity Knife4 FIXED**；**foundation §6 exit MET** + **100% usable MET**（无 class-A；annotate WARN = class-B；禁为清单洗绿）。
+**已闭合（勿回滚）**：S1–S6 FIXED；S7 near-FIXED（禁假 COMPAT；无 owner 新 block 不开 S7 刀）；E0-HIST/F6 PASS；org **incremental-check-every-run**（mass/by-date invent banned）；B5 registry/qfq/Type-B enrichment **FIXED**；qfq incremental **FIXED**；breadth B-pit promote **FIXED**；Cap F dossier usable FIXED；margin 1a+1b+**F4 serve→accepted** FIXED（SSE+SZSE；rzrqye READY as external_aggregate on accepted days；缺日 UNTRUSTED；禁假 TRUSTED/project_universe）；holders skip-land FIXED；qfq in-module compact FIXED；Serve→derive 闭环 FIXED；跑步机 0–3 FIXED；§15-VERIFY PASS；**Continuity Knife4 FIXED**；**foundation §6 exit MET** + **100% usable MET**（无 class-A；annotate WARN = class-B；禁为清单洗绿）。
 
-**近端 focus**：F4 serve→accepted **FIXED**（rzrqye READY as external_aggregate on accepted days；应有却缺 UNTRUSTED；覆盖前/未到期 typed EMPTY）。等 owner **显式 schedule RX** 才开 STRATEGY。**Optuna / Release 未开**。仍禁 S7 假 COMPAT / org invent / 松 holdout / Continuity 洗绿。
+**近端 focus**：F4 serve→accepted **FIXED**；breadth B-pit promote **FIXED**（READY as project_universe_pit when MART_CUTOVER）；F7 Type-B enrichment **FIXED**；F8 qfq incremental **FIXED**。等 owner **显式 schedule RX** 才开 STRATEGY。**Optuna / Release 未开**。仍禁 S7 假 COMPAT / org invent / 松 holdout / Continuity 洗绿。
+
 
 **护栏**：formal frontier 与 drain soft 窗分立叙述；PIT+≤40d；§15 不放宽；org 增量见 `org_holding_incremental_loop_20260723.md`；禁全宇宙扫股东公告（`shareholder_update_check_design_20260723.md`）；serve=沪深A 含 ST。
 

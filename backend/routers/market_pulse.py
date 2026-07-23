@@ -564,11 +564,11 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
     + v2 连板天梯/晋级率/秒板/封单/两融/大盘PE换手/龙虎榜。
     缺源日字段 = null (不知道≠0, 引擎口径), 前端按缺口断线展示。
 
-    B-ext: 旁路 ``population_scope`` + ``shadow_reconcile`` 标 legacy breadth
-    为 UNTRUSTED。F4: ``promote_gate`` 对 accepted SSE+SZSE 影子+门标准；
-    serve cutover + promote 消费后 rzrqye 可 READY（仍 external_aggregate，禁
-    project_universe / 假 TRUSTED）。应有却缺 → UNTRUSTED；覆盖前/未到期/
-    确认空 → typed EMPTY（正常空，不 scare fail-closed）。
+    B-ext: 旁路 ``population_scope`` + ``shadow_reconcile``。F4: ``promote_gate``
+    对 accepted SSE+SZSE 影子+门标准；serve cutover + promote 消费后 rzrqye 可
+    READY（仍 external_aggregate，禁 project_universe / 假 TRUSTED）。breadth
+    仅在 B-pit ``MART_CUTOVER`` 证据下 READY（project_universe_pit）；窗外/缺影
+    → UNTRUSTED；正常空 → typed EMPTY。应有却缺 → UNTRUSTED。
     Phase C: ``tier12_production_read`` 经 ``resolve_tier12_production_read``；
     cutover ON → ACCEPTED_CUTOVER，缺 accept fail-closed → LEGACY。B-pit:
     ``b_pit_mart_production_read`` 经 ``resolve_b_pit_mart_production_read``；
@@ -582,10 +582,26 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
     day_rows = [dict(zip(_SENTIMENT_COLS, r)) for r in rows]
     latest = str(day_rows[-1]["trade_date"]) if day_rows else ""
     cfg = _margin_promote_cfg()
+    tier12 = attest_pulse_tier12_production_read(
+        latest,
+        config=_TIER12_CUTOVER_CONFIG,
+        artifact_root=_TIER12_ARTIFACT_ROOT,
+        config_path=_TIER12_CONFIG_PATH,
+    )
+    b_pit = attest_pulse_b_pit_mart_production_read(
+        latest,
+        config=_B_PIT_CUTOVER_CONFIG,
+        artifact_root=_B_PIT_ARTIFACT_ROOT,
+        config_path=_B_PIT_CONFIG_PATH,
+    )
     if latest:
         shadow = _shadow_reconcile_for_day(conn, latest)
         promote_gate = _promote_gate_for_day(conn, latest, shadow)
         margin_empty = promote_gate.get("status") == "EMPTY_OK"
+        breadth_promoted = (
+            b_pit.get("status") == "MART_CUTOVER"
+            and b_pit.get("source") == "project_universe_pit"
+        )
         scope = attest_market_pulse_scope(
             latest,
             margin_source_accepted=bool(cfg.pulse_source_accepted),
@@ -596,6 +612,7 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
                 if margin_empty
                 else None
             ),
+            breadth_promoted=breadth_promoted,
         ).as_dict()
     else:
         scope = {
@@ -613,18 +630,6 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
             pulse_source_accepted=bool(cfg.pulse_source_accepted),
             promote_allowed=False,
         ).as_dict()
-    tier12 = attest_pulse_tier12_production_read(
-        latest,
-        config=_TIER12_CUTOVER_CONFIG,
-        artifact_root=_TIER12_ARTIFACT_ROOT,
-        config_path=_TIER12_CONFIG_PATH,
-    )
-    b_pit = attest_pulse_b_pit_mart_production_read(
-        latest,
-        config=_B_PIT_CUTOVER_CONFIG,
-        artifact_root=_B_PIT_ARTIFACT_ROOT,
-        config_path=_B_PIT_CONFIG_PATH,
-    )
     return {
         "status": "ok",
         "days": day_rows,

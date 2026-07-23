@@ -322,9 +322,9 @@ def test_b5_live_registry_covers_type_b_and_qfq_physical_lineage() -> None:
     assert inst.store == "feature_store"
     assert rally.store == "feature_store"
     assert rally.config_hash == "v2_20260702"
-    # Type-B enrichment residual keeps B5 PARTIAL overall; qfq lineage itself FIXED.
-    assert inst.status == "partial"
-    assert any(r.code == "enrichment_projection_partial" for r in inst.partial_reasons)
+    # Type-B enrichment ACCEPTED after E0-HIST; qfq lineage FIXED.
+    assert inst.status == "declared"
+    assert inst.partial_reasons == ()
     qfq = reg.bricks["price_kline_qfq_tushare"]
     assert qfq.status == "declared"
     assert qfq.partial_reasons == ()
