@@ -63,7 +63,8 @@ def run_margin_bounded_catchup(ctx: PipelineContext) -> list[dict[str, Any]]:
 
     Plans ``[max(coverage_start, local_max+1) .. eligible_end]`` capped by the
     sync_runner window. Skips when disabled / already current / no gap.
-    Never enters ``--all-due``. Pulse ``rzrqye`` stays UNTRUSTED.
+    Never enters ``--all-due``. Pulse ``rzrqye``: eligible expected-missing →
+    UNTRUSTED; pre-coverage / not-yet-due typed EMPTY (normal).
 
     Invoked from ``run_acquire`` on every click-update / ``daily_update`` —
     not a one-shot operator backfill.

@@ -33,11 +33,11 @@
 
 | ID | 残留是啥 | 为何会残留（根因） | 下次点更新 / 日常还会再产生同样问题？ | Class | 该不该动 |
 |---|---|---|---|---|---|
-| R1a | Continuity `warn_interior_gaps` **moneyflow_hsgt** | was annotate；now typed `hk_holidays` + `hk_northbound_closed_days.yaml` | **不再 WARN**（日历外空洞仍 FAIL） | **D**（已 FIXED F1） | **不动**（已修） |
+| R1a | Continuity `warn_interior_gaps` **moneyflow_hsgt** | was annotate；now typed `hk_holidays` + `hk_northbound_closed_days.yaml` | **不再 WARN**（豁免日历外的**应有却缺**仍 FAIL；周末/假期/墓碑=正常空） | **D**（已 FIXED F1） | **不动**（已修） |
 | R1b | Continuity `warn_interior_gaps` **dividend** | was annotate；now typed `event_sparse` | **不再 WARN**（尾部 SLA 仍 FAIL） | **D**（已 FIXED F1） | **不动**（已修） |
 | R2 | Holders landing **~32×** 同 `row_hash` | 历史堆；skip-land 已关复发 | **堆已清**（7.17M→236k；compact 4.3 GiB） | **D**（F3 FIXED） | **不动**（已修） |
 | R3 | F4 margin pulse **1c shadow** | **FIXED** serve→accepted；gate=PROMOTED on accepted days | 日常走 accepted 路径 | **D** | **不动**（已修） |
-| R4 | Product **rzrqye** | READY as external_aggregate when promoted；缺 accepted 日 UNTRUSTED | 诚实 | **B** | **禁假 TRUSTED** / project_universe |
+| R4 | Product **rzrqye** | READY when promoted；**应有却缺** UNTRUSTED；覆盖前/未到期/确认空 → typed **EMPTY** | 诚实分类 | **B** | **禁假 TRUSTED**；禁把正常空 scare 成 fail-closed |
 | R5 | F7 Type-B enrichment | DEFER：registry in-scheme 够近端 | 不 defer 也不会在 daily 上「坏掉」；是产品/研究后置 | **B** / 清单上 **D** | **不进 100%**；DEFER |
 | R6 | F8 qfq incremental write | later：今日 full CTAS+in-module compact 已 ops-safe | 每次 qfq rebuild 仍 CTAS（已知）；compact 钩已防 free-block 复发。**增量写 = 产品优化，非正确性债** | **B**/可选优化；清单 **D** | **不进 100%**；勿用「定期 compact」冒充增量语义 |
 

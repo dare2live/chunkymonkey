@@ -60,6 +60,22 @@ def test_serve_accepted_without_promote_stays_untrusted() -> None:
     assert report.overall_status == "UNTRUSTED"
 
 
+def test_typed_empty_rzrqye_is_empty_not_untrusted() -> None:
+    report = attest_market_pulse_scope(
+        "20240108",
+        margin_source_accepted=True,
+        margin_empty=True,
+        margin_empty_reason="typed_empty_not_expected",
+    )
+    by_field = {item.field: item for item in report.fields}
+    assert by_field["rzrqye"].status == "EMPTY"
+    assert "normal_absence_not_fail_closed" in by_field["rzrqye"].reason
+    assert by_field["adv_dec_ratio"].status == "UNTRUSTED"
+    # overall still UNTRUSTED from breadth — but rzrqye itself is typed empty OK
+    assert report.overall_status == "UNTRUSTED"
+    assert "rzrqye_typed_empty_normal_absence" in report.notes
+
+
 def test_refuse_project_universe_claim_on_legacy_pulse() -> None:
     with pytest.raises(RuntimeError, match="cannot_satisfy_project_universe_pit"):
         refuse_project_universe_claim_for_legacy_pulse("project_universe_pit")

@@ -144,7 +144,7 @@ def test_production_promote_yaml_opts_into_serve_cutover() -> None:
 
 
 def test_promote_allowed_config_true_but_no_accepted_stays_untrusted() -> None:
-    """Owner: fail-closed while gap open — config alone never invents READY."""
+    """Eligible expected day without accepted → UNTRUSTED (real gap)."""
     shadow = reconcile_market_pulse_shadow("20260722", margin_rows=())
     report = evaluate_margin_pulse_promote_gate(
         "20260722",
@@ -152,7 +152,61 @@ def test_promote_allowed_config_true_but_no_accepted_stays_untrusted() -> None:
         accepted_margin_rows=(),
         pulse_source_accepted=True,
         promote_allowed=True,  # would be ANDed false in router when rows empty
+        absence_kind="expected_missing",
     )
     assert report.status != "PROMOTED"
+    assert report.status != "EMPTY_OK"
     assert report.product_trust_would_be == "UNTRUSTED"
     assert "need_accepted_sse_szse_for_day" in report.remaining
+
+
+def test_promote_gate_pre_coverage_absence_is_typed_empty() -> None:
+    """Owner: pre-coverage / not expected → EMPTY (normal), not fail-closed scare."""
+    shadow = reconcile_market_pulse_shadow("20240108", margin_rows=())
+    report = evaluate_margin_pulse_promote_gate(
+        "20240108",
+        shadow=shadow,
+        accepted_margin_rows=(),
+        pulse_source_accepted=True,
+        promote_allowed=True,
+        absence_kind="not_expected",
+    )
+    assert report.status == "EMPTY_OK"
+    assert report.product_trust_would_be == "EMPTY"
+    assert report.remaining == ()
+    assert "typed_empty_not_expected" in report.notes
+
+
+def test_classify_margin_day_absence_coverage_floor() -> None:
+    from services.margin_pulse_promote_gate import classify_margin_day_absence
+
+    assert (
+        classify_margin_day_absence(
+            "20240108", coverage_start="20260717", is_trading_day=True
+        )
+        == "not_expected"
+    )
+    assert (
+        classify_margin_day_absence(
+            "20260722", coverage_start="20260717", is_trading_day=True
+        )
+        == "expected_missing"
+    )
+    assert (
+        classify_margin_day_absence(
+            "20260722",
+            coverage_start="20260717",
+            eligible_end="20260720",
+            is_trading_day=True,
+        )
+        == "not_expected"
+    )
+    assert (
+        classify_margin_day_absence(
+            "20260722",
+            coverage_start="20260717",
+            is_trading_day=True,
+            confirmed_empty=True,
+        )
+        == "confirmed_empty"
+    )

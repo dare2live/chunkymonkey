@@ -514,10 +514,18 @@ function PulseBand() {
         const diff = (cur: number | null, pre: number | null | undefined) =>
           cur != null && pre != null ? cur - pre : null;
         const trust = d.population_scope?.overall_status ?? "NOT_EVALUATED";
+        const rzrqyeTrust =
+          d.population_scope?.fields?.find((f) => f.field === "rzrqye")?.status ??
+          trust;
+        // Scare only unexpected UNTRUSTED/BLOCKED — EMPTY = typed normal absence.
         const trustNote =
-          trust === "UNTRUSTED" || trust === "BLOCKED"
-            ? ` · 广度/两融 ${trust}（非项目池；未 cutover）`
-            : "";
+          rzrqyeTrust === "UNTRUSTED" || rzrqyeTrust === "BLOCKED"
+            ? ` · 两融 ${rzrqyeTrust}（应有却缺/未 promote；非正常空）`
+            : rzrqyeTrust === "EMPTY"
+              ? ` · 两融 EMPTY（正常空：覆盖前/未到期/确认空）`
+              : rzrqyeTrust === "READY"
+                ? ` · 两融 READY（external_aggregate）`
+                : "";
         return (
           <>
             <div className="section-label">
@@ -1281,11 +1289,18 @@ function SentimentCard() {
   const state = useFetch(() => fetchSentiment({ days }), [days]);
   const last = state.data?.days.length ? state.data.days[state.data.days.length - 1] : null;
   const trust = state.data?.population_scope?.overall_status;
+  const rzrqyeTrust =
+    state.data?.population_scope?.fields?.find((f) => f.field === "rzrqye")
+      ?.status ?? trust;
   const shadowVerdict = state.data?.shadow_reconcile?.verdict;
   const trustSuffix =
-    trust === "UNTRUSTED" || trust === "BLOCKED"
-      ? ` · breadth/margin ${trust}${shadowVerdict ? ` / shadow=${shadowVerdict}` : ""} · cutover=false`
-      : "";
+    rzrqyeTrust === "UNTRUSTED" || rzrqyeTrust === "BLOCKED"
+      ? ` · 两融 ${rzrqyeTrust}${shadowVerdict ? ` / shadow=${shadowVerdict}` : ""}（应有却缺）`
+      : rzrqyeTrust === "EMPTY"
+        ? ` · 两融 EMPTY（正常空）`
+        : rzrqyeTrust === "READY"
+          ? ` · 两融 READY`
+          : "";
   return (
     <Card
       title={`情绪温度 (limit_list_d 官方口径, 不含 ST; 每日一格: 涨停 / 跌停 / 炸板率 三条光谱带)${trustSuffix}`}

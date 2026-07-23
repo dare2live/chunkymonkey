@@ -8,8 +8,10 @@
 #   - OWNER OPT-IN 2026-07-23: pulse_source_accepted=true after live probe proved
 #     accepted v3 SSE+SZSE present while raw_tushare_margin empty for those days
 #     (mart rzrqye NULL) — root cause = serve still on raw, not missing evidence
-#   - promote_allowed=true only with that evidence; runtime still fail-closed when
-#     accepted core venues absent for the day (UNTRUSTED + typed remaining)
+#   - promote_allowed=true only with that evidence; runtime:
+#       * accepted core present → READY when promoted
+#       * pre-coverage / not eligible / confirmed empty → typed EMPTY (normal)
+#       * eligible day expected but missing → UNTRUSTED (real gap; not mute)
 #   - population_kind stays external_aggregate; project_universe_pit still refused
 #   - never silent thaw; MATCH/shadow alone never flips these flags
 
@@ -18,7 +20,8 @@ meta:
   phase: F4
   notes: >-
     serve→accepted SSE+SZSE cutover; owner opt-in 2026-07-23;
-    live accepted n=4 since coverage_start=20260717; raw empty on those days
+    live accepted n=4 since coverage_start=20260717; raw empty on those days;
+    typed EMPTY for not_expected absence (owner 2026-07-23)
 
 margin_pulse_promote:
   pulse_source_accepted: true

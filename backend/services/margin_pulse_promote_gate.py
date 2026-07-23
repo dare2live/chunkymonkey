@@ -5,7 +5,10 @@ rows exist, the pulse builder reads ``canonical_margin_exchange_daily`` (not
 raw BSE-inclusive sum).  ``promote_allowed`` is a separate owner opt-in; both
 are required for field status READY as ``external_aggregate``.
 
-Fail closed when evidence is missing: stay UNTRUSTED with typed ``remaining``.
+Absence semantics (owner 2026-07-23):
+  - ``not_expected`` / ``confirmed_empty`` → typed EMPTY (normal; like no K bar
+    on a non-trade / pre-coverage day) — never scare as fail-closed UNTRUSTED
+  - ``expected_missing`` → UNTRUSTED (eligible day should have data; pipeline gap)
 Never invent TRUSTED / project_universe_pit.
 """
 from __future__ import annotations
@@ -25,12 +28,17 @@ from services.market_pulse_shadow_reconcile import (
 
 PromoteGateStatus = Literal[
     "BLOCKED",
+    "EMPTY_OK",
     "CRITERIA_PENDING",
     "SHADOW_EXTERNAL_HONEST",
     "PENDING_SERVE_CUTOVER",
     "READY_TO_PROMOTE",
     "PROMOTED",
 ]
+
+# Typed absence when accepted SSE+SZSE rows are not present for the day.
+AbsenceKind = Literal["not_expected", "confirmed_empty", "expected_missing"]
+NORMAL_ABSENCE_KINDS = frozenset({"not_expected", "confirmed_empty"})
 
 _DEFAULT_CFG = (
     Path(__file__).resolve().parents[1] / "config" / "margin_pulse_promote.yaml"
@@ -128,6 +136,36 @@ def _accepted_balances(
     return out
 
 
+def classify_margin_day_absence(
+    trade_date: str,
+    *,
+    coverage_start: str,
+    eligible_end: str | None = None,
+    is_trading_day: bool = True,
+    confirmed_empty: bool = False,
+) -> AbsenceKind:
+    """Classify why accepted margin rows are absent for a pulse day.
+
+    Pulse mart days are nominal trading days, so ``is_trading_day`` is usually
+    True; pre-coverage / not-yet-eligible / confirmed vendor empty → normal.
+    """
+
+    day = str(trade_date or "").replace("-", "")
+    start = str(coverage_start or "").replace("-", "")
+    end = str(eligible_end or "").replace("-", "") if eligible_end else None
+    if len(day) != 8 or not day.isdigit():
+        return "expected_missing"
+    if not is_trading_day:
+        return "not_expected"
+    if len(start) == 8 and start.isdigit() and day < start:
+        return "not_expected"
+    if end and len(end) == 8 and end.isdigit() and day > end:
+        return "not_expected"
+    if confirmed_empty:
+        return "confirmed_empty"
+    return "expected_missing"
+
+
 def evaluate_margin_pulse_promote_gate(
     trade_date: str,
     *,
@@ -135,6 +173,7 @@ def evaluate_margin_pulse_promote_gate(
     accepted_margin_rows: Sequence[Mapping[str, Any]] = (),
     pulse_source_accepted: bool = False,
     promote_allowed: bool = False,
+    absence_kind: AbsenceKind | None = None,
 ) -> MarginPulsePromoteGateReport:
     """Evaluate promote gate for one observation date. Never invents TRUSTED."""
 
@@ -183,6 +222,9 @@ def evaluate_margin_pulse_promote_gate(
 
     shadow_honest = verdict == PulseShadowVerdict.EXTERNAL_HONEST_SHADOW.value
     accepted_present = accepted_sum is not None
+    # Default: missing accepted on an observation day is unexpected until the
+    # caller proves not_expected / confirmed_empty (coverage / calendar / tomb).
+    kind: AbsenceKind = absence_kind or "expected_missing"
     # Accepted SSE+SZSE is the honest external_aggregate target (v3). Legacy raw
     # shadow may lag or include BSE; accepted-ready alone advances past
     # CRITERIA_PENDING without inventing TRUSTED.
@@ -196,7 +238,25 @@ def evaluate_margin_pulse_promote_gate(
         "cutover_allowed_false_in_shadow": not bool(
             shadow_dict.get("cutover_allowed", False)
         ),
+        "absence_kind_normal": kind in NORMAL_ABSENCE_KINDS,
     }
+
+    # Typed normal empty: pre-coverage / not eligible / vendor confirmed vacuum.
+    # Like Continuity known_empty / non-trade day — not a broken pipeline.
+    if not accepted_present and kind in NORMAL_ABSENCE_KINDS:
+        notes.append(f"typed_empty_{kind}")
+        return MarginPulsePromoteGateReport(
+            trade_date=day,
+            status="EMPTY_OK",
+            population_kind="external_aggregate",
+            product_trust_would_be="EMPTY",
+            criteria=criteria,
+            remaining=(),
+            notes=tuple(notes),
+            shadow_verdict=str(verdict) if verdict is not None else None,
+            accepted_rzrqye=None,
+            honest_external_rzrqye=float(honest) if honest is not None else None,
+        )
 
     remaining: list[str] = []
     if not criteria["accepted_core_venues_present"]:
@@ -217,13 +277,14 @@ def evaluate_margin_pulse_promote_gate(
 
     if not accepted_present and not shadow_honest:
         status: PromoteGateStatus = "CRITERIA_PENDING"
+        notes.append("expected_missing_accepted_sse_szse")
     elif honest_enough and not pulse_source_accepted:
         status = "PENDING_SERVE_CUTOVER"
         if accepted_present and not shadow_honest:
             notes.append("accepted_v3_ready_legacy_raw_shadow_not_honest")
     elif all_ready:
         # Cutover knife consumed: READY as external_aggregate (not TRUSTED /
-        # project_universe_pit). Fail closed if a later day loses accepted rows.
+        # project_universe_pit). Expected-missing later day stays UNTRUSTED.
         status = "PROMOTED"
         notes.append("promoted_external_aggregate_sse_szse_accepted")
     elif (
@@ -258,9 +319,12 @@ def evaluate_margin_pulse_promote_gate(
 
 
 __all__ = [
+    "AbsenceKind",
     "MarginPulsePromoteConfig",
     "MarginPulsePromoteGateReport",
+    "NORMAL_ABSENCE_KINDS",
     "PromoteGateStatus",
+    "classify_margin_day_absence",
     "evaluate_margin_pulse_promote_gate",
     "load_margin_pulse_promote_config",
 ]

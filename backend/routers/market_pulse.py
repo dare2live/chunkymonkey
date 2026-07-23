@@ -48,6 +48,8 @@ from services.data_access import resolver
 from services.market_pulse_scope import attest_market_pulse_scope
 from services.market_pulse_shadow_reconcile import reconcile_market_pulse_shadow
 from services.margin_pulse_promote_gate import (
+    NORMAL_ABSENCE_KINDS,
+    classify_margin_day_absence,
     evaluate_margin_pulse_promote_gate,
     load_margin_pulse_promote_config,
 )
@@ -101,14 +103,43 @@ def _shadow_reconcile_for_day(conn, trade_date: str) -> dict[str, Any]:
     return payload
 
 
+def _margin_coverage_start() -> str:
+    """v3 accepted obligation floor from sync_registry (fail-open to far future)."""
+    try:
+        from services.data_sources import sync_runner
+
+        registry = sync_runner.load_registry()
+        spec = sync_runner.domain_spec(registry, "margin")
+        contract = (spec.get("dataset_contract") or {}) if isinstance(spec, dict) else {}
+        start = str(contract.get("coverage_start") or "").replace("-", "")
+        if len(start) == 8 and start.isdigit():
+            return start
+    except Exception:  # noqa: BLE001 — pulse API must not crash on registry miss
+        pass
+    return "99999999"
+
+
 def _promote_gate_for_day(conn, trade_date: str, shadow: dict[str, Any]) -> dict[str, Any]:
-    """Product-visible promote gate vs accepted SSE+SZSE; never invents TRUSTED."""
+    """Product-visible promote gate vs accepted SSE+SZSE; never invents TRUSTED.
+
+    Missing accepted rows are classified: pre-coverage / not-yet-eligible /
+    confirmed empty → EMPTY_OK; eligible expected day → UNTRUSTED (real gap).
+    """
     day = str(trade_date or "").replace("-", "")
     cfg = _margin_promote_cfg()
     accepted_rows, acc_issue = pulse_serve.load_accepted_margin_rows_for_shadow(
         conn, day, contract_version=cfg.contract_version
     )
-    # promote_allowed only effective when accepted evidence exists (fail closed).
+    absence_kind = None
+    if not accepted_rows:
+        # Pulse days are nominal trading days; coverage floor is the main
+        # not_expected signal (fixture pre-coverage days → typed EMPTY).
+        absence_kind = classify_margin_day_absence(
+            day,
+            coverage_start=_margin_coverage_start(),
+            is_trading_day=True,
+        )
+    # promote_allowed only when accepted evidence exists (unexpected gap stays closed).
     promote_allowed = bool(cfg.promote_allowed) and bool(accepted_rows)
     report = evaluate_margin_pulse_promote_gate(
         day,
@@ -116,8 +147,11 @@ def _promote_gate_for_day(conn, trade_date: str, shadow: dict[str, Any]) -> dict
         accepted_margin_rows=accepted_rows,
         pulse_source_accepted=bool(cfg.pulse_source_accepted),
         promote_allowed=promote_allowed,
+        absence_kind=absence_kind,
     )
     payload = report.as_dict()
+    if absence_kind is not None:
+        payload["absence_kind"] = absence_kind
     if acc_issue:
         notes = list(payload.get("notes") or [])
         if acc_issue not in notes:
@@ -125,7 +159,10 @@ def _promote_gate_for_day(conn, trade_date: str, shadow: dict[str, Any]) -> dict
         payload["notes"] = notes
     if cfg.promote_allowed and not accepted_rows:
         notes = list(payload.get("notes") or [])
-        notes.append("promote_allowed_config_true_but_accepted_missing_fail_closed")
+        if absence_kind in NORMAL_ABSENCE_KINDS:
+            notes.append("accepted_absent_typed_empty_normal")
+        else:
+            notes.append("accepted_missing_on_eligible_day_untrusted")
         payload["notes"] = notes
     return payload
 
@@ -530,7 +567,8 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
     B-ext: 旁路 ``population_scope`` + ``shadow_reconcile`` 标 legacy breadth
     为 UNTRUSTED。F4: ``promote_gate`` 对 accepted SSE+SZSE 影子+门标准；
     serve cutover + promote 消费后 rzrqye 可 READY（仍 external_aggregate，禁
-    project_universe / 假 TRUSTED）。缺 accepted → fail-closed UNTRUSTED。
+    project_universe / 假 TRUSTED）。应有却缺 → UNTRUSTED；覆盖前/未到期/
+    确认空 → typed EMPTY（正常空，不 scare fail-closed）。
     Phase C: ``tier12_production_read`` 经 ``resolve_tier12_production_read``；
     cutover ON → ACCEPTED_CUTOVER，缺 accept fail-closed → LEGACY。B-pit:
     ``b_pit_mart_production_read`` 经 ``resolve_b_pit_mart_production_read``；
@@ -547,10 +585,17 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
     if latest:
         shadow = _shadow_reconcile_for_day(conn, latest)
         promote_gate = _promote_gate_for_day(conn, latest, shadow)
+        margin_empty = promote_gate.get("status") == "EMPTY_OK"
         scope = attest_market_pulse_scope(
             latest,
             margin_source_accepted=bool(cfg.pulse_source_accepted),
             margin_promoted=promote_gate.get("status") == "PROMOTED",
+            margin_empty=margin_empty,
+            margin_empty_reason=(
+                f"typed_empty_{promote_gate.get('absence_kind')}"
+                if margin_empty
+                else None
+            ),
         ).as_dict()
     else:
         scope = {

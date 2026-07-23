@@ -4,6 +4,10 @@ Legacy ``market_pulse`` marts still read raw daily breadth.  Margin ``rzrqye``
 may be READY as ``external_aggregate`` only after F4 serve→accepted cutover
 (``pulse_source_accepted`` + promote criteria).  Project-universe claims remain
 refused.  This module is read-only: it does not rewrite marts.
+
+Typed empty (owner 2026-07-23): when margin is not expected for the day
+(pre-coverage / not eligible / confirmed empty), ``rzrqye`` is ``EMPTY`` —
+normal absence, not UNTRUSTED fail-closed scare. Unexpected gaps stay UNTRUSTED.
 """
 from __future__ import annotations
 
@@ -11,7 +15,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-TrustStatus = Literal["UNTRUSTED", "BLOCKED", "NOT_EVALUATED", "READY"]
+TrustStatus = Literal["EMPTY", "UNTRUSTED", "BLOCKED", "NOT_EVALUATED", "READY"]
 
 
 @dataclass(frozen=True)
@@ -51,7 +55,14 @@ class MarketPulseScopeReport:
 
 
 def _rank(status: TrustStatus) -> int:
-    order = {"READY": 0, "NOT_EVALUATED": 1, "UNTRUSTED": 2, "BLOCKED": 3}
+    # EMPTY = typed normal absence (OK) — does not scare above READY for margin.
+    order = {
+        "READY": 0,
+        "EMPTY": 0,
+        "NOT_EVALUATED": 1,
+        "UNTRUSTED": 2,
+        "BLOCKED": 3,
+    }
     return order[status]
 
 
@@ -62,12 +73,15 @@ def attest_market_pulse_scope(
     raw_daily_row_count: int | None = None,
     margin_source_accepted: bool = False,
     margin_promoted: bool = False,
+    margin_empty: bool = False,
+    margin_empty_reason: str | None = None,
 ) -> MarketPulseScopeReport:
     """Attest pulse field population scope.
 
     Breadth stays UNTRUSTED (raw).  Margin becomes READY only when serve reads
     accepted SSE+SZSE **and** promote gate consumed (``margin_promoted``).
-    Missing promote evidence → UNTRUSTED with typed reason — never fake READY.
+    Typed empty (not expected / confirmed empty) → EMPTY. Unexpected missing
+    promote evidence → UNTRUSTED — never fake READY.
     """
 
     day = str(trade_date or "").replace("-", "")
@@ -79,8 +93,17 @@ def attest_market_pulse_scope(
             notes=("invalid_trade_date",),
         )
 
-    if margin_promoted and margin_source_accepted:
-        rzrqye_status: TrustStatus = "READY"
+    if margin_empty:
+        reason = margin_empty_reason or "typed_empty_not_expected_or_confirmed"
+        rzrqye_status: TrustStatus = "EMPTY"
+        rzrqye_reason = (
+            f"{reason}; normal_absence_not_fail_closed; "
+            "not_project_universe_pit"
+        )
+        rzrqye_surface = "tr.canonical_margin_exchange_daily"
+        chg_reason = "derived_from_typed_empty_rzrqye_normal_absence"
+    elif margin_promoted and margin_source_accepted:
+        rzrqye_status = "READY"
         rzrqye_reason = (
             "accepted_sse_szse_external_aggregate_promoted; "
             "not_project_universe_pit"
@@ -134,7 +157,9 @@ def attest_market_pulse_scope(
         "breadth_untrusted_raw_until_project_universe_cutover",
         "no_consumer_payload_rewrite_by_scope_attestation",
     ]
-    if margin_promoted and margin_source_accepted:
+    if margin_empty:
+        notes.append("rzrqye_typed_empty_normal_absence")
+    elif margin_promoted and margin_source_accepted:
         notes.append("rzrqye_promoted_external_aggregate_sse_szse")
     else:
         notes.append("rzrqye_untrusted_until_promote_consumed")

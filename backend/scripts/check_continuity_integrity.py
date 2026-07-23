@@ -6,6 +6,17 @@ block_trade 20250917 中间空洞) + 根因4 (SLA 只测"最近动过"不测"该
 2008-2021 仅 5-15% 覆盖)。把一次性审计 (data_foundation_audit_20260703.json continuity 部分)
 固化为 sync_registry 全域驱动的常驻机械门。
 
+语义 (owner 2026-07-23 — 对齐「预期空=正常」):
+  PASS / typed OK   应有交易日全在库; 或空洞已按类型豁免:
+                    trading calendar 外本就不期望 (周末/休市不进 expected);
+                    known_empty_days = 实测 vendor 真空墓碑;
+                    hk_holidays = SSE 开市但北向关闭日 (yaml 日历);
+                    event_sparse = 事件稀疏域中间空日正常 (尾部 SLA 仍绑).
+  WARN              annotate 遗留诚实告警 (优先改 typed 豁免, 禁 mute checker).
+  FAIL              **非预期**空洞: 该有数的交易日本地缺且未豁免
+                    (例: 非港股假期的 hsgt 空洞; 「日历外」= 豁免日历外的真缺).
+  不停牌股无成交、非交易日无 K 线 ≠ Continuity FAIL — 那些本就不在 expected。
+
 六类检测 (--only 单跑):
   calendar_gaps      日历缺日 (by_trade_date/by_date_range 域): data_start→最新应有交易日逐日对
                      dim_trading_calendar。中间空洞 = FAIL (间歇空响应指纹); 尾部缺日超 SLA = FAIL,
@@ -281,7 +292,11 @@ def check_calendar_gaps(
     *,
     accepted_state=None,
 ) -> dict:
-    """data_start→latest_expected 逐交易日对账: 中间空洞=FAIL / 尾部超 SLA=FAIL / 墓碑排除.
+    """data_start→latest_expected 逐交易日对账.
+
+    expected = dim_trading_calendar 交易日 (周末/休市本就不进集合 = 正常空).
+    known_empty_days / hk_holidays / event_sparse = 预期空 typed OK.
+    中间非豁免空洞 = FAIL (应有却缺); 尾部超 SLA = FAIL; 尾部未超 = OK.
 
     gap_tolerance:
       none         — interior FAIL
