@@ -99,6 +99,10 @@ Rebuild: `build_profiles` only, ~0.54s; `profiles=122464`, `profile_dims=416366`
 
 Label: **FIXED** for deep-linkable coverage ≈ episode coverage on HS-A latest top10. Residual 55 no-episode names stay out of scope for this knife.
 
+### Appendix — episode catch-up (same day)
+
+Ops rebuild cleared the 55 residual (stale `period_windows`/`fact_inst_episode`, not profile filter). Live after `rebuild_all()`: latest HS-A top10 **no_episode=0**, profile≥episode still holds. Evidence + re-run: `analysis/inst_episode_rebuild_catchup_20260723.md`.
+
 ---
 
 ## Tests
