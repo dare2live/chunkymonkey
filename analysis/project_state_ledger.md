@@ -3141,9 +3141,26 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - Fix：`manual_job_wrapper` 对 rc=1+degraded flag 跳过 FAIL 横幅；`dispatcher --skip-macos`；`store._degraded_summary` 附 SLA 摘要。硬挡 rc=4/5 仍通知。
 - Evidence：`analysis/daily_update_notification_spam_triage_20260722.md`；tests `test_manual_job_wrapper` / `test_notification_dispatcher_skip_macos`。
 
+### 2026-07-23 — shareholder/org update-check audit (no code knife)
+- Q：daily_update 是否应逐公司扫最新股东公告？
+- Audit：holders = canonical `notice_date` watermark + provider UPDATE_DATE probe + `_affected_stocks_since` 稀疏 per-code（已 ship）；org = `org_holding_period_gap_report` by-period（无 NOTICE_DATE；mass/by-date invent banned）；CX-2 sensors = post-land only。
+- Occam：禁 daily 全宇宙逐公司扫；不开新 acquire 刀；org 期内晚披露 = 显式 repair 门（miss ledger 等证据后）。
+- Evidence：`analysis/shareholder_update_check_design_20260723.md`；FOR/AGAINST composer-2.5-fast；MASTER/DOC_AUTHORITY 轻指针。
+
 ### 2026-07-23 — holders coverage alignment (notice frontier canary)
 
 - Evidence: `analysis/holders_stock_coverage_alignment_20260723.md` (**GAPS→HS_A ALIGNED**).
 - Canary: provider max=`20260723`=local wm date, but same-day late filers missing (**16** HS_A code×notice in `UPDATE_DATE≥2026-07-16`).
 - Sparse repair: `ingest_holders_aif10.py --symbols` 16 codes; ok=16 fail=0; post HS_A miss=0; BSE 12 pairs OUT_OF_SCOPE (∉ dim).
-- No mass / no org / no Optuna. Residual: `watermark_unchanged` skip hides same-day lag.
+- No mass / no org / no Optuna. Residual (planner): `provider_max≤wm` skip hid same-day lag → **FIXED** `e040f4889` (see next entry).
+
+### 2026-07-23 — holders equal-wm same-day sparse + frontier-detection map
+- Fix `e040f4889`: `sync_holders_aif10_incremental` skip only `provider_max < wm`; `==wm` → sparse miss probe vs local `notice_date` codes; empty → `same_day_coverage_complete`. Path = `acquire._sync_holders_aif10` every daily_update (**system**, not agent one-off).
+- Map: `analysis/data_frontier_detection_system_20260723.md` — registry has typed batch_mode / narrow `availability_policy`; **no** unified population-gap framework; PARTIAL: by_ann_date equal-day skip, org期内, disclosure旁路.
+- Pointers: DOC_AUTHORITY + PROJECT_INDEX Holders 行.
+
+### 2026-07-23 — unified frontier detection primitive + by_ann_date ann_reprobe
+- Ship `backend/services/data_sources/frontier_decision.py`: typed compare outcomes + `plan_incremental_days` policies (`atomic_skip` / `ann_reprobe`); org hook remaps period-equal → skip (no by-date invent).
+- Wire: holders incremental via `decide_frontier(notice_date)`; sync_runner `by_ann_date` keeps wm day on equal/advance; `by_trade_date` unchanged semantics via same primitive.
+- Tests blocking: `test_frontier_decision.py` + `test_by_ann_date_equal_day_reprobe.py`; holders equal-day branches green.
+- Acceptance: `analysis/unified_frontier_detection_acceptance_20260723.md`; map updated. Residual: G4/G5, by_trade_date equal-day evidence gate, org期内 repair.

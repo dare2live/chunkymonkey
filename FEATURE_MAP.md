@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-23 08:33
+> Snapshot: 2026-07-23 09:58
 
 ## 1. 入口面
 
@@ -171,14 +171,14 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 9,530 | calls 边 11,299 | imports 边 3,165 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,581 | calls 边 11,347 | imports 边 3,177 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
 | services.duck_adapter | 67 |
-| services.data_sources | 27 |
+| services.data_sources | 28 |
 | services.universe | 22 |
 | services.data_sources.security_day_partition | 19 |
 | services.data_sources.accepted_schema | 18 |
@@ -187,8 +187,8 @@
 | services.data_sources.holders_top10_schema | 14 |
 | services.data_sources.margin_schema | 14 |
 | services.database_manifest | 14 |
+| services.source_watermarks | 14 |
 | services.data_sources.nominal_ohlcv_schema | 13 |
-| services.source_watermarks | 13 |
 | services.data_sources.calendar_schema | 12 |
 | services.tier12_publish_writer | 12 |
 | services.data_access | 11 |
@@ -200,7 +200,7 @@
 | backend/services/duck_adapter.py | 32 |
 | backend/services/universe.py | 18 |
 | backend/services/institution_follow_edge_gates.py | 17 |
-| backend/services/source_watermarks.py | 13 |
+| backend/services/source_watermarks.py | 14 |
 | backend/services/data_sources/disclosure_boundaries.py | 11 |
 | backend/services/database_manifest.py | 11 |
 | backend/services/data_sources/contracts.py | 9 |
@@ -214,7 +214,7 @@
 
 | 文件 | 行数 |
 |---|---|
-| backend/services/data_sources/sync_runner.py | 4082 |
+| backend/services/data_sources/sync_runner.py | 4102 |
 | backend/services/market_pulse.py | 1540 |
 | backend/scripts/check_continuity_integrity.py | 999 |
 | backend/services/pipeline/acquire.py | 800 |

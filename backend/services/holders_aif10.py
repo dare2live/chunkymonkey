@@ -636,12 +636,19 @@ def sync_holders_aif10_incremental(
     """
     from aif10_scraper import default_client
     client = default_client
+    from services.data_sources.frontier_decision import decide_frontier
+
     wm, wm_source = formal_holders_watermark(conn)   # YYYYMMDD, formal frontier
     base = wm or fallback_since                        # 存量空 (未backfill) → 回退起点
     since_date = (datetime.strptime(base, "%Y%m%d") - timedelta(days=safety_days)).strftime("%Y-%m-%d")
     provider_max = _provider_newest_update_date(client)
+    frontier = decide_frontier(
+        axis="notice_date",
+        local_max=wm,
+        target_max=provider_max,
+    )
     # Strictly behind formal: nothing new to probe (re-click heartbeat).
-    if wm and provider_max and provider_max < wm:
+    if frontier.outcome == "skip_behind":
         print(
             f"holders_aif10: skip watermark_unchanged wm={wm} "
             f"provider_max={provider_max} source={wm_source}"
@@ -655,7 +662,7 @@ def sync_holders_aif10_incremental(
         )
     # Equal frontier: early filers already advanced wm; late same-day notices
     # still need a sparse miss probe (not safety-window mass rewrite).
-    if wm and provider_max and provider_max == wm:
+    if frontier.outcome == "equal_day_population_gap":
         same_day_iso = _yyyymmdd_to_iso(wm)
         provider_codes = _affected_stocks_since(client, same_day_iso)
         local_codes = _local_stock_codes_for_notice_date(conn, wm)

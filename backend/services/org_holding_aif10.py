@@ -585,6 +585,17 @@ def org_holding_period_gap_report(
     else:
         action = "fetch_then_accept"
         status = "plannable_missing"
+    # Optional typed frontier hook for future repair tooling only.
+    # Period equal → skip_behind remap (existence), never by-date population invent.
+    from services.data_sources.frontier_decision import org_holding_period_frontier_hook
+
+    local_max_period = target if local_has else (
+        max(local_norm) if local_norm else None
+    )
+    frontier = org_holding_period_frontier_hook(
+        local_max_period=local_max_period,
+        plannable_period=target,
+    )
     return {
         "plannable": target,
         "local_has_plannable": local_has,
@@ -597,6 +608,8 @@ def org_holding_period_gap_report(
         "next_period_unlock": next_unlock,
         "action": action,
         "status": status,
+        "frontier_outcome": frontier.outcome,
+        "frontier_reason": frontier.reason,
     }
 
 

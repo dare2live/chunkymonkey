@@ -52,6 +52,10 @@ from services.data_sources.batch_integrity import (
     BatchCompletenessError,
     complete_batch_dates,
 )
+from services.data_sources.frontier_decision import (
+    decide_frontier,
+    plan_incremental_days,
+)
 from services.data_sources.runtime_limits import (
     apply_fetch_socket_timeout,
     fetch_socket_timeout_seconds,
@@ -2976,14 +2980,22 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         end_d = _operation_end()
         days = trading_days(start_d, end_d) if end_d else []
         _warn_if_clamped(domain, start_d, days)
-        # 增量模式跳过 watermark 当天 (已写过) — 仅当调用方未显式给 --start (即 start_d 来自
-        # watermark 自动续拉) 才跳。2026-07-06 修复 (全面数据审计引出的独立新 bug, stk_limit
-        # page_limit 回填实测复现): 原判据 `days[0] == (start or wm)` 在调用方显式传 --start
-        # 时恒真 (days[0] 本就是由 start_d=start 算出), 导致任何手工 `--start X --end Y` 范围
-        # 回填都静默丢第一天。手工回填必须完整覆盖调用方要求的区间, 不能被"跳 watermark 当天"
-        # 语义误伤。
-        if not backfill and start is None and len(days) > 1 and days[0] == (wm or ""):
-            days = days[1:]
+        # Dense trade-date: atomic_skip via shared frontier primitive.
+        # Pattern = 存量最新日(wm) + 交易日历应拉日(end_d), 不是 wall-clock「对昨天」。
+        # Explicit --start / backfill keep the full requested window (2026-07-06).
+        trade_decision = decide_frontier(
+            axis="trade_date",
+            local_max=wm,
+            target_max=end_d,
+        )
+        days = plan_incremental_days(
+            days,
+            watermark=wm,
+            decision=trade_decision,
+            policy="atomic_skip",
+            explicit_start=start is not None,
+            backfill=backfill,
+        )
         # date_param: API 日期参数名 (默认 trade_date; dividend 用 ex_date / report_rc 用
         # report_date — 锚定列同名, raw 表镜像后 drain 也按它扫 gap)
         date_param = spec.get("date_param", "trade_date")
@@ -3003,7 +3015,10 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     elif spec["batch_mode"] == "by_ann_date":
         # 按公告日抓全市场 (十大股东 etc): tushare 支持 ann_date 查全市场, 覆盖季报披露 + ad-hoc 非季末更新
         # (实测 600388 报告期 20231011=非季末 ad-hoc; 全库 1810 非季末期/2902股)。watermark=最新已抓公告日,
-        # 增量抓 (watermark, today] 全日历日 (公告日含周末); 峰值日 6000 截断由 _fetch_paged page_limit 分页。
+        # 增量抓 [watermark, eligible_end] 全日历日 (公告日含周末); 峰值日 6000 截断由 _fetch_paged
+        # page_limit 分页。equal/advance 保留 wm 当天全日批重拉 (稀疏晚披露, e040f4889 同型)。
+        wm = None
+        pending_start = None
         if backfill:
             start_d = start or spec["data_start"]
         else:
@@ -3014,19 +3029,24 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             replaying_open_failure = pending_start is not None and start is None
         end_d = _operation_end()
         days = _calendar_days(start_d, end_d) if end_d else []
-        # 增量跳 watermark 当天 — 仅当调用方未显式给 --start 才跳 (2026-07-10 修复: 与
-        # by_trade_date 分支 2026-07-06 同款 bug 的 by_ann_date 残留 — 原判据 `days[0] ==
-        # (start or wm)` 在显式传 --start 时恒真, 手工范围回填静默丢第一天; 实测 ths_hot
-        # --start 20260321 --end 20260322 两天只跑一批丢周六。当时只修了 by_trade_date 分支,
-        # 同型判据散落两处未一并修 = 本次教训)。
-        if (
-            not backfill
-            and start is None
-            and len(days) > 1
-            and days[0] == (wm or "")
-            and days[0] != (pending_start or "")
-        ):
-            days = days[1:]
+        # Sparse ann/disclosure domains: ann_reprobe via shared frontier primitive.
+        # Equal/advance keeps watermark day (cheap full-day re-pull) — same bug class as
+        # holders equal-wm late filers (e040f4889). Never permanent-skip wm day.
+        # Explicit --start / backfill still keep full requested window (2026-07-10).
+        ann_decision = decide_frontier(
+            axis="ann_date",
+            local_max=wm,
+            target_max=end_d,
+        )
+        days = plan_incremental_days(
+            days,
+            watermark=wm,
+            decision=ann_decision,
+            policy="ann_reprobe",
+            explicit_start=start is not None,
+            backfill=backfill,
+            pending_replay_day=pending_start,
+        )
         replaying_open_failure = bool(
             pending_start and pending_start in set(days)
         ) if not backfill else False
