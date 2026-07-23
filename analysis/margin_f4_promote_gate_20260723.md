@@ -1,30 +1,35 @@
-# Margin F4 / 1c — rzrqye promote gate（2026-07-23）
+# Margin F4 / 1c — pulse serve→accepted cutover（2026-07-23）
 
-> evidence-only；FOUNDATION F4。禁 fake TRUSTED / silent thaw。
+> evidence-only；FOUNDATION F4。禁 fake TRUSTED / silent thaw / Continuity mute。
+
+## Root cause（owner: 不够应补，不是关）
+
+| 症状 | 根因 |
+|---|---|
+| gate=`PENDING_SERVE_CUTOVER` | builder/serve 仍读 `raw_tushare_margin` |
+| mart rzrqye NULL on 20260717–22 | **raw 空**；accepted v3 SSE+SZSE **有数** |
+| 假「证据不足」 | 证据在 accepted；路径未切 — fail-closed 被当成终点 |
 
 ## Before → after
 
-| | product rzrqye | shadow | promote path |
-|---|---|---|---|
-| before | UNTRUSTED（永久停） | raw venue shadow only | optional / 不动 |
-| after | **仍 UNTRUSTED**（诚实） | + accepted SSE+SZSE loader | **typed `promote_gate` 产品可见** |
+| | builder source | shadow input | promote | rzrqye field |
+|---|---|---|---|---|
+| before | raw (可含 BSE；v3 日空) | raw → BLOCKED | PENDING_SERVE_CUTOVER | 永久 UNTRUSTED |
+| after | **accepted SSE+SZSE**（prefer v3，缺则回退有双所的更高/其它 generation） | **accepted** | **PROMOTED** when day has accepted | **READY** as `external_aggregate` |
 
-Live sentiment sidecar now returns `promote_gate` with status ∈
-`CRITERIA_PENDING | SHADOW_EXTERNAL_HONEST | PENDING_SERVE_CUTOVER | READY_TO_PROMOTE | BLOCKED`.
+缺 accepted 的日：仍 UNTRUSTED + typed remaining（fail closed）；不回退 raw 假填。Rebuild 不抹 v2 历史。
 
-## What moved toward trust
+## Config
 
-1. `load_accepted_margin_rows_for_shadow` — canonical v3 SSE+SZSE
-2. `evaluate_margin_pulse_promote_gate` — explicit criteria checklist
-3. `/api/v3/pulse/sentiment` exposes `promote_gate`（不改 mart 数值）
-4. Gate **never** sets `product_trust_would_be=TRUSTED`；READY_TO_PROMOTE 仍 UNTRUSTED until separate cutover knife
+`backend/config/margin_pulse_promote.yaml`:
+- `pulse_source_accepted: true`
+- `promote_allowed: true`（router 仅当 runtime accepted 在场才生效）
+- `contract_version: "3"`（preferred；非 exclusive pin）
 
-## Remaining（next promote cutover knife — not this commit）
+## Not TRUSTED
 
-1. Pulse serve/builder 切到 accepted SSE+SZSE（`pulse_source_accepted=True`）— 今日仍读 raw（可含 BSE）
-2. Explicit `promote_allowed` config/yaml（默认 False）
-3. Only then typed field status READY **as external_aggregate**（仍拒绝 project_universe_pit）
+READY ≠ project_universe_pit；`refuse_project_universe_claim` 仍硬墙。breadth 仍 UNTRUSTED → overall_status 可仍 UNTRUSTED。
 
 ## Tests
 
-`test_margin_pulse_promote_gate` + sentiment API promote_gate assertions.
+`test_margin_pulse_promote_gate` + scope + sentiment API + market_pulse builder fixtures seed canonical.

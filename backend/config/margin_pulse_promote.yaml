@@ -1,0 +1,27 @@
+# margin_pulse_promote.yaml — F4 pulse serve→accepted cutover (rzrqye)
+#
+# Owner: docs/MASTER_TOPLEVEL_DESIGN.md (Tier0 external_aggregate) + goal.md F4
+# Pulse builder + sentiment promote_gate must call load_margin_pulse_promote_config
+# before treating rzrqye as accepted external_aggregate.
+#
+# Hard gates:
+#   - OWNER OPT-IN 2026-07-23: pulse_source_accepted=true after live probe proved
+#     accepted v3 SSE+SZSE present while raw_tushare_margin empty for those days
+#     (mart rzrqye NULL) — root cause = serve still on raw, not missing evidence
+#   - promote_allowed=true only with that evidence; runtime still fail-closed when
+#     accepted core venues absent for the day (UNTRUSTED + typed remaining)
+#   - population_kind stays external_aggregate; project_universe_pit still refused
+#   - never silent thaw; MATCH/shadow alone never flips these flags
+
+meta:
+  version: 1
+  phase: F4
+  notes: >-
+    serve→accepted SSE+SZSE cutover; owner opt-in 2026-07-23;
+    live accepted n=4 since coverage_start=20260717; raw empty on those days
+
+margin_pulse_promote:
+  pulse_source_accepted: true
+  promote_allowed: true
+  # Preferred generation; builder/shadow fall back to older SSE+SZSE gens per day.
+  contract_version: "3"

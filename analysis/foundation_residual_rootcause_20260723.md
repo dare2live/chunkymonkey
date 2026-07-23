@@ -36,8 +36,8 @@
 | R1a | Continuity `warn_interior_gaps` **moneyflow_hsgt** | was annotate；now typed `hk_holidays` + `hk_northbound_closed_days.yaml` | **不再 WARN**（日历外空洞仍 FAIL） | **D**（已 FIXED F1） | **不动**（已修） |
 | R1b | Continuity `warn_interior_gaps` **dividend** | was annotate；now typed `event_sparse` | **不再 WARN**（尾部 SLA 仍 FAIL） | **D**（已 FIXED F1） | **不动**（已修） |
 | R2 | Holders landing **~32×** 同 `row_hash` | 历史堆；skip-land 已关复发 | **堆已清**（7.17M→236k；compact 4.3 GiB） | **D**（F3 FIXED） | **不动**（已修） |
-| R3 | F4 margin pulse **1c shadow** | promote_gate 已落地；serve 仍 raw | 日常不制造错误；**下一刀**=pulse→accepted | **B→PARTIAL** | **继续** serve cutover |
-| R4 | Product **rzrqye UNTRUSTED** | external_aggregate；gate=PENDING_SERVE_CUTOVER | 仍 UNTRUSTED（正确）直到 promote | **B** | **禁假 TRUSTED**；跟 R3 |
+| R3 | F4 margin pulse **1c shadow** | **FIXED** serve→accepted；gate=PROMOTED on accepted days | 日常走 accepted 路径 | **D** | **不动**（已修） |
+| R4 | Product **rzrqye** | READY as external_aggregate when promoted；缺 accepted 日 UNTRUSTED | 诚实 | **B** | **禁假 TRUSTED** / project_universe |
 | R5 | F7 Type-B enrichment | DEFER：registry in-scheme 够近端 | 不 defer 也不会在 daily 上「坏掉」；是产品/研究后置 | **B** / 清单上 **D** | **不进 100%**；DEFER |
 | R6 | F8 qfq incremental write | later：今日 full CTAS+in-module compact 已 ops-safe | 每次 qfq rebuild 仍 CTAS（已知）；compact 钩已防 free-block 复发。**增量写 = 产品优化，非正确性债** | **B**/可选优化；清单 **D** | **不进 100%**；勿用「定期 compact」冒充增量语义 |
 
@@ -62,7 +62,7 @@
 | F1 annotate 残留 | PARTIAL 诚实保留 | **B** | **KEEP** — 计入「诚实 OK」，不计失败 |
 | F2 | CLOSED | — | 不变 |
 | F3 retention | later L3 | **C** | **optional hygiene** — 不挡 100% usable |
-| F4 / rzrqye | optional / UNTRUSTED | **B** | **KEEP UNTRUSTED** — 不挡 |
+| F4 / rzrqye | PROMOTED / READY external_aggregate | **D→B** | **FIXED serve cutover**；缺日仍 UNTRUSTED |
 | F5 | FIXED | — | 不变 |
 | F7 / F8 | DEFER / later | **B**→清单 **D** | **out of 100% usable bar** |
 

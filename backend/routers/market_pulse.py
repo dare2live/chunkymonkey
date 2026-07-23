@@ -47,7 +47,10 @@ from services.duck_adapter import connect as duck_connect
 from services.data_access import resolver
 from services.market_pulse_scope import attest_market_pulse_scope
 from services.market_pulse_shadow_reconcile import reconcile_market_pulse_shadow
-from services.margin_pulse_promote_gate import evaluate_margin_pulse_promote_gate
+from services.margin_pulse_promote_gate import (
+    evaluate_margin_pulse_promote_gate,
+    load_margin_pulse_promote_config,
+)
 from services.market_pulse_b_pit_read import attest_pulse_b_pit_mart_production_read
 from services.market_pulse_tier12_read import attest_pulse_tier12_production_read
 
@@ -60,20 +63,34 @@ _TIER12_CONFIG_PATH = None
 _B_PIT_ARTIFACT_ROOT = None
 _B_PIT_CUTOVER_CONFIG = None
 _B_PIT_CONFIG_PATH = None
-# F4: explicit promote flag — default False; never silent thaw.
-_MARGIN_PROMOTE_ALLOWED = False
-_MARGIN_PULSE_SOURCE_ACCEPTED = False
+# F4: test overrides; production loads margin_pulse_promote.yaml (fail-closed defaults).
+_MARGIN_PROMOTE_CFG = None
+
+
+def _margin_promote_cfg():
+    if _MARGIN_PROMOTE_CFG is not None:
+        return _MARGIN_PROMOTE_CFG
+    return load_margin_pulse_promote_config()
 
 
 def _shadow_reconcile_for_day(conn, trade_date: str) -> dict[str, Any]:
     """Read-only shadow for one day; fail-closed if margin L0 is unavailable.
 
-    Never rewrites mart numbers; attestation-only (does not flip mart cutover).
+    When serve cutover is on, shadow uses accepted SSE+SZSE (the serve surface)
+    so empty raw no longer blocks promote. Never rewrites mart numbers.
     """
     day = str(trade_date or "").replace("-", "")
     if len(day) != 8 or not day.isdigit():
         return reconcile_market_pulse_shadow(str(trade_date)).as_dict()
-    margin_rows, issue = pulse_serve.load_margin_rows_for_shadow(conn, day)
+    cfg = _margin_promote_cfg()
+    if cfg.pulse_source_accepted:
+        margin_rows, issue = pulse_serve.load_accepted_margin_rows_for_shadow(
+            conn, day, contract_version=cfg.contract_version
+        )
+        if issue is None and not margin_rows:
+            issue = "accepted_margin_empty_for_day"
+    else:
+        margin_rows, issue = pulse_serve.load_margin_rows_for_shadow(conn, day)
     report = reconcile_market_pulse_shadow(day, margin_rows=margin_rows)
     payload = report.as_dict()
     if issue:
@@ -85,21 +102,30 @@ def _shadow_reconcile_for_day(conn, trade_date: str) -> dict[str, Any]:
 
 
 def _promote_gate_for_day(conn, trade_date: str, shadow: dict[str, Any]) -> dict[str, Any]:
-    """Product-visible promote gate vs accepted SSE+SZSE; never flips TRUSTED."""
+    """Product-visible promote gate vs accepted SSE+SZSE; never invents TRUSTED."""
     day = str(trade_date or "").replace("-", "")
-    accepted_rows, acc_issue = pulse_serve.load_accepted_margin_rows_for_shadow(conn, day)
+    cfg = _margin_promote_cfg()
+    accepted_rows, acc_issue = pulse_serve.load_accepted_margin_rows_for_shadow(
+        conn, day, contract_version=cfg.contract_version
+    )
+    # promote_allowed only effective when accepted evidence exists (fail closed).
+    promote_allowed = bool(cfg.promote_allowed) and bool(accepted_rows)
     report = evaluate_margin_pulse_promote_gate(
         day,
         shadow=shadow,
         accepted_margin_rows=accepted_rows,
-        pulse_source_accepted=_MARGIN_PULSE_SOURCE_ACCEPTED,
-        promote_allowed=_MARGIN_PROMOTE_ALLOWED,
+        pulse_source_accepted=bool(cfg.pulse_source_accepted),
+        promote_allowed=promote_allowed,
     )
     payload = report.as_dict()
     if acc_issue:
         notes = list(payload.get("notes") or [])
         if acc_issue not in notes:
             notes.append(acc_issue)
+        payload["notes"] = notes
+    if cfg.promote_allowed and not accepted_rows:
+        notes = list(payload.get("notes") or [])
+        notes.append("promote_allowed_config_true_but_accepted_missing_fail_closed")
         payload["notes"] = notes
     return payload
 
@@ -501,13 +527,15 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
     + v2 连板天梯/晋级率/秒板/封单/两融/大盘PE换手/龙虎榜。
     缺源日字段 = null (不知道≠0, 引擎口径), 前端按缺口断线展示。
 
-    B-ext: 旁路 ``population_scope`` + ``shadow_reconcile`` 标 legacy breadth/margin
-    为 UNTRUSTED。F4: ``promote_gate`` 对 accepted SSE+SZSE 影子+门标准
-    （产品可见；不自动 TRUSTED）。Phase C: ``tier12_production_read`` 经
-    ``resolve_tier12_production_read``；cutover ON → ACCEPTED_CUTOVER，缺 accept
-    fail-closed → LEGACY。B-pit: ``b_pit_mart_production_read`` 经
-    ``resolve_b_pit_mart_production_read``；cutover ON → MART_CUTOVER，窗外/缺影
-    fail-closed → LEGACY mart。``days`` 数值不改。
+    B-ext: 旁路 ``population_scope`` + ``shadow_reconcile`` 标 legacy breadth
+    为 UNTRUSTED。F4: ``promote_gate`` 对 accepted SSE+SZSE 影子+门标准；
+    serve cutover + promote 消费后 rzrqye 可 READY（仍 external_aggregate，禁
+    project_universe / 假 TRUSTED）。缺 accepted → fail-closed UNTRUSTED。
+    Phase C: ``tier12_production_read`` 经 ``resolve_tier12_production_read``；
+    cutover ON → ACCEPTED_CUTOVER，缺 accept fail-closed → LEGACY。B-pit:
+    ``b_pit_mart_production_read`` 经 ``resolve_b_pit_mart_production_read``；
+    cutover ON → MART_CUTOVER，窗外/缺影 fail-closed → LEGACY mart。``days``
+    数值不改。
     """
     rows = conn.execute(f"""
         SELECT {', '.join(_SENTIMENT_COLS)} FROM (
@@ -515,10 +543,15 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
         ORDER BY trade_date ASC""", [days]).fetchall()
     day_rows = [dict(zip(_SENTIMENT_COLS, r)) for r in rows]
     latest = str(day_rows[-1]["trade_date"]) if day_rows else ""
+    cfg = _margin_promote_cfg()
     if latest:
-        scope = attest_market_pulse_scope(latest).as_dict()
         shadow = _shadow_reconcile_for_day(conn, latest)
         promote_gate = _promote_gate_for_day(conn, latest, shadow)
+        scope = attest_market_pulse_scope(
+            latest,
+            margin_source_accepted=bool(cfg.pulse_source_accepted),
+            margin_promoted=promote_gate.get("status") == "PROMOTED",
+        ).as_dict()
     else:
         scope = {
             "trade_date": "",
@@ -532,8 +565,8 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
             "",
             shadow=shadow,
             accepted_margin_rows=(),
-            pulse_source_accepted=_MARGIN_PULSE_SOURCE_ACCEPTED,
-            promote_allowed=_MARGIN_PROMOTE_ALLOWED,
+            pulse_source_accepted=bool(cfg.pulse_source_accepted),
+            promote_allowed=False,
         ).as_dict()
     tier12 = attest_pulse_tier12_production_read(
         latest,

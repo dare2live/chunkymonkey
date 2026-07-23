@@ -21,7 +21,7 @@ def test_legacy_pulse_fields_are_untrusted_external_or_raw() -> None:
     assert by_field["rzrqye"].population_kind == "external_aggregate"
     assert by_field["rzrqye_chg"].status == "UNTRUSTED"
     assert "margin_sum_includes_BSE_external_venue" in report.notes
-    assert "legacy_market_pulse_mart_untrusted_until_shadow_cutover" in report.notes
+    assert "rzrqye_untrusted_until_promote_consumed" in report.notes
 
 
 def test_missing_optional_evidence_still_untrusted_never_ready() -> None:
@@ -29,6 +29,35 @@ def test_missing_optional_evidence_still_untrusted_never_ready() -> None:
     assert report.overall_status == "UNTRUSTED"
     assert report.overall_status != "READY"
     assert all(item.status == "UNTRUSTED" for item in report.fields)
+
+
+def test_promoted_rzrqye_ready_breadth_still_untrusted() -> None:
+    report = attest_market_pulse_scope(
+        "20260722",
+        margin_exchange_ids=("SSE", "SZSE"),
+        margin_source_accepted=True,
+        margin_promoted=True,
+    )
+    by_field = {item.field: item for item in report.fields}
+    assert by_field["rzrqye"].status == "READY"
+    assert by_field["rzrqye"].population_kind == "external_aggregate"
+    assert by_field["rzrqye"].source_surface == "tr.canonical_margin_exchange_daily"
+    assert by_field["adv_dec_ratio"].status == "UNTRUSTED"
+    # overall stays UNTRUSTED while breadth is raw
+    assert report.overall_status == "UNTRUSTED"
+    assert "rzrqye_promoted_external_aggregate_sse_szse" in report.notes
+
+
+def test_serve_accepted_without_promote_stays_untrusted() -> None:
+    report = attest_market_pulse_scope(
+        "20260722",
+        margin_source_accepted=True,
+        margin_promoted=False,
+    )
+    by_field = {item.field: item for item in report.fields}
+    assert by_field["rzrqye"].status == "UNTRUSTED"
+    assert "promote_gate_not_consumed" in by_field["rzrqye"].reason
+    assert report.overall_status == "UNTRUSTED"
 
 
 def test_refuse_project_universe_claim_on_legacy_pulse() -> None:

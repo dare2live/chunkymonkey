@@ -1,9 +1,9 @@
 """Phase B-ext: population-scope attestation for market pulse surfaces.
 
-Legacy ``market_pulse`` marts still read raw daily + raw margin (including BSE).
-Until shadow evidence supports cutover, those fields are ``UNTRUSTED`` for any
-``project_universe_pit`` claim.  This module is read-only: it does not rewrite
-marts or change consumer payloads.
+Legacy ``market_pulse`` marts still read raw daily breadth.  Margin ``rzrqye``
+may be READY as ``external_aggregate`` only after F4 serve→accepted cutover
+(``pulse_source_accepted`` + promote criteria).  Project-universe claims remain
+refused.  This module is read-only: it does not rewrite marts.
 """
 from __future__ import annotations
 
@@ -60,12 +60,14 @@ def attest_market_pulse_scope(
     *,
     margin_exchange_ids: Sequence[str] | None = None,
     raw_daily_row_count: int | None = None,
+    margin_source_accepted: bool = False,
+    margin_promoted: bool = False,
 ) -> MarketPulseScopeReport:
-    """Attest that legacy pulse fields must not be treated as project-universe.
+    """Attest pulse field population scope.
 
-    Optional evidence inputs document live wrong-scope facts (BSE in margin
-    sum; raw daily breadth).  Missing optional evidence still yields UNTRUSTED
-    for the known raw surfaces — never READY.
+    Breadth stays UNTRUSTED (raw).  Margin becomes READY only when serve reads
+    accepted SSE+SZSE **and** promote gate consumed (``margin_promoted``).
+    Missing promote evidence → UNTRUSTED with typed reason — never fake READY.
     """
 
     day = str(trade_date or "").replace("-", "")
@@ -76,6 +78,31 @@ def attest_market_pulse_scope(
             fields=(),
             notes=("invalid_trade_date",),
         )
+
+    if margin_promoted and margin_source_accepted:
+        rzrqye_status: TrustStatus = "READY"
+        rzrqye_reason = (
+            "accepted_sse_szse_external_aggregate_promoted; "
+            "not_project_universe_pit"
+        )
+        rzrqye_surface = "tr.canonical_margin_exchange_daily"
+        chg_reason = "derived_from_promoted_accepted_rzrqye_external_aggregate"
+    elif margin_source_accepted:
+        rzrqye_status = "UNTRUSTED"
+        rzrqye_reason = (
+            "pulse_source_accepted_but_promote_gate_not_consumed; "
+            "stay_untrusted_until_criteria_pass"
+        )
+        rzrqye_surface = "tr.canonical_margin_exchange_daily"
+        chg_reason = "derived_from_untrusted_rzrqye_pending_promote"
+    else:
+        rzrqye_status = "UNTRUSTED"
+        rzrqye_reason = (
+            "margin_is_venue_reported_external_aggregate; "
+            "must not masquerade as project_universe_pit"
+        )
+        rzrqye_surface = "tr.raw_tushare_margin"
+        chg_reason = "derived_from_untrusted_rzrqye_external_aggregate"
 
     fields: list[PulseFieldScopeAttestation] = [
         PulseFieldScopeAttestation(
@@ -90,26 +117,27 @@ def attest_market_pulse_scope(
         ),
         PulseFieldScopeAttestation(
             field="rzrqye",
-            status="UNTRUSTED",
+            status=rzrqye_status,
             population_kind="external_aggregate",
-            reason=(
-                "margin_is_venue_reported_external_aggregate; "
-                "must not masquerade as project_universe_pit"
-            ),
-            source_surface="tr.raw_tushare_margin",
+            reason=rzrqye_reason,
+            source_surface=rzrqye_surface,
         ),
         PulseFieldScopeAttestation(
             field="rzrqye_chg",
-            status="UNTRUSTED",
+            status=rzrqye_status,
             population_kind="external_aggregate",
-            reason="derived_from_untrusted_rzrqye_external_aggregate",
-            source_surface="tr.raw_tushare_margin",
+            reason=chg_reason,
+            source_surface=rzrqye_surface,
         ),
     ]
     notes: list[str] = [
-        "legacy_market_pulse_mart_untrusted_until_shadow_cutover",
-        "no_consumer_payload_change",
+        "breadth_untrusted_raw_until_project_universe_cutover",
+        "no_consumer_payload_rewrite_by_scope_attestation",
     ]
+    if margin_promoted and margin_source_accepted:
+        notes.append("rzrqye_promoted_external_aggregate_sse_szse")
+    else:
+        notes.append("rzrqye_untrusted_until_promote_consumed")
     venues = tuple(sorted({str(v).upper() for v in (margin_exchange_ids or ()) if v}))
     if "BSE" in venues:
         notes.append("margin_sum_includes_BSE_external_venue")
@@ -118,7 +146,7 @@ def attest_market_pulse_scope(
     if raw_daily_row_count is not None and int(raw_daily_row_count) <= 0:
         notes.append("raw_daily_breadth_zero_rows")
 
-    overall: TrustStatus = "UNTRUSTED"
+    overall: TrustStatus = "READY"
     for item in fields:
         if _rank(item.status) > _rank(overall):
             overall = item.status

@@ -296,13 +296,13 @@ def test_sentiment_v2_fields(client):
     by_field = {f["field"]: f for f in scope["fields"]}
     assert by_field["adv_dec_ratio"]["population_kind"] == "raw_evidence"
     assert by_field["rzrqye"]["population_kind"] == "external_aggregate"
-    # Latest fixture day has no margin rows → shadow fail-closed, not PARITY/cutover.
+    assert by_field["rzrqye"]["status"] == "UNTRUSTED"
+    # Latest fixture day has no accepted margin → shadow fail-closed, not PARITY/cutover.
     shadow = body["shadow_reconcile"]
     assert shadow["cutover_allowed"] is False
     assert shadow["verdict"] == "BLOCKED"
     assert "margin_core_venues_incomplete" in shadow["issues"]
-    assert "legacy_pulse_untrusted_pending_consumer_cutover" in shadow["issues"]
-    # F4 promote_gate: product-visible; never invents TRUSTED while serve is raw.
+    # F4 promote_gate: fixture day has no accepted margin → fail-closed UNTRUSTED.
     gate = body["promote_gate"]
     assert gate["product_trust_would_be"] == "UNTRUSTED"
     assert gate["population_kind"] == "external_aggregate"
@@ -311,7 +311,9 @@ def test_sentiment_v2_fields(client):
         "BLOCKED",
         "PENDING_SERVE_CUTOVER",
         "SHADOW_EXTERNAL_HONEST",
+        "READY_TO_PROMOTE",
     }
+    assert gate["status"] != "PROMOTED"
     assert "no_silent_product_thaw" in gate["notes"]
     # Phase C: cutover ON (owner opt-in), but this fixture day (20240108) has no
     # accepted partition → resolver fails closed to legacy scaffold (BLOCKED).

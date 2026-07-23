@@ -24,9 +24,10 @@ v2 全市场行新列 (2026-07-02 第一批, 契约=设计文档 "v2 增强设�
     promotion_rate 晋级率 (今日>=2板家数 ÷ 前一源日>=1板家数, 昨日 0 板 → NULL 不除零) /
     sec_board_n 秒板数 (first_time <= sec_board_cutoff 且 U; 源 first_time 无前导零, lpad 归一) /
     avg_fd_amount U 行封单均额 / open_times_total 炸板总次数 (U+Z 行 open_times 直和)。
-  - rzrqye / rzrqye_chg: raw_tushare_margin 跨交易所直和 + 相邻 qualifying 日差 (t+1 披露,
-    行日期=余额日, 直接按 trade_date 对齐; 覆盖门 2026-07-03 审计修1: 当日 >= 2 家交易所
-    在场才出值, SSE-only 日 NULL 不知道≠0, chg 跨过缺失日在 qualifying 序列上算)。
+  - rzrqye / rzrqye_chg: F4 起默认读 accepted ``canonical_margin_exchange_daily``
+    SSE+SZSE (contract v3; ``margin_pulse_promote.yaml`` pulse_source_accepted);
+    禁 raw BSE 直和冒充. 相邻 qualifying 日差 (t+1 披露); 覆盖门: 当日 >= 2 家核心
+    交易所才出值, SSE-only → NULL; 无 accepted 分区日 → NULL (fail closed, 不回退 raw)。
   - mkt_pe / mkt_turnover: raw_tushare_index_dailybasic 取 mkt_valuation_code 行
     (pe_ttm / turnover_rate_f — TTM 口径抗财报季跳变, 自由流通换手贴情绪水位)。
   - lhb_count / lhb_inst_net: top_list 当日上榜家数 (DISTINCT ts_code, 同股多理由算 1 家) /
@@ -588,6 +589,58 @@ def _sector_sql(cfg: dict[str, Any], dc_where: str = "1=1", sw_where: str = "1=1
     """
 
 
+def _margin_day_cte(*, pulse_source_accepted: bool, contract_version: str) -> str:
+    """Margin balance CTE — accepted SSE+SZSE when cutover on; else legacy raw.
+
+    Accepted path never sums BSE and never falls back to raw for missing days
+    (NULL = unknown). Per day prefers ``contract_version`` then falls back to
+    any generation that has both SSE+SZSE (rebuild-safe vs v3-only wipe).
+    """
+    if pulse_source_accepted:
+        cv = _sql_str(str(contract_version))
+        return f"""
+    margin_day AS (
+        -- F4 serve→accepted: SSE+SZSE external_aggregate across generations.
+        -- Prefer configured contract_version; else MAX(cv) with both core venues.
+        -- Missing accepted core → NULL (fail closed; 不回退 raw/BSE).
+        WITH core AS (
+            SELECT replace(CAST(trade_date AS VARCHAR), '-', '') AS trade_date,
+                   CAST(contract_version AS VARCHAR) AS cv,
+                   UPPER(CAST(exchange_id AS VARCHAR)) AS exchange_id,
+                   rzrqye
+            FROM tr.canonical_margin_exchange_daily
+            WHERE UPPER(CAST(exchange_id AS VARCHAR)) IN ('SSE', 'SZSE')
+        ),
+        day_cv AS (
+            SELECT trade_date, cv
+            FROM core
+            GROUP BY trade_date, cv
+            HAVING COUNT(DISTINCT exchange_id) >= 2
+        ),
+        pick AS (
+            SELECT trade_date,
+                   COALESCE(
+                       MAX(CASE WHEN cv = {cv} THEN cv END),
+                       MAX(cv)
+                   ) AS cv
+            FROM day_cv
+            GROUP BY trade_date
+        )
+        SELECT c.trade_date, SUM(c.rzrqye) AS rzrqye
+        FROM core c
+        JOIN pick p ON p.trade_date = c.trade_date AND p.cv = c.cv
+        GROUP BY 1
+    ),"""
+    return f"""
+    margin_day AS (
+        -- Legacy raw path (tests / cutover off): may include BSE — UNTRUSTED.
+        -- 覆盖门: >=2 交易所才出值; SSE-only → NULL。
+        SELECT trade_date,
+               CASE WHEN COUNT(DISTINCT exchange_id) >= 2 THEN SUM(rzrqye) END AS rzrqye
+        FROM {_tr_entity("margin")} GROUP BY 1
+    ),"""
+
+
 def _market_sql(
     cfg: dict[str, Any],
     where: str = "1=1",
@@ -601,12 +654,25 @@ def _market_sql(
     v2 新列 CTE 全部在**全量源历史**上算 (promotion_rate / rzrqye_chg 有 LAG 跨日依赖),
     where 只裁最外层输出日 — 与板块表窗口纪律同一条。
     """
+    from services.margin_pulse_promote_gate import load_margin_pulse_promote_config
+
     n = int(cfg["top_n_sectors"])
     mkt_start = _sql_str(cfg["data_start_market"])
     sec_cut = _sql_str(cfg["sec_board_cutoff"])
     val_code = _sql_str(cfg["mkt_valuation_code"])
     lt = _clean_num("limit_times")
     sector_table_sql = _sector_table_identifier(sector_table)
+    promote_cfg = load_margin_pulse_promote_config()
+    # cfg override for tests (avoid touching production yaml).
+    pulse_src = bool(
+        cfg.get("margin_pulse_source_accepted", promote_cfg.pulse_source_accepted)
+    )
+    contract_v = str(
+        cfg.get("margin_contract_version", promote_cfg.contract_version) or "3"
+    )
+    margin_cte = _margin_day_cte(
+        pulse_source_accepted=pulse_src, contract_version=contract_v
+    )
     return f"""
     WITH days AS (
         SELECT DISTINCT trade_date FROM {_NOMINAL_DAILY_SQL} WHERE trade_date >= {mkt_start}
@@ -649,16 +715,7 @@ def _market_sql(
               WHERE "limit" = 'U' AND TRY_CAST({lt} AS INTEGER) IS NOT NULL
               GROUP BY 1, 2)
         GROUP BY 1
-    ),
-    margin_day AS (
-        -- 两融余额: 跨交易所直和 (SSE+SZSE[+BSE]); PIT 锚 t+1 披露, 行日期=余额日按 trade_date 对齐。
-        -- 覆盖门 (2026-07-03 审计修1): 当日 >= 2 家交易所在场才出值, 否则 NULL (不知道≠0) —
-        -- SSE-only 日直和腰斩 (ratio≈0.51), 其 chg 假摆动达史上真实极值 12-14 倍。
-        -- 门槛 = 2 非 3: BSE 融资融券 2020 前不存在, 要求 3 会把早期真实 SSE+SZSE 日全判缺。
-        SELECT trade_date,
-               CASE WHEN COUNT(DISTINCT exchange_id) >= 2 THEN SUM(rzrqye) END AS rzrqye
-        FROM {_tr_entity("margin")} GROUP BY 1
-    ),
+    ),{margin_cte}
     margin2 AS (
         -- chg 只跨 qualifying (覆盖门通过) 日算: 先滤 NULL 再 LAG (过滤后序列),
         -- 非原序列上 LAG 撞 NULL — SSE-only 日两侧的 qualifying 日 chg 必须跨过它相减。

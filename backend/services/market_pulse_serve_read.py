@@ -111,27 +111,48 @@ def load_accepted_margin_rows_for_shadow(
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Return accepted canonical SSE+SZSE margin rows for promote-gate shadow.
 
-    Reads ``canonical_margin_exchange_daily`` under the current contract generation
-    (default v3). Fail-closed: missing attach/table/day → empty + issue.
+    Prefers ``contract_version`` for the day; if that generation lacks both
+    SSE+SZSE, falls back to the highest other generation that has both (so
+    history is rebuild-safe). Never includes BSE. Fail-closed: missing
+    attach/table/day → empty + issue.
     """
     day_norm = str(day or "").replace("-", "")
     if len(day_norm) != 8 or not day_norm.isdigit():
         return [], "invalid_trade_date"
     iso = f"{day_norm[:4]}-{day_norm[4:6]}-{day_norm[6:8]}"
+    preferred = str(contract_version)
 
     def _query() -> list[dict[str, Any]]:
-        rows = conn.execute(
+        pick = conn.execute(
             """
-            SELECT exchange_id, rzrqye
-            FROM tr.canonical_margin_exchange_daily
-            WHERE CAST(trade_date AS VARCHAR) IN (?, ?)
-              AND CAST(contract_version AS VARCHAR) = ?
-              AND UPPER(exchange_id) IN ('SSE', 'SZSE')
-            ORDER BY exchange_id
+            WITH core AS (
+                SELECT CAST(contract_version AS VARCHAR) AS cv,
+                       UPPER(CAST(exchange_id AS VARCHAR)) AS exchange_id,
+                       rzrqye
+                FROM tr.canonical_margin_exchange_daily
+                WHERE CAST(trade_date AS VARCHAR) IN (?, ?)
+                  AND UPPER(CAST(exchange_id AS VARCHAR)) IN ('SSE', 'SZSE')
+            ),
+            day_cv AS (
+                SELECT cv FROM core
+                GROUP BY cv
+                HAVING COUNT(DISTINCT exchange_id) >= 2
+            ),
+            pick AS (
+                SELECT COALESCE(
+                    MAX(CASE WHEN cv = ? THEN cv END),
+                    MAX(cv)
+                ) AS cv
+                FROM day_cv
+            )
+            SELECT c.exchange_id, c.rzrqye
+            FROM core c
+            JOIN pick p ON p.cv = c.cv
+            ORDER BY c.exchange_id
             """,
-            [day_norm, iso, str(contract_version)],
+            [day_norm, iso, preferred],
         ).fetchall()
-        return [{"exchange_id": str(r[0]).upper(), "rzrqye": r[1]} for r in rows]
+        return [{"exchange_id": str(r[0]).upper(), "rzrqye": r[1]} for r in pick]
 
     try:
         return _query(), None

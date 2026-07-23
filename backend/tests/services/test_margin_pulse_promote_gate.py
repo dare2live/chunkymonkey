@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import pytest
 
-from services.margin_pulse_promote_gate import evaluate_margin_pulse_promote_gate
+from services.margin_pulse_promote_gate import (
+    evaluate_margin_pulse_promote_gate,
+    load_margin_pulse_promote_config,
+)
 from services.market_pulse_shadow_reconcile import (
     PulseShadowVerdict,
     reconcile_market_pulse_shadow,
@@ -55,7 +58,8 @@ def test_promote_gate_accepted_ready_even_if_legacy_shadow_blocked() -> None:
     assert report.product_trust_would_be == "UNTRUSTED"
 
 
-def test_promote_gate_ready_still_untrusted_until_cutover() -> None:
+def test_promote_gate_promoted_ready_as_external_aggregate() -> None:
+    """Serve cutover + promote_allowed + accepted → PROMOTED / READY (not TRUSTED)."""
     shadow = reconcile_market_pulse_shadow(
         "20260722",
         margin_rows=(
@@ -73,10 +77,34 @@ def test_promote_gate_ready_still_untrusted_until_cutover() -> None:
         pulse_source_accepted=True,
         promote_allowed=True,
     )
-    assert report.status == "READY_TO_PROMOTE"
-    # Gate never invents product TRUSTED — separate cutover knife required.
-    assert report.product_trust_would_be == "UNTRUSTED"
+    assert report.status == "PROMOTED"
+    assert report.product_trust_would_be == "READY"
+    assert report.population_kind == "external_aggregate"
     assert report.remaining == ()
+    assert "promoted_external_aggregate_sse_szse_accepted" in report.notes
+
+
+def test_promote_gate_serve_on_without_promote_stays_ready_to_promote() -> None:
+    shadow = reconcile_market_pulse_shadow(
+        "20260722",
+        margin_rows=(
+            {"exchange_id": "SSE", "rzrqye": 1.0},
+            {"exchange_id": "SZSE", "rzrqye": 2.0},
+        ),
+    )
+    report = evaluate_margin_pulse_promote_gate(
+        "20260722",
+        shadow=shadow,
+        accepted_margin_rows=(
+            {"exchange_id": "SSE", "rzrqye": 1.0},
+            {"exchange_id": "SZSE", "rzrqye": 2.0},
+        ),
+        pulse_source_accepted=True,
+        promote_allowed=False,
+    )
+    assert report.status == "READY_TO_PROMOTE"
+    assert report.product_trust_would_be == "UNTRUSTED"
+    assert "need_explicit_promote_allowed_config" in report.remaining
 
 
 def test_promote_gate_blocked_on_bse_scope_mismatch() -> None:
@@ -98,4 +126,33 @@ def test_promote_gate_blocked_on_bse_scope_mismatch() -> None:
         promote_allowed=False,
     )
     assert report.status == "CRITERIA_PENDING"
+    assert "need_accepted_sse_szse_for_day" in report.remaining
+
+
+def test_load_promote_config_defaults_fail_closed(tmp_path) -> None:
+    missing = tmp_path / "nope.yaml"
+    cfg = load_margin_pulse_promote_config(missing)
+    assert cfg.pulse_source_accepted is False
+    assert cfg.promote_allowed is False
+
+
+def test_production_promote_yaml_opts_into_serve_cutover() -> None:
+    cfg = load_margin_pulse_promote_config()
+    assert cfg.pulse_source_accepted is True
+    assert cfg.promote_allowed is True
+    assert cfg.contract_version == "3"
+
+
+def test_promote_allowed_config_true_but_no_accepted_stays_untrusted() -> None:
+    """Owner: fail-closed while gap open — config alone never invents READY."""
+    shadow = reconcile_market_pulse_shadow("20260722", margin_rows=())
+    report = evaluate_margin_pulse_promote_gate(
+        "20260722",
+        shadow=shadow,
+        accepted_margin_rows=(),
+        pulse_source_accepted=True,
+        promote_allowed=True,  # would be ANDed false in router when rows empty
+    )
+    assert report.status != "PROMOTED"
+    assert report.product_trust_would_be == "UNTRUSTED"
     assert "need_accepted_sse_szse_for_day" in report.remaining

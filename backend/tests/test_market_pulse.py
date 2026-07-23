@@ -111,6 +111,8 @@ CREATE TABLE fact_stock_moneyflow_dc_daily (
     available_at TIMESTAMPTZ, source_table TEXT, built_at TIMESTAMPTZ);
 CREATE TABLE tr.raw_tushare_margin (
     trade_date TEXT, exchange_id TEXT, rzrqye DOUBLE);
+CREATE TABLE tr.canonical_margin_exchange_daily (
+    trade_date TEXT, exchange_id TEXT, rzrqye DOUBLE, contract_version TEXT);
 CREATE TABLE tr.raw_tushare_index_dailybasic (
     ts_code TEXT, trade_date TEXT, pe_ttm DOUBLE, turnover_rate_f DOUBLE);
 CREATE TABLE tr.raw_tushare_top_list (
@@ -309,10 +311,18 @@ def _fixture_conn():
     )
     c.execute("INSERT INTO tr.raw_tushare_moneyflow_mkt_dc VALUES (?, -1000.0)", [D[0]])
     # v2 两融 (跨交易所直和 + 日增): D0=150, D1=170 (chg=+20), 其余日源缺 → NULL
+    # F4: builder reads accepted canonical when pulse_source_accepted (production default).
     c.executemany("INSERT INTO tr.raw_tushare_margin VALUES (?, ?, ?)", [
         (D[0], "SSE", 100.0), (D[0], "SZSE", 50.0),
         (D[1], "SSE", 110.0), (D[1], "SZSE", 60.0),
     ])
+    c.executemany(
+        "INSERT INTO tr.canonical_margin_exchange_daily VALUES (?, ?, ?, '3')",
+        [
+            (D[0], "SSE", 100.0), (D[0], "SZSE", 50.0),
+            (D[1], "SSE", 110.0), (D[1], "SZSE", 60.0),
+        ],
+    )
     # v2 大盘估值/换手 (mkt_valuation_code 行; 000905 是干扰行必须被过滤)
     c.executemany("INSERT INTO tr.raw_tushare_index_dailybasic VALUES (?, ?, ?, ?)", [
         ("000300.SH", D[0], 14.42, 3.0), ("000905.SH", D[0], 25.0, 5.0),
@@ -706,6 +716,10 @@ def test_build_latest_backfills_late_columns():
         # margin t+1 迟到补披露 D4 (SSE+SZSE 直和 180; 前一有数日 D1=170 → chg=+10)
         c.executemany("INSERT INTO tr.raw_tushare_margin VALUES (?, ?, ?)", [
             (D[4], "SSE", 120.0), (D[4], "SZSE", 60.0)])
+        c.executemany(
+            "INSERT INTO tr.canonical_margin_exchange_daily VALUES (?, ?, ?, '3')",
+            [(D[4], "SSE", 120.0), (D[4], "SZSE", 60.0)],
+        )
         out = mp.build_latest(conn=c, cfg=CFG)
         assert (out["dc_added_days"], out["sw_added_days"], out["market_added_days"]) == (0, 0, 0)
         assert out["late_refreshed_days"]["market"] == 2   # lookback=2 → D3/D4 重插
@@ -1390,6 +1404,14 @@ def test_v2_margin_coverage_gate_sse_only_day():
         c.execute("INSERT INTO tr.raw_tushare_margin VALUES (?, 'SSE', 200.0)", [D[2]])
         c.executemany("INSERT INTO tr.raw_tushare_margin VALUES (?, ?, ?)", [
             (D[3], "SSE", 120.0), (D[3], "SZSE", 70.0)])
+        c.execute(
+            "INSERT INTO tr.canonical_margin_exchange_daily VALUES (?, 'SSE', 200.0, '3')",
+            [D[2]],
+        )
+        c.executemany(
+            "INSERT INTO tr.canonical_margin_exchange_daily VALUES (?, ?, ?, '3')",
+            [(D[3], "SSE", 120.0), (D[3], "SZSE", 70.0)],
+        )
         mp.rebuild_all(conn=c, cfg=CFG)
         m = {r[0]: (r[1], r[2]) for r in c.execute(f"""
             SELECT trade_date, rzrqye, rzrqye_chg FROM {mp.MARKET_TABLE}""").fetchall()}
@@ -1398,6 +1420,73 @@ def test_v2_margin_coverage_gate_sse_only_day():
         assert m[D[2]] == (None, None), "SSE-only 日必须 NULL, 不出腰斩直和"
         # 下一 qualifying 日: chg 跨过 SSE-only 日 = 190-170 (修前: 190-200=-10 假摆动)
         assert m[D[3]] == (pytest.approx(190.0), pytest.approx(20.0))
+    finally:
+        c.close()
+
+
+def test_f4_builder_reads_accepted_when_raw_empty():
+    """Root-cause red case: raw empty + accepted SSE+SZSE → mart rzrqye filled."""
+    c = _fixture_conn()
+    try:
+        c.execute("DELETE FROM tr.raw_tushare_margin")
+        assert c.execute("SELECT COUNT(*) FROM tr.raw_tushare_margin").fetchone()[0] == 0
+        assert c.execute(
+            "SELECT COUNT(*) FROM tr.canonical_margin_exchange_daily"
+        ).fetchone()[0] >= 4
+        mp.rebuild_all(conn=c, cfg={**CFG, "margin_pulse_source_accepted": True})
+        m = {
+            r[0]: r[1]
+            for r in c.execute(
+                f"SELECT trade_date, rzrqye FROM {mp.MARKET_TABLE}"
+            ).fetchall()
+        }
+        assert m[D[0]] == pytest.approx(150.0)
+        assert m[D[1]] == pytest.approx(170.0)
+    finally:
+        c.close()
+
+
+def test_f4_builder_null_when_accepted_missing_no_raw_fallback():
+    """Fail closed: no accepted core → NULL even if raw has values."""
+    c = _fixture_conn()
+    try:
+        c.execute("DELETE FROM tr.canonical_margin_exchange_daily")
+        mp.rebuild_all(conn=c, cfg={**CFG, "margin_pulse_source_accepted": True})
+        m = {
+            r[0]: r[1]
+            for r in c.execute(
+                f"SELECT trade_date, rzrqye FROM {mp.MARKET_TABLE}"
+            ).fetchall()
+        }
+        assert m[D[0]] is None
+        assert m[D[1]] is None
+    finally:
+        c.close()
+
+
+def test_f4_builder_falls_back_to_older_contract_generation():
+    """Prefer v3; days with only v2 SSE+SZSE still publish (rebuild-safe)."""
+    c = _fixture_conn()
+    try:
+        c.execute("DELETE FROM tr.canonical_margin_exchange_daily")
+        c.executemany(
+            "INSERT INTO tr.canonical_margin_exchange_daily VALUES (?, ?, ?, ?)",
+            [
+                (D[0], "SSE", 40.0, "2"),
+                (D[0], "SZSE", 60.0, "2"),
+                (D[1], "SSE", 70.0, "3"),
+                (D[1], "SZSE", 80.0, "3"),
+            ],
+        )
+        mp.rebuild_all(conn=c, cfg={**CFG, "margin_pulse_source_accepted": True})
+        m = {
+            r[0]: r[1]
+            for r in c.execute(
+                f"SELECT trade_date, rzrqye FROM {mp.MARKET_TABLE}"
+            ).fetchall()
+        }
+        assert m[D[0]] == pytest.approx(100.0)  # v2 fallback
+        assert m[D[1]] == pytest.approx(150.0)  # preferred v3
     finally:
         c.close()
 
