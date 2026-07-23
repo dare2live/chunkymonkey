@@ -470,12 +470,13 @@ def _due_plan_preview(*, limit: int = 12) -> dict[str, Any]:
     if latest.exists():
         candidates.append(latest)
     if not candidates:
+        org_only = _org_holding_due_item()
         return {
             "source": None,
             "as_of": None,
             "snapshot_kind": None,
             "label": "暂无 SLA 快照",
-            "items": [],
+            "items": [org_only] if org_only else [],
         }
     path = max(candidates, key=lambda p: p.stat().st_mtime)
     name = path.name
@@ -502,12 +503,13 @@ def _due_plan_preview(*, limit: int = 12) -> dict[str, Any]:
     sources = payload.get("sources") if isinstance(payload, dict) else None
     as_of = payload.get("run_at") if isinstance(payload, dict) else None
     if not isinstance(sources, list):
+        org_only = _org_holding_due_item()
         return {
             "source": str(path),
             "as_of": as_of,
             "snapshot_kind": snapshot_kind,
             "label": kind_label,
-            "items": [],
+            "items": [org_only] if org_only else [],
         }
     items: list[dict[str, Any]] = []
     for entry in sources:
@@ -537,13 +539,92 @@ def _due_plan_preview(*, limit: int = 12) -> dict[str, Any]:
             }
         )
     items.sort(key=lambda row: (-int(row.get("days_ago") or 0), str(row.get("domain"))))
+    org_item = _org_holding_due_item()
+    if org_item is not None:
+        # Period domain always surfaces (even when skip) so UI never looks "forever ignored".
+        items.insert(0, org_item)
     rel = str(path.relative_to(_REPO)) if path.is_relative_to(_REPO) else str(path)
     return {
         "source": rel,
         "as_of": as_of,
         "snapshot_kind": snapshot_kind,
         "label": kind_label,
-        "items": items[: max(1, int(limit))],
+        "items": items[: max(1, int(limit) + (1 if org_item else 0))],
+    }
+
+
+def _org_holding_due_item() -> dict[str, Any] | None:
+    """Period-domain due row: live RO gap check, else latest acquire artifact.
+
+    org_holding is NOT a sync_registry watermark domain — SLA JSON alone cannot
+    prove the daily incremental loop. Prefer live plannable vs local; fall back
+    to ``data/reports/org_holding_period_gap_latest.json`` when DB unavailable.
+    """
+    try:
+        from services.database_manifest import get_database_manifest
+        from services.duck_adapter import connect as duck_connect
+        from services.org_holding_aif10 import org_holding_period_gap_report
+
+        path = get_database_manifest().path_for("smartmoney")
+        if path.is_file():
+            conn = duck_connect(str(path), read_only=True)
+            try:
+                gap = org_holding_period_gap_report(conn)
+            finally:
+                conn.close()
+            return _org_due_row_from_gap(gap, source="live_ro")
+    except Exception:  # noqa: BLE001 — due preview must never break status
+        pass
+
+    latest = _REPO / "data" / "reports" / "org_holding_period_gap_latest.json"
+    if not latest.is_file():
+        return {
+            "domain": "org_holding",
+            "watermark": None,
+            "days_ago": 0,
+            "status": "unchecked",
+            "will_fetch": True,
+            "kind": "period_incremental",
+            "action": "check_required",
+            "detail": "no live DB / no gap artifact — next daily_update must check",
+        }
+    try:
+        payload = json.loads(latest.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    gap = payload.get("gap") if isinstance(payload, dict) else None
+    if not isinstance(gap, dict):
+        return None
+    return _org_due_row_from_gap(gap, source="gap_latest")
+
+
+def _org_due_row_from_gap(gap: dict[str, Any], *, source: str) -> dict[str, Any]:
+    action = str(gap.get("action") or "skip_current")
+    plannable = gap.get("plannable")
+    will_fetch = action in {"fetch_then_accept", "accept_from_local_raw"}
+    if action == "fetch_then_accept":
+        detail = f"plannable={plannable} raw=missing → fetch+accept one period"
+    elif action == "accept_from_local_raw":
+        detail = f"plannable={plannable} raw=present accepted=missing → accept"
+    elif action == "skip_current":
+        detail = (
+            f"plannable={plannable} current; next {gap.get('next_period')} "
+            f"unlocks {gap.get('next_period_unlock')} (not forever blocked)"
+        )
+    else:
+        detail = f"action={action} plannable={plannable}"
+    return {
+        "domain": "org_holding",
+        "watermark": plannable,
+        "days_ago": 0 if action == "skip_current" else 1,
+        "status": gap.get("status"),
+        "will_fetch": will_fetch,
+        "kind": "period_incremental",
+        "action": action,
+        "detail": detail,
+        "source": source,
+        "next_period": gap.get("next_period"),
+        "next_period_unlock": gap.get("next_period_unlock"),
     }
 
 

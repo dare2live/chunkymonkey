@@ -201,9 +201,11 @@ def fetch_disclosure_provider_partition_rows(
     - ``stk_holdertrade`` = tushare by ``ann_date``
     - ``holders_top10`` = miaoxiang by ``UPDATE_DATE`` (= notice_date)
 
-    ``org_holding`` BLOCKED: aif10 ``RPT_MAIN_ORGHOLDDETAIL`` is by-period
-    full-market (~830k rows/period; no NOTICE_DATE) — mass dump, not ≤40d
-    by-date. Inject ``fetch_rows`` for tests or use local-raw land.
+    ``org_holding`` by-date provider land banned: aif10
+    ``RPT_MAIN_ORGHOLDDETAIL`` is by-period full-market (~830k rows/period; no
+    NOTICE_DATE) — not a ≤40d by-date faucet. Daily path = incremental-by-period
+    check in ``org_holding_aif10`` (fetch missing plannable → accept from
+    local-raw). Inject ``fetch_rows`` for tests or use ``--from-local-raw``.
     """
 
     if domain not in DISCLOSURE_TRANSPORT_DOMAINS:

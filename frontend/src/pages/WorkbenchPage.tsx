@@ -177,6 +177,12 @@ function DeltaManifestCard(props: { manifest: DeltaManifestPreview | null | unde
   const timing = m.stage_timing_s && typeof m.stage_timing_s === "object" ? m.stage_timing_s : null;
   const budget = m.budget_status && typeof m.budget_status === "object" ? m.budget_status : null;
   const formal = Array.isArray(m.formal) ? m.formal : [];
+  const incremental =
+    Array.isArray(m.incremental) && m.incremental.length > 0
+      ? m.incremental
+      : Array.isArray(m.acquire_summary?.incremental)
+        ? m.acquire_summary!.incremental!
+        : [];
 
   return (
     <div className="ops-delta">
@@ -184,6 +190,19 @@ function DeltaManifestCard(props: { manifest: DeltaManifestPreview | null | unde
         增量识别{props.live ? "（live）" : "（上次报告）"} · 非 in-flight 进度表
       </div>
       <div className="ops-delta-body mono">
+        {incremental.length > 0 && (
+          <div>
+            period_incremental:{" "}
+            {incremental
+              .slice(0, 4)
+              .map(
+                (r) =>
+                  `${r.domain ?? "?"}:${r.action ?? r.status ?? "?"}` +
+                  (r.report_date ? `(${r.report_date})` : ""),
+              )
+              .join(", ")}
+          </div>
+        )}
         {advancedN != null && advancedN > 0 ? (
           <div>
             advanced_n={advancedN}
@@ -582,12 +601,21 @@ export function WorkbenchPage() {
             ) : (
               <pre className="ops-due-plan-list mono">
                 {status.due_plan.items
-                  .map(
-                    (row) =>
+                  .map((row) => {
+                    if (row.kind === "period_incremental") {
+                      return (
+                        `${row.domain.padEnd(18)} period=${String(row.watermark ?? "—")}  ` +
+                        `${row.will_fetch ? "will-fetch" : "skip-current"}  ` +
+                        `${row.action ?? "?"}  ` +
+                        `${row.detail ?? ""}`
+                      );
+                    }
+                    return (
                       `${row.domain.padEnd(18)} wm=${String(row.watermark ?? "—")}  ` +
                       `days_ago=${row.days_ago}  ` +
-                      `${row.will_fetch ? "will-fetch≈all-due" : "on_demand/formal"}`,
-                  )
+                      `${row.will_fetch ? "will-fetch≈all-due" : "on_demand/formal"}`
+                    );
+                  })
                   .join("\n")}
               </pre>
             )}

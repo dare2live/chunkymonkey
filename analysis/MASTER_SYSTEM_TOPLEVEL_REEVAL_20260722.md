@@ -76,7 +76,8 @@
 - **landing→validate→accept canonical；一数据集一 writer；一处计算多处只读**
 - **manual_only**（无 cron/launchd/隐藏重启）
 - **commit-green ≠ Continuity READY**（宪法写死）
-- **strategy paused / 禁 Optuna·Release·松 holdout；margin frozen；org BLOCKED；禁 mass backfill；
+- **strategy paused / 禁 Optuna·Release·松 holdout；margin frozen；org mass by-date invent
+  banned + **每次更新检增量**（缺最新可披露期→拉一期+accept；已有→skip）；禁 mass backfill；
   禁第二 DB / plugin / DAG / 第五产品**
 - **§15 knife-merge**（对**真代码刀**不变）
 - **积木五件套**：`module + data + config + contract + evidence`
@@ -166,7 +167,7 @@ PARTIAL」这种无 consumer 的残差追绿**性质不同**。
 |---|---|---|---|
 | 工作台 workbench | ops 可操作（一键更新 / 分步节点） | 观测/控制 | shipped；P0–P3 + **P2 progress UX FIXED**（瀑布日志 / 全链+节点进度 / delta_manifest 面） |
 | 市场 market（资金决策辅助 default / 交集 / 选股 / 感知） | L1 极简 → L2 → L3 | Tier2 evidence + Tier3 consumer | Enrich：**地形 2.5D FIXED** + Cap D 桑基/平行坐标 FIXED；感知 L1 稀疏 |
-| 股票档案 / 机构档案 dossier | per-stock / per-holder 决策辅助 | Tier3 consumer | Cap F polish **PARTIAL→shipped L1/L2**；机构 org mass land 仍 **BLOCKED**（诚实声明） |
+| 股票档案 / 机构档案 dossier | per-stock / per-holder 决策辅助 | Tier3 consumer | Cap F polish **PARTIAL→shipped L1/L2**；org = **incremental-check-every-run**（mass re-pull banned；非 forever ignore） |
 | `#/explore` facet 图 | 计算 facet → universe → dossier | Tier3 navigation | **HAVE（CX-3）** sector_membership + flow_streak live |
 | **候选每日简报 daily briefing** | 把 conclusion/why/observation 聚成叙事 | **Tier3 narrative consumer（optional）** | **HAVE（CX-3）** `daily_briefing` serve + UI |
 
@@ -237,14 +238,14 @@ PARTIAL」这种无 consumer 的残差追绿**性质不同**。
 | 形态/阶段选股 | Tier1 form/axis serve | **HAVE（subset）** | `stock_screener.py /form_stage`；Cap B FIXED subset |
 | facet explore 跳转 | 每个计算 facet → universe serve 砖 | **HAVE（CX-3）** | behavior/form/axis/breakout/intersection/holder + sector_membership + stock flow_streak live；证据 `cx3_capability_bricks_acceptance_20260722.md` |
 | 股票档案 dossier | stock↔holders↔form↔收益 lineage | **PARTIAL** | HS-A gate + canonical streak FIXED；stock↔holders↔form ~98%；机构 deep-link honesty-gated |
-| 机构档案 | org/holders episode + 披露时点 | **PARTIAL** | `institution_profile.py` live；~54% honesty；**`org_holding` provider land BLOCKED**（~830k by-period，无 NOTICE_DATE）；holders F6 PASS（126d overlap） |
+| 机构档案 | org/holders episode + 披露时点 | **PARTIAL** | `institution_profile.py` live；~54% honesty；**`org_holding` = by-period incremental every daily_update**（mass/~830k refresh + by-date invent banned；`org_holding_period_gap_report` + accept-from-local-raw）；holders F6 PASS（126d overlap） |
 | **候选每日简报 briefing** | conclusion + why + observation 聚合叙事砖 | **HAVE（CX-3）** | `daily_briefing` serve + `#/briefing` / Market assist panel；stale/UNTRUSTED → narrative=null |
 | delta 选择性加工 | acquire typed delta manifest | **HAVE（CX-1 PASS）** | `delta_manifest` → DC frontier skip；pulse late window always；证据 `cx1_acquire_efficiency_acceptance_20260722.md` |
 | ST/holder 状态变更传感 | 非增量状态变探测 | **HAVE（CX-2 PASS）** | `state_sensors` → `delta.state_changes`；证据 `cx2_state_sensors_acceptance_20260722.md` |
 | serve 新鲜度 / continuity | typed soft + 域水位对齐 | **PARTIAL**（continuity READY 仍 ops；SLA 误报 **FIXED**） | `run_outcome` 三态 FIXED；P0.1/CX-4 PASS（墓碑清 / unknown≠stale / frozen observe）；域 lag 诚实 soft 仍可能 |
 | 性能预算可观测 | per-stage 墙钟 + budget | **HAVE（CX-1）** | `daily_*.json` `stage_timing_s` + `budget_status`；live empty-increment OBSERVE |
 
-**一句话**：**资金 regime / 交集 / 选股 / 分层砖 / briefing / facet serve = HAVE（含 CX-3）**；**dossier / 机构 = PARTIAL**（诚实缺 org land）；**delta / 状态传感器 / 性能预算 / SLA 去误报 = HAVE（CX-1…CX-4）**——CX-* 能力门闭合；RX 仍要 owner 签字；Optuna=Phase N BANNED。
+**一句话**：**资金 regime / 交集 / 选股 / 分层砖 / briefing / facet serve = HAVE（含 CX-3）**；**dossier / 机构 = PARTIAL**（org 已进每日增量检；缺的是更广 episode/honesty 覆盖，不是「forever BLOCKED」）；**delta / 状态传感器 / 性能预算 / SLA 去误报 = HAVE（CX-1…CX-4）**——CX-* 能力门闭合；RX 仍要 owner 签字；Optuna=Phase N BANNED。
 
 ---
 

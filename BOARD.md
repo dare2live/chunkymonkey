@@ -2,7 +2,7 @@
 
 > 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。
 > **Projection only** — not an enforcement input. Cutover / readiness / PIT gates still resolve from yaml + code resolvers + accepted partitions.
-> Snapshot: 2026-07-21T11:21:11Z
+> Snapshot: 2026-07-23T00:31:52Z
 
 ## Track
 
@@ -46,7 +46,7 @@
 - foundation phase_closure_ready — F1–F10 PASS (analysis/foundation_phase_reeval_20260721.md)
 - §15-VERIFY FIXED: F8 PASS commits/knife=1.0 on e0-hist→fnd-gate→section15-verify
 - FND-GATE FIXED: check_foundation_done F1–F10 (phase_closure_ready=true)
-- E0-HIST/F6 PASS: holders152/126d + stk194/161d (20251020→); org BLOCKED stay local-raw
+- E0-HIST/F6 PASS: holders152/126d + stk194/161d; org incremental-check-every-run (mass banned)
 - S7 23/46 ssot = typed hard-stop wall — no fake COMPAT; owner publication/sunset only
 - Type-B enrichment DEFER (B5 registry/qfq FIXED subset; not near-term knife)
 - E/F remeasure paused until owner schedules post-foundation (F0–F3 baseline frozen)

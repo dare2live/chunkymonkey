@@ -7,10 +7,11 @@ Config: backend/config/foundation_done.yaml
 Semantics:
   - FAIL on real gaps (fail-closed)
   - Typed walls stay PASS when honestly maintained:
-      S7 23 ssot hard-stop kinds, org provider land BLOCKED,
+      S7 23 ssot hard-stop kinds,
+      org mass by-date provider land banned + daily incremental-by-period required,
       B5 Type-B enrichment_projection_partial defer
   - Real gaps → FAIL (fail-closed)
-  - Typed walls (S7 23 ssot / org BLOCKED / Type-B enrichment defer) → PASS
+  - Typed walls (S7 23 ssot / org mass-ban+incremental / Type-B defer) → PASS
   - F8 §15 behavior PASS only with ≥3 knife evidence (commits/knife≤1.5 + pre_knife)
   - --skip-live: F4/F6 omit DuckDB probes but still PASS (CI offline); live run
     is authoritative for phase_closure_ready
@@ -392,11 +393,15 @@ def check_f5_e0_transport() -> dict[str, Any]:
     if "PROVIDER_LAND_DOMAINS" not in dt_src and "provider" not in dt_src.lower():
         return _crit("F5", "FAIL", detail="disclosure_transport missing provider land surface")
 
-    # Holders/stk provider land allowed; org blocked — structural
+    # Holders/stk by-date provider land allowed; org = local-raw / by-period only
     if "org_holding" not in dt_src:
         return _crit("F5", "FAIL", detail="disclosure_transport missing org_holding domain")
     if "BLOCKED" not in dt_src and "from-local-raw" not in dt_src:
-        return _crit("F5", "FAIL", detail="org_holding BLOCKED / local-raw guard missing")
+        return _crit(
+            "F5",
+            "FAIL",
+            detail="org_holding mass by-date ban / local-raw guard missing",
+        )
 
     if "holders_top10" not in dt_src or "stk_holdertrade" not in dt_src:
         return _crit("F5", "FAIL", detail="stk/holders domains missing from disclosure transport")
@@ -404,7 +409,10 @@ def check_f5_e0_transport() -> dict[str, Any]:
     return _crit(
         "F5",
         "PASS",
-        detail="E0 disclosure CLI three modes + stk/holders provider land; org BLOCKED surface present",
+        detail=(
+            "E0 disclosure CLI three modes + stk/holders provider land; "
+            "org mass by-date banned (incremental-by-period elsewhere)"
+        ),
     )
 
 
@@ -453,10 +461,9 @@ def _e0_live_breadth(cfg: dict[str, Any]) -> tuple[dict[str, Any] | None, str | 
 
 
 def check_f6_e0_breadth(cfg: dict[str, Any], *, skip_live: bool) -> dict[str, Any]:
-    """F6: holders ≥120 trading-day overlap with daily; stk synced; org stays blocked thin."""
+    """F6: holders ≥120 trading-day overlap with daily; stk synced; org partitions observed."""
     e0 = cfg.get("e0_breadth") or {}
     min_overlap = int(e0.get("min_holders_daily_overlap", 120))
-    org_max = int(e0.get("org_max_partitions_when_blocked", 8))
 
     if skip_live:
         return _crit(
@@ -479,10 +486,6 @@ def check_f6_e0_breadth(cfg: dict[str, Any], *, skip_live: bool) -> dict[str, An
         gaps.append("stk_partitions=0")
     if int(measured["stk_daily_overlap"]) < 1:
         gaps.append("stk_daily_overlap=0")
-    if int(measured["org_partitions"]) > org_max:
-        gaps.append(
-            f"org_partitions={measured['org_partitions']} > blocked ceiling {org_max}"
-        )
     if gaps:
         return _crit(
             "F6",
@@ -497,46 +500,38 @@ def check_f6_e0_breadth(cfg: dict[str, Any], *, skip_live: bool) -> dict[str, An
         detail=(
             f"holders overlap {measured['holders_daily_overlap']}≥{min_overlap}; "
             f"stk overlap {measured['stk_daily_overlap']}; "
-            f"org partitions={measured['org_partitions']} (BLOCKED local-raw)"
+            f"org partitions={measured['org_partitions']} "
+            f"(incremental-by-period; mass by-date banned)"
         ),
         evidence=measured,
     )
 
 
 def check_f7_org_blocked() -> dict[str, Any]:
-    """F7: org_holding provider land remains BLOCKED (local-raw only)."""
+    """F7: mass by-date invent banned; daily incremental-by-period required."""
     sync_src = _read_text(SYNC_RUNNER)
     dt_src = _read_text(DISCLOSURE_TRANSPORT)
-
+    acquire_src = _read_text(REPO / "backend/services/pipeline/acquire.py")
+    org_src = _read_text(REPO / "backend/services/org_holding_aif10.py")
     if "org_holding" not in sync_src:
         return _crit("F7", "FAIL", detail="sync_runner missing org_holding preflight")
-
-    # Must require from-local-raw for org land; must not expose by-date invent
-    blocked_markers = (
+    markers = (
         "org_holding by-period",
         "requires --from-local-raw",
         "no by-date faucet",
         "BLOCKED",
     )
-    if not any(m in sync_src or m in dt_src for m in blocked_markers):
-        return _crit(
-            "F7",
-            "FAIL",
-            detail="org_holding BLOCKED markers missing from sync/disclosure transport",
-        )
-
-    # Negative: inventing a by-date provider land path would fail this intentionally
+    if not any(m in sync_src or m in dt_src for m in markers):
+        return _crit("F7", "FAIL", detail="org mass by-date ban markers missing")
     if re.search(r"org_holding.*by_notice_date|org_holding.*by_ann_date", dt_src):
-        return _crit(
-            "F7",
-            "FAIL",
-            detail="org_holding appears to gain by-date provider land (invent)",
-        )
-
+        return _crit("F7", "FAIL", detail="org_holding by-date provider land invent")
+    for token in ("sync_org_holding_incremental", "org_holding_period_gap_report"):
+        if token not in acquire_src or token not in org_src:
+            return _crit("F7", "FAIL", detail=f"org incremental loop missing {token}")
     return _crit(
         "F7",
         "PASS",
-        detail="org_holding provider land BLOCKED; local-raw only maintained",
+        detail="org mass by-date banned; daily incremental-by-period required",
         wall="org_provider_land_blocked",
     )
 

@@ -202,14 +202,48 @@ def test_due_plan_preview_marks_lagged_all_due_domains(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.setattr(ops_manual_run, "_REPO", tmp_path)
+    monkeypatch.setattr(
+        ops_manual_run,
+        "_org_holding_due_item",
+        lambda: {
+            "domain": "org_holding",
+            "watermark": "2026-03-31",
+            "days_ago": 0,
+            "status": "ok",
+            "will_fetch": False,
+            "kind": "period_incremental",
+            "action": "skip_current",
+            "detail": "plannable present",
+        },
+    )
     plan = ops_manual_run._due_plan_preview()
     domains = {row["domain"]: row for row in plan["items"]}
+    assert "org_holding" in domains
+    assert domains["org_holding"]["kind"] == "period_incremental"
     assert "ths_hot" in domains
     assert domains["ths_hot"]["will_fetch"] is True
     assert domains["ths_hot"]["watermark"] == "20260720"
     assert domains["daily"]["will_fetch"] is False
     assert "moneyflow_dc" not in domains
     assert plan["snapshot_kind"] == "preflight"
+
+
+def test_org_due_row_from_gap_surfaces_skip_not_forever_blocked():
+    row = ops_manual_run._org_due_row_from_gap(
+        {
+            "action": "skip_current",
+            "plannable": "2026-03-31",
+            "status": "ok",
+            "next_period": "2026-06-30",
+            "next_period_unlock": "2026-08-31",
+        },
+        source="unit",
+    )
+    assert row["domain"] == "org_holding"
+    assert row["will_fetch"] is False
+    assert row["kind"] == "period_incremental"
+    assert "not forever blocked" in row["detail"]
+    assert row["next_period"] == "2026-06-30"
 
 
 def test_due_plan_prefers_newer_post_acquire_over_before(tmp_path, monkeypatch):
@@ -256,6 +290,7 @@ def test_due_plan_prefers_newer_post_acquire_over_before(tmp_path, monkeypatch):
     os.utime(before, (time.time() - 100, time.time() - 100))
     os.utime(after, (time.time(), time.time()))
     monkeypatch.setattr(ops_manual_run, "_REPO", tmp_path)
+    monkeypatch.setattr(ops_manual_run, "_org_holding_due_item", lambda: None)
     plan = ops_manual_run._due_plan_preview()
     assert plan["snapshot_kind"] == "post_acquire"
     assert plan["as_of"] == "2026-07-22T12:48:00+00:00"

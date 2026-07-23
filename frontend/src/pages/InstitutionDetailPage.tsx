@@ -250,8 +250,9 @@ export function InstitutionDetailPage() {
         机构档案 · episode 与维度热力。标的代码可点进股票档案。
       </p>
       <p className="page-desc assist-disclaimer">
-        诚实边界：本页只读已发布 holders/episode 画像；org_holding provider land 仍 BLOCKED
-        （禁全市场 by-period mass re-pull）— 无 NOTICE_DATE 全景时不伪造机构 bulk 覆盖。
+        诚实边界：本页只读已发布 holders/episode 画像；org_holding 每次「数据更新」检增量
+        （缺最新可披露期→拉一期并 accept；已有则 skip）。禁全市场 mass re-pull / 伪造
+        by-date NOTICE_DATE 全景。
       </p>
       <KpiCard holder={holder} />
       <details open className="dossier-l2">

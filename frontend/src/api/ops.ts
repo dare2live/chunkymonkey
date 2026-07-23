@@ -19,6 +19,12 @@ export interface DuePlanItem {
   sla_days?: number | null;
   status?: string | null;
   will_fetch: boolean;
+  /** period_incremental = org_holding disclosure-clock row (not SLA watermark). */
+  kind?: string | null;
+  action?: string | null;
+  detail?: string | null;
+  next_period?: string | null;
+  next_period_unlock?: string | null;
 }
 
 export interface DuePlanPreview {
@@ -40,6 +46,17 @@ export type RunOutcome = "success" | "soft_waiting_clock" | "hard_fail";
 export interface DeltaManifestPreview {
   schema_version?: number;
   run_date?: string;
+  acquire_summary?: {
+    incremental?: Array<{
+      domain?: string;
+      action?: string;
+      status?: string;
+      report_date?: string;
+      message?: string;
+      [key: string]: unknown;
+    }>;
+    [key: string]: unknown;
+  };
   delta?: {
     advanced_partitions?: Array<Record<string, unknown> | string>;
     late_window_policy?: string;
@@ -53,6 +70,12 @@ export interface DeltaManifestPreview {
   /** Live compact line fields */
   advanced_n?: number;
   formal?: Array<{ domain?: string; action?: string }>;
+  incremental?: Array<{
+    domain?: string;
+    action?: string;
+    status?: string;
+    report_date?: string;
+  }>;
   dc?: { action?: string; reason?: string };
   state_changes?: Record<string, unknown>;
   late_window_policy?: string;

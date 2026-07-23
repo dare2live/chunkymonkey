@@ -64,8 +64,8 @@ def run_acquire(ctx: PipelineContext) -> None:
     # Step 2j: QFII 季度持股 (外资维度; 2026-06-24 迁自旧 updater)
     ctx.step(_sync_qfii, degraded_msg="QFII sync 失败")
 
-    # Step 2j2: 机构持仓明细 aif10 (非公募机构分桶; 2026-06-24 aif10 例外扩展, 替退役 tdx F10 控股股东表)
-    ctx.step(_sync_org_holding, degraded_msg="org_holding aif10 sync 失败")
+    # Step 2j2: 机构持仓明细 aif10 — every-run incremental check (mass refresh banned)
+    ctx.step(lambda: _sync_org_holding(ctx), degraded_msg="org_holding aif10 sync 失败")
 
     # Step 2k (external_attention 快照) 已退役 2026-06-27 (通达信全删 M4: akshare 东财人气/关注度退役, 用户决cut, 无tushare等价=永久丢):
     #   消费侧 scoring 外部关注 boost/池升级/crowding penalty 优雅降级 (external_attention_score→None)。
@@ -141,22 +141,26 @@ def _sync_qfii() -> None:
         conn.close()
 
 
-def _sync_org_holding() -> None:
-    """机构持仓明细 aif10 — incremental-only on manual update (owner hard lock).
+def _sync_org_holding(ctx: PipelineContext) -> None:
+    """机构持仓明细 aif10 — every-run incremental check (owner 2026-07-21/23).
 
-    Binding (2026-07-21): check latest plannable vs local; fetch **only** if
-    that period is missing. NEVER full-period ~830k mass re-pull / unbounded
+    Binding: check latest plannable vs local raw+accepted every daily_update;
+    missing → fetch one period then accept from local-raw; present → skip with
+    next-period unlock reason. NEVER full-period ~830k mass re-pull / unbounded
     page crawl for "refresh". NEVER call ``backfill`` from this path.
-    Older historical gaps: log-not-fill (mass backfill is a separate explicit knife).
+    Older historical gaps: log-not-fill (explicit backfill knife only).
+    By-date provider invent stays banned — this path is by-period incremental.
     """
     import asyncio
-    import json
+    from pathlib import Path
+
     from services.duck_adapter import connect as duck_connect
     from services.org_holding_aif10 import (
         org_holding_period_gap_report,
         sync_org_holding_incremental,
     )
     from .context import db_path
+    from .delta_manifest import empty_manifest
 
     conn = duck_connect(db_path("smartmoney"))
     try:
@@ -165,15 +169,64 @@ def _sync_org_holding() -> None:
             "org_holding_gap_check: "
             + json.dumps(gap, ensure_ascii=False, default=str)
         )
-        print(
-            json.dumps(
-                asyncio.run(sync_org_holding_incremental(conn)),
-                ensure_ascii=False,
-                default=str,
-            )
-        )
+        result = asyncio.run(sync_org_holding_incremental(conn))
+        print(json.dumps(result, ensure_ascii=False, default=str))
     finally:
         conn.close()
+
+    if ctx.delta_manifest is None:
+        ctx.delta_manifest = empty_manifest(run_date=ctx.date)
+    summary = dict(ctx.delta_manifest.get("acquire_summary") or {})
+    incremental = list(summary.get("incremental") or [])
+    incremental.append(
+        {
+            "domain": "org_holding",
+            "action": result.get("action"),
+            "status": result.get("status"),
+            "report_date": result.get("report_date"),
+            "available_date": result.get("available_date"),
+            "written": result.get("written") or result.get("count") or 0,
+            "next_period": result.get("next_period"),
+            "next_period_unlock": result.get("next_period_unlock"),
+            "message": result.get("message"),
+            "gap": {
+                "plannable": (result.get("gap") or {}).get("plannable"),
+                "local_has_plannable": (result.get("gap") or {}).get(
+                    "local_has_plannable"
+                ),
+                "accepted_has_plannable": (result.get("gap") or {}).get(
+                    "accepted_has_plannable"
+                ),
+                "missing_count": (result.get("gap") or {}).get("missing_count"),
+            },
+        }
+    )
+    summary["incremental"] = incremental
+    ctx.delta_manifest["acquire_summary"] = summary
+
+    # Persist latest gap for workbench due_plan (RO preview without re-fetch).
+    try:
+        out = Path(__file__).resolve().parents[3] / "data" / "reports"
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "org_holding_period_gap_latest.json").write_text(
+            json.dumps(
+                {
+                    "run_date": ctx.date,
+                    "gap": gap,
+                    "result": {
+                        "action": result.get("action"),
+                        "status": result.get("status"),
+                        "message": result.get("message"),
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            ),
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        ctx.log(f"org_holding gap latest write skipped: {exc}")
 
 
 # _sync_external_attention 已退役 2026-06-27 (通达信全删 M4: akshare external_attention.py 物删, 用户决cut)
@@ -648,6 +701,7 @@ def _finalize_acquire_delta(
         state_changes=state_changes,
     )
     ctx.delta_manifest = manifest
+    incremental = list((manifest.get("acquire_summary") or {}).get("incremental") or [])
     # Stream-truth single line for workbench regex / log tail consumers.
     ctx.log(
         "[delta_manifest] "
@@ -656,6 +710,15 @@ def _finalize_acquire_delta(
                 "formal": [
                     {"domain": r.get("domain"), "action": r.get("action")}
                     for r in (formal_outcomes or [])
+                ],
+                "incremental": [
+                    {
+                        "domain": r.get("domain"),
+                        "action": r.get("action"),
+                        "status": r.get("status"),
+                        "report_date": r.get("report_date"),
+                    }
+                    for r in incremental
                 ],
                 "advanced_n": len(advanced),
                 "dc": manifest["process_plan"]["dc_industry_view"],

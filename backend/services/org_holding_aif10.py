@@ -441,15 +441,37 @@ def sync_period(
             f"org_holding refuse mass refresh: period {iso} already has "
             f"{existing} local rows; incremental-only (fetch if missing)"
         )
+    # Already accepted for this period's available_date → refuse re-pull (mass ban).
+    if accepted_has_org_holding_partition(conn, iso) and not allow_existing_refresh:
+        raise OrgHoldingMassRefreshForbidden(
+            f"org_holding refuse mass refresh: period {iso} already accepted "
+            f"(available_date={_plannable_available_yyyymmdd(iso)}); "
+            "incremental-only (fetch if missing)"
+        )
     try:
         raw = _fetch_period(iso)
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"[org-holding-aif10] 报告期 {iso} 拉取失败: {exc}")
         return {"report_date": iso, "status": "source_unavailable", "error": str(exc), "written_rows": 0}
     rows = _normalize_rows(raw)
-    written = _upsert_rows(conn, rows)
-    return {"report_date": iso, "status": "ok" if written else "empty",
-            "written_rows": written, "raw_rows": len(raw)}
+    # Incremental land: formal accept + legacy raw mirror so gap checks / research
+    # table stay aligned (formal_only-without-mirror left raw empty → false re-fetch).
+    from services.data_sources.disclosure_dual_write import (
+        write_org_holding_formal_then_mirror,
+    )
+
+    outcome = write_org_holding_formal_then_mirror(
+        conn, rows, enable_legacy_mirror=True
+    )
+    written = int(outcome.canonical_rows or 0)
+    return {
+        "report_date": iso,
+        "status": "ok" if written else "empty",
+        "written_rows": written,
+        "raw_rows": len(raw),
+        "accepted_partitions": list(outcome.partitions or ()),
+        "legacy_rows_written": int(outcome.legacy_rows_written or 0),
+    }
 
 
 def backfill(conn: Any, *, start_period: str = DEFAULT_START_PERIOD,
@@ -487,17 +509,47 @@ def backfill(conn: Any, *, start_period: str = DEFAULT_START_PERIOD,
             "quarters": quarters, "written_rows": total, "detail": detail}
 
 
+def _plannable_available_yyyymmdd(report_date: str) -> Optional[str]:
+    """Report period → available_date partition (disclosure deadline, YYYYMMDD)."""
+    from services.data_sources.org_holding_schema import disclosure_deadline_yyyymmdd
+
+    return disclosure_deadline_yyyymmdd(report_date)
+
+
+def accepted_has_org_holding_partition(conn: Any, report_date: str) -> bool:
+    """True when accepted_partition already has the plannable period's available_date."""
+    from services.data_sources.org_holding_schema import DATASET_ID
+
+    partition = _plannable_available_yyyymmdd(report_date)
+    if not partition:
+        return False
+    try:
+        row = conn.execute(
+            """
+            SELECT 1
+              FROM accepted_partition
+             WHERE dataset_id = ?
+               AND partition_value = ?
+             LIMIT 1
+            """,
+            [DATASET_ID, partition],
+        ).fetchone()
+    except Exception:  # noqa: BLE001 — schema may be absent in unit :memory:
+        return False
+    return row is not None
+
+
 def org_holding_period_gap_report(
     conn: Any,
     *,
     today: Optional[date] = None,
     start_period: str = DEFAULT_START_PERIOD,
 ) -> dict:
-    """Read-only: latest plannable vs local + any intermediate missing periods.
+    """Read-only: latest plannable vs local raw + accepted.
 
-    Owner 2026-07-21 Q3: every manual update must *check* incremental gaps.
-    This report is the check; fetch stays latest-only (see
-    ``sync_org_holding_incremental``) — never silent full-history mass dump.
+    Owner 2026-07-21/23: every manual/`daily_update` must *check* incremental
+    gaps (not ignore forever). Fetch stays latest-period-only; mass history and
+    by-date provider invent stay banned. Intermediate holes = log-not-fill.
     """
     ensure_tables(conn)
     target = latest_plannable_report_date(today=today)
@@ -505,7 +557,10 @@ def org_holding_period_gap_report(
         return {
             "plannable": None,
             "local_has_plannable": False,
+            "accepted_has_plannable": False,
+            "available_date": None,
             "missing_periods": [],
+            "action": "none",
             "status": "no_plannable",
         }
     local_rows = conn.execute(
@@ -516,69 +571,160 @@ def org_holding_period_gap_report(
     local_norm = {(_normalize_date(d) if d else d) for d in local}
     quarters = enumerate_quarter_ends(start_period, target)
     missing = [q for q in quarters if q not in local_norm]
+    local_has = target in local_norm
+    # Accepted is independent of raw — formal land may publish without mirror.
+    accepted_has = accepted_has_org_holding_partition(conn, target)
+    available = _plannable_available_yyyymmdd(target)
+    next_period, next_unlock = next_period_unlock(target)
+    if accepted_has:
+        action = "skip_current"
+        status = "ok"
+    elif local_has:
+        action = "accept_from_local_raw"
+        status = "plannable_raw_unaccepted"
+    else:
+        action = "fetch_then_accept"
+        status = "plannable_missing"
     return {
         "plannable": target,
-        "local_has_plannable": target in local_norm,
-        "local_periods": sorted(local_norm),
+        "local_has_plannable": local_has,
+        "accepted_has_plannable": accepted_has,
+        "available_date": available,
+        "local_periods": sorted(x for x in local_norm if x),
         "missing_periods": missing,
         "missing_count": len(missing),
-        "status": "ok" if target in local_norm else "plannable_missing",
+        "next_period": next_period,
+        "next_period_unlock": next_unlock,
+        "action": action,
+        "status": status,
+    }
+
+
+def _accept_plannable_from_local_raw(conn: Any, report_date: str) -> dict:
+    """Land→accept the plannable period from raw (by-period incremental, not mass history)."""
+    available = _plannable_available_yyyymmdd(report_date)
+    if not available:
+        return {
+            "status": "accept_skipped",
+            "error": "no_available_date",
+            "report_date": report_date,
+        }
+    try:
+        outcome = accept_org_holding_partition_from_legacy(
+            conn, available, rewrite_legacy=False
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "status": "accept_failed",
+            "error": str(exc)[:300],
+            "report_date": report_date,
+            "available_date": available,
+        }
+    return {
+        "status": "accepted",
+        "report_date": report_date,
+        "available_date": available,
+        "canonical_rows": getattr(outcome, "canonical_rows", None),
+        "partitions": list(getattr(outcome, "partitions", None) or []),
+        "batch_ids": list(getattr(outcome, "batch_ids", None) or []),
     }
 
 
 async def sync_org_holding_incremental(conn: Any) -> dict:
-    """日常增量 (接 pipeline acquire): check plannable vs local; fetch only if
-    latest plannable period is missing.
+    """日常增量 (接 pipeline acquire): check plannable vs local every run.
 
-    机构持仓是季报派生 (季度更新)。Owner Q3: incremental check+fetch >
-    mass dump — when the latest period already exists, skip (no daily ~830k).
-    Intermediate historical gaps are logged via ``org_holding_period_gap_report``
-    but NOT auto-filled here (would be mass backfill).
+    Policy (owner 2026-07-21/23):
+      - Mass full-history / already-landed period ~830k refresh = BANNED
+      - By-date provider land invent = BANNED (no NOTICE_DATE)
+      - Every daily_update: check latest plannable; missing raw → fetch one
+        period; raw present but unaccepted → accept from local-raw; both ok →
+        skip with next-period unlock reason (disclosure clock, not eternal freeze)
+      - Intermediate historical gaps: log-not-fill (explicit backfill knife only)
     """
     ensure_tables(conn)
     gap = org_holding_period_gap_report(conn)
     target = gap.get("plannable")
     if not target:
         return {
+            "domain": "org_holding",
             "count": 0,
             "status": "skipped",
+            "action": "none",
             "gap": gap,
             "message": "尚无足量披露季度末",
         }
-    if gap.get("local_has_plannable"):
+    action = str(gap.get("action") or "skip_current")
+    if action == "skip_current":
         missing_older = [p for p in (gap.get("missing_periods") or []) if p != target]
-        next_period, next_unlock = next_period_unlock(target)
-        # Honesty (owner 2026-07-22): make it explicit this is disclosure-clock
-        # advancement, not an eternal freeze. Next quarter becomes plannable at
-        # its statutory disclosure deadline; fetching it earlier (partial early
-        # filers) would poison the period under the no-refresh rule.
         msg = (
-            f"check: plannable={target} local=present; skip fetch "
+            f"check: plannable={target} raw=present accepted=present; skip "
             f"(older_missing={len(missing_older)}; not auto mass-filled; "
-            f"next period {next_period} unlocks {next_unlock})"
+            f"next period {gap.get('next_period')} unlocks "
+            f"{gap.get('next_period_unlock')})"
         )
         return {
+            "domain": "org_holding",
             "count": 0,
             "status": "skipped",
+            "action": action,
             "report_date": target,
-            "next_period": next_period,
-            "next_period_unlock": next_unlock,
+            "available_date": gap.get("available_date"),
+            "next_period": gap.get("next_period"),
+            "next_period_unlock": gap.get("next_period_unlock"),
             "gap": gap,
             "message": msg,
         }
+
     loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(None, sync_period, conn, target)
-    if result.get("status") == "source_unavailable":
-        raise RuntimeError(f"org_holding_source_failed:{result.get('error')}")
-    written = int(result.get("written_rows") or 0)
+    if action == "fetch_then_accept":
+        # sync_period: provider fetch → formal accept + raw mirror (one period).
+        result = await loop.run_in_executor(None, sync_period, conn, target)
+        if result.get("status") == "source_unavailable":
+            raise RuntimeError(f"org_holding_source_failed:{result.get('error')}")
+        written = int(result.get("written_rows") or 0)
+        accept_ok = bool(result.get("accepted_partitions")) or written > 0
+        return {
+            "domain": "org_holding",
+            "count": written,
+            "status": "completed" if accept_ok else "partial",
+            "action": action,
+            "report_date": target,
+            "available_date": gap.get("available_date"),
+            "written": written,
+            "fetch_status": result.get("status"),
+            "accept": {
+                "status": "accepted" if accept_ok else "accept_failed",
+                "partitions": result.get("accepted_partitions") or [],
+                "legacy_rows_written": result.get("legacy_rows_written"),
+            },
+            "gap": gap,
+            "message": (
+                f"check: plannable={target} action={action} "
+                f"fetch_wrote={written} accept="
+                f"{'accepted' if accept_ok else 'failed'} "
+                f"(incremental-by-period; not full-history / not by-date invent)"
+            ),
+        }
+
+    # raw present, accepted missing → accept from local-raw only (no provider I/O).
+    accept = await loop.run_in_executor(
+        None, _accept_plannable_from_local_raw, conn, target
+    )
+    accept_ok = accept.get("status") == "accepted"
     return {
-        "count": written,
-        "status": "completed",
+        "domain": "org_holding",
+        "count": 0,
+        "status": "completed" if accept_ok else "partial",
+        "action": action,
         "report_date": target,
-        "written": written,
+        "available_date": gap.get("available_date"),
+        "written": 0,
+        "fetch_status": None,
+        "accept": accept,
         "gap": gap,
         "message": (
-            f"check: plannable={target} local=missing → incremental fetch "
-            f"wrote {written} rows (not full-history dump)"
+            f"check: plannable={target} action={action} "
+            f"accept={accept.get('status')} "
+            f"(incremental-by-period; not full-history / not by-date invent)"
         ),
     }

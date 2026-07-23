@@ -57,7 +57,7 @@
 
 - **S1–S6 FIXED** — transport modular；default sync caller-only；derive/serve 独立 CLI
 - **S7 near-FIXED** — 23/46 ssot typed hard-stop wall（2 blocked + 7 serve_l0 + 14 sync_orphan）；B1+B2 done；daily **1829d** / ST **1099d**；**本阶段不再开 S7 刀** unless owner 新 publication/sunset block
-- **E0 transport FIXED 子集** — S1/S2 CLI + stk/holders provider land；**org_holding provider land BLOCKED**
+- **E0 transport FIXED 子集** — S1/S2 CLI + stk/holders provider land；**org_holding by-date invent banned**（daily = incremental-by-period check）
 - **E0-HIST / F6 PASS** — local-raw chunked ≤40d empty_skip：holders **152**（`20251020`→`20260717`；**126** trading-day overlap daily）；stk **194**（`20251020`→`20260715`；**161** overlap）；org **2** unchanged
 - **B5 FIXED 子集** — registry gate 绿 + qfq lineage + live derive；**Type-B enrichment defer**（registry in-scheme；enrichment 非近端）
 - **FND-GATE FIXED** — `backend/scripts/check_foundation_done.py` + `backend/config/foundation_done.yaml`；doctor/moth/CI wired；typed walls（S7 23 / org BLOCKED / Type-B defer）PASS
@@ -67,7 +67,7 @@
 
 **Deferred product（顺序已重评；roadmap 见 MASTER reeval）**：0r.5b→5B mandate CLOSED。Defs 见 backlog；历史排期证据见 `product_plan_reeval_stock_dossier_20260721.md`（superseded as roadmap）。禁 Optuna/Release/松 holdout；结论=Tier3/产品面，不融进 Tier0。
 
-**护栏**：frontier=`20260721`（含 pulse sector/flow/strongest）；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；org BLOCKED 维持；**org/period 域 manual update = incremental-only**（见下裁决）；margin 禁 thaw；**市场感知/档案 serve = 沪深A 白名单含 ST**（serve filter `6afea30fc` + population denylist 纠偏见 `hs_a_whitelist_includes_st_20260722.md`）。
+**护栏**：frontier=`20260721`（含 pulse sector/flow/strongest）；dual-track=NONE；PIT+≤40d；§15 不放宽 L3/Rule10；**org mass/by-date invent banned + 每次更新检增量**（非 forever ignore；见下裁决 + `org_holding_incremental_loop_20260723.md`）；margin 禁 thaw；**市场感知/档案 serve = 沪深A 白名单含 ST**（serve filter `6afea30fc` + population denylist 纠偏见 `hs_a_whitelist_includes_st_20260722.md`）。
 
 A→H 仍为后置地图；E/F remeasure **仅** owner schedule 后开。
 
@@ -101,7 +101,7 @@ A→H 仍为后置地图；E/F remeasure **仅** owner schedule 后开。
 
 **S7 sync_orphan standby（owner Q2）**：**NO** blanket pre-accept of 14 orphans（无 consumer / 无 contract / 大宗成本 / 假 readiness）。保持 ssot 墙；`legacy_raw_plane.yaml` **publication_watchlist** = 未来策略需要时的 publication 候选（非自动队列）；薄门：sync_orphan 进 DataAccess → `check_legacy_raw_plane` FAIL。**禁假 COMPAT**。
 
-**Period-domain incremental（owner Q3 + hard lock）**：每次 `daily_update` / 显式 sync 对 org（及同类 period 域）**必须** check latest plannable vs local；**缺 → 拉一期；有 → skip + log**。**NEVER** 每次点击全市场单期 ~830k mass re-pull / unbounded page crawl refresh。中间历史洞 = log-not-fill（显式 backfill 刀另开，不进 pipeline）。实现：`org_holding_period_gap_report` + `sync_org_holding_incremental`；`sync_period(..., allow_existing_refresh=False)` fail-closed。
+**Period-domain incremental（owner Q3 + hard lock；2026-07-23 纠偏）**：每次 `daily_update` / 显式 sync 对 org（及同类 period 域）**必须** check latest plannable vs local raw+accepted；**raw 缺 → 拉一期；raw 有 accepted 无 → accept from local-raw；都有 → skip + next-period unlock log**。**NEVER** 每次点击全市场单期 ~830k mass re-pull / unbounded page crawl refresh / by-date invent。中间历史洞 = log-not-fill（显式 backfill 刀另开，不进 pipeline）。实现：`org_holding_period_gap_report` + `sync_org_holding_incremental`；表面：`delta_manifest.acquire_summary.incremental` + due_plan period 行；`sync_period(..., allow_existing_refresh=False)` fail-closed。
 
 **Product 系统 + Agent-OS 演进裁决（owner，针对 Fable5 提案）**：后续演进 = **strangler + 聚焦**，非 greenfield 重写。仅三把杠杆：(1) 单一读 SSOT 经 resolver（禁旁路直读）；(2) 本地 L2/L3 pytest = CI test-list 唯一 SSOT；(3) god-seam strangler，按 blast radius 分步收编，不整体推倒。
 

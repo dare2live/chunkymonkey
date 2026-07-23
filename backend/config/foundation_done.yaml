@@ -6,7 +6,8 @@
 #
 # Semantics:
 #   - Real gaps → FAIL (fail-closed)
-#   - Typed walls (S7 23 hard-stop / org BLOCKED / Type-B enrichment defer)
+#   - Typed walls (S7 23 hard-stop / org mass by-date provider land banned +
+#     daily incremental-by-period required / Type-B enrichment defer)
 #     are PASS when the wall is honestly maintained — they must NOT block
 #     foundation-phase closure incorrectly
 #   - F8 §15 behavior PASS only when §15-VERIFY evidence lists
@@ -39,8 +40,8 @@ e0_breadth:
   daily_db: tushare_raw
   org_db: smartmoney
   min_holders_daily_overlap: 120
-  # org stays local-raw BLOCKED; partition count may stay tiny
-  org_max_partitions_when_blocked: 8
+  # org: mass by-date invent banned; incremental land/accept may grow partitions
+  # with the disclosure calendar (no artificial thin ceiling)
 
 # B5 / qfq (F4) — Type-B enrichment defer is a typed wall, not F4 FAIL
 b5:

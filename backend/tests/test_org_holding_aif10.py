@@ -57,9 +57,9 @@ def test_next_period_unlock_points_to_following_quarter_and_deadline():
 def test_incremental_skip_message_shows_next_unlock(monkeypatch):
     """日常增量 skip 时日志须暴露「下一期何时解锁」, 不再像永久冻结。"""
     import asyncio
-    from datetime import date
 
     monkeypatch.setattr(m, "latest_plannable_report_date", lambda today=None: "2026-03-31")
+    monkeypatch.setattr(m, "accepted_has_org_holding_partition", lambda *_a, **_k: True)
 
     class _Conn:
         def execute(self, sql, *a, **k):
@@ -73,6 +73,7 @@ def test_incremental_skip_message_shows_next_unlock(monkeypatch):
     monkeypatch.setattr(m, "ensure_tables", lambda _conn: None)
     out = asyncio.run(m.sync_org_holding_incremental(_Conn()))
     assert out["status"] == "skipped"
+    assert out["action"] == "skip_current"
     assert out["next_period"] == "2026-06-30"
     assert out["next_period_unlock"] == "2026-08-31"
     assert "next period 2026-06-30 unlocks 2026-08-31" in out["message"]
@@ -129,16 +130,17 @@ def test_normalize_empty():
 
 # ── 幂等 upsert + grain ───────────────────────────────────────────────
 def test_upsert_idempotent_and_grain():
+    """Raw research table path = legacy_direct (formal_only _upsert_rows does not mirror)."""
     con = duckdb.connect(":memory:")
     m.ensure_tables(con)
     rows = m._normalize_rows(_real_shape_raw())
-    assert m._upsert_rows(con, rows) == 2
-    m._upsert_rows(con, rows)  # 幂等重写
+    assert m._upsert_rows_legacy_direct(con, rows, as_mirror=False) == 2
+    m._upsert_rows_legacy_direct(con, rows, as_mirror=False)  # 幂等重写
     n = con.execute("SELECT COUNT(*) FROM raw_org_holding_aif10").fetchone()[0]
     assert n == 2  # 不翻倍
     # 改值重写 -> 同 grain 覆盖 (非新增)
     rows[0]["total_shares"] = 999.0
-    m._upsert_rows(con, rows)
+    m._upsert_rows_legacy_direct(con, rows, as_mirror=False)
     n2 = con.execute("SELECT COUNT(*) FROM raw_org_holding_aif10").fetchone()[0]
     v = con.execute(
         "SELECT total_shares FROM raw_org_holding_aif10 WHERE holder_code='10010626'"
@@ -150,7 +152,9 @@ def test_upsert_idempotent_and_grain():
 def test_available_date_no_null_when_quarter_end():
     con = duckdb.connect(":memory:")
     m.ensure_tables(con)
-    m._upsert_rows(con, m._normalize_rows(_real_shape_raw()))
+    m._upsert_rows_legacy_direct(
+        con, m._normalize_rows(_real_shape_raw()), as_mirror=False
+    )
     miss = con.execute(
         "SELECT COUNT(*) FROM raw_org_holding_aif10 WHERE available_date IS NULL"
     ).fetchone()[0]
@@ -169,7 +173,9 @@ def test_fetched_at_utc_on_both_insert_and_update_paths():
     m.ensure_tables(con)
     tol = 600  # 秒; 北京墙钟误写会偏 8h=28800s, 远超容差
 
-    m._upsert_rows(con, m._normalize_rows(_real_shape_raw()))
+    m._upsert_rows_legacy_direct(
+        con, m._normalize_rows(_real_shape_raw()), as_mirror=False
+    )
     ins = con.execute("SELECT MAX(fetched_at) FROM raw_org_holding_aif10").fetchone()[0]
     utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
     assert abs((ins - utc_now).total_seconds()) < tol, f"INSERT 路径 fetched_at 非 UTC: {ins}"
@@ -177,7 +183,7 @@ def test_fetched_at_utc_on_both_insert_and_update_paths():
     # 冲突更新路径同口径
     rows2 = m._normalize_rows(_real_shape_raw())
     rows2[0]["total_shares"] = 123.0
-    m._upsert_rows(con, rows2)
+    m._upsert_rows_legacy_direct(con, rows2, as_mirror=False)
     upd = con.execute("SELECT MAX(fetched_at) FROM raw_org_holding_aif10").fetchone()[0]
     utc_now = datetime.now(timezone.utc).replace(tzinfo=None)
     assert abs((upd - utc_now).total_seconds()) < tol, f"UPDATE 路径 fetched_at 非 UTC: {upd}"
@@ -196,6 +202,7 @@ def test_org_holding_period_gap_report_detects_missing_plannable():
     )
     assert gap["plannable"] == "2026-03-31"
     assert gap["local_has_plannable"] is False
+    assert gap["action"] == "fetch_then_accept"
     assert "2026-03-31" in gap["missing_periods"]
     assert gap["status"] == "plannable_missing"
     con.close()
@@ -207,6 +214,7 @@ def test_sync_org_holding_incremental_skips_when_plannable_present(monkeypatch):
     con = duckdb.connect(":memory:")
     m.ensure_tables(con)
     monkeypatch.setattr(m, "latest_plannable_report_date", lambda today=None: "2026-03-31")
+    monkeypatch.setattr(m, "accepted_has_org_holding_partition", lambda *_a, **_k: True)
     con.execute(
         "INSERT INTO raw_org_holding_aif10 "
         "(report_date, stock_code, holder_code, fund_derivecode) "
@@ -214,16 +222,63 @@ def test_sync_org_holding_incremental_skips_when_plannable_present(monkeypatch):
     )
     con.commit()
     fetched = {"called": False}
+    accepted = {"called": False}
 
     def _boom(*_a, **_k):
         fetched["called"] = True
         raise AssertionError("must not mass-fetch when plannable present")
 
+    def _accept_boom(*_a, **_k):
+        accepted["called"] = True
+        raise AssertionError("must not re-accept when accepted present")
+
     monkeypatch.setattr(m, "sync_period", _boom)
+    monkeypatch.setattr(m, "_accept_plannable_from_local_raw", _accept_boom)
     result = asyncio.run(m.sync_org_holding_incremental(con))
     assert result["status"] == "skipped"
+    assert result["action"] == "skip_current"
     assert fetched["called"] is False
-    assert "local=present" in result["message"]
+    assert accepted["called"] is False
+    assert "raw=present accepted=present" in result["message"]
+    con.close()
+
+
+def test_sync_org_holding_incremental_accepts_when_raw_present_unaccepted(monkeypatch):
+    """Raw already has plannable but accepted missing → accept_from_local_raw (no re-fetch)."""
+    import asyncio
+
+    con = duckdb.connect(":memory:")
+    m.ensure_tables(con)
+    monkeypatch.setattr(m, "latest_plannable_report_date", lambda today=None: "2026-03-31")
+    monkeypatch.setattr(m, "accepted_has_org_holding_partition", lambda *_a, **_k: False)
+    con.execute(
+        "INSERT INTO raw_org_holding_aif10 "
+        "(report_date, available_date, stock_code, holder_code, fund_derivecode) "
+        "VALUES ('2026-03-31', '2026-04-30', '600000', 'H1', '')"
+    )
+    con.commit()
+    fetched = {"called": False}
+
+    def _boom(*_a, **_k):
+        fetched["called"] = True
+        raise AssertionError("must not re-fetch when raw already has plannable")
+
+    monkeypatch.setattr(m, "sync_period", _boom)
+    monkeypatch.setattr(
+        m,
+        "_accept_plannable_from_local_raw",
+        lambda _c, rd: {
+            "status": "accepted",
+            "report_date": rd,
+            "available_date": "20260430",
+            "canonical_rows": 1,
+        },
+    )
+    result = asyncio.run(m.sync_org_holding_incremental(con))
+    assert fetched["called"] is False
+    assert result["action"] == "accept_from_local_raw"
+    assert result["status"] == "completed"
+    assert result["accept"]["status"] == "accepted"
     con.close()
 
 

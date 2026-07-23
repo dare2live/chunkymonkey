@@ -97,7 +97,7 @@ function OverviewPanel(props: { d: StockDossierResponse }) {
           {cov.holders_episode_only
             ? ` · episode-only ${cov.holders_episode_only} 无假链`
             : ""}
-          — org_holding mass land 仍 BLOCKED，不伪造机构全景。
+          — org_holding 增量检每次更新（mass re-pull 禁），不伪造 by-date 全景。
         </p>
       )}
       <details className="dossier-l2">
