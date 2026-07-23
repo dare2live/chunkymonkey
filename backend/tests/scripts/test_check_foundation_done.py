@@ -24,7 +24,7 @@ def test_live_config_loads() -> None:
     mod = _load_mod()
     cfg = mod.load_config()
     assert int(cfg["version"]) == 1
-    assert cfg["s7_ssot_wall"]["ssot"] == 23
+    assert cfg["s7_ssot_wall"]["ssot"] == 22
     assert cfg["section_15"]["status"] == "PASS"
     knives = cfg["section_15"]["evidence"]["knives"]
     assert len(knives) >= 3
@@ -42,7 +42,7 @@ def test_skip_live_aggregate_is_pass_when_f8_closed() -> None:
     assert report["phase_closure_ready"] is True
     by_id = {c["id"]: c for c in report["criteria"]}
     assert by_id["F2"]["verdict"] == "PASS"
-    assert by_id["F2"]["typed_wall"] == "s7_23_hard_stop"
+    assert by_id["F2"]["typed_wall"] == "s7_ssot_hard_stop"
     assert by_id["F7"]["verdict"] == "PASS"
     assert by_id["F7"]["typed_wall"] == "org_provider_land_blocked"
     assert by_id["F4"]["typed_wall"] == "type_b_enrichment_defer"
@@ -144,7 +144,7 @@ def test_config_yaml_declares_typed_walls() -> None:
         (REPO / "backend" / "config" / "foundation_done.yaml").read_text(encoding="utf-8")
     )
     kinds = data["s7_ssot_wall"]["kinds"]
-    assert kinds["sync_orphan"] == 14
+    assert kinds["sync_orphan"] == 13
     assert kinds["serve_l0_declared"] == 7
     assert kinds["blocked_no_publication"] == 2
     assert "enrichment_projection_partial" in data["b5"]["type_b_defer_codes"]

@@ -6,7 +6,7 @@
 #
 # Semantics:
 #   - Real gaps → FAIL (fail-closed)
-#   - Typed walls (S7 23 hard-stop / org mass by-date provider land banned +
+#   - Typed walls (S7 22 ssot hard-stop + 1 retired / org mass by-date provider land banned +
 #     daily incremental-by-period required / Type-B enrichment defer)
 #     are PASS when the wall is honestly maintained — they must NOT block
 #     foundation-phase closure incorrectly
@@ -21,13 +21,14 @@ authority: analysis/foundation_phase_reeval_20260721.md
 
 # S7 typed hard-stop wall (F2) — counts are the wall, not residual debt
 s7_ssot_wall:
-  ssot: 23
+  ssot: 22
   fill: 1
   compatibility: 22
   kinds:
-    sync_orphan: 14
+    sync_orphan: 13
     serve_l0_declared: 7
     blocked_no_publication: 2
+  # retired (not ssot): raw_tushare_stk_factor_pro owner sunset 2026-07-23
 
 # E0 accept breadth (F6)
 e0_breadth:

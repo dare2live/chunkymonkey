@@ -198,7 +198,7 @@ def test_legacy_plane_top_inst_is_compatibility() -> None:
     assert meta["publication_surface"] == "fact_top_inst_seat_daily"
     assert mod.collect_violations() == []
     counts = mod.role_counts()
-    assert counts["ssot"] == 23
+    assert counts["ssot"] == 22
     assert counts["compatibility"] == 22
 
 

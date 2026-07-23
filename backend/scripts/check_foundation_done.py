@@ -155,7 +155,7 @@ def check_f1_transport() -> dict[str, Any]:
 
 
 def check_f2_s7_wall(cfg: dict[str, Any]) -> dict[str, Any]:
-    """F2: S7 inventory honest; 23 ssot typed hard-stop wall = PASS."""
+    """F2: S7 inventory honest; typed ssot hard-stop wall = PASS."""
     import importlib.util
 
     path = REPO / "backend" / "scripts" / "check_legacy_raw_plane.py"
@@ -188,7 +188,7 @@ def check_f2_s7_wall(cfg: dict[str, Any]) -> dict[str, Any]:
             kind = meta.get("kind") or "?"
             kinds[str(kind)] += 1
 
-    expected_ssot = int(wall.get("ssot", 23))
+    expected_ssot = int(wall.get("ssot", 22))
     expected_fill = int(wall.get("fill", 1))
     expected_compat = int(wall.get("compatibility", 22))
     expected_kinds = dict(wall.get("kinds") or {})
@@ -224,7 +224,7 @@ def check_f2_s7_wall(cfg: dict[str, Any]) -> dict[str, Any]:
             f"blocked_no_publication={expected_kinds.get('blocked_no_publication')})"
         ),
         evidence={"roles": dict(roles), "ssot_kinds": dict(kinds)},
-        wall="s7_23_hard_stop",
+        wall="s7_ssot_hard_stop",
     )
 
 

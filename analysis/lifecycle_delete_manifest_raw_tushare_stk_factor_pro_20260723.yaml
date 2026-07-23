@@ -1,0 +1,17 @@
+# raw_tushare_stk_factor_pro (stk_factor_pro) 整表退役 (2026-07-23, owner 签字 DELETE)
+# 证据: analysis/db_bloat_deep_dive_20260723.md §1/§5
+# 前置复核 (本刀):
+#   - table = raw_tushare_stk_factor_pro @ data/tushare_raw.duckdb
+#   - legacy_raw_plane kind=sync_orphan; DataAccess 0 hits; moth fan-in = registry/tests/docs only
+#   - built_at max=2026-07-05; sync_policy 原 on_demand (不进 --all-due)
+# 磁盘约束: 卷可用 ~5.4GiB; 1% parquet 样本外推全表 ≈12GiB → 无法冷归档到本卷;
+#   action=drop (lifecycle 留痕 + DROP); compact 后删 precompact bak 回收。
+# 防回流: sync_registry 域条目墓碑化 (见同刀 commit); 显式 sync 不再可写该表。
+run_id: raw_tushare_stk_factor_pro_retirement_20260723
+db: tushare_raw
+archive_dir: data/archive/lifecycle
+entries:
+  - table: raw_tushare_stk_factor_pro
+    action: drop
+    bucket: sync_orphan_owner_sunset
+    reason: "Owner DELETE 2026-07-23: S7 sync_orphan ~5.2GiB / 7.7M rows / 261 cols; 0 DataAccess/serve consumers; last built_at 2026-07-05. Disk too tight for parquet archive on volume (~5.4GiB free; sample est archive > free). Registry tombstoned so daily/on_demand cannot refill. See analysis/db_bloat_deep_dive_20260723.md §6."

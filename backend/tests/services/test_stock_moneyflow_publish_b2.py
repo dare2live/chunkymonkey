@@ -278,7 +278,7 @@ def test_legacy_plane_moneyflow_tables_are_compatibility() -> None:
         assert meta["publication_surface"] == surface, table
     assert mod.collect_violations() == []
     counts = mod.role_counts()
-    assert counts["ssot"] == 23
+    assert counts["ssot"] == 22
     assert counts["compatibility"] == 22
 
 

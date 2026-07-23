@@ -195,13 +195,14 @@ def test_s7_derive_runtime_still_bans_acquire_imports() -> None:
 
 
 def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
-    """S7 inventory after B1/B2: 23 ssot / 1 fill / 22 compatibility (near-FIXED wall)."""
+    """S7 inventory after stk_factor_pro sunset: 22 ssot / 1 fill / 22 compat / 1 retired."""
 
     mod = _load_check_mod()
     counts = mod.role_counts()
-    assert counts["ssot"] == 23, counts
+    assert counts["ssot"] == 22, counts
     assert counts["fill"] == 1, counts
     assert counts["compatibility"] == 22, counts
+    assert counts.get("retired", 0) == 1, counts
     assert sum(counts.values()) == 46, counts
 
 
@@ -246,13 +247,18 @@ def test_s7_residual_ssot_map_is_typed_hard_stops_only() -> None:
             "income",
             "kpl_list",
             "moneyflow_hsgt",
-            "stk_factor_pro",
             "stk_holdernumber",
             "ths_hot",
         },
     }
     assert by_kind == expected, by_kind
-    assert sum(len(v) for v in by_kind.values()) == 23
+    assert sum(len(v) for v in by_kind.values()) == 22
+    retired = {
+        table.removeprefix("raw_tushare_")
+        for table, meta in inv["tables"].items()
+        if meta.get("role") == "retired"
+    }
+    assert retired == {"stk_factor_pro"}, retired
 
 
 def test_s7_limit_list_d_publication_is_fact_stock_limit_daily() -> None:

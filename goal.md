@@ -21,7 +21,7 @@
 
 ## 当前 objective
 
-**轨道 = foundation solidify CLOSED**（2026-07-21；母体 = transport strangler S1–S7 + brick L0–L3 + E0 + DB 分层；**phase_closure_ready=true**）。模块化 **S1–S6 FIXED**；**S7 near-FIXED**（23 ssot = typed hard-stop 墙；B1+B2 done；禁假 COMPAT）。**E0-HIST / F6 PASS**（holders≥120 trading-day overlap）。**FND-GATE PASS**（F1–F10 全 PASS；F8 §15-VERIFY **PASS**）。**§15 behavior PASS**（连续 3 刀 commits/knife=1.0 + pre-knife）。**B5** registry/qfq **FIXED 子集**；Type-B enrichment **defer**。A→H = **后置研究地图**；**E/F remeasure paused**（可 schedule，未开）。WP0–WP4 闭合；WP6 shadow 开放。**§15 knife-merge binding 不变**。
+**轨道 = foundation solidify CLOSED**（2026-07-21；母体 = transport strangler S1–S7 + brick L0–L3 + E0 + DB 分层；**phase_closure_ready=true**）。模块化 **S1–S6 FIXED**；**S7 near-FIXED**（22 ssot + 1 retired = typed hard-stop 墙；B1+B2 done；禁假 COMPAT；`stk_factor_pro` 2026-07-23 owner sunset）。**E0-HIST / F6 PASS**（holders≥120 trading-day overlap）。**FND-GATE PASS**（F1–F10 全 PASS；F8 §15-VERIFY **PASS**）。**§15 behavior PASS**（连续 3 刀 commits/knife=1.0 + pre-knife）。**B5** registry/qfq **FIXED 子集**；Type-B enrichment **defer**。A→H = **后置研究地图**；**E/F remeasure paused**（可 schedule，未开）。WP0–WP4 闭合；WP6 shadow 开放。**§15 knife-merge binding 不变**。
 
 已落地硬事实（勿回滚）：
 - C + B-pit **`cutover_allowed=true`**（commit `b38e9ac5`）→ resolver `ACCEPTED_CUTOVER` / `MART_CUTOVER`
@@ -56,11 +56,11 @@
 **已闭合（勿回滚）**：
 
 - **S1–S6 FIXED** — transport modular；default sync caller-only；derive/serve 独立 CLI
-- **S7 near-FIXED** — 23/46 ssot typed hard-stop wall（2 blocked + 7 serve_l0 + 14 sync_orphan）；B1+B2 done；daily **1829d** / ST **1099d**；**本阶段不再开 S7 刀** unless owner 新 publication/sunset block
+- **S7 near-FIXED** — 22 ssot + 1 retired typed hard-stop wall（2 blocked + 7 serve_l0 + 13 sync_orphan；`stk_factor_pro` owner sunset）；B1+B2 done；daily **1829d** / ST **1099d**；**本阶段不再开 S7 刀** unless owner 新 publication/sunset block
 - **E0 transport FIXED 子集** — S1/S2 CLI + stk/holders provider land；**org_holding by-date invent banned**（daily = incremental-by-period check）
 - **E0-HIST / F6 PASS** — local-raw chunked ≤40d empty_skip：holders **152**（`20251020`→`20260717`；**126** trading-day overlap daily）；stk **194**（`20251020`→`20260715`；**161** overlap）；org **2** unchanged
 - **B5 FIXED 子集** — registry gate 绿 + qfq lineage + live derive；**Type-B enrichment defer**（registry in-scheme；enrichment 非近端）
-- **FND-GATE FIXED** — `backend/scripts/check_foundation_done.py` + `backend/config/foundation_done.yaml`；doctor/moth/CI wired；typed walls（S7 23 / org BLOCKED / Type-B defer）PASS
+- **FND-GATE FIXED** — `backend/scripts/check_foundation_done.py` + `backend/config/foundation_done.yaml`；doctor/moth/CI wired；typed walls（S7 22 ssot+1 retired / org BLOCKED / Type-B defer）PASS
 - **§15-VERIFY / F8 PASS** — 连续 3 L3 刀 e0-hist→fnd-gate→section15-verify；commits/knife=1.0；pre-knife 全 true；证据 `analysis/section15_verify_20260721.md`
 
 **近端 focus**：roadmap = `analysis/MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722.md` §7。**CX-1…CX-4 PASS**。Foundation **0r.1–0r.4 FIXED**。跑步机控制面 **Phases 0–3 FIXED**；**Serve→derive 闭环 FIXED**（机构档案 process delta-gate + org `repair_accept_from_local_raw` + F6 `min_org_accepted_stocks` + `integrity_observe` + as_of seed；live org max_stocks=5524；FND-GATE PASS）。**Cap F 股票档案 100% usable FIXED**（`stock_dossier_cap_f_usable`；证据 `dossier_100_usable_20260723.md`）。**margin population-scope 1a**：accepted claim = SSE+SZSE `external_aggregate`（禁 BSE / 禁 project_universe）；live land/accept 仍 frozen；catchup = Knife **1b**（新 generation + transport 对齐 + bounded calendar）；continuity 仍 `observe_frozen_stale`（证据 `foundation_residual_fix_plan_20260723.md` + `margin_calendar_catchup_blocker_20260723.md`）— **禁**假 Continuity READY / product thaw / mass backfill。下一步 = **Knife 1b** 或用已 ship 产品面；**RX / E/F remeasure BLOCKED until owner签字**；**Optuna = Phase N BANNED**。仍禁 Type-B enrichment / S7 假 COMPAT / 擅自 E/F / G/H/Release / org invent / 松 holdout / margin thaw。**SW L1 PIT exclusivity FIXED**；**drain 流式 + probe-first FIXED**。

@@ -1218,20 +1218,11 @@ domains:
                               # (主板过滤后与本地一致), 非缺口; 近期"骤降"同样验证为解禁事件本身脉冲式
                               # (大批日财报季集中/零散日常态交替), 与page_limit截断问题相互独立
 
-  stk_factor_pro:   # 技术因子专业版 261列 (鱼身延续/鱼尾出场燃料, 三复权); 实弹不支持单日全量必逐股
-    source: tushare
-    api: stk_factor_pro
-    target_table: raw_tushare_stk_factor_pro
-    universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
-    grain: [ts_code, trade_date]
-    batch_mode: by_ts_code
-    sync_policy: on_demand          # 0 生产消费者；移出 --all-due。需要实验时必须显式 --start/--end
-    pit_anchor: "trade_date; 盘后 -> JOIN t-1"
-    available_after: "18:00"
-    data_start: "20190102"
-    freshness_sla_trading_days: 1
-    # 无逐股日更调度；显式窗口按股刷新，避免 5000+ 次无消费者调用。
-    min_rows_per_batch: 1
+  # stk_factor_pro 域 2026-07-23 owner DELETE 退役:
+  #   raw_tushare_stk_factor_pro (~5.2GiB sync_orphan, 0 DataAccess/serve 消费者) 已 lifecycle DROP +
+  #   tushare_raw compact (10.0→4.7GiB). 墓碑化本条目以防 daily/--all-due/显式 sync 回流重建。
+  #   证据: analysis/db_bloat_deep_dive_20260723.md §6; mart_data_deletion_record
+  #   run_id=raw_tushare_stk_factor_pro_retirement_20260723. API 能力若未来需要须新域+新消费者+owner 再开。
 
   stk_holdernumber:   # 股东户数 (筹码集中吸筹前兆, 慢变量分层); 截面enddate返0必逐股
     source: tushare

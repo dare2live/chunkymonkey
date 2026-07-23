@@ -1,18 +1,16 @@
 # DB bloat deep-dive — 2026-07-23（owner Q&A addendum）
 
 > **生命周期**：evidence-only addendum to `analysis/db_size_bloat_audit_20260723.md`  
-> **方法**：read-only DuckDB + code cite；**未** DROP / VACUUM / compact / 改 peer WIP  
-> **Measured**：2026-07-23 ~14:00 Asia/Shanghai
+> **方法**：read-only DuckDB + code cite；§6 = owner-signed DELETE outcome（已执行；本文件只记证据）  
+> **Measured**：2026-07-23 ~14:00 Asia/Shanghai（Q&A）；§6 execute ~14:10–14:14
 
 ## Owner verdicts（binding for this knife）
 
 | Item | Verdict | Reclaim action | Risk | Writer still touches? |
 |---|---|---|---|---|
-| `raw_tushare_stk_factor_pro` ~5.2 GiB | **NEED_OWNER_SIGN** | lifecycle archive+DROP+`db_compact tushare_raw`（见 §5 命令） | 高：不可逆丢 261 列 raw；registry 仍可显式 sync | **否（近期）**：`built_at` max=`2026-07-05`；wm `last_success_at`=`2026-06-19`；`on_demand` 不进 `--all-due` |
+| `raw_tushare_stk_factor_pro` ~5.2 GiB | **DELETED**（owner 签字） | lifecycle DROP + export/import compact（§6） | 已执行；registry 墓碑防回流 | **否**：表已不存在 |
 | holders landing ~32× `row_hash` | **KEEP (by design)** + policy residue | **勿 DROP landing**；先立法 retention / content-hash skip 再冷归档旧 batch | 高：改 immutable landing 语义；canonical 仍依赖 accept 链 | **是**：2026-07-23 仍 land/accept |
 | market free-block ~0.7 GiB | **NEED_OWNER_SIGN**（窗口） | 停 derive 后 `db_compact.py --db market --execute` | 中：独占写锁；峰值≈旧+新 | **文件仍被碰**：mtime=`2026-07-23 13:48`；表内容 `ingested_at`=`2026-07-22 14:30`（全量 DROP+CTAS 后未 compact） |
-
-**本刀无 SAFE_DELETE 执行** — 无「无消费者 + 无近期 writer + 非 accepted 语义」三项同时满足且可自动删的对象；compact 亦因 live 写窗未开。
 
 ---
 
@@ -149,6 +147,20 @@ python backend/scripts/db_compact.py --db market --execute
 
 ---
 
+## 6. DELETE outcome — `raw_tushare_stk_factor_pro`（2026-07-23 ~14:10 CST）
+
+| Step | Result |
+|---|---|
+| Re-verify | table=`raw_tushare_stk_factor_pro`；DataAccess **0** hits；`legacy_raw_plane` was `sync_orphan`；`lsof` 无 writer |
+| Size before | `data/tushare_raw.duckdb` **10.039 GiB**（10 780 849 280 B） |
+| Lifecycle | `db_lifecycle_delete.py --execute` manifest `analysis/lifecycle_delete_manifest_raw_tushare_stk_factor_pro_20260723.yaml`；**action=drop**（卷可用仅 ~5.4 GiB；1% parquet 样本外推全表归档 ≈12 GiB → 无法冷归档） |
+| DROP | **7 736 955** rows；`mart_data_deletion_record` run_id=`raw_tushare_stk_factor_pro_retirement_20260723`；表不存在；free_blocks 58→21345 |
+| Compact | `db_compact.py --execute` **失败**（No space left；peak≈old+new）；改走 **EXPORT DATABASE (PARQUET ZSTD) → 校验行数 → rm 旧库 → IMPORT** |
+| Size after | **4.682 GiB**（5 027 672 064 B）；回收 **≈5.356 GiB**；59 表行数对账 OK；factor 表不存在；deletion_record 保留 |
+| Anti-refill | `sync_registry.yaml` 域条目**墓碑注释**（无 `target_table`）；`legacy_raw_plane` role=`retired`；S7 wall 23→22 ssot / sync_orphan 14→13 |
+
+**Label（本条）**：`FIXED` — orphan 表删除 + 盘回收 + 防回流墓碑。holders landing / market compact 仍 **KEEP / NEED_OWNER_SIGN**（未动）。
+
 ## Label
 
-**PARTIAL** — 五项均有 live 实证与 verdict；**无数据突变**；删除/compact 全部 **NEED_OWNER_SIGN** 或 **KEEP**。
+**PARTIAL（整体 addendum）** — factor orphan **FIXED**；holders KEEP；market compact 仍待签字。

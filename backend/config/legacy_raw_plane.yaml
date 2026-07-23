@@ -238,9 +238,8 @@ tables:
     note: "S7 hard-stop: DataAccess L0 declared; no live router/service consumer; no formal plane"
 
   raw_tushare_stk_factor_pro:
-    role: ssot
-    kind: sync_orphan
-    note: "S7 hard-stop: sync residual; on_demand; no DataAccess/serve consumer; no formal publication → stay ssot"
+    role: retired
+    note: "Owner DELETE 2026-07-23: sync_orphan sunset; table DROPped + tushare_raw compacted; sync_registry tombstoned (no refill). See analysis/db_bloat_deep_dive_20260723.md §6."
 
   raw_tushare_stk_holdernumber:
     role: ssot

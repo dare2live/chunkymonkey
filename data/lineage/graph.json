@@ -420,18 +420,6 @@
     {
       "attrs": {
         "grain": [
-          "trade_date",
-          "ts_code"
-        ],
-        "pit_anchor": "trade_date; 盘后 -> JOIN t-1"
-      },
-      "dst": "table:tushare_raw.raw_tushare_stk_factor_pro",
-      "kind": "acquire",
-      "src": "source:tushare.stk_factor_pro"
-    },
-    {
-      "attrs": {
-        "grain": [
           "end_date",
           "ts_code"
         ],
@@ -859,6 +847,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:feature_store.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/db_lifecycle_delete.py",
       "kind": "consume",
       "src": "table:feature_store.mart_data_deletion_record"
@@ -1058,6 +1052,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:market.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:market.mart_data_deletion_record"
     },
@@ -1736,6 +1736,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:reference.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:reference.mart_data_deletion_record"
     },
@@ -3895,6 +3901,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/db_lifecycle_delete.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_data_deletion_record"
@@ -5222,6 +5234,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.mart_data_deletion_record"
     },
@@ -6723,18 +6741,6 @@
       "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_stk_factor_pro"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_stk_factor_pro"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
-      "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stk_holdernumber"
     },
     {
@@ -7411,9 +7417,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1184,
-    "generated_at": "2026-07-23T06:01:21.321718+00:00",
-    "node_count": 429,
+    "edge_count": 1186,
+    "generated_at": "2026-07-23T06:24:55.956946+00:00",
+    "node_count": 427,
     "version": 2
   },
   "nodes": [
@@ -9764,15 +9770,6 @@
     },
     {
       "attrs": {
-        "api": "stk_factor_pro",
-        "domain": "stk_factor_pro",
-        "source": "tushare"
-      },
-      "id": "source:tushare.stk_factor_pro",
-      "kind": "source_interface"
-    },
-    {
-      "attrs": {
         "api": "stk_holdernumber",
         "domain": "stk_holdernumber",
         "source": "tushare"
@@ -11085,16 +11082,6 @@
         "vendor": "tushare"
       },
       "id": "table:tushare_raw.raw_tushare_share_float",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "tushare_raw",
-        "layer": "untagged",
-        "status": "active",
-        "table": "raw_tushare_stk_factor_pro"
-      },
-      "id": "table:tushare_raw.raw_tushare_stk_factor_pro",
       "kind": "table"
     },
     {
