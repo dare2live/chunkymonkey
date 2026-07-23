@@ -1,0 +1,23 @@
+# raw_tushare_express + raw_tushare_fina_mainbz 整表退役物删 (2026-07-24, owner 签字 DROP 1+2)
+# 前置复核:
+#   - tables @ data/tushare_raw.duckdb
+#   - legacy_raw_plane role=retired (baa239ac4 tombstone); DataAccess 0 hits
+#   - moth fan-in = registry/legacy notes + lineage only (无 serve/DataAccess/UI)
+#   - live surface word-boundary: raw_tushare_express / raw_tushare_fina_mainbz 无命中
+#   - sizes: express ~27k rows; fina_mainbz ~26k rows (单期 20251231) → archive 可行
+# 不含 #3 stk_holdernumber: owner 仅签 1+2; 调查见 analysis/stk_holdernumber_retire_evidence_20260724.md
+# 防回流: sync_registry 已墓碑 (baa239ac4); 本刀 lifecycle archive+DROP。
+# Compact disposition 2026-07-24: SKIP — DROP 后 free_blocks 642→658 (~4MiB@256KiB);
+# archives 共 ≈2.5MiB；整库 4.8GiB rewrite 不划算（disk free≈13GiB 但收益可忽略）。
+run_id: express_fina_mainbz_retirement_20260724
+db: tushare_raw
+archive_dir: data/archive/lifecycle
+entries:
+  - table: raw_tushare_express
+    action: archive
+    bucket: sync_orphan_owner_sunset
+    reason: "Owner DROP 2026-07-24: retired sync_orphan; 0 DataAccess/serve consumers; never had load_express; by_period unsupported on --all-due. Registry tombstoned baa239ac4. Archive+DROP; see analysis/post_close_update_e2e_20260723.md §5–6."
+  - table: raw_tushare_fina_mainbz
+    action: archive
+    bucket: sync_orphan_owner_sunset
+    reason: "Owner DROP 2026-07-24: retired sync_orphan; 0 DataAccess/serve consumers; by_ts_code unsupported on --all-due. Registry tombstoned baa239ac4. Archive+DROP; see analysis/post_close_update_e2e_20260723.md §5–6."

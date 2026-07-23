@@ -51,7 +51,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 
 | 块 | 状态 | 证据锚（commit / 门） |
 |---|---|---|
-| Transport S1–S6 / S7 typed wall | FIXED / near-FIXED | FND-GATE；`stk_factor_pro` sunset；**2026-07-23** orphan sunset batch `express`/`fina_mainbz`/`stk_holdernumber` → 19 ssot / 4 retired |
+| Transport S1–S6 / S7 typed wall | FIXED / near-FIXED | FND-GATE；`stk_factor_pro` sunset；**2026-07-23** orphan sunset batch `express`/`fina_mainbz`/`stk_holdernumber` → 19 ssot / 4 retired；**2026-07-24** express/fina_mainbz lifecycle DROP；holdernumber 留表（证据 `stk_holdernumber_retire_evidence_20260724.md`） |
 | FND-GATE F1–F10 / phase_closure | PASS | `check_foundation_done.py` |
 | E0-HIST / F6 holders·stk·org | PASS | holders/stk overlap；org incremental |
 | CX-1…CX-4 能力门 | PASS | commits under `cx*_acceptance_*` era；git |

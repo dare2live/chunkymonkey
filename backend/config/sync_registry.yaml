@@ -547,8 +547,10 @@ domains:
 
   # fina_mainbz 域 2026-07-23 owner DELETE 退役 (post-close E2E class-B):
   #   sync_orphan / 0 DataAccess/serve 消费者; by_ts_code 无 increment_mode → --all-due
-  #   drain 每跑 typed unsupported → soft DEGRADED。墓碑化本条目防回流; 表保留为冷残差
-  #   直至可选 lifecycle。证据: analysis/post_close_update_e2e_20260723.md §5–6.
+  #   drain 每跑 typed unsupported → soft DEGRADED。墓碑化本条目防回流。
+  #   2026-07-24 owner DROP: raw_tushare_fina_mainbz archive+DROP
+  #   (run_id=express_fina_mainbz_retirement_20260724; 25674 rows parquet)。
+  #   证据: analysis/post_close_update_e2e_20260723.md §5–6.
 
   # ── 旧源退役批 (2026-06-11 用户决策: 能在 tushare 获取的就从 tushare 获取) ──
   # 替代对象: lhb_daily(aif10, 实测滞后13天) / profit_forecast / external_attention /
@@ -1109,8 +1111,10 @@ domains:
                                    #   内容(如 20250917 案例, 可疑空实为 universe_filter 合法排除)
   # express 域 2026-07-23 owner DELETE 退役 (post-close E2E class-B):
   #   sync_orphan / 全历史无 load_express 消费方; by_period 不进 drain fallback → --all-due
-  #   每跑 typed unsupported → soft DEGRADED。墓碑化本条目防回流; 表保留为冷残差直至可选
-  #   lifecycle。证据: analysis/post_close_update_e2e_20260723.md §5–6.
+  #   每跑 typed unsupported → soft DEGRADED。墓碑化本条目防回流。
+  #   2026-07-24 owner DROP: raw_tushare_express archive+DROP
+  #   (run_id=express_fina_mainbz_retirement_20260724; 26959 rows parquet)。
+  #   证据: analysis/post_close_update_e2e_20260723.md §5–6.
 
   fina_indicator:   # 财务指标 (2026-06-14 实弹核证: 167 项衍生指标 ROE/ROA/毛利率/负债率 = 直接因子料)
     source: tushare
@@ -1196,8 +1200,10 @@ domains:
 
   # stk_holdernumber 域 2026-07-23 owner DELETE 退役 (post-close E2E class-B):
   #   sync_orphan / 0 DataAccess/serve 消费者; by_ts_code 无 increment_mode → --all-due
-  #   drain 每跑 typed unsupported → soft DEGRADED。墓碑化本条目防回流; 表保留为冷残差
-  #   直至可选 lifecycle。证据: analysis/post_close_update_e2e_20260723.md §5–6.
+  #   drain 每跑 typed unsupported → soft DEGRADED。墓碑化本条目防回流。
+  #   2026-07-24 investigate: 表保留冷残差 (owner 仅签 DROP express/fina_mainbz)。
+  #   Occam=无 consumer path 的研究候选注册, 非 API 坏、非 holders_top10 替换;
+  #   禁无消费者 revive。证据: analysis/stk_holdernumber_retire_evidence_20260724.md。
 
   stk_holdertrade:   # 股东增减持 (2026-06-24 替 tdx fact_shareholder_plan_tdx_f10; 实测 ann_date 全市场71行/期)
     source: tushare

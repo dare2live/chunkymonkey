@@ -116,7 +116,7 @@ tables:
 
   raw_tushare_express:
     role: retired
-    note: "Owner DELETE 2026-07-23: sync_orphan sunset (no consumers; by_period unsupported on --all-due); sync_registry tombstoned; table retained as cold residual until optional lifecycle. See analysis/post_close_update_e2e_20260723.md."
+    note: "Owner DROP 2026-07-24: sync_orphan sunset; table archived+DROPped (26959 rows → data/archive/lifecycle/raw_tushare_express.parquet); sync_registry tombstoned baa239ac4; run_id=express_fina_mainbz_retirement_20260724. See analysis/post_close_update_e2e_20260723.md."
 
   raw_tushare_fina_indicator:
     role: ssot
@@ -125,7 +125,7 @@ tables:
 
   raw_tushare_fina_mainbz:
     role: retired
-    note: "Owner DELETE 2026-07-23: sync_orphan sunset (no consumers; by_ts_code unsupported on --all-due); sync_registry tombstoned; table retained as cold residual until optional lifecycle. See analysis/post_close_update_e2e_20260723.md."
+    note: "Owner DROP 2026-07-24: sync_orphan sunset; table archived+DROPped (25674 rows → data/archive/lifecycle/raw_tushare_fina_mainbz.parquet); sync_registry tombstoned baa239ac4; run_id=express_fina_mainbz_retirement_20260724. See analysis/post_close_update_e2e_20260723.md."
 
   raw_tushare_forecast:
     role: ssot
@@ -238,7 +238,7 @@ tables:
 
   raw_tushare_stk_holdernumber:
     role: retired
-    note: "Owner DELETE 2026-07-23: sync_orphan sunset (no consumers; by_ts_code unsupported on --all-due); sync_registry tombstoned; table retained as cold residual until optional lifecycle. See analysis/post_close_update_e2e_20260723.md."
+    note: "Owner sunset 2026-07-23 (registry tombstone); 2026-07-24 investigate: leave retired + table retained (NOT DROPped). Occam=sync_orphan/no consumer path + drain unsupported; NOT replaced by holders_top10; NOT broken API. See analysis/stk_holdernumber_retire_evidence_20260724.md."
 
   raw_tushare_stk_holdertrade:
     role: compatibility

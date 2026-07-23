@@ -5975,12 +5975,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_express"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_fina_indicator"
@@ -6002,12 +5996,6 @@
       "dst": "consumer:backend/services/lineage/query.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_fina_indicator"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_fina_mainbz"
     },
     {
       "attrs": {},
@@ -7559,9 +7547,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1213,
-    "generated_at": "2026-07-23T15:11:10.219519+00:00",
-    "node_count": 432,
+    "edge_count": 1211,
+    "generated_at": "2026-07-23T23:37:30.674713+00:00",
+    "node_count": 430,
     "version": 2
   },
   "nodes": [
@@ -11011,16 +10999,6 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "status": "active",
-        "table": "raw_tushare_express"
-      },
-      "id": "table:tushare_raw.raw_tushare_express",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "tushare_raw",
-        "layer": "untagged",
         "serve_entities": [
           "fundamentals"
         ],
@@ -11029,16 +11007,6 @@
         "vendor": "tushare"
       },
       "id": "table:tushare_raw.raw_tushare_fina_indicator",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "tushare_raw",
-        "layer": "untagged",
-        "status": "active",
-        "table": "raw_tushare_fina_mainbz"
-      },
-      "id": "table:tushare_raw.raw_tushare_fina_mainbz",
       "kind": "table"
     },
     {
