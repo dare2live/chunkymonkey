@@ -23,9 +23,11 @@
 #
 # 连续性/完整性常驻审查键 (backend/scripts/check_continuity_integrity.py 消费, 2026-07-03 R1 根因2/4/6):
 #   known_empty_days   墓碑: 实测源端真空的交易日列表 (探测返 0 非 throttle), 日历缺日审查不计缺
-#   gap_tolerance      日历缺日容忍: none(默认, 键不存在=none)=中间空洞 FAIL / annotate=只标注 WARN
-#                      (事件稀疏域: 多数交易日天然无数据, 如 dividend 非分红季) / hk_holidays=预留值
-#                      (源端假期域如 moneyflow_hsgt 港股假日; 假期日历校验未实现前按 annotate 处理)
+#   gap_tolerance      日历缺日容忍: none(默认, 键不存在=none)=中间空洞 FAIL /
+#                      annotate=只标注 WARN (legacy; 优先换成下方 typed 值) /
+#                      hk_holidays=港股北向关闭日按 backend/config/hk_northbound_closed_days.yaml
+#                      类型化 pass, 非假期残留空洞仍 FAIL /
+#                      event_sparse=事件稀疏域(如 dividend)中间空日 typed pass, 尾部 SLA 仍约束
 #   freshness_group_col 多榜/多组共表域的分组列 (如 ths_hot data_type): 按组查 MAX(date), 任何组
 #                      落后 > SLA x 3 交易日 = FAIL — 根治"表级新鲜度探不到子榜断流" (热基停 4 个月反例)
 #   dead_groups        分组墓碑: 已裁决死亡的子榜/组列表, 分组新鲜度不再对其告警
@@ -776,10 +778,11 @@ domains:
     freshness_sla_trading_days: 2
     min_rows_per_batch: 1
     allow_empty_batch: true   # 北向关闭日 (港股假期) 无数据合法
-    gap_tolerance: annotate   # 2026-07-05 R4 workflow 实测确认: 90个空洞日高度集中于港股公众假期
-                              # (圣诞12-25/26、复活节前后、回归纪念日7-1等) 及沪港通开通前空窗,
-                              # tinyshare 逐日探测源端同样 0 行, 属机制性合法空批非采集缺口
-    # Knife4 2026-07-23: 2026 开市日本地缺且 vendor 实测 0 行 → 墓碑; 20260708/10 vendor 有数已补拉
+    gap_tolerance: hk_holidays   # 2026-07-23: typed SSE-open/northbound-closed calendar
+                              # (backend/config/hk_northbound_closed_days.yaml); 非假期空洞仍 FAIL。
+                              # 原 annotate WARN 会永久刷绿疲劳; 禁 mute checker / 禁 READY cosmetics。
+                              # 2026-07-05 R4: 空洞高度集中港股公众假期, tinyshare 逐日探测源端 0 行。
+    # Knife4 + F1 2026-07-23: 近端开市日 vendor-0 → 墓碑兼日历; 20260708/10 vendor 有数已补拉
     known_empty_days: ["20260403", "20260407", "20260525", "20260701"]
 
   dividend:
@@ -797,8 +800,10 @@ domains:
     freshness_no_probe: 季报/事件域(ann_date淡季数周无新数据=正常), 日频SLA误报疲劳, 完整性靠gap drain (2026-06-22 P0-6)
     min_rows_per_batch: 0
     allow_empty_batch: true   # 非分红季多数交易日无除权事件
-    gap_tolerance: annotate   # 2026-07-05 R4 workflow 实测确认: 分红除权高度季节性(5-8月占绝大多数),
-                              # 淡季(11-3月)tinyshare逐日探测源端同样0行, 属真实事件稀疏非采集缺口
+    gap_tolerance: event_sparse   # 2026-07-23: typed event grain — interior empty days PASS;
+                              # tail SLA still FAIL when exceeded. 原 annotate WARN 非采集失败。
+                              # 2026-07-05 R4: 分红除权高度季节性(5-8月), 淡季 tinyshare 源端 0 行。
+                              # 禁 mute checker; 真缺日(vendor 有数本地无)须补拉, 不得靠 annotate 洗。
     data_start_reviewed: true  # Knife4 2026-07-23: 深史稀疏已核实, 见 coverage_note
     # coverage_note: 2005-2010 年行数 ~0.2x 参照年2025 = 上市池/分红公司数历史增长, 非采集截断;
     # 可用窗全史保留(复权主源), 回测深史须知样本偏稀, 勿当缺失回填。

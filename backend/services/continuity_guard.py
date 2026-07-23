@@ -5,7 +5,8 @@
     中断 daily_update 比缺口更糟);
   - **消费侧 (本模块, 硬门)**: 策略/GT/消融读某域数据前 assert_domains_continuous —
     带缺口的数据进研究 = 错误结论, 违规即 raise, 如同非交易日不能下单。
-实时单域 SQL 检查 (不依赖 stale 审查报告); known_empty_days 墓碑与 gap_tolerance: annotate 域放行。
+实时单域 SQL 检查 (不依赖 stale 审查报告); known_empty_days 墓碑与
+gap_tolerance: annotate|hk_holidays|event_sparse 域按类型放行 (hk 须对日历)。
 接线: rally_gt.rebuild 入口 (与 holdout/universe 门并列第三道)。D2 消融 builder 未来必接。
 """
 from __future__ import annotations
@@ -15,10 +16,22 @@ from pathlib import Path
 import yaml
 
 _REG_PATH = Path(__file__).resolve().parent.parent / "config" / "sync_registry.yaml"
+_HK_CLOSED_PATH = (
+    Path(__file__).resolve().parent.parent / "config" / "hk_northbound_closed_days.yaml"
+)
 
 
 class ContinuityGapError(RuntimeError):
     """消费的数据域存在未豁免的日历缺口 — 拒绝把缺口数据喂进研究/策略。"""
+
+
+def _hk_northbound_closed_days() -> set[str]:
+    raw = yaml.safe_load(_HK_CLOSED_PATH.read_text(encoding="utf-8")) or {}
+    return {
+        str(d).replace("-", "")
+        for d in (raw.get("days") or [])
+        if d is not None and str(d).strip()
+    }
 
 
 def assert_domains_continuous(domains: list[str], conn, *, end_date: str | None = None) -> dict:
@@ -29,6 +42,7 @@ def assert_domains_continuous(domains: list[str], conn, *, end_date: str | None 
     返回 {domain: {checked_days, gaps}}; 任何未豁免 gap → ContinuityGapError。
     """
     reg = yaml.safe_load(_REG_PATH.read_text(encoding="utf-8"))["domains"]
+    hk_closed = _hk_northbound_closed_days()
     out: dict = {}
     problems: list[str] = []
     for d in domains:
@@ -38,12 +52,19 @@ def assert_domains_continuous(domains: list[str], conn, *, end_date: str | None 
         if spec.get("batch_mode") not in ("by_trade_date", "by_date_range"):
             out[d] = {"checked_days": 0, "gaps": [], "note": "非日频域, 连续性语义不适用"}
             continue
-        if str(spec.get("gap_tolerance", "none")) == "annotate":
-            out[d] = {"checked_days": 0, "gaps": [], "note": "gap_tolerance=annotate 豁免域"}
+        tol = str(spec.get("gap_tolerance", "none"))
+        if tol in {"annotate", "event_sparse"}:
+            out[d] = {
+                "checked_days": 0,
+                "gaps": [],
+                "note": f"gap_tolerance={tol} 类型化豁免域",
+            }
             continue
         table = spec["target_table"]
         start = str(spec["data_start"])
         tombstones = {str(x).replace("-", "") for x in (spec.get("known_empty_days") or [])}
+        if tol == "hk_holidays":
+            tombstones |= hk_closed
         rows = conn.execute(f"""
             SELECT replace(c.trade_date, '-', '') AS d
             FROM ref.dim_trading_calendar c
@@ -65,5 +86,7 @@ def assert_domains_continuous(domains: list[str], conn, *, end_date: str | None 
         raise ContinuityGapError(
             "数据连续性硬门: 消费域存在中间缺口, 拒绝喂进研究/策略 (缺口=错误结论) — "
             + "; ".join(problems)
-            + "。修法: drain 重放补缺 / 实弹核证真空日进 known_empty_days 墓碑。")
+            + "。修法: drain 重放补缺 / 实弹核证真空日进 known_empty_days 墓碑 / "
+            "hk_northbound_closed_days。"
+        )
     return out

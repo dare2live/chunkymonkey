@@ -72,7 +72,33 @@ STALENESS_SLA_MULT = 5         # evidence: 任务规格 "MAX(built_at) 距今 > 
 DECLARED_DRIFT_CAL_DAYS = 90   # evidence: 任务规格 "data_start 声明 vs 实测偏差 > 90 自然日 = WARN"
 SPARSE_YEAR_RATIO = 0.3        # evidence: 任务规格 "按年行数 / 最近完整年行数 < 0.3 的年份列 coverage_note"
 CROSS_SECTION_GROUP_COLS = ("exchange_id", "data_type")  # grain 含此类列 = 按组检测缺组 (margin/ths_hot 型)
-GAP_TOLERANCE_VALUES = {"none", "annotate", "hk_holidays"}  # hk_holidays 预留 (源端假期校验未实现, 现按 annotate 处理)
+GAP_TOLERANCE_VALUES = {
+    "none",
+    "annotate",
+    "hk_holidays",     # SSE-open / northbound-closed calendar (config/hk_northbound_closed_days.yaml)
+    "event_sparse",    # event grain: interior empty days expected; tail SLA still binds
+}
+HK_NORTHBOUND_CLOSED_PATH = REPO / "backend" / "config" / "hk_northbound_closed_days.yaml"
+_HK_NORTHBOUND_CLOSED_CACHE: set[str] | None = None
+
+
+def load_hk_northbound_closed_days(
+    path: Path | None = None,
+) -> set[str]:
+    """Load typed HK-northbound closed days (compact YYYYMMDD)."""
+    global _HK_NORTHBOUND_CLOSED_CACHE
+    cfg = path or HK_NORTHBOUND_CLOSED_PATH
+    if path is None and _HK_NORTHBOUND_CLOSED_CACHE is not None:
+        return set(_HK_NORTHBOUND_CLOSED_CACHE)
+    raw = yaml.safe_load(cfg.read_text(encoding="utf-8")) or {}
+    days = {
+        str(d).replace("-", "")
+        for d in (raw.get("days") or [])
+        if d is not None and str(d).strip()
+    }
+    if path is None:
+        _HK_NORTHBOUND_CLOSED_CACHE = set(days)
+    return days
 
 CHECK_IDS = ("calendar_gaps", "cross_section", "group_freshness",
              "declared_vs_actual", "static_staleness", "calendar_horizon")
@@ -255,8 +281,16 @@ def check_calendar_gaps(
     *,
     accepted_state=None,
 ) -> dict:
-    """data_start→latest_expected 逐交易日对账: 中间空洞=FAIL / 尾部超 SLA=FAIL / 墓碑排除 /
-    gap_tolerance=annotate|hk_holidays 时中间空洞降 WARN (标注不失败)。"""
+    """data_start→latest_expected 逐交易日对账: 中间空洞=FAIL / 尾部超 SLA=FAIL / 墓碑排除.
+
+    gap_tolerance:
+      none         — interior FAIL
+      annotate     — interior WARN (legacy honesty; prefer typed replacements)
+      hk_holidays  — interior days in hk_northbound_closed_days → typed pass;
+                     residual non-holiday holes FAIL (never mute real missing)
+      event_sparse — interior empty expected for event grain → typed pass;
+                     tail SLA still FAIL when exceeded
+    """
     table = spec["table"]
     if spec.get("accepted_margin"):
         from services.data_sources.margin_state import (
@@ -342,11 +376,36 @@ def check_calendar_gaps(
         tol = spec["gap_tolerance"]
         if tol == "none":
             status = "fail_interior_gaps"
+            parts.append(f"中间空洞 {len(interior)} 交易日: {_sample_days(interior)}")
+        elif tol == "event_sparse":
+            # Typed pass: calendar-day completeness is the wrong metric for event
+            # grains (dividend etc.). Checker still enforces tail SLA below.
+            parts.append(
+                f"event_sparse: {len(interior)} interior empty days expected "
+                f"(sample {_sample_days(interior)})"
+            )
+        elif tol == "hk_holidays":
+            hk_closed = load_hk_northbound_closed_days()
+            holiday_holes = [d for d in interior if d in hk_closed]
+            real_holes = [d for d in interior if d not in hk_closed]
+            if real_holes:
+                status = "fail_interior_gaps"
+                parts.append(
+                    f"非港股假期空洞 {len(real_holes)} 交易日: {_sample_days(real_holes)}"
+                )
+                if holiday_holes:
+                    parts.append(
+                        f"(另 {len(holiday_holes)} 日匹配 hk_northbound_closed_days)"
+                    )
+            else:
+                parts.append(
+                    f"hk_holidays: {len(holiday_holes)} SSE-open/northbound-closed "
+                    f"days typed closed (sample {_sample_days(holiday_holes)})"
+                )
         else:
+            # annotate — legacy WARN; prefer hk_holidays / event_sparse when proven
             status = "warn_interior_gaps"
-            if tol == "hk_holidays":
-                parts.append("[gap_tolerance=hk_holidays 源端假期校验未实现, 暂按 annotate 标注]")
-        parts.append(f"中间空洞 {len(interior)} 交易日: {_sample_days(interior)}")
+            parts.append(f"中间空洞 {len(interior)} 交易日: {_sample_days(interior)}")
     if len(tail) > spec["sla"]:
         parts.append(f"尾部断流 {len(tail)} 交易日 > SLA {spec['sla']} (最早缺 {tail[0]})")
         if not status.startswith("fail"):
@@ -378,9 +437,12 @@ def check_calendar_gaps(
             "population-scope correction (not an all-due drain target)"
         )
     elif status.startswith("fail") or status.startswith("warn"):
-        hint = (f"补拉: PYTHONPATH=backend python -m services.data_sources.sync_runner "
-                f"--domain {spec['domain']} --drain; 源端真空日 -> known_empty_days 墓碑; "
-                f"事件稀疏/源端假期域 -> gap_tolerance: annotate")
+        hint = (
+            f"补拉: PYTHONPATH=backend python -m services.data_sources.sync_runner "
+            f"--domain {spec['domain']} --drain; 源端真空日 -> known_empty_days 墓碑; "
+            f"港股假期域 -> hk_northbound_closed_days + gap_tolerance: hk_holidays; "
+            f"事件稀疏域 -> gap_tolerance: event_sparse (禁 mute checker)"
+        )
     return _result("calendar_gaps", spec, status, detail, hint)
 
 

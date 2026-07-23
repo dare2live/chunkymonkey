@@ -6625,6 +6625,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/hk_northbound_closed_days.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_moneyflow_hsgt"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow_hsgt"
@@ -7435,9 +7441,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1189,
-    "generated_at": "2026-07-23T07:06:52.179264+00:00",
-    "node_count": 428,
+    "edge_count": 1190,
+    "generated_at": "2026-07-23T07:49:50.527970+00:00",
+    "node_count": 429,
     "version": 2
   },
   "nodes": [
@@ -7519,6 +7525,14 @@
         "path": "backend/config/foundation_done.yaml"
       },
       "id": "consumer:backend/config/foundation_done.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/hk_northbound_closed_days.yaml"
+      },
+      "id": "consumer:backend/config/hk_northbound_closed_days.yaml",
       "kind": "consumer"
     },
     {

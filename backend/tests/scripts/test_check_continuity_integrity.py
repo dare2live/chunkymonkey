@@ -173,6 +173,68 @@ def test_calendar_gaps_known_empty_tombstone_and_annotate():
         c.close()
 
 
+def test_calendar_gaps_hk_holidays_typed_pass_and_residual_fail(tmp_path, monkeypatch):
+    """hk_holidays: calendar-matched holes PASS; residual non-holiday holes FAIL."""
+    tds = _weekdays("20260601", 12)
+    holiday, real = tds[3], tds[7]
+    cal = tmp_path / "hk.yaml"
+    cal.write_text(f"schema_version: 1\ndays: ['{holiday}']\n", encoding="utf-8")
+    monkeypatch.setattr(cci, "_HK_NORTHBOUND_CLOSED_CACHE", None)
+    monkeypatch.setattr(cci, "HK_NORTHBOUND_CLOSED_PATH", cal)
+    # bypass module cache by calling loader with explicit path via patched constant
+    cci._HK_NORTHBOUND_CLOSED_CACHE = None
+
+    c = duck_mem()
+    try:
+        _mktable(c, {d: 1 for d in tds if d not in {holiday, real}})
+        # both holes present, only holiday in calendar → FAIL residual
+        r_fail = cci.check_calendar_gaps(
+            c, _mkspec(gap_tolerance="hk_holidays"), tds, tds[-1]
+        )
+        assert r_fail["status"] == "fail_interior_gaps"
+        assert real in r_fail["detail"]
+        assert holiday not in r_fail["detail"] or "非港股假期" in r_fail["detail"]
+
+        # only holiday hole → typed PASS
+        c.execute("INSERT INTO t VALUES ('c0', ?)", [real])
+        cci._HK_NORTHBOUND_CLOSED_CACHE = None
+        r_pass = cci.check_calendar_gaps(
+            c, _mkspec(gap_tolerance="hk_holidays"), tds, tds[-1]
+        )
+        assert r_pass["status"] == "pass"
+        assert "hk_holidays" in r_pass["detail"]
+    finally:
+        c.close()
+        cci._HK_NORTHBOUND_CLOSED_CACHE = None
+
+
+def test_calendar_gaps_event_sparse_typed_pass_keeps_tail_sla():
+    """event_sparse: interior empty PASS; tail beyond SLA still FAIL."""
+    tds = _weekdays("20260601", 12)
+    hole = tds[4]
+    c = duck_mem()
+    try:
+        # present through early days; hole interior; last 3 missing → tail
+        present = {d: 2 for d in tds[:8] if d != hole}
+        _mktable(c, present)
+        r = cci.check_calendar_gaps(
+            c, _mkspec(gap_tolerance="event_sparse", sla=1), tds, tds[-1]
+        )
+        assert r["status"] == "fail_stale_tail"
+        assert "event_sparse" in r["detail"]
+
+        # fill tail within SLA=5 → pass with event_sparse note
+        for d in tds[-3:]:
+            c.execute("INSERT INTO t VALUES ('c0', ?)", [d])
+        r2 = cci.check_calendar_gaps(
+            c, _mkspec(gap_tolerance="event_sparse", sla=5), tds, tds[-1]
+        )
+        assert r2["status"] == "pass"
+        assert "event_sparse" in r2["detail"]
+    finally:
+        c.close()
+
+
 def test_calendar_gaps_iso_stored_dates_normalized():
     """表内 ISO 'YYYY-MM-DD' 存储与日历 compact 归一对齐 (dim_trading_calendar ISO 口径)。"""
     tds = _weekdays("20260601", 10)
