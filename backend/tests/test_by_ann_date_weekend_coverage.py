@@ -113,11 +113,11 @@ def test_by_ann_date_includes_weekend_green(env):
 
 
 def test_registry_three_domains_use_by_ann_date():
-    """真实 registry 声明校验: report_rc/forecast/share_float 确实已切 by_ann_date, 防回潮。"""
+    """真实 registry 声明校验: report_rc/forecast/share_float/holdernumber 已切 by_ann_date。"""
     import yaml
     reg = yaml.safe_load((Path(__file__).resolve().parents[1] / "config"
                            / "sync_registry.yaml").read_text(encoding="utf-8"))
-    for dom in ("report_rc", "forecast", "share_float"):
+    for dom in ("report_rc", "forecast", "share_float", "stk_holdernumber"):
         assert reg["domains"][dom]["batch_mode"] == "by_ann_date", (
             f"{dom} 应为 by_ann_date(全日历日枚举, 覆盖周末披露), 不应回退 by_trade_date")
     # dividend 的 ex_date 实测周末恒 0 行 (除权机制只落交易日), 不受此 bug 影响, 保持 by_trade_date

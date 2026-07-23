@@ -1,36 +1,52 @@
-# stk_holdernumber 为何不用了（调查；非 DROP）
+# stk_holdernumber：退役原因 → 恢复路径（证据）
 
-> **生命周期**：evidence-only（analysis 层；**非** owner bible）
+> **生命周期**：evidence-only（analysis 层；**非** owner bible）  
 > 日期：2026-07-24  
-> 触发：owner 同意 DROP `express`/`fina_mainbz`，并追问 #3 股东户数为何退役。  
-> 结论标签：**留 retired / 不 DROP / 不恢复 registry**
+> 触发：owner 追问 #3 股东户数为何退役，并要求可用（集中度 / 与股价关系 / 因子辅助）。  
+> 结论标签：**RESTORE FIXED**（`by_ann_date` 增量 + DataAccess + dossier assist）
 
-## Verdict（Occam）
+## Q1 — 为什么 `by_ts_code` 进不了正常增量 drain（unsupported）？
 
-`stk_holdernumber` 被 `baa239ac4` 墓碑化，是因为 **sync_orphan + drain typed `unsupported` 拖软 DEGRADED**，不是 API 坏了，也不是被 `holders_top10` 替换。
+Occam（代码真相源 = `sync_runner.drain_domain` + drain 主循环 fallback）：
 
-| 假说 | 证据 | 判定 |
+| 路径 | 条件 | 结果 |
 |---|---|---|
-| 无消费者 | `data_access.yaml` 0 命中；`moth coupling --impact stk_holdernumber` 仅 watermark 注释 / sync_runner 历史注释 / tests/docs；`git log -S` 在 `backend/services`+`routers` 无 `load_holdernumber` 消费函数 | **成立** |
-| API 坏了 | registry 退役前有完整 grain/PIT/`data_start_reviewed`；表仍在且 284 902 行、`end_date`→20260622 | **不成立** |
-| 被 holders_top10 替换 | `holders_top10` = 十大股东持股名单（妙想/aif10）；`stk_holdernumber` = 股东**户数**慢变量；SLA `holders_top10_float` 指向 aif10 是 top10 域，不是户数 | **不成立** |
-| 误删能力 | 注册动机见 `analysis/tushare_alpha_potential_research_20260617.md`（研究候选）；从未进 DataAccess/serve/dossier/feature builder | **非误删**：退役正确；恢复需先有 consumer path（硬禁无消费者 revive） |
+| 真 drain（按日补洞） | `batch_mode == by_trade_date` | 日历 gap → 逐日重拉 |
+| 增量 fallback | `by_ann_date` / `full_refresh` / `by_date_range` / `by_code_list` | `unsupported` → `run_domain` watermark 增量 |
+| 增量 fallback | `by_ts_code` **且** `increment_mode == by_report_period` | 同上（财报/十大股东型） |
+| **typed unsupported** | `by_ts_code` **无** `increment_mode` | **硬失败**（进 `--all-due` 则 soft DEGRADED） |
 
-## 退役机制（baa239ac4）
+退役前 `stk_holdernumber` = `by_ts_code` 且无 `increment_mode` → 落最后一行。  
+对比：`daily`/`moneyflow`/`margin` = `by_trade_date`（或 formal on_demand）；`holders`/`fina_indicator` = `by_ts_code`+`by_report_period`；`share_float`/`stk_holdertrade` = `by_ann_date`。
 
-1. `--all-due --drain` 选中该域 → `batch_mode=by_ts_code` 且无可用 `increment_mode` 落地路径 → runner 报 typed **`unsupported`**（非 fetch fail）。  
-2. 同批 `express`（`by_period`）、`fina_mainbz`（`by_ts_code`）同类。  
-3. 处置：registry 墓碑 + `legacy_raw_plane` `role=retired`；表保留冷残差直至 owner 可选 lifecycle。  
-4. Owner 本刀仅签字物删 **1+2**；#3 **表保留**。
+**增量可 drain 的 Occam 定义**：要么真按日 gap drain，要么有**已实现的 typed fallback**；裸 `by_ts_code` 全宇宙日扫既不进 gap drain，也不进 fallback。
 
-## 产品/地基是否「还该用」？
+## Q2 — 其他数据都有消费方吗？
 
-股东户数作为筹码集中慢变量在研究笔记里有价值，但当前 foundation/product **没有** 任何读路径（无 DataAccess、无 serve、无 dossier、无 panel feature 接线）。硬禁：**无 consumer path 不 revive**。若未来要用：新 consumer + PIT JOIN（`ann_date`）+ 增量模式（避免再进 unsupported）+ owner 再开域，而不是静默恢复墓碑。
+否。S7 诚实分层（`legacy_raw_plane.yaml`）：
 
-## 本刀动作
+| 类 | 代表 | 消费方 |
+|---|---|---|
+| formal→accepted→serve | daily / stock_st / margin | derive / form / pulse / dossier / Cap |
+| fact publication (B2) | moneyflow / limit / index_daily / top_inst | pulse / paper / tech / institution |
+| serve_l0_declared | share_float / cyq / forecast / report_rc / fina… | DataAccess 已声明；**部分尚无 live router** |
+| sync_orphan | balancesheet / income / ths_hot / hsgt… | **研究孤儿**（禁假 COMPAT / 禁 standby） |
+| pulse builder-only | moneyflow_ind_dc / sw_daily / dc_index… | mart_* 展示，非个股 L0 叶 |
 
-- `express` / `fina_mainbz`：lifecycle archive+DROP（manifest `lifecycle_delete_manifest_express_fina_mainbz_20260724.yaml`）  
-  - express：26 959 行 → `data/archive/lifecycle/raw_tushare_express.parquet`（≈1.6 MiB）  
-  - fina_mainbz：25 674 行 → `…/raw_tushare_fina_mainbz.parquet`（≈0.9 MiB）  
-  - compact：**SKIP**（free_blocks +16 ≈4 MiB；整库 rewrite 不划算）  
-- `stk_holdernumber`：**不 DROP**；保持 retired 冷残差（表仍在，≈285k 行）
+股东户数退役时属 sync_orphan（0 DataAccess/serve）；**不是**被 `holders_top10` 替换（top10=名单；户数=慢变量）。
+
+## Q3 — 恢复交付（本刀）
+
+1. **sync_registry**：恢复 `stk_holdernumber`，`batch_mode=by_ann_date`（禁 `by_ts_code` 全宇宙日扫）。  
+   - LIVE 2026-07-24：`ann_date=20250429` → 2508 行；vendor 单次硬顶 3000 → `page_limit=1500`。  
+   - 旧注释「截面 enddate 返 0」已过时（同日 `enddate=20250331` 返满页 3000）。  
+2. **scope**：documented **raw_evidence**（landing 保留供应商响应；暂无 formal accept plane；同类 share_float/cyq）。  
+3. **DataAccess** entity `holder_number`（PIT=`ann_date`）。  
+4. **serve**：`holdernumber_assist` → dossier `holder_number`（集中度方向 + 同窗 qfq 涨跌辅助；fail-closed；非 Optuna）。  
+5. **plane**：`legacy_raw_plane` retired→`ssot/serve_l0_declared`；S7 墙 **20 ssot / 8 declared / 3 retired**。  
+6. **update-flow**：进 `--all-due`；drain 对 `by_ann_date` 走既有 `incremental_fallback`。
+
+## 历史（保留）
+
+- `baa239ac4` 墓碑原因成立（orphan + unsupported）。  
+- `express`/`fina_mainbz` 仍 lifecycle DROP；本域表保留并恢复写路径。

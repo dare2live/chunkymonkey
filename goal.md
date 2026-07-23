@@ -9,7 +9,7 @@
 
 ## 当前 objective
 
-**轨道 = foundation solidify CLOSED**（2026-07-21；母体 = transport strangler S1–S7 + brick L0–L3 + E0 + DB 分层；**phase_closure_ready=true**）。模块化 **S1–S6 FIXED**；**S7 near-FIXED**（19 ssot + 4 retired = typed hard-stop 墙；B1+B2 done；禁假 COMPAT；`stk_factor_pro`+`express`/`fina_mainbz`/`stk_holdernumber` 2026-07-23 owner sunset；2026-07-24 `express`/`fina_mainbz` lifecycle DROP，`stk_holdernumber` 调查后留表 retired）。**E0-HIST / F6 PASS**（holders≥120 trading-day overlap）。**FND-GATE PASS**（F1–F10 全 PASS；F8 §15-VERIFY **PASS**）。**§15 behavior PASS**（连续 3 刀 commits/knife=1.0 + pre-knife）。**B5** registry/qfq **FIXED**；Type-B enrichment **FIXED**；qfq incremental **FIXED**；breadth B-pit promote **FIXED**。A→H = **后置研究地图**；**E/F remeasure paused**（可 schedule，未开）。WP0–WP4 闭合；WP6 shadow 开放。**§15 knife-merge binding 不变**。
+**轨道 = foundation solidify CLOSED**（2026-07-21；母体 = transport strangler S1–S7 + brick L0–L3 + E0 + DB 分层；**phase_closure_ready=true**）。模块化 **S1–S6 FIXED**；**S7 near-FIXED**（**20 ssot + 3 retired** typed hard-stop 墙；B1+B2 done；禁假 COMPAT；`stk_factor_pro`+`express`/`fina_mainbz` sunset/DROP；**2026-07-24 `stk_holdernumber` RESTORE** `by_ann_date`+DataAccess+dossier assist）。**E0-HIST / F6 PASS**（holders≥120 trading-day overlap）。**FND-GATE PASS**（F1–F10 全 PASS；F8 §15-VERIFY **PASS**）。**§15 behavior PASS**（连续 3 刀 commits/knife=1.0 + pre-knife）。**B5** registry/qfq **FIXED**；Type-B enrichment **FIXED**；qfq incremental **FIXED**；breadth B-pit promote **FIXED**。A→H = **后置研究地图**；**E/F remeasure paused**（可 schedule，未开）。WP0–WP4 闭合；WP6 shadow 开放。**§15 knife-merge binding 不变**。
 
 已落地硬事实（勿回滚；细节见 FOUNDATION §2 + git）：
 - C + B-pit **`cutover_allowed=true`**（`b38e9ac5`）→ `ACCEPTED_CUTOVER` / `MART_CUTOVER`；dual-track residual **NONE**

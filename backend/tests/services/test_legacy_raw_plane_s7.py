@@ -195,14 +195,14 @@ def test_s7_derive_runtime_still_bans_acquire_imports() -> None:
 
 
 def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
-    """S7 inventory after orphan sunset batch: 19 ssot / 1 fill / 22 compat / 4 retired."""
+    """S7 inventory: 20 ssot / 1 fill / 22 compat / 3 retired (holdernumber restored)."""
 
     mod = _load_check_mod()
     counts = mod.role_counts()
-    assert counts["ssot"] == 19, counts
+    assert counts["ssot"] == 20, counts
     assert counts["fill"] == 1, counts
     assert counts["compatibility"] == 22, counts
-    assert counts.get("retired", 0) == 4, counts
+    assert counts.get("retired", 0) == 3, counts
     assert sum(counts.values()) == 46, counts
 
 
@@ -233,6 +233,7 @@ def test_s7_residual_ssot_map_is_typed_hard_stops_only() -> None:
             "forecast",
             "report_rc",
             "share_float",
+            "stk_holdernumber",
             "stk_surv",
         },
         "sync_orphan": {
@@ -249,7 +250,7 @@ def test_s7_residual_ssot_map_is_typed_hard_stops_only() -> None:
         },
     }
     assert by_kind == expected, by_kind
-    assert sum(len(v) for v in by_kind.values()) == 19
+    assert sum(len(v) for v in by_kind.values()) == 20
     retired = {
         table.removeprefix("raw_tushare_")
         for table, meta in inv["tables"].items()
@@ -259,7 +260,6 @@ def test_s7_residual_ssot_map_is_typed_hard_stops_only() -> None:
         "stk_factor_pro",
         "express",
         "fina_mainbz",
-        "stk_holdernumber",
     }, retired
 
 

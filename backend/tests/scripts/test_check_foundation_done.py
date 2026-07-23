@@ -24,7 +24,7 @@ def test_live_config_loads() -> None:
     mod = _load_mod()
     cfg = mod.load_config()
     assert int(cfg["version"]) == 1
-    assert cfg["s7_ssot_wall"]["ssot"] == 19
+    assert cfg["s7_ssot_wall"]["ssot"] == 20
     assert cfg["s7_ssot_wall"]["kinds"]["sync_orphan"] == 10
     assert cfg["section_15"]["status"] == "PASS"
     knives = cfg["section_15"]["evidence"]["knives"]
@@ -147,9 +147,9 @@ def test_config_yaml_declares_typed_walls() -> None:
     )
     kinds = data["s7_ssot_wall"]["kinds"]
     assert kinds["sync_orphan"] == 10
-    assert kinds["serve_l0_declared"] == 7
+    assert kinds["serve_l0_declared"] == 8
     assert kinds["blocked_no_publication"] == 2
-    assert data["s7_ssot_wall"]["ssot"] == 19
+    assert data["s7_ssot_wall"]["ssot"] == 20
     assert data["b5"]["type_b_defer_codes"] == []
     assert data["section_15"]["max_commits_per_knife"] == 1.5
     assert data["section_15"]["required_consecutive_l3_knives"] == 3

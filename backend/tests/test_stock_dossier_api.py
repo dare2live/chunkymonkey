@@ -120,6 +120,9 @@ def test_dossier_mvp_layers_and_observation():
     }
     assert body["holders"]["report_date"] == "20260331"
     assert len(body["holders"]["rows"]) == 2
+    assert "holder_number" in body
+    assert body["usability"]["tabs"]["holder_number"]["status"] in {"ok", "empty"}
+    assert body["holder_number"]["status"] in {"ok", "empty"}
     row0 = body["holders"]["rows"][0]
     assert row0["change_status"] == "增持"
     # No episode in fixture → per-row unknown, not MVP fog gaps.

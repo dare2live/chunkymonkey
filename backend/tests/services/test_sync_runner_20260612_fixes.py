@@ -81,12 +81,15 @@ def test_registry_surgery_contract_20260612():
     assert d["margin"]["write_mode"] == "replace_partition"
     assert d["margin"]["partition_by"] == ["trade_date"]
     assert "split_by" not in d["margin_detail"]  # API catalog 无 exchange 参数；传入也被 provider 忽略
-    # 2026-07-23 owner DELETE: stk_factor_pro + express/fina_mainbz/stk_holdernumber
-    # tombstoned out of registry (no refill / no --all-due unsupported soft DEGRADED).
+    # 2026-07-23 owner DELETE: stk_factor_pro + express/fina_mainbz tombstoned.
+    # 2026-07-24 owner RESTORE: stk_holdernumber via by_ann_date (not by_ts_code mass).
     assert "stk_factor_pro" not in d
     assert "express" not in d
     assert "fina_mainbz" not in d
-    assert "stk_holdernumber" not in d
+    assert d["stk_holdernumber"]["batch_mode"] == "by_ann_date"
+    assert d["stk_holdernumber"]["date_param"] == "ann_date"
+    assert d["stk_holdernumber"].get("page_limit", 0) >= 1500
+    assert d["stk_holdernumber"].get("allow_empty_batch") is True
 
     # 2026-07-06 全面数据审计实锤第 N 例: stk_limit 全市场(股票+ETF+B股+北交所混合)总量增长
     # 跨过服务端隐式单页上限(实测 limit=6000 仍只回 5800, offset=5800 page2 再回 1877 行),

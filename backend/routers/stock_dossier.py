@@ -2,10 +2,11 @@
 
 GET /api/v3/stock/{code}/dossier
 
-Cap F scope (沪深A): overview / form·stage / holders(+机构 deep-link) work, or
-fail closed with typed reason. Moneyflow + intersection tabs delegate to Cap A/D
-APIs (same page). Observation text is a versioned product label — never Tier0.
-Episode overlay supplies this-stock cycle/return when measured; never invent PnL.
+Cap F scope (沪深A): overview / form·stage / holders(+机构 deep-link) /
+holder_number (concentration assist) work, or fail closed with typed reason.
+Moneyflow + intersection tabs delegate to Cap A/D APIs (same page). Observation
+text is a versioned product label — never Tier0. Episode overlay supplies
+this-stock cycle/return when measured; never invent PnL.
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from services.data_access import resolver
 from services.duck_adapter import connect as duck_connect
+from services.holdernumber_assist import load_holdernumber_assist
 from services.universe import classify_exclusion
 
 router = APIRouter()
@@ -575,10 +577,12 @@ def _tab_usability(
     basic: dict[str, Any],
     form: dict[str, Any] | None,
     holders: dict[str, Any],
+    holder_number: dict[str, Any],
     observation: dict[str, Any],
 ) -> dict[str, Any]:
     """Per-tab usable|empty|typed — Cap F 100% = no half-dead silent empties."""
     holder_rows = holders.get("rows") or []
+    hn_ok = holder_number.get("status") == "ok"
     form_status = "ok" if form else "empty"
     form_reason = None
     if form:
@@ -602,6 +606,12 @@ def _tab_usability(
             "holders": {
                 "status": "ok" if holder_rows else "empty",
                 "reason": None if holder_rows else "holders_empty",
+            },
+            "holder_number": {
+                "status": "ok" if hn_ok else "empty",
+                "reason": None if hn_ok else (
+                    str(holder_number.get("reason") or "holder_number_empty")
+                ),
             },
             "moneyflow": {
                 "status": "delegated",
@@ -634,6 +644,7 @@ def dossier(
     basic = _load_basic(conn, code)
     form = _load_form(conn, code, as_of)
     holders = _load_holders(conn, code)
+    holder_number = load_holdernumber_assist(code, as_of)
     observation = _compose_observation(form)
 
     gaps = list(holders.get("gaps") or [])
@@ -641,6 +652,8 @@ def dossier(
         gaps.append("form_stage_empty")
     if basic.get("stock_name") is None:
         gaps.append("stock_name_unknown")
+    if holder_number.get("status") != "ok":
+        gaps.append(str(holder_number.get("reason") or "holder_number_empty"))
     if form is not None:
         note = str(form.get("resolver_note") or "")
         residuals = form.get("hybrid_residual_fields") or []
@@ -653,7 +666,11 @@ def dossier(
         raise HTTPException(status_code=404, detail=f"no dossier bricks for {code}")
 
     usability = _tab_usability(
-        basic=basic, form=form, holders=holders, observation=observation
+        basic=basic,
+        form=form,
+        holders=holders,
+        holder_number=holder_number,
+        observation=observation,
     )
     inst = holders.get("institution_profile") or {}
     cov = inst.get("coverage")
@@ -679,6 +696,7 @@ def dossier(
         "form_stage": form,
         "observation": observation,
         "holders": holders,
+        "holder_number": holder_number,
         "lineage": {
             "status": "attested_usable",
             "audit": "analysis/dossier_100_usable_20260723.md",
@@ -689,12 +707,14 @@ def dossier(
             "institution_join": inst_join,
             "institution_profile_coverage": inst,
             "holders_watermark_frontier": "canonical_notice_frontier",
+            "holder_number_axis": "ann_date_pit_raw_evidence",
             "note": (
                 "Cap F usable: HS-A dossier tabs work or fail closed with typed "
                 "reason. Institution deep-link only when mart_inst_profile row "
                 "exists (closed-loop process); episode supplies this-stock "
                 "cycle/return when measured. Form may be fact-brick typed hybrid "
                 "while accepted overlay BLOCKED — honesty, not a dead tab. "
+                "holder_number = concentration assist via DataAccess (not Optuna). "
                 "Moneyflow/intersection delegated to Cap A/D APIs."
             ),
         },
@@ -702,6 +722,7 @@ def dossier(
         "pit_notes": [
             "form trade_date = observation day of fact_stock_form_daily builder",
             "holders available_at/notice_date bound disclosure — not same-day as K",
+            "holder_number JOIN on ann_date (end_date is report period only)",
             "observation.text is product label stock_dossier_obs_v0 — not Tier0",
             "serve rejects non-沪深A via classify_exclusion (B/BJ/etc.)",
             "holding_cycle_days = disclosure period-boundary calendar days",

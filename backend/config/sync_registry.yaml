@@ -1198,12 +1198,40 @@ domains:
   #   证据: analysis/db_bloat_deep_dive_20260723.md §6; mart_data_deletion_record
   #   run_id=raw_tushare_stk_factor_pro_retirement_20260723. API 能力若未来需要须新域+新消费者+owner 再开。
 
-  # stk_holdernumber 域 2026-07-23 owner DELETE 退役 (post-close E2E class-B):
-  #   sync_orphan / 0 DataAccess/serve 消费者; by_ts_code 无 increment_mode → --all-due
-  #   drain 每跑 typed unsupported → soft DEGRADED。墓碑化本条目防回流。
-  #   2026-07-24 investigate: 表保留冷残差 (owner 仅签 DROP express/fina_mainbz)。
-  #   Occam=无 consumer path 的研究候选注册, 非 API 坏、非 holders_top10 替换;
-  #   禁无消费者 revive。证据: analysis/stk_holdernumber_retire_evidence_20260724.md。
+  # stk_holdernumber 2026-07-24 owner RESTORE (was tombstoned baa239ac4):
+  #   Prior fail = by_ts_code WITHOUT increment_mode → drain typed unsupported (soft DEGRADED)
+  #   + 0 consumer. NOT broken API; NOT replaced by holders_top10.
+  #   Restore axis = by_ann_date (vendor ann_date cross-section LIVE 2026-07-24:
+  #   ann_date=20250429 → 2508 rows; enddate also returns but hits 3000 page cap).
+  #   Ban: by_ts_code mass full-universe daily. Scope = documented raw_evidence
+  #   (no formal accept plane yet). Consumer = DataAccess holder_number + dossier assist.
+  #   Evidence: analysis/stk_holdernumber_retire_evidence_20260724.md.
+  stk_holdernumber:   # 股东户数 (筹码集中慢变量; 辅助因子/dossier; 非择时)
+    source: tushare
+    api: stk_holdernumber
+    target_table: raw_tushare_stk_holdernumber
+    universe_filter: true            # 写前丢非白名单前缀 (北交所/三板)
+    grain: [ts_code, end_date]
+    batch_mode: by_ann_date          # 公告日全市场截面增量 (非 by_ts_code 全宇宙日扫)
+    date_param: ann_date
+    page_limit: 1500                 # vendor 单次硬顶 3000; 稠密公告日实测 ≥2508 → 分页安全边际
+    allow_empty_batch: true          # 多数日历日无户数公告 (事件稀疏)
+    freshness_date_column: ann_date  # watermark = MAX(ann_date); drain fallback → run_domain
+    pit_anchor: "ann_date 公告日 (end_date 报告期 != 可用日, JOIN 必用 ann_date)"
+    available_after: "t+1"
+    data_start: "20190101"
+    freshness_sla_trading_days: 90
+    min_rows_per_batch: 1
+    data_start_reviewed: true   # 2026-07-08: declared_drift 门降级 pass, 见下方 coverage_note
+    gap_tolerance: annotate     # 型B稀疏事件: 空日/周末合法; 日历空洞 annotate 不告警疲劳
+    # coverage_note (2026-07-05 R4 workflow 复核 declared_vs_actual "偏差6031天"警告):
+    # MIN(end_date)=20020628 来自3笔孤立记录(300797.SZ/002915.SZ/002937.SZ), 非真实深史覆盖:
+    # 300797.SZ 该行 holder_num=20664 与同股 end_date=20200630 那行完全相同 → 强烈指向 tushare 源端
+    # 年份数字错位(2020→2002), 非我方采集/传输问题; 002937.SZ 的2012孤例活API复核当前已不可复现
+    # (疑似源端瞬时异常快照)。2019年覆盖3379/3550(95%)交叉验证准确, data_start=20190101 不需要
+    # 改动。这3笔属源端数据质量问题, 非本项目职责修复范围。
+    # population_scope: documented raw_evidence (landing preserves provider; no formal
+    # accepted partition yet — same class as share_float/cyq serve_l0_declared).
 
   stk_holdertrade:   # 股东增减持 (2026-06-24 替 tdx fact_shareholder_plan_tdx_f10; 实测 ann_date 全市场71行/期)
     source: tushare

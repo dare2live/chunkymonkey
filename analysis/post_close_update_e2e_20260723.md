@@ -64,7 +64,7 @@
 |---|---|---|---|
 | `express` | unsupported | by_period | **registry tombstone + inventory retired；2026-07-24 archive+DROP 26959 行** |
 | `fina_mainbz` | unsupported | by_ts_code | **同上；2026-07-24 archive+DROP 25674 行** |
-| `stk_holdernumber` | unsupported | by_ts_code | **registry tombstone + retired；表保留（见 `stk_holdernumber_retire_evidence_20260724.md`）** |
+| `stk_holdernumber` | unsupported→RESTORE | by_ts_code→**by_ann_date** | **2026-07-24 RESTORE**（DataAccess+dossier；见 `stk_holdernumber_retire_evidence_20260724.md`） |
 
 ## 6. SLA / 异常清单（当日 → 路径修复）
 

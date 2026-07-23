@@ -51,7 +51,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 
 | 块 | 状态 | 证据锚（commit / 门） |
 |---|---|---|
-| Transport S1–S6 / S7 typed wall | FIXED / near-FIXED | FND-GATE；`stk_factor_pro` sunset；**2026-07-23** orphan sunset batch `express`/`fina_mainbz`/`stk_holdernumber` → 19 ssot / 4 retired；**2026-07-24** express/fina_mainbz lifecycle DROP；holdernumber 留表（证据 `stk_holdernumber_retire_evidence_20260724.md`） |
+| Transport S1–S6 / S7 typed wall | FIXED / near-FIXED | FND-GATE；`stk_factor_pro` sunset；**2026-07-23** orphan sunset；**2026-07-24** express/fina_mainbz lifecycle DROP；**holdernumber RESTORE** `by_ann_date`+DataAccess+dossier → **20 ssot / 8 serve_l0_declared / 3 retired**（证据 `stk_holdernumber_retire_evidence_20260724.md`） |
 | FND-GATE F1–F10 / phase_closure | PASS | `check_foundation_done.py` |
 | E0-HIST / F6 holders·stk·org | PASS | holders/stk overlap；org incremental |
 | CX-1…CX-4 能力门 | PASS | commits under `cx*_acceptance_*` era；git |
@@ -80,7 +80,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | **F3** | Holders landing **retention/archive** + smartmoney compact | L3 | archive 非 latest ACCEPTED→parquet；landing≈1×；compact reclaim | bare DELETE landing 当去重 | **FIXED** 2026-07-23（`holders_landing_retention_f3_20260723.md`；7.17M→236k；6.7→4.3 GiB） |
 | **F4** | Margin **1c** promote gate（shadow vs accepted） | L2/L3 | product-visible `promote_gate`；serve→accepted SSE+SZSE；READY as external_aggregate when criteria pass；应有却缺 UNTRUSTED；覆盖前 typed EMPTY | 无 shadow 假 TRUSTED / 把正常空 scare 成 fail-closed | **FIXED** 2026-07-23（`margin_f4_promote_gate_20260723.md`；gate=PROMOTED on accepted days；typed empty 2026-07-23 owner 纠偏） |
 | **F5** | BOARD / codegraph / maps **sync** | hygiene | `build_agent_board` 重生；BOARD=投影非执法 | 手改 BOARD 当真相 | **FIXED** 2026-07-23：投影反映 §6 exit + §6a 100% 定义 |
-| **F6** | S7 publication/sunset（按需） | Tier0 | **仅** owner 新 block | 假 COMPAT / blanket pre-accept | 无 owner block → skip |
+| **F6** | S7 publication/sunset（按需） | Tier0 | **仅** owner 新 block | 假 COMPAT / blanket pre-accept | **PARTIAL** 2026-07-24：`stk_holdernumber` RESTORE（by_ann_date+DataAccess+dossier）；其余 orphan 仍 skip |
 | **F7** | Type-B enrichment | L3 | feature_store_profiles ACCEPTED；`institution_profile_edge_v0` declared；legacy_only 仅补 canonical 缺期 | 假 FIXED / Optuna | **FIXED** 2026-07-23（E0-HIST 后 canonical enrichment 齐；`新进` null `hold_change_num` typed OK） |
 | **F8** | qfq incremental/partitioned write | L3 | 默认 incremental：`f_latest` 值变 → 全历史 rewrite；值不变 → append；`--full` 保留 CTAS+compact | 用「定期 compact」代替语义；静默错历史 | **FIXED** 2026-07-23（`build_price_kline_qfq_tushare` auto/incremental/full） |
 

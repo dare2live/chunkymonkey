@@ -237,8 +237,9 @@ tables:
     note: "Owner DELETE 2026-07-23: sync_orphan sunset; table DROPped + tushare_raw compacted; sync_registry tombstoned (no refill). See analysis/db_bloat_deep_dive_20260723.md §6."
 
   raw_tushare_stk_holdernumber:
-    role: retired
-    note: "Owner sunset 2026-07-23 (registry tombstone); 2026-07-24 investigate: leave retired + table retained (NOT DROPped). Occam=sync_orphan/no consumer path + drain unsupported; NOT replaced by holders_top10; NOT broken API. See analysis/stk_holdernumber_retire_evidence_20260724.md."
+    role: ssot
+    kind: serve_l0_declared
+    note: "Owner RESTORE 2026-07-24: by_ann_date incremental + DataAccess holder_number + dossier assist (concentration/vs-price). Documented raw_evidence scope; no formal accept plane. NOT holders_top10. See analysis/stk_holdernumber_retire_evidence_20260724.md."
 
   raw_tushare_stk_holdertrade:
     role: compatibility

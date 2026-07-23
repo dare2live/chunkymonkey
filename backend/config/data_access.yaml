@@ -125,6 +125,18 @@ entities:
     vendor: tushare
     available_after: ann_date
 
+  holder_number:
+    # 股东户数 (筹码集中慢变量; PIT 锚=ann_date; end_date 仅报告期排序, 禁作可用日)
+    db: tushare_raw
+    table: raw_tushare_stk_holdernumber
+    layer: L0
+    code_col: ts_code
+    asof_col: ann_date
+    asof_format: yyyymmdd
+    columns: [ts_code, ann_date, end_date, holder_num]
+    vendor: tushare
+    available_after: t+1
+
   block_trade:
     # 大宗交易 (折溢价 = 大资金态度)
     db: tushare_raw
