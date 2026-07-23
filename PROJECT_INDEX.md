@@ -80,7 +80,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | K accepted + form/qfq/segments/pulse 至 `20260721`（扇区/DC pulse 可能滞后）；legacy raw daily 仍 `20260716`（预期）；`index_dailybasic` 短窗 min_rows 拒写；margin frozen=`on_demand`+`scope_blocked`（on_demand≠无日历；continuity=`observe_frozen_stale`；rzrqye 新日 NULL；不挡 preflight；catchup BLOCKED 至 population-scope；`margin_calendar_catchup_blocker_20260723.md`）；禁 mass backfill | 两融列诚实 unknown；估值水位可能 stale |
+| P0 | K accepted + form/qfq/segments/pulse 至 `20260721`（扇区/DC pulse 可能滞后）；legacy raw daily 仍 `20260716`（预期）；`index_dailybasic` 短窗 min_rows 拒写；margin frozen=`on_demand`+`scope_blocked`（**1a** accepted scope=SSE+SZSE `external_aggregate` fail-closed；v2 transport/BSE evidence 未改 hash；catchup=**1b**；continuity=`observe_frozen_stale`；rzrqye UNTRUSTED；`foundation_residual_fix_plan_20260723.md`）；禁 mass backfill / thaw | 两融列诚实 unknown；估值水位可能 stale |
 | P0 | E 120d checkpointed measured reject/no-gain；C full-universe accept `20260717`（4989）+ `20260720`（4991）form enrich v1；D FIXED；F0+F1+F2 main_rally B0/B1 reject/`claimable=false`；B-pit 120d shadow **120/120 MATCH**；C/B-pit cutover **ON**（ACCEPTED_CUTOVER / MART_CUTOVER；无 accept/窗外日 fail-closed→legacy）；pulse drill 双轨 form 读已退役 | 下一刀 F3 main_rally B2（market sensing，同 B0 snapshot/folds/costs）**或** stop（非 Optuna / 非松门 / 非 mass backfill / 非静默 cutover / 非 StrategyRelease） |
 | P0 | qfq physical lineage FIXED (batch_id/ingested_at/factor_as_of on rebuild); still not execution truth; used broadly as analysis input | Pin batch_id for reproducibility; never treat qfq as nominal execution price |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
@@ -122,7 +122,9 @@ Formal 执行契约物理 owner：`population_scope.py`（factory bind + `verify
 `formal_execution.py`（domain consumer 注册与 `propagate_formal_execution_contract` identity 门）、
 `sync_runner.py`（`_require_formal_population_execution` → 传播成功后 `_refuse_formal_domain_runtime`，
 禁止 legacy 落穿）。margin consumer 传播后 reason=`formal_runtime_retired`；无 consumer 仍
-`execution_contract_not_propagated`。margin 仍 `scope_blocked` / live-write frozen。
+`execution_contract_not_propagated`。margin 仍 `scope_blocked` / live-write frozen；
+`margin_population_scope.py` 强制 accepted venues=`SSE+SZSE`（禁 BSE / project_universe；
+enabled 时还要求 transport 对齐，否则 fail-closed）。
 
 当前 margin read path 的物理 owner：`margin_evidence.py` 负责固定查询快照，`margin_state.py` 负责
 accepted proof，`margin_legacy_reconcile.py`/`margin_reconcile.py` 负责纯比较与现场编排，

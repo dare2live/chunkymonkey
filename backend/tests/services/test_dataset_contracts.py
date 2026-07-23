@@ -89,6 +89,16 @@ def _frozen_margin_transport_spec() -> dict:
             "batch_mode": "by_trade_date",
             "date_param": "trade_date",
             "write_mode": "replace_partition",
+            # Disabled: v2 transport may still list BSE; accepted scope = SSE+SZSE.
+            "execution_policy": {"mode": "disabled", "reason": "scope_blocked"},
+            "population_scope": {
+                "kind": "external_aggregate",
+                "venue_field": "exchange_id",
+                "venue_ids": ["SSE", "SZSE"],
+                "population_label": "sse_szse_venue_reported_margin",
+                "method": "tushare_margin_exchange_summary_sse_szse",
+                "unit": "provider_declared_fields",
+            },
             "split_by": {
                 "param": "exchange_id",
                 "values": ["SSE", "SZSE", "BSE"],

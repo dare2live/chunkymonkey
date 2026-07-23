@@ -30,9 +30,10 @@ def observe_frozen_on_demand_domains(ctx: PipelineContext) -> list[dict[str, Any
     """Log calendar-eligible lag for frozen on_demand domains (margin).
 
     Owner distinction: calendar-driven *incremental* catchup ≠ mass refresh, but
-    margin v2 live land/accept is retired (wrong-scope BSE-in-canonical). Until a
-    population-scope correction knife, we record eligible_end vs local_max as
-    typed ``observe_frozen`` — not all-due pull, not product thaw, not silent skip.
+    margin v2 live land/accept is retired (wrong-scope BSE-in-canonical). Knife 1a
+    corrected accepted population_scope to SSE+SZSE external_aggregate; land/accept
+    stays frozen until 1b generation+transport align. We record eligible_end vs
+    local_max as typed ``observe_frozen`` — not all-due pull, not product thaw.
     """
 
     from services.data_sources import sync_runner

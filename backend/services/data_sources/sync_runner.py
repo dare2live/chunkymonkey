@@ -178,6 +178,10 @@ def _formal_dataset_contract_for_spec(spec: Mapping[str, Any]):
     """Parse any formal dataset; margin-specific checks remain additive."""
 
     domain = str(spec.get("domain") or "unknown")
+    from services.data_sources.margin_population_scope import (
+        MarginPopulationScopeError,
+    )
+
     try:
         margin_contract = None
         if domain == "margin":
@@ -196,6 +200,12 @@ def _formal_dataset_contract_for_spec(spec: Mapping[str, Any]):
                 or margin_contract.config_hash != contract.config_hash
             ):
                 raise ValueError("margin-specific and generic contracts disagree")
+    except MarginPopulationScopeError as exc:
+        raise PopulationScopeExecutionError(
+            domain,
+            reason="invalid_population_scope",
+            detail=f"population scope invalid: {exc}",
+        ) from exc
     except (TypeError, ValueError) as exc:
         raise PopulationScopeExecutionError(
             domain,
@@ -212,6 +222,23 @@ def _bind_formal_execution_contract(spec: Mapping[str, Any], contract):
         return None
     domain = str(spec.get("domain") or getattr(contract, "domain", "unknown"))
     from services.data_sources.population_scope import bind_execution_contract
+
+    if domain == "margin":
+        from services.data_sources.margin_population_scope import (
+            MarginPopulationScopeError,
+            assert_margin_accepted_population_scope,
+            assert_margin_transport_matches_accepted_scope,
+        )
+
+        try:
+            assert_margin_accepted_population_scope(spec)
+            assert_margin_transport_matches_accepted_scope(spec)
+        except MarginPopulationScopeError as exc:
+            raise PopulationScopeExecutionError(
+                domain,
+                reason="invalid_population_scope",
+                detail=f"population scope invalid: {exc}",
+            ) from exc
 
     raw_scope = spec.get("population_scope")
     policy = None

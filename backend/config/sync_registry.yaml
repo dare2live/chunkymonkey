@@ -229,27 +229,31 @@ domains:
       group_from: {column: ts_code, transform: exchange_suffix}
       required_groups: [SH, SZ]    # provider API 不支持 exchange 参数；禁止伪 split_by，缺任一市场即 fail closed
 
-  margin:                          # 交易所汇总 (SSE/SZSE/BSE 2-3 行/日): B4 市场感知大盘水位原料
+  margin:                          # 交易所汇总: B4 市场感知大盘水位原料 (accepted=SSE+SZSE)
     execution_policy:
       mode: disabled
       reason: scope_blocked
     # Frozen product (2026-07-18 BLOCK v2): wrong-scope generation treated venue
     # aggregate (incl. BSE) as business canonical — live land/accept retired.
+    # Knife 1a (2026-07-23): accepted population_scope corrected to SSE+SZSE
+    # external_aggregate (never project_universe_pit). Transport split_by /
+    # required_groups_since still describe immutable v2 evidence shape — do NOT
+    # rehash completeness here (would break read of 1823 accepted partitions).
+    # Knife 1b: new contract generation + align transport + bounded catchup.
     # sync_policy=on_demand means NOT in --all-due / daily_update preflight
     # ("不强拉" = 不进自动 drain 链, 不是"日历不驱动 / 永不可见").
     # Calendar still defines eligible_end; acquire logs observe_frozen
     # (eligible vs local_max); continuity = observe_frozen_stale (not FAIL).
-    # Explicit `chunkyctl sync --domain margin` still hard-stops (no product thaw
-    # until population-scope correction). Bounded catchup ≠ mass backfill.
+    # Explicit sync still hard-stops until 1b. Bounded catchup ≠ mass backfill.
     sync_policy: on_demand
-    # 这是供应商按交易所定义的外部汇总人口，不是项目可交易股票池。
-    # BSE 在此只描述原响应/旧 generation 的覆盖，不能流入 project_universe_pit。
+    # Accepted business claim = 沪深交易所两融汇总 (external_aggregate).
+    # Not project_universe_pit; BSE must not enter the accepted claim set.
     population_scope:
       kind: external_aggregate
       venue_field: exchange_id
-      venue_ids: [SSE, SZSE, BSE]
-      population_label: venue_reported_margin_population
-      method: tushare_margin_exchange_summary
+      venue_ids: [SSE, SZSE]
+      population_label: sse_szse_venue_reported_margin
+      method: tushare_margin_exchange_summary_sse_szse
       unit: provider_declared_fields
     source: tushare
     api: margin
@@ -260,6 +264,8 @@ domains:
     partition_by: [trade_date]
     split_by:
       param: exchange_id
+      # FROZEN v2 transport evidence (BSE included). Knife 1b must shrink to
+      # [SSE, SZSE] under a new contract_version before enabling execution.
       values: [SSE, SZSE, BSE]
       # 2026-07-08 根因修复(owner=
       # analysis/gap_root_cause_20260708.md): 裸调 pro.margin(trade_date=d) 在2026年偶发
@@ -282,8 +288,9 @@ domains:
     batch_completeness:
       group_from: {column: exchange_id, transform: identity}
       required_groups: [SSE, SZSE]
-      # 北交所上市日不是两融业务起点。北交所公告〔2023〕9号自 2023-02-13 施行；
-      # 此前只要求 SSE/SZSE，自业务生效日起同时要求 BSE。
+      # FROZEN v2: BSE required_since remains for immutable accepted evidence
+      # hashes. Corrected accepted population_scope excludes BSE; enabling
+      # execution (1b) must drop this under a new contract_version.
       required_groups_since: {BSE: "20230213"}
     dataset_contract:
       dataset_id: tier0.market_data.margin_exchange_daily

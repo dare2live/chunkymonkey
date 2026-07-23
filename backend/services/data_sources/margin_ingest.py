@@ -9,6 +9,10 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from services.data_sources.contracts import dataset_contract_from_spec
+from services.data_sources.margin_population_scope import (
+    assert_margin_accepted_population_scope,
+    assert_margin_transport_matches_accepted_scope,
+)
 from services.data_sources.margin_schema import DATASET_ID
 from services.data_sources.margin_state import (
     accepted_margin_dates,
@@ -35,6 +39,10 @@ def contract_for_spec(spec: dict[str, Any]):
         )
     if metadata.get("dataset_id") != DATASET_ID:
         return None
+    if domain == "margin":
+        # Fail closed on wrong accepted scope before any hash/transport proof.
+        assert_margin_accepted_population_scope(spec)
+        assert_margin_transport_matches_accepted_scope(spec)
     contract = dataset_contract_from_spec(domain, spec)
     if contract.dataset_id != DATASET_ID:
         raise ValueError(f"formal margin contract id drift: {contract.dataset_id!r}")

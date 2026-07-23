@@ -82,11 +82,14 @@ def test_live_margin_v2_is_disabled_but_read_only_contract_still_loads():
     assert spec["population_scope"] == {
         "kind": "external_aggregate",
         "venue_field": "exchange_id",
-        "venue_ids": ["SSE", "SZSE", "BSE"],
-        "population_label": "venue_reported_margin_population",
-        "method": "tushare_margin_exchange_summary",
+        "venue_ids": ["SSE", "SZSE"],
+        "population_label": "sse_szse_venue_reported_margin",
+        "method": "tushare_margin_exchange_summary_sse_szse",
         "unit": "provider_declared_fields",
     }
+    # v2 transport evidence may still list BSE while execution stays disabled.
+    assert spec["split_by"]["values"] == ["SSE", "SZSE", "BSE"]
+    assert spec["batch_completeness"]["required_groups_since"] == {"BSE": "20230213"}
     contract = margin_ingest.contract_for_spec(spec)
     assert contract is not None
     assert contract.contract_version == "2"
@@ -307,8 +310,9 @@ def test_enabled_formal_dataset_missing_population_scope_blocks_before_runtime(
     with pytest.raises(
         sr.PopulationScopeExecutionError,
         match="population scope invalid.*missing population_scope",
-    ):
+    ) as caught:
         sr.run_domain("margin", registry=_enabled_formal_margin_registry())
+    assert caught.value.reason == "invalid_population_scope"
 
 
 def test_enabled_margin_cannot_delete_contract_and_fall_into_legacy_runner(monkeypatch):
@@ -335,6 +339,38 @@ def test_enabled_margin_cannot_delete_contract_and_fall_into_legacy_runner(monke
 def test_parsed_scope_propagates_then_refuses_retired_formal_runtime(monkeypatch):
     for name in ("eligible_end_date", "_adapter", "_target_conn", "_smartmoney_conn"):
         monkeypatch.setattr(sr, name, _forbidden(name))
+    # Corrected accepted scope + transport aligned (v3-shaped) still hits retired
+    # formal runtime until Knife 1b registers a live writer path.
+    registry = _enabled_formal_margin_registry(
+        population_scope={
+            "kind": "external_aggregate",
+            "venue_field": "exchange_id",
+            "venue_ids": ["SSE", "SZSE"],
+            "population_label": "sse_szse_venue_reported_margin",
+            "method": "tushare_margin_exchange_summary_sse_szse",
+            "unit": "provider_declared_fields",
+        }
+    )
+    margin = registry["domains"]["margin"]
+    margin["split_by"] = {"param": "exchange_id", "values": ["SSE", "SZSE"]}
+    margin["batch_completeness"] = {
+        **margin["batch_completeness"],
+        "required_groups": ["SSE", "SZSE"],
+        "required_groups_since": {},
+    }
+
+    with pytest.raises(
+        sr.PopulationScopeExecutionError,
+        match="propagated to margin consumer",
+    ) as caught:
+        sr.run_domain("margin", registry=registry)
+
+    assert caught.value.reason == "formal_runtime_retired"
+
+
+def test_enabled_margin_rejects_bse_in_accepted_population_scope(monkeypatch):
+    for name in ("eligible_end_date", "_adapter", "_target_conn", "_smartmoney_conn"):
+        monkeypatch.setattr(sr, name, _forbidden(name))
     scope = {
         "kind": "external_aggregate",
         "venue_field": "exchange_id",
@@ -346,14 +382,39 @@ def test_parsed_scope_propagates_then_refuses_retired_formal_runtime(monkeypatch
 
     with pytest.raises(
         sr.PopulationScopeExecutionError,
-        match="propagated to margin consumer",
+        match="venue_ids must be exactly",
     ) as caught:
         sr.run_domain(
             "margin",
             registry=_enabled_formal_margin_registry(population_scope=scope),
         )
 
-    assert caught.value.reason == "formal_runtime_retired"
+    assert caught.value.reason == "invalid_population_scope"
+
+
+def test_enabled_margin_rejects_bse_transport_even_with_corrected_scope(monkeypatch):
+    for name in ("eligible_end_date", "_adapter", "_target_conn", "_smartmoney_conn"):
+        monkeypatch.setattr(sr, name, _forbidden(name))
+    # Live registry still has v2 BSE transport; enabling without 1b align fails.
+    with pytest.raises(
+        sr.PopulationScopeExecutionError,
+        match="forbids BSE in batch_completeness",
+    ) as caught:
+        sr.run_domain(
+            "margin",
+            registry=_enabled_formal_margin_registry(
+                population_scope={
+                    "kind": "external_aggregate",
+                    "venue_field": "exchange_id",
+                    "venue_ids": ["SSE", "SZSE"],
+                    "population_label": "sse_szse_venue_reported_margin",
+                    "method": "tushare_margin_exchange_summary_sse_szse",
+                    "unit": "provider_declared_fields",
+                }
+            ),
+        )
+
+    assert caught.value.reason == "invalid_population_scope"
 
 
 def test_formal_domain_without_consumer_still_blocks_as_not_propagated(monkeypatch):
