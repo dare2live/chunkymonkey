@@ -18,6 +18,9 @@
 
 **退出（foundation exit → 才可开 STRATEGY）**：下表 TODO 中带 **exit-gate** 的项全部 `FIXED|CLOSED`（或 owner 明示 skip），且禁令未破。
 
+**「100% usable」≠ Continuity READY / 零 WARN**：见 §6a + `analysis/foundation_residual_rootcause_20260723.md`。
+Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A 复发债 / B 诚实状态 / C 历史堆 / D 假残留。
+
 ---
 
 ## 1. Supersession（旧计划/审计 → 本文件）
@@ -72,14 +75,14 @@
 
 | # | 项 | 类型 | Exit criteria | 禁 | 状态 |
 |---|---|---|---|---|---|
-| **F1** | **Continuity Knife4** — dividend/hsgt/其它 WARN | L2/L3 按需 | 逐项 `FIXED\|PARTIAL\|BLOCKED`+owner；仅修 typed 错门 | READY cosmetics / 删 observe 洗绿 | **FIXED** 2026-07-23：typed 错门修完；残留 2×annotate WARN 诚实保留（见下） |
+| **F1** | **Continuity Knife4** — dividend/hsgt/其它 WARN | L2/L3 按需 | 逐项 `FIXED\|PARTIAL\|BLOCKED`+owner；仅修 typed 错门 | READY cosmetics / 删 observe 洗绿 | **FIXED** 2026-07-23：typed 错门修完；2×annotate WARN = **class-B 诚实**（非失败；见 §6a） |
 | **F2** | Margin **ops catchup** 推进 `local_max`→`eligible_end` | ops 轴② | token 下 bounded catchup 实测水位前进；Continuity 诚实 | all-due / mass / product thaw | **CLOSED** 2026-07-23：v3 `local_max=20260722` = 当时 `eligible_end`（accepted n=4 since `coverage_start=20260717`）；无 blocker |
-| **F3** | Holders landing **retention/archive** + smartmoney compact | later L3 | skip-land 无新风暴后；archive 非 latest ACCEPTED；再 compact | bare DELETE landing 当去重 | later（非 exit-gate） |
-| **F4** | Margin **1c** pulse consumer shadow（optional） | optional | shadow 证据后才切 trusted 标签 | 无 shadow 假 TRUSTED | optional（非 exit-gate） |
-| **F5** | BOARD / codegraph / maps **sync** | hygiene | `build_agent_board` 重生；BOARD=投影非执法 | 手改 BOARD 当真相 | **FIXED** 2026-07-23：next 指针离 Knife4；投影反映 F1/F2 收口 + §6 exit |
+| **F3** | Holders landing **retention/archive** + smartmoney compact | optional C | skip-land 无新风暴后；archive 非 latest ACCEPTED；再 compact | bare DELETE landing 当去重 | **optional hygiene（class-C）** — 不挡 100% usable；同内容风暴复发门已关（Knife2） |
+| **F4** | Margin **1c** pulse consumer shadow（optional） | optional B | shadow 证据后才切 trusted 标签 | 无 shadow 假 TRUSTED | **class-B 门** — 保持；不挡 100% |
+| **F5** | BOARD / codegraph / maps **sync** | hygiene | `build_agent_board` 重生；BOARD=投影非执法 | 手改 BOARD 当真相 | **FIXED** 2026-07-23：投影反映 §6 exit + §6a 100% 定义 |
 | **F6** | S7 publication/sunset（按需） | Tier0 | **仅** owner 新 block | 假 COMPAT / blanket pre-accept | 无 owner block → skip |
-| **F7** | Type-B enrichment | DEFER | registry in-scheme 已够近端 | 当近端刀 | DEFER |
-| **F8** | qfq incremental/partitioned write | product later | 另开产品刀；今日 full CTAS+compact 已 ops-safe | 用「定期 compact」代替语义 | later |
+| **F7** | Type-B enrichment | DEFER | registry in-scheme 已够近端 | 当近端刀 | **DEFER / out of 100% bar（class-D 假残留若被算进）** |
+| **F8** | qfq incremental/partitioned write | product later | 另开产品刀；今日 full CTAS+compact 已 ops-safe | 用「定期 compact」代替语义 | **later / out of 100% bar** |
 
 **F1 逐项（Knife4）**：
 | 信号 | 裁决 | 证据 |
@@ -88,9 +91,9 @@
 | moneyflow_ind_dc `warn_sparse_history` | **FIXED** reviewed | `data_start_reviewed` + 既有 coverage_note（分类扩容） |
 | dividend `warn_sparse_history` / `warn_row_dip` | **FIXED** reviewed | `data_start_reviewed` + `row_dip_tolerance`；vendor grain 白名单 0 miss |
 | moneyflow_hsgt 真缺口 20260708/10 | **FIXED** ops | bounded backfill 2 日；vendor-0 日进 `known_empty_days` |
-| dividend/hsgt `warn_interior_gaps` | **PARTIAL** 诚实 annotate | `gap_tolerance: annotate` 故意 WARN≠FAIL；非洗绿 |
+| dividend/hsgt `warn_interior_gaps` | **class-B KEEP** | `gap_tolerance: annotate` 故意 WARN≠FAIL；非洗绿；非 class-A |
 
-**近端默认序**：F1 →（并行 ops）F2 → F5；F3/F4/F6–F8 非默认插队。
+**近端默认序**：无开放 class-A → 底座执行面暂停插队；F3 仅当 owner 要盘空间；F4/F7/F8 非默认。
 
 ---
 
@@ -125,4 +128,18 @@
 
 **Foundation exit（给 STRATEGY 的绿灯条件）**：F1 收口（或 owner skip）+ F2 无 blocker（或诚实 BLOCKED+owner）+ F5 投影不谎报下一轨 + 上表禁令未破。
 
-**Exit status 2026-07-23**：F1 **FIXED** · F2 **CLOSED** · F5 **FIXED** · 禁令未破 → **foundation exit MET**（STRATEGY 仍须 `goal.md` 显式 schedule RX 才开；本轨不自动开 STRATEGY）。非 exit-gate 残留（F3 later / F4 optional / F7 DEFER / F8 later）不挡 exit。
+**Exit status 2026-07-23**：F1 **FIXED** · F2 **CLOSED** · F5 **FIXED** · 禁令未破 → **foundation exit MET**（STRATEGY 仍须 `goal.md` 显式 schedule RX 才开；本轨不自动开 STRATEGY）。
+
+### 6a. 100% usable（owner 纠偏 2026-07-23）
+
+证据：`analysis/foundation_residual_rootcause_20260723.md`。
+
+| 要求 | 状态 |
+|---|---|
+| 无开放 **class-A**（日常更新会再制造同类错误） | **MET**（本轮探针未发现） |
+| **class-B** 诚实状态可留（annotate WARN / rzrqye UNTRUSTED / F4 无 shadow） | **OK — 留着是对的** |
+| **class-C** holders ×32 历史堆 | **optional** — 不挡 |
+| F7/F8 | **out of bar** |
+| 禁 Continuity READY 化妆 / retention/shadow 为冲清单 | **binding** |
+
+**100% usable status**：**MET**（≠ Continuity READY；≠ 零 WARN）。
