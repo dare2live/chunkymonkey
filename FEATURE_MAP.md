@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-23 15:48
+> Snapshot: 2026-07-23 15:58
 
 ## 1. 入口面
 
@@ -128,7 +128,7 @@
 
 | 表 | writer 数 | writer 文件 |
 |---|---|---|
-| mart_data_deletion_record | 3 | backend/scripts/db_lifecycle_delete.py<br>backend/services/data_deletion.py<br>backend/services/schema_marts.py |
+| mart_data_deletion_record | 4 | backend/scripts/db_lifecycle_delete.py<br>backend/services/data_deletion.py<br>backend/services/holders_landing_retention.py<br>backend/services/schema_marts.py |
 | dim_fee_schedule | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_liquidity_threshold | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
 | dim_market_segment | 2 | backend/services/primitives/ddl.py<br>backend/services/primitives/seed.py |
@@ -170,20 +170,20 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 9,775 | calls 边 11,575 | imports 边 3,230 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 9,815 | calls 边 11,628 | imports 边 3,252 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 66 |
+| services.duck_adapter | 67 |
 | services.data_sources | 29 |
 | services.universe | 22 |
-| services.data_sources.accepted_schema | 19 |
+| services.data_sources.accepted_schema | 20 |
 | services.data_sources.security_day_partition | 19 |
+| services.data_sources.holders_top10_schema | 18 |
 | services.institution_follow_b0_measure | 18 |
 | services.institution_follow_edge_gates | 17 |
-| services.data_sources.holders_top10_schema | 15 |
 | services.data_sources.margin_schema | 15 |
 | services.source_watermarks | 14 |
 | services.data_sources.nominal_ohlcv_schema | 13 |

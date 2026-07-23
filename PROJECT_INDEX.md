@@ -156,7 +156,7 @@ default sync → acquire → `land_then_accept_authorized_security_day`；fused
 `--land-only|--accept-from-landing|--land-then-accept`（可选 `--from-local-raw`；
 accept 路径跳过 provider auth / acquire；disclosure 三域同 land/accept flags：
 `--from-local-raw`（三域；empty_skip）或 provider land（`stk_holdertrade`+`holders_top10` only；
-org mass by-date invent banned / daily incremental-by-period）。`holders_top10` land：**ACCEPTED + same `payload_hash` → skip re-land**（防 ~32× append storm；真新内容仍 append-only；禁 bare DELETE landing）。S5 derive（FIXED）+ S7 near-FIXED / stronger PARTIAL：
+org mass by-date invent banned / daily incremental-by-period）。`holders_top10` land：**ACCEPTED + same `payload_hash` → skip re-land**（防 ~32× append storm；真新内容仍 append-only；禁 bare DELETE landing）。**F3 retention FIXED**（archive 非 latest ACCEPTED → parquet；landing 7.17M→236k≈1.05×；smartmoney compact 6.7→4.3 GiB；证据 `analysis/holders_landing_retention_f3_20260723.md`）。S5 derive（FIXED）+ S7 near-FIXED / stronger PARTIAL：
 `chunkyctl derive qfq|form` + form library + pipeline clean/process 默认
 accepted-only；`--allow-legacy-fill` 逃生；daily accepted `20190102`→`20260720`
 （ST asymmetric `20220104`）；`legacy_raw_plane.yaml` + gate（**23/46 ssot** typed hard-stop wall；B1+B2 done；本阶段不再开 S7 刀）；§15 `pre-knife`；`check_foundation_done.py` FND-GATE（F1–F10 PASS；`phase_closure_ready=true`；F8 §15-VERIFY）。近端：owner-scheduled E/F only（见 `foundation_phase_reeval_20260721.md`；E0-HIST/F6 + FND-GATE + §15-VERIFY PASS）。

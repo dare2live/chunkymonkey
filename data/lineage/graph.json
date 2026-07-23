@@ -853,6 +853,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/db_holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:feature_store.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/db_lifecycle_delete.py",
       "kind": "consume",
       "src": "table:feature_store.mart_data_deletion_record"
@@ -860,6 +866,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_deletion.py",
+      "kind": "consume",
+      "src": "table:feature_store.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/holders_landing_retention.py",
       "kind": "consume",
       "src": "table:feature_store.mart_data_deletion_record"
     },
@@ -878,6 +890,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/schema_versions.py",
+      "kind": "consume",
+      "src": "table:feature_store.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_holders_landing_retention.py",
       "kind": "consume",
       "src": "table:feature_store.mart_data_deletion_record"
     },
@@ -1063,6 +1081,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/db_holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:market.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/db_lifecycle_delete.py",
       "kind": "consume",
       "src": "table:market.mart_data_deletion_record"
@@ -1070,6 +1094,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_deletion.py",
+      "kind": "consume",
+      "src": "table:market.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/holders_landing_retention.py",
       "kind": "consume",
       "src": "table:market.mart_data_deletion_record"
     },
@@ -1088,6 +1118,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/schema_versions.py",
+      "kind": "consume",
+      "src": "table:market.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_holders_landing_retention.py",
       "kind": "consume",
       "src": "table:market.mart_data_deletion_record"
     },
@@ -1747,6 +1783,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/db_holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:reference.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/db_lifecycle_delete.py",
       "kind": "consume",
       "src": "table:reference.mart_data_deletion_record"
@@ -1754,6 +1796,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_deletion.py",
+      "kind": "consume",
+      "src": "table:reference.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/holders_landing_retention.py",
       "kind": "consume",
       "src": "table:reference.mart_data_deletion_record"
     },
@@ -1772,6 +1820,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/schema_versions.py",
+      "kind": "consume",
+      "src": "table:reference.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_holders_landing_retention.py",
       "kind": "consume",
       "src": "table:reference.mart_data_deletion_record"
     },
@@ -1874,6 +1928,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/form_production_read.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/holders_landing_retention.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
     },
@@ -3817,6 +3877,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:smartmoney.ingest_batch"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_accepted_schema.py",
       "kind": "consume",
       "src": "table:smartmoney.ingest_batch"
@@ -3836,6 +3902,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_disclosure_transport_e0.py",
+      "kind": "consume",
+      "src": "table:smartmoney.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_holders_landing_retention.py",
       "kind": "consume",
       "src": "table:smartmoney.ingest_batch"
     },
@@ -3883,6 +3955,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/db_holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:smartmoney.landing_miaoxiang_holders_top10"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/holders_top10_schema.py",
       "kind": "consume",
       "src": "table:smartmoney.landing_miaoxiang_holders_top10"
@@ -3913,6 +3991,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/db_holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/db_lifecycle_delete.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_data_deletion_record"
@@ -3920,6 +4004,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_deletion.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/holders_landing_retention.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_data_deletion_record"
     },
@@ -3938,6 +4028,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/schema_versions.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_holders_landing_retention.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_data_deletion_record"
     },
@@ -4693,6 +4789,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/institution_follow_b0.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -5095,6 +5197,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_accepted_schema.py",
       "kind": "consume",
       "src": "table:tushare_raw.ingest_batch"
@@ -5114,6 +5222,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_disclosure_transport_e0.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_holders_landing_retention.py",
       "kind": "consume",
       "src": "table:tushare_raw.ingest_batch"
     },
@@ -5257,6 +5371,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/db_holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/db_lifecycle_delete.py",
       "kind": "consume",
       "src": "table:tushare_raw.mart_data_deletion_record"
@@ -5264,6 +5384,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_deletion.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/holders_landing_retention.py",
       "kind": "consume",
       "src": "table:tushare_raw.mart_data_deletion_record"
     },
@@ -5282,6 +5408,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/schema_versions.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.mart_data_deletion_record"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_holders_landing_retention.py",
       "kind": "consume",
       "src": "table:tushare_raw.mart_data_deletion_record"
     },
@@ -7441,9 +7573,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1190,
-    "generated_at": "2026-07-23T07:49:50.527970+00:00",
-    "node_count": 429,
+    "edge_count": 1212,
+    "generated_at": "2026-07-23T07:59:40.927640+00:00",
+    "node_count": 432,
     "version": 2
   },
   "nodes": [
@@ -7757,6 +7889,14 @@
         "path": "backend/scripts/data_health_snapshot.py"
       },
       "id": "consumer:backend/scripts/data_health_snapshot.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
+        "path": "backend/scripts/db_holders_landing_retention.py"
+      },
+      "id": "consumer:backend/scripts/db_holders_landing_retention.py",
       "kind": "consumer"
     },
     {
@@ -8277,6 +8417,14 @@
         "path": "backend/services/holders_aif10.py"
       },
       "id": "consumer:backend/services/holders_aif10.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/holders_landing_retention.py"
+      },
+      "id": "consumer:backend/services/holders_landing_retention.py",
       "kind": "consumer"
     },
     {
@@ -8941,6 +9089,14 @@
         "path": "backend/tests/services/test_disclosure_transport_e0.py"
       },
       "id": "consumer:backend/tests/services/test_disclosure_transport_e0.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_holders_landing_retention.py"
+      },
+      "id": "consumer:backend/tests/services/test_holders_landing_retention.py",
       "kind": "consumer"
     },
     {
