@@ -106,6 +106,45 @@ def load_margin_rows_for_shadow(conn, day: str) -> tuple[list[dict[str, Any]], s
         return [], "margin_raw_not_attached"
 
 
+def load_accepted_margin_rows_for_shadow(
+    conn, day: str, *, contract_version: str = "3"
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Return accepted canonical SSE+SZSE margin rows for promote-gate shadow.
+
+    Reads ``canonical_margin_exchange_daily`` under the current contract generation
+    (default v3). Fail-closed: missing attach/table/day → empty + issue.
+    """
+    day_norm = str(day or "").replace("-", "")
+    if len(day_norm) != 8 or not day_norm.isdigit():
+        return [], "invalid_trade_date"
+    iso = f"{day_norm[:4]}-{day_norm[4:6]}-{day_norm[6:8]}"
+
+    def _query() -> list[dict[str, Any]]:
+        rows = conn.execute(
+            """
+            SELECT exchange_id, rzrqye
+            FROM tr.canonical_margin_exchange_daily
+            WHERE CAST(trade_date AS VARCHAR) IN (?, ?)
+              AND CAST(contract_version AS VARCHAR) = ?
+              AND UPPER(exchange_id) IN ('SSE', 'SZSE')
+            ORDER BY exchange_id
+            """,
+            [day_norm, iso, str(contract_version)],
+        ).fetchall()
+        return [{"exchange_id": str(r[0]).upper(), "rzrqye": r[1]} for r in rows]
+
+    try:
+        return _query(), None
+    except Exception:  # noqa: BLE001 — pulse-only conn may lack tr
+        pass
+    try:
+        raw_path = resolver.db_path("tushare_raw").replace("'", "''")
+        conn.execute(f"ATTACH IF NOT EXISTS '{raw_path}' AS tr (READ_ONLY)")
+        return _query(), None
+    except Exception:  # noqa: BLE001 — fail closed
+        return [], "accepted_margin_not_attached"
+
+
 _LEAF_COLS = [
     "ts_code",
     "stock_code",
@@ -368,6 +407,7 @@ __all__ = [
     "open_members_conn",
     "open_drill_conn",
     "load_margin_rows_for_shadow",
+    "load_accepted_margin_rows_for_shadow",
     "drill_leaf_rows",
     "sw_code_level",
     "sw_child_codes",

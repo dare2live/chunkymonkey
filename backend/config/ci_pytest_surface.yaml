@@ -68,6 +68,7 @@ blocking_paths:
 - tests/services/test_margin_acceptance.py
 - tests/services/test_margin_population_scope.py
 - tests/services/test_margin_catchup.py
+- tests/services/test_margin_pulse_promote_gate.py
 - tests/services/test_observation_population.py
 - tests/services/test_project_universe_breadth.py
 - tests/services/test_population_scope.py

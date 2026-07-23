@@ -89,10 +89,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         ensure_deletion_record_table(conn)
-        run_id = (
-            "holders_landing_retention_"
-            + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        )
+        run_id = f"holders_landing_retention_{uuid.uuid4().hex[:12]}"
         result = apply_retention(
             conn,
             plan=plan,

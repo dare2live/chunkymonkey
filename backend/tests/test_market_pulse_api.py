@@ -302,6 +302,17 @@ def test_sentiment_v2_fields(client):
     assert shadow["verdict"] == "BLOCKED"
     assert "margin_core_venues_incomplete" in shadow["issues"]
     assert "legacy_pulse_untrusted_pending_consumer_cutover" in shadow["issues"]
+    # F4 promote_gate: product-visible; never invents TRUSTED while serve is raw.
+    gate = body["promote_gate"]
+    assert gate["product_trust_would_be"] == "UNTRUSTED"
+    assert gate["population_kind"] == "external_aggregate"
+    assert gate["status"] in {
+        "CRITERIA_PENDING",
+        "BLOCKED",
+        "PENDING_SERVE_CUTOVER",
+        "SHADOW_EXTERNAL_HONEST",
+    }
+    assert "no_silent_product_thaw" in gate["notes"]
     # Phase C: cutover ON (owner opt-in), but this fixture day (20240108) has no
     # accepted partition → resolver fails closed to legacy scaffold (BLOCKED).
     t12 = body["tier12_production_read"]

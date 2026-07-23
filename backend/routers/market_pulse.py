@@ -47,6 +47,7 @@ from services.duck_adapter import connect as duck_connect
 from services.data_access import resolver
 from services.market_pulse_scope import attest_market_pulse_scope
 from services.market_pulse_shadow_reconcile import reconcile_market_pulse_shadow
+from services.margin_pulse_promote_gate import evaluate_margin_pulse_promote_gate
 from services.market_pulse_b_pit_read import attest_pulse_b_pit_mart_production_read
 from services.market_pulse_tier12_read import attest_pulse_tier12_production_read
 
@@ -59,6 +60,9 @@ _TIER12_CONFIG_PATH = None
 _B_PIT_ARTIFACT_ROOT = None
 _B_PIT_CUTOVER_CONFIG = None
 _B_PIT_CONFIG_PATH = None
+# F4: explicit promote flag — default False; never silent thaw.
+_MARGIN_PROMOTE_ALLOWED = False
+_MARGIN_PULSE_SOURCE_ACCEPTED = False
 
 
 def _shadow_reconcile_for_day(conn, trade_date: str) -> dict[str, Any]:
@@ -77,6 +81,26 @@ def _shadow_reconcile_for_day(conn, trade_date: str) -> dict[str, Any]:
         if issue not in issues:
             issues.append(issue)
         payload["issues"] = issues
+    return payload
+
+
+def _promote_gate_for_day(conn, trade_date: str, shadow: dict[str, Any]) -> dict[str, Any]:
+    """Product-visible promote gate vs accepted SSE+SZSE; never flips TRUSTED."""
+    day = str(trade_date or "").replace("-", "")
+    accepted_rows, acc_issue = pulse_serve.load_accepted_margin_rows_for_shadow(conn, day)
+    report = evaluate_margin_pulse_promote_gate(
+        day,
+        shadow=shadow,
+        accepted_margin_rows=accepted_rows,
+        pulse_source_accepted=_MARGIN_PULSE_SOURCE_ACCEPTED,
+        promote_allowed=_MARGIN_PROMOTE_ALLOWED,
+    )
+    payload = report.as_dict()
+    if acc_issue:
+        notes = list(payload.get("notes") or [])
+        if acc_issue not in notes:
+            notes.append(acc_issue)
+        payload["notes"] = notes
     return payload
 
 
@@ -478,7 +502,8 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
     缺源日字段 = null (不知道≠0, 引擎口径), 前端按缺口断线展示。
 
     B-ext: 旁路 ``population_scope`` + ``shadow_reconcile`` 标 legacy breadth/margin
-    为 UNTRUSTED。Phase C: ``tier12_production_read`` 经
+    为 UNTRUSTED。F4: ``promote_gate`` 对 accepted SSE+SZSE 影子+门标准
+    （产品可见；不自动 TRUSTED）。Phase C: ``tier12_production_read`` 经
     ``resolve_tier12_production_read``；cutover ON → ACCEPTED_CUTOVER，缺 accept
     fail-closed → LEGACY。B-pit: ``b_pit_mart_production_read`` 经
     ``resolve_b_pit_mart_production_read``；cutover ON → MART_CUTOVER，窗外/缺影
@@ -493,6 +518,7 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
     if latest:
         scope = attest_market_pulse_scope(latest).as_dict()
         shadow = _shadow_reconcile_for_day(conn, latest)
+        promote_gate = _promote_gate_for_day(conn, latest, shadow)
     else:
         scope = {
             "trade_date": "",
@@ -502,6 +528,13 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
         }
         shadow = reconcile_market_pulse_shadow("").as_dict()
         shadow["issues"] = list(shadow.get("issues") or []) + ["no_sentiment_rows"]
+        promote_gate = evaluate_margin_pulse_promote_gate(
+            "",
+            shadow=shadow,
+            accepted_margin_rows=(),
+            pulse_source_accepted=_MARGIN_PULSE_SOURCE_ACCEPTED,
+            promote_allowed=_MARGIN_PROMOTE_ALLOWED,
+        ).as_dict()
     tier12 = attest_pulse_tier12_production_read(
         latest,
         config=_TIER12_CUTOVER_CONFIG,
@@ -519,6 +552,7 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
         "days": day_rows,
         "population_scope": scope,
         "shadow_reconcile": shadow,
+        "promote_gate": promote_gate,
         "cutover_allowed": bool(tier12.get("cutover_allowed", False)),
         "tier12_production_read": tier12,
         "b_pit_mart_cutover_allowed": bool(b_pit.get("cutover_allowed", False)),

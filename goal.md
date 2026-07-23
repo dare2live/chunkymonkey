@@ -30,7 +30,7 @@
 
 **已闭合（勿回滚）**：S1–S6 FIXED；S7 near-FIXED（禁假 COMPAT；无 owner 新 block 不开 S7 刀）；E0-HIST/F6 PASS；org **incremental-check-every-run**（mass/by-date invent banned）；B5 registry/qfq FIXED 子集（Type-B **defer**）；Cap F dossier usable FIXED；margin 1a+1b path FIXED（SSE+SZSE v3；rzrqye UNTRUSTED；禁 thaw）；holders skip-land FIXED；qfq in-module compact FIXED；Serve→derive 闭环 FIXED；跑步机 0–3 FIXED；§15-VERIFY PASS；**Continuity Knife4 FIXED**；**foundation §6 exit MET** + **100% usable MET**（无 class-A；annotate WARN / UNTRUSTED = class-B；holders×32 = class-C 可选；禁为清单洗绿）。
 
-**近端 focus**：等 owner **显式 schedule RX** 才开 STRATEGY。F3 retention 仅盘空间可选。**Optuna / Release 未开**。仍禁 S7 假 COMPAT / org invent / 松 holdout / margin thaw / Continuity 洗绿。
+**近端 focus**：F4 下一刀 = pulse serve→accepted SSE+SZSE + explicit promote（仍禁假 TRUSTED）。等 owner **显式 schedule RX** 才开 STRATEGY。**Optuna / Release 未开**。仍禁 S7 假 COMPAT / org invent / 松 holdout / margin thaw / Continuity 洗绿。
 
 **护栏**：formal frontier 与 drain soft 窗分立叙述；PIT+≤40d；§15 不放宽；org 增量见 `org_holding_incremental_loop_20260723.md`；禁全宇宙扫股东公告（`shareholder_update_check_design_20260723.md`）；serve=沪深A 含 ST。
 

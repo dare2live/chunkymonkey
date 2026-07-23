@@ -75,10 +75,10 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 
 | # | 项 | 类型 | Exit criteria | 禁 | 状态 |
 |---|---|---|---|---|---|
-| **F1** | **Continuity Knife4** — dividend/hsgt/其它 WARN | L2/L3 按需 | 逐项 `FIXED\|PARTIAL\|BLOCKED`+owner；仅修 typed 错门 | READY cosmetics / 删 observe 洗绿 | **FIXED** 2026-07-23：typed 错门修完；2×annotate WARN = **class-B 诚实**（非失败；见 §6a） |
+| **F1** | **Continuity** — dividend/hsgt typed gaps | L2/L3 | live overall PASS warn=0 via `hk_holidays`/`event_sparse`；非假期空洞仍 FAIL | READY cosmetics / mute checker | **FIXED** 2026-07-23（`continuity_f1_typed_gaps_20260723.md`；Knife4+typed calendars） |
 | **F2** | Margin **ops catchup** 推进 `local_max`→`eligible_end` | ops 轴② | token 下 bounded catchup 实测水位前进；Continuity 诚实 | all-due / mass / product thaw | **CLOSED** 2026-07-23：v3 `local_max=20260722` = 当时 `eligible_end`（accepted n=4 since `coverage_start=20260717`）；无 blocker |
-| **F3** | Holders landing **retention/archive** + smartmoney compact | optional C | skip-land 无新风暴后；archive 非 latest ACCEPTED；再 compact | bare DELETE landing 当去重 | **optional hygiene（class-C）** — 不挡 100% usable；同内容风暴复发门已关（Knife2） |
-| **F4** | Margin **1c** pulse consumer shadow（optional） | optional B | shadow 证据后才切 trusted 标签 | 无 shadow 假 TRUSTED | **class-B 门** — 保持；不挡 100% |
+| **F3** | Holders landing **retention/archive** + smartmoney compact | L3 | archive 非 latest ACCEPTED→parquet；landing≈1×；compact reclaim | bare DELETE landing 当去重 | **FIXED** 2026-07-23（`holders_landing_retention_f3_20260723.md`；7.17M→236k；6.7→4.3 GiB） |
+| **F4** | Margin **1c** promote gate（shadow vs accepted） | L2/L3 | product-visible `promote_gate`；UNTRUSTED until serve cutover | 无 shadow 假 TRUSTED | **PARTIAL** 2026-07-23（`margin_f4_promote_gate_20260723.md`；gate=PENDING_SERVE_CUTOVER；仍 UNTRUSTED） |
 | **F5** | BOARD / codegraph / maps **sync** | hygiene | `build_agent_board` 重生；BOARD=投影非执法 | 手改 BOARD 当真相 | **FIXED** 2026-07-23：投影反映 §6 exit + §6a 100% 定义 |
 | **F6** | S7 publication/sunset（按需） | Tier0 | **仅** owner 新 block | 假 COMPAT / blanket pre-accept | 无 owner block → skip |
 | **F7** | Type-B enrichment | DEFER | registry in-scheme 已够近端 | 当近端刀 | **DEFER / out of 100% bar（class-D 假残留若被算进）** |
@@ -91,9 +91,9 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | moneyflow_ind_dc `warn_sparse_history` | **FIXED** reviewed | `data_start_reviewed` + 既有 coverage_note（分类扩容） |
 | dividend `warn_sparse_history` / `warn_row_dip` | **FIXED** reviewed | `data_start_reviewed` + `row_dip_tolerance`；vendor grain 白名单 0 miss |
 | moneyflow_hsgt 真缺口 20260708/10 | **FIXED** ops | bounded backfill 2 日；vendor-0 日进 `known_empty_days` |
-| dividend/hsgt `warn_interior_gaps` | **class-B KEEP** | `gap_tolerance: annotate` 故意 WARN≠FAIL；非洗绿；非 class-A |
+| dividend/hsgt `warn_interior_gaps` | **FIXED typed** | `hk_holidays` + `event_sparse`；live PASS warn=0；非假期仍 FAIL |
 
-**近端默认序**：无开放 class-A → 底座执行面暂停插队；F3 仅当 owner 要盘空间；F4/F7/F8 非默认。
+**近端默认序**：F1/F3 FIXED；F4 PARTIAL（下一刀=pulse serve→accepted）；F7/F8 非默认。
 
 ---
 
@@ -137,8 +137,8 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | 要求 | 状态 |
 |---|---|
 | 无开放 **class-A**（日常更新会再制造同类错误） | **MET**（本轮探针未发现） |
-| **class-B** 诚实状态可留（annotate WARN / rzrqye UNTRUSTED / F4 无 shadow） | **OK — 留着是对的** |
-| **class-C** holders ×32 历史堆 | **optional** — 不挡 |
+| **class-B** rzrqye 仍 UNTRUSTED until promote cutover（F4 gate 已产品可见） | **OK — 诚实** |
+| **class-C** holders ×32 历史堆 | **FIXED** F3 reclaim |
 | F7/F8 | **out of bar** |
 | 禁 Continuity READY 化妆 / retention/shadow 为冲清单 | **binding** |
 

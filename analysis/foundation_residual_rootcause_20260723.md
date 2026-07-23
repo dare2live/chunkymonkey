@@ -33,11 +33,11 @@
 
 | ID | 残留是啥 | 为何会残留（根因） | 下次点更新 / 日常还会再产生同样问题？ | Class | 该不该动 |
 |---|---|---|---|---|---|
-| R1a | Continuity `warn_interior_gaps` **moneyflow_hsgt** | `gap_tolerance: annotate`：港股假期日 A 股开市、北向关闭 → vendor 真 0 行；非采集截断。已知真空进 `known_empty_days` | **WARN 信号会反复出现**（深史+假期空洞仍在）——这是**故意标注**，不是路径再坏。近端填得上的洞：20251001→今缺失日 = 仅 4 个且全在 `known_empty`；`local_max=20260722` 对齐 frontier。真缺口曾靠 bounded backfill（Knife4）修；**不会像旧 margin 那样每次更新再开洞** | **B** | **不动**；禁 READY 洗绿。Owner 门：若将来要 READY，须先落地港股假期日历校验（`hk_holidays`），不是删检查 |
-| R1b | Continuity `warn_interior_gaps` **dividend** | 同 annotate：除权事件稀疏；淡季多数交易日 vendor 0 行 | 同上：**WARN 会反复**（事件稀疏日历）。尾部在 SLA 内（`max ex_date=20260721`，SLA=5）；**日常不会制造「该有却没拉」的错门** | **B** | **不动** |
-| R2 | Holders landing **~32×** 同 `row_hash` | **历史** uuid `batch_id` + 无 content skip → 同 partition 同内容反复 land（最高 68 ACCEPTED/partition）。Canonical 面干净（≈225k） | **同内容风暴：不再复发**。证据：`payload_hash` 含 publication `observed_at`（盘后锚，非墙钟）；Knife2 `skip_accepted_same_payload` 后，≥2026-07-23 09:00 同 partition+同 `payload_hash` multi ACCEPTED = **0**（≤07-22 曾 1214 组）。07-23 当日 16 batch / 16 不同 content = 同 notice_date **内容真变**（增量披露），非风暴 | **C**（堆）+ **D**（把「必清堆」算进 100%） | **不必为 100% 做 retention**。可选 hygiene 另开刀；禁裸 DELETE landing |
-| R3 | F4 margin pulse **1c shadow** optional | 产品信任切 trusted 前要 shadow 证据；刻意未跑 | 不跑 shadow **不会**在更新路径上制造错误；只是标签不升 | **B**（未证前保持门） | **不动**；无 shadow 禁假 TRUSTED |
-| R4 | Product **rzrqye UNTRUSTED** | `market_pulse_scope`：交易所汇总 ≠ 沪深池；Cap F fail-closed 已落地 | 每次读 pulse **仍 UNTRUSTED**——正确。更新路径拉 v3 margin **不会**自动 thaw | **B** | **不动**；禁 thaw |
+| R1a | Continuity `warn_interior_gaps` **moneyflow_hsgt** | was annotate；now typed `hk_holidays` + `hk_northbound_closed_days.yaml` | **不再 WARN**（日历外空洞仍 FAIL） | **D**（已 FIXED F1） | **不动**（已修） |
+| R1b | Continuity `warn_interior_gaps` **dividend** | was annotate；now typed `event_sparse` | **不再 WARN**（尾部 SLA 仍 FAIL） | **D**（已 FIXED F1） | **不动**（已修） |
+| R2 | Holders landing **~32×** 同 `row_hash` | 历史堆；skip-land 已关复发 | **堆已清**（7.17M→236k；compact 4.3 GiB） | **D**（F3 FIXED） | **不动**（已修） |
+| R3 | F4 margin pulse **1c shadow** | promote_gate 已落地；serve 仍 raw | 日常不制造错误；**下一刀**=pulse→accepted | **B→PARTIAL** | **继续** serve cutover |
+| R4 | Product **rzrqye UNTRUSTED** | external_aggregate；gate=PENDING_SERVE_CUTOVER | 仍 UNTRUSTED（正确）直到 promote | **B** | **禁假 TRUSTED**；跟 R3 |
 | R5 | F7 Type-B enrichment | DEFER：registry in-scheme 够近端 | 不 defer 也不会在 daily 上「坏掉」；是产品/研究后置 | **B** / 清单上 **D** | **不进 100%**；DEFER |
 | R6 | F8 qfq incremental write | later：今日 full CTAS+in-module compact 已 ops-safe | 每次 qfq rebuild 仍 CTAS（已知）；compact 钩已防 free-block 复发。**增量写 = 产品优化，非正确性债** | **B**/可选优化；清单 **D** | **不进 100%**；勿用「定期 compact」冒充增量语义 |
 
