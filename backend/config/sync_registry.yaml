@@ -233,8 +233,14 @@ domains:
     execution_policy:
       mode: disabled
       reason: scope_blocked
-    # Frozen product: stay out of --all-due / daily_update preflight while disabled.
-    # Explicit `chunkyctl sync --domain margin` still hard-stops on scope_blocked (no thaw).
+    # Frozen product (2026-07-18 BLOCK v2): wrong-scope generation treated venue
+    # aggregate (incl. BSE) as business canonical — live land/accept retired.
+    # sync_policy=on_demand means NOT in --all-due / daily_update preflight
+    # ("不强拉" = 不进自动 drain 链, 不是"日历不驱动 / 永不可见").
+    # Calendar still defines eligible_end; acquire logs observe_frozen
+    # (eligible vs local_max); continuity = observe_frozen_stale (not FAIL).
+    # Explicit `chunkyctl sync --domain margin` still hard-stops (no product thaw
+    # until population-scope correction). Bounded catchup ≠ mass backfill.
     sync_policy: on_demand
     # 这是供应商按交易所定义的外部汇总人口，不是项目可交易股票池。
     # BSE 在此只描述原响应/旧 generation 的覆盖，不能流入 project_universe_pit。

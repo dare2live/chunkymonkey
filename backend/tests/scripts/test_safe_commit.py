@@ -33,7 +33,10 @@ def _continuity_report(
     *, overall: str = "PASS", statuses: tuple[str, ...] = ("pass",)
 ) -> dict:
     checks = []
-    counts = {"pass": 0, "warn": 0, "fail": 0, "skipped": 0, "db_unreachable": 0}
+    counts = {
+        "pass": 0, "warn": 0, "fail": 0, "observe": 0,
+        "skipped": 0, "db_unreachable": 0,
+    }
     for status in statuses:
         checks.append({
             "status": status,
@@ -47,6 +50,7 @@ def _continuity_report(
             "fail" if status.startswith("fail")
             else "warn" if status.startswith("warn")
             else "pass" if status == "pass"
+            else "observe" if status.startswith("observe_")
             else "db_unreachable" if status == "db_unreachable"
             else "skipped"
         )

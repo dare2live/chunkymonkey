@@ -95,6 +95,40 @@ def test_calendar_gaps_tail_sla_ok_vs_fail():
         c.close()
 
 
+def test_calendar_gaps_frozen_disabled_domain_observes_not_fail():
+    """execution_policy=disabled → tail lag is observe_frozen_stale, not FAIL.
+
+    Parallel to SLA FROZEN_STALE_OBSERVED: records local_max vs eligible_end,
+    does not wash Continuity READY by deleting the check.
+    """
+    tds = _weekdays("20260601", 15)
+    c = duck_mem()
+    try:
+        _mktable(c, {d: 3 for d in tds[:-4]})  # 尾部 4 日缺 > sla 1
+        spec = _mkspec(
+            sla=1,
+            execution_policy_mode="disabled",
+            execution_policy_reason="scope_blocked",
+        )
+        r = cci.check_calendar_gaps(c, spec, tds, tds[-1])
+        assert r["status"] == "observe_frozen_stale"
+        assert "frozen_observe" in r["detail"]
+        assert "catchup_blocked=true" in r["detail"]
+        assert "scope_blocked" in (r["fix_hint"] or "")
+        # Enabled twin still FAILs (no blanket silence).
+        r_fail = cci.check_calendar_gaps(
+            c, _mkspec(sla=1, execution_policy_mode="enabled"), tds, tds[-1]
+        )
+        assert r_fail["status"] == "fail_stale_tail"
+        assert cci.overall_status([r]) == "PASS"
+        assert cci.overall_status([r_fail]) == "FAIL"
+        summary = cci.summarize([r])
+        assert summary["counts"].get("observe") == 1
+        assert summary["counts"].get("fail", 0) == 0
+    finally:
+        c.close()
+
+
 def test_calendar_gaps_formal_security_day_ignores_stale_raw():
     """daily/ST dual-path: accepted_partition at frontier PASS even if legacy raw lags."""
     tds = _weekdays("20260701", 10)
@@ -675,6 +709,8 @@ def test_real_registry_parses_with_ths_hot_group_col():
         "rule": "next_trading_session_at",
         "at": "09:00",
     }
+    assert margin["execution_policy_mode"] == "disabled"
+    assert margin["execution_policy_reason"] == "scope_blocked"
     assert all(s["gap_tolerance"] in cci.GAP_TOLERANCE_VALUES for s in specs)
 
 

@@ -1,6 +1,7 @@
 /**
- * 股票档案 MVP — `#/stock/:code`
- * Decision-assist layers (basic / form·stage / holders / moneyflow). Separate from workbench.
+ * 股票档案 Cap F — `#/stock/:code`
+ * Decision-assist tabs (概况 / 形态·阶段 / 股东 / 资金 / 交集). Separate from workbench.
+ * Each tab works or fails closed with typed reason — no half-dead silent empties.
  * NON-goal: Optuna, fake holder PnL, fake 机构 deep-link.
  */
 import { FormEvent, useMemo, useState } from "react";
@@ -105,13 +106,14 @@ function OverviewPanel(props: { d: StockDossierResponse }) {
         <div className="dossier-meta muted">
           <span>observation {d.observation.version}</span>
           <span>surface {d.surface}</span>
+          {d.usability?.status && <span>usability {d.usability.status}</span>}
           {f?.trade_date && <span>form as-of {f.trade_date}</span>}
           {d.holders.report_date && <span>holders {d.holders.report_date}</span>}
         </div>
       </details>
       {d.gaps.length > 0 && (
         <details className="dossier-gaps">
-          <summary>L3 · 已知缺口 ({d.gaps.length})</summary>
+          <summary>L3 · 类型化诚实标记 ({d.gaps.length})</summary>
           <ul>
             {d.gaps.map((g) => (
               <li key={g} className="mono">
@@ -213,6 +215,7 @@ function HoldersPanel(props: { d: StockDossierResponse }) {
               <th>变动股数</th>
               <th>连续期数≈</th>
               <th>本股建仓/状态</th>
+              <th>持仓天≈</th>
               <th>加减仓</th>
               <th>收益(α)</th>
             </tr>
@@ -220,6 +223,8 @@ function HoldersPanel(props: { d: StockDossierResponse }) {
           <tbody>
             {h.rows.map((r) => {
               const ep = r.episode;
+              const cycleDays = r.holding_cycle_days ?? ep?.holding_cycle_days;
+              const cycleBasis = r.holding_cycle_basis ?? ep?.holding_cycle_basis;
               return (
                 <tr key={`${r.holder_rank}-${r.holder_name}`}>
                   <td className="mono">{r.holder_rank ?? "—"}</td>
@@ -279,6 +284,18 @@ function HoldersPanel(props: { d: StockDossierResponse }) {
                   <td className="mono" title="来自 fact_inst_episode（本股披露期状态机）">
                     {ep?.open_date ? `${ep.open_date} · ${ep.status ?? "—"}` : "—"}
                   </td>
+                  <td
+                    className="mono"
+                    title={
+                      cycleBasis === "disclosure_open_to_close"
+                        ? "披露期界日历天（建仓期→了结期）"
+                        : cycleBasis === "disclosure_open_to_asof_holding"
+                          ? "披露期界日历天（建仓期→今日，持有中）"
+                          : "未知"
+                    }
+                  >
+                    {cycleDays == null ? "—" : cycleDays}
+                  </td>
                   <td className="mono">
                     {ep ? `+${ep.n_adds ?? 0}/-${ep.n_trims ?? 0}` : "—"}
                   </td>
@@ -286,11 +303,13 @@ function HoldersPanel(props: { d: StockDossierResponse }) {
                     className="muted"
                     title="仅已了结(closed)且可测 episode 有收益；持有中/未测=未知，不假填"
                   >
-                    {ep?.return_measured && ep.alpha_c1 != null
-                      ? fmtPct(ep.alpha_c1)
-                      : ep
-                        ? "持有中/未测"
-                        : "未知"}
+                    {r.return_pct != null
+                      ? fmtPct(r.return_pct)
+                      : ep?.return_measured && ep.alpha_c1 != null
+                        ? fmtPct(ep.alpha_c1)
+                        : ep
+                          ? "持有中/未测"
+                          : "未知"}
                   </td>
                 </tr>
               );
@@ -299,9 +318,14 @@ function HoldersPanel(props: { d: StockDossierResponse }) {
         </table>
       </div>
       <p className="muted dossier-note">
-        连续期数为启发式披露期数；本股建仓/状态/加减仓来自机构 episode 状态机；收益(α)仅对已了结且可测
+        连续期数为启发式披露期数；持仓天/建仓/加减仓来自机构 episode（披露期界，非期内真实买卖点）；收益(α)仅对已了结且可测
         episode 显示，持有中或未测标未知 — 宁缺勿假填 0。
-        {h.episode_overlay && `（本期 ${h.episode_overlay.holders_with_episode}/${h.rows.length} 位有 episode）`}
+        {h.episode_overlay &&
+          `（本期 ${h.episode_overlay.holders_with_episode}/${h.rows.length} 位有 episode` +
+            (h.episode_overlay.holders_return_measured != null
+              ? ` · ${h.episode_overlay.holders_return_measured} 可测收益`
+              : "") +
+            "）"}
       </p>
     </>
   );

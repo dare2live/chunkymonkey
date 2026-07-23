@@ -54,6 +54,7 @@ export interface StockHolderRow {
   approx_periods_present: number | null;
   return_pct: number | null;
   holding_cycle_days: number | null;
+  holding_cycle_basis?: string | null;
   has_institution_profile?: boolean;
   institution_profile_low_sample?: boolean;
   institution_metrics_status?: string | null;
@@ -76,6 +77,8 @@ export interface HolderEpisode {
   seeded: boolean | null;
   is_passive: boolean | null;
   return_measured: boolean;
+  holding_cycle_days?: number | null;
+  holding_cycle_basis?: string | null;
 }
 
 export interface InstitutionProfileCoverage {
@@ -87,9 +90,16 @@ export interface InstitutionProfileCoverage {
   note: string;
 }
 
+export interface StockDossierUsability {
+  status: string;
+  cap?: string;
+  tabs?: Record<string, { status: string; reason?: string | null; api?: string }>;
+}
+
 export interface StockDossierResponse {
   status: string;
   surface: string;
+  usability?: StockDossierUsability;
   stock_code: string;
   basic: StockDossierBasic;
   form_stage: StockFormStage | null;
@@ -107,8 +117,19 @@ export interface StockDossierResponse {
     source: string | null;
     rows: StockHolderRow[];
     institution_profile?: InstitutionProfileCoverage;
-    episode_overlay?: { holders_with_episode: number; note: string };
+    episode_overlay?: {
+      holders_with_episode: number;
+      holders_return_measured?: number;
+      holders_cycle_known?: number;
+      note: string;
+    };
     gaps: string[];
+  };
+  lineage?: {
+    status: string;
+    stock_holder_assoc_readiness?: string;
+    institution_join?: string;
+    note?: string;
   };
   gaps: string[];
   pit_notes: string[];

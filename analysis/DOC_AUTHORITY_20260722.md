@@ -36,6 +36,8 @@
 | `data_frontier_detection_system_20260723.md` | 全项目 frontier 检测映射；`e040f4889` holders equal-wm 稀疏=系统路径；**无**统一人口检测框架；PARTIAL gaps (ann equal-day / org 期内 / typed policy 窄) |
 | `serve_derive_closed_loop_law_20260723.md` | **Serve→derive 闭环立法**：existence≠population≠freshness；`integrity_observe`；机构档案挂 process；机读清单 `serve_derive_closed_loop.yaml` |
 | `closed_loop_residual_closure_20260723.md` | 闭环残差收口证据：org local-raw repair + F6 人口地板 + as_of seed（live 5524 stocks） |
+| `dossier_100_usable_20260723.md` | Cap F 股票档案 **100% usable** 证据（surface/tabs/lineage） |
+| `margin_calendar_catchup_blocker_20260723.md` | margin frozen：「不强拉」= 不进 all-due；日历 observe；catchup BLOCKED |
 | `product_decision_assist_backlog_20260721.md` | Cap A–F 能力定义（近端 CLOSED；defs 有效） |
 
 ## 2. Living guardrails / 前端设计（读 as needed）

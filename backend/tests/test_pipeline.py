@@ -678,6 +678,64 @@ def test_formal_on_demand_catchup_skips_when_latest_accepted(monkeypatch, tmp_pa
     assert calls == []
 
 
+def test_observe_frozen_margin_logs_calendar_lag_without_fetch(monkeypatch, tmp_path):
+    """Frozen margin: calendar eligible known; catchup blocked; no provider call."""
+    from services.data_sources import sync_runner
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    registry = {
+        "domains": {
+            "margin": {
+                "domain": "margin",
+                "sync_policy": "on_demand",
+                "target_table": "raw_tushare_margin",
+                "execution_policy": {"mode": "disabled", "reason": "scope_blocked"},
+            }
+        }
+    }
+    run_calls = []
+
+    class _Conn:
+        def execute(self, sql, *_a, **_k):
+            if "canonical_margin" in sql:
+                raise RuntimeError("missing")
+            return SimpleNamespace(fetchone=lambda: ("20260716",))
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(sync_runner, "load_registry", lambda: registry)
+    monkeypatch.setattr(sync_runner, "domain_spec", lambda reg, domain: reg["domains"][domain])
+    monkeypatch.setattr(
+        sync_runner,
+        "eligible_end_date",
+        lambda _spec, **_kwargs: SimpleNamespace(
+            eligible_end="20260722", reason="next_trading_session_published"
+        ),
+    )
+    monkeypatch.setattr(
+        sync_runner,
+        "run_domain",
+        lambda *a, **k: run_calls.append((a, k)) or {"status": "ok"},
+    )
+    monkeypatch.setattr("services.duck_adapter.connect", lambda *_a, **_k: _Conn())
+    from services.pipeline.frozen_domain_observe import observe_frozen_on_demand_domains
+
+    ctx = PipelineContext(date="20260723", log_path=tmp_path / "run.log")
+    try:
+        outcomes = observe_frozen_on_demand_domains(ctx)
+    finally:
+        ctx.close()
+    assert run_calls == []
+    assert len(outcomes) == 1
+    assert outcomes[0]["action"] == "observe_frozen"
+    assert outcomes[0]["eligible_end"] == "20260722"
+    assert outcomes[0]["local_max"] == "20260716"
+    assert outcomes[0]["catchup_blocked"] is True
+    assert outcomes[0]["policy_reason"] == "scope_blocked"
+
+
 def test_formal_on_demand_catchup_pulls_single_missing_eligible_day(
     monkeypatch, tmp_path
 ):

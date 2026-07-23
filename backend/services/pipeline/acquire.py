@@ -12,6 +12,10 @@ from __future__ import annotations
 import json
 
 from .context import PipelineContext
+from .frozen_domain_observe import margin_hard_gate_required
+
+# Compat alias for tests that monkeypatch the acquire module attribute.
+_margin_hard_gate_required = margin_hard_gate_required
 
 
 class Tier0AcquireError(RuntimeError):
@@ -84,6 +88,13 @@ def run_acquire(ctx: PipelineContext) -> None:
     # Per-domain soft (pending) / degraded (hard fail); never aborts drain
     # (drain already ran) and never raises Tier0AcquireError for domain outcomes.
     formal_outcomes = _sync_formal_on_demand_security_days(ctx)
+
+    # Step 2.955: frozen margin — observe calendar lag only (no thaw / no all-due).
+    from . import frozen_domain_observe as _frozen_obs
+
+    formal_outcomes = list(formal_outcomes) + _frozen_obs.observe_frozen_on_demand_domains(
+        ctx
+    )
 
     # Step 2.96: 交易日历 dim 传导 (R1 根因3, 2026-07-03): raw_tushare_trade_cal (2.94 已刷)
     #   → reference.dim_trading_calendar 增量 MERGE。dim 曾无生产 writer (唯一写方=已封存的
@@ -455,20 +466,6 @@ def _sync_formal_on_demand_security_days(ctx: PipelineContext) -> list[dict]:
             }
         )
     return outcomes
-
-
-def _margin_hard_gate_required(registry: dict | None = None) -> bool:
-    """True only when margin is enabled for live acquire gating.
-
-    Frozen ``mode=disabled`` (scope_blocked) must not deadlock daily_update.
-    Explicit margin sync remains blocked by sync_runner execution policy.
-    """
-
-    from services.data_sources import sync_runner
-
-    reg = registry if registry is not None else sync_runner.load_registry()
-    spec = sync_runner.domain_spec(reg, "margin")
-    return sync_runner.execution_policy_for_spec(spec).mode == "enabled"
 
 
 def _require_margin_drain_closed(results: list[dict]) -> None:

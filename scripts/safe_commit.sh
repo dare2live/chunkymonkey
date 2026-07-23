@@ -484,6 +484,7 @@ try:
             "fail" if isinstance(status, str) and status.startswith("fail")
             else "warn" if isinstance(status, str) and status.startswith("warn")
             else "pass" if status == "pass"
+            else "observe" if isinstance(status, str) and status.startswith("observe_")
             else "db_unreachable" if status == "db_unreachable"
             else "skipped" if isinstance(status, str) and status.startswith("skipped")
             else None
@@ -492,7 +493,8 @@ try:
             raise ValueError(f"check[{index}] invalid status={status!r}")
         actual[category] += 1
 
-    allowed_categories = {"pass", "warn", "fail", "skipped", "db_unreachable"}
+    # observe_* = frozen-domain honesty (parallel SLA FROZEN_STALE_OBSERVED); not FAIL/WARN.
+    allowed_categories = {"pass", "warn", "fail", "observe", "skipped", "db_unreachable"}
     unknown_categories = set(counts) - allowed_categories
     if unknown_categories:
         raise ValueError(f"unknown count categories={sorted(unknown_categories)}")
@@ -510,6 +512,7 @@ try:
     warn_count = declared["warn"]
     skipped_count = declared["skipped"]
     db_unreachable = declared["db_unreachable"]
+    # observe does not drive overall (recorded honesty only).
     expected_overall = "FAIL" if fail_count else "WARN" if warn_count else "PASS"
     if overall != expected_overall:
         raise ValueError(f"overall/count mismatch: {overall} vs {expected_overall}")

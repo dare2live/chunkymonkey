@@ -167,7 +167,7 @@ PARTIAL」这种无 consumer 的残差追绿**性质不同**。
 |---|---|---|---|
 | 工作台 workbench | ops 可操作（一键更新 / 分步节点） | 观测/控制 | shipped；P0–P3 + **P2 progress UX FIXED**（瀑布日志 / 全链+节点进度 / delta_manifest 面） |
 | 市场 market（资金决策辅助 default / 交集 / 选股 / 感知） | L1 极简 → L2 → L3 | Tier2 evidence + Tier3 consumer | Enrich：**地形 2.5D FIXED** + Cap D 桑基/平行坐标 FIXED；感知 L1 稀疏 |
-| 股票档案 / 机构档案 dossier | per-stock / per-holder 决策辅助 | Tier3 consumer | Cap F polish **PARTIAL→shipped L1/L2**；org = **incremental-check-every-run**（mass re-pull banned；非 forever ignore） |
+| 股票档案 / 机构档案 dossier | per-stock / per-holder 决策辅助 | Tier3 consumer | Cap F **FIXED 100% usable**（`dossier_100_usable_20260723.md`）；org = **incremental-check-every-run**（mass re-pull banned；非 forever ignore） |
 | `#/explore` facet 图 | 计算 facet → universe → dossier | Tier3 navigation | **HAVE（CX-3）** sector_membership + flow_streak live |
 | **候选每日简报 daily briefing** | 把 conclusion/why/observation 聚成叙事 | **Tier3 narrative consumer（optional）** | **HAVE（CX-3）** `daily_briefing` serve + UI |
 
@@ -237,15 +237,15 @@ PARTIAL」这种无 consumer 的残差追绿**性质不同**。
 | 交集最强 | DC∩概念∩申万 membership + 强度 | **HAVE** | `decision_assist.py /intersection/strongest`；Cap D FIXED |
 | 形态/阶段选股 | Tier1 form/axis serve | **HAVE（subset）** | `stock_screener.py /form_stage`；Cap B FIXED subset |
 | facet explore 跳转 | 每个计算 facet → universe serve 砖 | **HAVE（CX-3）** | behavior/form/axis/breakout/intersection/holder + sector_membership + stock flow_streak live；证据 `cx3_capability_bricks_acceptance_20260722.md` |
-| 股票档案 dossier | stock↔holders↔form↔收益 lineage | **PARTIAL** | HS-A gate + canonical streak FIXED；stock↔holders↔form ~98%；机构 deep-link honesty-gated |
-| 机构档案 | org/holders episode + 披露时点 | **PARTIAL** | deep-link coverage ~99.8%（`f983a4550`+episode catch-up）；**daily process delta-gates** `rebuild_all`（闭环法 `serve_derive_closed_loop_law_20260723.md`）；**`org_holding` = period-gap + population gate**（`under_populated_accepted`；mass/by-date invent banned）；holders F6 PASS；更新检查见 `shareholder_update_check_design_20260723.md` |
+| 股票档案 dossier | stock↔holders↔form↔收益 lineage | **FIXED** | Cap F `stock_dossier_cap_f_usable`（`dossier_100_usable_20260723.md`）；tabs ok/empty/delegated；episode cycle/return；机构 deep-link closed-loop |
+| 机构档案 | org/holders episode + 披露时点 | **FIXED**（serve） / ops incremental | deep-link ≈ episode（闭环 process）；**`org_holding` = period-gap + population gate**（mass/by-date invent banned）；holders F6 PASS；见 `shareholder_update_check_design_20260723.md` |
 | **候选每日简报 briefing** | conclusion + why + observation 聚合叙事砖 | **HAVE（CX-3）** | `daily_briefing` serve + `#/briefing` / Market assist panel；stale/UNTRUSTED → narrative=null |
 | delta 选择性加工 | acquire typed delta manifest | **HAVE（CX-1 PASS）** | `delta_manifest` → DC frontier skip；pulse late window always；证据 `cx1_acquire_efficiency_acceptance_20260722.md` |
 | ST/holder 状态变更传感 | 非增量状态变探测 | **HAVE（CX-2 PASS）** | `state_sensors` → `delta.state_changes`；证据 `cx2_state_sensors_acceptance_20260722.md` |
-| serve 新鲜度 / continuity | typed soft + 域水位对齐 | **PARTIAL**（continuity READY 仍 ops；SLA 误报 **FIXED**） | `run_outcome` 三态 FIXED；P0.1/CX-4 PASS（墓碑清 / unknown≠stale / frozen observe）；域 lag 诚实 soft 仍可能 |
+| serve 新鲜度 / continuity | typed soft + 域水位对齐 | **PARTIAL**（continuity READY 仍 ops；SLA 误报 **FIXED**；margin frozen **observe**） | `run_outcome` 三态 FIXED；P0.1/CX-4 PASS；margin `observe_frozen_stale`（`margin_calendar_catchup_blocker_20260723.md`）— 非假 READY |
 | 性能预算可观测 | per-stage 墙钟 + budget | **HAVE（CX-1）** | `daily_*.json` `stage_timing_s` + `budget_status`；live empty-increment OBSERVE |
 
-**一句话**：**资金 regime / 交集 / 选股 / 分层砖 / briefing / facet serve = HAVE（含 CX-3）**；**dossier / 机构 = PARTIAL**（org 已进每日增量检；缺的是更广 episode/honesty 覆盖，不是「forever BLOCKED」）；**delta / 状态传感器 / 性能预算 / SLA 去误报 = HAVE（CX-1…CX-4）**——CX-* 能力门闭合；RX 仍要 owner 签字；Optuna=Phase N BANNED。
+**一句话**：**资金 regime / 交集 / 选股 / 分层砖 / briefing / facet serve = HAVE（含 CX-3）**；**dossier Cap F / 机构 serve = FIXED 100% usable**（`dossier_100_usable_20260723.md`；org 每日增量检）；**delta / 状态传感器 / 性能预算 / SLA 去误报 = HAVE（CX-1…CX-4）**——CX-* 能力门闭合；RX 仍要 owner 签字；Optuna=Phase N BANNED。
 
 ---
 
@@ -256,7 +256,7 @@ PARTIAL」这种无 consumer 的残差追绿**性质不同**。
   FND-GATE `phase_closure_ready=true`。
 - 控制面 F1：typed `run_outcome`（`122896464`）/ drain-first no-kidnap（`6f74d2919`）/ 潜伏象限 MVP
   （`b3a9fd4e7`）/ 通知合并。
-- 产品 consumer subset：Cap A/B/D/E FIXED；Cap F dossier PARTIAL；前端 L1/L2/L3 + facet skeleton
+- 产品 consumer subset：Cap A/B/D/E FIXED；Cap F dossier **FIXED 100% usable**；前端 L1/L2/L3 + facet skeleton
   （`b29a134f2`）。
 
 **NEXT（owner 排期驱动，按 §7 顺序）**：~~CX-1~~ **PASS** → ~~CX-2~~ **PASS** → ~~CX-3~~ **PASS** →

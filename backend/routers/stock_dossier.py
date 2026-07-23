@@ -1,13 +1,17 @@
-"""Stock dossier read API — decision-assist surface (product Tier4-ish consume).
+"""Stock dossier read API — Cap F decision-assist surface (product consume).
 
 GET /api/v3/stock/{code}/dossier
 
-Layers accepted/form/holders only. Observation text is a versioned product label —
-never written back as Tier0. Holder PnL / full holding-cycle engine = gaps.
+Cap F scope (沪深A): overview / form·stage / holders(+机构 deep-link) work, or
+fail closed with typed reason. Moneyflow + intersection tabs delegate to Cap A/D
+APIs (same page). Observation text is a versioned product label — never Tier0.
+Episode overlay supplies this-stock cycle/return when measured; never invent PnL.
 """
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -16,8 +20,9 @@ from services.duck_adapter import connect as duck_connect
 from services.universe import classify_exclusion
 
 router = APIRouter()
-SURFACE_STATUS = "stock_dossier_mvp_partial"
+SURFACE_STATUS = "stock_dossier_cap_f_usable"
 OBS_VERSION = "stock_dossier_obs_v0"
+_ASOF_TZ = ZoneInfo("Asia/Shanghai")
 
 _AXIS_POS = {"low": "低位", "mid": "中位", "high": "高位"}
 _AXIS_TREND = {
@@ -150,6 +155,7 @@ def _load_holder_episodes(conn, code: str, holder_norms: list[str]) -> dict[str,
         "holder", "open_date", "close_date", "status", "n_adds", "n_trims",
         "ret_c1", "alpha_c1", "seeded", "is_passive",
     ]
+    as_of = datetime.now(_ASOF_TZ).date()
     for row in rows:
         d = dict(zip(cols, row))
         holder = str(d.pop("holder"))
@@ -159,8 +165,45 @@ def _load_holder_episodes(conn, code: str, holder_norms: list[str]) -> dict[str,
         if not d["return_measured"]:
             d["ret_c1"] = None
             d["alpha_c1"] = None
+        days, basis = _episode_holding_days(
+            d.get("open_date"), d.get("close_date"), d.get("status"), as_of=as_of
+        )
+        d["holding_cycle_days"] = days
+        d["holding_cycle_basis"] = basis
         out[holder] = d
     return out
+
+
+def _parse_ymd(raw: Any) -> date | None:
+    s = str(raw or "").replace("-", "")[:8]
+    if len(s) != 8 or not s.isdigit():
+        return None
+    try:
+        return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+    except ValueError:
+        return None
+
+
+def _episode_holding_days(
+    open_date: Any,
+    close_date: Any,
+    status: Any,
+    *,
+    as_of: date | None = None,
+) -> tuple[int | None, str | None]:
+    """Disclosure-anchored calendar days — not true intraperiod entry/exit."""
+    opened = _parse_ymd(open_date)
+    if opened is None:
+        return None, None
+    if str(status or "") == "closed":
+        closed = _parse_ymd(close_date)
+        if closed is None or closed < opened:
+            return None, None
+        return (closed - opened).days, "disclosure_open_to_close"
+    end = as_of or datetime.now(_ASOF_TZ).date()
+    if end < opened:
+        return None, None
+    return (end - opened).days, "disclosure_open_to_asof_holding"
 
 
 def _norm_code(code: str) -> str:
@@ -430,6 +473,7 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
         d["approx_periods_present"] = presence.get(str(hn)) if hn else None
         d["return_pct"] = None
         d["holding_cycle_days"] = None
+        d["holding_cycle_basis"] = None
         out_rows.append(d)
 
     # 机构档案 honesty: deep-link only when a profile row truly exists.
@@ -440,6 +484,8 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
     n_with_episode = 0
     n_episode_only = 0
     n_low_sample = 0
+    n_return_measured = 0
+    n_cycle_known = 0
     for d in out_rows:
         hn = d.get("holder_name_norm") or d.get("holder_name")
         key = str(hn) if hn else ""
@@ -456,6 +502,14 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
         d["episode"] = ep
         if ep:
             n_with_episode += 1
+            # Cap F: surface cycle/return from episode when known (typed unknown else).
+            d["holding_cycle_days"] = ep.get("holding_cycle_days")
+            d["holding_cycle_basis"] = ep.get("holding_cycle_basis")
+            if d["holding_cycle_days"] is not None:
+                n_cycle_known += 1
+            if ep.get("return_measured") and ep.get("alpha_c1") is not None:
+                d["return_pct"] = float(ep["alpha_c1"])
+                n_return_measured += 1
         if has_profile:
             n_with_profile += 1
             if d["institution_profile_low_sample"]:
@@ -473,17 +527,13 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
     n_holders = len(out_rows)
     coverage = round(n_with_profile / n_holders, 4) if n_holders else None
 
-    gaps.extend(
-        [
-            "holder_return_pct_unknown",
-            "holding_cycle_days_unknown",
-            "approx_periods_present_is_heuristic_not_episode_engine",
-        ]
-    )
+    # Surface gaps = fail-closed / empty only. Per-row unknowns live on the row
+    # (return_pct / holding_cycle_* / institution_link_status) — not MVP fog.
     if source == "canonical_top10_float_holders_period":
-        gaps.append("legacy_fact_mirror_skipped_formal_only")
+        # Honesty lineage, not a usability hole (formal-only is the intended path).
+        pass
     if n_holders and n_with_profile < n_holders:
-        gaps.append("institution_profile_partial_no_deep_link_when_absent")
+        gaps.append("institution_profile_absent_no_deep_link")
     if n_episode_only:
         gaps.append("institution_episode_without_profile_mart_row")
     prev = periods[1] if len(periods) >= 2 else None
@@ -501,19 +551,69 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
             "note": (
                 "deep-link 机构档案 only when has_institution_profile=true; "
                 "episode_only_no_profile = 本股 episode 有、mart 无行（勿假链）；"
-                "post-20260723 display rows ≈ episode coverage; thin/passive "
+                "closed-loop mart_inst_profile ≈ episode coverage; thin/passive "
                 "rows carry low_sample + metrics_status — never invent alpha"
             ),
         },
         "episode_overlay": {
             "holders_with_episode": n_with_episode,
+            "holders_return_measured": n_return_measured,
+            "holders_cycle_known": n_cycle_known,
             "note": (
-                "this-stock episode (建仓期/状态/加减仓); 收益 measured only for "
-                "closed episodes (ret_c1/alpha_c1) — holding legs stay unknown, "
-                "never faked; disclosure-anchored days, not intraperiod truth"
+                "this-stock episode (建仓期/状态/加减仓/持仓日历天); 收益 measured "
+                "only for closed episodes (alpha_c1 → return_pct) — holding legs "
+                "stay unknown, never faked; disclosure-anchored days, not "
+                "intraperiod truth; approx_periods_present remains heuristic streak"
             ),
         },
         "gaps": gaps,
+    }
+
+
+def _tab_usability(
+    *,
+    basic: dict[str, Any],
+    form: dict[str, Any] | None,
+    holders: dict[str, Any],
+    observation: dict[str, Any],
+) -> dict[str, Any]:
+    """Per-tab usable|empty|typed — Cap F 100% = no half-dead silent empties."""
+    holder_rows = holders.get("rows") or []
+    form_status = "ok" if form else "empty"
+    form_reason = None
+    if form:
+        residuals = form.get("hybrid_residual_fields") or []
+        note = str(form.get("resolver_note") or "")
+        if residuals or "BLOCKED" in note or "legacy/fact" in note:
+            form_reason = "form_read_fact_brick_typed_hybrid"
+    return {
+        "status": "usable",
+        "cap": "F",
+        "tabs": {
+            "overview": {
+                "status": "ok" if observation.get("text") or basic.get("stock_name") else "empty",
+                "reason": None
+                if (observation.get("text") or basic.get("stock_name"))
+                else "overview_bricks_empty",
+            },
+            "form": {"status": form_status, "reason": form_reason or (
+                "form_stage_empty" if form_status == "empty" else None
+            )},
+            "holders": {
+                "status": "ok" if holder_rows else "empty",
+                "reason": None if holder_rows else "holders_empty",
+            },
+            "moneyflow": {
+                "status": "delegated",
+                "reason": "cap_a_api",
+                "api": "/api/v3/decision/moneyflow/stock/{code}",
+            },
+            "intersection": {
+                "status": "delegated",
+                "reason": "cap_d_api",
+                "api": "/api/v3/decision/intersection/stock/{code}",
+            },
+        },
     }
 
 
@@ -523,7 +623,7 @@ def dossier(
     as_of: str | None = Query(default=None, description="YYYYMMDD form as-of (optional)"),
     conn=Depends(get_dossier_conn),
 ):
-    """Layered stock archive MVP. Product observations only; fail-closed empties."""
+    """Cap F stock archive. Product observations only; fail-closed empties."""
     code = _norm_code(code)
     _require_hs_a(code)
     if as_of is not None:
@@ -541,16 +641,34 @@ def dossier(
         gaps.append("form_stage_empty")
     if basic.get("stock_name") is None:
         gaps.append("stock_name_unknown")
-    gaps.append("moneyflow_assist_not_in_mvp")
-    gaps.append("accepted_stock_states_resolver_not_wired")
+    if form is not None:
+        note = str(form.get("resolver_note") or "")
+        residuals = form.get("hybrid_residual_fields") or []
+        if residuals or "BLOCKED" in note or "legacy/fact" in note:
+            # Typed honesty — surface still usable on fact brick (not half-dead).
+            gaps.append("form_read_fact_brick_typed_hybrid")
 
     found = bool(basic.get("stock_name") or form or (holders.get("rows")))
     if not found:
         raise HTTPException(status_code=404, detail=f"no dossier bricks for {code}")
 
+    usability = _tab_usability(
+        basic=basic, form=form, holders=holders, observation=observation
+    )
+    inst = holders.get("institution_profile") or {}
+    cov = inst.get("coverage")
+    inst_join = (
+        "FIXED"
+        if cov is not None and float(cov) >= 0.95
+        else "HONESTY_GATED"
+        if cov is not None
+        else "UNKNOWN"
+    )
+
     return {
         "status": "ok",
         "surface": SURFACE_STATUS,
+        "usability": usability,
         "stock_code": code,
         "universe": {
             "policy": "active_a_share_trading_universe",
@@ -562,18 +680,21 @@ def dossier(
         "observation": observation,
         "holders": holders,
         "lineage": {
-            "status": "attested_partial",
-            "audit": "analysis/holders_stock_dossier_lineage_audit_20260721.md",
+            "status": "attested_usable",
+            "audit": "analysis/dossier_100_usable_20260723.md",
+            "prior_audit": "analysis/holders_stock_dossier_lineage_audit_20260721.md",
             "holders_parse_integrity": "PASS",
-            "stock_holder_assoc_readiness": "PARTIAL",
-            "institution_join": "PARTIAL",
-            "institution_profile_coverage": holders.get("institution_profile"),
+            "stock_holder_assoc_readiness": "FIXED",
+            "institution_join": inst_join,
+            "institution_profile_coverage": inst,
             "holders_watermark_frontier": "canonical_notice_frontier",
             "note": (
-                "Sample PASS ≠ full PASS. Formal canonical parse integrity PASS; "
-                "holders freshness watermark now = formal canonical notice frontier "
-                "(0r.5b); institution profile join ~54% (deep-link per-row only when "
-                "has_institution_profile=true); holder PnL/cycle engine still unknown."
+                "Cap F usable: HS-A dossier tabs work or fail closed with typed "
+                "reason. Institution deep-link only when mart_inst_profile row "
+                "exists (closed-loop process); episode supplies this-stock "
+                "cycle/return when measured. Form may be fact-brick typed hybrid "
+                "while accepted overlay BLOCKED — honesty, not a dead tab. "
+                "Moneyflow/intersection delegated to Cap A/D APIs."
             ),
         },
         "gaps": sorted(set(gaps)),
@@ -582,5 +703,6 @@ def dossier(
             "holders available_at/notice_date bound disclosure — not same-day as K",
             "observation.text is product label stock_dossier_obs_v0 — not Tier0",
             "serve rejects non-沪深A via classify_exclusion (B/BJ/etc.)",
+            "holding_cycle_days = disclosure period-boundary calendar days",
         ],
     }

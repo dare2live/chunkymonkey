@@ -100,7 +100,10 @@ def test_dossier_mvp_layers_and_observation():
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "ok"
-    assert body["surface"] == "stock_dossier_mvp_partial"
+    assert body["surface"] == "stock_dossier_cap_f_usable"
+    assert body["usability"]["status"] == "usable"
+    assert body["usability"]["tabs"]["holders"]["status"] == "ok"
+    assert body["usability"]["tabs"]["moneyflow"]["status"] == "delegated"
     assert body["basic"]["stock_name"] == "贵州茅台"
     assert body["basic"]["industry"]["l3_name"] == "白酒Ⅲ"
     assert body["form_stage"]["form_name"] == "放量下跌"
@@ -119,9 +122,11 @@ def test_dossier_mvp_layers_and_observation():
     assert len(body["holders"]["rows"]) == 2
     row0 = body["holders"]["rows"][0]
     assert row0["change_status"] == "增持"
+    # No episode in fixture → per-row unknown, not MVP fog gaps.
     assert row0["return_pct"] is None
-    assert "holder_return_pct_unknown" in body["gaps"]
-    assert "moneyflow_assist_not_in_mvp" in body["gaps"]
+    assert "moneyflow_assist_not_in_mvp" not in body["gaps"]
+    assert "holder_return_pct_unknown" not in body["gaps"]
+    assert body["lineage"]["status"] == "attested_usable"
 
 
 def test_dossier_bad_code_and_404():
@@ -172,8 +177,9 @@ def test_dossier_canonical_period_streak_not_fact_lag():
     assert body["holders"]["report_date"] == "20260714"
     assert body["holders"]["prev_report_date"] == "20260331"
     assert body["holders"]["rows"][0]["approx_periods_present"] == 2
-    assert "legacy_fact_mirror_skipped_formal_only" in body["holders"]["gaps"]
-    assert body["lineage"]["status"] == "attested_partial"
+    assert body["holders"]["source"] == "canonical_top10_float_holders_period"
+    assert body["lineage"]["status"] == "attested_usable"
+    assert body["lineage"]["stock_holder_assoc_readiness"] == "FIXED"
 
 
 def test_dossier_institution_profile_honesty():
@@ -194,8 +200,9 @@ def test_dossier_institution_profile_honesty():
     assert prof["holders_total"] == 2
     assert prof["holders_with_profile"] == 1
     assert prof["coverage"] == 0.5
-    assert "institution_profile_partial_no_deep_link_when_absent" in body["holders"]["gaps"]
+    assert "institution_profile_absent_no_deep_link" in body["holders"]["gaps"]
     assert body["lineage"]["institution_profile_coverage"]["coverage"] == 0.5
+    assert body["lineage"]["institution_join"] == "HONESTY_GATED"
 
 
 def test_dossier_institution_link_status_rich_schema_and_episode_only():
@@ -271,10 +278,19 @@ def test_dossier_episode_overlay_measured_only():
     assert jia["status"] == "closed"
     assert jia["return_measured"] is True
     assert jia["alpha_c1"] == 0.12
+    assert jia["holding_cycle_days"] == 365
+    assert jia["holding_cycle_basis"] == "disclosure_open_to_close"
+    assert rows["机构甲"]["return_pct"] == 0.12
+    assert rows["机构甲"]["holding_cycle_days"] == 365
     yi = rows["机构乙"]["episode"]
     assert yi["status"] == "holding"
     # holding leg PnL must never be surfaced even if a stale ret_c1 exists
     assert yi["return_measured"] is False
     assert yi["ret_c1"] is None
     assert yi["alpha_c1"] is None
+    assert rows["机构乙"]["return_pct"] is None
+    assert yi["holding_cycle_basis"] == "disclosure_open_to_asof_holding"
+    assert yi["holding_cycle_days"] is not None and yi["holding_cycle_days"] >= 0
     assert body["holders"]["episode_overlay"]["holders_with_episode"] == 2
+    assert body["holders"]["episode_overlay"]["holders_return_measured"] == 1
+    assert body["holders"]["episode_overlay"]["holders_cycle_known"] == 2

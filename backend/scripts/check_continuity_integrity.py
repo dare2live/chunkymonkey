@@ -116,6 +116,9 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
             raise ValueError(
                 f"sync_registry 域 {domain}: gap_tolerance={gap_tolerance!r} 非法 "
                 f"(允许 {sorted(GAP_TOLERANCE_VALUES)}); 配置错必须修, 不静默按默认跑")
+        exec_pol = entry.get("execution_policy") or {}
+        if not isinstance(exec_pol, dict):
+            exec_pol = {}
         specs.append({
             "domain": domain,
             "db": entry.get("target_db", default_db),
@@ -140,6 +143,11 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
                 if accepted_margin
                 else entry.get("availability_policy")
             ),
+            # Frozen/disabled domains (e.g. margin scope_blocked): lag is observed,
+            # not an actionable continuity FAIL. Parallel to SLA FROZEN_STALE_OBSERVED
+            # (CX-4). Does NOT claim Continuity READY / does not thaw catchup.
+            "execution_policy_mode": str(exec_pol.get("mode") or "enabled"),
+            "execution_policy_reason": str(exec_pol.get("reason") or ""),
             "sla": int(entry.get("freshness_sla_trading_days", 5)),  # evidence: registry 全域均声明; 缺省 5 仅防御
             "available_after": entry.get("available_after"),
             "freshness_date_column": entry.get("freshness_date_column"),
@@ -345,9 +353,31 @@ def check_calendar_gaps(
             status = "fail_stale_tail"
     elif tail:
         parts.append(f"尾部 {len(tail)} 日未到 (SLA {spec['sla']} 内, OK)")
+    # Frozen product domains: calendar lag is real but catchup is intentionally
+    # blocked (wrong-scope v2 / scope_blocked). Typed observe ≠ silent skip forever
+    # and ≠ Continuity READY wash — actionable domains still FAIL normally.
+    if (
+        status.startswith("fail")
+        and str(spec.get("execution_policy_mode") or "enabled") == "disabled"
+    ):
+        max_present = max(present) if present else None
+        reason = str(spec.get("execution_policy_reason") or "execution_disabled")
+        parts.append(
+            f"frozen_observe mode=disabled/{reason} "
+            f"local_max={max_present or 'none'} eligible_end={hi} "
+            f"catchup_blocked=true (no product thaw; no mass backfill)"
+        )
+        status = "observe_frozen_stale"
     detail = "; ".join(parts) if parts else f"{len(expected)} 应有交易日全在库 (date_col={col})"
     hint = ""
-    if status.startswith("fail") or status.startswith("warn"):
+    if status == "observe_frozen_stale":
+        hint = (
+            f"域 {spec['domain']} execution_policy=disabled/"
+            f"{spec.get('execution_policy_reason') or 'execution_disabled'}: "
+            "continuity observes calendar lag; bounded catchup blocked until "
+            "population-scope correction (not an all-due drain target)"
+        )
+    elif status.startswith("fail") or status.startswith("warn"):
         hint = (f"补拉: PYTHONPATH=backend python -m services.data_sources.sync_runner "
                 f"--domain {spec['domain']} --drain; 源端真空日 -> known_empty_days 墓碑; "
                 f"事件稀疏/源端假期域 -> gap_tolerance: annotate")
@@ -866,6 +896,7 @@ def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
         cls = ("fail" if r["status"].startswith("fail")
                else "warn" if r["status"].startswith("warn")
                else "pass" if r["status"] == "pass"
+               else "observe" if r["status"].startswith("observe_")
                else "db_unreachable" if r["status"] == "db_unreachable"
                else "skipped")
         summary["counts"][cls] = summary["counts"].get(cls, 0) + 1
@@ -881,6 +912,7 @@ def overall_status(results: list[dict[str, Any]], strict: bool = False) -> str:
         return "FAIL"
     if any(r["status"].startswith("warn") for r in results):
         return "WARN"
+    # observe_* (frozen domain lag) does not FAIL/WARN overall — recorded honesty.
     return "PASS"
 
 
@@ -984,6 +1016,7 @@ def main(argv: list[str] | None = None) -> int:
         c = payload["summary"]["counts"]
         print(f"continuity-integrity: overall={overall} "
               f"pass={c.get('pass', 0)} warn={c.get('warn', 0)} fail={c.get('fail', 0)} "
+              f"observe={c.get('observe', 0)} "
               f"skipped={c.get('skipped', 0)} db_unreachable={c.get('db_unreachable', 0)} "
               f"(latest_expected={latest_expected})")
     if args.json_out:
