@@ -342,14 +342,12 @@ def accept_org_holding_partition_from_legacy(
     conn: Any,
     available_date: str,
     *,
-    rewrite_legacy: bool = False,
     stock_codes: Optional[list[str]] = None,
 ):
-    """E0 canary: land→accept one available_date from existing legacy rows.
+    """Land→accept one available_date from existing legacy rows (noop mirror).
 
-    Default keeps legacy untouched (no-op mirror).  ``stock_codes`` optionally
-    narrows to a documented stock subset when a full partition is too large;
-    shadow MATCH then requires the same stock filter (see ledger).
+    Legacy stays untouched. ``stock_codes`` optionally narrows the partition.
+    ``rewrite_legacy`` removed 2026-07-23 — no DELETE→INSERT cargo-cult rewrite.
     """
     from services.data_sources.disclosure_dual_write import (
         write_org_holding_formal_then_mirror,
@@ -384,13 +382,6 @@ def accept_org_holding_partition_from_legacy(
     def _noop_mirror(_conn, material):
         return len(material)
 
-    if rewrite_legacy:
-        return write_org_holding_formal_then_mirror(
-            conn,
-            rows,
-            mirror=_upsert_rows_legacy_direct,
-            enable_legacy_mirror=True,
-        )
     return write_org_holding_formal_then_mirror(conn, rows, mirror=_noop_mirror)
 
 
@@ -635,9 +626,7 @@ def _accept_plannable_from_local_raw(conn: Any, report_date: str) -> dict:
             "report_date": report_date,
         }
     try:
-        outcome = accept_org_holding_partition_from_legacy(
-            conn, available, rewrite_legacy=False
-        )
+        outcome = accept_org_holding_partition_from_legacy(conn, available)
     except Exception as exc:  # noqa: BLE001
         return {
             "status": "accept_failed",

@@ -413,14 +413,12 @@ def write_stk_holdertrade_formal_then_mirror(
 def accept_stk_holdertrade_partition_from_legacy(
     conn,
     ann_date: str,
-    *,
-    rewrite_legacy: bool = False,
 ) -> DisclosureDualWriteOutcome:
-    """E0 canary: land→accept one ann_date from existing legacy rows.
+    """Land→accept one ann_date from existing legacy rows (noop mirror).
 
-    Default keeps legacy untouched (no-op mirror; avoids partition DELETE).
-    Target DB is the registry alias for ``raw_tushare_stk_holdertrade``
-    (normally ``tushare_raw``).
+    Legacy stays untouched — no partition DELETE→INSERT. Target DB is the
+    registry alias for ``raw_tushare_stk_holdertrade`` (normally ``tushare_raw``).
+    ``rewrite_legacy`` / canary CLI removed 2026-07-23.
     """
     from services.data_sources.stk_holdertrade_schema import (
         COMPATIBILITY_TABLE,
@@ -450,10 +448,6 @@ def accept_stk_holdertrade_partition_from_legacy(
     def _noop_mirror(_conn, material):
         return len(material)
 
-    if rewrite_legacy:
-        return write_stk_holdertrade_formal_then_mirror(
-            conn, rows, enable_legacy_mirror=True
-        )
     return write_stk_holdertrade_formal_then_mirror(
         conn, rows, mirror=_noop_mirror
     )

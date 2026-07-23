@@ -217,9 +217,7 @@ def test_accept_holders_partition_from_legacy_noop_mirror(conn) -> None:
     _write_legacy_direct(conn, [seed[0], seed[1]], as_mirror=False)
     _write_legacy_direct(conn, [seed[2]], as_mirror=False)
 
-    outcome = accept_holders_top10_partition_from_legacy(
-        conn, PARTITION_HOLDERS, rewrite_legacy=False
-    )
+    outcome = accept_holders_top10_partition_from_legacy(conn, PARTITION_HOLDERS)
     assert outcome.status == "ACCEPTED"
     assert outcome.partitions == (PARTITION_HOLDERS,)
     assert outcome.canonical_rows == 2
@@ -260,9 +258,7 @@ def test_accept_org_holding_partition_from_legacy_noop_mirror(conn) -> None:
         ],
         as_mirror=False,
     )
-    outcome = accept_org_holding_partition_from_legacy(
-        conn, PARTITION_ORG, rewrite_legacy=False
-    )
+    outcome = accept_org_holding_partition_from_legacy(conn, PARTITION_ORG)
     assert outcome.status == "ACCEPTED"
     assert outcome.partitions == (PARTITION_ORG,)
     assert outcome.canonical_rows == 2
@@ -314,9 +310,7 @@ def test_accept_stk_holdertrade_partition_from_legacy_noop_mirror(conn) -> None:
         tuple(other.get(name) for name in PROVIDER_FIELDS),
     )
 
-    outcome = accept_stk_holdertrade_partition_from_legacy(
-        conn, PARTITION_STK, rewrite_legacy=False
-    )
+    outcome = accept_stk_holdertrade_partition_from_legacy(conn, PARTITION_STK)
     assert outcome.status == "ACCEPTED"
     assert outcome.partitions == (PARTITION_STK,)
     assert outcome.canonical_rows == 2

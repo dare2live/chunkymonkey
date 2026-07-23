@@ -311,13 +311,12 @@ def _write(conn, rows: list[dict]) -> int:
     return int(outcome.canonical_rows)
 
 
-def accept_holders_top10_partition_from_legacy(
-    conn, notice_date: str, *, rewrite_legacy: bool = False
-):
-    """E0 canary: land→accept one notice_date from existing legacy rows.
+def accept_holders_top10_partition_from_legacy(conn, notice_date: str):
+    """Land→accept one notice_date from existing legacy rows (noop mirror).
 
-    Default keeps legacy untouched (no stock-wide DELETE).  Production sync
-    uses ``_write`` (formal_only).
+    Legacy stays untouched — no DELETE→INSERT rewrite. Production sync uses
+    ``_write`` (formal_only). ``rewrite_legacy`` removed 2026-07-23 (cargo-cult
+    dual-write rewrite after formal SSOT).
     """
     from services.data_sources.disclosure_dual_write import (
         write_holders_top10_formal_then_mirror,
@@ -348,10 +347,6 @@ def accept_holders_top10_partition_from_legacy(
     def _noop_mirror(_conn, material):
         return len(material)
 
-    if rewrite_legacy:
-        return write_holders_top10_formal_then_mirror(
-            conn, rows, mirror=_write_legacy_direct, enable_legacy_mirror=True
-        )
     return write_holders_top10_formal_then_mirror(conn, rows, mirror=_noop_mirror)
 
 

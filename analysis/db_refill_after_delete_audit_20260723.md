@@ -15,7 +15,7 @@
 | **是否必须** | **必须的是语义**（replace_partition / accepted 派生 / snapshot 去假活跃），**不是必须每次物理全表 DROP**。holders 同 hash 重落、qfq 每日全量 CTAS 不跟 compact = **可改的执行债**，不是宪法。 |
 | **删行/表后会不会被 daily 灌回** | 见 §3。**factor 已收口**：表 DROPped + registry 墓碑 → daily/--all-due **否**；显式 `--start/--end` **亦否**（未注册域 KeyError）。holders / qfq 仍见 §4（本刀未改）。 |
 
-**Verdict: PARTIAL** — factor P0 **FIXED**；holders skip / qfq compact 仍 open。
+**Verdict: PARTIAL→follow** — factor P0 **FIXED**；holders skip-land **FIXED** (`67cd81c27`)；qfq in-module compact **Knife 3**；rewrite must-keep vs delete → `analysis/rewrite_mechanism_verdict_20260723.md`。
 
 ---
 
@@ -130,12 +130,13 @@
 
 ## 6. Label / residual
 
-**PARTIAL** — factor P0 **FIXED**（DROP + compact + registry 墓碑；显式 sync KeyError）。holders / qfq 仍 open。
+**PARTIAL→follow** — factor P0 **FIXED**；holders skip + qfq in-module compact **FIXED path**；full rewrite inventory → `rewrite_mechanism_verdict_20260723.md`（含本刀删除 `rewrite_legacy` / canary CLI）。
 
 **Residual owner**
 
-1. ~~Peer factor knife~~ **DONE**（本收口）。
-2. Holders skip-land 立法刀。
-3. qfq compact/增量刀（owner 窗）。
+1. ~~Peer factor knife~~ **DONE**。
+2. ~~Holders skip-land~~ **DONE**（`67cd81c27`）；historical ~32× retention later。
+3. ~~qfq post-CTAS compact in-module~~ Knife 3；incremental qfq shape deferred。
+4. Continuity WARN honest — not READY cosmetics。
 
 **Verified**：表不存在；`tushare_raw` 4.682 GiB；registry 无 `stk_factor_pro` 域；`chunkyctl sync --domain stk_factor_pro --start/--end` → 未注册 KeyError。

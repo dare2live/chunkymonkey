@@ -7,7 +7,7 @@
     python backend/scripts/ingest_holders_aif10.py --symbols 600388,000001        # 指定股
     python backend/scripts/ingest_holders_aif10.py --backfill                       # 全市场 (K线范围 20181231+)
     python backend/scripts/ingest_holders_aif10.py --start-period 20181231 --limit 50
-    python backend/scripts/ingest_holders_aif10.py --accept-legacy-partition 20260717  # E0 canary
+    python backend/scripts/ingest_holders_aif10.py --accept-legacy-partition 20260717  # formal from legacy (noop mirror)
 """
 from __future__ import annotations
 
@@ -34,12 +34,7 @@ def main() -> int:
     ap.add_argument(
         "--accept-legacy-partition",
         default="",
-        help="E0 canary: formal land→accept one notice_date from legacy (YYYYMMDD)",
-    )
-    ap.add_argument(
-        "--rewrite-legacy",
-        action="store_true",
-        help="With --accept-legacy-partition, also rewrite legacy (stock-wide DELETE)",
+        help="formal land→accept one notice_date from legacy (YYYYMMDD); legacy untouched",
     )
     args = ap.parse_args()
 
@@ -49,7 +44,6 @@ def main() -> int:
             outcome = accept_holders_top10_partition_from_legacy(
                 conn,
                 args.accept_legacy_partition,
-                rewrite_legacy=bool(args.rewrite_legacy),
             )
             print(
                 "[aif10-holders] ACCEPT_LEGACY "

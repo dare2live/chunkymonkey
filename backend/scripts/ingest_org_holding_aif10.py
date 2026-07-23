@@ -10,6 +10,7 @@
     python backend/scripts/ingest_org_holding_aif10.py --period 2026-03-31         # 单报告期
     python backend/scripts/ingest_org_holding_aif10.py --accept-legacy-partition 20190430
     python backend/scripts/ingest_org_holding_aif10.py --accept-legacy-partition 20190430 --stock-codes 600519,000001
+    # --rewrite-legacy removed 2026-07-23 (no legacy DELETE→INSERT cargo-cult)
 """
 from __future__ import annotations
 
@@ -42,12 +43,7 @@ def main() -> int:
     ap.add_argument(
         "--stock-codes",
         default="",
-        help="Optional canary subset: comma-separated stock_code filter",
-    )
-    ap.add_argument(
-        "--rewrite-legacy",
-        action="store_true",
-        help="With --accept-legacy-partition, also rewrite legacy upsert",
+        help="Optional subset: comma-separated stock_code filter",
     )
     args = ap.parse_args()
 
@@ -71,7 +67,6 @@ def main() -> int:
             outcome = accept_org_holding_partition_from_legacy(
                 conn,
                 args.accept_legacy_partition,
-                rewrite_legacy=bool(args.rewrite_legacy),
                 stock_codes=codes,
             )
             print(
