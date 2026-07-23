@@ -517,8 +517,11 @@ function PulseBand() {
         const rzrqyeTrust =
           d.population_scope?.fields?.find((f) => f.field === "rzrqye")?.status ??
           trust;
+        const breadthTrust =
+          d.population_scope?.fields?.find((f) => f.field === "adv_dec_ratio")
+            ?.status ?? trust;
         // Scare only unexpected UNTRUSTED/BLOCKED — EMPTY = typed normal absence.
-        const trustNote =
+        const rzrqyeNote =
           rzrqyeTrust === "UNTRUSTED" || rzrqyeTrust === "BLOCKED"
             ? ` · 两融 ${rzrqyeTrust}（应有却缺/未 promote；非正常空）`
             : rzrqyeTrust === "EMPTY"
@@ -526,6 +529,15 @@ function PulseBand() {
               : rzrqyeTrust === "READY"
                 ? ` · 两融 READY（external_aggregate）`
                 : "";
+        const breadthNote =
+          breadthTrust === "UNTRUSTED" || breadthTrust === "BLOCKED"
+            ? ` · 涨跌比 ${breadthTrust}（窗内缺 B-pit 证据）`
+            : breadthTrust === "EMPTY"
+              ? ` · 涨跌比 EMPTY（正常空：窗外/未到期）`
+              : breadthTrust === "READY"
+                ? ` · 涨跌比 READY（project_universe_pit）`
+                : "";
+        const trustNote = `${rzrqyeNote}${breadthNote}`;
         return (
           <>
             <div className="section-label">
@@ -1292,8 +1304,11 @@ function SentimentCard() {
   const rzrqyeTrust =
     state.data?.population_scope?.fields?.find((f) => f.field === "rzrqye")
       ?.status ?? trust;
+  const breadthTrust =
+    state.data?.population_scope?.fields?.find((f) => f.field === "adv_dec_ratio")
+      ?.status ?? trust;
   const shadowVerdict = state.data?.shadow_reconcile?.verdict;
-  const trustSuffix =
+  const rzrqyeSuffix =
     rzrqyeTrust === "UNTRUSTED" || rzrqyeTrust === "BLOCKED"
       ? ` · 两融 ${rzrqyeTrust}${shadowVerdict ? ` / shadow=${shadowVerdict}` : ""}（应有却缺）`
       : rzrqyeTrust === "EMPTY"
@@ -1301,6 +1316,15 @@ function SentimentCard() {
         : rzrqyeTrust === "READY"
           ? ` · 两融 READY`
           : "";
+  const breadthSuffix =
+    breadthTrust === "UNTRUSTED" || breadthTrust === "BLOCKED"
+      ? ` · 涨跌比 ${breadthTrust}（窗内缺 B-pit）`
+      : breadthTrust === "EMPTY"
+        ? ` · 涨跌比 EMPTY（窗外正常空）`
+        : breadthTrust === "READY"
+          ? ` · 涨跌比 READY`
+          : "";
+  const trustSuffix = `${rzrqyeSuffix}${breadthSuffix}`;
   return (
     <Card
       title={`情绪温度 (limit_list_d 官方口径, 不含 ST; 每日一格: 涨停 / 跌停 / 炸板率 三条光谱带)${trustSuffix}`}

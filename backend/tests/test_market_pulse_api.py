@@ -291,10 +291,11 @@ def test_sentiment_v2_fields(client):
     # B-ext sidecar: trust markers without rewriting mart day values.
     assert body["cutover_allowed"] is False
     scope = body["population_scope"]
-    assert scope["overall_status"] == "UNTRUSTED"
+    # Fixture latest D[4]=20240108 is outside B-pit window + before margin
+    # coverage → both typed EMPTY (normal absence), overall READY.
+    assert scope["overall_status"] == "READY"
     assert scope["trade_date"] == D[4]
     by_field = {f["field"]: f for f in scope["fields"]}
-    assert by_field["adv_dec_ratio"]["population_kind"] == "raw_evidence"
     assert by_field["rzrqye"]["population_kind"] == "external_aggregate"
     # Fixture latest D[4]=20240108 is before margin v3 coverage_start → typed EMPTY.
     assert by_field["rzrqye"]["status"] == "EMPTY"
@@ -330,9 +331,11 @@ def test_sentiment_v2_fields(client):
     assert bpit["source"] == "legacy_mart"
     assert any("trade_date_outside_shadow_window" in r for r in bpit["reasons"])
     assert "pulse_ui_attestation" in bpit["notes"]
-    # Fixture day lacks B-pit promote → breadth stays UNTRUSTED (honest).
-    assert by_field["adv_dec_ratio"]["status"] == "UNTRUSTED"
-    assert "breadth_untrusted_until_b_pit_mart_cutover" in scope["notes"]
+    # Outside B-pit window → breadth typed EMPTY (normal), not UNTRUSTED scare.
+    assert by_field["adv_dec_ratio"]["status"] == "EMPTY"
+    assert "normal_absence_not_fail_closed" in by_field["adv_dec_ratio"]["reason"]
+    assert "breadth_typed_empty_normal_absence" in scope["notes"]
+    assert "breadth_untrusted_until_b_pit_mart_cutover" not in scope["notes"]
 
 
 def test_flow_board_regime_groups_and_stripe(client):

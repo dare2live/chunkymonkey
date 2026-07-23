@@ -41,7 +41,7 @@
 
 ## 残留分层
 
-- **正常空 / 诚实门**：rzrqye typed EMPTY；breadth 窗外/缺 B-pit 证据仍 UNTRUSTED（禁假 TRUSTED）
+- **正常空 / 诚实门**：rzrqye typed EMPTY（覆盖前）；breadth **窗外** typed EMPTY（未到期/未宣称）；**窗内**缺 B-pit 证据 → UNTRUSTED（真缺口）；窗内 MART_CUTOVER → READY（禁假 TRUSTED）
 - **真缺口 / class-A**：无
 
 Label：**FIXED / usable**；本笔记记录 F7/F8/breadth 收口。

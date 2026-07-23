@@ -21,7 +21,8 @@
                                 秒板/封单/两融/大盘PE换手/龙虎榜, mart_market_pulse_daily);
                                 旁路 population_scope / shadow_reconcile / cutover_allowed
                                 + tier12_production_read（Phase C）+ b_pit_mart_production_read
-                                （B-pit mart 门；cutover ON→MART_CUTOVER，窗外/缺影 fail-closed→LEGACY；不改 days 数值）
+                                （B-pit mart 门；cutover ON→MART_CUTOVER，窗外/缺影 fail-closed→LEGACY mart；
+                                产品信任：窗外 EMPTY / 窗内缺 UNTRUSTED / 窗内有证 READY；不改 days 数值）
   GET /api/v3/pulse/warnings    退潮预警 (跌出 RS top-N [v3 锁 L1] + 连续静默流出 >= 阈值)
   GET /api/v3/pulse/strongest   最强板块榜 (limit_cpt_list 引擎快照; 885xxx.TI 码独立卡禁跨链)
   GET /api/v3/pulse/members     板块成分下钻 (dc=dc_member 最新快照; sw=index_member_all 当前成分)
@@ -45,13 +46,21 @@ from services import market_pulse as mp
 from services import market_pulse_serve_read as pulse_serve
 from services.duck_adapter import connect as duck_connect
 from services.data_access import resolver
-from services.market_pulse_scope import attest_market_pulse_scope
+from services.market_pulse_scope import (
+    NORMAL_BREADTH_ABSENCE_KINDS,
+    attest_market_pulse_scope,
+    classify_breadth_day_absence,
+)
 from services.market_pulse_shadow_reconcile import reconcile_market_pulse_shadow
 from services.margin_pulse_promote_gate import (
     NORMAL_ABSENCE_KINDS,
     classify_margin_day_absence,
     evaluate_margin_pulse_promote_gate,
     load_margin_pulse_promote_config,
+)
+from services.b_pit_mart_cutover import (
+    BPitMartCutoverConfig,
+    load_b_pit_mart_cutover_config,
 )
 from services.market_pulse_b_pit_read import attest_pulse_b_pit_mart_production_read
 from services.market_pulse_tier12_read import attest_pulse_tier12_production_read
@@ -73,6 +82,19 @@ def _margin_promote_cfg():
     if _MARGIN_PROMOTE_CFG is not None:
         return _MARGIN_PROMOTE_CFG
     return load_margin_pulse_promote_config()
+
+
+def _b_pit_cutover_cfg() -> BPitMartCutoverConfig:
+    """Typed B-pit window bounds for breadth EMPTY vs UNTRUSTED classification."""
+    if _B_PIT_CUTOVER_CONFIG is not None:
+        if isinstance(_B_PIT_CUTOVER_CONFIG, BPitMartCutoverConfig):
+            return _B_PIT_CUTOVER_CONFIG
+        if isinstance(_B_PIT_CUTOVER_CONFIG, dict):
+            raw = _B_PIT_CUTOVER_CONFIG
+            if "mart_cutover" not in raw:
+                raw = {"mart_cutover": raw}
+            return BPitMartCutoverConfig.from_mapping(raw)
+    return load_b_pit_mart_cutover_config(_B_PIT_CONFIG_PATH)
 
 
 def _shadow_reconcile_for_day(conn, trade_date: str) -> dict[str, Any]:
@@ -567,13 +589,13 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
     B-ext: 旁路 ``population_scope`` + ``shadow_reconcile``。F4: ``promote_gate``
     对 accepted SSE+SZSE 影子+门标准；serve cutover + promote 消费后 rzrqye 可
     READY（仍 external_aggregate，禁 project_universe / 假 TRUSTED）。breadth
-    仅在 B-pit ``MART_CUTOVER`` 证据下 READY（project_universe_pit）；窗外/缺影
-    → UNTRUSTED；正常空 → typed EMPTY。应有却缺 → UNTRUSTED。
+    仅在 B-pit ``MART_CUTOVER`` 证据下 READY（project_universe_pit）；窗外/未到期
+    → typed EMPTY（正常空，同 rzrqye 覆盖前）；窗内应有却缺 → UNTRUSTED。
     Phase C: ``tier12_production_read`` 经 ``resolve_tier12_production_read``；
     cutover ON → ACCEPTED_CUTOVER，缺 accept fail-closed → LEGACY。B-pit:
     ``b_pit_mart_production_read`` 经 ``resolve_b_pit_mart_production_read``；
-    cutover ON → MART_CUTOVER，窗外/缺影 fail-closed → LEGACY mart。``days``
-    数值不改。
+    cutover ON → MART_CUTOVER，窗外/缺影 fail-closed → LEGACY mart（产品信任层
+    窗外=EMPTY，窗内缺=UNTRUSTED）。``days`` 数值不改。
     """
     rows = conn.execute(f"""
         SELECT {', '.join(_SENTIMENT_COLS)} FROM (
@@ -602,6 +624,24 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
             b_pit.get("status") == "MART_CUTOVER"
             and b_pit.get("source") == "project_universe_pit"
         )
+        breadth_empty = False
+        breadth_empty_reason = None
+        if not breadth_promoted:
+            bcfg = _b_pit_cutover_cfg()
+            absence = classify_breadth_day_absence(
+                latest,
+                window_start=bcfg.expected_window_start,
+                window_end=bcfg.expected_window_end,
+                is_trading_day=True,
+            )
+            # Resolver may also stamp outside-window; treat as not_expected.
+            for reason in b_pit.get("reasons") or ():
+                if "trade_date_outside_shadow_window" in str(reason):
+                    absence = "not_expected"
+                    break
+            if absence in NORMAL_BREADTH_ABSENCE_KINDS:
+                breadth_empty = True
+                breadth_empty_reason = f"typed_empty_{absence}"
         scope = attest_market_pulse_scope(
             latest,
             margin_source_accepted=bool(cfg.pulse_source_accepted),
@@ -613,6 +653,8 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
                 else None
             ),
             breadth_promoted=breadth_promoted,
+            breadth_empty=breadth_empty,
+            breadth_empty_reason=breadth_empty_reason,
         ).as_dict()
     else:
         scope = {

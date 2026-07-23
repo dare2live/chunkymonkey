@@ -5,6 +5,7 @@ import pytest
 
 from services.market_pulse_scope import (
     attest_market_pulse_scope,
+    classify_breadth_day_absence,
     refuse_project_universe_claim_for_legacy_pulse,
 )
 
@@ -30,6 +31,34 @@ def test_missing_optional_evidence_still_untrusted_never_ready() -> None:
     assert report.overall_status == "UNTRUSTED"
     assert report.overall_status != "READY"
     assert all(item.status == "UNTRUSTED" for item in report.fields)
+
+
+def test_classify_breadth_outside_window_is_not_expected() -> None:
+    # B-pit attested window 20260121–20260722 (live yaml).
+    assert (
+        classify_breadth_day_absence(
+            "20240108", window_start="20260121", window_end="20260722"
+        )
+        == "not_expected"
+    )
+    assert (
+        classify_breadth_day_absence(
+            "20260801", window_start="20260121", window_end="20260722"
+        )
+        == "not_expected"
+    )
+    assert (
+        classify_breadth_day_absence(
+            "20260717", window_start="20260121", window_end="20260722"
+        )
+        == "expected_missing"
+    )
+    assert (
+        classify_breadth_day_absence(
+            "20260717", window_start="", window_end=""
+        )
+        == "expected_missing"
+    )
 
 
 def test_promoted_rzrqye_ready_breadth_still_untrusted_without_b_pit() -> None:
@@ -81,6 +110,22 @@ def test_typed_empty_breadth_is_empty_not_untrusted() -> None:
     assert "normal_absence_not_fail_closed" in by_field["adv_dec_ratio"].reason
     assert report.overall_status == "READY"  # EMPTY ranks with READY
     assert "breadth_typed_empty_normal_absence" in report.notes
+
+
+def test_in_window_gap_stays_untrusted_never_empty() -> None:
+    """Inside attested window without promote → UNTRUSTED (real gap), not EMPTY."""
+    report = attest_market_pulse_scope(
+        "20260717",
+        breadth_promoted=False,
+        breadth_empty=False,
+        margin_empty=True,
+        margin_empty_reason="typed_empty_not_expected",
+    )
+    by_field = {item.field: item for item in report.fields}
+    assert by_field["adv_dec_ratio"].status == "UNTRUSTED"
+    assert by_field["rzrqye"].status == "EMPTY"
+    assert report.overall_status == "UNTRUSTED"
+    assert "breadth_untrusted_until_b_pit_mart_cutover" in report.notes
 
 
 def test_serve_accepted_without_promote_stays_untrusted() -> None:

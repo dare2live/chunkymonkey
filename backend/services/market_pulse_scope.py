@@ -8,8 +8,10 @@ only after F4 serve→accepted cutover (``pulse_source_accepted`` + promote
 criteria).  This module is read-only: it does not rewrite marts.
 
 Typed empty (owner 2026-07-23): when a field is not expected for the day
-(pre-coverage / not eligible / confirmed empty), status is ``EMPTY`` —
-normal absence, not UNTRUSTED fail-closed scare. Unexpected gaps stay UNTRUSTED.
+(pre-coverage / outside attested window / not eligible / confirmed empty),
+status is ``EMPTY`` — normal absence (like no K on a non-trade / before series
+starts), not UNTRUSTED fail-closed scare. In-window unexpected gaps stay
+UNTRUSTED.
 """
 from __future__ import annotations
 
@@ -18,6 +20,10 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 TrustStatus = Literal["EMPTY", "UNTRUSTED", "BLOCKED", "NOT_EVALUATED", "READY"]
+
+# Same semantics as margin: not_expected / confirmed_empty = normal EMPTY.
+BreadthAbsenceKind = Literal["not_expected", "confirmed_empty", "expected_missing"]
+NORMAL_BREADTH_ABSENCE_KINDS = frozenset({"not_expected", "confirmed_empty"})
 
 
 @dataclass(frozen=True)
@@ -66,6 +72,39 @@ def _rank(status: TrustStatus) -> int:
         "BLOCKED": 3,
     }
     return order[status]
+
+
+def classify_breadth_day_absence(
+    trade_date: str,
+    *,
+    window_start: str,
+    window_end: str,
+    is_trading_day: bool = True,
+    confirmed_empty: bool = False,
+) -> BreadthAbsenceKind:
+    """Classify why B-pit project_universe_pit breadth evidence is absent.
+
+    Outside the attested shadow window (pre-coverage / not-yet-due) or on a
+    non-trade day → ``not_expected`` (typed EMPTY). Inside the window where we
+    claim evidence should exist → ``expected_missing`` (UNTRUSTED). Never invent
+    READY.
+    """
+
+    day = str(trade_date or "").replace("-", "")
+    start = str(window_start or "").replace("-", "")
+    end = str(window_end or "").replace("-", "")
+    if len(day) != 8 or not day.isdigit():
+        return "expected_missing"
+    if not is_trading_day:
+        return "not_expected"
+    if len(start) == 8 and start.isdigit() and day < start:
+        return "not_expected"
+    if len(end) == 8 and end.isdigit() and day > end:
+        return "not_expected"
+    if confirmed_empty:
+        return "confirmed_empty"
+    # No window bounds → cannot prove "not expected"; stay expected_missing.
+    return "expected_missing"
 
 
 def attest_market_pulse_scope(
@@ -237,9 +276,12 @@ def refuse_project_universe_claim_for_legacy_pulse(
 
 
 __all__ = [
+    "BreadthAbsenceKind",
     "MarketPulseScopeReport",
+    "NORMAL_BREADTH_ABSENCE_KINDS",
     "PulseFieldScopeAttestation",
     "TrustStatus",
     "attest_market_pulse_scope",
+    "classify_breadth_day_absence",
     "refuse_project_universe_claim_for_legacy_pulse",
 ]

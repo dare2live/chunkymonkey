@@ -95,7 +95,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 
 **近端默认序**：F1/F3/F4/F7/F8 FIXED；无默认开放底座刀（STRATEGY 仍须 RX）。
 
-**Breadth 诚实门（2026-07-23）**：`attest_market_pulse_scope` 消费 B-pit `MART_CUTOVER` → `adv_dec_ratio` READY as `project_universe_pit`；typed EMPTY / 缺证据 UNTRUSTED（同 rzrqye 语义）。Shadow 窗刷新至 `20260121`–`20260722` MATCH 120/120。
+**Breadth 诚实门（2026-07-23；owner 纠偏同 rzrqye）**：`attest_market_pulse_scope` 消费 B-pit `MART_CUTOVER` → `adv_dec_ratio` READY as `project_universe_pit`；**窗外/未到期 → typed EMPTY**（正常空，非 scare）；**窗内应有却缺 → UNTRUSTED**；禁假 READY。Shadow 窗 `20260121`–`20260722` MATCH 120/120。
 
 ---
 

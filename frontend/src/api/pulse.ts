@@ -270,8 +270,11 @@ export interface SentimentPoint {
   lhb_inst_net: number | null; // 龙虎榜披露席位净买直和 (元; 源含游资营业部席位非纯机构)
 }
 
-/** B-ext sidecar: legacy breadth/margin trust; never READY for project_universe_pit.
- *  EMPTY = typed normal absence (pre-coverage / not eligible / confirmed empty). */
+/** B-ext sidecar: breadth/margin trust.
+ *  READY only with promote evidence; EMPTY = typed normal absence
+ *  (pre-coverage / outside B-pit window / not eligible / confirmed empty);
+ *  UNTRUSTED = in-window unexpected gap. Never fake READY. */
+
 export interface PulsePopulationScope {
   trade_date: string;
   overall_status: "EMPTY" | "UNTRUSTED" | "BLOCKED" | "NOT_EVALUATED" | "READY";
