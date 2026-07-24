@@ -2177,6 +2177,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/holders_notice_catchup.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/institution_follow_b4.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
@@ -3630,6 +3636,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/holders_aif10.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_top10_holder_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/holders_notice_catchup.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_top10_holder_period"
     },
@@ -7595,9 +7607,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1218,
-    "generated_at": "2026-07-23T23:52:05.461225+00:00",
-    "node_count": 433,
+    "edge_count": 1220,
+    "generated_at": "2026-07-24T01:08:05.743314+00:00",
+    "node_count": 434,
     "version": 2
   },
   "nodes": [
@@ -8463,6 +8475,14 @@
         "path": "backend/services/holders_landing_retention.py"
       },
       "id": "consumer:backend/services/holders_landing_retention.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/holders_notice_catchup.py"
+      },
+      "id": "consumer:backend/services/holders_notice_catchup.py",
       "kind": "consumer"
     },
     {

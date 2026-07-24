@@ -485,6 +485,14 @@ INCREMENT_SAFETY_DAYS = 7   # evidence: 水位回退重扫边界 catch 同日晚
 
 CANONICAL_TABLE = "canonical_top10_float_holders_period"
 
+# Re-export notice-axis hole repair (module kept thin; godfile ratchet ≤3).
+from services.holders_notice_catchup import (  # noqa: E402
+    NOTICE_PARTITION_CATCHUP_MAX,
+    catchup_missing_holders_notice_partitions,
+    land_holders_notice_partitions_forward,
+    list_missing_notice_partitions_from_fact,
+)
+
 
 def _table_present(conn, name: str) -> bool:
     try:
@@ -628,10 +636,18 @@ def sync_holders_aif10_incremental(
     Ops 计数分栏 (audit §5 #2): ``rows_written`` = per-stock 全史 rewrite 放大量,
     **不是**净新增披露; 另报 ``net_new_notice_rows`` / ``notice_partitions_touched``
     (canonical notice_date > 同步前水位) 与 ``affected_stocks`` (窗口内股票数) 区分。
+
+    Notice-axis catchup (2026-07-24): always repair local-fact partitions missing
+    from canonical (wm holes). When provider is ahead, also forward-fill by
+    ``UPDATE_DATE`` cross-section day-by-day (holdernumber-class; not
+    report_period-only). Per-stock path remains for revisions / same-day sparse.
     """
     from aif10_scraper import default_client
     client = default_client
     from services.data_sources.frontier_decision import decide_frontier
+
+    # Behind-wm holes first — even when provider_max <= wm (skip paths).
+    hole_catchup = catchup_missing_holders_notice_partitions(conn)
 
     wm, wm_source = formal_holders_watermark(conn)   # YYYYMMDD, formal frontier
     base = wm or fallback_since                        # 存量空 (未backfill) → 回退起点
@@ -648,13 +664,15 @@ def sync_holders_aif10_incremental(
             f"holders_aif10: skip watermark_unchanged wm={wm} "
             f"provider_max={provider_max} source={wm_source}"
         )
-        return _incremental_skip_result(
+        out = _incremental_skip_result(
             wm=wm,
             wm_source=wm_source,
             provider_max=provider_max,
             since_date=since_date,
             skip_reason="watermark_unchanged",
         )
+        out["notice_partition_catchup"] = hole_catchup
+        return out
     # Equal frontier: early filers already advanced wm; late same-day notices
     # still need a sparse miss probe (not safety-window mass rewrite).
     if frontier.outcome == "equal_day_population_gap":
@@ -677,6 +695,7 @@ def sync_holders_aif10_incremental(
             )
             out["same_day_provider_codes"] = len(provider_codes)
             out["same_day_missing_codes"] = 0
+            out["notice_partition_catchup"] = hole_catchup
             return out
         print(
             f"holders_aif10: same-day late-filer sparse "
@@ -701,7 +720,14 @@ def sync_holders_aif10_incremental(
         result["same_day_sparse"] = True
         result["same_day_provider_codes"] = len(provider_codes)
         result["same_day_missing_codes"] = len(missing)
+        result["notice_partition_catchup"] = hole_catchup
         return result
+    # Provider ahead: day-by-day by_notice before per-stock rewrite (ann axis).
+    forward = {"landed_partitions": [], "empty_partitions": [], "errors": []}
+    if wm and provider_max and provider_max > wm:
+        forward = land_holders_notice_partitions_forward(
+            conn, from_exclusive=wm, to_inclusive=provider_max
+        )
     affected = _affected_stocks_since(client, since_date)
     if not affected:
         return {"ok": 0, "fail": 0, "rows_written": 0, "exit_rows": 0,
@@ -709,7 +735,9 @@ def sync_holders_aif10_incremental(
                 "notice_partitions_touched": 0, "rewrite_amplification_rows": 0,
                 "watermark": wm, "watermark_source": wm_source,
                 "provider_max_update_date": provider_max,
-                "since_date": since_date, "errors": []}
+                "since_date": since_date, "errors": [],
+                "notice_partition_catchup": hole_catchup,
+                "notice_partition_forward": forward}
     print(
         f"holders_aif10: start incremental affected={len(affected)} "
         f"wm={wm} provider_max={provider_max} since={since_date}"
@@ -730,4 +758,6 @@ def sync_holders_aif10_incremental(
     result["watermark_source"] = wm_source
     result["provider_max_update_date"] = provider_max
     result["since_date"] = since_date
+    result["notice_partition_catchup"] = hole_catchup
+    result["notice_partition_forward"] = forward
     return result
