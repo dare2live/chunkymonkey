@@ -1,6 +1,6 @@
 # Session backlog drive (2026-07-24)
 
-> Status: evidence-only · Updated: 2026-07-24T~15:45Z · Authority: live git/process/log/API  
+> Status: evidence-only · Updated: 2026-07-25T~06:30Z · Authority: live git/process/log/API  
 > Scope: consolidate **all** session asks; drive order serializes DuckDB writers.
 
 ## Live snapshot (post UI daily_update 20260724)
@@ -8,10 +8,8 @@
 | Signal | Value |
 |---|---|
 | Branch | `main` @ **`0c202eb69`** (pushed) |
-| DuckDB | free when no repair; repair holds lock **PID 40365** |
-| UI run | **DONE** `run_outcome=success` · `analysis/ui_daily_update_e2e_20260724.md` |
-| Moth | **PASS** (33/33) after `bcf33cf91` size-band 8→9GB |
-| Org trunc repair | **RUNNING** 1/23 @ `2018-12-31` · log `analysis/org_trunc_repair_ops_20260724.log` |
+| DuckDB | **DISK FULL** @ repair exit — ~11GB `smartmoney.duckdb`; **no new writers** until headroom |
+| Org trunc repair | **PARTIAL** 23→**20** truncated · crashed 23/23 · `analysis/org_trunc_repair_drive_20260725.md` |
 
 ---
 
@@ -27,16 +25,16 @@
 | Trade-date continuity (calendar filter) | **DONE** | session + `analysis/partition_leap_integrity_20260724.md` |
 | Factor lifecycle design Q&A | **DONE** | `analysis/factor_family_governance_toplevel_20260724.md` (commit pending → see SHAs below) |
 | UI daily_update E2E 20260724 | **DONE** | `analysis/ui_daily_update_e2e_20260724.md` |
-| Factor inventory scaffold YAML | **PARTIAL** | `backend/config/factor_family_inventory.yaml` — stub; **no gate script yet** |
+| Factor inventory gate K1 | **FIXED** | `check_factor_family_inventory.py` + pytest — SHA after push |
 
 ---
 
-## IN FLIGHT
+## IN FLIGHT / BLOCKED
 
 | Ask | Status | Next action |
 |---|---|---|
-| Org trunc repair (~23 periods) | **IN FLIGHT** | Script running; started `2018-12-31` 1/23 — allow to finish; re-check `truncated_after` in log |
-| Factor gate matrix + `check_factor_family_inventory.py` | **PENDING** | Knife #1 in governance doc §8 — before RX |
+| Org trunc repair residual (~20) | **BLOCKED** (disk) | Free disk; clear DuckDB lock; bounded re-run |
+| Factor gate K2 (frontier report) | **PENDING** | After trunc stable + disk |
 
 ---
 
@@ -44,10 +42,10 @@
 
 | # | Ask | Gate |
 |---|---|---|
-| 1 | Factor-family inventory SSOT + frequency gate matrix | After gate script knife |
+| 1 | Factor-family inventory SSOT + frequency gate matrix | K1 gate **FIXED**; K2 frontier |
 | 2 | Top-level design first principles | **committed** with inventory stub |
 | 3 | Continuity bar by domain frequency | Inventory + continuity projection report |
-| 4 | 拉齐 repairable (org trunc, true holes) | Org repair in progress |
+| 4 | 拉齐 repairable (org trunc, true holes) | **PARTIAL** 23→20; disk blocked |
 | 5 | QFII 22-period bounded backfill | Separate knife after org trunc stable |
 | 6 | RX / factor stacking | Owner 「开 RX」+ gates |
 | 7 | UI E2E | **DONE** |
@@ -60,8 +58,8 @@
 |---|---|
 | 1. daily_update + E2E doc | **DONE** |
 | 2. Factor design commit + push | **DONE** (`0c202eb69`) |
-| 3. Org trunc repair | **IN FLIGHT** (1/23) |
-| 4. Inventory+gate implementation | **PENDING** |
+| 3. Org trunc repair | **PARTIAL** (23→20; disk crash @ 23/23) |
+| 4. Inventory+gate implementation | **DONE** (await SHA) |
 | 5. QFII | **BLOCKED** |
 | 6. RX | **BANNED** |
 
@@ -85,6 +83,8 @@ cad72c61c fix(org): ops drain oldest-quarter holes
 
 | Item | Label |
 |---|---|
-| Org pagination trunc (23 periods) | **IN FLIGHT** — repair 1/23 running |
+| Org pagination trunc | **PARTIAL** — 23→20; ~20 remain; disk full |
 | QFII 22 gaps | **BLOCKED** |
 | RX / Optuna | **BANNED** |
+
+**Drive verdict**: org trunc **PARTIAL** · inventory checker **FIXED** (post-commit SHA)

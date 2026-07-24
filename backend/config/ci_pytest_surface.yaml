@@ -83,6 +83,7 @@ blocking_paths:
 - tests/services/test_legacy_raw_plane_s7.py
 - tests/services/test_holdernumber_assist.py
 - tests/services/test_brick_registry_b5.py
+- tests/services/test_factor_family_inventory_gate.py
 - tests/services/test_stock_limit_publish_b2.py
 - tests/services/test_stock_moneyflow_publish_b2.py
 - tests/services/test_type_b_fact_publish_catchup.py

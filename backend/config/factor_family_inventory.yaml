@@ -6,7 +6,7 @@
 #   - brick_registry.yaml (L2/L3 brick + FeatureBlock ids)
 #   - sync_registry.yaml (provider domain frequency/axis)
 #
-# Gate script: NOT WIRED (next L2 knife: check_factor_family_inventory.py)
+# Gate: backend/scripts/check_factor_family_inventory.py (+ ci_pytest_surface)
 # Do NOT use for daily I/O until gate + tests land.
 
 version: 1

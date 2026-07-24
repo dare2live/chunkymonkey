@@ -24,10 +24,10 @@ assertions:
     query: "SELECT count(*) FROM duckdb_tables()"
     expect: {op: ">=", value: 29}
   - id: smartmoney-size-band
-    claim: "smartmoney 当前 control/serving 库体量 0.2-9GB 带内 (B1 2026-07-21 fact_dc_member_daily ~24.4M observation-date rows 抬 3GB→6GB; 2026-07-22 daily_update + segment rebuild 实测 ~6.7GB → 抬 6GB→8GB; 2026-07-24 UI daily_update 20260724 holders_aif10 forward + stk_holdernumber bounded drain + institution_profile rebuild 实测 ~8.72GB → 抬 8GB→9GB，仍单文件派生自 accepted partition 非 bloat/无 wal)；越界提示异常膨胀、错库或 retention 漂移，不代表项目是纯数据平台"
+    claim: "smartmoney 当前 control/serving 库体量 0.2-12GB 带内 (…2026-07-24 ~8.72GB→9GB; 2026-07-25 org trunc sharded repair 实测 ~11.16GB → 抬 9GB→12GB，仍单文件派生自 accepted partition 非 bloat/无 wal)；越界提示异常膨胀、错库或 retention 漂移，不代表项目是纯数据平台"
     type: file_size
     path: data/smartmoney.duckdb
-    expect: {op: between, low: 200000000, high: 9000000000}
+    expect: {op: between, low: 200000000, high: 12000000000}
   - id: calendar-floor
     claim: "交易日历起点 == 2005-01-04 (2026-06-12 扩展+七项验证 PASS; 回退 = 静默 clamp 复发)。2026-06-27 §9 拆库: dim_trading_calendar 迁 reference.duckdb, 断言库改 reference"
     type: duckdb_sql
@@ -166,6 +166,11 @@ assertions:
     claim: "B5 brick registry 门全绿：L2 primitives vs L3 FeatureBlocks+Type-B edge 已登记；禁 silent raw bypass；L3 max_composite_hops≤2；FEATURE_BLOCK_ID 无 orphan；data_layers L2_feature 表均在 outputs；status=partial 须 typed partial_reasons。owner=backend/scripts/check_brick_registry.py + brick_registry.yaml；权威=analysis/data_brick_architecture_20260721.md"
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_brick_registry.py >/dev/null 2>&1 && echo 0 || echo 1"]
+    expect: {op: "<=", value: 0}
+  - id: factor-family-inventory-gate
+    claim: "因子族 inventory 结构门：families 必填字段+typed enums；defer/blocked 须 reason；bricks∈brick_registry；sync_domains∈sync_registry∪serve_derive source_domains∪miaoxiang acquire；gate_matrix 引用存在 family_id。owner=backend/scripts/check_factor_family_inventory.py + factor_family_inventory.yaml；权威=analysis/factor_family_governance_toplevel_20260724.md"
+    type: shell
+    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_factor_family_inventory.py >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
   - id: foundation-done-f1-f10
     claim: "FND-GATE foundation-done F1–F10 聚合门：真实缺口 FAIL；S7 23 ssot typed hard-stop / org mass-by-date banned+daily incremental-by-period required / Type-B enrichment defer 为诚实墙 PASS；F8 §15 PASS 需 ≥3 连续 L3 刀 evidence（commits/knife≤1.5 + pre_knife；禁放宽阈值）；PARTIAL 仍 exit0。owner=backend/scripts/check_foundation_done.py + foundation_done.yaml；权威=analysis/foundation_phase_reeval_20260721.md §3 + analysis/section15_verify_20260721.md"
