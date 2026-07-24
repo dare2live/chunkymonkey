@@ -60,6 +60,8 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | Margin 1a scope SSE+SZSE | FIXED | `e6b3e44c5` |
 | Margin 1b v3 bounded catchup **in acquire** | FIXED path | `0f5af7e80` 一带；补跑 CLI≠正解 |
 | Holders ACCEPTED+same payload_hash skip-land | FIXED path | `67cd81c27` |
+| Holders notice-axis catchup（mid-period holes） | FIXED path | `542365446`；证据 `holders_ann_date_axis_20260724.md`；live drain 见 §3b |
+| Holdernumber RESTORE `by_ann_date` | FIXED | `9bde17735` |
 | Market qfq post-CTAS in-module compact | FIXED | `8f36809bf` / `a49a99786` |
 | Rewrite：删 canary + `rewrite_legacy` True 写回 | FIXED | git；见 §4 |
 | 跑步机 Phases 0–3 / run_outcome / ops≠刀 | FIXED | treadmill first-principles |
@@ -93,7 +95,19 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | moneyflow_hsgt 真缺口 20260708/10 | **FIXED** ops | bounded backfill 2 日；vendor-0 日进 `known_empty_days` |
 | dividend/hsgt `warn_interior_gaps` | **FIXED typed** | `hk_holidays` + `event_sparse`；live PASS warn=0；非假期仍 FAIL |
 
-**近端默认序**：F1/F3/F4/F7/F8 FIXED；无默认开放底座刀（STRATEGY 仍须 RX）。
+**近端默认序**：F1/F3/F4/F7/F8 FIXED；无默认开放底座刀（STRATEGY 仍须 RX）。轴/频率评审见 §3b。
+
+### 3b. 数据轴/频率评审残差（2026-07-24；非 class-A）
+
+证据：`analysis/data_axis_frequency_review_20260724.md`。本轮 **无新错轴**；不改 update-flow。
+
+| # | 项 | 类型 | Exit | 状态 |
+|---|---|---|---|---|
+| **A1** | holders fact→canonical notice 洞 drain（≈1271；含 600388/`20260613`） | ops | catchup 清空 fact-only 或 bounded one-shot；禁 by_ts_code mass | **OPEN**（代码已 ship，待 daily_update） |
+| **A2** | holdernumber `MAX(ann_date)` 探针（live=20260624） | probe | vendor 有更新则查 drain；无则标稀疏 OK | **OPEN** |
+| **A3** | Type-B fact publish 短滞后（moneyflow/limit/index） | ops | fact max 跟 raw≤1–2 交易日 | **OPEN**（轴 OK） |
+| **A4** | org 中间历史季洞 | backfill knife | 仅显式刀；日常 incremental 不变 | **DEFER** |
+| **A5** | cyq 消费口径（C0 历史 FAIL） | semantic | 消费前换算/弃用；非采集轴 | **DEFER** |
 
 **Breadth 诚实门（2026-07-23；owner 纠偏同 rzrqye）**：`attest_market_pulse_scope` 消费 B-pit `MART_CUTOVER` → `adv_dec_ratio` READY as `project_universe_pit`；**窗外/未到期 → typed EMPTY**（正常空，非 scare）；**窗内应有却缺 → UNTRUSTED**；禁假 READY。Shadow 窗 `20260121`–`20260722` MATCH 120/120。
 
