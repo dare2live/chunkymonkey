@@ -7,12 +7,11 @@
 
 | Signal | Value |
 |---|---|
-| Branch | `main` (commits pending push after this drive) |
-| DuckDB | **free** after `23:42:55` success run |
-| `smartmoney.duckdb` size | **8717086720** bytes (~8.72GB) — moth band raised **8→9GB** (`claims.yaml`, separate commit) |
-| UI run | `run_outcome=success` · report `data/reports/daily_20260724.json` |
-| Moth (idle DB) | **PASS** (33/33) after size-band claim sync |
-| RX / Optuna | **BANNED** until inventory gates wired + `goal.md` explicit schedule |
+| Branch | `main` @ **`0c202eb69`** (pushed) |
+| DuckDB | free when no repair; repair holds lock **PID 40365** |
+| UI run | **DONE** `run_outcome=success` · `analysis/ui_daily_update_e2e_20260724.md` |
+| Moth | **PASS** (33/33) after `bcf33cf91` size-band 8→9GB |
+| Org trunc repair | **RUNNING** 1/23 @ `2018-12-31` · log `analysis/org_trunc_repair_ops_20260724.log` |
 
 ---
 
@@ -36,7 +35,7 @@
 
 | Ask | Status | Next action |
 |---|---|---|
-| Org trunc repair (~23 periods) | **RESUMING** | `PYTHONPATH=backend python backend/scripts/org_holding_period_repair_truncated.py --max-periods 23` after factor commits |
+| Org trunc repair (~23 periods) | **IN FLIGHT** | Script running; started `2018-12-31` 1/23 — allow to finish; re-check `truncated_after` in log |
 | Factor gate matrix + `check_factor_family_inventory.py` | **PENDING** | Knife #1 in governance doc §8 — before RX |
 
 ---
@@ -60,8 +59,8 @@
 | Step | Status |
 |---|---|
 | 1. daily_update + E2E doc | **DONE** |
-| 2. Factor design commit + push | **IN PROGRESS** |
-| 3. Org trunc repair | **NEXT** |
+| 2. Factor design commit + push | **DONE** (`0c202eb69`) |
+| 3. Org trunc repair | **IN FLIGHT** (1/23) |
 | 4. Inventory+gate implementation | **PENDING** |
 | 5. QFII | **BLOCKED** |
 | 6. RX | **BANNED** |
@@ -71,13 +70,13 @@
 ## Key SHAs (session stack + this drive)
 
 ```
+bcf33cf91 chore(moth): smartmoney-size-band 8GB→9GB (8717086720 measured)
+0c202eb69 docs(factor): governance toplevel + inventory stub + E2E/backlog
 494d3005f docs(org): truncation fix SHAs
 859dd6e8c fix(org): ops truncation repair + canary
 888bfde75 fix(org): sharded aif10 fetch
 cad72c61c fix(org): ops drain oldest-quarter holes
 8c90ef841 Type-B same-run publish
-(TBD) moth: smartmoney-size-band 8GB→9GB measured 8717086720
-(TBD) docs: factor-family governance toplevel + inventory stub
 ```
 
 ---
@@ -86,6 +85,6 @@ cad72c61c fix(org): ops drain oldest-quarter holes
 
 | Item | Label |
 |---|---|
-| Org pagination trunc (23 periods) | **PARTIAL** — repair script running next |
+| Org pagination trunc (23 periods) | **IN FLIGHT** — repair 1/23 running |
 | QFII 22 gaps | **BLOCKED** |
 | RX / Optuna | **BANNED** |
