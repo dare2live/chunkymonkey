@@ -30,7 +30,7 @@
 | **daily / moneyflow / limit / index** | trade_date | 稠密；残差多为 publish tip 短滞后 | **PUBLISH_LAG** / OK |
 | **moneyflow_hsgt** | trade_date | known_empty 港休 | **EXPECTED_EMPTY** |
 | **margin** | trade_date | bounded catchup；产品诚实门 | **DEFER** |
-| **org_holding** | period | 中间季 = log-not-fill | **CONTRACT** |
+| **org_holding** | period | bounded oldest-first fill N=1/run when plannable complete | **CONTRACT → FILL** |
 
 **结论**：与 holders 同构的 tip-leap 主要落在 **披露稀疏轴 + 双平面**。日频稠密域残差以 Type-B publish 滞后为主。
 
@@ -77,5 +77,5 @@ bound ≤ 40
 ## 5. 残差
 
 - Type-B `fact_*` tip 滞后 → publish 闭环（另轨）
-- org 中间季 → 显式 backfill 刀（契约 log-not-fill，非 tip-leap）
+- org 中间季 → bounded fill N=1/run（`org_period_bounded_fill_20260724.md`；禁 mass / backfill pipeline）
 - 禁：org mass / by_ts_code 全宇宙日扫 / Continuity 洗绿 / Optuna

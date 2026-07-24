@@ -4571,6 +4571,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_period_catchup.py",
+      "kind": "consume",
+      "src": "table:smartmoney.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_org_holding_aif10.py",
       "kind": "consume",
       "src": "table:smartmoney.raw_org_holding_aif10"
@@ -7613,9 +7619,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1221,
-    "generated_at": "2026-07-24T01:48:02.282606+00:00",
-    "node_count": 435,
+    "edge_count": 1222,
+    "generated_at": "2026-07-24T02:43:41.309282+00:00",
+    "node_count": 436,
     "version": 2
   },
   "nodes": [
@@ -9337,6 +9343,14 @@
         "path": "backend/tests/services/test_observation_population.py"
       },
       "id": "consumer:backend/tests/services/test_observation_population.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_org_holding_period_catchup.py"
+      },
+      "id": "consumer:backend/tests/services/test_org_holding_period_catchup.py",
       "kind": "consumer"
     },
     {

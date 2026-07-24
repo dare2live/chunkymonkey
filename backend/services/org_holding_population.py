@@ -16,6 +16,24 @@ def plannable_available_yyyymmdd(report_date: str) -> Optional[str]:
     return disclosure_deadline_yyyymmdd(report_date)
 
 
+def list_local_org_report_periods(conn: Any) -> list[str]:
+    """Distinct report_date values present in legacy raw org holding."""
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT report_date FROM raw_org_holding_aif10"
+        ).fetchall()
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[str] = []
+    for row in rows:
+        if not row or not row[0]:
+            continue
+        text = str(row[0]).strip()[:10]
+        if text:
+            out.append(text)
+    return out
+
+
 def count_raw_org_stocks(conn: Any, report_date: str) -> int:
     try:
         row = conn.execute(

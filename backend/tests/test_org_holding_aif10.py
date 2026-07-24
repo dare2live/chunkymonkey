@@ -60,6 +60,14 @@ def test_incremental_skip_message_shows_next_unlock(monkeypatch):
 
     monkeypatch.setattr(m, "latest_plannable_report_date", lambda today=None: "2026-03-31")
     monkeypatch.setattr(m, "accepted_has_org_holding_partition", lambda *_a, **_k: True)
+    monkeypatch.setattr(
+        "services.org_holding_period_catchup.plan_older_org_period_fill",
+        lambda *_a, **_k: {
+            "fill_target_period": None,
+            "older_remaining": 0,
+            "missing_older_count": 0,
+        },
+    )
 
     class _Conn:
         def execute(self, sql, *a, **k):
@@ -83,6 +91,7 @@ def test_incremental_skip_message_shows_next_unlock(monkeypatch):
     assert out["next_period"] == "2026-06-30"
     assert out["next_period_unlock"] == "2026-08-31"
     assert "next period 2026-06-30 unlocks 2026-08-31" in out["message"]
+    assert "bounded fill idle" in out["message"]
 
 
 # ── 字段映射 (real-shape fixture: MAIN_ORGHOLDDETAIL 真实字段名+形态) ──
@@ -264,11 +273,13 @@ def test_sync_org_holding_incremental_skips_when_plannable_present(monkeypatch):
     m.ensure_tables(con)
     monkeypatch.setattr(m, "latest_plannable_report_date", lambda today=None: "2026-03-31")
     monkeypatch.setattr(m, "accepted_has_org_holding_partition", lambda *_a, **_k: True)
-    con.execute(
-        "INSERT INTO raw_org_holding_aif10 "
-        "(report_date, stock_code, holder_code, fund_derivecode) "
-        "VALUES ('2026-03-31', '600000', 'H1', '')"
-    )
+    for q in m.enumerate_quarter_ends(m.DEFAULT_START_PERIOD, "2026-03-31"):
+        con.execute(
+            "INSERT INTO raw_org_holding_aif10 "
+            "(report_date, stock_code, holder_code, fund_derivecode) "
+            "VALUES (?, '600000', 'H1', '')",
+            [q],
+        )
     con.commit()
     fetched = {"called": False}
     accepted = {"called": False}

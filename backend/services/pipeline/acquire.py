@@ -185,6 +185,7 @@ def _sync_org_holding(ctx: PipelineContext) -> None:
         ctx.delta_manifest = empty_manifest(run_date=ctx.date)
     summary = dict(ctx.delta_manifest.get("acquire_summary") or {})
     incremental = list(summary.get("incremental") or [])
+    gap = result.get("gap") or {}
     incremental.append(
         {
             "domain": "org_holding",
@@ -197,14 +198,12 @@ def _sync_org_holding(ctx: PipelineContext) -> None:
             "next_period_unlock": result.get("next_period_unlock"),
             "message": result.get("message"),
             "gap": {
-                "plannable": (result.get("gap") or {}).get("plannable"),
-                "local_has_plannable": (result.get("gap") or {}).get(
-                    "local_has_plannable"
-                ),
-                "accepted_has_plannable": (result.get("gap") or {}).get(
-                    "accepted_has_plannable"
-                ),
-                "missing_count": (result.get("gap") or {}).get("missing_count"),
+                k: gap.get(k)
+                for k in (
+                    "plannable", "local_has_plannable", "accepted_has_plannable",
+                    "missing_count", "fill_target_period", "older_remaining",
+                    "missing_older_count",
+                )
             },
         }
     )

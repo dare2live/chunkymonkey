@@ -539,9 +539,10 @@ def org_holding_period_gap_report(
 ) -> dict:
     """Read-only: latest plannable vs local raw + accepted.
 
-    Owner 2026-07-21/23: every manual/`daily_update` must *check* incremental
-    gaps (not ignore forever). Fetch stays latest-period-only; mass history and
-    by-date provider invent stay banned. Intermediate holes = log-not-fill.
+    Owner 2026-07-21/23 + 2026-07-24 bounded fill: every manual/`daily_update`
+    must *check* incremental gaps (not ignore forever). Latest plannable path
+    unchanged; when plannable complete and older quarters missing, fill **oldest**
+    one per run (N=1). Mass history and by-date provider invent stay banned.
 
     Closed-loop 2026-07-23: partition existence ≠ population. Thin/canary accept
     → repair_accept_from_local_raw when dense raw present (no mass provider refresh).
@@ -598,7 +599,7 @@ def org_holding_period_gap_report(
         local_max_period=local_max_period,
         plannable_period=target,
     )
-    return {
+    out = {
         "plannable": target,
         "local_has_plannable": local_has,
         "accepted_has_plannable": accepted_has,
@@ -614,6 +615,21 @@ def org_holding_period_gap_report(
         "frontier_outcome": frontier.outcome,
         "frontier_reason": frontier.reason,
     }
+    if action == "skip_current":
+        from services.org_holding_period_catchup import plan_older_org_period_fill
+
+        fill_plan = plan_older_org_period_fill(
+            conn,
+            plannable=target,
+            start_period=start_period,
+            today=today,
+        )
+        out["fill_target_period"] = fill_plan.get("fill_target_period")
+        out["older_remaining"] = fill_plan.get("older_remaining")
+        out["missing_older_count"] = fill_plan.get("missing_older_count")
+        if fill_plan.get("fill_target_period"):
+            out["bounded_fill_action"] = "fill_older_period"
+    return out
 
 
 def _accept_plannable_from_local_raw(conn: Any, report_date: str) -> dict:
@@ -647,13 +663,13 @@ def _accept_plannable_from_local_raw(conn: Any, report_date: str) -> dict:
 async def sync_org_holding_incremental(conn: Any) -> dict:
     """日常增量 (接 pipeline acquire): check plannable vs local every run.
 
-    Policy (owner 2026-07-21/23):
+    Policy (owner 2026-07-21/23 + 2026-07-24 bounded fill):
       - Mass full-history / already-landed period ~830k refresh = BANNED
       - By-date provider land invent = BANNED (no NOTICE_DATE)
       - Every daily_update: check latest plannable; missing raw → fetch one
         period; raw present but unaccepted → accept from local-raw; both ok →
-        skip with next-period unlock reason (disclosure clock, not eternal freeze)
-      - Intermediate historical gaps: log-not-fill (explicit backfill knife only)
+        skip OR fill oldest missing quarter (N=1/run) when holes remain
+      - NEVER backfill() in pipeline; allow_existing_refresh=False on older fill
     """
     ensure_tables(conn)
     gap = org_holding_period_gap_report(conn)
@@ -669,10 +685,15 @@ async def sync_org_holding_incremental(conn: Any) -> dict:
         }
     action = str(gap.get("action") or "skip_current")
     if action == "skip_current":
-        missing_older = [p for p in (gap.get("missing_periods") or []) if p != target]
+        from services.org_holding_period_catchup import sync_older_org_period_if_due
+
+        fill_result = await sync_older_org_period_if_due(conn, gap)
+        if fill_result is not None:
+            return fill_result
+        missing_older = int(gap.get("missing_older_count") or 0)
         msg = (
             f"check: plannable={target} raw=present accepted=present; skip "
-            f"(older_missing={len(missing_older)}; not auto mass-filled; "
+            f"(older_missing={missing_older}; bounded fill idle; "
             f"next period {gap.get('next_period')} unlocks "
             f"{gap.get('next_period_unlock')})"
         )

@@ -87,6 +87,8 @@ member_service_files:
   # (vendor 迁移[akshare→tushare/aif10]属 task#56 正交, 不改"它们是采集成员"的事实)
   # lhb_client.py 已退役物删 2026-06-29 (批2b: LHB 切 tushare top_list/top_inst, raw_lhb_daily 物删)
   - org_holding_aif10.py     # 机构持仓采集 (aif10 sanctioned 源 §4.3; 读 raw_org_holding_aif10 期次存在)
+  - org_holding_population.py  # org 存在性/人口探测 (读 raw + canonical 计数; closed-loop gate)
+  - org_holding_period_catchup.py  # org 中间季 bounded fill N=1/run (plan_partition_catchup + sync_period)
   - qfii_client.py           # QFII 采集 (aif10 sanctioned 源 §4.3; 读 raw_qfii_holding_quarterly 期次存在)
 
 # 源退役中 = 临时成员 (删源程序 task#56 完成后随 client 退役; 现不算违规, 但标记为待退役)

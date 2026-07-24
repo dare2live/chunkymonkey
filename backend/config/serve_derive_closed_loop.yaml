@@ -70,6 +70,7 @@ surfaces:
     freshness_axis: report_period
     status: wired_population_repair
     # under_populated + dense raw → repair_accept_from_local_raw; thin → repair_fetch_period.
+    # older quarter holes → fill_older_period N=1/run (not mass / not backfill pipeline).
     notes: "no by-date invent; no full-history mass; F6 min_org_accepted_stocks floor"
 
   - id: qfq_price

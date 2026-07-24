@@ -246,6 +246,25 @@ def test_org_due_row_from_gap_surfaces_skip_not_forever_blocked():
     assert row["next_period"] == "2026-06-30"
 
 
+def test_org_due_row_from_gap_surfaces_fill_older_period():
+    row = ops_manual_run._org_due_row_from_gap(
+        {
+            "action": "skip_current",
+            "bounded_fill_action": "fill_older_period",
+            "plannable": "2026-03-31",
+            "status": "ok",
+            "fill_target_period": "2019-03-31",
+            "older_remaining": 26,
+        },
+        source="unit",
+    )
+    assert row["action"] == "fill_older_period"
+    assert row["will_fetch"] is True
+    assert row["fill_target_period"] == "2019-03-31"
+    assert "oldest missing=2019-03-31" in row["detail"]
+    assert row["older_remaining"] == 26
+
+
 def test_due_plan_prefers_newer_post_acquire_over_before(tmp_path, monkeypatch):
     audit = tmp_path / "data" / "audit"
     audit.mkdir(parents=True)
