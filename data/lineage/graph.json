@@ -4619,6 +4619,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_truncation_audit.py",
+      "kind": "consume",
+      "src": "table:smartmoney.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_org_holding_aif10.py",
       "kind": "consume",
       "src": "table:smartmoney.raw_org_holding_aif10"
@@ -7703,9 +7709,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1236,
-    "generated_at": "2026-07-24T02:48:44.611168+00:00",
-    "node_count": 438,
+    "edge_count": 1237,
+    "generated_at": "2026-07-24T13:50:45.325380+00:00",
+    "node_count": 439,
     "version": 2
   },
   "nodes": [
@@ -9443,6 +9449,14 @@
         "path": "backend/tests/services/test_org_holding_period_catchup.py"
       },
       "id": "consumer:backend/tests/services/test_org_holding_period_catchup.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_org_holding_truncation_audit.py"
+      },
+      "id": "consumer:backend/tests/services/test_org_holding_truncation_audit.py",
       "kind": "consumer"
     },
     {

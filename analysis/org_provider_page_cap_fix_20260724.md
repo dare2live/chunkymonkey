@@ -1,6 +1,17 @@
 # org_holding East Money 100-page cap fix (2026-07-24)
 
-> Status: evidence-only · Label: **PARTIAL** (code shipped; canary repair in flight)
+> Status: evidence-only · Label: see **Verdict** below
+
+## Continuity audit context (MIXED — do not re-run)
+
+| Domain | Verdict | Facts |
+|--------|---------|-------|
+| org_holding | **MIXED** | 30/30 periods present, `missing_older=0`, plannable OK; **14 periods ~200k-row truncated** (H1/annual); **6/30** density OK |
+| holders (季末 fact) | OK | Quarter-end fact continuity OK |
+| QFII | **residual** | 22-period gaps — **next knife**; no mass QFII backfill in this change |
+| TuShare fina | OK | Windows OK |
+
+Local truncation scan (heuristic `provider_truncated`, 2026-07-24): **24** periods flagged for ops repair (includes Q1/Q3 below audit’s “14 H1/annual” threshold when stocks ≪ baseline).
 
 ## Root cause (live repro)
 
@@ -8,71 +19,56 @@
 |-------|--------|
 | `RPT_MAIN_ORGHOLDDETAIL` + `REPORT_DATE='2025-12-31'` page 1 | `count=832906`, `pages=417`, `page_size=2000` |
 | Same filter page 101 | `pages=0`, `data=[]` |
-| Local before canary `2025-12-31` | `180449` rows, `1185` stocks (canonical same) |
+| Pre-fix local `2025-12-31` | `180449` rows, `1185` stocks |
 
-East Money v1 returns at most **100 pages per filter query**. With `PAGE_SIZE=2000` the silent ceiling is **~200k rows** while page-1 `count` stays at full market mass (~640k–830k). `fetch_all_pages` treated `pages=0` on page>1 as completion.
+East Money v1 hard cap: **100 pages / filter query** → silent stop ~200k rows @ `page_size=2000` while page-1 `count` stays ~640k–830k.
 
-Population gate `min_accepted_stocks=500` did **not** catch this (1185 stocks > 500).
+## Fix shipped
 
-## Fix (Knife A)
+**miaoxiang** `e162d7b`: `pagination.py`, truncate-aware `fetch_all_pages`, `fetch_all_pages_sharded` (16 shards for 2025-12-31).
 
-**miaoxiang** (`aif10_scraper`):
+**chunkymonkey** `888bfde75` (+ follow-up): `pagination_integrity.py`, `org_holding_fetch.py`, gap `provider_truncated` → `repair_fetch_period`, `sync_period` fail-closed on truncated fetch.
 
-- `pagination.py`: truncate-aware loop, `plan_security_code_shards` (bisect `SECURITY_CODE` numeric range until probe `pages≤100`).
-- `batch.fetch_all_pages`: delegate to truncate-aware fetch; log truncation.
-- `batch.fetch_all_pages_sharded`: shard + merge; metrics `provider_count`, `fetched_rows`, `truncated`, `shard_count`.
+**Ops**: `backend/scripts/org_holding_period_repair_truncated.py` — oldest truncated first, `--max-periods` ≤40/session, explicit refresh only.
 
-Filter syntax (live): `(SECURITY_CODE>=600000)(SECURITY_CODE<=699999)` — **no quotes** on numeric bounds.
+## Fetch validation (no DB write)
 
-**chunkymonkey**:
+`analysis/org_fetch_validation_20260724.json`:
 
-- `org_holding_aif10._fetch_period` → `fetch_all_pages_sharded` (`EASTMONEY_MAX_PAGES=100`).
-- `sync_period` fail-closed on `provider_truncated` (no partial accept).
-- `pagination_integrity.py` typed land verdict + gap heuristic (`≈200k` cap signature, stocks ≪ baseline).
-- `org_holding_population`: `provider_truncated` → `repair_fetch_period` (single-period sharded refresh only).
+| provider_count | fetched_rows | truncated | shard_count | elapsed_s |
+|---------------:|-------------:|:---------:|------------:|----------:|
+| 832906 | 832906 | false | 16 | 405.2 |
 
-Tests: `miaoxiang/tests/test_pagination.py`, `backend/tests/services/test_pagination_integrity.py`, org gap/truncation tests.
+## Canary `2025-12-31`
 
-## Canary (single period)
+| | Rows | Stocks | Notes |
+|---|-----:|-------:|-------|
+| Original pre-fix | 180449 | 1185 | audit baseline |
+| Before sharded repair | 495209 | 3589 | partial prior pull |
+| **After sharded repair** | **832907** | **5523** | `provider_count=832906`, `truncated=false`, 16 shards |
 
-Period: **`2025-12-31`** (`allow_existing_refresh=True` only — not full history).
+Log: `analysis/org_canary_repair_20260724.log` · report `data/reports/org_holding_truncation_repair_latest.json`
 
-| | Rows | Stocks | API `count` |
-|---|-----:|-------:|------------:|
-| Before (pre-fix local) | 180449 | 1185 | 832906 |
-| After aborted canary (2026-07-24) | 495209 | 3589 | 832906 |
-| After fetch-only validation | _(see `org_fetch_validation_20260724.json`)_ | — | 832906 |
-| After full single-period repair | _(pending when fetch validates)_ | — | 832906 |
+**Repaired this session:** 1 period (`2025-12-31`). **Remaining truncated (heuristic):** 23 → ops `org_holding_period_repair_truncated.py --max-periods N`.
 
-Logs: `analysis/org_canary_repair_20260724.log` (aborted), `analysis/org_fetch_validation_20260724.log`
+## daily_update anti-truncation
 
-DoD: stocks ≥ ~0.95×max baseline (~5520), rows within ~0.2% of API count.
-
-## Knife B — daily_update anti-truncation (general)
-
-Contract: `services/data_sources/pagination_integrity.py`
-
-- Inputs: page-1 `expected_count`, `landed_rows`, `page_size`, `max_pages_per_query`.
-- Output: `PaginationIntegrityVerdict.truncated` + reasons.
-- **org**: enforced on fetch + gap (`provider_truncated` → bounded `repair_fetch_period`).
-- **Other paginated surfaces** (detection contract / follow-up wiring):
-
-| Surface | Mechanism | Status |
-|---------|-----------|--------|
-| `org_holding_aif10` | aif10 sharded + integrity | **enforced** |
-| `holders_aif10` / `qfii_client` | `fetch_all_pages` (truncate-aware loop) | observe → extend sharding if count>100×page_size |
-| `sync_registry` paged domains | `page_limit` in registry | existing; add integrity compare where page-1 total known |
-| `moneyflow` / top_inst pages | registry offset loops | soft: compare landed vs probe total where cheap |
-
-Policy (goal.md): **truncated land ≠ complete** — next action = **bounded repair** (one period / one partition), not skip-as-ok.
-
-Config notes: `backend/config/serve_derive_closed_loop.yaml` (`org_holding_formal`, integrity patterns).
+Every run: `org_holding_period_gap_report` + `population_for_period` → if `provider_truncated`, action **`repair_fetch_period`** (one plannable period, sharded fetch), **not** `skip_current`. `sync_org_holding_incremental` raises on `provider_truncated` fetch result. Shared contract: `pagination_integrity.assess_paginated_land`.
 
 ## Residuals
 
-- holders/qfii: truncate-aware `fetch_all_pages` only; no SECURITY_CODE sharding until a live count proves cap breach.
-- Full canary runtime: multi-shard ~830k row pull is long; ops use explicit single-period repair only.
+- **QFII**: 22-period gaps — document only; separate bounded knife.
+- **org**: remaining truncated periods → ops `org_holding_period_repair_truncated.py` (oldest-first, ≤40/session).
+- holders/qfii: truncate-aware loop only until live count proves cap breach.
 
 ## SHAs
 
-_(filled after push)_
+| Repo | SHA | Message |
+|------|-----|---------|
+| miaoxiang | `e162d7b` | fix(aif10): shard paginated fetches past East Money 100-page cap |
+| chunkymonkey | `888bfde75` | fix(org): sharded aif10 fetch and pagination integrity gates |
+| chunkymonkey | _(follow-up SHA)_ | ops truncation repair script + evidence update |
+
+## Verdict
+
+**FIXED** (code + sharded fetch proof + canary `2025-12-31` land). **PARTIAL** live corpus: **23** truncated periods remain — use ops script (oldest-first, ≤40/session); **QFII** gaps = next knife.
