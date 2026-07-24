@@ -317,11 +317,19 @@ def accept_holders_top10_partition_from_legacy(conn, notice_date: str):
     Legacy stays untouched — no DELETE→INSERT rewrite. Production sync uses
     ``_write`` (formal_only). ``rewrite_legacy`` removed 2026-07-23 (cargo-cult
     dual-write rewrite after formal SSOT).
+
+    Renumber ``row_seq`` before accept (same as disclosure_transport
+    from-local-raw): legacy ``_clean`` historically hard-coded ``row_seq=1``,
+    so same-rank multi-name rows fail formal validate with DUPLICATE_GRAIN and
+    clog newest-first notice catchup.
     """
     from services.data_sources.disclosure_dual_write import (
         write_holders_top10_formal_then_mirror,
     )
-    from services.data_sources.holders_top10_schema import CANONICAL_ROW_FIELDS
+    from services.data_sources.holders_top10_schema import (
+        CANONICAL_ROW_FIELDS,
+        assign_unique_holders_row_seq,
+    )
 
     digits = "".join(ch for ch in str(notice_date or "") if ch.isdigit())
     if len(digits) < 8:
@@ -338,7 +346,9 @@ def accept_holders_top10_partition_from_legacy(conn, notice_date: str):
         """,
         [SOURCE, partition],
     ).fetchall()
-    rows = [dict(zip(CANONICAL_ROW_FIELDS, row, strict=True)) for row in raw]
+    rows = assign_unique_holders_row_seq(
+        [dict(zip(CANONICAL_ROW_FIELDS, row, strict=True)) for row in raw]
+    )
     if not rows:
         raise ValueError(
             f"no legacy miaoxiang rows for notice_date={partition}"

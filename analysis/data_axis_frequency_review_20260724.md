@@ -1,6 +1,6 @@
 # 数据轴 / 频率 / 表粒评审（2026-07-24）
 
-> Status: evidence-only · Label: **AUDIT FIXED**（无新 class-A 错轴；holders/holdernumber 已 ship）  
+> Status: evidence-only · Label: **AUDIT FIXED** + **A1/A2 ops drain FIXED**  
 > Kids: grok · Live DuckDB：`smartmoney` / `tushare_raw` / `market` · Registry：`backend/config/sync_registry.yaml`  
 > 前置：`analysis/holders_ann_date_axis_20260724.md` · `analysis/stk_holdernumber_retire_evidence_20260724.md`
 
@@ -8,10 +8,37 @@
 
 | 刀 | Commit | 在 main？ | daily_update 接线 | Live 残差 |
 |---|---|---|---|---|
-| holders notice catchup | `542365446` | **YES**（HEAD） | `acquire._sync_holders_aif10` → `sync_holders_aif10_incremental` → **每次**先跑 `catchup_missing_holders_notice_partitions`（≤40 分区/跑）+ provider 领先时 `land_holders_notice_partitions_forward` | **代码已 ship；洞未 drain**：fact→canonical 仍缺 **1271** 个 notice 分区（含 600388/`20260613`）。`smartmoney` mtime≈07-23 23:09，catchup commit=07-24 09:10 → **下一轮 daily_update 才开始修** |
-| holdernumber `by_ann_date` | `9bde17735` | **YES** | registry `stk_holdernumber`（无 `sync_policy=on_demand`）∈ `automatic_domains` → acquire `--all-due --drain`；DataAccess + dossier assist | 轴正确；`MAX(ann_date)=20260624`（SLA=90 交易日）— 是否 provider 无更新 vs drain 滞后 → backlog 探针 |
+| holders notice catchup | `542365446` | **YES** | `acquire._sync_holders_aif10` → `sync_holders_aif10_incremental` → **每次**先跑 `catchup_missing_holders_notice_partitions`（≤40 分区/跑）+ provider 领先时 `land_holders_notice_partitions_forward` | **drain 完成**：fact→canonical notice 洞 **1271→0**；`600388`/`20260613` **canonical 12 行** |
+| holdernumber `by_ann_date` | `9bde17735` | **YES** | registry `stk_holdernumber` ∈ `automatic_domains` → acquire `--all-due --drain`；DataAccess + dossier assist | **drain lag（非源端停更）**：TinyShare `ann_date∈(20260625..20260723]` 有 27 个非空日；已 `chunkyctl sync --backfill --start 20260625 --end 20260723` → live `MAX(ann_date)=20260723`（+2752 行） |
 
-**Q1 结论**：代码路径 **无缺口（YES shipped + wired）**；holders 历史洞属 **ops drain 残差**，不是未接线。
+**Q1 结论**：代码路径 **无缺口（YES shipped + wired）**；holders 历史洞已 ops drain；catchup 曾被 `DUPLICATE_GRAIN`（legacy `row_seq=1`）卡住 → 本刀补 `assign_unique_holders_row_seq` 于 `accept_holders_top10_partition_from_legacy`（与 `disclosure_transport` from-local-raw 对齐）。
+
+---
+
+## 0b. A1/A2 ops drain 证据（2026-07-24 grok follow-up）
+
+### A1 holders notice holes
+
+| 项 | 值 |
+|---|---|
+| before fact-only notice partitions | **1271** |
+| after | **0** |
+| `600388`/`20260613` | fact 有 → **canonical 12 行**（`report_date=20260608`） |
+| 路径 | 反复 `sync_holders_aif10_incremental`（wired catchup ≤40/跑；非 by_ts_code mass） |
+| 卡点 | pass1：newest-first 队列被 `formal_accept_rejected`/`DUPLICATE_GRAIN` 占满（≈1158 残留停） |
+| 代码修 | `accept_holders_top10_partition_from_legacy` 调 `assign_unique_holders_row_seq` |
+| pass2 | 修复后 29 跑清空（errors=0） |
+| 日志 | `/tmp/holders_notice_catchup_drain_20260724.jsonl` + `_pass2.jsonl` |
+
+### A2 stk_holdernumber 前沿
+
+| 项 | 值 |
+|---|---|
+| 审计时 local `MAX(ann_date)` | `20260624` |
+| TinyShare 探针 | `20260625..20260723` 共 **27** 日有行（例 0723=203）；`20260724`=0（t+1/`pending_today`） |
+| 结论 | **drain lag**，不是 provider 无更新 |
+| 动作 | 有界 forward：`chunkyctl sync --domain stk_holdernumber --backfill --start 20260625 --end 20260723` → `batches=29 rows=2752 ok`；live `MAX(ann)=20260723` |
+| 注意 | 裸 `--drain` 会扫深史日历洞（见 log 里 `ann_date=2019…`）— 前沿追赶用 `--start/--end` backfill，勿与深史 gap drain 混淆 |
 
 ---
 
@@ -19,9 +46,9 @@
 
 | 问 | 答 |
 |---|---|
-| 还有 class-A「错轴导致日常更新系统性漏公告」吗？ | **本轮未发现新的。** holders 公告轴漏洞已在 `542365446` 修接线；live 洞是 catchup 尚未跑完。 |
+| 还有 class-A「错轴导致日常更新系统性漏公告」吗？ | **本轮未发现新的。** holders 公告轴漏洞已在 `542365446` 修接线；live 洞已 drain；legacy accept 的 `row_seq` 对齐是 catchup 畅通补丁。 |
 | 报告期轴能否替代公告轴？ | **不能**（holders / holdernumber / share_float / dividend 披露）。报告期是标签；可用性锚在 `notice_date`/`ann_date`。 |
-| 本刀要不要再改 update-flow？ | **不必。** 无新错轴；残差进 FOUNDATION 有序 backlog。 |
+| 本刀要不要再改 update-flow？ | **仅最小 accept 补丁**（row_seq）；无新错轴；不改 registry 轴。 |
 
 ---
 
@@ -31,8 +58,8 @@
 
 | 域 | Registry 轴 | 实际表粒 | Live 样本异常 | Verdict |
 |---|---|---|---|---|
-| **holders_top10 / aif10** | 非 registry；acquire 专用；水位=`canonical.notice_date` | `fact_top10_holder_period` + `canonical_top10_float_holders_period`（grain≈ stock×report×holder×notice） | fact distinct `notice_date`=**1951**，其中 **非季末 1930**；`report_date` 非季末 **1529**。2025+ 季中例：`notice=20260717/report=20260714`（001233 等）；**600388** `notice=20260613` / `report=20260608` **在 fact、不在 canon**。fact-only notice=**1271**（catchup ≤40/跑） | **OK 轴** + **DEFER drain** |
-| **stk_holdernumber** | `by_ann_date` / `ann_date` / wm=`MAX(ann_date)` | `raw_tushare_stk_holdernumber` grain=`[ts_code,end_date]`（多 ann 覆盖同 end） | distinct ann=**2518**（非季末 **2490**）；end 非季末常见（如 `20260610` 750 股 / `20260529` 849 股）。同 end 多 ann：`600519` `end=20250331` 至少 `ann=20250403`。`MAX(ann)=20260624` | **OK**（探针 DEFER） |
+| **holders_top10 / aif10** | 非 registry；acquire 专用；水位=`canonical.notice_date` | `fact_top10_holder_period` + `canonical_top10_float_holders_period`（grain≈ stock×report×holder×notice） | fact-only notice **0**（was 1271）；`600388`/`20260613` **in canon** | **OK** |
+| **stk_holdernumber** | `by_ann_date` / `ann_date` / wm=`MAX(ann_date)` | `raw_tushare_stk_holdernumber` grain=`[ts_code,end_date]`（多 ann 覆盖同 end） | `MAX(ann)=20260723`（was 20260624；源端有更新，ops 已追） | **OK** |
 | **stk_holdertrade** | `by_ann_date` | raw + `canonical_stk_holdertrade_announcement` | `MAX(ann)=20260715`；事件稀疏合法 | **OK** |
 | **daily / qfq** | daily=`by_trade_date`（formal on_demand）；qfq=derive | `canonical_nominal_ohlcv_daily`；`price_kline_qfq_tushare` | 2026-04..07-23 SSE open **77/77** 无洞；qfq max=`2026-07-23` 跟 accepted；raw_daily max=`20260716`（landing 可短滞后） | **OK** |
 | **moneyflow** | `by_trade_date` | raw + `fact_stock_moneyflow_daily` | 2026 vs accepted：**133/133**；fact max=`20260720` < raw=`20260723`（Type-B publish 短滞后） | **OK** / publish **DEFER** |
@@ -55,7 +82,7 @@
 
 | stock | notice_date | report_date | 是否季末报告期 | 平面 |
 |---|---|---|---|---|
-| **600388** | 20260613 | 20260608 | **否**（季中权益变动） | fact 有 / **canon 无**（待 catchup） |
+| **600388** | 20260613 | 20260608 | **否**（季中权益变动） | fact + **canon**（drain 后） |
 | 001233 | 20260717 | 20260714 | 否 | fact |
 | 002020 | 20260717 | 20260715 | 否 | fact |
 | 300567 | 20260716 | 20260708 | 否 | fact |
@@ -65,11 +92,11 @@
 
 - distinct `notice_date`：**1951**（季末日历日仅 21）
 - distinct 非季末 `report_date`：**1529**
-- 2025-05-01+：fact notice 309 vs canon 197 → **fact_only 117**（全史 fact_only **1271**）
+- fact-only notice：**0**（drain 后；was **1271**）
 
 股东户数同构（`raw_tushare_stk_holdernumber`）：
 
-- distinct `ann_date`：**2518**（非季末 **2490**）
+- distinct `ann_date`：随 forward sync 更新；`MAX(ann_date)=20260723`
 - 非季末 `end_date` 截面：`20260610`→750 股；`20260529`→849 股
 - `600519` 同 `end_date=20250331` 可多 `ann_date`（至少 20250403）
 
@@ -84,16 +111,16 @@
 | `by_report_period` + `by_ts_code` | 财务报表三表 | API 要 ts_code；与 holders 公告轴不同 |
 | `by_code_list` | 指数/板块清单 | `index_daily_benchmark` |
 | period incremental | org_holding | 禁每次 mass ~830k |
-| notice catchup | holders_top10 | `MAX(notice)` 跃进会漏中间稀疏分区 — **已接线**，待 drain |
+| notice catchup | holders_top10 | `MAX(notice)` 跃进会漏中间稀疏分区 — **已接线 + live drain**；legacy accept 须 `assign_unique_holders_row_seq` |
 
 **dividend 特例**：同步参数用 `ex_date`（除权生效日，交易日历合法）；**特征 PIT 必须用 `ann_date`**（registry `pit_anchor` 已写死）。不是错轴，是双日期语义。
 
 ---
 
-## 5. 有序 backlog（无本刀代码；进 FOUNDATION）
+## 5. 有序 backlog（进 FOUNDATION）
 
-1. **P0 ops**：跑 `daily_update`（或等价 acquire）直到 holders notice catchup 清空 fact-only（≈1271/40 ≈ 32 跑；可另开 bounded one-shot knife 提速，仍禁 by_ts_code mass）。验收：`600388/20260613` 进 canonical + accepted。
-2. **P1 探针**：TinyShare `stk_holdernumber` 是否存在 `ann_date>20260624`；有则查 drain/wm；无则标稀疏 OK。
+1. ~~**P0 ops** holders notice catchup drain~~ → **DONE**（1271→0；600388 OK）
+2. ~~**P1 探针** holdernumber `ann>20260624`~~ → **DONE**：源有数；forward backfill 至 `20260723`。裸 `--drain` 深史洞另议，勿当日常前沿。
 3. **P2 Type-B publish**：`fact_stock_moneyflow_daily` / `fact_stock_limit_daily` / `fact_index_daily` 相对 raw 短滞后（1–3 交易日）— 跟 serve→accepted 闭环，不改轴。
 4. **P2 margin**：继续 class-B UNTRUSTED + bounded catchup；禁洗绿 READY。
 5. **P3 org**：中间历史季洞仅显式 backfill 刀；日常保持 incremental-check-every-run。
@@ -107,24 +134,22 @@
 # ship
 git merge-base --is-ancestor 542365446 main && git merge-base --is-ancestor 9bde17735 main
 
-# holders 非季末 notice + 洞
+# holders 洞 + 600388
 python3 - <<'PY'
 import duckdb
 sm=duckdb.connect('data/smartmoney.duckdb', read_only=True)
+print('holes', sm.execute("""
+WITH f AS (SELECT DISTINCT replace(CAST(notice_date AS VARCHAR), '-', '') nd
+ FROM fact_top10_holder_period WHERE source='miaoxiang' AND notice_date IS NOT NULL),
+ c AS (SELECT DISTINCT replace(CAST(notice_date AS VARCHAR), '-', '') nd
+ FROM canonical_top10_float_holders_period)
+SELECT COUNT(*) FROM f LEFT JOIN c USING(nd) WHERE c.nd IS NULL AND length(f.nd)=8
+""").fetchone()[0])
 print(sm.execute("""
-WITH nd AS (SELECT DISTINCT notice_date d FROM fact_top10_holder_period)
-SELECT COUNT(*) n,
-  SUM(CASE WHEN substr(d,5,4) IN ('0331','0630','0930','1231') THEN 1 ELSE 0 END) qe,
-  SUM(CASE WHEN substr(d,5,4) NOT IN ('0331','0630','0930','1231') THEN 1 ELSE 0 END) non_qe
-FROM nd""").fetchone())
-print(sm.execute("""
-SELECT notice_date, report_date, COUNT(*) n FROM fact_top10_holder_period
+SELECT notice_date, report_date, COUNT(*) n FROM canonical_top10_float_holders_period
 WHERE stock_code='600388' AND notice_date='20260613' GROUP BY 1,2
 """).fetchall())
-print(sm.execute("""
-SELECT COUNT(*) FROM canonical_top10_float_holders_period
-WHERE stock_code='600388' AND notice_date='20260613'
-""").fetchone())
+sm.close()
 PY
 ```
 
@@ -134,7 +159,9 @@ PY
 
 | 项 | 状态 |
 |---|---|
-| Q1 ship+wire | **YES**（live holders 洞 = drain 未跑，非未接线） |
-| 新 class-A 错轴 | **无** → 本刀不改 update-flow |
-| 文档 | 本文件 + FOUNDATION backlog 指针 |
-| 下一步验证 | 下一次 `daily_update` 后复查 fact-only 计数与 600388 |
+| Q1 ship+wire | **YES** |
+| A1 notice drain | **FIXED**（1271→0；600388 in canon） |
+| A2 holdernumber | **drain lag** → forward 至 `20260723` |
+| 新 class-A 错轴 | **无** |
+| 代码 | legacy accept `row_seq` 对齐（catchup 畅通） |
+| 下一步 | 日常 `daily_update` 保持 catchup；holdernumber 用 all-due/前沿，慎裸深史 `--drain` |

@@ -236,6 +236,64 @@ def test_accept_holders_partition_from_legacy_noop_mirror(conn) -> None:
     assert canon == 2
 
 
+def test_accept_holders_from_legacy_renumbers_duplicate_row_seq(monkeypatch) -> None:
+    """Legacy hard-coded row_seq=1 must be renumbered before formal accept.
+
+    Live fact can hold same-rank multi-name rows all with row_seq=1 (pre-unique
+    history). Test schema unique forbids seeding that via ``_write_legacy_direct``,
+    so stub the fact SELECT and assert dual-write sees unique GRAIN seqs.
+    """
+    from services import holders_aif10 as holders_mod
+    from services.data_sources import disclosure_dual_write as ddw
+    from services.data_sources.holders_top10_schema import (
+        CANONICAL_ROW_FIELDS,
+        GRAIN,
+    )
+
+    twin_a = _holders_row(holder_rank=1, holder_name="甲", row_seq=1)
+    twin_b = _holders_row(
+        holder_rank=1,
+        holder_name="乙",
+        holder_name_norm="乙",
+        hold_ratio_float=0.5,
+        row_seq=1,
+    )
+    seen: list[list[dict]] = []
+
+    def fake_write(_conn, rows, mirror=None):
+        seen.append([dict(r) for r in rows])
+
+        class _Out:
+            status = "ACCEPTED"
+            partitions = (PARTITION_HOLDERS,)
+            canonical_rows = len(rows)
+
+        return _Out()
+
+    monkeypatch.setattr(ddw, "write_holders_top10_formal_then_mirror", fake_write)
+
+    class _FakeConn:
+        def execute(self, sql, params=None):
+            class _R:
+                def fetchall(self_inner):
+                    return [
+                        tuple(r[c] for c in CANONICAL_ROW_FIELDS)
+                        for r in (twin_a, twin_b)
+                    ]
+
+            return _R()
+
+    out = holders_mod.accept_holders_top10_partition_from_legacy(
+        _FakeConn(), PARTITION_HOLDERS
+    )
+    assert out.status == "ACCEPTED"
+    assert out.canonical_rows == 2
+    assert len(seen) == 1
+    keys = [tuple(r[k] for k in GRAIN) for r in seen[0]]
+    assert len(keys) == len(set(keys))
+    assert {r["row_seq"] for r in seen[0]} == {1, 2}
+
+
 def test_accept_org_holding_partition_from_legacy_noop_mirror(conn) -> None:
     from services.org_holding_aif10 import (
         accept_org_holding_partition_from_legacy,
