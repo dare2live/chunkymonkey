@@ -12,12 +12,10 @@
 
 ## Outcome
 
-**Label: PARTIAL**
+**Label: PARTIAL** (page-cap **`2025-06-30` FIXED** 2026-07-25)
 
-- **22+ periods** processed in one `--max-periods 23` run (log lines `1/23` … `23/23`).
-- **Final period** `2025-06-30`: `accept` **COMMIT** failed — `No space left on device` during DuckDB checkpoint (`smartmoney.duckdb` grew **~8.7GB → ~11GB** during run; volume **~100%** full, **~1.1GiB** avail).
-- Post-crash: writer connection **invalidated**; **do not** resume repair until **disk headroom** restored and no stale writer holds lock (observed holder PID **813** after crash).
-- **Residual truncated ≈20** (not ≈0): re-run bounded repair after hygiene — likely **≤3** periods still failing pagination audit plus any periods rolled back with failed commit.
+- **2025-06-30:** `745991` rows · `5464` stocks · `truncated=false` · 9 shards (`20260724T235226Z` report).
+- Heuristic truncated count **20→19**; remaining flags = baseline-ratio on older periods (not ~200k cap land).
 
 ## Next verification (ops)
 

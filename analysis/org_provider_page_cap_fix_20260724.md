@@ -49,7 +49,28 @@ East Money v1 hard cap: **100 pages / filter query** → silent stop ~200k rows 
 
 Log: `analysis/org_canary_repair_20260724.log` · report `data/reports/org_holding_truncation_repair_latest.json`
 
-**Repaired this session:** 1 period (`2025-12-31`). **Remaining truncated (heuristic):** 23 → ops `org_holding_period_repair_truncated.py --max-periods N`.
+**Repaired (prior knife):** 1 period (`2025-12-31` canary).
+
+## Ops repair session (2026-07-24)
+
+| Metric | Before | After |
+|--------|-------:|------:|
+| Heuristic `provider_truncated` periods | **23** | **20** |
+| Periods at East Money ~200k page-cap land (`rows≈100×page_size`) | **13** | **0** |
+
+**Batch:** `org_holding_period_repair_truncated.py --max-periods 23` (sequential sharded fetch). Log: `analysis/org_trunc_repair_ops_20260724.log` · agent mirror `/tmp/org_trunc_repair_20260724.log`.
+
+**Landed (page-cap cleared, sample):** `2023-12-31` 793823 rows · `2024-12-31` 661169 · `2024-06-30` (peer batch) · `2019-06-30` 243252 (local retry).
+
+**Failures (2026-07-24 batch)**
+
+| Period | Error | Notes |
+|--------|-------|-------|
+| `2025-06-30` | `No space left on device` on DuckDB `COMMIT` after fetch | Disk ~99% full; raw stuck **200000** until retry. |
+
+**Retry (2026-07-25, disk ~11–12GiB free):** `org_holding_period_repair_truncated.py --period 2025-06-30` → **745991** rows · **5464** stocks · `provider_count=745991` · `truncated=false` · **9** shards. Log: `analysis/org_20250630_repair_20260725.log` · report `data/reports/org_holding_truncation_repair_latest.json` (`20260724T235226Z`).
+
+**Still flagged (19):** mostly DB-only heuristic `landed_stocks < 0.95×baseline` on older/smaller universes — **not** live page-cap truncation. **No** mass re-repair unless cap land reproduces.
 
 ## daily_update anti-truncation
 
@@ -58,7 +79,8 @@ Every run: `org_holding_period_gap_report` + `population_for_period` → if `pro
 ## Residuals
 
 - **QFII**: 22-period gaps — document only; separate bounded knife.
-- **org**: remaining truncated periods → ops `org_holding_period_repair_truncated.py` (oldest-first, ≤40/session).
+- **org page-cap:** **cleared** (`2025-06-30` repaired 2026-07-25).
+- **org heuristic baseline flags:** **19** periods — tune gap heuristic or accept historical under-baseline (not cap-silent-truncation).
 - holders/qfii: truncate-aware loop only until live count proves cap breach.
 
 ## SHAs
@@ -71,4 +93,4 @@ Every run: `org_holding_period_gap_report` + `population_for_period` → if `pro
 
 ## Verdict
 
-**FIXED** (code + sharded fetch proof + canary `2025-12-31` land). **PARTIAL** live corpus: **23** truncated periods remain — use ops script (oldest-first, ≤40/session); **QFII** gaps = next knife.
+**FIXED** (code + sharded fetch + canary `2025-12-31` + **`2025-06-30`** page-cap retry). **PARTIAL** heuristic audit: truncated **23→19** (baseline-ratio flags on older periods; not page-cap). **QFII** 22-period gaps = next knife (document only here).

@@ -1,0 +1,69 @@
+truncated_before: {"count": 23, "periods": ["2018-12-31", "2019-03-31", "2019-06-30", "2019-09-30", "2019-12-31", "2020-03-31", "2020-06-30", "2020-09-30", "2020-12-31", "2021-03-31", "2021-06-30", "2021-09-30", "2021-12-31", "2022-03-31", "2022-06-30", "2022-09-30", "2022-12-31", "2023-03-31", "2023-06-30", "2023-12-31", "2024-06-30", "2024-12-31", "2025-06-30"]}
+[org-trunc-repair] 1/23 period=2018-12-31 before rows=209904 stocks=3654
+[org-trunc-repair] 2/23 period=2019-03-31 before rows=54895 stocks=3607
+[org-trunc-repair] 3/23 period=2019-06-30 before rows=243252 stocks=3710
+[org-trunc-repair] 4/23 period=2019-09-30 before rows=57871 stocks=3664
+[org-trunc-repair] 5/23 period=2019-12-31 before rows=199993 stocks=3062
+[org-trunc-repair] 6/23 period=2020-03-31 before rows=61521 stocks=3799
+[org-trunc-repair] 7/23 period=2020-06-30 before rows=200000 stocks=2686
+[org-trunc-repair] 8/23 period=2020-09-30 before rows=66816 stocks=4033
+[org-trunc-repair] 9/23 period=2020-12-31 before rows=199999 stocks=2336
+[org-trunc-repair] 10/23 period=2021-03-31 before rows=70724 stocks=4174
+[org-trunc-repair] 11/23 period=2021-06-30 before rows=200000 stocks=2392
+[org-trunc-repair] 12/23 period=2021-09-30 before rows=77941 stocks=4389
+[org-trunc-repair] 13/23 period=2021-12-31 before rows=200000 stocks=2256
+[org-trunc-repair] 14/23 period=2022-03-31 before rows=25203 stocks=1391
+[org-trunc-repair] 15/23 period=2022-06-30 before rows=200000 stocks=2307
+[org-trunc-repair] 16/23 period=2022-09-30 before rows=91896 stocks=4894
+[org-trunc-repair] 17/23 period=2022-12-31 before rows=200000 stocks=2258
+[org-trunc-repair] 18/23 period=2023-03-31 before rows=94731 stocks=5104
+[org-trunc-repair] 19/23 period=2023-06-30 before rows=200000 stocks=1916
+[org-trunc-repair] 20/23 period=2023-12-31 before rows=199999 stocks=1825
+[org-trunc-repair] 21/23 period=2024-06-30 before rows=200000 stocks=1887
+[org-trunc-repair] 22/23 period=2024-12-31 before rows=200000 stocks=1876
+[org-trunc-repair] 23/23 period=2025-06-30 before rows=200000 stocks=1606
+Traceback (most recent call last):
+  File "/Users/dp/Documents/M/stock/chunkymonkey/backend/scripts/org_holding_period_repair_truncated.py", line 156, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/dp/Documents/M/stock/chunkymonkey/backend/scripts/org_holding_period_repair_truncated.py", line 133, in main
+    out = repair_truncated_periods(
+        conn,
+    ...<3 lines>...
+        dry_run=args.dry_run,
+    )
+  File "/Users/dp/Documents/M/stock/chunkymonkey/backend/scripts/org_holding_period_repair_truncated.py", line 73, in repair_truncated_periods
+    result = sync_period(conn, period, allow_existing_refresh=True)
+  File "/Users/dp/Documents/M/stock/chunkymonkey/backend/services/org_holding_aif10.py", line 469, in sync_period
+    outcome = write_org_holding_formal_then_mirror(
+        conn, rows, enable_legacy_mirror=True
+    )
+  File "/Users/dp/Documents/M/stock/chunkymonkey/backend/services/data_sources/disclosure_dual_write.py", line 261, in write_org_holding_formal_then_mirror
+    outcome = land_then_accept_disclosure_partition(
+        "org_holding",
+    ...<6 lines>...
+        request={"api": API, "available_date": partition, "source": SOURCE},
+    )
+  File "/Users/dp/Documents/M/stock/chunkymonkey/backend/services/data_sources/disclosure_transport.py", line 538, in land_then_accept_disclosure_partition
+    return accept_disclosure_from_landing(
+        domain, conn, str(batch.batch_id), bootstrap=False
+    )
+  File "/Users/dp/Documents/M/stock/chunkymonkey/backend/services/data_sources/disclosure_transport.py", line 495, in accept_disclosure_from_landing
+    return accept_org_holding_batch(conn, resolved, handed, handoff=handed)
+  File "/Users/dp/Documents/M/stock/chunkymonkey/backend/services/data_sources/org_holding_acceptance.py", line 190, in accept_org_holding_batch
+    return accept_disclosure_event_batch(
+        conn,
+    ...<6 lines>...
+        error_type=OrgHoldingAcceptanceError,
+    )
+  File "/Users/dp/Documents/M/stock/chunkymonkey/backend/services/data_sources/disclosure_event_partition.py", line 672, in accept_disclosure_event_batch
+    conn.execute("COMMIT")
+    ~~~~~~~~~~~~^^^^^^^^^^
+  File "/Users/dp/Documents/M/stock/chunkymonkey/backend/services/duck_adapter.py", line 202, in execute
+    return self._exec(sql, params)
+           ~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/dp/Documents/M/stock/chunkymonkey/backend/services/duck_adapter.py", line 192, in _exec
+    cur = self._con.execute(sql)
+_duckdb.FatalException: FATAL Error: Failed to create checkpoint because of error: FATAL Error: Failed to create checkpoint: IO Error: Could not write file "/Users/dp/Documents/M/stock/chunkymonkey/data/smartmoney.duckdb": No space left on device
+ROLLBACK failed; connection state is unknown: FatalException: FATAL Error: Failed: database has been invalidated because of a previous fatal error. The database must be restarted prior to being used again.
+Original error: "Failed to create checkpoint because of error: FATAL Error: Failed to create checkpoint: IO Error: Could not write file "/Users/dp/Documents
