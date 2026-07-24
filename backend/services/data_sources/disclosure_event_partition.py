@@ -70,6 +70,9 @@ class DisclosureEventDomain:
     content_hash_fields: tuple[str, ...]
     schema_contract: Mapping[str, Any]
     validate_provider_row: Callable[[Mapping[str, Any], str], dict[str, Any]]
+    # partition = delete all rows for partition_field (default).
+    # report_dates_in_batch = org_holding: multiple report_date share available_date.
+    canonical_delete_scope: str = "partition"
 
 
 def require_disclosure_handoff(
@@ -591,19 +594,31 @@ def accept_disclosure_event_batch(
         accepted_at = available_at
     field_names = [str(f["name"]) for f in domain.schema_contract["fields"]]
     insert_cols = ", ".join(field_names)
-    placeholders = ", ".join("?" for _ in field_names)
+    insert_placeholders = ", ".join("?" for _ in field_names)
     values = [tuple(row[name] for name in field_names) for row in canonical]
     partition_col = domain.partition_field
 
     conn.execute("BEGIN TRANSACTION")
     try:
-        conn.execute(
-            f"DELETE FROM {domain.canonical_table} WHERE {partition_col} = ?",
-            [partition],
-        )
+        if domain.canonical_delete_scope == "report_dates_in_batch":
+            report_dates = sorted({str(row["report_date"]) for row in canonical})
+            delete_placeholders = ", ".join("?" for _ in report_dates)
+            conn.execute(
+                f"""
+                DELETE FROM {domain.canonical_table}
+                 WHERE {partition_col} = ?
+                   AND report_date IN ({delete_placeholders})
+                """,
+                [partition, *report_dates],
+            )
+        else:
+            conn.execute(
+                f"DELETE FROM {domain.canonical_table} WHERE {partition_col} = ?",
+                [partition],
+            )
         _call(after_step, "after_canonical_delete")
         conn.executemany(
-            f"INSERT INTO {domain.canonical_table} ({insert_cols}) VALUES ({placeholders})",
+            f"INSERT INTO {domain.canonical_table} ({insert_cols}) VALUES ({insert_placeholders})",
             values,
         )
         _call(after_step, "after_canonical_insert")

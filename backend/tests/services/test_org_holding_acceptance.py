@@ -177,6 +177,56 @@ def test_publish_land_accept_roundtrip_fixture(conn) -> None:
     assert status == "ACCEPTED"
 
 
+def test_accept_merge_preserves_sibling_report_date_in_shared_partition(conn) -> None:
+    """2018-12-31 and 2019-03-31 share available_date=20190430 — merge by report_date."""
+    contract = load_org_holding_contract()
+    handed = propagate_disclosure_execution_contract("org_holding", contract)
+    shared = "20190430"
+    observed = datetime(2019, 4, 30, 18, 0, tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(
+        timezone.utc
+    )
+    q1 = _row(
+        report_date="20190331",
+        available_date=shared,
+        holder_code="10010626",
+    )
+    batch_q1 = OrgHoldingLandingBatch(
+        batch_id="org_holding:q1",
+        partition_value=shared,
+        observed_at=observed,
+        available_at=observed,
+        rows=[q1],
+        request={"api": "RPT_MAIN_ORGHOLDDETAIL", "available_date": shared},
+        source=SOURCE,
+        contract_version=CONTRACT_VERSION,
+    )
+    out1 = publish_accepted_org_holding_partition(conn, batch_q1, handed)
+    assert out1.status == "ACCEPTED"
+    annual = _row(
+        report_date="20181231",
+        available_date=shared,
+        holder_code="10020001",
+        holder_name="年报机构",
+    )
+    batch_annual = OrgHoldingLandingBatch(
+        batch_id="org_holding:annual",
+        partition_value=shared,
+        observed_at=observed,
+        available_at=observed,
+        rows=[annual],
+        request={"api": "RPT_MAIN_ORGHOLDDETAIL", "available_date": shared},
+        source=SOURCE,
+        contract_version=CONTRACT_VERSION,
+    )
+    out2 = publish_accepted_org_holding_partition(conn, batch_annual, handed)
+    assert out2.status == "ACCEPTED"
+    rows = conn.execute(
+        f"SELECT report_date, holder_code FROM {CANONICAL_TABLE} ORDER BY 1, 2"
+    ).fetchall()
+    assert len(rows) == 2
+    assert {str(r[0]) for r in rows} == {"20181231", "20190331"}
+
+
 def test_disclosure_handoff_rejects_wrong_contract_type() -> None:
     from services.data_sources.holders_top10_contract import load_holders_top10_contract
 

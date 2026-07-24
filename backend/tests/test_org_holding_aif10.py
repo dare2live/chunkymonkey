@@ -365,6 +365,49 @@ def test_sync_period_refuses_mass_refresh_when_period_present(monkeypatch):
     con.close()
 
 
+def test_sync_period_allows_fetch_when_sibling_shares_available_partition(monkeypatch):
+    """Older quarter missing while sibling populates same available_date partition."""
+    con = duckdb.connect(":memory:")
+    m.ensure_tables(con)
+    con.execute(
+        "INSERT INTO raw_org_holding_aif10 "
+        "(report_date, stock_code, holder_code, fund_derivecode) "
+        "VALUES ('2019-03-31', '600000', 'H1', '')"
+    )
+    con.commit()
+    monkeypatch.setattr(m, "accepted_has_org_holding_partition", lambda *_a, **_k: True)
+    fetched: list[str] = []
+
+    def _fake_fetch(period: str):
+        fetched.append(period)
+        return [
+            {
+                "REPORT_DATE": "20181231",
+                "STOCK_CODE": "600000",
+                "HOLDER_CODE": "H1",
+                "FUND_DERIVECODE": "",
+            }
+        ]
+
+    monkeypatch.setattr(m, "_fetch_period", _fake_fetch)
+    monkeypatch.setattr(
+        "services.data_sources.disclosure_dual_write.write_org_holding_formal_then_mirror",
+        lambda _c, rows, **kwargs: type(
+            "Outcome",
+            (),
+            {
+                "canonical_rows": len(rows),
+                "partitions": ["20190430"],
+                "legacy_rows_written": len(rows),
+            },
+        )(),
+    )
+    out = m.sync_period(con, "2018-12-31", allow_existing_refresh=False)
+    assert fetched == ["2018-12-31"]
+    assert out["status"] in {"ok", "empty"}
+    con.close()
+
+
 def test_pipeline_acquire_org_path_is_incremental_only():
     """daily_update acquire must wire incremental, never org backfill."""
     from pathlib import Path

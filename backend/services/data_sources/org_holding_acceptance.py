@@ -135,6 +135,7 @@ DOMAIN = DisclosureEventDomain(
     + ("holder_name", "org_type_name", "total_shares", "free_shares_ratio"),
     schema_contract=SCHEMA_CONTRACT,
     validate_provider_row=_validate_provider_row,
+    canonical_delete_scope="report_dates_in_batch",
 )
 
 

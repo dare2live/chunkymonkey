@@ -239,7 +239,7 @@ def _normalize_rows(raw: list[dict] | None) -> list[dict]:
     """字段映射 + 报告期/可用日锚 + grain (剔除缺主键行)."""
     if not raw:
         return []
-    out: list[dict] = []
+    deduped: dict[tuple[str, str, str, str], dict] = {}
     # 注意: DuckDB 对带 offset 的字符串→TIMESTAMP 是"剥 offset 不换算" (实测 '+08:00' 串
     # 落墙钟值非 UTC 换算值) — 此处恒 '+00:00' (UTC) 才安全, 换写法前先实测落库值。
     fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -249,7 +249,8 @@ def _normalize_rows(raw: list[dict] | None) -> list[dict]:
         holder_code = (str(r.get("HOLDER_CODE")).strip() if r.get("HOLDER_CODE") not in (None, "") else None)
         if not stock_code or not report_date or not holder_code:
             continue
-        out.append({
+        fund_derive = (str(r.get("FUND_DERIVECODE")).strip() if r.get("FUND_DERIVECODE") not in (None, "") else "")
+        row = {
             "report_date": report_date,
             "available_date": disclosure_deadline(report_date),
             "stock_code": stock_code,
@@ -259,7 +260,7 @@ def _normalize_rows(raw: list[dict] | None) -> list[dict]:
             "holder_code": holder_code,
             "holder_name": (str(r.get("HOLDER_NAME")).strip() or None) if r.get("HOLDER_NAME") else None,
             "fund_code": (str(r.get("FUND_CODE")).strip() or None) if r.get("FUND_CODE") else None,
-            "fund_derivecode": (str(r.get("FUND_DERIVECODE")).strip() if r.get("FUND_DERIVECODE") not in (None, "") else ""),
+            "fund_derivecode": fund_derive,
             "fund_manager": (str(r.get("FUND_MANAGER")).strip() or None) if r.get("FUND_MANAGER") else None,
             "fund_type": (str(r.get("FUND_TYPE")).strip() or None) if r.get("FUND_TYPE") else None,
             "total_shares": _parse_float(r.get("TOTAL_SHARES")),
@@ -274,8 +275,9 @@ def _normalize_rows(raw: list[dict] | None) -> list[dict]:
             "source": SOURCE,
             "source_tier": SOURCE_TIER,
             "fetched_at": fetched_at,
-        })
-    return out
+        }
+        deduped[(report_date, stock_code, holder_code, fund_derive)] = row
+    return list(deduped.values())
 
 
 # ── ④ 存储 store: upsert ─────────────────────────────────────────────
@@ -403,6 +405,27 @@ def _period_row_count(conn: Any, report_date_iso: str) -> int:
     return int(row[0] or 0) if row else 0
 
 
+def _canonical_report_period_row_count(conn: Any, report_date_iso: str) -> int:
+    """Rows for this report_date only (not shared available_date partition)."""
+    from services.data_sources.org_holding_schema import CANONICAL_TABLE
+
+    compact = str(report_date_iso or "").replace("-", "")
+    if len(compact) != 8:
+        return 0
+    try:
+        row = conn.execute(
+            f"""
+            SELECT COUNT(*)
+              FROM {CANONICAL_TABLE}
+             WHERE report_date IN (?, ?)
+            """,
+            [report_date_iso, compact],
+        ).fetchone()
+    except Exception:  # noqa: BLE001 — schema may be absent in unit :memory:
+        return 0
+    return int(row[0] or 0) if row else 0
+
+
 def sync_period(
     conn: Any,
     report_date: str,
@@ -433,12 +456,13 @@ def sync_period(
             f"org_holding refuse mass refresh: period {iso} already has "
             f"{existing} local rows; incremental-only (fetch if missing)"
         )
-    # Already accepted for this period's available_date → refuse re-pull (mass ban).
-    if accepted_has_org_holding_partition(conn, iso) and not allow_existing_refresh:
+    # Report-period scoped: shared available_date partitions (e.g. 2018-12-31 +
+    # 2019-03-31 → 20190430) must not block fetch of the missing quarter.
+    canonical_rows = _canonical_report_period_row_count(conn, iso)
+    if canonical_rows > 0 and not allow_existing_refresh:
         raise OrgHoldingMassRefreshForbidden(
-            f"org_holding refuse mass refresh: period {iso} already accepted "
-            f"(available_date={_plannable_available_yyyymmdd(iso)}); "
-            "incremental-only (fetch if missing)"
+            f"org_holding refuse mass refresh: period {iso} already has "
+            f"{canonical_rows} canonical rows; incremental-only (fetch if missing)"
         )
     try:
         raw = _fetch_period(iso)
