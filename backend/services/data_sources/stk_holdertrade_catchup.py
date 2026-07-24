@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from services.data_sources.frontier_decision import plan_partition_catchup
+from services.data_sources.frontier_decision import CatchupOrder, plan_partition_catchup
 from services.data_sources.stk_holdertrade_schema import (
     CANONICAL_TABLE,
     COMPATIBILITY_TABLE,
@@ -67,9 +67,16 @@ def _canonical_watermark(conn: Any) -> str | None:
 
 
 def list_missing_holdertrade_ann_partitions(
-    conn: Any, *, limit: int = ANN_PARTITION_CATCHUP_MAX
+    conn: Any,
+    *,
+    limit: int = ANN_PARTITION_CATCHUP_MAX,
+    order: CatchupOrder = "newest_first",
 ) -> list[str]:
-    """Raw ann_dates absent from canonical (newest first; local-only)."""
+    """Raw ann_dates absent from canonical (local-only).
+
+    Daily tip repair: ``newest_first``. Full history integrity backfill:
+    ``oldest_first`` (owner: pre-formal raw→canon must reach raw_only=0).
+    """
     if limit <= 0:
         return []
     plan = plan_partition_catchup(
@@ -78,7 +85,7 @@ def list_missing_holdertrade_ann_partitions(
         accepted_partitions=_distinct_ann_dates(conn, CANONICAL_TABLE),
         watermark=_canonical_watermark(conn),
         max_partitions=limit,
-        order="newest_first",
+        order=order,
     )
     return list(plan.due_partitions)
 
@@ -102,7 +109,10 @@ def _rows_for_ann(conn: Any, ann_date: str) -> list[dict[str, Any]]:
 
 
 def catchup_missing_holdertrade_ann_partitions(
-    conn: Any, *, max_partitions: int = ANN_PARTITION_CATCHUP_MAX
+    conn: Any,
+    *,
+    max_partitions: int = ANN_PARTITION_CATCHUP_MAX,
+    order: CatchupOrder = "newest_first",
 ) -> dict[str, Any]:
     """Accept missing ann partitions from local raw via formal land→accept."""
     from services.data_sources.disclosure_dual_write import (
@@ -110,7 +120,7 @@ def catchup_missing_holdertrade_ann_partitions(
     )
 
     missing = list_missing_holdertrade_ann_partitions(
-        conn, limit=max_partitions
+        conn, limit=max_partitions, order=order
     )
     repaired: list[str] = []
     errors: list[str] = []

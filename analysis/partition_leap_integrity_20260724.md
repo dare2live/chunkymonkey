@@ -26,7 +26,7 @@
 |---|---|---|---|
 | **holders** | notice_date | fact_only 曾≈1271；catchup 后 CLEAN（含 600388/20260613） | **CLEAN**（原 TRUE_LEAP） |
 | **stk_holdernumber** | ann_date | 无 accept 平面 | **N/A** |
-| **stk_holdertrade** | ann_date | 共享 law 已接线；增量前 catchup | **WIRED** |
+| **stk_holdertrade** | ann_date | 共享 law 已接线；**全史 raw→canon raw_only=0** | **CLEAN** |
 | **daily / moneyflow / limit / index** | trade_date | 稠密；残差多为 publish tip 短滞后 | **PUBLISH_LAG** / OK |
 | **moneyflow_hsgt** | trade_date | known_empty 港休 | **EXPECTED_EMPTY** |
 | **margin** | trade_date | bounded catchup；产品诚实门 | **DEFER** |
@@ -65,8 +65,17 @@ bound ≤ 40
 
 ---
 
-## 4. 残差
+## 4. 历史完整性回填（owner: 漏掉的都要）
+
+| 域 | 动作 | Live |
+|---|---|---|
+| **stk_holdertrade** | 本地 raw→formal 全史 catchup（1982 分区 / +63449 行） | **raw_only=0**；canon 自 `20190102`；canon_only=6（formal 领先 raw，正常） |
+| **holders** | 先前 tip-leap drain | **fact_only=0** |
+
+日常增量仍 `newest_first`≤40；全史债用 `oldest_first` / 多轮 catchup 直到 raw_only=0。
+
+## 5. 残差
 
 - Type-B `fact_*` tip 滞后 → publish 闭环（另轨）
-- org 中间季 → 显式 backfill 刀
+- org 中间季 → 显式 backfill 刀（契约 log-not-fill，非 tip-leap）
 - 禁：org mass / by_ts_code 全宇宙日扫 / Continuity 洗绿 / Optuna

@@ -50,7 +50,7 @@ def test_catchup_calls_formal_writer_for_due_partitions(monkeypatch):
 
     monkeypatch.setattr(
         "services.data_sources.stk_holdertrade_catchup.list_missing_holdertrade_ann_partitions",
-        lambda _conn, limit=40: ["20260613"],
+        lambda _conn, limit=40, order="newest_first": ["20260613"],
     )
 
     def _rows(_conn, ann):
