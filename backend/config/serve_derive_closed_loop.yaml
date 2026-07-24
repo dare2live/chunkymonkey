@@ -71,7 +71,7 @@ surfaces:
     status: wired_population_repair
     # under_populated + dense raw → repair_accept_from_local_raw; thin → repair_fetch_period.
     # older quarter holes → fill_older_period N=1/run (not mass / not backfill pipeline).
-    notes: "no by-date invent; no full-history mass; F6 min_org_accepted_stocks floor"
+    notes: "no by-date invent; no full-history mass; F6 min_org_accepted_stocks floor; eastmoney 100-page cap → sharded fetch + pagination_integrity"
 
   - id: type_b_fact_publish
     serve: "moneyflow/limit/index/dc_member/top_inst fact tables"
@@ -95,5 +95,7 @@ integrity_msg_patterns:
   - data_audit
   - 库存断流
   - under_populated_accepted
+  - provider_truncated
+  - org_holding_provider_truncated
   - institution_profile.*失败
   - 机构档案

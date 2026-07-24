@@ -80,6 +80,21 @@ def count_accepted_org_stocks(conn: Any, report_date: str) -> Optional[int]:
     return int(row[0] or 0) if row else 0
 
 
+def count_raw_org_rows(conn: Any, report_date: str) -> int:
+    try:
+        row = conn.execute(
+            """
+            SELECT COUNT(*)
+              FROM raw_org_holding_aif10
+             WHERE report_date = ? OR report_date = ?
+            """,
+            [report_date, report_date.replace("-", "")],
+        ).fetchone()
+    except Exception:  # noqa: BLE001
+        return 0
+    return int(row[0] or 0) if row else 0
+
+
 def population_for_period(
     conn: Any,
     *,
@@ -88,22 +103,42 @@ def population_for_period(
     accepted_has: bool,
 ) -> dict[str, Any]:
     raw_stocks = count_raw_org_stocks(conn, report_date) if local_has else 0
+    raw_rows = count_raw_org_rows(conn, report_date) if local_has else 0
     accepted_stocks = (
         count_accepted_org_stocks(conn, report_date) if accepted_has else 0
+    )
+    baseline = max_accepted_stocks_across_partitions(conn)
+    from services.data_sources.pagination_integrity import provider_truncated_heuristic
+    from services.org_holding_aif10 import PAGE_SIZE
+
+    truncated, trunc_reasons = provider_truncated_heuristic(
+        landed_rows=raw_rows,
+        landed_stocks=raw_stocks,
+        baseline_stocks=baseline,
+        page_size=PAGE_SIZE,
     )
     if accepted_has and accepted_stocks is None:
         return {
             "under_populated": False,
+            "provider_truncated": truncated,
             "accepted_stocks": None,
             "raw_stocks": raw_stocks,
+            "raw_rows": raw_rows,
             "accepted_over_raw_ratio": None,
-            "reasons": ["canonical_unavailable"],
+            "reasons": ["canonical_unavailable", *trunc_reasons],
             "status": "population_unknown",
         }
-    return evaluate_org_population(
+    pop = evaluate_org_population(
         accepted_stocks=int(accepted_stocks or 0),
         raw_stocks=raw_stocks,
     )
+    pop = dict(pop)
+    pop["raw_rows"] = raw_rows
+    pop["provider_truncated"] = truncated
+    if truncated:
+        pop["under_populated"] = True
+        pop["reasons"] = list(pop.get("reasons") or []) + trunc_reasons
+    return pop
 
 
 def max_accepted_stocks_across_partitions(conn: Any) -> int:
@@ -140,7 +175,10 @@ def decide_org_gap_action(
 
     thr = org_population_thresholds()
     under = bool(population.get("under_populated"))
+    truncated = bool(population.get("provider_truncated"))
     raw_n = int(population.get("raw_stocks") or 0)
+    if truncated and local_has:
+        return "repair_fetch_period", "provider_truncated"
     if accepted_has and under:
         if local_has and raw_n >= thr["min_accepted_stocks"]:
             return "repair_accept_from_local_raw", "under_populated_accepted"

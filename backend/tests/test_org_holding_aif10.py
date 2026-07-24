@@ -380,14 +380,21 @@ def test_sync_period_allows_fetch_when_sibling_shares_available_partition(monkey
 
     def _fake_fetch(period: str):
         fetched.append(period)
-        return [
-            {
-                "REPORT_DATE": "20181231",
-                "STOCK_CODE": "600000",
-                "HOLDER_CODE": "H1",
-                "FUND_DERIVECODE": "",
-            }
-        ]
+        return {
+            "rows": [
+                {
+                    "REPORT_DATE": "20181231",
+                    "SECURITY_CODE": "600000",
+                    "HOLDER_CODE": "H1",
+                    "FUND_DERIVECODE": "",
+                }
+            ],
+            "provider_count": 1,
+            "fetched_rows": 1,
+            "truncated": False,
+            "shard_count": 1,
+            "land_reasons": [],
+        }
 
     monkeypatch.setattr(m, "_fetch_period", _fake_fetch)
     monkeypatch.setattr(
@@ -406,6 +413,67 @@ def test_sync_period_allows_fetch_when_sibling_shares_available_partition(monkey
     assert fetched == ["2018-12-31"]
     assert out["status"] in {"ok", "empty"}
     con.close()
+
+
+def test_org_gap_provider_truncated_signature(monkeypatch):
+    """~200k rows with low stock mass → repair_fetch_period (not ok skip)."""
+    from datetime import date
+
+    from services.org_holding_population import decide_org_gap_action, population_for_period
+
+    con = duckdb.connect(":memory:")
+    m.ensure_tables(con)
+    for i in range(200_000):
+        con.execute(
+            "INSERT INTO raw_org_holding_aif10 "
+            "(report_date, stock_code, holder_code, fund_derivecode) "
+            "VALUES ('2025-12-31', ?, ?, '')",
+            [f"{i % 800:06d}", f"H{i}"],
+        )
+    monkeypatch.setattr(
+        "services.org_holding_population.max_accepted_stocks_across_partitions",
+        lambda _c: 5520,
+    )
+    pop = population_for_period(
+        con,
+        report_date="2025-12-31",
+        local_has=True,
+        accepted_has=True,
+    )
+    assert pop["provider_truncated"] is True
+    action, status = decide_org_gap_action(
+        accepted_has=True,
+        local_has=True,
+        population=pop,
+    )
+    assert action == "repair_fetch_period"
+    assert status == "provider_truncated"
+    con.close()
+
+
+def test_fetch_period_sharded_contract(monkeypatch):
+    """_fetch_period returns metrics dict consumed by sync_period."""
+    captured = {}
+
+    def _fake_sharded(**kwargs):
+        captured.update(kwargs)
+        return {
+            "rows": [{"SECURITY_CODE": "600000", "REPORT_DATE": "2025-12-31", "HOLDER_CODE": "1"}],
+            "provider_count": 1,
+            "fetched_rows": 1,
+            "truncated": False,
+            "shard_count": 2,
+            "land_reasons": [],
+        }
+
+    monkeypatch.setattr(
+        "aif10_scraper.fetch_all_pages_sharded",
+        lambda *a, **k: _fake_sharded(**k),
+    )
+    out = m._fetch_period("2025-12-31")
+    assert out["fetched_rows"] == 1
+    assert out["truncated"] is False
+    assert captured.get("max_pages_per_query") == m.EASTMONEY_MAX_PAGES
 
 
 def test_pipeline_acquire_org_path_is_incremental_only():
