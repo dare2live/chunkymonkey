@@ -76,6 +76,6 @@ bound ≤ 40
 
 ## 5. 残差
 
-- Type-B `fact_*` tip 滞后 → publish 闭环（另轨）
+- Type-B `fact_*` tip 滞后 → **same-run publish catchup SHIPPED** (`type_b_same_run_publish_20260724.md`)
 - org 中间季 → bounded fill N=1/run（`org_period_bounded_fill_20260724.md`；禁 mass / backfill pipeline）
 - 禁：org mass / by_ts_code 全宇宙日扫 / Continuity 洗绿 / Optuna

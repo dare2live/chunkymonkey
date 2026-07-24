@@ -2825,6 +2825,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/type_b_fact_publish_catchup.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_dc_member_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_dc_member_publish_b1.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_dc_member_daily"
@@ -2946,6 +2952,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/technical_states/__init__.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_index_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/type_b_fact_publish_catchup.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_index_daily"
     },
@@ -3263,6 +3275,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/type_b_fact_publish_catchup.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_limit_daily"
@@ -3365,6 +3383,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/type_b_fact_publish_catchup.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_daily"
@@ -3384,6 +3408,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_stock_moneyflow_publish_b2.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_type_b_fact_publish_catchup.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_daily"
     },
@@ -3474,6 +3504,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/stock_moneyflow_publish.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/type_b_fact_publish_catchup.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
     },
@@ -3786,6 +3822,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/top_inst_seat_publish.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_top_inst_seat_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/type_b_fact_publish_catchup.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_top_inst_seat_daily"
     },
@@ -5975,6 +6017,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/type_b_fact_publish_catchup.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_dc_member"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_build_dc_industry_view.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_dc_member"
@@ -6144,6 +6192,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/pipeline/acquire.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_index_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/type_b_fact_publish_catchup.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_index_daily"
     },
@@ -6378,6 +6432,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/stock_limit_publish.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_limit_list_d"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/type_b_fact_publish_catchup.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_limit_list_d"
     },
@@ -6695,6 +6755,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/type_b_fact_publish_catchup.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_moneyflow"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow"
@@ -6702,6 +6768,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_stock_moneyflow_publish_b2.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_moneyflow"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_type_b_fact_publish_catchup.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow"
     },
@@ -6750,6 +6822,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/stock_moneyflow_publish.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_moneyflow_dc"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/type_b_fact_publish_catchup.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow_dc"
     },
@@ -7289,6 +7367,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/type_b_fact_publish_catchup.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_top_inst"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_check_grain_uniqueness.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_top_inst"
@@ -7619,9 +7703,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1222,
-    "generated_at": "2026-07-24T02:43:41.309282+00:00",
-    "node_count": 436,
+    "edge_count": 1236,
+    "generated_at": "2026-07-24T02:48:44.611168+00:00",
+    "node_count": 438,
     "version": 2
   },
   "nodes": [
@@ -9004,6 +9088,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/type_b_fact_publish_catchup.py"
+      },
+      "id": "consumer:backend/services/type_b_fact_publish_catchup.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/universe.py"
       },
       "id": "consumer:backend/services/universe.py",
@@ -9455,6 +9547,14 @@
         "path": "backend/tests/services/test_top_inst_seat_publish_b2.py"
       },
       "id": "consumer:backend/tests/services/test_top_inst_seat_publish_b2.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_type_b_fact_publish_catchup.py"
+      },
+      "id": "consumer:backend/tests/services/test_type_b_fact_publish_catchup.py",
       "kind": "consumer"
     },
     {

@@ -73,6 +73,15 @@ surfaces:
     # older quarter holes → fill_older_period N=1/run (not mass / not backfill pipeline).
     notes: "no by-date invent; no full-history mass; F6 min_org_accepted_stocks floor"
 
+  - id: type_b_fact_publish
+    serve: "moneyflow/limit/index/dc_member/top_inst fact tables"
+    derive: services.type_b_fact_publish_catchup.catchup_type_b_fact_publish
+    process_step: acquire_after_registry_drain
+    binding: daily_acquire
+    freshness_axis: trade_date
+    status: wired
+    notes: "bounded window only; never start/end=None full rebuild; ≤40d"
+
   - id: qfq_price
     serve: "qfq analysis view"
     derive: chunkyctl derive qfq

@@ -78,11 +78,10 @@ def run_acquire(ctx: PipelineContext) -> None:
     #   raw_profit_forecast_snapshot_daily 0 live 读者 (snapshot 设计防leakage但无消费); 档B 若需景气度走 tushare forecast/report_rc。
 
     # Step 2.94: registry --all-due drain FIRST (published automatic domains).
-    # Structural (2026-07-22 RCA): formal on_demand daily/ST catchup must NOT
-    # hard-gate / kidnap published-domain catchup (ths_hot etc.). S3 intent =
-    # caller-only orchestrator with per-domain fail-closed siblings — not a
-    # fused "today's K/ST empty ⇒ abort whole acquire" dragon.
     drain_results = _sync_registry_drain(ctx)
+    from services.type_b_fact_publish_catchup import run_acquire_type_b_publish_catchup
+
+    run_acquire_type_b_publish_catchup(ctx)  # Step 2.945 bounded raw→fact
 
     # Step 2.95: formal on_demand daily/ST — latest eligible land_then_accept.
     # Per-domain soft (pending) / degraded (hard fail); never aborts drain
