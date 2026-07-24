@@ -67,7 +67,7 @@ Every run: `org_holding_period_gap_report` + `population_for_period` → if `pro
 |------|-----|---------|
 | miaoxiang | `e162d7b` | fix(aif10): shard paginated fetches past East Money 100-page cap |
 | chunkymonkey | `888bfde75` | fix(org): sharded aif10 fetch and pagination integrity gates |
-| chunkymonkey | _(follow-up SHA)_ | ops truncation repair script + evidence update |
+| chunkymonkey | `859dd6e8c` | ops truncation repair script + canary evidence |
 
 ## Verdict
 
