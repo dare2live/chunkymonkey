@@ -3386,7 +3386,16 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
     failed_dates: set[str] = set()
     min_rows = int(spec.get("min_rows_per_batch", 0))
     quota_halt = False
+    # Tip-leap hole repair before tip+1 incremental (shared plan_partition_catchup).
+    # Sparse ann domains: raw may hold mid partitions while MAX(wm) already leaped.
+    partition_leap_catchup: dict[str, Any] | None = None
     try:
+        if domain == "stk_holdertrade" and not backfill:
+            from services.data_sources.stk_holdertrade_catchup import (
+                catchup_missing_holdertrade_ann_partitions,
+            )
+
+            partition_leap_catchup = catchup_missing_holdertrade_ann_partitions(conn)
         for params in batches:
             batch_date = str(params.get(spec.get("date_param", "trade_date"), "") or "").replace("-", "")
             mr_since = str(spec.get("min_rows_since", "") or "").replace("-", "")
@@ -3531,6 +3540,8 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         "last_date": last_ok_date,
         "ok": ok,
     }
+    if partition_leap_catchup is not None:
+        result["partition_leap_catchup"] = partition_leap_catchup
     if pending_publish:
         result["pending_publish"] = True
         result["pending_publish_reason"] = "pre_available_after_zero_rows"

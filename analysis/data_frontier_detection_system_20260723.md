@@ -21,6 +21,7 @@
 | Module | `services.data_sources.frontier_decision` |
 | Compare | `decide_frontier(axis, local_max, target_max, *, clock_pending, probe_failed)` |
 | Day policy | `plan_incremental_days(..., policy=atomic_skip\|ann_reprobe)` |
+| Leap catchup | `plan_partition_catchup` — tip-leap due=`source\\accepted`（P≤wm）∪ optional calendar\\known_empty；≤40；见 `partition_leap_integrity_20260724.md` |
 | Org hook | `org_holding_period_frontier_hook` — period 存在性；equal → remap `skip_behind`（禁 by-date invent） |
 
 Typed outcomes:

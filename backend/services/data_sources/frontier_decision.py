@@ -8,6 +8,12 @@ plugin bus, or DAG. Generalized from holders equal-day sparse fix (e040f4889).
 
 Axis values are domain frontiers (trade_date / notice_date / ann_date /
 report_period), never wall-clock 「对昨天」.
+
+Partition leap catchup (analysis/partition_leap_integrity_20260724.md):
+  Tip watermark advances via MAX(axis) can skip sparse mid partitions.
+  Holes sit **at or below** the tip (set difference), not tip+1.
+  ``plan_partition_catchup`` owns the due-set law; domain modules execute
+  bounded repair (≤40). Do not couple dossier into sync.
 """
 from __future__ import annotations
 
@@ -23,6 +29,7 @@ FrontierOutcome = Literal[
     "hard_fail",
 ]
 WatermarkDayPolicy = Literal["atomic_skip", "ann_reprobe"]
+CatchupOrder = Literal["newest_first", "oldest_first"]
 
 
 @dataclass(frozen=True)
@@ -31,6 +38,18 @@ class FrontierDecision:
     axis: FrontierAxis
     local_max: Optional[str]
     target_max: Optional[str]
+    reason: str
+
+
+@dataclass(frozen=True)
+class PartitionCatchupPlan:
+    """Bounded due partitions for tip-leap / calendar-gap repair."""
+
+    axis: FrontierAxis
+    due_partitions: tuple[str, ...]
+    watermark: Optional[str]
+    source_hole_count: int
+    calendar_gap_count: int
     reason: str
 
 
@@ -173,6 +192,88 @@ def plan_incremental_days(
     return out
 
 
+def plan_partition_catchup(
+    *,
+    axis: FrontierAxis,
+    source_partitions: Sequence[str],
+    accepted_partitions: Sequence[str],
+    watermark: Optional[str] = None,
+    calendar_partitions: Optional[Sequence[str]] = None,
+    known_empty: Optional[Sequence[str]] = None,
+    max_partitions: int = 40,
+    order: CatchupOrder = "newest_first",
+) -> PartitionCatchupPlan:
+    """Compute due partitions for tip-leap holes and optional calendar gaps.
+
+    Law (Occam):
+      Pattern A (leap): ``source \\ accepted`` where ``P <= watermark``
+        (when watermark is None, all source-only partitions are candidates).
+      Pattern B (calendar): ``calendar \\ accepted \\ known_empty`` where
+        ``P <= watermark`` — caller opts in by passing ``calendar_partitions``
+        (dense trade-date expectation). Sparse ann/notice domains must **not**
+        pass a full calendar (empty days are expected).
+
+    Tip+1-only incremental planning cannot see holes **below** a leaped MAX
+    tip; this planner is the shared set-difference law. Bound ``max_partitions``
+    (eng_gov ≤40d). Domain modules still own fetch/accept execution.
+    """
+    if max_partitions <= 0:
+        return PartitionCatchupPlan(
+            axis=axis,
+            due_partitions=(),
+            watermark=normalize_frontier_value(watermark, axis=axis),
+            source_hole_count=0,
+            calendar_gap_count=0,
+            reason="max_partitions_non_positive",
+        )
+
+    def _norm_set(values: Sequence[str]) -> set[str]:
+        out: set[str] = set()
+        for raw in values:
+            n = normalize_frontier_value(raw, axis=axis)
+            if n:
+                out.add(n)
+        return out
+
+    source = _norm_set(source_partitions)
+    accepted = _norm_set(accepted_partitions)
+    known = _norm_set(known_empty or ())
+    wm = normalize_frontier_value(watermark, axis=axis)
+
+    def _at_or_behind_tip(p: str) -> bool:
+        return wm is None or p <= wm
+
+    source_holes = {p for p in (source - accepted) if _at_or_behind_tip(p)}
+    calendar_gaps: set[str] = set()
+    if calendar_partitions is not None:
+        calendar = _norm_set(calendar_partitions)
+        calendar_gaps = {
+            p
+            for p in (calendar - accepted - known)
+            if _at_or_behind_tip(p)
+        }
+
+    due_set = source_holes | calendar_gaps
+    due_sorted = sorted(due_set, reverse=(order == "newest_first"))
+    due = tuple(due_sorted[: int(max_partitions)])
+    reason = "no_due_partitions"
+    if due:
+        if source_holes and calendar_gaps:
+            reason = "leap_holes_and_calendar_gaps"
+        elif source_holes:
+            reason = "source_accepted_leap_holes"
+        else:
+            reason = "calendar_expected_gaps"
+    return PartitionCatchupPlan(
+        axis=axis,
+        due_partitions=due,
+        watermark=wm,
+        source_hole_count=len(source_holes),
+        calendar_gap_count=len(calendar_gaps),
+        reason=reason,
+    )
+
+
 def org_holding_period_frontier_hook(
     *,
     local_max_period: Optional[str],
@@ -205,12 +306,15 @@ def org_holding_period_frontier_hook(
 
 
 __all__ = [
+    "CatchupOrder",
     "FrontierAxis",
     "FrontierDecision",
     "FrontierOutcome",
+    "PartitionCatchupPlan",
     "WatermarkDayPolicy",
     "decide_frontier",
     "normalize_frontier_value",
     "org_holding_period_frontier_hook",
     "plan_incremental_days",
+    "plan_partition_catchup",
 ]

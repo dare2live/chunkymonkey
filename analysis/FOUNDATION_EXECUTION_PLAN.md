@@ -61,6 +61,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | Margin 1b v3 bounded catchup **in acquire** | FIXED path | `0f5af7e80` 一带；补跑 CLI≠正解 |
 | Holders ACCEPTED+same payload_hash skip-land | FIXED path | `67cd81c27` |
 | Holders notice-axis catchup（mid-period holes） | FIXED path | `542365446`；证据 `holders_ann_date_axis_20260724.md`；live drain 见 §3b |
+| Shared `plan_partition_catchup` tip-leap law | FIXED path | `frontier_decision.plan_partition_catchup`；holders 迁入 + `stk_holdertrade` 接线；证据 `partition_leap_integrity_20260724.md` |
 | Holdernumber RESTORE `by_ann_date` | FIXED | `9bde17735` |
 | Market qfq post-CTAS in-module compact | FIXED | `8f36809bf` / `a49a99786` |
 | Rewrite：删 canary + `rewrite_legacy` True 写回 | FIXED | git；见 §4 |
@@ -103,9 +104,10 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 
 | # | 项 | 类型 | Exit | 状态 |
 |---|---|---|---|---|
-| **A1** | holders fact→canonical notice 洞 drain（≈1271；含 600388/`20260613`） | ops | catchup 清空 fact-only 或 bounded one-shot；禁 by_ts_code mass | **OPEN**（代码已 ship，待 daily_update） |
-| **A2** | holdernumber `MAX(ann_date)` 探针（live=20260624） | probe | vendor 有更新则查 drain；无则标稀疏 OK | **OPEN** |
-| **A3** | Type-B fact publish 短滞后（moneyflow/limit/index） | ops | fact max 跟 raw≤1–2 交易日 | **OPEN**（轴 OK） |
+| **A1** | holders fact→canonical notice 洞 drain（≈1271；含 600388/`20260613`） | ops | catchup 清空 fact-only | **CLOSED** 2026-07-24 live：fact_only=0；`20260613`∈canon+accepted |
+| **A1b** | 共享 tip-leap catchup law + 跨域接线 | L2 | `plan_partition_catchup`；holders 迁入；≥1 披露域接线；证据 `partition_leap_integrity_20260724.md` | **FIXED path**（holdertrade wired；raw 锁后量化 interior） |
+| **A2** | holdernumber `MAX(ann_date)` 探针（live=20260624） | probe | vendor 有更新则查 drain；无则标稀疏 OK | **OPEN**（peer backfill `20260625–20260723` 进行中） |
+| **A3** | Type-B fact publish 短滞后（moneyflow/limit/index/dc） | ops | fact max 跟 raw≤1–2 交易日 | **OPEN**（class=PUBLISH_LAG，非 tip-leap） |
 | **A4** | org 中间历史季洞 | backfill knife | 仅显式刀；日常 incremental 不变 | **DEFER** |
 | **A5** | cyq 消费口径（C0 历史 FAIL） | semantic | 消费前换算/弃用；非采集轴 | **DEFER** |
 

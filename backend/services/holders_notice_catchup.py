@@ -4,11 +4,18 @@ Companion to ``holders_aif10`` incremental. MAX(notice_date) can advance while
 sparse mid-period UPDATE_DATE partitions stay only in legacy fact (measured
 2026-07-24: 600388 notice 20260613). Repair is holdernumber-class:
 local-fact accept + optional forward by_notice day land. Never by_ts_code mass
-or org by-period invent. Evidence: analysis/holders_ann_date_axis_20260724.md.
+or org by-period invent.
+
+Due-set law: shared ``plan_partition_catchup`` (tip-leap = source\\accepted
+where P≤watermark — not tip+1). Evidence:
+``analysis/holders_ann_date_axis_20260724.md`` ·
+``analysis/partition_leap_integrity_20260724.md``.
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+
+from services.data_sources.frontier_decision import plan_partition_catchup
 
 NOTICE_PARTITION_CATCHUP_MAX = 40  # eng_gov ≤40d / max partitions per run
 CANONICAL_TABLE = "canonical_top10_float_holders_period"
@@ -27,41 +34,69 @@ def _table_present(conn, name: str) -> bool:
         return False
 
 
+def _distinct_notice_dates(conn, table: str, *, source: str | None = None) -> list[str]:
+    if not _table_present(conn, table):
+        return []
+    if source is None:
+        rows = conn.execute(
+            f"""
+            SELECT DISTINCT replace(CAST(notice_date AS VARCHAR), '-', '') AS nd
+              FROM {table}
+             WHERE notice_date IS NOT NULL
+            """
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            f"""
+            SELECT DISTINCT replace(CAST(notice_date AS VARCHAR), '-', '') AS nd
+              FROM {table}
+             WHERE source = ?
+               AND notice_date IS NOT NULL
+            """,
+            [source],
+        ).fetchall()
+    out: list[str] = []
+    for row in rows:
+        if not row or not row[0]:
+            continue
+        nd = str(row[0])
+        if len(nd) == 8 and nd.isdigit():
+            out.append(nd)
+    return out
+
+
+def _canonical_watermark(conn) -> str | None:
+    if not _table_present(conn, CANONICAL_TABLE):
+        return None
+    row = conn.execute(
+        f"""
+        SELECT replace(CAST(MAX(notice_date) AS VARCHAR), '-', '')
+          FROM {CANONICAL_TABLE}
+        """
+    ).fetchone()
+    if not row or not row[0]:
+        return None
+    digits = "".join(ch for ch in str(row[0]) if ch.isdigit())
+    return digits[:8] if len(digits) >= 8 else None
+
+
 def list_missing_notice_partitions_from_fact(
     conn, *, limit: int = NOTICE_PARTITION_CATCHUP_MAX
 ) -> list[str]:
     """Fact notice_dates absent from canonical (newest first; local-only)."""
     if limit <= 0:
         return []
-    if not _table_present(conn, CANONICAL_TABLE):
-        return []
-    if not _table_present(conn, FACT_TABLE):
-        return []
-    # CTE names must not use fact_/mart_/dim_/raw_/stg_ prefixes — dead-ref
-    # scanner treats those as physical table refs (check_dead_references E).
-    rows = conn.execute(
-        f"""
-        WITH legacy_notice AS (
-          SELECT DISTINCT replace(CAST(notice_date AS VARCHAR), '-', '') AS nd
-            FROM {FACT_TABLE}
-           WHERE source = ?
-             AND notice_date IS NOT NULL
-        ),
-        accepted_notice AS (
-          SELECT DISTINCT replace(CAST(notice_date AS VARCHAR), '-', '') AS nd
-            FROM {CANONICAL_TABLE}
-        )
-        SELECT ln.nd
-          FROM legacy_notice ln
-          LEFT JOIN accepted_notice an ON ln.nd = an.nd
-         WHERE an.nd IS NULL
-           AND length(ln.nd) = 8
-         ORDER BY ln.nd DESC
-         LIMIT ?
-        """,
-        [SOURCE, int(limit)],
-    ).fetchall()
-    return [str(r[0]) for r in rows if r and r[0]]
+    source = _distinct_notice_dates(conn, FACT_TABLE, source=SOURCE)
+    accepted = _distinct_notice_dates(conn, CANONICAL_TABLE)
+    plan = plan_partition_catchup(
+        axis="notice_date",
+        source_partitions=source,
+        accepted_partitions=accepted,
+        watermark=_canonical_watermark(conn),
+        max_partitions=limit,
+        order="newest_first",
+    )
+    return list(plan.due_partitions)
 
 
 def catchup_missing_holders_notice_partitions(
@@ -93,6 +128,7 @@ def catchup_missing_holders_notice_partitions(
         "repaired_partitions": repaired,
         "errors": errors,
         "catchup_source": "local_fact_notice",
+        "catchup_law": "plan_partition_catchup",
     }
 
 
