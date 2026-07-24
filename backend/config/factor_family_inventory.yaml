@@ -1,0 +1,133 @@
+# Factor-family inventory + frequency gate matrix (Tier3 governance SSOT — stub v1)
+#
+# Authority: analysis/factor_family_governance_toplevel_20260724.md
+# Orthogonal to:
+#   - data_layers.yaml (legacy physical Type A/B table tags)
+#   - brick_registry.yaml (L2/L3 brick + FeatureBlock ids)
+#   - sync_registry.yaml (provider domain frequency/axis)
+#
+# Gate script: NOT WIRED (next L2 knife: check_factor_family_inventory.py)
+# Do NOT use for daily I/O until gate + tests land.
+
+version: 1
+
+_doc: >-
+  Semantic families for frozen DatasetSnapshot / B0-B5 stacking. One family
+  aggregates bricks + sync domains + refresh ownership. Missing repairable
+  holes → bounded 拉齐; never pad 0 or invent pre-data_start years.
+
+families:
+  price_volume_daily:
+    b_block: B0
+    frequency: daily
+    availability_axis: trade_date_eod
+    sync_domains: [daily]
+    bricks: [accepted_nominal_ohlcv_daily]
+    refresh_owner: acquire_formal_daily
+    coverage_start_policy: registry_data_start
+    stack_eligibility: ready
+
+  stock_state_form:
+    b_block: B1
+    frequency: daily
+    availability_axis: decision_time_visible_only
+    sync_domains: []
+    bricks:
+      - tier1_stock_state_stage_pattern_v1
+      - stock_state_stage_pattern_v0
+    refresh_owner: daily_process
+    coverage_start_policy: accepted_frontier
+    stack_eligibility: ready
+
+  market_sensing_breadth:
+    b_block: B2
+    frequency: daily
+    availability_axis: decision_time_eod_available_at_required
+    sync_domains: []
+    bricks:
+      - MarketContextSnapshot
+      - market_sensing_project_breadth_v0
+    refresh_owner: daily_process
+    coverage_start_policy: accepted_frontier
+    stack_eligibility: ready
+
+  vendor_flow_proxy:
+    b_block: B3
+    frequency: daily
+    availability_axis: trade_date
+    sync_domains: [moneyflow, moneyflow_dc]
+    bricks: []
+    refresh_owner: daily_acquire_catchup
+    coverage_start_policy: registry_data_start
+    stack_eligibility: defer
+    defer_reason: type_b_fact_publish_may_lag_raw
+
+  disclosure_holders_event:
+    b_block: B4
+    frequency: event
+    availability_axis: notice_date_and_available_at_required_null_excluded
+    sync_domains: [holders_aif10]
+    bricks:
+      - institution_event_holders_disclosure_v0
+      - DatasetSnapshot.holders_top10
+    refresh_owner: acquire_incremental_plus_dossier_derive
+    coverage_start_policy: bounded_fill
+    stack_eligibility: ready
+
+  org_disclosure_period:
+    b_block: B4
+    frequency: quarterly_period
+    availability_axis: report_period_plannable
+    sync_domains: [org_holding]
+    bricks: []
+    refresh_owner: acquire_period_gap_n1
+    coverage_start_policy: bounded_fill
+    stack_eligibility: defer
+    defer_reason: historical_quarter_holes_log_not_mass
+
+  formula_single:
+    b_block: B5
+    frequency: on_demand
+    availability_axis: prereg_only
+    sync_domains: []
+    bricks: []
+    refresh_owner: manual_only
+    coverage_start_policy: snapshot_bound
+    stack_eligibility: blocked
+    blocked_reason: RX_and_G_track_not_open
+
+gate_matrix:
+  - gate_id: G0_formal_daily_frontier
+    requires_families: [price_volume_daily]
+    check: formal_daily_accepted_frontier_covers_snapshot_end
+    on_fail: block_stack
+
+  - gate_id: G1_before_B1
+    requires_families: [price_volume_daily, stock_state_form]
+    check: serve_derive_stock_form_wired
+    on_fail: block_stack
+
+  - gate_id: G2_before_B2
+    requires_families: [market_sensing_breadth]
+    check: market_context_decision_time_path
+    on_fail: block_stack
+
+  - gate_id: G3_before_B3
+    requires_families: [vendor_flow_proxy]
+    check: type_b_moneyflow_fact_frontier
+    on_fail: inconclusive_only
+
+  - gate_id: G4_before_B4
+    requires_families: [disclosure_holders_event]
+    check: holders_notice_partition_holes_zero_in_window
+    on_fail: inconclusive_only
+
+  - gate_id: G4_org_optional
+    requires_families: [org_disclosure_period]
+    check: org_accepted_population_floor
+    on_fail: inconclusive_only
+
+alignment_policy:
+  prefer: repair_bounded_catchup
+  ban: [pad_missing_years_with_zero, invent_pre_data_start, mass_org_period_pull]
+  verdict_when_unrepairable: inconclusive
