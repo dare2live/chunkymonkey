@@ -25,7 +25,8 @@
 | Trade-date continuity (calendar filter) | **DONE** | session + `analysis/partition_leap_integrity_20260724.md` |
 | Factor lifecycle design Q&A | **DONE** | `analysis/factor_family_governance_toplevel_20260724.md` (commit pending → see SHAs below) |
 | UI daily_update E2E 20260724 | **DONE** | `analysis/ui_daily_update_e2e_20260724.md` |
-| Factor inventory gate K1 | **FIXED** | **`a41500fbe`** · `check_factor_family_inventory.py` (`b1bd83b46a5a…`)
+| Factor inventory gate K1 | **FIXED** | **`a41500fbe`** · `check_factor_family_inventory.py` |
+| Factor continuity gate matrix K2 | **FIXED** | `check_factor_family_gates.py` · `analysis/factor_family_continuity_gate_matrix_20260725.md` |
 
 ---
 
@@ -34,7 +35,7 @@
 | Ask | Status | Next action |
 |---|---|---|
 | Org trunc repair residual (~19 heuristic) | **PARTIAL** | Page-cap **0**; baseline-ratio flags only — no mass re-repair |
-| Factor gate K2 (frontier report) | **PENDING** | After trunc stable + disk |
+| Factor gate K2 (frontier report) | **PENDING** | Live DuckDB family frontier projection (structural K2 **FIXED**) |
 
 ---
 
@@ -42,7 +43,7 @@
 
 | # | Ask | Gate |
 |---|---|---|
-| 1 | Factor-family inventory SSOT + frequency gate matrix | K1 gate **FIXED**; K2 frontier |
+| 1 | Factor-family inventory SSOT + frequency gate matrix | K1+K2 structural **FIXED**; live frontier report pending |
 | 2 | Top-level design first principles | **committed** with inventory stub |
 | 3 | Continuity bar by domain frequency | Inventory + continuity projection report |
 | 4 | 拉齐 repairable (org trunc, true holes) | Page-cap **FIXED**; **19** heuristic baseline flags deferred |
@@ -59,7 +60,7 @@
 | 1. daily_update + E2E doc | **DONE** |
 | 2. Factor design commit + push | **DONE** (`0c202eb69`) |
 | 3. Org trunc repair | **PARTIAL** (page-cap **FIXED** `2025-06-30`; heuristic 23→19) |
-| 4. Inventory+gate implementation | **DONE** (`a41500fbe`) |
+| 4. Inventory+gate implementation | **DONE** (K1 `a41500fbe` + K2 continuity matrix) |
 | 5. QFII | **BLOCKED** |
 | 6. RX | **BANNED** |
 

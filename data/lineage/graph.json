@@ -5711,6 +5711,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/factor_family_continuity_gates.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/factor_family_inventory.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
@@ -7715,9 +7721,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1238,
-    "generated_at": "2026-07-24T22:51:50.036649+00:00",
-    "node_count": 440,
+    "edge_count": 1239,
+    "generated_at": "2026-07-24T23:57:37.759288+00:00",
+    "node_count": 441,
     "version": 2
   },
   "nodes": [
@@ -8559,6 +8565,14 @@
         "path": "backend/services/derive_runtime.py"
       },
       "id": "consumer:backend/services/derive_runtime.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/factor_family_continuity_gates.py"
+      },
+      "id": "consumer:backend/services/factor_family_continuity_gates.py",
       "kind": "consumer"
     },
     {

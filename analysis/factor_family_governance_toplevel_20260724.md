@@ -265,7 +265,7 @@ Tier0 可审计事实 → Tier1 状态 → Tier2 感知 → Tier3 冻结 snapsho
 | 3 | Snapshot builder 读 inventory（validate only） | L3 | pre-knife；RX 前 |
 | 4 | goal.md RX schedule | owner | 显式一句 |
 
-**Deliverable label**：**FIXED（设计+K1 gate）** · v1 结构门已接线（非 live frontier 门）
+**Deliverable label**：**FIXED（设计+K1+K2 结构门）** · frequency continuity 矩阵已接线（非 live frontier 门）
 
 **Git**：见 commit SHA（`safe_commit` 后填充 · inventory gate 刀）
 

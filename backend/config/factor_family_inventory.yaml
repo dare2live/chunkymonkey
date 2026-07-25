@@ -6,7 +6,7 @@
 #   - brick_registry.yaml (L2/L3 brick + FeatureBlock ids)
 #   - sync_registry.yaml (provider domain frequency/axis)
 #
-# Gate: backend/scripts/check_factor_family_inventory.py (+ ci_pytest_surface)
+# Gate: check_factor_family_inventory.py (structure) + check_factor_family_gates.py (continuity matrix)
 # Do NOT use for daily I/O until gate + tests land.
 
 version: 1
@@ -26,6 +26,9 @@ families:
     refresh_owner: acquire_formal_daily
     coverage_start_policy: registry_data_start
     stack_eligibility: ready
+    continuity_gate:
+      mode: calendar_gaps
+      wired: sync_registry:daily;check_continuity_integrity:calendar_gaps
 
   stock_state_form:
     b_block: B1
@@ -38,6 +41,9 @@ families:
     refresh_owner: daily_process
     coverage_start_policy: accepted_frontier
     stack_eligibility: ready
+    continuity_gate:
+      mode: derive_accepted_frontier
+      wired: serve_derive:stock_form;accepted_frontier_not_trade_calendar
 
   market_sensing_breadth:
     b_block: B2
@@ -50,6 +56,9 @@ families:
     refresh_owner: daily_process
     coverage_start_policy: accepted_frontier
     stack_eligibility: ready
+    continuity_gate:
+      mode: derive_accepted_frontier
+      wired: serve_derive:market_pulse_panels;decision_time_eod_not_calendar_gaps
 
   vendor_flow_proxy:
     b_block: B3
@@ -61,6 +70,9 @@ families:
     coverage_start_policy: registry_data_start
     stack_eligibility: defer
     defer_reason: type_b_fact_publish_may_lag_raw
+    continuity_gate:
+      mode: type_b_publish_defer
+      wired: gate_matrix:G3_before_B3;type_b_fact_publish_catchup_not_calendar_gaps
 
   disclosure_holders_event:
     b_block: B4
@@ -73,6 +85,9 @@ families:
     refresh_owner: acquire_incremental_plus_dossier_derive
     coverage_start_policy: bounded_fill
     stack_eligibility: ready
+    continuity_gate:
+      mode: event_notice_partitions
+      wired: acquire:holders_aif10;gate_matrix:G4_before_B4;notice_axis_not_trade_calendar
 
   org_disclosure_period:
     b_block: B4
@@ -84,6 +99,9 @@ families:
     coverage_start_policy: bounded_fill
     stack_eligibility: defer
     defer_reason: historical_quarter_holes_log_not_mass
+    continuity_gate:
+      mode: period_gap_bounded
+      wired: org_holding_period_gap_n1;gate_matrix:G4_org_optional;no_trade_date_calendar
 
   formula_single:
     b_block: B5
@@ -95,6 +113,9 @@ families:
     coverage_start_policy: snapshot_bound
     stack_eligibility: blocked
     blocked_reason: RX_and_G_track_not_open
+    continuity_gate:
+      mode: inventory_blocked
+      wired: manual_only;RX_and_G_track_not_open
 
 gate_matrix:
   - gate_id: G0_formal_daily_frontier

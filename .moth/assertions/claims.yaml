@@ -172,6 +172,11 @@ assertions:
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_factor_family_inventory.py >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
+  - id: factor-family-continuity-gate-matrix
+    claim: "因子族 frequency-typed continuity/readiness 矩阵：每族 continuity_gate.mode 与 frequency/axis 一致；trade_date 日频→calendar_gaps+wired；event/quarterly 禁 full trade calendar；defer/blocked 须 typed wired；gate_matrix check↔continuity kind。owner=backend/scripts/check_factor_family_gates.py + factor_family_inventory.yaml；权威=analysis/factor_family_governance_toplevel_20260724.md"
+    type: shell
+    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_factor_family_gates.py >/dev/null 2>&1 && echo 0 || echo 1"]
+    expect: {op: "<=", value: 0}
   - id: foundation-done-f1-f10
     claim: "FND-GATE foundation-done F1–F10 聚合门：真实缺口 FAIL；S7 23 ssot typed hard-stop / org mass-by-date banned+daily incremental-by-period required / Type-B enrichment defer 为诚实墙 PASS；F8 §15 PASS 需 ≥3 连续 L3 刀 evidence（commits/knife≤1.5 + pre_knife；禁放宽阈值）；PARTIAL 仍 exit0。owner=backend/scripts/check_foundation_done.py + foundation_done.yaml；权威=analysis/foundation_phase_reeval_20260721.md §3 + analysis/section15_verify_20260721.md"
     type: shell

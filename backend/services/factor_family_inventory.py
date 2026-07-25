@@ -178,6 +178,7 @@ def collect_violations(
         extra_keys = set(spec.keys()) - REQUIRED_FAMILY_FIELDS - {
             "defer_reason",
             "blocked_reason",
+            "continuity_gate",
         }
         if extra_keys:
             viol.append(
