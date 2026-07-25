@@ -1,0 +1,23 @@
+truncated_before: {"count": 19, "periods": ["2018-12-31", "2019-03-31", "2019-06-30", "2019-09-30", "2019-12-31", "2020-03-31", "2020-06-30", "2020-09-30", "2020-12-31", "2021-03-31", "2021-06-30", "2021-09-30", "2021-12-31", "2022-03-31", "2022-06-30", "2022-09-30", "2022-12-31", "2023-03-31", "2023-06-30"]}
+[org-trunc-repair] 1/1 period=2019-03-31 before rows=54895 stocks=3607
+{
+  "status": "partial",
+  "repaired_count": 1,
+  "remaining_truncated": 19,
+  "repairs": [
+    {
+      "report_date": "2019-03-31",
+      "before_rows": 54895,
+      "before_stocks": 3607,
+      "after_rows": 54895,
+      "after_stocks": 3607,
+      "sync_status": "ok",
+      "provider_count": 54895,
+      "fetched_rows": 54895,
+      "truncated": false,
+      "shard_count": 1
+    }
+  ],
+  "truncated_before_count": 19,
+  "truncated_after_count": 19
+}

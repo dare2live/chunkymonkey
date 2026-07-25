@@ -72,6 +72,27 @@ def detect_eastmoney_page_cap_land(landed_rows: int, *, page_size: int) -> bool:
     return cap * 0.97 <= int(landed_rows or 0) <= cap * 1.01
 
 
+def under_modern_baseline_stocks(
+    *,
+    landed_stocks: int,
+    baseline_stocks: int,
+    baseline_ratio: float = 0.95,
+) -> tuple[bool, list[str]]:
+    """Soft observe: stocks ≪ modern max (older thinner universes often trip this).
+
+    NOT a repair trigger — live canary 2019-03-31 re-fetch proved
+    provider_count==landed with truncated=false while still under modern baseline.
+    """
+    base = int(baseline_stocks or 0)
+    if base <= 0:
+        return False, []
+    if int(landed_stocks or 0) < int(base * baseline_ratio):
+        return True, [
+            f"landed_stocks={landed_stocks}<{baseline_ratio:.2f}*baseline={base}"
+        ]
+    return False, []
+
+
 def provider_truncated_heuristic(
     *,
     landed_rows: int,
@@ -80,8 +101,13 @@ def provider_truncated_heuristic(
     page_size: int,
     provider_count: int | None = None,
     baseline_ratio: float = 0.95,
+    include_baseline_ratio: bool = False,
 ) -> tuple[bool, list[str]]:
-    """Gap-time detection without live API (DB-only) + optional provider_count."""
+    """Hard truncation: page-cap land and/or provider_count shortfall.
+
+    ``baseline_stocks`` ratio is soft by default (``include_baseline_ratio=False``).
+    Passing True retains legacy combined verdict for callers that opt in.
+    """
     reasons: list[str] = []
     truncated = False
     if provider_count is not None and provider_count > 0:
@@ -96,10 +122,13 @@ def provider_truncated_heuristic(
     elif detect_eastmoney_page_cap_land(landed_rows, page_size=page_size):
         truncated = True
         reasons.append("landed_rows≈100*page_size without provider_count")
-    base = int(baseline_stocks or 0)
-    if base > 0 and int(landed_stocks or 0) < int(base * baseline_ratio):
-        truncated = True
-        reasons.append(
-            f"landed_stocks={landed_stocks}<{baseline_ratio:.2f}*baseline={base}"
+    if include_baseline_ratio:
+        soft, soft_reasons = under_modern_baseline_stocks(
+            landed_stocks=landed_stocks,
+            baseline_stocks=baseline_stocks,
+            baseline_ratio=baseline_ratio,
         )
+        if soft:
+            truncated = True
+            reasons.extend(soft_reasons)
     return truncated, reasons

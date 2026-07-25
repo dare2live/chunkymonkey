@@ -47,7 +47,7 @@
 | 2 | Top-level design first principles | **committed** with inventory stub |
 | 3 | Continuity bar by domain frequency | Inventory + continuity projection report |
 | 4 | 拉齐 repairable (org trunc, true holes) | Page-cap **FIXED**; **19** heuristic baseline flags deferred |
-| 5 | QFII 22-period bounded backfill | Separate knife after org trunc stable |
+| 5 | QFII 22-period bounded backfill | **FIXED** `364b0da6e` — live 30/30, missing=[] |
 | 6 | RX / factor stacking | Owner 「开 RX」+ gates |
 | 7 | UI E2E | **DONE** |
 
@@ -61,7 +61,7 @@
 | 2. Factor design commit + push | **DONE** (`0c202eb69`) |
 | 3. Org trunc repair | **PARTIAL** (page-cap **FIXED** `2025-06-30`; heuristic 23→19) |
 | 4. Inventory+gate implementation | **DONE** (K1 `a41500fbe` + K2 continuity matrix) |
-| 5. QFII | **BLOCKED** |
+| 5. QFII | **DONE** (`364b0da6e`; 30 periods, missing=0) |
 | 6. RX | **BANNED** |
 
 ---
@@ -69,6 +69,7 @@
 ## Key SHAs (session stack + this drive)
 
 ```
+364b0da6e feat(qfii): ops drain oldest missing report periods (22→0)
 bcf33cf91 chore(moth): smartmoney-size-band 8GB→9GB (8717086720 measured)
 0c202eb69 docs(factor): governance toplevel + inventory stub + E2E/backlog
 a41500fbe feat(factor): inventory structural gate K1 + org trunc repair evidence
@@ -85,8 +86,8 @@ cad72c61c fix(org): ops drain oldest-quarter holes
 
 | Item | Label |
 |---|---|
-| Org pagination trunc | **PARTIAL** — 23→20; ~20 remain; disk full |
-| QFII 22 gaps | **BLOCKED** |
+| Org pagination trunc | **FIXED** hard queue=0; soft under_modern_baseline=19 observe |
+| QFII 22 gaps | **FIXED** |
 | RX / Optuna | **BANNED** |
 
-**Drive verdict**: org trunc **PARTIAL** · inventory checker **FIXED** (post-commit SHA)
+**Drive verdict**: QFII **FIXED** · org hard trunc **FIXED** · RX still banned

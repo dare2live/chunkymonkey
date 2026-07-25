@@ -29,3 +29,27 @@ def test_list_truncated_flags_page_cap_signature(monkeypatch):
     assert len(out) == 1
     assert out[0]["report_date"] == "2025-12-31"
     con.close()
+
+
+def test_list_truncated_skips_under_modern_baseline_only(monkeypatch):
+    """Honest thin historical land (no page-cap) must not enter repair queue."""
+    con = duckdb.connect(":memory:")
+    ensure_tables(con)
+    for i in range(1000):
+        con.execute(
+            "INSERT INTO raw_org_holding_aif10 "
+            "(report_date, stock_code, holder_code, fund_derivecode) "
+            "VALUES ('2019-03-31', ?, ?, '')",
+            [f"{i % 400:06d}", f"H{i}"],
+        )
+    monkeypatch.setattr(
+        "services.org_holding_population.max_accepted_stocks_across_partitions",
+        lambda _c: 5562,
+    )
+    monkeypatch.setattr(
+        "services.org_holding_aif10.latest_plannable_report_date",
+        lambda today=None: "2019-03-31",
+    )
+    out = list_truncated_org_periods(con, start_period="2019-03-31", end_period="2019-03-31")
+    assert out == []
+    con.close()

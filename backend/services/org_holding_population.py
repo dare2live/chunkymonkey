@@ -108,24 +108,34 @@ def population_for_period(
         count_accepted_org_stocks(conn, report_date) if accepted_has else 0
     )
     baseline = max_accepted_stocks_across_partitions(conn)
-    from services.data_sources.pagination_integrity import provider_truncated_heuristic
+    from services.data_sources.pagination_integrity import (
+        provider_truncated_heuristic,
+        under_modern_baseline_stocks,
+    )
     from services.org_holding_aif10 import PAGE_SIZE
 
+    # Hard only — modern baseline soft-observe must not queue mass re-fetch.
     truncated, trunc_reasons = provider_truncated_heuristic(
         landed_rows=raw_rows,
         landed_stocks=raw_stocks,
         baseline_stocks=baseline,
         page_size=PAGE_SIZE,
+        include_baseline_ratio=False,
+    )
+    soft_under, soft_reasons = under_modern_baseline_stocks(
+        landed_stocks=raw_stocks,
+        baseline_stocks=baseline,
     )
     if accepted_has and accepted_stocks is None:
         return {
             "under_populated": False,
             "provider_truncated": truncated,
+            "under_modern_baseline": soft_under,
             "accepted_stocks": None,
             "raw_stocks": raw_stocks,
             "raw_rows": raw_rows,
             "accepted_over_raw_ratio": None,
-            "reasons": ["canonical_unavailable", *trunc_reasons],
+            "reasons": ["canonical_unavailable", *trunc_reasons, *soft_reasons],
             "status": "population_unknown",
         }
     pop = evaluate_org_population(
@@ -135,6 +145,9 @@ def population_for_period(
     pop = dict(pop)
     pop["raw_rows"] = raw_rows
     pop["provider_truncated"] = truncated
+    pop["under_modern_baseline"] = soft_under
+    if soft_reasons:
+        pop["reasons"] = list(pop.get("reasons") or []) + soft_reasons
     if truncated:
         pop["under_populated"] = True
         pop["reasons"] = list(pop.get("reasons") or []) + trunc_reasons

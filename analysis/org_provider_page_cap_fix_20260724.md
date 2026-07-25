@@ -80,7 +80,7 @@ Every run: `org_holding_period_gap_report` + `population_for_period` → if `pro
 
 - **QFII**: 22-period gaps — document only; separate bounded knife.
 - **org page-cap:** **cleared** (`2025-06-30` repaired 2026-07-25).
-- **org heuristic baseline flags:** **19** periods — tune gap heuristic or accept historical under-baseline (not cap-silent-truncation).
+- **org soft under_modern_baseline:** **19** periods — observe only after `org_heuristic_soft_baseline_20260725.md` (hard repair queue **0**; canary proved re-fetch noop).
 - holders/qfii: truncate-aware loop only until live count proves cap breach.
 
 ## SHAs
