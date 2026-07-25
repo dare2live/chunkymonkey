@@ -382,6 +382,40 @@ async def backfill_qfii_history(
     }
 
 
+def list_local_qfii_report_dates(conn: Any) -> set[str]:
+    """Distinct local report_date values as YYYY-MM-DD (acquire-owned raw read)."""
+    ensure_tables(conn)
+    rows = conn.execute(
+        "SELECT DISTINCT CAST(report_date AS VARCHAR) FROM raw_qfii_holding_quarterly"
+    ).fetchall()
+    out: set[str] = set()
+    for (raw,) in rows:
+        s = str(raw).strip()
+        if len(s) == 8 and s.isdigit():
+            out.add(f"{s[:4]}-{s[4:6]}-{s[6:8]}")
+        else:
+            out.add(s[:10])
+    return out
+
+
+# evidence: K线起点 2019-01-02 (用户 2026-06-24); 与 org DEFAULT_START_PERIOD 对齐
+DEFAULT_START_PERIOD = "2018-12-31"
+
+
+def list_missing_qfii_report_dates(
+    conn: Any,
+    *,
+    start_date: str = DEFAULT_START_PERIOD,
+    end_date: Optional[str] = None,
+) -> list[str]:
+    """Calendar quarter-ends in [start, end] with zero local rows (oldest-first)."""
+    end = end_date or latest_plannable_report_date()
+    if not end:
+        return []
+    have = list_local_qfii_report_dates(conn)
+    return [q for q in enumerate_quarter_ends(start_date, end) if q not in have]
+
+
 async def sync_qfii_incremental(conn: Any) -> dict:
     """QFII 季度持股增量同步 (2026-06-24 从 routers.updater_sync._step_sync_qfii 搬迁, 解耦 pipeline 对旧 updater 依赖).
 
