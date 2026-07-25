@@ -24,16 +24,38 @@ def main() -> int:
     process_src = (REPO / "backend/services/pipeline/process.py").read_text(
         encoding="utf-8"
     )
+    acquire_src = (REPO / "backend/services/pipeline/acquire.py").read_text(
+        encoding="utf-8"
+    )
+    # process_step → which phase owns the wiring string (Type-B is acquire-phase).
+    surface_by_step = {
+        str(s.get("process_step")): s
+        for s in (cfg.get("surfaces") or [])
+        if s.get("process_step")
+    }
     gaps: list[str] = []
     for step in steps:
         if step == "dc_industry_view":
             token = "dc_industry_view"
         else:
             token = step
-        if f'"{token}"' not in plan_src and f"'{token}'" not in plan_src:
-            # institution_profile key must appear in plan_process_steps return
-            if token not in plan_src:
-                gaps.append(f"plan_process_steps missing {token}")
+        surf = surface_by_step.get(step) or {}
+        binding = str(surf.get("binding") or "")
+        in_plan = (
+            f'"{token}"' in plan_src
+            or f"'{token}'" in plan_src
+            or token in plan_src
+        )
+        in_acquire = (
+            token in acquire_src
+            or "type_b_fact_publish" in acquire_src
+            or "run_acquire_type_b_publish_catchup" in acquire_src
+        )
+        if binding == "daily_acquire":
+            if not in_acquire:
+                gaps.append(f"acquire.py missing wiring for {token}")
+        elif not in_plan:
+            gaps.append(f"plan_process_steps missing {token}")
         if token == "institution_profile":
             if "institution_profile" not in process_src or "rebuild_all" not in process_src:
                 gaps.append("process.py missing institution_profile rebuild wiring")
