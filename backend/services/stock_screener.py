@@ -277,14 +277,31 @@ def build_form_stage_screen(
 
 
 def _bulk_stock_names(conn, codes: list[str]) -> dict[str, str]:
-    """Best-effort name lookup (fact_top10_holder_period, same source as dossier).
+    """Best-effort name lookup — not holders SSOT (canonical owns holdings).
 
-    Missing → unknown name, never invented; never blocks the screen.
+    Prefer identity cache if attached; else legacy fact name column. Missing →
+    unknown; never invent; never block the screen.
     """
     if not codes:
         return {}
+    placeholders = ",".join(["?"] * len(codes))
     try:
-        placeholders = ",".join(["?"] * len(codes))
+        rows = conn.execute(
+            f"""
+            SELECT stock_code, arg_max(stock_name, updated_at) AS stock_name
+            FROM dim_active_a_stock
+            WHERE stock_code IN ({placeholders}) AND stock_name IS NOT NULL
+              AND length(stock_name) > 0
+            GROUP BY stock_code
+            """,
+            codes,
+        ).fetchall()
+        out = {str(c): str(n) for c, n in rows if n}
+        if out:
+            return out
+    except Exception:  # noqa: BLE001 — dim may be absent on this conn
+        pass
+    try:
         rows = conn.execute(
             f"""
             SELECT stock_code, arg_max(stock_name, report_date) AS stock_name

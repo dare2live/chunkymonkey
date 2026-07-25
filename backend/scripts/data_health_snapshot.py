@@ -362,7 +362,12 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
     columns = get_table_columns(con, table)
 
     # last_data_date: event/report/trading date. last_writer_at: ingest/build time.
-    date_col = find_date_column(columns)
+    # Per-table override (e.g. holders notice_date) beats global column priority.
+    override_date_col = asset.get("date_column")
+    if override_date_col and override_date_col in columns:
+        date_col = str(override_date_col)
+    else:
+        date_col = find_date_column(columns)
     writer_date_col = find_writer_date_column(columns)
     last_data_date, last_data_dt = _max_column_datetime(con, table, date_col) if row_count > 0 else (None, None)
     last_writer_at, last_writer_dt = _max_column_datetime(con, table, writer_date_col) if row_count > 0 else (None, None)
@@ -565,15 +570,19 @@ def _load_assets_from_registry(con) -> list[dict]:
         if tbl in overrides:
             o = overrides[tbl]
             fresh, sla = o.get("expected_freshness", "on-demand"), o.get("sla_hours", 720)
+            date_column = o.get("date_column")
         elif tbl in raw_fresh:
             fresh, sla = raw_fresh[tbl]
+            date_column = None
         else:
             d = health_def.get(layer, {})
             fresh, sla = d.get("expected_freshness", "on-demand"), d.get("sla_hours", 720)
+            date_column = None
         dstat, drepl = dep.get(tbl, (None, None))
         assets.append({
             "table_name": tbl, "layer": layer, "asset_class": layer_class.get(layer),
             "expected_freshness": fresh, "sla_hours": sla,
+            "date_column": date_column,
             "deprecation_status": dstat, "replacement_table": drepl,
             "writer_module": None, "quality_gate_level": None,
         })

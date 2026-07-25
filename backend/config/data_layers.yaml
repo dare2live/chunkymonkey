@@ -101,8 +101,21 @@ layer_health_defaults:
 table_health_overrides:
   raw_qfii_holding_quarterly: {expected_freshness: quarterly, sla_hours: 5280}
   raw_org_holding_aif10:      {expected_freshness: quarterly, sla_hours: 5280}  # F10 机构持仓明细=季报驱动
-  # holder/inst 高频 ad-hoc 披露流 (近乎逐日, 非季度; L1_foundation 默认 on-demand 太松故显式覆盖)
-  fact_top10_holder_period:        {expected_freshness: daily, sla_hours: 168}
+  # Holders: publication freshness = canonical notice tip (formal_only).
+  # Legacy fact lags by design after cutover — on-demand observer, not daily SLA.
+  canonical_top10_float_holders_period:
+    expected_freshness: daily
+    sla_hours: 168
+    date_column: notice_date
+  fact_top10_holder_period:
+    expected_freshness: on-demand
+    sla_hours: 720
+    date_column: notice_date
+  # Fill/compatibility OHLCV tip must not yellow vs formal accepted (S7).
+  raw_tushare_daily:
+    expected_freshness: on-demand
+    sla_hours: 720
+
 tables:
   # raw_aif10_valuation_quantile 2026-07-07 随 aif10_capability_client 模块整体退役物删
   # (唯一消费方 v3_picture 已随 2026-06-28 重建退役, 且早在其存活期就因 latest-snapshot

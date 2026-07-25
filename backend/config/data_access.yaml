@@ -258,15 +258,17 @@ entities:
     compute_fn: publish_fact_top_inst_seat_daily
 
   holders_top10:
-    # 十大流通股东 (事实类桶 — 股东名册该谁是谁, 与源无关)。2026-07-02 正名 holders_tdx→holders_top10 (水龙头契约: 事实类禁 vendor 名; 0 代码消费方零成本)。
-    # 现水龙头=东财妙想 aif10 (source decision evidence=analysis/miaoxiang_aif10_source_decision_20260624.md, 取代滞后约4月的 tushare top10_floatholders + 退役 tdx F10); 写入=holders_aif10.sync_holders_aif10 (source='miaoxiang'); PIT 锚=report_date (YYYYMMDD)。
+    # 十大流通股东 (事实类桶)。Formal SSOT = canonical after E0 land→accept;
+    # legacy fact_top10_holder_period is compatibility only (formal_only; no default mirror).
+    # PIT/availability axis = notice_date (disclosure known-at), not report_date tip folklore.
+    # Evidence: analysis/dual_plane_fix_plan_20260725.md · foundation_residual_rootcause_20260725.md
     db: smartmoney
-    table: fact_top10_holder_period
+    table: canonical_top10_float_holders_period
     layer: L1
     code_col: stock_code
-    asof_col: report_date
+    asof_col: notice_date
     asof_format: yyyymmdd
-    columns: [stock_code, report_date, holder_set, holder_rank, holder_name_norm, hold_ratio_float, change_status, hold_change_num, is_exit_row]
+    columns: [stock_code, report_date, notice_date, holder_set, holder_rank, holder_name_norm, hold_ratio_float, change_status, hold_change_num, is_exit_row]
     vendor: aif10
     available_after: ann_date
 

@@ -91,7 +91,11 @@ DATA_SOURCE_QUERIES = {
     # (退役域条目已清, 详 ledger + git史)
     "holders_top10_float": {
         "db": "smartmoney",
-        "query": "SELECT MAX(CAST(report_date AS VARCHAR)) FROM fact_top10_holder_period",
+        # Formal notice frontier (canonical), not frozen legacy fact report_date.
+        "query": (
+            "SELECT MAX(CAST(notice_date AS VARCHAR)) "
+            "FROM canonical_top10_float_holders_period"
+        ),
     },
     # Strangler observer only — not publication truth. Typed no_probe so unknown≠alert.
     "holders_top10_float_legacy_observer": {

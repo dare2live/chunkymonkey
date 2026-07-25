@@ -21,7 +21,7 @@ def test_inventory_declares_three_disclosure_domains() -> None:
     assert domains == {"holders_top10", "org_holding", "stk_holdertrade"}
     inventory = {item["domain"]: item for item in disclosure_inventory()}
     assert inventory["holders_top10"]["adapter"] == "miaoxiang"
-    assert inventory["holders_top10"]["target_table"] == "fact_top10_holder_period"
+    assert inventory["holders_top10"]["target_table"] == "canonical_top10_float_holders_period"
     assert inventory["holders_top10"]["availability_axis"] == "notice_date"
     assert inventory["holders_top10"]["landing_writer"] is not None
     assert inventory["holders_top10"]["canonical_writer"] is not None
@@ -62,7 +62,7 @@ def test_nonconforming_direct_write_requires_test_escape() -> None:
     )
     assert permit.domain == "holders_top10"
     assert permit.conformity == "NONCONFORMING"
-    assert permit.target_table == "fact_top10_holder_period"
+    assert permit.target_table == "canonical_top10_float_holders_period"
     assert permit.publication == "nonconforming_direct_write"
 
 
@@ -75,7 +75,7 @@ def test_legacy_mirror_write_requires_test_escape() -> None:
         "holders_top10", allow_test_escape=True
     )
     assert permit.publication == "legacy_mirror_of_formal_accept"
-    assert permit.target_table == "fact_top10_holder_period"
+    assert permit.target_table == "canonical_top10_float_holders_period"
 
 
 def test_formal_conformity_claim_fails_closed_without_accepted_path() -> None:

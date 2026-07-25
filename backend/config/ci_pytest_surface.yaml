@@ -52,6 +52,7 @@ blocking_paths:
 - tests/test_by_ann_date_equal_day_reprobe.py
 - tests/services/test_dataset_contracts.py
 - tests/services/test_disclosure_boundaries.py
+- tests/services/test_dual_plane_faucet.py
 - tests/services/test_formal_boundaries.py
 - tests/services/test_formal_execution.py
 - tests/services/test_holders_top10_acceptance.py
