@@ -178,6 +178,19 @@ def test_type_b_catchup_evaluates_residual_hygiene():
     assert "residual_hygiene_type_b" in src
 
 
+def test_evaluate_type_b_after_catchup_skips_without_dbs(tmp_path, monkeypatch):
+    from services import residual_hygiene as rh
+
+    monkeypatch.setattr(
+        "services.data_access.resolver.db_path",
+        lambda alias: str(tmp_path / f"{alias}.duckdb"),
+    )
+    out = rh.evaluate_type_b_after_catchup()
+    assert out["status"] == "skipped"
+    assert out["overall"] == "PASS"
+    assert out.get("reason") in {"db_missing", "reference_db_missing"}
+
+
 def test_run_outcome_classifies_residual_hygiene_as_integrity():
     from services.pipeline.run_outcome import derive_run_outcome
 

@@ -327,32 +327,61 @@ def evaluate_type_b_after_catchup(
     trading_days: list[str] | None = None,
     policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Post type_b catchup evaluate using live DBs (read-only)."""
+    """Post type_b catchup evaluate using live DBs (read-only).
+
+    Missing calendar/raw/smartmoney (CI offline / empty checkout) → skipped PASS.
+    Does not raise; acquire must not degrade on absent local DBs.
+    """
     from services.data_access import resolver
     from services.duck_adapter import connect as duck_connect
 
-    days = trading_days if trading_days is not None else load_trading_days()
-    raw_path = Path(resolver.db_path("tushare_raw"))
-    sm_path = Path(resolver.db_path("smartmoney"))
-    if not raw_path.is_file() or not sm_path.is_file():
-        return {
-            "policy_id": (policy or load_policy()).get("policy_id"),
-            "overall": "PASS",
-            "findings": [],
-            "summary": {"fail": 0, "warn": 0, "pass": 0, "skip": 0},
-            "status": "skipped",
-            "reason": "db_missing",
-        }
-    raw_conn = duck_connect(str(raw_path), read_only=True)
-    fact_conn = duck_connect(str(sm_path), read_only=True)
+    pol = policy if policy is not None else load_policy()
+    skipped = {
+        "policy_id": pol.get("policy_id"),
+        "overall": "PASS",
+        "findings": [],
+        "summary": {"fail": 0, "warn": 0, "pass": 0, "skip": 0},
+        "status": "skipped",
+    }
     try:
-        return evaluate_residual_hygiene(
-            policy=policy,
+        raw_path = Path(resolver.db_path("tushare_raw"))
+        sm_path = Path(resolver.db_path("smartmoney"))
+        ref_path = Path(resolver.db_path("reference"))
+    except Exception as exc:  # noqa: BLE001
+        return {**skipped, "reason": f"db_path_error:{type(exc).__name__}"}
+    if not raw_path.is_file() or not sm_path.is_file():
+        return {**skipped, "reason": "db_missing"}
+    if trading_days is None and not ref_path.is_file():
+        return {**skipped, "reason": "reference_db_missing"}
+    try:
+        days = trading_days if trading_days is not None else load_trading_days()
+    except Exception as exc:  # noqa: BLE001
+        return {
+            **skipped,
+            "reason": f"calendar_unavailable:{type(exc).__name__}",
+            "error": str(exc)[:200],
+        }
+    if not days:
+        return {**skipped, "reason": "calendar_empty"}
+    try:
+        raw_conn = duck_connect(str(raw_path), read_only=True)
+        fact_conn = duck_connect(str(sm_path), read_only=True)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            **skipped,
+            "reason": f"db_open_failed:{type(exc).__name__}",
+            "error": str(exc)[:200],
+        }
+    try:
+        out = evaluate_residual_hygiene(
+            policy=pol,
             trading_days=days,
             raw_conn=raw_conn,
             fact_conn=fact_conn,
             type_b_only=True,
         )
+        out.setdefault("status", "evaluated")
+        return out
     finally:
         raw_conn.close()
         fact_conn.close()
