@@ -19,10 +19,12 @@ CANONICAL_TABLE = "canonical_top10_float_holders_period"
 SCHEMA_ID = "tier0.disclosure.top10_float_holders_period.canonical"
 SCHEMA_VERSION = "2"
 WRITER_ID = "services.data_sources.holders_top10_acceptance"
-CONTRACT_VERSION = "2"
+CONTRACT_VERSION = "3"
 SOURCE = "miaoxiang"
 API = "RPT_F10_EH_FREEHOLDERS"
-COMPATIBILITY_TABLE = "fact_top10_holder_period"
+# Retired 2026-07-26 — table DROPped; land-from-legacy / mirror refuse.
+COMPATIBILITY_RETIRED = True
+COMPATIBILITY_TABLE = "fact_top10_holder_period"  # sentinel name only; do not SQL
 PARTITION_FIELD = "notice_date"
 GRAIN = (
     "stock_code",
@@ -292,6 +294,7 @@ __all__ = [
     "API",
     "CANONICAL_ROW_FIELDS",
     "CANONICAL_TABLE",
+    "COMPATIBILITY_RETIRED",
     "COMPATIBILITY_TABLE",
     "CONTRACT_VERSION",
     "DATASET_ID",

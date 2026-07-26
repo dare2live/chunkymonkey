@@ -3,47 +3,7 @@
 from __future__ import annotations
 
 CORE_SCHEMA_SQL = """
-            CREATE TABLE IF NOT EXISTS fact_top10_holder_period (
-                stock_code        TEXT NOT NULL,
-                stock_name        TEXT,
-                market            TEXT,
-                report_date       TEXT NOT NULL,
-                holder_set        TEXT NOT NULL,            -- 'free' | 'all'
-                holder_rank       INTEGER NOT NULL,
-                row_seq           INTEGER NOT NULL DEFAULT 1,
-                holder_name       TEXT NOT NULL,
-                holder_name_norm  TEXT,                      -- alias-resolved (汇金公司→中央汇金投资有限责任公司)
-                share_class       TEXT,                      -- 'A' | 'H' | 'B' | NULL
-                is_secondary_class BOOLEAN DEFAULT FALSE,    -- TRUE = A/H 双重上市的副 leg
-                is_exit_row       BOOLEAN DEFAULT FALSE,     -- TRUE = 来自 "退出前十大" 表
-                shares_text       TEXT,                       -- raw "6.8128亿"
-                shares_approx     BIGINT,                     -- 681282900
-                shares_precision  TEXT,                       -- '亿' | '万' | '股'
-                hold_amount       REAL,                       -- back-compat: == shares_approx (REAL)
-                hold_ratio_float  DOUBLE,                     -- 占流通股比 % (free 表)
-                hold_ratio_total  DOUBLE,                     -- 占总股本比 % (all 表)
-                hold_ratio        REAL,                       -- back-compat: holder_set='free'→float, 'all'→total
-                hold_market_cap   REAL,                       -- shares × period-end close
-                holder_type       TEXT,                       -- raw display
-                share_nature      TEXT,                       -- '无限售A股/...'
-                change_status     TEXT,                       -- 新进/增持/减持/不变/退出
-                change_shares_text TEXT,
-                change_shares_approx BIGINT,
-                hold_change       TEXT,                       -- back-compat: ''/新进/加仓/减仓
-                hold_change_num   REAL,                       -- back-compat: signed shares delta
-                notice_date       TEXT,
-                effective_date    TEXT,                       -- 公告日 + 1 交易日 (回测 PIT)
-                availability_source TEXT,                      -- source_notice | page_update_date | regulatory_deadline
-                page_update_date  TEXT,                       -- F10 页头 "更新日期"
-                source            TEXT NOT NULL,              -- 现役唯一 'miaoxiang' (tdx_f10/akshare 源已退役)
-                source_tier       SMALLINT NOT NULL,          -- 1 / 2 / 3
-                raw_hash          TEXT,                       -- → raw_tdx_f10_holder_research.raw_hash
-                fetched_at        TEXT,
-                created_at        TEXT,                       -- back-compat
-                UNIQUE(stock_code, report_date, holder_set, source, is_exit_row,
-                       holder_rank, row_seq, share_class)
-            );
-
+            -- fact_top10_holder_period DROPPED 2026-07-26 (holders formal SSOT = canonical_top10_float_holders_period);
             CREATE TABLE IF NOT EXISTS fact_controlling_shareholder (
                 stock_code       TEXT NOT NULL,
                 stock_name       TEXT,

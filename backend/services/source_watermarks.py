@@ -78,17 +78,7 @@ DOMAIN_SPECS = [
         "parser_version": "aif10_canonical_notice_frontier",
         "fallback_reason": "canonical_absent_pre_migration",
     },
-    {
-        # Strangler observer only — legacy fact 平面新鲜度 (formal_only 后滞后),
-        # 保留可见性用于 dual-path 诊断, **不**作为 holders 发布真相。
-        "data_domain": "holders_top10_float_legacy_observer",
-        "source_name": "miaoxiang_fact",
-        "source_tier": 2,
-        "table": "fact_top10_holder_period",
-        "date_col": "page_update_date",
-        "raw_hash_col": "raw_hash",
-        "parser_version": "aif10_legacy_fact_observer",
-    },
+    # holders_top10_float_legacy_observer (fact_top10_holder_period) removed 2026-07-26 with table DROP
     # financial_gpcw_8q watermark 条目已删 2026-06-27 (通达信全删 gpcw物删; 财务新鲜度走 tushare sync:* 域)
     # xdxr watermark 域已删 2026-06-28 (xdxr sync acquire 已移除, 复权走 tushare adj_factor; price_xdxr=tdxhub 残留表无 live sync)
     {

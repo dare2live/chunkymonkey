@@ -34,8 +34,8 @@ def test_data_layers_holders_health_overrides_canonical_notice():
     canon = ov["canonical_top10_float_holders_period"]
     assert canon["expected_freshness"] == "daily"
     assert canon["date_column"] == "notice_date"
-    fact = ov["fact_top10_holder_period"]
-    assert fact["expected_freshness"] == "on-demand"
+    assert "fact_top10_holder_period" not in ov
+    assert "fact_top10_holder_period" not in raw.get("tables", {})
 
 
 def test_data_health_honors_date_column_override():

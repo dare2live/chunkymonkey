@@ -1,7 +1,7 @@
 """E0 formal land→validate→accept for miaoxiang holders_top10 (tracer).
 
-Requires disclosure execution handoff. Legacy ``fact_top10_holder_period``
-direct writes stay NONCONFORMING; never publishes DatasetSnapshot readiness.
+Requires disclosure execution handoff. Holders fact plane retired 2026-07-26 —
+formal land→accept only. Never publishes DatasetSnapshot readiness.
 """
 from __future__ import annotations
 
@@ -780,8 +780,8 @@ def runtime_surface() -> dict[str, Any]:
         "canonical_table": CANONICAL_TABLE,
         "writer_id": WRITER_ID,
         "production_write": "formal_only",
-        "legacy_mirror": "test_escape_only",
-        "legacy_direct_write": "nonconforming_escape_hatch",
+        "legacy_mirror": "retired",
+        "legacy_direct_write": "retired",
         "dataset_snapshot": "canary_scope_freezable_when_cutover_allowed",
         "provider_sync": "fixture_or_authorized_manual_only",
     }

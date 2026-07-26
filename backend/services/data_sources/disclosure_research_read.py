@@ -20,7 +20,7 @@ from services.data_sources.disclosure_enrichment_projection import (
 )
 from services.data_sources.holders_top10_schema import (
     CANONICAL_TABLE as HOLDERS_CANONICAL,
-    COMPATIBILITY_TABLE as HOLDERS_LEGACY,
+    COMPATIBILITY_RETIRED as HOLDERS_COMPAT_RETIRED,
 )
 from services.data_sources.org_holding_schema import (
     CANONICAL_TABLE as ORG_CANONICAL,
@@ -35,8 +35,8 @@ ReadSource = Literal["canonical", "legacy_fallback"]
 DomainConformity = Literal["ACCEPTED", "NONCONFORMING", "PARTIAL"]
 PolicyStatus = Literal["PARTIAL", "NONCONFORMING", "NOT_EVALUATED", "ACCEPTED"]
 
-_TABLES: dict[str, tuple[str, str]] = {
-    "holders_top10": (HOLDERS_CANONICAL, HOLDERS_LEGACY),
+_TABLES: dict[str, tuple[str, str | None]] = {
+    "holders_top10": (HOLDERS_CANONICAL, None),
     "org_holding": (ORG_CANONICAL, ORG_LEGACY),
     "stk_holdertrade": (STK_CANONICAL, STK_LEGACY),
 }
@@ -122,7 +122,29 @@ def _decide_domain(item: Mapping[str, Any]) -> DomainReadDecision:
     status = str(item.get("status") or "UNAVAILABLE")
     partition = item.get("partition")
     partition_s = str(partition) if partition else None
-    canonical, legacy = _TABLES[domain] if domain in _TABLES else ("", "")
+    canonical, legacy = _TABLES[domain] if domain in _TABLES else ("", None)
+
+    # Holders fact plane retired — always serve canonical (formal SSOT).
+    if domain == "holders_top10" and HOLDERS_COMPAT_RETIRED:
+        if status == "MATCH" and item.get("rows_match", False) and partition_s:
+            return DomainReadDecision(
+                domain=domain,
+                partition=partition_s,
+                shadow_status=status,
+                source="canonical",
+                conformity="ACCEPTED",
+                table=canonical,
+                reason="holders_compat_retired_canonical_ssot",
+            )
+        return DomainReadDecision(
+            domain=domain,
+            partition=partition_s,
+            shadow_status=status,
+            source="canonical",
+            conformity="ACCEPTED" if status in {"MATCH", "SKIPPED"} else "PARTIAL",
+            table=canonical,
+            reason="holders_compat_retired_no_legacy_fallback",
+        )
 
     if status == "MATCH" and item.get("rows_match", False) and partition_s:
         return DomainReadDecision(
@@ -141,7 +163,7 @@ def _decide_domain(item: Mapping[str, Any]) -> DomainReadDecision:
             shadow_status=status,
             source="legacy_fallback",
             conformity="PARTIAL",
-            table=legacy,
+            table=legacy or canonical,
             reason="canonical_legacy_diverge_fail_closed_legacy",
         )
     return DomainReadDecision(
@@ -150,7 +172,7 @@ def _decide_domain(item: Mapping[str, Any]) -> DomainReadDecision:
         shadow_status=status,
         source="legacy_fallback",
         conformity="NONCONFORMING",
-        table=legacy,
+        table=legacy or canonical,
         reason="canonical_unavailable_or_skipped_fail_closed_legacy",
     )
 
@@ -224,7 +246,8 @@ def preferred_provider_table(domain: str, policy: DisclosureReadPolicy) -> str:
         if item.domain == domain:
             return item.table
     if domain in _TABLES:
-        return _TABLES[domain][1]
+        canonical, legacy = _TABLES[domain]
+        return canonical if legacy is None else legacy
     raise KeyError(f"unknown disclosure domain: {domain}")
 
 

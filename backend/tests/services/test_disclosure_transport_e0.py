@@ -272,47 +272,9 @@ def test_dual_write_source_uses_transport_not_fused_publish_only() -> None:
 
 
 def _seed_holders_legacy(conn, row: dict) -> None:
-    from services.holders_aif10 import _write_legacy_direct
-
-    legacy = {
-        "stock_code": row["stock_code"],
-        "stock_name": "",
-        "market": "",
-        "report_date": row["report_date"],
-        "holder_set": row["holder_set"],
-        "holder_rank": row["holder_rank"],
-        "row_seq": row["row_seq"],
-        "holder_name": row["holder_name"],
-        "holder_name_norm": row.get("holder_name_norm") or row["holder_name"],
-        "share_class": row.get("share_class"),
-        "is_secondary_class": False,
-        "is_exit_row": row.get("is_exit_row", False),
-        "shares_text": None,
-        "shares_approx": row.get("shares_approx"),
-        "shares_precision": None,
-        "hold_amount": None,
-        "hold_ratio_float": row.get("hold_ratio_float"),
-        "hold_ratio_total": None,
-        "hold_ratio": row.get("hold_ratio_float"),
-        "hold_market_cap": None,
-        "holder_type": row.get("holder_type"),
-        "share_nature": None,
-        "change_status": row.get("change_status"),
-        "change_shares_text": None,
-        "change_shares_approx": None,
-        "hold_change": "",
-        "hold_change_num": row.get("hold_change_num"),
-        "notice_date": row["notice_date"],
-        "effective_date": None,
-        "page_update_date": row["notice_date"],
-        "availability_source": "page_update_date",
-        "source": "miaoxiang",
-        "source_tier": 1,
-        "raw_hash": None,
-        "fetched_at": OBSERVED_HOLDERS.isoformat(),
-        "created_at": OBSERVED_HOLDERS.isoformat(),
-    }
-    _write_legacy_direct(conn, [legacy], as_mirror=False)
+    """Retired helper — kept only so call sites fail closed on purpose."""
+    del conn, row
+    raise RuntimeError("holders_compat_retired: legacy seed helper removed")
 
 
 def test_assign_unique_holders_row_seq_breaks_rank_collisions() -> None:
@@ -398,40 +360,21 @@ def test_land_then_accept_after_row_seq_assign_accepts_rank_collisions(
     assert seqs[base["holder_name"]] != seqs[twin["holder_name"]]
 
 
-def test_land_from_legacy_holders_does_not_write_canonical(conn) -> None:
-    """S1 from local legacy: landing only; no canonical / accepted_partition."""
+def test_land_from_legacy_holders_retired(conn) -> None:
+    """S1 from local legacy retired with fact DROP."""
 
     from services.data_sources.disclosure_transport import (
+        DisclosureTransportError,
         land_disclosure_partition_from_legacy,
     )
 
-    _seed_holders_legacy(conn, _holders_row())
-    batch = land_disclosure_partition_from_legacy(
-        "holders_top10",
-        conn,
-        partition=PARTITION_HOLDERS,
-        observed_at=OBSERVED_HOLDERS,
-    )
-    assert batch.batch_id.startswith(f"holders_top10:{PARTITION_HOLDERS}:")
-    status = conn.execute(
-        "SELECT status FROM ingest_batch WHERE batch_id = ?",
-        [batch.batch_id],
-    ).fetchone()[0]
-    assert status == "LANDED"
-    assert (
-        conn.execute(
-            f"SELECT COUNT(*) FROM {HOLDERS_CANONICAL} WHERE notice_date = ?",
-            [PARTITION_HOLDERS],
-        ).fetchone()[0]
-        == 0
-    )
-    assert (
-        conn.execute(
-            "SELECT COUNT(*) FROM accepted_partition WHERE dataset_id = ?",
-            [HOLDERS_DATASET],
-        ).fetchone()[0]
-        == 0
-    )
+    with pytest.raises(DisclosureTransportError, match="holders_compat_retired"):
+        land_disclosure_partition_from_legacy(
+            "holders_top10",
+            conn,
+            partition=PARTITION_HOLDERS,
+            observed_at=OBSERVED_HOLDERS,
+        )
 
 
 def test_land_from_legacy_empty_partition_fails_closed(conn) -> None:
@@ -440,7 +383,7 @@ def test_land_from_legacy_empty_partition_fails_closed(conn) -> None:
         land_disclosure_partition_from_legacy,
     )
 
-    with pytest.raises(DisclosureTransportError, match="no legacy"):
+    with pytest.raises(DisclosureTransportError, match="holders_compat_retired"):
         land_disclosure_partition_from_legacy(
             "holders_top10",
             conn,
@@ -929,20 +872,16 @@ def test_land_from_legacy_empty_returns_typed_empty_skip(
         "holders_top10",
         partition="20990101",
     )
-    assert result["status"] == "empty_skip"
-    assert result["failed_batches"] == 0
-    assert result["rows"] == 0
-    assert "no legacy" in str(result.get("error") or "").lower()
+    assert result["status"] == "error"
+    assert "holders_compat_retired" in str(result.get("error") or "").lower()
 
 
 def test_sync_runner_land_disclosure_from_legacy_helper_zero_accept(
     conn, monkeypatch
 ) -> None:
-    """CLI land helper must land only (composition point for chunkyctl)."""
+    """CLI land-from-legacy for holders fails closed after fact retire."""
 
     from services.data_sources import sync_runner as sr
-
-    _seed_holders_legacy(conn, _holders_row())
 
     class _Manifest:
         def path_for(self, _alias: str) -> str:
@@ -954,27 +893,12 @@ def test_sync_runner_land_disclosure_from_legacy_helper_zero_accept(
     monkeypatch.setattr(
         "services.duck_adapter.connect", lambda *_a, **_k: conn
     )
-    # sync helper closes the conn; keep the fixture usable.
     monkeypatch.setattr(conn, "close", lambda: None)
 
     result = sr.land_disclosure_partition_from_legacy_batch(
         "holders_top10",
         partition=PARTITION_HOLDERS,
     )
-    assert result["status"] == "ok"
-    assert result["transport"] == "land_only"
-    assert result["publication"] == "land_only_disclosure_from_local_raw"
-    assert result["failed_batches"] == 0
-    assert (
-        conn.execute(
-            f"SELECT COUNT(*) FROM {HOLDERS_CANONICAL}",
-        ).fetchone()[0]
-        == 0
-    )
-    assert (
-        conn.execute(
-            "SELECT COUNT(*) FROM accepted_partition WHERE dataset_id = ?",
-            [HOLDERS_DATASET],
-        ).fetchone()[0]
-        == 0
-    )
+    assert result.get("status") == "error"
+    err = str(result.get("error") or result.get("reason") or result).lower()
+    assert "holders_compat_retired" in err

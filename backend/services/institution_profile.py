@@ -21,8 +21,7 @@
 
 E0 read note: disclosure provider-field consumers prefer accepted canonical via
 ``disclosure_research_read`` when shadow MATCH.  Episode rebuild uses
-``disclosure_enrichment_projection`` (canonical spine + typed legacy join for
-historical enrichment gaps) — field-level PARTIAL, not silent legacy-only.
+``disclosure_enrichment_projection`` (canonical-only after holders fact retire).
 """
 from __future__ import annotations
 
@@ -35,7 +34,6 @@ from services.data_sources.disclosure_enrichment_projection import (
 )
 from services.data_sources.holders_top10_schema import (
     CANONICAL_TABLE as HOLDERS_CANONICAL,
-    COMPATIBILITY_TABLE as HOLDERS_LEGACY,
 )
 from services.database_manifest import get_database_manifest
 from services.duck_adapter import connect as duck_connect
@@ -45,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 MIN_EPISODES = 10   # 画像排名样本量护栏 (设计定稿 §3: <10 标 low_sample 不进排名)
 LOOKBACK_FIRST_WINDOW_DAYS = 92  # 首个披露期无 prev → 回看一季 (成本窗口下界)
-HOLDERS_REBUILD_SOURCE = "canonical_spine_legacy_enrichment_projection"
+HOLDERS_REBUILD_SOURCE = "canonical_only"
 
 # 被动产品判定 (E2 实测: ETF/联接申赎驱动的名册进出非选股观点, 混入会把指数 beta 当机构技能)
 PASSIVE_NAME_PATTERNS = ("%ETF%", "%交易型开放%", "%指数%", "%联接%")
@@ -91,7 +89,6 @@ def build_period_windows(con) -> int:
     """每 (stock, report_date) 披露窗口 (prev_period, period] 的 C1/C2/C3 价格 (SQL 一把出)。"""
     period_keys = holders_period_keys_sql(
         canonical_qual=f"sm.{HOLDERS_CANONICAL}",
-        legacy_qual=f"sm.{HOLDERS_LEGACY}",
     )
     con.execute(f"""
     CREATE OR REPLACE TABLE period_windows AS
@@ -240,10 +237,9 @@ def build_episodes(con) -> dict:
     # share_class='A' (2026-07-03 审计修2a): B/H 股行混入 A 股 qfq 价计价 = 价格错配, 硬滤;
     # QUALIFY 去重 (修2b): 源 (holder,stock,period,is_exit_row) 存在双行 (实测 60 组) → 状态机
     # 会双计开/平仓, 稳定序取 1 行 (rank/row_seq 主行优先, notice 新者优先, raw_hash 决胜)。
-    # E0: canonical spine + typed legacy enrichment join (not legacy-only).
+    # E0: canonical-only spine (holders fact retired 2026-07-26).
     events = holders_episode_events_sql(
         canonical_qual=f"sm.{HOLDERS_CANONICAL}",
-        legacy_qual=f"sm.{HOLDERS_LEGACY}",
     )
     rows = con.execute(f"""
         SELECT h.holder_name_norm, h.stock_code, h.report_date, h.change_status, h.is_exit_row,

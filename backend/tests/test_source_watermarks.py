@@ -10,28 +10,28 @@ def test_derive_watermark_from_existing_table():
     try:
         conn.executescript(
             """
-            CREATE TABLE fact_top10_holder_period (
+            CREATE TABLE canonical_top10_float_holders_period (
                 stock_code TEXT,
-                report_date TEXT,
+                notice_date TEXT,
                 raw_hash TEXT
             );
-            INSERT INTO fact_top10_holder_period VALUES
-                ('000001', '2026-03-31', 'hash_a'),
-                ('000002', '2026-04-30', 'hash_b');
+            INSERT INTO canonical_top10_float_holders_period VALUES
+                ('000001', '20260331', 'hash_a'),
+                ('000002', '20260430', 'hash_b');
             """
         )
         item = derive_watermark(conn, {
             "data_domain": "holders_top10_float",
             "source_name": "tdxhub_holders",
             "source_tier": 1,
-            "table": "fact_top10_holder_period",
-            "date_col": "report_date",
+            "table": "canonical_top10_float_holders_period",
+            "date_col": "notice_date",
             "raw_hash_col": "raw_hash",
             "parser_version": "v1",
         })
 
         assert item["row_count"] == 2
-        assert item["last_data_date"] == "2026-04-30"
+        assert item["last_data_date"] == "20260430"
         assert item["last_raw_hash"] == "hash_b"
         assert item["fallback_active"] is False
     finally:

@@ -250,6 +250,18 @@ def authorize_nonconforming_direct_write(
     """
 
     boundary = require_disclosure_boundary(domain)
+    if boundary.domain == "holders_top10":
+        from services.data_sources.holders_top10_schema import COMPATIBILITY_RETIRED
+
+        if COMPATIBILITY_RETIRED:
+            raise DisclosureBoundaryError(
+                boundary.domain,
+                reason="holders_compat_retired",
+                detail=(
+                    "fact_top10_holder_period dropped; nonconforming direct "
+                    "write escape hatch removed"
+                ),
+            )
     label = str(conformity or "").strip()
     if label in _FORMAL_CONFORMITY or label != "NONCONFORMING":
         raise DisclosureBoundaryError(
@@ -304,10 +316,23 @@ def authorize_legacy_mirror_write(
 
     Default production runtime is ``formal_only`` — mirror is off unless escape
     is set (``allow_test_escape`` / ``DISCLOSURE_ALLOW_LEGACY_MIRROR`` /
-    ``DISCLOSURE_ALLOW_NONCONFORMING_ESCAPE``).
+    ``DISCLOSURE_ALLOW_NONCONFORMING_ESCAPE``). Holders compat plane is
+    DROPped — always refuse.
     """
 
     boundary = require_disclosure_boundary(domain)
+    if boundary.domain == "holders_top10":
+        from services.data_sources.holders_top10_schema import COMPATIBILITY_RETIRED
+
+        if COMPATIBILITY_RETIRED:
+            raise DisclosureBoundaryError(
+                boundary.domain,
+                reason="holders_compat_retired",
+                detail=(
+                    "fact_top10_holder_period dropped; legacy mirror "
+                    "escape hatch removed"
+                ),
+            )
     if boundary.runtime_state not in _FORMAL_WRITE_STATES:
         raise DisclosureBoundaryError(
             boundary.domain,

@@ -276,18 +276,14 @@ def _compose_observation(form: dict[str, Any] | None) -> dict[str, Any]:
 def _load_basic(conn, code: str) -> dict[str, Any]:
     name = None
     name_source = None
-    row = conn.execute(
-        """
-        SELECT stock_name
-        FROM fact_top10_holder_period
-        WHERE stock_code = ? AND stock_name IS NOT NULL AND length(stock_name) > 0
-        ORDER BY report_date DESC
-        LIMIT 1
-        """,
-        [code],
-    ).fetchone()
-    if row and row[0]:
-        name, name_source = str(row[0]), "fact_top10_holder_period"
+    try:
+        from services.security_master import active_stock_name_map
+
+        names = active_stock_name_map([code], conn=conn)
+        if names.get(code):
+            name, name_source = str(names[code]), "dim_active_a_stock"
+    except Exception:  # noqa: BLE001 — identity dim optional; fail-open unknown name
+        name, name_source = None, None
     ind = None
     try:
         irow = conn.execute(
@@ -338,29 +334,22 @@ def _table_exists(conn, name: str) -> bool:
 
 def _load_holders(conn, code: str) -> dict[str, Any]:
     gaps: list[str] = []
-    use_canonical = _table_exists(conn, "canonical_top10_float_holders_period")
-    latest = None
-    source = None
-    if use_canonical:
-        latest = conn.execute(
-            """
-            SELECT max(report_date) FROM canonical_top10_float_holders_period
-            WHERE stock_code = ? AND coalesce(is_exit_row, FALSE) = FALSE
-            """,
-            [code],
-        ).fetchone()
-        if latest and latest[0]:
-            source = "canonical_top10_float_holders_period"
-    if not latest or not latest[0]:
-        latest = conn.execute(
-            """
-            SELECT max(report_date) FROM fact_top10_holder_period
-            WHERE stock_code = ? AND holder_set = 'free'
-              AND coalesce(is_exit_row, FALSE) = FALSE
-            """,
-            [code],
-        ).fetchone()
-        source = "fact_top10_holder_period" if latest and latest[0] else None
+    if not _table_exists(conn, "canonical_top10_float_holders_period"):
+        return {
+            "report_date": None,
+            "source": None,
+            "rows": [],
+            "prev_report_date": None,
+            "gaps": ["holders_empty", "canonical_absent"],
+        }
+    source = "canonical_top10_float_holders_period"
+    latest = conn.execute(
+        """
+        SELECT max(report_date) FROM canonical_top10_float_holders_period
+        WHERE stock_code = ? AND coalesce(is_exit_row, FALSE) = FALSE
+        """,
+        [code],
+    ).fetchone()
     report_date = latest[0] if latest else None
     if not report_date:
         return {
@@ -371,32 +360,18 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
             "gaps": ["holders_empty"],
         }
 
-    if source == "canonical_top10_float_holders_period":
-        rows = conn.execute(
-            """
-            SELECT holder_rank, holder_name, holder_name_norm, holder_type,
-                   hold_ratio_float, change_status, hold_change_num,
-                   CAST(available_at AS VARCHAR), notice_date, shares_approx
-            FROM canonical_top10_float_holders_period
-            WHERE stock_code = ? AND report_date = ?
-              AND coalesce(is_exit_row, FALSE) = FALSE
-            ORDER BY holder_rank NULLS LAST, holder_name
-            """,
-            [code, report_date],
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            """
-            SELECT holder_rank, holder_name, holder_name_norm, holder_type,
-                   hold_ratio_float, change_status, hold_change_num,
-                   NULL, notice_date, shares_approx
-            FROM fact_top10_holder_period
-            WHERE stock_code = ? AND report_date = ? AND holder_set = 'free'
-              AND coalesce(is_exit_row, FALSE) = FALSE
-            ORDER BY holder_rank NULLS LAST, holder_name
-            """,
-            [code, report_date],
-        ).fetchall()
+    rows = conn.execute(
+        """
+        SELECT holder_rank, holder_name, holder_name_norm, holder_type,
+               hold_ratio_float, change_status, hold_change_num,
+               CAST(available_at AS VARCHAR), notice_date, shares_approx
+        FROM canonical_top10_float_holders_period
+        WHERE stock_code = ? AND report_date = ?
+          AND coalesce(is_exit_row, FALSE) = FALSE
+        ORDER BY holder_rank NULLS LAST, holder_name
+        """,
+        [code, report_date],
+    ).fetchall()
     cols = [
         "holder_rank",
         "holder_name",
@@ -410,39 +385,20 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
         "shares_approx",
     ]
 
-    # Period streak / prev_report MUST use the same plane as rows.
-    # Formal-only sync advances canonical while legacy fact watermark lags —
-    # reading fact here silently drops the latest report (fail-closed bug).
-    if source == "canonical_top10_float_holders_period":
-        period_sql = """
-            SELECT DISTINCT report_date
-            FROM canonical_top10_float_holders_period
-            WHERE stock_code = ?
-            ORDER BY report_date DESC
-            LIMIT 8
-        """
-        presence_sql = """
-            SELECT holder_name_norm, report_date
-            FROM canonical_top10_float_holders_period
-            WHERE stock_code = ?
-              AND coalesce(is_exit_row, FALSE) = FALSE
-              AND report_date IN ({})
-        """
-    else:
-        period_sql = """
-            SELECT DISTINCT report_date
-            FROM fact_top10_holder_period
-            WHERE stock_code = ? AND holder_set = 'free'
-            ORDER BY report_date DESC
-            LIMIT 8
-        """
-        presence_sql = """
-            SELECT holder_name_norm, report_date
-            FROM fact_top10_holder_period
-            WHERE stock_code = ? AND holder_set = 'free'
-              AND coalesce(is_exit_row, FALSE) = FALSE
-              AND report_date IN ({})
-        """
+    period_sql = """
+        SELECT DISTINCT report_date
+        FROM canonical_top10_float_holders_period
+        WHERE stock_code = ?
+        ORDER BY report_date DESC
+        LIMIT 8
+    """
+    presence_sql = """
+        SELECT holder_name_norm, report_date
+        FROM canonical_top10_float_holders_period
+        WHERE stock_code = ?
+          AND coalesce(is_exit_row, FALSE) = FALSE
+          AND report_date IN ({})
+    """
     periods = [r[0] for r in conn.execute(period_sql, [code]).fetchall()]
     presence: dict[str, int] = {}
     if periods:

@@ -92,24 +92,18 @@ layer_health_defaults:
 #   **年度**快照非季度, 第一轮"quarterly"标注是错的; 且唯一消费方 v3_picture 已随 2026-06-28
 #   纯数据平台重建整体退役, 该表已成孤儿 —— 用户拍板 2026-07-07 整表物删 (见
 #   analysis/project_state_ledger.md 的数据源退役索引), 本行随之移除。
-#   ②fact_top10_holder_period 实测 notice_date 近乎逐日更新(20260701/02/03连续), 是"含季中
-#   ad-hoc"的高频披露流(2026-07-07 live DB 审计, 历史索引见 analysis/project_state_ledger.md), 第一轮误把它和另外 2 张真季度表一起套用220天——
-#   这会让"停更100天"这种真事故被220天SLA掩盖住, 是本轮修复本身引入的新缺口, 改回 168h(7天,
-#   覆盖节假日缓冲) 匹配其真实近日频节奏。③raw_org_holding_aif10/raw_qfii_holding_quarterly
+#   ②holders formal SSOT = canonical_top10_float_holders_period (notice_date 近乎逐日;
+#   fact_top10_holder_period DROPPED 2026-07-26). SLA 168h(7天, 覆盖节假日缓冲)。
+#   ③raw_org_holding_aif10/raw_qfii_holding_quarterly
 #   经历史 report_date 分布核实(2025-12-31→2026-03-31 整季度跳变且行数量级一致)确认真季度,
 #   维持 5280h(220天) 不变。
 table_health_overrides:
   raw_qfii_holding_quarterly: {expected_freshness: quarterly, sla_hours: 5280}
   raw_org_holding_aif10:      {expected_freshness: quarterly, sla_hours: 5280}  # F10 机构持仓明细=季报驱动
   # Holders: publication freshness = canonical notice tip (formal_only).
-  # Legacy fact lags by design after cutover — on-demand observer, not daily SLA.
   canonical_top10_float_holders_period:
     expected_freshness: daily
     sla_hours: 168
-    date_column: notice_date
-  fact_top10_holder_period:
-    expected_freshness: on-demand
-    sla_hours: 720
     date_column: notice_date
   # Fill/compatibility OHLCV tip must not yellow vs formal accepted (S7).
   raw_tushare_daily:
@@ -135,7 +129,7 @@ tables:
   dim_trading_calendar: L1_foundation
   dim_trading_rule: L1_foundation
   dim_trading_session: L1_foundation
-  fact_top10_holder_period: L1_foundation
+  # fact_top10_holder_period DROPPED 2026-07-26 — holders formal SSOT = canonical
   # E0 holders_top10 formal land→accept (smartmoney; 2026-07-19 canary notice_date=20260717)
   landing_miaoxiang_holders_top10: L0_source
   canonical_top10_float_holders_period: L1_foundation

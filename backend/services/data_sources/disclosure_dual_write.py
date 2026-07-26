@@ -203,9 +203,12 @@ def write_holders_top10_formal_then_mirror(
 
 
 def _default_holders_legacy_mirror(conn, rows: list[dict[str, Any]]) -> int:
-    from services.holders_aif10 import _write_legacy_direct
-
-    return _write_legacy_direct(conn, rows, as_mirror=True)
+    del conn, rows
+    raise DisclosureDualWriteError(
+        "holders_top10",
+        reason="holders_compat_retired",
+        detail="fact_top10_holder_period dropped; legacy mirror forbidden",
+    )
 
 
 def write_org_holding_formal_then_mirror(

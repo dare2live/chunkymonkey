@@ -13,6 +13,7 @@ from typing import Any, Literal, Mapping
 from services.data_sources.disclosure_boundaries import disclosure_domains
 from services.data_sources.holders_top10_schema import (
     CANONICAL_TABLE as HOLDERS_CANONICAL,
+    COMPATIBILITY_RETIRED as HOLDERS_COMPAT_RETIRED,
     COMPATIBILITY_TABLE as HOLDERS_LEGACY,
     GRAIN as HOLDERS_GRAIN,
     PARTITION_FIELD as HOLDERS_PARTITION,
@@ -298,6 +299,38 @@ def compare_disclosure_domain_shadow(
             mismatch_count=0,
             sample_mismatches=(),
             issues=("unknown_disclosure_domain",),
+        )
+
+    # Holders compat plane retired — formal SSOT is canonical-only.
+    if spec.domain == "holders_top10" and HOLDERS_COMPAT_RETIRED:
+        part = _compact_yyyymmdd(partition) if partition else None
+        if part is None:
+            part = _latest_partition(conn, spec.canonical_table, spec.partition_field)
+        canonical_rows = _fetch_rows(
+            conn,
+            spec.canonical_table,
+            spec.provider_fields,
+            partition_field=spec.partition_field,
+            partition=part,
+            extra_where=None,
+            limit=max(1, min(int(max_rows), 2000)),
+        )
+        n = len(canonical_rows or ())
+        ok = canonical_rows is not None and part is not None and n > 0
+        return DisclosureDomainShadowReport(
+            domain=spec.domain,
+            partition=part,
+            status="MATCH" if ok else "UNAVAILABLE",
+            legacy_row_count=0,
+            canonical_row_count=n,
+            compared_fields=spec.provider_fields,
+            rows_match=ok,
+            mismatch_count=0,
+            sample_mismatches=(),
+            issues=(
+                "disclosure_shadow_compare_only",
+                "holders_compat_retired_canonical_ssot",
+            ),
         )
 
     issues: list[str] = ["disclosure_shadow_compare_only"]

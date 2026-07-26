@@ -14,6 +14,7 @@ from services.data_sources.disclosure_boundaries import (
     refuse_accepted_publication_claim,
 )
 from services.data_sources.disclosure_dual_write import (
+    DisclosureDualWriteError,
     write_holders_top10_formal_then_mirror,
     write_org_holding_formal_then_mirror,
     write_stk_holdertrade_formal_then_mirror,
@@ -181,7 +182,13 @@ def test_inventory_runtime_state_is_formal_only() -> None:
         assert inventory[domain]["conformity"] == "NONCONFORMING"
         assert inventory[domain]["legacy_mirror_deprecated"] is True
         assert inventory[domain]["legacy_mirror_default"] is False
-        # Naked escape is test-only; production is formal_only.
+    # Holders: escape hatches retired with fact DROP.
+    with pytest.raises(DisclosureBoundaryError, match="holders_compat_retired"):
+        authorize_nonconforming_direct_write(
+            "holders_top10", conformity="NONCONFORMING", allow_test_escape=True
+        )
+    # Org/stk: naked escape is test-only; production is formal_only.
+    for domain in ("org_holding", "stk_holdertrade"):
         with pytest.raises(
             DisclosureBoundaryError, match="naked_nonconforming_escape_retired"
         ):
@@ -198,100 +205,26 @@ def test_inventory_runtime_state_is_formal_only() -> None:
         refuse_accepted_publication_claim("holders_top10", "DatasetSnapshot")
 
 
-def test_accept_holders_partition_from_legacy_noop_mirror(conn) -> None:
-    """Canary path: formal accept from pre-seeded legacy without wiping history."""
-    from services.holders_aif10 import accept_holders_top10_partition_from_legacy
+def test_accept_holders_partition_from_legacy_retired(conn) -> None:
+    """Holders fact plane DROPped — from-legacy accept fails closed."""
+    from services.holders_aif10 import (
+        _write_legacy_direct,
+        accept_holders_top10_partition_from_legacy,
+    )
 
-    seed = [
-        _holders_row(holder_rank=1, holder_name="甲"),
-        _holders_row(holder_rank=2, holder_name="乙"),
-        _holders_row(
-            stock_code="000001",
-            notice_date="20260101",
-            holder_name="其它期不应被删",
-        ),
-    ]
-    # Seed legacy via test escape (pre-canary state).
-    from services.holders_aif10 import _write_legacy_direct
-
-    _write_legacy_direct(conn, [seed[0], seed[1]], as_mirror=False)
-    _write_legacy_direct(conn, [seed[2]], as_mirror=False)
-
-    outcome = accept_holders_top10_partition_from_legacy(conn, PARTITION_HOLDERS)
-    assert outcome.status == "ACCEPTED"
-    assert outcome.partitions == (PARTITION_HOLDERS,)
-    assert outcome.canonical_rows == 2
-    # Other-period legacy row survives no-op mirror.
-    other = conn.execute(
-        f"""
-        SELECT COUNT(*) FROM {HOLDERS_LEGACY}
-         WHERE stock_code = '000001' AND notice_date = '20260101'
-        """
-    ).fetchone()[0]
-    assert other == 1
-    canon = conn.execute(
-        f"SELECT COUNT(*) FROM {HOLDERS_CANONICAL} WHERE notice_date = ?",
-        [PARTITION_HOLDERS],
-    ).fetchone()[0]
-    assert canon == 2
+    with pytest.raises(RuntimeError, match="holders_compat_retired"):
+        _write_legacy_direct(conn, [_holders_row()], as_mirror=False)
+    with pytest.raises(RuntimeError, match="holders_compat_retired"):
+        accept_holders_top10_partition_from_legacy(conn, PARTITION_HOLDERS)
 
 
-def test_accept_holders_from_legacy_renumbers_duplicate_row_seq(monkeypatch) -> None:
-    """Legacy hard-coded row_seq=1 must be renumbered before formal accept.
-
-    Live fact can hold same-rank multi-name rows all with row_seq=1 (pre-unique
-    history). Test schema unique forbids seeding that via ``_write_legacy_direct``,
-    so stub the fact SELECT and assert dual-write sees unique GRAIN seqs.
-    """
+def test_accept_holders_from_legacy_renumber_path_retired() -> None:
     from services import holders_aif10 as holders_mod
-    from services.data_sources import disclosure_dual_write as ddw
-    from services.data_sources.holders_top10_schema import (
-        CANONICAL_ROW_FIELDS,
-        GRAIN,
-    )
 
-    twin_a = _holders_row(holder_rank=1, holder_name="甲", row_seq=1)
-    twin_b = _holders_row(
-        holder_rank=1,
-        holder_name="乙",
-        holder_name_norm="乙",
-        hold_ratio_float=0.5,
-        row_seq=1,
-    )
-    seen: list[list[dict]] = []
-
-    def fake_write(_conn, rows, mirror=None):
-        seen.append([dict(r) for r in rows])
-
-        class _Out:
-            status = "ACCEPTED"
-            partitions = (PARTITION_HOLDERS,)
-            canonical_rows = len(rows)
-
-        return _Out()
-
-    monkeypatch.setattr(ddw, "write_holders_top10_formal_then_mirror", fake_write)
-
-    class _FakeConn:
-        def execute(self, sql, params=None):
-            class _R:
-                def fetchall(self_inner):
-                    return [
-                        tuple(r[c] for c in CANONICAL_ROW_FIELDS)
-                        for r in (twin_a, twin_b)
-                    ]
-
-            return _R()
-
-    out = holders_mod.accept_holders_top10_partition_from_legacy(
-        _FakeConn(), PARTITION_HOLDERS
-    )
-    assert out.status == "ACCEPTED"
-    assert out.canonical_rows == 2
-    assert len(seen) == 1
-    keys = [tuple(r[k] for k in GRAIN) for r in seen[0]]
-    assert len(keys) == len(set(keys))
-    assert {r["row_seq"] for r in seen[0]} == {1, 2}
+    with pytest.raises(RuntimeError, match="holders_compat_retired"):
+        holders_mod.accept_holders_top10_partition_from_legacy(
+            object(), PARTITION_HOLDERS
+        )
 
 
 def test_accept_org_holding_partition_from_legacy_noop_mirror(conn) -> None:
@@ -391,12 +324,6 @@ def test_holders_formal_only_skips_legacy_mirror_by_default(conn) -> None:
     assert outcome.status == "ACCEPTED"
     assert outcome.legacy_rows_written == 0
     assert outcome.canonical_rows == 2
-    assert (
-        conn.execute(
-            f"SELECT COUNT(*) FROM {HOLDERS_LEGACY} WHERE source = 'miaoxiang'"
-        ).fetchone()[0]
-        == 0
-    )
     # Enrichment columns land on canonical without legacy mirror.
     enrich = conn.execute(
         f"""
@@ -410,45 +337,19 @@ def test_holders_formal_only_skips_legacy_mirror_by_default(conn) -> None:
     assert enrich[0][2] == 100
 
 
-def test_holders_dual_write_formal_legacy_parity_with_escape(conn) -> None:
+def test_holders_dual_write_legacy_mirror_retired(conn) -> None:
     rows = [
         _holders_row(holder_rank=1, holder_name="香港中央结算有限公司"),
         _holders_row(holder_rank=2, holder_name="中国证券金融股份有限公司"),
     ]
-    outcome = write_holders_top10_formal_then_mirror(
-        conn,
-        rows,
-        observed_at=OBSERVED_HOLDERS,
-        available_at=OBSERVED_HOLDERS,
-        enable_legacy_mirror=True,
-    )
-    assert outcome.status == "ACCEPTED"
-    assert outcome.legacy_rows_written == 2
-    assert outcome.canonical_rows == 2
-
-    canon = [
-        tuple(row)
-        for row in conn.execute(
-            f"""
-            SELECT {", ".join(HOLDERS_FIELDS)}
-              FROM {HOLDERS_CANONICAL}
-             ORDER BY holder_rank
-            """
-        ).fetchall()
-    ]
-    legacy = [
-        tuple(row)
-        for row in conn.execute(
-            f"""
-            SELECT {", ".join(HOLDERS_FIELDS)}
-              FROM {HOLDERS_LEGACY}
-             WHERE source = 'miaoxiang'
-             ORDER BY holder_rank
-            """
-        ).fetchall()
-    ]
-    assert canon == legacy
-    assert len(canon) == 2
+    with pytest.raises(DisclosureDualWriteError, match="holders_compat_retired"):
+        write_holders_top10_formal_then_mirror(
+            conn,
+            rows,
+            observed_at=OBSERVED_HOLDERS,
+            available_at=OBSERVED_HOLDERS,
+            enable_legacy_mirror=True,
+        )
 
 
 def test_holders_per_stock_merge_does_not_wipe_other_stock(conn) -> None:
@@ -609,11 +510,7 @@ def test_formal_rejection_does_not_mirror_legacy(conn) -> None:
             observed_at=forged,
             available_at=forged,
         )
-    legacy_n = conn.execute(
-        f"SELECT COUNT(*) FROM {HOLDERS_LEGACY} WHERE source = 'miaoxiang'"
-    ).fetchone()[0]
-    assert legacy_n == 0
-
+    # Compat plane retired — mirror cannot run; formal rejection is enough.
 
 def test_sync_runner_routes_stk_formal_only_no_default_mirror(conn) -> None:
     from services.data_sources import sync_runner as sr

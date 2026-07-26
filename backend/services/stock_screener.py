@@ -277,42 +277,21 @@ def build_form_stage_screen(
 
 
 def _bulk_stock_names(conn, codes: list[str]) -> dict[str, str]:
-    """Best-effort name lookup — not holders SSOT (canonical owns holdings).
+    """Best-effort name lookup via dim_active_a_stock (identity SSOT).
 
-    Prefer identity cache if attached; else legacy fact name column. Missing →
-    unknown; never invent; never block the screen.
+    Missing → unknown; never invent; never block the screen. Holders fact
+    plane is retired — do not fall back to it for names.
     """
     if not codes:
         return {}
-    placeholders = ",".join(["?"] * len(codes))
     try:
-        rows = conn.execute(
-            f"""
-            SELECT stock_code, arg_max(stock_name, updated_at) AS stock_name
-            FROM dim_active_a_stock
-            WHERE stock_code IN ({placeholders}) AND stock_name IS NOT NULL
-              AND length(stock_name) > 0
-            GROUP BY stock_code
-            """,
-            codes,
-        ).fetchall()
-        out = {str(c): str(n) for c, n in rows if n}
-        if out:
-            return out
-    except Exception:  # noqa: BLE001 — dim may be absent on this conn
-        pass
-    try:
-        rows = conn.execute(
-            f"""
-            SELECT stock_code, arg_max(stock_name, report_date) AS stock_name
-            FROM fact_top10_holder_period
-            WHERE stock_code IN ({placeholders}) AND stock_name IS NOT NULL
-              AND length(stock_name) > 0
-            GROUP BY stock_code
-            """,
-            codes,
-        ).fetchall()
-        return {str(c): str(n) for c, n in rows if n}
+        from services.security_master import active_stock_name_map
+
+        return {
+            str(c): str(n)
+            for c, n in active_stock_name_map(codes, conn=conn).items()
+            if n
+        }
     except Exception:  # noqa: BLE001 — name lookup is best-effort, fail-open to unknown
         return {}
 

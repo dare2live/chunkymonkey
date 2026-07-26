@@ -10,6 +10,7 @@ from typing import Any, final
 from services.data_sources.holders_top10_schema import (
     API,
     CANONICAL_TABLE,
+    COMPATIBILITY_RETIRED,
     COMPATIBILITY_TABLE,
     CONTRACT_VERSION,
     DATASET_ID,
@@ -44,6 +45,7 @@ class HoldersTop10Contract:
     source: str
     api: str
     compatibility_table: str
+    compatibility_retired: bool
     grain: tuple[str, ...]
     partition_by: str
     availability_axis: str
@@ -66,6 +68,7 @@ def load_holders_top10_contract() -> HoldersTop10Contract:
         "source": SOURCE,
         "api": API,
         "compatibility_table": COMPATIBILITY_TABLE,
+        "compatibility_retired": COMPATIBILITY_RETIRED,
         "grain": list(GRAIN),
         "partition_by": PARTITION_FIELD,
         "availability": {
@@ -94,6 +97,7 @@ def load_holders_top10_contract() -> HoldersTop10Contract:
         source=SOURCE,
         api=API,
         compatibility_table=COMPATIBILITY_TABLE,
+        compatibility_retired=COMPATIBILITY_RETIRED,
         grain=GRAIN,
         partition_by=PARTITION_FIELD,
         availability_axis="notice_date",

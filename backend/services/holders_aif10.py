@@ -7,7 +7,8 @@
   ① 获取 acquire  : _fetch_raw       — aif10 datacenter JSON API 拉某股全期 (纯采集)
   ② 清洗 clean    : _clean           — 字段映射 + change 解析 + share_class + K线范围过滤
   ③ 加工 process  : _derive_exits    — period-diff 推导退出行 (跟踪机构投资周期)
-  ④ 存储 store    : sync_holders_aif10 — 幂等写 fact_top10_holder_period (source='miaoxiang')
+  ④ 存储 store    : sync_holders_aif10 — formal land→accept → canonical
+                    (fact_top10_holder_period DROPPED 2026-07-26)
 
 历史范围: 跟 K 线周期一致 (price_kline_qfq_tushare 2019-01-02 起) → 只回到覆盖它的
 年报期 20181231; 更早无 K 线无法回测, 不抓 (用户 2026-06-24)。
@@ -27,7 +28,7 @@ if str(_MIAOXIANG) not in sys.path:
 
 REPORT_FREE = "RPT_F10_EH_FREEHOLDERS"   # 十大流通股东
 PAGE_SIZE = 500                          # SQL LIMIT-like 单页上限 (东财 datacenter 支持)
-SOURCE = "miaoxiang"                     # from yaml: schema_core fact_top10_holder_period.source 枚举
+SOURCE = "miaoxiang"                     # provider source tag on canonical rows
 SOURCE_TIER = 1                          # evidence: 2026-06-24 用户裁决 aif10 提主源 (替 tdxhub)
 # K线对齐: price_kline_qfq_tushare 2019-01-02 起 → holder 回到覆盖它的年报 20181231
 DEFAULT_START_PERIOD = "20181231"        # evidence: K线起点 2019-01-02, 不抓更早 (用户 2026-06-24)
@@ -229,7 +230,7 @@ def _derive_exits(clean_rows: list[dict]) -> list[dict]:
 
 
 def build_rows(client, symbol: str, *, start_period: str = DEFAULT_START_PERIOD) -> list[dict]:
-    """获取→清洗→加工: 返回某股可写 fact_top10_holder_period 的全部行 (含退出)."""
+    """获取→清洗→加工: 返回某股可写 canonical 的全部行 (含退出)."""
     raw = _fetch_raw(client, symbol)
     base = _clean(raw, start_period=start_period)
     if not base:
@@ -238,68 +239,27 @@ def build_rows(client, symbol: str, *, start_period: str = DEFAULT_START_PERIOD)
 
 
 # ── ④ 存储 store ─────────────────────────────────────────────────────
-_AVAIL_COL_CACHE: dict = {}
-
-
-def _has_availability_col(conn) -> bool:
-    """availability_source 列经迁移加入 (非 schema_core 基表 CREATE), 条件写匹配 tdxhub writer."""
-    if "v" not in _AVAIL_COL_CACHE:
-        try:
-            cols = {r[0] for r in conn.execute(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name='fact_top10_holder_period'").fetchall()}
-            _AVAIL_COL_CACHE["v"] = "availability_source" in cols
-        except Exception:  # noqa: BLE001
-            _AVAIL_COL_CACHE["v"] = False
-    return _AVAIL_COL_CACHE["v"]
 
 
 def _write_legacy_direct(
     conn, rows: list[dict], *, as_mirror: bool = True
 ) -> int:
-    """Deprecated legacy mirror target / test escape.
+    """Retired: ``fact_top10_holder_period`` DROPped 2026-07-26.
 
-    Production default is ``_write`` → formal land→accept then this mirror
-    (``as_mirror=True``).  Naked legacy-only writes require ``as_mirror=False``
-    plus test escape authorization.
+    Formal path is land→accept only. Mirror / naked legacy writes fail closed.
     """
-    if not rows:
-        return 0
-    from services.data_sources.disclosure_boundaries import (
-        authorize_legacy_mirror_write,
-        authorize_nonconforming_direct_write,
+    del conn, rows, as_mirror
+    raise RuntimeError(
+        "holders_compat_retired: fact_top10_holder_period dropped; "
+        "legacy mirror / direct write forbidden"
     )
-
-    if as_mirror:
-        authorize_legacy_mirror_write("holders_top10", allow_test_escape=True)
-    else:
-        authorize_nonconforming_direct_write(
-            "holders_top10",
-            conformity="NONCONFORMING",
-            allow_test_escape=True,
-        )
-    stock = rows[0]["stock_code"]
-    conn.execute(
-        "DELETE FROM fact_top10_holder_period WHERE stock_code=? AND source=?",
-        (stock, SOURCE),
-    )
-    keys = list(_COL_KEYS)
-    cols = HOLDER_COLUMNS
-    if _has_availability_col(conn):   # PIT 可用日锚, event_engine 据此算 available date
-        keys.append("availability_source")
-        cols = f"{HOLDER_COLUMNS}, availability_source"
-    placeholders = ", ".join("?" for _ in keys)
-    insert_sql = f"INSERT INTO fact_top10_holder_period({cols}) VALUES ({placeholders})"
-    conn.executemany(insert_sql, [tuple(r.get(k) for k in keys) for r in rows])
-    return len(rows)
 
 
 def _write(conn, rows: list[dict]) -> int:
-    """幂等写: formal land→accept by notice_date (formal_only; no default mirror).
+    """幂等写: formal land→accept by notice_date (formal_only; no legacy mirror).
 
     Canonical merges per notice_date so other stocks on the same partition are
-    not wiped.  Enrichment columns ride on canonical.  Explicit legacy mirror
-    remains test/emergency only via ``enable_legacy_mirror``.
+    not wiped.  Enrichment columns ride on canonical.
     """
     if not rows:
         return 0
@@ -312,52 +272,12 @@ def _write(conn, rows: list[dict]) -> int:
 
 
 def accept_holders_top10_partition_from_legacy(conn, notice_date: str):
-    """Land→accept one notice_date from existing legacy rows (noop mirror).
-
-    Legacy stays untouched — no DELETE→INSERT rewrite. Production sync uses
-    ``_write`` (formal_only). ``rewrite_legacy`` removed 2026-07-23 (cargo-cult
-    dual-write rewrite after formal SSOT).
-
-    Renumber ``row_seq`` before accept (same as disclosure_transport
-    from-local-raw): legacy ``_clean`` historically hard-coded ``row_seq=1``,
-    so same-rank multi-name rows fail formal validate with DUPLICATE_GRAIN and
-    clog newest-first notice catchup.
-    """
-    from services.data_sources.disclosure_dual_write import (
-        write_holders_top10_formal_then_mirror,
+    """Retired: no fact plane to land from (2026-07-26 DROP)."""
+    del conn, notice_date
+    raise RuntimeError(
+        "holders_compat_retired: accept_from_legacy forbidden after "
+        "fact_top10_holder_period DROP; use provider forward land"
     )
-    from services.data_sources.holders_top10_schema import (
-        CANONICAL_ROW_FIELDS,
-        assign_unique_holders_row_seq,
-    )
-
-    digits = "".join(ch for ch in str(notice_date or "") if ch.isdigit())
-    if len(digits) < 8:
-        raise ValueError(f"notice_date must be YYYYMMDD, got {notice_date!r}")
-    partition = digits[:8]
-    cols = ", ".join(CANONICAL_ROW_FIELDS)
-    raw = conn.execute(
-        f"""
-        SELECT {cols}
-          FROM fact_top10_holder_period
-         WHERE source = ?
-           AND replace(CAST(notice_date AS VARCHAR), '-', '') = ?
-         ORDER BY stock_code, holder_rank, row_seq, holder_name
-        """,
-        [SOURCE, partition],
-    ).fetchall()
-    rows = assign_unique_holders_row_seq(
-        [dict(zip(CANONICAL_ROW_FIELDS, row, strict=True)) for row in raw]
-    )
-    if not rows:
-        raise ValueError(
-            f"no legacy miaoxiang rows for notice_date={partition}"
-        )
-
-    def _noop_mirror(_conn, material):
-        return len(material)
-
-    return write_holders_top10_formal_then_mirror(conn, rows, mirror=_noop_mirror)
 
 
 def sync_holders_aif10(
@@ -368,10 +288,9 @@ def sync_holders_aif10(
     limit: int = 0,
     progress_every: int = 200,
 ) -> dict:
-    """编排 获取→清洗→加工→存储, 写 fact_top10_holder_period (source='miaoxiang').
+    """编排 获取→清洗→加工→存储, formal land→accept → canonical (source='miaoxiang').
 
     symbols=None → 全 active universe; 否则只跑指定股 (调试/增量)。
-    幂等: 重跑只覆盖 source='miaoxiang' 行, 不动其它源。
     """
     from aif10_scraper import default_client
     client = default_client  # 模块级实例 (非工厂)
@@ -495,7 +414,7 @@ INCREMENT_SAFETY_DAYS = 7   # evidence: 水位回退重扫边界 catch 同日晚
 
 CANONICAL_TABLE = "canonical_top10_float_holders_period"
 
-# Re-export notice-axis hole repair (module kept thin; godfile ratchet ≤3).
+# Re-export provider forward fill (+ retired catchup stubs for test imports).
 from services.holders_notice_catchup import (  # noqa: E402
     NOTICE_PARTITION_CATCHUP_MAX,
     catchup_missing_holders_notice_partitions,
@@ -518,13 +437,8 @@ def _table_present(conn, name: str) -> bool:
 def formal_holders_watermark(conn) -> tuple[Optional[str], str]:
     """Freshness watermark for holders = **formal accepted notice frontier**.
 
-    0r.5b (holders lineage audit §5 next-knife #1): stop advertising legacy
-    ``fact_top10_holder_period.page_update_date`` as holders truth.  The formal
-    accepted plane is ``canonical_top10_float_holders_period`` (built by
-    land→accept), whose ``notice_date`` is the disclosure availability anchor.
-    Legacy fact lags after formal_only sync, so probing it under-reports the
-    true frontier.  Falls back to legacy fact only when canonical is absent
-    (e.g. pre-migration DB), and reports which plane was used.
+    SSOT = ``canonical_top10_float_holders_period.notice_date``. Legacy fact
+    plane retired 2026-07-26 — no fallback.
 
     Returns ``(watermark_yyyymmdd_or_none, watermark_source)``.
     """
@@ -534,12 +448,6 @@ def formal_holders_watermark(conn) -> tuple[Optional[str], str]:
         ).fetchone()
         if row and row[0]:
             return str(row[0]), "canonical_notice_frontier"
-    row = conn.execute(
-        "SELECT MAX(page_update_date) FROM fact_top10_holder_period WHERE source=?",
-        (SOURCE,),
-    ).fetchone()
-    if row and row[0]:
-        return str(row[0]), "legacy_fact_page_update_date"
     return None, "empty"
 
 
@@ -647,17 +555,16 @@ def sync_holders_aif10_incremental(
     **不是**净新增披露; 另报 ``net_new_notice_rows`` / ``notice_partitions_touched``
     (canonical notice_date > 同步前水位) 与 ``affected_stocks`` (窗口内股票数) 区分。
 
-    Notice-axis catchup (2026-07-24): always repair local-fact partitions missing
-    from canonical (wm holes). When provider is ahead, also forward-fill by
-    ``UPDATE_DATE`` cross-section day-by-day (holdernumber-class; not
-    report_period-only). Per-stock path remains for revisions / same-day sparse.
+    Notice-axis (2026-07-26): from-fact catchup retired with fact DROP. When
+    provider is ahead, forward-fill by ``UPDATE_DATE`` cross-section day-by-day.
+    Per-stock path remains for revisions / same-day sparse.
     """
     from aif10_scraper import default_client
     client = default_client
     from services.data_sources.frontier_decision import decide_frontier
 
-    # Behind-wm holes first — even when provider_max <= wm (skip paths).
-    hole_catchup = catchup_missing_holders_notice_partitions(conn)
+    # From-fact notice catchup retired with fact_top10 DROP (2026-07-26).
+    # Provider forward fill covers tip advancement; hole repair = land_holders_notice_partitions_forward.
 
     wm, wm_source = formal_holders_watermark(conn)   # YYYYMMDD, formal frontier
     base = wm or fallback_since                        # 存量空 (未backfill) → 回退起点
@@ -681,7 +588,6 @@ def sync_holders_aif10_incremental(
             since_date=since_date,
             skip_reason="watermark_unchanged",
         )
-        out["notice_partition_catchup"] = hole_catchup
         return out
     # Equal frontier: early filers already advanced wm; late same-day notices
     # still need a sparse miss probe (not safety-window mass rewrite).
@@ -705,7 +611,6 @@ def sync_holders_aif10_incremental(
             )
             out["same_day_provider_codes"] = len(provider_codes)
             out["same_day_missing_codes"] = 0
-            out["notice_partition_catchup"] = hole_catchup
             return out
         print(
             f"holders_aif10: same-day late-filer sparse "
@@ -730,7 +635,6 @@ def sync_holders_aif10_incremental(
         result["same_day_sparse"] = True
         result["same_day_provider_codes"] = len(provider_codes)
         result["same_day_missing_codes"] = len(missing)
-        result["notice_partition_catchup"] = hole_catchup
         return result
     # Provider ahead: day-by-day by_notice before per-stock rewrite (ann axis).
     forward = {"landed_partitions": [], "empty_partitions": [], "errors": []}
@@ -746,7 +650,6 @@ def sync_holders_aif10_incremental(
                 "watermark": wm, "watermark_source": wm_source,
                 "provider_max_update_date": provider_max,
                 "since_date": since_date, "errors": [],
-                "notice_partition_catchup": hole_catchup,
                 "notice_partition_forward": forward}
     print(
         f"holders_aif10: start incremental affected={len(affected)} "
@@ -768,6 +671,5 @@ def sync_holders_aif10_incremental(
     result["watermark_source"] = wm_source
     result["provider_max_update_date"] = provider_max
     result["since_date"] = since_date
-    result["notice_partition_catchup"] = hole_catchup
     result["notice_partition_forward"] = forward
     return result

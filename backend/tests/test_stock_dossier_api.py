@@ -32,13 +32,21 @@ def _fixture_conn():
     )
     con.execute(
         """
-        CREATE TABLE fact_top10_holder_period (
-            stock_code VARCHAR, stock_name VARCHAR, holder_set VARCHAR,
+        CREATE TABLE dim_active_a_stock (
+            stock_code VARCHAR, stock_name VARCHAR, updated_at TIMESTAMP
+        )
+        """
+    )
+    con.execute(
+        """
+        CREATE TABLE canonical_top10_float_holders_period (
+            stock_code VARCHAR, holder_set VARCHAR,
             report_date VARCHAR, holder_rank INTEGER, holder_name VARCHAR,
             holder_name_norm VARCHAR, holder_type VARCHAR,
             hold_ratio_float DOUBLE, change_status VARCHAR,
             hold_change_num DOUBLE, notice_date VARCHAR,
-            shares_approx DOUBLE, is_exit_row BOOLEAN
+            shares_approx DOUBLE, is_exit_row BOOLEAN,
+            available_at TIMESTAMP, row_seq INTEGER
         )
         """
     )
@@ -61,13 +69,19 @@ def _fixture_conn():
     )
     con.execute(
         """
-        INSERT INTO fact_top10_holder_period VALUES
-        ('600519', '贵州茅台', 'free', '20260331', 1, '机构甲', '机构甲', '基金',
-         5.0, '增持', 1000, '20260425', 1e6, FALSE),
-        ('600519', '贵州茅台', 'free', '20251231', 1, '机构甲', '机构甲', '基金',
-         4.5, '不变', 0, '20260120', 9e5, FALSE),
-        ('600519', '贵州茅台', 'free', '20260331', 2, '机构乙', '机构乙', 'QFII',
-         2.0, '新进', NULL, '20260425', 4e5, FALSE)
+        INSERT INTO dim_active_a_stock VALUES
+        ('600519', '贵州茅台', now())
+        """
+    )
+    con.execute(
+        """
+        INSERT INTO canonical_top10_float_holders_period VALUES
+        ('600519', 'free', '20260331', 1, '机构甲', '机构甲', '基金',
+         5.0, '增持', 1000, '20260425', 1e6, FALSE, TIMESTAMP '2026-04-25 18:00:00', 1),
+        ('600519', 'free', '20251231', 1, '机构甲', '机构甲', '基金',
+         4.5, '不变', 0, '20260120', 9e5, FALSE, TIMESTAMP '2026-01-20 18:00:00', 1),
+        ('600519', 'free', '20260331', 2, '机构乙', '机构乙', 'QFII',
+         2.0, '新进', NULL, '20260425', 4e5, FALSE, TIMESTAMP '2026-04-25 18:00:00', 1)
         """
     )
     con.execute(
@@ -150,28 +164,16 @@ def test_dossier_rejects_b_share_and_bj_prefixes():
 
 
 def test_dossier_canonical_period_streak_not_fact_lag():
-    """Formal-only sync: period streak must follow canonical, not stale fact."""
+    """Formal-only sync: period streak must follow canonical tip."""
     con = _fixture_conn()
-    con.execute(
-        """
-        CREATE TABLE canonical_top10_float_holders_period (
-            stock_code VARCHAR, report_date VARCHAR, holder_set VARCHAR,
-            holder_rank INTEGER, row_seq INTEGER, holder_name VARCHAR,
-            holder_name_norm VARCHAR, holder_type VARCHAR,
-            hold_ratio_float DOUBLE, change_status VARCHAR,
-            hold_change_num DOUBLE, notice_date VARCHAR,
-            shares_approx DOUBLE, is_exit_row BOOLEAN,
-            available_at TIMESTAMPTZ
-        )
-        """
-    )
+    con.execute("DELETE FROM canonical_top10_float_holders_period")
     con.execute(
         """
         INSERT INTO canonical_top10_float_holders_period VALUES
-        ('600519', '20260714', 'free', 1, 1, '机构甲', '机构甲', '基金',
-         5.2, '增持', 100, '20260721', 1.1e6, FALSE, TIMESTAMPTZ '2026-07-21 14:00:00+00'),
-        ('600519', '20260331', 'free', 1, 1, '机构甲', '机构甲', '基金',
-         5.0, '增持', 50, '20260425', 1.0e6, FALSE, TIMESTAMPTZ '2026-04-25 14:00:00+00')
+        ('600519', 'free', '20260714', 1, '机构甲', '机构甲', '基金',
+         5.2, '增持', 100, '20260721', 1.1e6, FALSE, TIMESTAMP '2026-07-21 14:00:00', 1),
+        ('600519', 'free', '20260331', 1, '机构甲', '机构甲', '基金',
+         5.0, '增持', 50, '20260425', 1.0e6, FALSE, TIMESTAMP '2026-04-25 14:00:00', 1)
         """
     )
     client = _client(con)

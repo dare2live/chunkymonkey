@@ -25,9 +25,9 @@ CREATE TABLE fact_stock_form_daily (
     is_one_word BOOLEAN, built_at TIMESTAMP
 )
 """
-_HOLDER_DDL = """
-CREATE TABLE fact_top10_holder_period (
-    stock_code VARCHAR, stock_name VARCHAR, report_date VARCHAR
+_DIM_DDL = """
+CREATE TABLE dim_active_a_stock (
+    stock_code VARCHAR, stock_name VARCHAR, updated_at TIMESTAMP
 )
 """
 _CAL_DDL = """
@@ -55,7 +55,7 @@ def _insert_form(con, *, stock_code: str, trade_date: str, axis_pos: str, axis_t
 def _base_conn(*, calendar_through: str = "20260620") -> object:
     con = duck_mem()
     con.execute(_FORM_DDL)
-    con.execute(_HOLDER_DDL)
+    con.execute(_DIM_DDL)
     con.execute(_CAL_DDL)
     for td in _DATES:
         if td > calendar_through:
@@ -76,8 +76,8 @@ def _fresh_conn():
         axis_trend="down", axis_purity="choppy", axis_vol="heavy",
         form_name="放量下跌", form_sub="高位放量下跌",
     )
-    con.execute("INSERT INTO fact_top10_holder_period VALUES ('600001', '甲公司', '20260331')")
-    con.execute("INSERT INTO fact_top10_holder_period VALUES ('600002', '乙公司', '20260331')")
+    con.execute("INSERT INTO dim_active_a_stock VALUES ('600001', '甲公司', now())")
+    con.execute("INSERT INTO dim_active_a_stock VALUES ('600002', '乙公司', now())")
     return con
 
 

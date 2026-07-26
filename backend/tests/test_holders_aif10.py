@@ -124,43 +124,26 @@ def _wm_fixture():
         )
         """
     )
-    con.execute(
-        """
-        CREATE TABLE fact_top10_holder_period (
-            stock_code VARCHAR, report_date VARCHAR, page_update_date VARCHAR,
-            source VARCHAR
-        )
-        """
-    )
     return con
 
 
 def test_formal_watermark_prefers_canonical_notice_frontier():
     con = _wm_fixture()
-    # canonical is ahead (notice 20260722); legacy fact lags (20260717).
     con.execute(
         "INSERT INTO canonical_top10_float_holders_period VALUES "
         "('600519','20260630','20260722','机构甲',FALSE),"
         "('600519','20260331','20260425','机构甲',FALSE)"
-    )
-    con.execute(
-        "INSERT INTO fact_top10_holder_period VALUES "
-        "('600519','20260331','20260717','miaoxiang')"
     )
     wm, src = formal_holders_watermark(con)
     assert wm == "20260722"
     assert src == "canonical_notice_frontier"
 
 
-def test_formal_watermark_falls_back_to_legacy_when_no_canonical():
+def test_formal_watermark_empty_when_no_canonical():
     con = _wm_fixture()
-    con.execute(
-        "INSERT INTO fact_top10_holder_period VALUES "
-        "('600519','20260331','20260717','miaoxiang')"
-    )
     wm, src = formal_holders_watermark(con)
-    assert wm == "20260717"
-    assert src == "legacy_fact_page_update_date"
+    assert wm is None
+    assert src == "empty"
 
 
 def test_net_new_notice_since_splits_amplification_from_new():
@@ -365,7 +348,7 @@ def test_local_stock_codes_for_notice_date_reads_canonical():
 
 
 def _notice_hole_fixture():
-    """Canonical + fact with notice_date for behind-wm hole ledger tests."""
+    """Canonical-only fixture for forward-fill tests (fact plane retired)."""
     con = duckdb.connect(":memory:")
     con.execute(
         """
@@ -375,62 +358,22 @@ def _notice_hole_fixture():
         )
         """
     )
-    con.execute(
-        """
-        CREATE TABLE fact_top10_holder_period (
-            stock_code VARCHAR, report_date VARCHAR, notice_date VARCHAR,
-            page_update_date VARCHAR, source VARCHAR,
-            holder_set VARCHAR, holder_rank INTEGER, row_seq INTEGER,
-            holder_name VARCHAR, hold_ratio_float DOUBLE, is_exit_row BOOLEAN,
-            holder_name_norm VARCHAR, share_class VARCHAR, shares_approx DOUBLE,
-            change_status VARCHAR, hold_change_num DOUBLE, holder_type VARCHAR
-        )
-        """
-    )
     return con
 
 
-def test_list_missing_notice_partitions_from_fact_newest_first():
-    """Mid-period fact notices absent from canonical are the hole ledger."""
+def test_list_missing_notice_partitions_from_fact_retired():
+    """From-fact hole ledger retired with fact DROP."""
     con = _notice_hole_fixture()
-    con.execute(
-        "INSERT INTO canonical_top10_float_holders_period VALUES "
-        "('600519','20260331','20260724','机构甲',FALSE)"
-    )
-    con.execute(
-        "INSERT INTO fact_top10_holder_period VALUES "
-        "('600388','20260608','20260613','20260613','miaoxiang',"
-        " 'free',1,1,'紫金',21.0,FALSE,'紫金','A',1,'不变',0,'其它'),"
-        "('002725','20260629','20260701','20260701','miaoxiang',"
-        " 'free',1,1,'甲',1.0,FALSE,'甲','A',1,'不变',0,'其它'),"
-        "('600519','20260331','20260724','20260724','miaoxiang',"
-        " 'free',1,1,'乙',1.0,FALSE,'乙','A',1,'不变',0,'其它')"
-    )
     missing = list_missing_notice_partitions_from_fact(con, limit=40)
-    assert missing == ["20260701", "20260613"]
+    assert missing == []
 
 
-def test_catchup_accepts_only_missing_fact_partitions(monkeypatch):
+def test_catchup_from_fact_retired(monkeypatch):
     con = _notice_hole_fixture()
-    con.execute(
-        "INSERT INTO fact_top10_holder_period VALUES "
-        "('600388','20260608','20260613','20260613','miaoxiang',"
-        " 'free',1,1,'紫金',21.0,FALSE,'紫金','A',1,'不变',0,'其它')"
-    )
-    called: list[str] = []
-
-    def fake_accept(_conn, notice_date: str):
-        called.append(notice_date)
-        return {"status": "ACCEPTED"}
-
-    monkeypatch.setattr(
-        "services.holders_aif10.accept_holders_top10_partition_from_legacy",
-        fake_accept,
-    )
     out = catchup_missing_holders_notice_partitions(con)
-    assert out["repaired_partitions"] == ["20260613"]
-    assert called == ["20260613"]
-    assert out["catchup_source"] == "local_fact_notice"
+    assert out["repaired_partitions"] == []
+    assert out["retired"] is True
+    assert out["catchup_source"] == "retired_local_fact_notice"
 
 
 def test_forward_by_notice_lands_absent_days_only(monkeypatch):
@@ -473,8 +416,8 @@ def test_forward_by_notice_lands_absent_days_only(monkeypatch):
     assert written == ["20260723"]
 
 
-def test_incremental_skip_still_runs_notice_hole_catchup(monkeypatch):
-    """Even watermark_unchanged must repair behind-wm fact holes."""
+def test_incremental_skip_does_not_run_retired_fact_catchup(monkeypatch):
+    """watermark_unchanged skips; from-fact catchup no longer attached."""
     import types
 
     class _Client:
@@ -490,19 +433,10 @@ def test_incremental_skip_still_runs_notice_hole_catchup(monkeypatch):
         lambda _conn: ("20260722", "test_wm"),
     )
     monkeypatch.setattr(
-        "services.holders_aif10.catchup_missing_holders_notice_partitions",
-        lambda _conn, **_k: {
-            "missing_partitions": ["20260613"],
-            "repaired_partitions": ["20260613"],
-            "errors": [],
-            "catchup_source": "local_fact_notice",
-        },
-    )
-    monkeypatch.setattr(
         "services.holders_aif10._affected_stocks_since",
         lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must skip before scan")),
     )
     out = sync_holders_aif10_incremental(object())
     assert out["skipped"] is True
     assert out["skip_reason"] == "watermark_unchanged"
-    assert out["notice_partition_catchup"]["repaired_partitions"] == ["20260613"]
+    assert "notice_partition_catchup" not in out

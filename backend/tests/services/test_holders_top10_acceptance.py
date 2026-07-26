@@ -23,6 +23,7 @@ from services.data_sources.holders_top10_acceptance import (
     accept_holders_top10_batch,
     land_holders_top10_batch,
     publish_accepted_holders_top10_partition,
+    runtime_surface,
 )
 from services.data_sources.holders_top10_contract import load_holders_top10_contract
 from services.data_sources.holders_top10_schema import (
@@ -70,13 +71,16 @@ def test_inventory_declares_holders_formal_writers_strangler() -> None:
     assert holders["canonical_writer"] is not None
     assert holders["runtime_state"] == "formal_only"
     assert holders["conformity"] == "NONCONFORMING"
-    # Naked legacy direct write is test-escape only.
-    permit = authorize_nonconforming_direct_write(
-        "holders_top10",
-        conformity="NONCONFORMING",
-        allow_test_escape=True,
-    )
-    assert permit.publication == "nonconforming_direct_write"
+    # Compat plane DROPped — escape hatch retired (not test-escape).
+    with pytest.raises(DisclosureBoundaryError, match="holders_compat_retired"):
+        authorize_nonconforming_direct_write(
+            "holders_top10",
+            conformity="NONCONFORMING",
+            allow_test_escape=True,
+        )
+    surface = runtime_surface()
+    assert surface["legacy_mirror"] == "retired"
+    assert surface["legacy_direct_write"] == "retired"
     # DatasetSnapshot freeze remains blocked without cutover_allowed.
     with pytest.raises(DisclosureBoundaryError, match="dataset_snapshot"):
         refuse_accepted_publication_claim("holders_top10", "DatasetSnapshot")

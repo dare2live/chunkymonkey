@@ -49,39 +49,43 @@ def test_inventory_declares_three_disclosure_domains() -> None:
 
 
 def test_nonconforming_direct_write_requires_test_escape() -> None:
+    # Holders compat retired — escape hatch gone.
+    with pytest.raises(DisclosureBoundaryError, match="holders_compat_retired"):
+        authorize_nonconforming_direct_write(
+            "holders_top10", conformity="NONCONFORMING", allow_test_escape=True
+        )
+    # Org still has test escape.
     with pytest.raises(
         DisclosureBoundaryError, match="naked_nonconforming_escape_retired"
     ):
         authorize_nonconforming_direct_write(
-            "holders_top10", conformity="NONCONFORMING"
+            "org_holding", conformity="NONCONFORMING"
         )
     permit = authorize_nonconforming_direct_write(
-        "holders_top10",
+        "org_holding",
         conformity="NONCONFORMING",
         allow_test_escape=True,
     )
-    assert permit.domain == "holders_top10"
+    assert permit.domain == "org_holding"
     assert permit.conformity == "NONCONFORMING"
-    assert permit.target_table == "canonical_top10_float_holders_period"
     assert permit.publication == "nonconforming_direct_write"
 
 
 def test_legacy_mirror_write_requires_test_escape() -> None:
+    with pytest.raises(DisclosureBoundaryError, match="holders_compat_retired"):
+        authorize_legacy_mirror_write("holders_top10", allow_test_escape=True)
     with pytest.raises(
         DisclosureBoundaryError, match="legacy_mirror_retired_from_default"
     ):
-        authorize_legacy_mirror_write("holders_top10")
+        authorize_legacy_mirror_write("org_holding")
     permit = authorize_legacy_mirror_write(
-        "holders_top10", allow_test_escape=True
+        "org_holding", allow_test_escape=True
     )
     assert permit.publication == "legacy_mirror_of_formal_accept"
-    assert permit.target_table == "canonical_top10_float_holders_period"
 
 
 def test_formal_conformity_claim_fails_closed_without_accepted_path() -> None:
-    with pytest.raises(
-        DisclosureBoundaryError, match="formal_write_without_accepted_path"
-    ):
+    with pytest.raises(DisclosureBoundaryError, match="holders_compat_retired"):
         authorize_nonconforming_direct_write("holders_top10", conformity="ACCEPTED")
     with pytest.raises(
         DisclosureBoundaryError, match="formal_write_without_accepted_path"

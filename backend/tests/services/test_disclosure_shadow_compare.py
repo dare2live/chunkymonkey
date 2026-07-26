@@ -173,7 +173,7 @@ def _seed_all_matched(conn) -> None:
         ],
         observed_at=OBSERVED_HOLDERS,
         available_at=OBSERVED_HOLDERS,
-        enable_legacy_mirror=True
+        enable_legacy_mirror=False,
     )
     write_org_holding_formal_then_mirror(
         conn,
@@ -215,8 +215,13 @@ def test_shadow_match_allows_cutover_for_three_domains(conn) -> None:
         assert item.status == "MATCH"
         assert item.rows_match is True
         assert item.mismatch_count == 0
-        assert item.legacy_row_count >= 1
-        assert item.canonical_row_count == item.legacy_row_count
+        assert item.canonical_row_count >= 1
+        if item.domain == "holders_top10":
+            assert item.legacy_row_count == 0
+            assert "holders_compat_retired_canonical_ssot" in item.issues
+        else:
+            assert item.legacy_row_count >= 1
+            assert item.canonical_row_count == item.legacy_row_count
     payload = report.as_dict()
     assert payload["cutover_allowed"] is True
     assert payload["overall_status"] == "MATCH"
@@ -231,7 +236,7 @@ def test_shadow_domain_conns_routes_stk_to_secondary_db(conn) -> None:
         [_holders_row()],
         observed_at=OBSERVED_HOLDERS,
         available_at=OBSERVED_HOLDERS,
-        enable_legacy_mirror=True
+        enable_legacy_mirror=False
     )
     write_org_holding_formal_then_mirror(
         conn,
@@ -278,14 +283,12 @@ def test_shadow_domain_conns_routes_stk_to_secondary_db(conn) -> None:
 
 def test_shadow_detects_intentional_legacy_drift(conn) -> None:
     _seed_all_matched(conn)
-    # Research still reads legacy — mutate only the compatibility row.
+    # Holders compat retired — drift probe uses org legacy plane instead.
     conn.execute(
         f"""
-        UPDATE {HOLDERS_LEGACY}
-           SET hold_ratio_float = 99.99
-         WHERE stock_code = '600519'
-           AND holder_rank = 1
-           AND source = 'miaoxiang'
+        UPDATE {ORG_LEGACY}
+           SET holder_name = '漂移公募'
+         WHERE holder_code = '10010626'
         """
     )
     report = compare_disclosure_research_shadow(
@@ -299,31 +302,22 @@ def test_shadow_detects_intentional_legacy_drift(conn) -> None:
     assert report.overall_status == "MISMATCH"
     assert report.cutover_allowed is False
     holders = next(d for d in report.domains if d.domain == "holders_top10")
-    assert holders.status == "MISMATCH"
-    assert holders.rows_match is False
-    assert holders.mismatch_count >= 1
-    assert any("hold_ratio_float" in str(sample) for sample in holders.sample_mismatches)
+    assert holders.status == "MATCH"
+    assert holders.rows_match is True
+    org = next(d for d in report.domains if d.domain == "org_holding")
+    assert org.status == "MISMATCH"
+    assert org.rows_match is False
+    assert org.mismatch_count >= 1
 
 
 def test_shadow_detects_missing_canonical_side(conn) -> None:
-    """Legacy-only (pre-dual-write history) must not look like MATCH."""
+    """Empty canonical (compat retired) must not look like MATCH."""
 
-    from services.data_sources.disclosure_boundaries import (
-        authorize_nonconforming_direct_write,
-    )
-    from services.holders_aif10 import _write_legacy_direct
-
-    authorize_nonconforming_direct_write(
-        "holders_top10",
-        conformity="NONCONFORMING",
-        allow_test_escape=True,
-    )
-    _write_legacy_direct(conn, [_holders_row()], as_mirror=False)
     report = compare_disclosure_research_shadow(
         conn, partitions={"holders_top10": PARTITION_HOLDERS}
     )
     holders = next(d for d in report.domains if d.domain == "holders_top10")
-    assert holders.status in {"UNAVAILABLE", "MISMATCH"}
+    assert holders.status == "UNAVAILABLE"
     assert holders.rows_match is False
     assert report.cutover_allowed is False
     assert report.overall_status != "MATCH"

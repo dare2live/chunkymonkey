@@ -92,6 +92,13 @@ def load_disclosure_legacy_partition_rows(
     codes = [c.strip() for c in (stock_codes or []) if c and str(c).strip()]
 
     if domain == "holders_top10":
+        from services.data_sources.holders_top10_schema import COMPATIBILITY_RETIRED
+
+        if COMPATIBILITY_RETIRED:
+            raise DisclosureTransportError(
+                "holders_compat_retired: fact_top10_holder_period dropped; "
+                "use provider land or accepted canonical"
+            )
         from services.data_sources.holders_top10_schema import (
             CANONICAL_ROW_FIELDS,
             COMPATIBILITY_TABLE,

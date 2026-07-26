@@ -135,8 +135,7 @@ def test_new_entry_over_open_episode_supersedes_not_overwrites():
 def _sql_conn():
     """内存库模拟生产 ATTACH sm/tr (CREATE SCHEMA 两部名同解析) + 手造 period_windows。
 
-    E0: rebuild reads canonical spine + legacy enrichment projection; fixture
-    keeps canonical empty so legacy_only path supplies episode rows.
+    E0: rebuild reads canonical-only (holders fact retired 2026-07-26).
     """
     c = duck_mem()
     c.executescript("""
@@ -147,12 +146,6 @@ def _sql_conn():
         is_exit_row BOOLEAN, holder_name_norm TEXT, share_class TEXT,
         shares_approx BIGINT, change_status TEXT, hold_change_num DOUBLE,
         holder_type TEXT);
-    CREATE TABLE sm.fact_top10_holder_period (
-        stock_code TEXT, report_date TEXT, holder_set TEXT, holder_name TEXT,
-        holder_name_norm TEXT, change_status TEXT, is_exit_row BOOLEAN,
-        shares_approx DOUBLE, hold_change_num DOUBLE, holder_type TEXT,
-        notice_date TEXT, share_class TEXT, holder_rank INTEGER, row_seq INTEGER,
-        raw_hash TEXT, source TEXT);
     CREATE TABLE period_windows (
         stock_code TEXT, report_date TEXT, prev_period TEXT, w_start TEXT, w_end TEXT,
         c1_vwap DOUBLE, c2_eod DOUBLE, c3_lhb DOUBLE, c3_eff DOUBLE);
@@ -168,18 +161,18 @@ def _sql_conn():
     return c
 
 
-_HOLDER_ROW_N = 16  # 列数与上方 legacy fixture DDL 一致
+_HOLDER_ROW_N = 15  # 列数与上方 canonical fixture DDL 一致
 
 
 def test_build_episodes_filters_non_a_share_class():
     """share_class != 'A' (B/H 股行) 混入 A 股 qfq 价计价 = 价格错配 → 源查询硬滤。"""
     c = _sql_conn()
     try:
-        c.executemany(f"INSERT INTO sm.fact_top10_holder_period VALUES ({','.join('?' * _HOLDER_ROW_N)})", [
-            ("600000", "20240331", "free", "基金一号", "基金一号", "新进", False, 100, None, "基金", "20240430", "A", 1, 1, "h1", "miaoxiang"),
-            ("600000", "20240630", "free", "基金一号", "基金一号", "退出", True, 100, -100, "基金", "20240730", "A", 1, 1, "h2", "miaoxiang"),
-            ("600000", "20240331", "free", "港资股东", "港资股东", "新进", False, 50, None, "QFII", "20240430", "H", 2, 1, "h3", "miaoxiang"),
-            ("600000", "20240331", "free", "B股东", "B股东", "新进", False, 50, None, "法人", "20240430", "B", 3, 1, "h4", "miaoxiang"),
+        c.executemany(f"INSERT INTO sm.canonical_top10_float_holders_period VALUES ({','.join('?' * _HOLDER_ROW_N)})", [
+            ("600000", "20240331", "free", 1, 1, "基金一号", 1.0, "20240430", False, "基金一号", "A", 100, "新进", None, "基金"),
+            ("600000", "20240630", "free", 1, 1, "基金一号", 1.0, "20240730", True, "基金一号", "A", 100, "退出", -100, "基金"),
+            ("600000", "20240331", "free", 2, 1, "港资股东", 1.0, "20240430", False, "港资股东", "H", 50, "新进", None, "QFII"),
+            ("600000", "20240331", "free", 3, 1, "B股东", 1.0, "20240430", False, "B股东", "B", 50, "新进", None, "法人"),
         ])
         build_episodes(c)
         holders = {r[0] for r in c.execute("SELECT DISTINCT holder FROM fact_inst_episode").fetchall()}
@@ -195,9 +188,9 @@ def test_build_episodes_dedups_source_duplicate_keys():
     修前双行双计 → 修2c 语义下第二行还会 supersede 出 2 个 episode。"""
     c = _sql_conn()
     try:
-        c.executemany(f"INSERT INTO sm.fact_top10_holder_period VALUES ({','.join('?' * _HOLDER_ROW_N)})", [
-            ("600000", "20240331", "free", "基金二号", "基金二号", "新进", False, 100, None, "基金", "20240430", "A", 5, 1, "h5", "miaoxiang"),
-            ("600000", "20240331", "free", "基金二号", "基金二号", "新进", False, 999, None, "基金", "20240430", "A", 6, 1, "h6", "miaoxiang"),
+        c.executemany(f"INSERT INTO sm.canonical_top10_float_holders_period VALUES ({','.join('?' * _HOLDER_ROW_N)})", [
+            ("600000", "20240331", "free", 5, 1, "基金二号", 1.0, "20240430", False, "基金二号", "A", 100, "新进", None, "基金"),
+            ("600000", "20240331", "free", 6, 1, "基金二号", 1.0, "20240430", False, "基金二号", "A", 999, "新进", None, "基金"),
         ])
         build_episodes(c)
         rows = c.execute("SELECT status, shares FROM fact_inst_episode WHERE holder = '基金二号'").fetchall()

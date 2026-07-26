@@ -1469,6 +1469,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/routers/stock_dossier.py",
+      "kind": "consume",
+      "src": "table:reference.dim_active_a_stock"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/data_health_snapshot.py",
       "kind": "consume",
       "src": "table:reference.dim_active_a_stock"
@@ -1548,6 +1554,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_rally_gt.py",
+      "kind": "consume",
+      "src": "table:reference.dim_active_a_stock"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_stock_dossier_api.py",
+      "kind": "consume",
+      "src": "table:reference.dim_active_a_stock"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_stock_screener.py",
       "kind": "consume",
       "src": "table:reference.dim_active_a_stock"
     },
@@ -2291,6 +2309,18 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/schema_core.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/security_master.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/source_watermarks.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
@@ -2322,6 +2352,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_pipeline_state_sensors.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_source_watermarks.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
     },
@@ -3650,144 +3686,6 @@
       "dst": "consumer:backend/tests/test_moneyflow_assist.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/field_dictionary.yaml",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/routers/stock_dossier.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/holders_top10_acceptance.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/holders_top10_schema.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/db_health.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/holders_aif10.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/holders_notice_catchup.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/lineage/builder.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_core.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_migrations.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/security_master.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/source_watermarks.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/stock_screener.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/services/test_dual_plane_faucet.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_db_health.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_holders_aif10.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_institution_profile.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_source_watermarks.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_dossier_api.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_stock_screener.py",
-      "kind": "consume",
-      "src": "table:smartmoney.fact_top10_holder_period"
     },
     {
       "attrs": {},
@@ -7745,9 +7643,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1243,
-    "generated_at": "2026-07-25T10:25:10.147971+00:00",
-    "node_count": 442,
+    "edge_count": 1226,
+    "generated_at": "2026-07-26T00:55:53.635088+00:00",
+    "node_count": 438,
     "version": 2
   },
   "nodes": [
@@ -8562,14 +8460,6 @@
     {
       "attrs": {
         "ctype": "service",
-        "path": "backend/services/db_health.py"
-      },
-      "id": "consumer:backend/services/db_health.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
         "path": "backend/services/dc_member_publish.py"
       },
       "id": "consumer:backend/services/dc_member_publish.py",
@@ -8709,14 +8599,6 @@
         "path": "backend/services/institution_profile.py"
       },
       "id": "consumer:backend/services/institution_profile.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/lineage/builder.py"
-      },
-      "id": "consumer:backend/services/lineage/builder.py",
       "kind": "consumer"
     },
     {
@@ -9717,14 +9599,6 @@
         "path": "backend/tests/test_db.py"
       },
       "id": "consumer:backend/tests/test_db.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_db_health.py"
-      },
-      "id": "consumer:backend/tests/test_db_health.py",
       "kind": "consumer"
     },
     {
@@ -10778,16 +10652,6 @@
         "vendor": "eastmoney_via_tushare"
       },
       "id": "table:smartmoney.fact_stock_moneyflow_dc_daily",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
-        "status": "active",
-        "table": "fact_top10_holder_period"
-      },
-      "id": "table:smartmoney.fact_top10_holder_period",
       "kind": "table"
     },
     {

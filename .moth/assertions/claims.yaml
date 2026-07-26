@@ -141,10 +141,10 @@ assertions:
     command: ["bash", "-c", "grep -c 'def enable_sandbox_guard\\|class SandboxBoundaryError\\|def read_only_main' backend/services/sandbox_guard.py"]
     expect: {op: ">=", value: 3}
   - id: holder-report-date-single-format
-    claim: "fact_top10_holder_period report_date 全 YYYYMMDD 单格式 (2026-06-22 双真相源消灭 mythos§4: 历史曾因 verbatim 搬运旧库 ISO → 同字段两套格式致 MERGE-on-grain 重复 + audit 误选丢最新; writer 加 _compact_date_sql 归一. >0 = ISO 复发=双真相源回潮. 注: 旧 migrate_holders_to_tdxhub 一次性迁移脚本 2026-06-27 通达信全删已物删, holder 现走 aif10/tushare; 本断言守归一后的 live 状态)"
+    claim: "canonical_top10_float_holders_period report_date 全 YYYYMMDD 单格式 (holders fact DROPPED 2026-07-26; 守 formal SSOT 归一. >0 = ISO 复发=双真相源回潮)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
-    query: "SELECT count(*) FROM fact_top10_holder_period WHERE report_date LIKE '%-%'"
+    query: "SELECT count(*) FROM canonical_top10_float_holders_period WHERE CAST(report_date AS VARCHAR) LIKE '%-%'"
     expect: {op: "==", value: 0}
   - id: qfq-serving-tushare-only
     claim: "v_price_kline_qfq 当前 serving view 只含 tushare 派生行；qfq 非 nominal/execution truth；physical lineage=batch_id/ingested_at/factor_as_of on rebuild (latest-factor rebase method typed; pin batch_id for reproducibility)"

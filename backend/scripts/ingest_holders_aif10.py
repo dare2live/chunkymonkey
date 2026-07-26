@@ -7,7 +7,6 @@
     python backend/scripts/ingest_holders_aif10.py --symbols 600388,000001        # 指定股
     python backend/scripts/ingest_holders_aif10.py --backfill                       # 全市场 (K线范围 20181231+)
     python backend/scripts/ingest_holders_aif10.py --start-period 20181231 --limit 50
-    python backend/scripts/ingest_holders_aif10.py --accept-legacy-partition 20260717  # formal from legacy (noop mirror)
 """
 from __future__ import annotations
 
@@ -20,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from services.db import get_conn  # noqa: E402
 from services.holders_aif10 import (  # noqa: E402
     DEFAULT_START_PERIOD,
-    accept_holders_top10_partition_from_legacy,
     sync_holders_aif10,
 )
 
@@ -34,28 +32,23 @@ def main() -> int:
     ap.add_argument(
         "--accept-legacy-partition",
         default="",
-        help="formal land→accept one notice_date from legacy (YYYYMMDD); legacy untouched",
+        help="RETIRED: fact plane dropped 2026-07-26; flag kept only to fail closed",
     )
     args = ap.parse_args()
 
+    if args.accept_legacy_partition:
+        print(
+            "holders_compat_retired: --accept-legacy-partition forbidden after "
+            "fact_top10_holder_period DROP; use provider sync / forward land",
+            file=sys.stderr,
+        )
+        return 2
+
     conn = get_conn()
     try:
-        if args.accept_legacy_partition:
-            outcome = accept_holders_top10_partition_from_legacy(
-                conn,
-                args.accept_legacy_partition,
-            )
-            print(
-                "[aif10-holders] ACCEPT_LEGACY "
-                f"status={outcome.status} partitions={outcome.partitions} "
-                f"canonical_rows={outcome.canonical_rows} "
-                f"batch_ids={outcome.batch_ids}"
-            )
-            return 0
-
         symbols = [s.strip() for s in args.symbols.split(",") if s.strip()] or None
         if symbols is None and not args.backfill and not args.limit:
-            print("需 --symbols / --backfill / --limit / --accept-legacy-partition 之一", file=sys.stderr)
+            print("需 --symbols / --backfill / --limit 之一", file=sys.stderr)
             return 2
 
         result = sync_holders_aif10(
