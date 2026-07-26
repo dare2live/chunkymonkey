@@ -1595,6 +1595,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/residual_hygiene.yaml",
+      "kind": "consume",
+      "src": "table:reference.dim_trading_calendar"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/universe_rules.yaml",
       "kind": "consume",
       "src": "table:reference.dim_trading_calendar"
@@ -1668,6 +1674,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/rally_gt.py",
+      "kind": "consume",
+      "src": "table:reference.dim_trading_calendar"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/residual_hygiene.py",
       "kind": "consume",
       "src": "table:reference.dim_trading_calendar"
     },
@@ -2987,6 +2999,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_residual_hygiene.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_dc_member_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_stock_moneyflow_publish_b2.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_dc_member_daily"
@@ -3102,6 +3120,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_index_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_residual_hygiene.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_index_daily"
     },
@@ -3425,6 +3449,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_residual_hygiene.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_stock_limit_publish_b2.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_limit_daily"
@@ -3528,6 +3558,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_market_pulse_serve_read_s6.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_residual_hygiene.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_daily"
     },
@@ -3659,6 +3695,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_residual_hygiene.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_stock_moneyflow_publish_b2.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
@@ -3762,6 +3804,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_top_inst_seat_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_residual_hygiene.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_top_inst_seat_daily"
     },
@@ -5981,6 +6029,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_residual_hygiene.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_dc_member"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_market_pulse.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_dc_member"
@@ -6150,6 +6204,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_index_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_residual_hygiene.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_index_daily"
     },
@@ -6384,6 +6444,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_limit_list_d"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_residual_hygiene.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_limit_list_d"
     },
@@ -6707,6 +6773,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_residual_hygiene.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_moneyflow"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_stock_moneyflow_publish_b2.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow"
@@ -6774,6 +6846,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_moneyflow_dc"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_residual_hygiene.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow_dc"
     },
@@ -6936,6 +7014,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stk_holdernumber"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/residual_hygiene.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stk_holdernumber"
     },
@@ -7325,6 +7409,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_residual_hygiene.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_top_inst"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_top_inst_seat_publish_b2.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_top_inst"
@@ -7643,9 +7733,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1226,
-    "generated_at": "2026-07-26T00:55:53.635088+00:00",
-    "node_count": 438,
+    "edge_count": 1241,
+    "generated_at": "2026-07-26T02:30:14.343231+00:00",
+    "node_count": 441,
     "version": 2
   },
   "nodes": [
@@ -7775,6 +7865,14 @@
         "path": "backend/config/rally_gt_columns.yaml"
       },
       "id": "consumer:backend/config/rally_gt_columns.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/residual_hygiene.yaml"
+      },
+      "id": "consumer:backend/config/residual_hygiene.yaml",
       "kind": "consumer"
     },
     {
@@ -8860,6 +8958,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/residual_hygiene.py"
+      },
+      "id": "consumer:backend/services/residual_hygiene.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/schema_core.py"
       },
       "id": "consumer:backend/services/schema_core.py",
@@ -9407,6 +9513,14 @@
         "path": "backend/tests/services/test_population_scope.py"
       },
       "id": "consumer:backend/tests/services/test_population_scope.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_residual_hygiene.py"
+      },
+      "id": "consumer:backend/tests/services/test_residual_hygiene.py",
       "kind": "consumer"
     },
     {

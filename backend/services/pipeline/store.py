@@ -42,6 +42,17 @@ def run_store(ctx: PipelineContext) -> None:
             degraded_msg=("continuity/integrity 审查 FAIL — 库存数据缺日/断流/横截面异常 "
                           f"(详 data/audit/continuity_{ctx.date}.json + ALERT_continuity.flag)"))
 
+    # Step 2.985: FOUNDATION F9 residual hygiene — Type-B publish lag + ann tip vs eligible.
+    # FAIL = degraded + flag; does not wash Continuity READY; honest WARN/UNTRUSTED out of scope.
+    if not ctx.dry:
+        ctx.run_script(
+            "backend/scripts/check_residual_hygiene.py",
+            ["--alert-flag", "/tmp/chunkymonkey_ALERT_residual_hygiene.flag",
+             "--json-out", f"data/audit/residual_hygiene_{ctx.date}.json"],
+            degraded_msg=("residual_hygiene FAIL — Type-B publish / ann tip lag over SLA "
+                          f"(详 data/audit/residual_hygiene_{ctx.date}.json + "
+                          "ALERT_residual_hygiene.flag)"))
+
     # Step 2.99: acquisition 后重算同一 SLA 投影。preflight 仅保留 before/readiness 证据，
     # 最终报告和告警只消费此 post-acquire artifact，避免已修复分区仍被旧报告误报。
     sla_output_rel = f"data/audit/watermark_sla_{ctx.date}.json"

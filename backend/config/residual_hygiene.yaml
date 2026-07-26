@@ -1,0 +1,38 @@
+# Residual hygiene SLA — FOUNDATION F9 (2026-07-26)
+#
+# Purpose: keep non-blocking residuals from drifting forever under daily_update.
+# This is NOT Continuity READY cosmetics and does NOT clear honest WARN/UNTRUSTED.
+#
+# Authority: analysis/FOUNDATION_EXECUTION_PLAN.md F9
+# Wire: acquire type_b post-evaluate + store Step 2.985 check_residual_hygiene.py
+# Fail closed for update consumption (degraded + ALERT flag); does not block code commits.
+
+version: 1
+policy_id: residual_hygiene_f9
+
+# Trading-day lag only (dim_trading_calendar). Never calendar-day proxies.
+
+type_b_publish_lag:
+  enabled: true
+  # After same-run type_b catchup, raw MAX(trade_date) may still lead fact.
+  # lag = count of trading days strictly after fact_max up to and including raw_max.
+  warn_trading_days: 1
+  fail_trading_days: 2
+  note: >
+    Domains come from type_b_fact_publish_catchup specs (single writer list).
+    Over fail after catchup = publish stalled / window truncated debt.
+
+ann_tip_lag:
+  enabled: true
+  warn_trading_days: 5
+  fail_trading_days: 15
+  note: >
+    Sparse announcement domains: empty calendar days are OK.
+    fail means local tip drifted too far behind eligible_end (drain stuck),
+    not "must have rows every trading day". Distinct from registry
+    freshness_sla_trading_days (static_staleness WARN, often 90d).
+  domains:
+    - domain: stk_holdernumber
+      db_alias: tushare_raw
+      table: raw_tushare_stk_holdernumber
+      date_column: ann_date

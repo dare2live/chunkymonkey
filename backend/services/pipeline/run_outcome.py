@@ -45,6 +45,7 @@ _SOFT_RE = re.compile(
 _INTEGRITY_RE = re.compile(
     r"("
     r"continuity/integrity"
+    r"|residual_hygiene"
     r"|data_audit"
     r"|库存断流"
     r"|under_populated_accepted"

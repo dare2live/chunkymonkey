@@ -1,0 +1,91 @@
+{
+  "policy_id": "residual_hygiene_f9",
+  "overall": "PASS",
+  "findings": [
+    {
+      "check": "type_b_publish_lag",
+      "domain": "moneyflow",
+      "status": "pass",
+      "detail": "fact_caught_up",
+      "raw_max": "20260724",
+      "fact_max": "20260724",
+      "lag_trading_days": 0,
+      "warn_trading_days": 1,
+      "fail_trading_days": 2
+    },
+    {
+      "check": "type_b_publish_lag",
+      "domain": "moneyflow_dc",
+      "status": "pass",
+      "detail": "fact_caught_up",
+      "raw_max": "20260724",
+      "fact_max": "20260724",
+      "lag_trading_days": 0,
+      "warn_trading_days": 1,
+      "fail_trading_days": 2
+    },
+    {
+      "check": "type_b_publish_lag",
+      "domain": "limit",
+      "status": "pass",
+      "detail": "fact_caught_up",
+      "raw_max": "20260724",
+      "fact_max": "20260724",
+      "lag_trading_days": 0,
+      "warn_trading_days": 1,
+      "fail_trading_days": 2
+    },
+    {
+      "check": "type_b_publish_lag",
+      "domain": "index_daily",
+      "status": "pass",
+      "detail": "fact_caught_up",
+      "raw_max": "20260724",
+      "fact_max": "20260724",
+      "lag_trading_days": 0,
+      "warn_trading_days": 1,
+      "fail_trading_days": 2
+    },
+    {
+      "check": "type_b_publish_lag",
+      "domain": "dc_member",
+      "status": "pass",
+      "detail": "fact_caught_up",
+      "raw_max": "20260724",
+      "fact_max": "20260724",
+      "lag_trading_days": 0,
+      "warn_trading_days": 1,
+      "fail_trading_days": 2
+    },
+    {
+      "check": "type_b_publish_lag",
+      "domain": "top_inst_seat",
+      "status": "pass",
+      "detail": "fact_caught_up",
+      "raw_max": "20260724",
+      "fact_max": "20260724",
+      "lag_trading_days": 0,
+      "warn_trading_days": 1,
+      "fail_trading_days": 2
+    },
+    {
+      "check": "ann_tip_lag",
+      "domain": "stk_holdernumber",
+      "status": "pass",
+      "detail": "tip_behind_eligible",
+      "local_max": "20260723",
+      "eligible_end": "20260724",
+      "eligible_reason": "latest_prior_trading_day",
+      "lag_trading_days": 1,
+      "warn_trading_days": 5,
+      "fail_trading_days": 15
+    }
+  ],
+  "summary": {
+    "fail": 0,
+    "warn": 0,
+    "pass": 7,
+    "skip": 0
+  },
+  "as_of": "2026-07-26T10:17:50"
+}

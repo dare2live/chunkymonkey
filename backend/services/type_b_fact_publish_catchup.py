@@ -166,6 +166,11 @@ def _type_b_specs() -> tuple[TypeBPublishSpec, ...]:
     )
 
 
+def type_b_publish_specs() -> tuple[TypeBPublishSpec, ...]:
+    """Public SSOT list for Type-B raw→fact publish domains."""
+    return _type_b_specs()
+
+
 def catchup_type_b_fact_publish(
     *,
     raw_db: Path | None = None,
@@ -284,7 +289,27 @@ def run_acquire_type_b_publish_catchup(ctx: Any) -> dict[str, Any]:
         ctx.delta_manifest = empty_manifest(run_date=ctx.date)
     summary = dict(ctx.delta_manifest.get("acquire_summary") or {})
     summary["type_b_publish"] = out
+
+    # F9: same-run residual hygiene on Type-B publish lag (ann tip checked in store).
+    try:
+        from services.residual_hygiene import evaluate_type_b_after_catchup
+
+        hygiene = evaluate_type_b_after_catchup()
+    except Exception as exc:  # noqa: BLE001
+        hygiene = {
+            "overall": "FAIL",
+            "status": "error",
+            "error": f"{type(exc).__name__}:{str(exc)[:200]}",
+            "findings": [],
+        }
+        ctx.degraded(f"residual_hygiene type_b evaluate failed: {exc}")
+    summary["residual_hygiene_type_b"] = hygiene
     ctx.delta_manifest["acquire_summary"] = summary
+    if hygiene.get("overall") == "FAIL":
+        ctx.degraded(
+            "residual_hygiene type_b publish lag over SLA "
+            "(see acquire_summary.residual_hygiene_type_b)"
+        )
     if out.get("status") == "error":
         ctx.degraded("type_b fact publish catchup error (see log)")
     elif out.get("status") == "partial":
@@ -294,7 +319,9 @@ def run_acquire_type_b_publish_catchup(ctx: Any) -> dict[str, Any]:
 
 __all__ = [
     "TYPE_B_PUBLISH_CATCHUP_MAX_DAYS",
+    "TypeBPublishSpec",
     "catchup_type_b_fact_publish",
     "plan_type_b_publish_window",
     "run_acquire_type_b_publish_catchup",
+    "type_b_publish_specs",
 ]

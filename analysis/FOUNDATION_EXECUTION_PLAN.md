@@ -86,6 +86,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | **F6** | S7 publication/sunset（按需） | Tier0 | **仅** owner 新 block | 假 COMPAT / blanket pre-accept | **PARTIAL** 2026-07-24：`stk_holdernumber` RESTORE（by_ann_date+DataAccess+dossier）；其余 orphan 仍 skip |
 | **F7** | Type-B enrichment | L3 | feature_store_profiles ACCEPTED；`institution_profile_edge_v0` declared；legacy_only 仅补 canonical 缺期 | 假 FIXED / Optuna | **FIXED** 2026-07-23（E0-HIST 后 canonical enrichment 齐；`新进` null `hold_change_num` typed OK） |
 | **F8** | qfq incremental/partitioned write | L3 | 默认 incremental：`f_latest` 值变 → 全历史 rewrite；值不变 → append；`--full` 保留 CTAS+compact | 用「定期 compact」代替语义；静默错历史 | **FIXED** 2026-07-23（`build_price_kline_qfq_tushare` auto/incremental/full） |
+| **F9** | Residual hygiene SLA（滞后超限即红） | L2/L3 | YAML `residual_hygiene.yaml`；Type-B raw→fact + ann tip vs eligible；store 2.985 + type_b post-evaluate；FAIL→degraded+ALERT；禁 Continuity READY 化妆 | 清零诚实 WARN；平行第二仪表盘；safe_commit 绑数据红死锁 | **FIXED path** 2026-07-26（`analysis/residual_hygiene_f9_20260726.md`） |
 
 **F1 逐项（Knife4）**：
 | 信号 | 裁决 | 证据 |
@@ -96,7 +97,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | moneyflow_hsgt 真缺口 20260708/10 | **FIXED** ops | bounded backfill 2 日；vendor-0 日进 `known_empty_days` |
 | dividend/hsgt `warn_interior_gaps` | **FIXED typed** | `hk_holidays` + `event_sparse`；live PASS warn=0；非假期仍 FAIL |
 
-**近端默认序**：F1/F3/F4/F7/F8 FIXED；无默认开放底座刀（STRATEGY 仍须 RX）。轴/频率评审见 §3b。
+**近端默认序**：F1/F3/F4/F7/F8/F9 FIXED path；无默认开放底座刀（STRATEGY 仍须 RX）。轴/频率评审见 §3b。
 
 ### 3b. 数据轴/频率评审残差（2026-07-24；非 class-A）
 
@@ -106,8 +107,8 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 |---|---|---|---|---|
 | **A1** | holders fact→canonical notice 洞 drain（≈1271；含 600388/`20260613`） | ops | catchup 清空 fact-only | **CLOSED** 2026-07-24 live：fact_only=0；`20260613`∈canon+accepted |
 | **A1b** | 共享 tip-leap catchup law + 跨域接线 | L2 | `plan_partition_catchup`；holders 迁入；≥1 披露域接线；证据 `partition_leap_integrity_20260724.md` | **FIXED path**（holdertrade wired；raw 锁后量化 interior） |
-| **A2** | holdernumber `MAX(ann_date)` 探针（live=20260624） | probe | vendor 有更新则查 drain；无则标稀疏 OK | **OPEN**（peer backfill `20260625–20260723` 进行中） |
-| **A3** | Type-B fact publish 短滞后（moneyflow/limit/index/dc） | ops | fact max 跟 raw≤1–2 交易日 | **OPEN**（class=PUBLISH_LAG，非 tip-leap） |
+| **A2** | holdernumber `MAX(ann_date)` tip vs eligible | F9 gate | tip lag >fail SLA → residual_hygiene FAIL/degraded | **F9 门禁管辖**（稀疏合法；超限即红；非本刀 mass drain） |
+| **A3** | Type-B fact publish 短滞后（moneyflow/limit/index/dc） | F9 gate | 同跑 catchup 后仍 raw≫fact 超 fail SLA → degraded | **F9 门禁管辖**（catchup 仍负责追平；本门防无限漂） |
 | **A4** | org 中间历史季洞 | backfill knife | 仅显式刀；日常 incremental 不变 | **DEFER** |
 | **A5** | cyq 消费口径（C0 历史 FAIL） | semantic | 消费前换算/弃用；非采集轴 | **DEFER** |
 
