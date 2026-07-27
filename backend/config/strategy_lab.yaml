@@ -1,0 +1,21 @@
+version: 1
+status: framework_only
+execution_mode: manual_only
+development_split:
+  validation_calendar_days: 20
+
+# These are deliberate two-key interlocks, not a second schedule owner.
+# goal.md remains the authorization owner. A non-empty id here is accepted only
+# when goal.md contains the exact RX_AUTH=..., PHASE_N_AUTH=..., or
+# REMOTE_COMPUTE_AUTH=... token. Runtime evidence gates must also pass.
+authorizations:
+  formal_rx: ""
+  phase_n_optuna: ""
+  remote_compute: ""
+
+# Provider-neutral remote-compute invariants. There is intentionally no Modal
+# image/app/volume configuration until a real adapter and local parity test
+# exist.
+remote_compute:
+  require_read_only_bundle: true
+  forbid_live_database: true

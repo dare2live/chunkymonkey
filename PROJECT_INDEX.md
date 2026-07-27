@@ -1,8 +1,8 @@
 # PROJECT_INDEX — Current Project Map
 
 > 状态：live navigation，非规则 owner
-> 更新：2026-07-27（factor-family K3 live frontier gate）
-> 当前目标看 `goal.md`（foundation CLOSED / `phase_closure_ready`；策略 paused）。
+> 更新：2026-07-27（strategy-lab fail-closed control plane）
+> 当前目标看 `goal.md`（foundation CLOSED / `phase_closure_ready`；strategy-lab installed 但 live inputs BLOCKED，正式策略 paused）。
 > **执行方案仅两份**：底座 `analysis/FOUNDATION_EXECUTION_PLAN.md` · 策略 `analysis/STRATEGY_EXECUTION_PLAN.md`（RX 前 BLOCKED）。台账 `analysis/DOC_CLEANUP_20260723.md`。
 > 架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口看 `FEATURE_MAP.md` / CodeGraph。
 > `BOARD.md` = 生成投影，**勿手改、非执法**（`build_agent_board.py`）。
@@ -31,6 +31,7 @@ AGENTS.md
 
 | T3 institution | `institution_profile.py` + `disclosure_dataset_snapshot.py` + `snapshot_nominal_bind.py` + `institution_follow_b0.py` + `holdout_guard.py` + `research_prereg_store.py` + `org_holding_pointer_integrity.py` + `org_holding_aif10.py`（miaoxiang **sharded aif10** + `pagination_integrity` 100-page cap）+ `org_holding_period_catchup.py` + … | **首个正式策略包**；E0-HIST/F6 PASS；org = **period-gap + population + provider_truncated**；auto **N=1/run**；B0–B4 仅接受 snapshot-bound canonical nominal bars；正式顺序 = plan→prereg→pointer preflight→consume→canonical hash/load→measure；stable holdout scope single-touch；typed fixture 永不 claimable；F6 pointer = FULL OUTER + content_hash；RX 仍 BLOCKED |
 | T3 main rally | `main_rally_dataset_snapshot.py`, `snapshot_nominal_bind.py`, `main_rally_b0.py`, `main_rally_b0_measure.py`, `main_rally_b1.py`, `main_rally_b1_measure.py`, `main_rally_b2.py`, `main_rally_b2_measure.py`, `rally_gt.py`, `rally_detect.py`, rally config/tests | GT 资产成熟；**F0+F1+F2+F3 FIXED**；formal measurement 禁 freeze override，名义 accepted generation 必须严格截止 holdout 前且 canonical hash 一致；当前 freeze 越界，RX 仍 BLOCKED；历史 B0/B1/B2 均 reject/`claimable=false` |
+| T3 research lab | `strategy_lab.py` + `strategy_lab.yaml` + `check_strategy_lab.py` | **PARTIAL / fail-closed**：只实现 development-only `ResearchInputBundle` + local/manual/non-claimable smoke 准入；bundle 拒 sealed holdout、Tier3 label、无 nominal train/validation；当前 disclosure/main-rally freeze 均 BLOCKED；formal evidence validators、Optuna runner、Modal adapter 均未实现且无条件阻断 |
 | T3 formulas | `bestchoice/FROZEN.md` + `evidence_manifest.json` | 冻结 challenger；Phase G 前不吸收 |
 | T4 decision/paper | `paper_portfolio.py`, frontend observation page | Legacy NONCONFORMING 观察账本；不是 paper execution |
 
@@ -79,6 +80,7 @@ AGENTS.md
 | Local reviewed commit | `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"`（WP1：L1/L2/L3；政策=`backend/config/commit_tiers.yaml`；L2/L3 跑与 CI **同 blocking 面** pytest=`ci_pytest_surface.yaml` via `run_ci_pytest.py --tier blocking` — **1 `ci_pytest` gate**，非按用例计独立门；`nightly_paths` 异步；gate 分层见 `analysis/gate_redesign_occams_20260721.md`） |
 | Tier1/2 full-universe accept (manual) | `PYTHONPATH=backend python backend/scripts/persist_tier12_full_universe_accept.py --decision-date YYYYMMDD`；cutover-aware（ON 时要求 resolver ACCEPTED_CUTOVER；永不翻 yaml）；form enrich 经 `load_form_rows_exact_day` |
 | Phase D ExperimentRun persist (idempotent) | `PYTHONPATH=backend python backend/scripts/persist_phase_d_experiment_runs.py [--force]`；b0_bound + runtime-owned measured_offline；claimable 恒 false |
+| Strategy Lab readiness (read-only) | `PYTHONPATH=backend python backend/scripts/check_strategy_lab.py --framework --json`；区分 `framework_installed` 与 `framework_ready`；当前两份 live input 不合格时返回 rc=2，绝不把 control-plane installed 洗成策略可跑 |
 | Phase F main_rally F0+F1+F2 persist | `PYTHONPATH=backend python backend/scripts/persist_phase_f_experiment_verdicts.py [--freeze] [--force]`；snapshot + B0+B1 verdicts under `data/lineage/phase_f_experiment_verdicts/`（`b0.json`,`b1.json`,`manifest.json`）；≠ StrategyRelease |
 
 已移除的 ChunkyCtl 子命令不是工作流，调用必须返回非零；不要在活文档或生成地图中把任何 retired lifecycle 重新列为 active。
@@ -96,6 +98,7 @@ AGENTS.md
 | P1 | Market pulse mixes taxonomy, measurements, rolling/regime, write/read；仍读错误 scope raw | B-ext FIXED；B-pit shadow MATCH 120/120（membership proxy）；mart cutover=true（owner opt-in）→ 窗内切 project_universe_pit，窗外 fail-closed |
 | P1 | Stock state/market regime rows lack config/input version | Historical outputs cannot prove which definition produced them |
 | P1 | Phase D FIXED — runtime-owned measured offline (`research_runtime_measure`) + lineage `measured_offline.json`；StrategyRelease 仍禁 | Strategy evidence still cannot reach decision/product safely |
+| P1 | Strategy Lab control plane installed but current disclosure/main-rally freezes contain sealed-holdout dates（disclosure 还缺 nominal B0 refs）；formal validators/evaluator/artifact reducer 未实现 | 只允许 synthetic/local `claimable=false` contract smoke；RX/Optuna/Modal 均 BLOCKED |
 | P1 | Docs/CLI gates previously treated retired/warn as PASS；事实性断言（如“仅 TuShare”）不在 gate 覆盖 | Tooling green did not prove executable reality |
 
 The current migration and blockers are maintained only in `goal.md`.

@@ -71,12 +71,14 @@ PIT 截断测试是硬门：在 cutoff 后增加未来数据，cutoff 前的特�
 ## 5. 时间切分与搜索纪律
 
 1. prereg 先于结果：冻结假设、搜索空间、主指标、停止条件和 holdout；
-2. train 只用于拟合；validation 用于模型/参数选择；holdout 最多触碰一次；
-3. 使用 purged walk-forward，并按 label horizon 设置 embargo；
-4. trial 数、公式数、状态 cell、特征组合全部计入多重搜索规模；
-5. 搜索空间必须改变真实策略行为；无 search space 的公式不运行寻优；
-6. 先跑最便宜的 B0/B1 和小样本烟测，再决定是否扩大本地计算；
-7. 当前仅允许本地、人工触发的研究任务。退役 provider、已移除的 job dispatcher 和不存在的执行器不是可用入口。
+2. development snapshot 只含 train + purged walk-forward validation；train 只用于拟合，validation 用于模型/参数选择；
+3. sealed holdout 是独立不可变 snapshot：开发 worker、Optuna objective 和远程 worker 均不可读取，只向 prereg 暴露 opaque hash；候选与参数完全冻结后，由唯一 evaluator / CAS owner 最多触碰一次；
+4. 开发窗口尾部的 fold 指标只能命名为 validation/eval，不得消耗全局 holdout token，也不得作为多次读取 sealed holdout 的别名；
+5. 使用 purged walk-forward，并按 label horizon 设置 embargo；
+6. trial 数、公式数、状态 cell、特征组合全部计入多重搜索规模；
+7. 搜索空间必须改变真实策略行为；无 search space 的公式不运行寻优；
+8. 先跑最便宜的 B0/B1 和小样本烟测，再决定是否扩大本地计算；
+9. 当前仅允许本地、人工触发、`claimable=false` 的策略实验室 smoke。退役 provider、已移除的 job dispatcher 和不存在的执行器不是可用入口；Optuna、远程计算和正式 RX 分别通过独立准入门。
 
 复杂搜索应报告 DSR/PBO 或等价的多重比较与过拟合证据；这些统计量不能替代含成本组合结果。
 

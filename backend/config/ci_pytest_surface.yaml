@@ -71,6 +71,7 @@ blocking_paths:
 - tests/services/test_disclosure_enrichment_projection.py
 - tests/services/test_phase_e_smoke.py
 - tests/services/test_research_runtime.py
+- tests/services/test_strategy_lab.py
 - tests/services/test_margin_acceptance.py
 - tests/services/test_margin_population_scope.py
 - tests/services/test_margin_catchup.py
@@ -122,6 +123,7 @@ blocking_paths:
 - tests/scripts/test_agent_boot.py
 - tests/scripts/test_pre_knife_audit.py
 - tests/scripts/test_persist_phase_d_experiment_runs.py
+- tests/scripts/test_check_strategy_lab.py
 - tests/scripts/test_build_price_kline_qfq_tushare.py
 - tests/scripts/test_build_sw_industry_view.py
 - tests/services/test_tier12_publish_contract.py
