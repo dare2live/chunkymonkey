@@ -17,6 +17,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "backend"))
@@ -35,28 +36,116 @@ from services.database_manifest import get_database_manifest  # noqa: E402
 from services.duck_adapter import connect as duck_connect  # noqa: E402
 
 
-def _count_mismatches(con) -> list[tuple[str, int, int]]:
-    rows = con.execute(
-        f"""
-        WITH ptr AS (
-          SELECT partition_value, row_count
-            FROM {ACCEPTED_TABLE}
-           WHERE dataset_id = ?
-        ),
-        can AS (
-          SELECT {PARTITION_FIELD} AS partition_value, COUNT(*) AS canon_n
-            FROM {CANONICAL_TABLE}
-           GROUP BY 1
-        )
-        SELECT p.partition_value, p.row_count, c.canon_n
-          FROM ptr p
-          JOIN can c USING (partition_value)
-         WHERE p.row_count <> c.canon_n
-         ORDER BY 1
-        """,
-        [DATASET_ID],
-    ).fetchall()
-    return [(str(r[0]), int(r[1]), int(r[2])) for r in rows]
+def _count_mismatches(con) -> list[dict]:
+    from services.org_holding_pointer_integrity import count_org_pointer_mismatches
+
+    return list(count_org_pointer_mismatches(con))
+
+
+def repair_connection(
+    con,
+    *,
+    dry_run: bool,
+    after_update: Callable[[str], None] | None = None,
+) -> dict:
+    """Repair every repairable mismatch as one transaction, then re-verify.
+
+    Missing canonical or pointer sides are not inferable by this utility and
+    therefore fail closed instead of being silently skipped.
+    """
+
+    transaction_open = False
+    repaired: list[dict] = []
+    try:
+        if not dry_run:
+            con.execute("BEGIN TRANSACTION")
+            transaction_open = True
+        mismatches = _count_mismatches(con)
+        unresolved = [
+            item
+            for item in mismatches
+            if str(item.get("reason") or "")
+            in {"pointer_missing", "canonical_missing"}
+            or str(item.get("reason") or "").startswith("hash_recompute_failed:")
+        ]
+        if unresolved:
+            reasons = ", ".join(
+                f"{item.get('partition_value')}:{item.get('reason')}"
+                for item in unresolved
+            )
+            raise RuntimeError(f"unresolved org pointer mismatches: {reasons}")
+
+        for mismatch in mismatches:
+            pv = str(mismatch["partition_value"])
+            before_n = int(mismatch["pointer_row_count"])
+            canon_n = int(mismatch["canonical_row_count"])
+            after_n, after_hash = partition_accepted_pointer_stats(con, DOMAIN, pv)
+            if after_n != canon_n:
+                raise RuntimeError(
+                    f"partition {pv}: COUNT={canon_n} but hash scan n={after_n}"
+                )
+            before_hash = str(mismatch.get("pointer_content_hash") or "")
+            item = {
+                "partition_value": pv,
+                "reason": str(mismatch.get("reason") or "unknown"),
+                "before_row_count": before_n,
+                "after_row_count": after_n,
+                "before_hash": before_hash,
+                "after_hash": str(after_hash),
+            }
+            if not dry_run:
+                result = con.execute(
+                    f"""
+                    UPDATE {ACCEPTED_TABLE}
+                       SET row_count = ?, content_hash = ?
+                     WHERE dataset_id = ?
+                       AND replace(CAST(partition_value AS VARCHAR), '-', '') = ?
+                       AND row_count = ?
+                       AND content_hash = ?
+                    """,
+                    [after_n, after_hash, DATASET_ID, pv, before_n, before_hash],
+                )
+                if int(getattr(result, "rowcount", -1)) == 0:
+                    # DuckDB rowcount is not reliable across all adapters; the
+                    # exact before-state is checked explicitly below.
+                    current = con.execute(
+                        f"""
+                        SELECT row_count, content_hash
+                          FROM {ACCEPTED_TABLE}
+                         WHERE dataset_id = ?
+                           AND replace(CAST(partition_value AS VARCHAR), '-', '') = ?
+                        """,
+                        [DATASET_ID, pv],
+                    ).fetchone()
+                    if current is None or (
+                        int(current[0]),
+                        str(current[1]),
+                    ) != (after_n, str(after_hash)):
+                        raise RuntimeError(
+                            f"partition {pv}: pointer changed during repair"
+                        )
+                if after_update is not None:
+                    after_update(pv)
+            repaired.append(item)
+
+        if not dry_run:
+            remaining = _count_mismatches(con)
+            if remaining:
+                raise RuntimeError(
+                    "post-repair verifier still reports mismatches: "
+                    + json.dumps(remaining[:5], ensure_ascii=False)
+                )
+            con.execute("COMMIT")
+            transaction_open = False
+        return {
+            "mismatches": len(mismatches),
+            "repaired": len(repaired),
+            "partitions": repaired,
+        }
+    except Exception:
+        if transaction_open:
+            con.execute("ROLLBACK")
+        raise
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -67,46 +156,13 @@ def main(argv: list[str] | None = None) -> int:
 
     path = get_database_manifest().path_for("smartmoney")
     con = duck_connect(str(path), read_only=bool(args.dry_run))
-    repaired: list[dict] = []
     try:
-        mismatches = _count_mismatches(con)
+        result = repair_connection(con, dry_run=bool(args.dry_run))
         print(
-            f"org_pointer_repair: count_mismatches={len(mismatches)} "
+            f"org_pointer_repair: count_mismatches={result['mismatches']} "
             f"dry_run={args.dry_run}",
             flush=True,
         )
-        for pv, before_n, canon_n in mismatches:
-            print(f"  hashing partition={pv} canon_n={canon_n} ...", flush=True)
-            after_n, after_hash = partition_accepted_pointer_stats(con, DOMAIN, pv)
-            if after_n != canon_n:
-                raise SystemExit(
-                    f"partition {pv}: COUNT={canon_n} but hash scan n={after_n}"
-                )
-            before_hash = con.execute(
-                f"""
-                SELECT content_hash FROM {ACCEPTED_TABLE}
-                 WHERE dataset_id = ? AND partition_value = ?
-                """,
-                [DATASET_ID, pv],
-            ).fetchone()[0]
-            item = {
-                "partition_value": pv,
-                "before_row_count": before_n,
-                "after_row_count": after_n,
-                "before_hash": str(before_hash),
-                "after_hash": str(after_hash),
-            }
-            if not args.dry_run:
-                con.execute(
-                    f"""
-                    UPDATE {ACCEPTED_TABLE}
-                       SET row_count = ?, content_hash = ?
-                     WHERE dataset_id = ? AND partition_value = ?
-                    """,
-                    [after_n, after_hash, DATASET_ID, pv],
-                )
-            repaired.append(item)
-            print(f"  done partition={pv} {before_n}->{after_n}", flush=True)
     finally:
         con.close()
 
@@ -114,8 +170,7 @@ def main(argv: list[str] | None = None) -> int:
         "dataset_id": DATASET_ID,
         "dry_run": bool(args.dry_run),
         "as_of": datetime.now(timezone.utc).isoformat(),
-        "repaired": len(repaired),
-        "partitions": repaired,
+        **result,
     }
     print(json.dumps(out, ensure_ascii=False, indent=2))
     if args.json_out:

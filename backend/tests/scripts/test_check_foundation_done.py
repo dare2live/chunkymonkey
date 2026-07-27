@@ -33,14 +33,14 @@ def test_live_config_loads() -> None:
     assert all(isinstance(k.get("commits"), int) and k["commits"] >= 1 for k in knives)
 
 
-def test_skip_live_aggregate_is_pass_when_f8_closed() -> None:
-    """Typed walls PASS + F8 PASS → aggregate PASS and phase_closure_ready."""
+def test_skip_live_aggregate_is_partial_and_not_phase_closure_ready() -> None:
+    """Skipping live evidence must never authorize foundation closure."""
     mod = _load_mod()
     report = mod.evaluate_foundation_done(skip_live=True)
-    assert report["verdict"] == "PASS"
+    assert report["verdict"] == "PARTIAL"
     assert report["summary"]["FAIL"] == 0
-    assert report["summary"]["PARTIAL"] == 0
-    assert report["phase_closure_ready"] is True
+    assert report["summary"]["PARTIAL"] == 1
+    assert report["phase_closure_ready"] is False
     by_id = {c["id"]: c for c in report["criteria"]}
     assert by_id["F2"]["verdict"] == "PASS"
     assert by_id["F2"]["typed_wall"] == "s7_ssot_hard_stop"
@@ -48,6 +48,8 @@ def test_skip_live_aggregate_is_pass_when_f8_closed() -> None:
     assert by_id["F7"]["typed_wall"] == "org_provider_land_blocked"
     assert by_id["F4"].get("typed_wall") is None
     assert "Type-B enrichment accepted" in by_id["F4"]["detail"]
+    assert by_id["F6"]["verdict"] == "PARTIAL"
+    assert by_id["F6"]["typed_wall"] == "live_foundation_evidence_skipped"
     assert by_id["F8"]["verdict"] == "PASS"
     assert mod.main(["--skip-live"]) == 0
 
@@ -123,11 +125,11 @@ def test_f9_fails_when_goal_loses_pause_marker(tmp_path: Path, monkeypatch) -> N
     assert mod.check_f9_strategy_paused(cfg)["verdict"] == "FAIL"
 
 
-def test_phase_closure_ready_true_when_all_pass() -> None:
+def test_phase_closure_ready_false_when_live_is_skipped() -> None:
     mod = _load_mod()
     report = mod.evaluate_foundation_done(skip_live=True)
-    assert report["phase_closure_ready"] is True
-    assert all(c["verdict"] == "PASS" for c in report["criteria"])
+    assert report["phase_closure_ready"] is False
+    assert any(c["id"] == "F6" and c["verdict"] == "PARTIAL" for c in report["criteria"])
 
 
 def test_phase_closure_ready_false_while_f8_partial() -> None:

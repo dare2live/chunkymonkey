@@ -472,10 +472,11 @@ def check_f6_e0_breadth(cfg: dict[str, Any], *, skip_live: bool) -> dict[str, An
     if skip_live:
         return _crit(
             "F6",
-            "PASS",
+            "PARTIAL",
             detail="live breadth skipped (--skip-live); offline surface only",
             evidence={"min_holders_daily_overlap": min_overlap,
                       "min_org_accepted_stocks": min_org_stocks, "live": "skipped"},
+            wall="live_foundation_evidence_skipped",
         )
 
     measured, err = _e0_live_breadth(cfg)

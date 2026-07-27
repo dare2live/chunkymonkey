@@ -59,6 +59,7 @@ blocking_paths:
 - tests/services/test_holders_landing_retention.py
 - tests/services/test_org_holding_acceptance.py
 - tests/services/test_org_holding_period_catchup.py
+- tests/services/test_org_holding_pointer_integrity.py
 - tests/services/test_org_holding_truncation_audit.py
 - tests/services/test_pagination_integrity.py
 - tests/services/test_stk_holdertrade_acceptance.py

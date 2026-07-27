@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from hashlib import sha256
 import json
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -463,9 +464,15 @@ def partition_accepted_pointer_stats(
     For ``report_dates_in_batch`` domains (org_holding), one available_date may
     hold multiple report_date batches. The pointer must describe the merged
     canonical partition, not the last batch alone.
+
+    Streams ordered rows into the same JSON-array digest as ``stable_json`` of
+    the full payload (no intermediate all-rows list).
     """
     partition_col = domain.partition_field
-    fields = list(domain.content_hash_fields)
+    # ``stable_json`` sorts mapping keys. Selecting them in that same order lets
+    # the hot path skip a per-row recursive normalization + key sort while
+    # preserving the byte-for-byte hash contract.
+    fields = sorted(domain.content_hash_fields)
     if not fields:
         raise DisclosureEventError(
             f"{domain.domain}: content_hash_fields empty; cannot build pointer"
@@ -481,18 +488,27 @@ def partition_accepted_pointer_stats(
         """,
         [partition],
     )
-    mapped: list[dict[str, Any]] = []
+    digest = sha256()
+    digest.update(b"[")
+    n = 0
     while True:
         chunk = result.fetchmany(50_000)
         if not chunk:
             break
         for row in chunk:
-            mapped.append(
-                {name: value for name, value in zip(fields, row, strict=True)}
+            if n:
+                digest.update(b",")
+            item = dict(zip(fields, row, strict=True))
+            digest.update(
+                json.dumps(
+                    item,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ).encode("utf-8")
             )
-    # Rows already ordered by grain CAST VARCHAR — match _canonical_content_hash sort.
-    payload = [{name: row[name] for name in fields} for row in mapped]
-    return len(mapped), sha256_text(stable_json(payload))
+            n += 1
+    digest.update(b"]")
+    return n, digest.hexdigest()
 
 
 def _candidate_rows(
@@ -577,19 +593,21 @@ def accept_disclosure_event_batch(
     if status == "ACCEPTED":
         pointer = conn.execute(
             f"""
-            SELECT row_count, content_hash FROM {ACCEPTED_TABLE}
-             WHERE dataset_id = ? AND partition_value = ? AND batch_id = ?
+            SELECT 1 FROM {ACCEPTED_TABLE}
+             WHERE dataset_id = ? AND partition_value = ?
             """,
-            [domain.dataset_id, partition, batch_id],
+            [domain.dataset_id, partition],
         ).fetchone()
         if pointer is None:
             raise error_type("accepted batch missing accepted_partition pointer")
+        if batch["canonical_row_count"] is None or batch["canonical_hash"] is None:
+            raise error_type("accepted batch missing immutable canonical evidence")
         return DisclosureEventAcceptanceOutcome(
             status="ACCEPTED",
             batch_id=batch_id,
             partition_value=partition,
-            row_count=int(pointer[0]),
-            content_hash=str(pointer[1]),
+            row_count=int(batch["canonical_row_count"]),
+            content_hash=str(batch["canonical_hash"]),
         )
     if status == "REJECTED":
         return DisclosureEventAcceptanceOutcome(

@@ -251,6 +251,13 @@ def test_accept_merge_preserves_sibling_report_date_in_shared_partition(conn) ->
     assert str(pointer[1]) != str(batch_annual_hash[0])
     assert str(pointer[1]) != str(batch_q1_hash[0])
 
+    # Retrying an older accepted batch remains idempotent after a sibling
+    # advances the partition-scoped pointer. The outcome is batch-scoped.
+    retried = accept_org_holding_batch(conn, batch_q1.batch_id, handed, handoff=handed)
+    assert retried.status == "ACCEPTED"
+    assert retried.row_count == 1
+    assert retried.content_hash == str(batch_q1_hash[0])
+
 
 def test_disclosure_handoff_rejects_wrong_contract_type() -> None:
     from services.data_sources.holders_top10_contract import load_holders_top10_contract

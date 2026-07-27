@@ -20,8 +20,8 @@ Example `20260430`: pointer 832906 vs canonical 944837
 1. Accept path: after merge insert, `partition_accepted_pointer_stats()` sets
    pointer from full canonical partition; ingest_batch keeps batch-scoped counts.
 2. Test: sibling merge asserts pointer `row_count==2` and hash ≠ either batch hash.
-3. F6: SQL count detector `org_pointer_mismatches` fail-closed.
-4. Live repair: `repair_org_holding_accepted_pointers.py` → 8 partitions updated.
+3. F6: 双向 count + full canonical content hash `org_pointer_mismatches` fail-closed.
+4. Live repair: `repair_org_holding_accepted_pointers.py` → 8 partitions updated；后续版本已补全单事务、missing-side fail-closed 与 post-verify。
 
 ## Live after
 
@@ -33,5 +33,5 @@ Artifact: `analysis/org_holding_pointer_repair_20260727.json`
 
 ## Residual (not this knife)
 
-- Strategy snapshot / holdout still reads live full nominal K — **BLOCKED** for RX
+- Strategy reader 已绑定 snapshot accepted + canonical hash；但 disclosure freeze 仍缺 nominal accepted，main-rally freeze 越过 holdout，formal RX 继续 **BLOCKED**
 - Optuna / Release still banned
