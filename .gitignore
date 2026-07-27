@@ -32,6 +32,7 @@ data/*.duckdb.tmp/
 data/portfolio_backtest_nav.csv
 data/scratch/
 data/reports/
+data/lineage/research_prereg/
 data/phase5_exports/
 
 # sandbox/ — 隔离探索区 (用完直接删, 2026-06-17 用户根治: 探索散进主代码=污染根因)

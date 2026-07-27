@@ -323,6 +323,7 @@ def test_dataset_snapshot_adapter_and_binding() -> None:
         strategy_package=STRATEGY_PACKAGE,
         block="B0",
         hypothesis="setup_entry_short_horizon",
+        register_store=False,
     )
     assert prereg.claimable_target is False
     assert_snapshot_binding(snap, prereg=prereg)

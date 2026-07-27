@@ -1,0 +1,52 @@
+{
+  "families": [
+    {
+      "family_id": "vendor_flow_proxy",
+      "inventory_blocked_reason": null,
+      "inventory_defer_reason": "type_b_fact_publish_may_lag_raw",
+      "live_detail": {
+        "defer_policy": "type_b_fact_publish_may_lag_raw",
+        "fact_tip": "20260724",
+        "fact_tip_error": "Catalog Error: Table with name fact_stock_moneyflow_daily does not exist!\nDid you mean \"raw_tushare_moneyflow_dc\"?\n\nLINE 2:             SELECT MAX(trade_date) FROM fact_stock_moneyflow_daily\n         ",
+        "margin_external_aggregate": {
+          "accepted_partition_count": 0,
+          "accepted_tip": null,
+          "defer_policy": "external_aggregate_product_trust_gated"
+        },
+        "raw_tip": "20260724"
+      },
+      "live_status": "PROJECTED",
+      "stack_eligibility": "defer"
+    },
+    {
+      "family_id": "org_disclosure_period",
+      "inventory_blocked_reason": null,
+      "inventory_defer_reason": "historical_quarter_holes_log_not_mass",
+      "live_detail": {
+        "accepted_partition_count": 22,
+        "accepted_tip": "20260430",
+        "dataset_id": "tier0.disclosure.org_holding_detail_period",
+        "defer_policy": "period_gap_bounded_n1_not_mass"
+      },
+      "live_status": "PROJECTED",
+      "stack_eligibility": "defer"
+    },
+    {
+      "family_id": "formula_single",
+      "inventory_blocked_reason": "RX_and_G_track_not_open",
+      "inventory_defer_reason": null,
+      "live_detail": {
+        "blocked_reason": "RX_and_G_track_not_open"
+      },
+      "live_status": "BLOCKED_DECLARED",
+      "stack_eligibility": "blocked"
+    }
+  ],
+  "inventory_path": "/Users/dp/Documents/M/stock/chunkymonkey/backend/config/factor_family_inventory.yaml",
+  "notes": [
+    "k3_frontier_projection",
+    "does_not_mutate_inventory_yaml",
+    "rx_still_requires_owner_schedule"
+  ],
+  "projected_at": "2026-07-27T01:15:40.639939+00:00"
+}

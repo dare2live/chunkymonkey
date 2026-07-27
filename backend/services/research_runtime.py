@@ -172,80 +172,8 @@ class FoldEmbargoHooks:
         }
 
 
-@dataclass(frozen=True)
-class ExperimentPrereg:
-    """Immutable prereg record bound to a DatasetSnapshot before measure.
-
-    Contract §5: freeze hypothesis, search space, primary metric, stop
-    conditions and holdout/fold hooks before results. Empty search_space
-    means no Optuna / no parameter search.
-    """
-
-    hypothesis: str
-    primary_metric: str
-    stop_conditions: tuple[str, ...]
-    search_space: tuple[str, ...]
-    fold_embargo: FoldEmbargoHooks
-    strategy_package: str
-    block: str
-    snapshot_id: str
-    snapshot_content_hash: str
-    universe_id: str
-    config_hash: str
-    available_at_lower: str
-    available_at_upper: str
-    random_seed: int
-    claimable_target: bool
-
-    def __post_init__(self) -> None:
-        if not str(self.hypothesis or "").strip():
-            raise ValueError("hypothesis is required")
-        if not str(self.primary_metric or "").strip():
-            raise ValueError("primary_metric is required")
-        if not str(self.strategy_package or "").strip():
-            raise ValueError("strategy_package is required")
-        if not str(self.block or "").strip():
-            raise ValueError("block is required")
-        if not str(self.snapshot_id or "").strip():
-            raise ValueError("snapshot_id is required")
-        if not str(self.snapshot_content_hash or "").strip():
-            raise ValueError("snapshot_content_hash is required")
-        if not str(self.universe_id or "").strip():
-            raise ValueError("universe_id is required")
-        if not str(self.config_hash or "").strip():
-            raise ValueError("config_hash is required")
-        lower = _compact_day(self.available_at_lower)
-        upper = _compact_day(self.available_at_upper)
-        if len(lower) != 8 or len(upper) != 8:
-            raise ValueError("prereg available_at bounds must be YYYYMMDD")
-        if lower > upper:
-            raise ValueError("prereg available_at_lower must be <= available_at_upper")
-        object.__setattr__(self, "available_at_lower", lower)
-        object.__setattr__(self, "available_at_upper", upper)
-        if self.claimable_target:
-            raise ValueError(
-                "Phase D prereg claimable_target must be false "
-                "(no StrategyRelease / no claimable accept via runtime)"
-            )
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "hypothesis": self.hypothesis,
-            "primary_metric": self.primary_metric,
-            "stop_conditions": list(self.stop_conditions),
-            "search_space": list(self.search_space),
-            "fold_embargo": self.fold_embargo.as_dict(),
-            "strategy_package": self.strategy_package,
-            "block": self.block,
-            "snapshot_id": self.snapshot_id,
-            "snapshot_content_hash": self.snapshot_content_hash,
-            "universe_id": self.universe_id,
-            "config_hash": self.config_hash,
-            "available_at_lower": self.available_at_lower,
-            "available_at_upper": self.available_at_upper,
-            "random_seed": self.random_seed,
-            "claimable_target": self.claimable_target,
-        }
+# ExperimentPrereg lives in research_prereg_store (param_hash + single-touch).
+from services.research_prereg_store import ExperimentPrereg  # noqa: E402
 
 
 @dataclass(frozen=True)

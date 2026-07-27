@@ -53,12 +53,15 @@
 1. **Foundation exit**：`FOUNDATION_EXECUTION_PLAN.md` §6，或 owner 书面 skip。
 2. **`goal.md` 显式一句**：schedule RX / E/F remeasure（日期或「现在开」）。
 3. **同 protocol**：冻结同一 `DatasetSnapshot` / universe / folds / costs / execution；PIT 截断；purged WF；embargo；holdout **one-touch**；T+1；名义价；停牌/涨跌停；成本；unmeasured=`unknown` 永不 0。
-4. **禁令未破**（§5）。
+4. **因子族 inventory exit**（K4）：`backend/config/factor_family_inventory.yaml` + `check_factor_family_inventory.py` + `check_factor_family_gates.py` PASS；K3 frontier 投影（`project_factor_family_frontiers.py` → `data/lineage/factor_family_frontier_projection.json`）对 defer 族有诚实 `defer_reason`；B3/B4 未满足 gate 时只允许 `inconclusive`，禁 pad-0。
+5. **禁令未破**（§5）。
 
 Checklist（原 phase4 gate 折叠）：
 
 - [ ] owner signature in `goal.md`
 - [ ] foundation exit or explicit skip
+- [ ] factor_family inventory + continuity gates PASS（K1–K4）
+- [ ] fresh DatasetSnapshot + research_prereg_v1（param_hash + single-touch）
 - [ ] no Optuna / no Release / no holdout loosen in the remeasure knife
 - [ ] margin stays product-trust-gated；org mass still banned
 - [ ] verdict artifact path + `FIXED|reject` 诚实标签

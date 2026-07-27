@@ -18,6 +18,7 @@ from typing import Any
 
 import yaml
 
+from services.factor_family_frontier_projection import assert_defer_reasons_honest
 from services.factor_family_inventory import (
     DEFAULT_INVENTORY,
     DEFAULT_SYNC_REGISTRY,
@@ -219,6 +220,7 @@ def collect_gate_violations(
 ) -> list[str]:
     inv = inv or load_inventory()
     viol: list[str] = []
+    viol.extend(assert_defer_reasons_honest(inv=inv))
     sync_domains = _load_sync_domains(sync_registry_path)
 
     for family_id, spec in inv.families.items():

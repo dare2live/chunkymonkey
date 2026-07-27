@@ -300,12 +300,15 @@ def test_experiment_prereg_binds_snapshot_and_forbids_claimable_target() -> None
         block="B0",
         hypothesis="stub_no_edge",
         fold_embargo=hooks,
+        register_store=False,
     )
     assert isinstance(prereg, ExperimentPrereg)
     assert prereg.snapshot_content_hash == snap.content_hash
     assert prereg.universe_id == snap.universe_id
     assert prereg.search_space == ()
     assert prereg.claimable_target is False
+    assert prereg.param_hash
+    assert prereg.single_touch_token
     with pytest.raises(ValueError, match="claimable_target"):
         ExperimentPrereg(
             hypothesis="x",
@@ -333,6 +336,7 @@ def test_assert_snapshot_binding_fails_on_hash_universe_or_bounds() -> None:
         strategy_package="phase_d_offline",
         block="B0",
         hypothesis="binding",
+        register_store=False,
     )
     assert_snapshot_binding(snap, prereg=prereg, decision_date="20260717")
 

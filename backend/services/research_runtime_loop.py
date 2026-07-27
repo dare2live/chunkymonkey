@@ -6,6 +6,7 @@ the god-file ratchet. Public re-exports live on ``research_runtime``.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Literal, Mapping, Sequence
 from uuid import uuid4
 
@@ -137,10 +138,17 @@ def build_experiment_prereg(
     search_space: Sequence[str] = (),
     fold_embargo: FoldEmbargoHooks | None = None,
     random_seed: int = 0,
+    register_store: bool = True,
+    store_dir: Path | str | None = None,
 ) -> ExperimentPrereg:
-    """Freeze prereg fields against an immutable DatasetSnapshot."""
+    """Freeze prereg fields against an immutable DatasetSnapshot.
 
-    return ExperimentPrereg(
+    When ``register_store`` (default), atomically persist param_hash +
+    single-touch token under ``data/lineage/research_prereg/``.
+    """
+    from services.research_prereg_store import register_prereg
+
+    prereg = ExperimentPrereg(
         hypothesis=hypothesis,
         primary_metric=primary_metric,
         stop_conditions=tuple(stop_conditions),
@@ -157,6 +165,17 @@ def build_experiment_prereg(
         random_seed=random_seed,
         claimable_target=False,
     )
+    if register_store:
+        registered = register_prereg(
+            prereg.as_dict(),
+            store_dir=Path(store_dir) if store_dir is not None else None,
+            single_touch_token=prereg.single_touch_token,
+        )
+        if registered.param_hash != prereg.param_hash:
+            raise ResearchRuntimeError(
+                "registered param_hash drifted from ExperimentPrereg"
+            )
+    return prereg
 
 
 def assert_snapshot_binding(

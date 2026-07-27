@@ -182,7 +182,8 @@ BestChoice 保持冻结 challenger：
 ## 10. 当前裁决
 
 - 当前没有可视为生产证书的策略 KPI；
-- 现有 `holdout_guard.py` 只执行 training end `< holdout_start` 的边界检查；它没有原子 prereg、全局 single-touch、参数冻结或并发写入证明，因此不能满足发布门第 3 条；
+- 现有 `holdout_guard.py` 执行 training end `< holdout_start`（含 **actual** max）+ `research_prereg_store` 原子 prereg / `param_hash` / single-touch token（`research_prereg_v1`）。这仍 **不是** 完整 StrategyRelease；§9 发布门其余项缺失时产品最多 `research`；
+
 - rally ground truth、technical state、market pulse、institution profile 是可复用资产，不是发布策略；
 - 现有 market pulse 缺 availability/method/config hash，暂只适合当前展示；
 - 现有 paper portfolio 缺正式 release、订单/成交约束，不能作为执行证据；

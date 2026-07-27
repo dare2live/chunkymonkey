@@ -1,11 +1,13 @@
-version: 2
-status: training_boundary_only
+version: 3
+status: training_boundary_plus_research_prereg_v1
 
-# Active owner: services/holdout_guard.py. The date is the first reserved holdout
-# day, so every training/tuning data_end_date must be strictly earlier.
+# Active owners:
+#   - services/holdout_guard.py — training end < holdout_start (+ actual max)
+#   - services/research_prereg_store.py — atomic prereg param_hash + single-touch
+# The date is the first reserved holdout day, so every training/tuning
+# data_end_date (and actual loaded max) must be strictly earlier.
 holdout_start: "20250601"
 
-# Preregistration, global single-touch, parameter freeze and StrategyRelease are
-# requirements in docs/strategy_validation_contract.md, not active YAML/runtime
-# claims. Add them here only when an atomic Tier3 evidence store and concurrent-
-# writer regression tests exist.
+# research_prereg_v1 closes atomic prereg / param_hash / single-touch token for
+# research ExperimentRun. It is NOT StrategyRelease and does not replace the
+# full publish gate in docs/strategy_validation_contract.md §9.

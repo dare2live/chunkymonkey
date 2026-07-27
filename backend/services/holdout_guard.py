@@ -1,11 +1,11 @@
 """Training-window boundary guard for the future Tier3 holdout contract.
 
-This module enforces one current fact: training and tuning data must end before
-``holdout_start`` from ``backend/config/holdout_policy.yaml``. It does not claim
-to implement preregistration, a global single-touch budget, parameter freeze, or
-StrategyRelease. Those controls remain requirements in
-``docs/strategy_validation_contract.md`` until a real Tier3 release runtime owns
-an atomic evidence store and concurrent-writer tests.
+This module enforces:
+1. training/tuning data (declared + actual) must end before ``holdout_start``;
+2. optional single-touch consume via ``research_prereg_store`` tokens.
+
+It does **not** claim a full StrategyRelease runtime or multi-writer DB ledger.
+Those remain requirements in ``docs/strategy_validation_contract.md``.
 """
 from __future__ import annotations
 
@@ -13,6 +13,11 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import yaml
+
+from services.research_prereg_store import (
+    ResearchPreregError,
+    consume_single_touch,
+)
 
 REPO = Path(__file__).resolve().parents[2]
 POLICY_PATH = REPO / "backend" / "config" / "holdout_policy.yaml"
@@ -24,6 +29,10 @@ class HoldoutPolicyError(RuntimeError):
 
 class HoldoutBoundaryViolation(HoldoutPolicyError):
     """Training or tuning data reaches the reserved holdout window."""
+
+
+class HoldoutSingleTouchViolation(HoldoutPolicyError, ResearchPreregError):
+    """Holdout single-touch token already consumed or missing."""
 
 
 def load_policy(path: Path | None = None) -> dict:
@@ -86,10 +95,24 @@ def assert_holdout_untouched(
             )
 
 
+def consume_holdout_single_touch(
+    token: str,
+    *,
+    store_dir: Path | str | None = None,
+) -> None:
+    """Consume the prereg single-touch token for holdout evaluation (once)."""
+    try:
+        consume_single_touch(token, store_dir=store_dir, purpose="holdout")
+    except ResearchPreregError as exc:
+        raise HoldoutSingleTouchViolation(str(exc)) from exc
+
+
 __all__ = [
     "HoldoutBoundaryViolation",
     "HoldoutPolicyError",
+    "HoldoutSingleTouchViolation",
     "assert_holdout_untouched",
+    "consume_holdout_single_touch",
     "load_policy",
     "training_cutoff_before_holdout",
 ]

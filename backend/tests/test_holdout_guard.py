@@ -44,7 +44,8 @@ def test_assert_gate_rejects_invalid_date() -> None:
         hg.assert_holdout_untouched("not-a-date")
 
 
-def test_policy_does_not_claim_unimplemented_single_touch_runtime() -> None:
+def test_policy_exposes_research_prereg_v1_without_claiming_release() -> None:
     policy = hg.load_policy()
     assert set(policy) == {"version", "status", "holdout_start"}
-    assert policy["status"] == "training_boundary_only"
+    assert policy["status"] == "training_boundary_plus_research_prereg_v1"
+    assert int(policy["version"]) >= 3
