@@ -19,12 +19,49 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+import yaml
+
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_STORE_DIR = REPO / "data" / "lineage" / "research_prereg"
+HOLDOUT_POLICY_PATH = REPO / "backend" / "config" / "holdout_policy.yaml"
+HOLDOUT_PROTOCOL_VERSION = "research_holdout_v1"
 
 
 class ResearchPreregError(RuntimeError):
     """Fail-closed prereg / single-touch store error."""
+
+
+def _stable_hash(payload: Any) -> str:
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=True, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def compute_holdout_scope_id(prereg_body: Mapping[str, Any]) -> str:
+    """Stable global one-touch scope shared by B0–B5 of one protocol.
+
+    Block, hypothesis, folds, dates, random token, and search parameters are
+    intentionally excluded. The budget is anchored to the immutable snapshot,
+    strategy, universe, protocol, and governed holdout-policy content.
+    """
+
+    body = dict(prereg_body)
+    policy = yaml.safe_load(HOLDOUT_POLICY_PATH.read_text(encoding="utf-8")) or {}
+    scope = {
+        "protocol_version": str(
+            body.get("holdout_protocol_version") or HOLDOUT_PROTOCOL_VERSION
+        ),
+        "holdout_policy_hash": _stable_hash(policy),
+        "strategy_package": str(body.get("strategy_package") or ""),
+        "snapshot_content_hash": str(
+            body.get("snapshot_content_hash") or body.get("snapshot_id") or ""
+        ),
+        "universe_id": str(body.get("universe_id") or ""),
+    }
+    if not scope["strategy_package"] or not scope["snapshot_content_hash"]:
+        # Generic primitive callers remain supported, but their scope is still
+        # stable and cannot be reset by a fresh random token.
+        scope["fallback_param_hash"] = compute_param_hash(body)
+    return _stable_hash(scope)
 
 
 @dataclass(frozen=True)
@@ -32,6 +69,7 @@ class RegisteredPrereg:
     prereg_id: str
     param_hash: str
     single_touch_token: str
+    holdout_scope_id: str
     holdout_touched: bool
     registered_at: str
     payload: dict[str, Any]
@@ -42,6 +80,7 @@ class RegisteredPrereg:
             "prereg_id": self.prereg_id,
             "param_hash": self.param_hash,
             "single_touch_token": self.single_touch_token,
+            "holdout_scope_id": self.holdout_scope_id,
             "holdout_touched": self.holdout_touched,
             "registered_at": self.registered_at,
             "payload": dict(self.payload),
@@ -72,6 +111,8 @@ class ExperimentPrereg:
     available_at_upper: str
     random_seed: int
     claimable_target: bool
+    holdout_protocol_version: str = HOLDOUT_PROTOCOL_VERSION
+    holdout_scope_id: str = ""
     param_hash: str = ""
     single_touch_token: str = ""
 
@@ -101,7 +142,7 @@ class ExperimentPrereg:
                 "Phase D prereg claimable_target must be false "
                 "(no StrategyRelease / no claimable accept via runtime)"
             )
-        body = {
+        scope_body = {
             "hypothesis": self.hypothesis,
             "primary_metric": self.primary_metric,
             "stop_conditions": list(self.stop_conditions),
@@ -117,7 +158,16 @@ class ExperimentPrereg:
             "available_at_upper": upper,
             "random_seed": self.random_seed,
             "claimable_target": self.claimable_target,
+            "holdout_protocol_version": self.holdout_protocol_version,
         }
+        computed_scope = compute_holdout_scope_id(scope_body)
+        if self.holdout_scope_id and self.holdout_scope_id != computed_scope:
+            raise ValueError(
+                "holdout_scope_id mismatch: "
+                f"provided={self.holdout_scope_id!r} computed={computed_scope!r}"
+            )
+        object.__setattr__(self, "holdout_scope_id", computed_scope)
+        body = {**scope_body, "holdout_scope_id": computed_scope}
         computed = compute_param_hash(body)
         if self.param_hash and self.param_hash != computed:
             raise ValueError(
@@ -144,14 +194,11 @@ class ExperimentPrereg:
             "available_at_upper": self.available_at_upper,
             "random_seed": self.random_seed,
             "claimable_target": self.claimable_target,
+            "holdout_protocol_version": self.holdout_protocol_version,
+            "holdout_scope_id": self.holdout_scope_id,
             "param_hash": self.param_hash,
             "single_touch_token": self.single_touch_token,
         }
-
-
-def _stable_hash(payload: Any) -> str:
-    raw = json.dumps(payload, sort_keys=True, ensure_ascii=True, default=str)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def compute_param_hash(prereg_body: Mapping[str, Any]) -> str:
@@ -183,6 +230,21 @@ def _token_path(store_dir: Path, token: str) -> Path:
     return store_dir / f"{safe}.json"
 
 
+def _scope_marker_path(store_dir: Path, scope_id: str) -> Path:
+    safe = "".join(ch for ch in scope_id if ch.isalnum() or ch in "-_")
+    if not safe or safe != scope_id:
+        raise ResearchPreregError(f"invalid holdout_scope_id={scope_id!r}")
+    return store_dir / f"{safe}.holdout_consumed"
+
+
+def _fsync_dir(path: Path) -> None:
+    fd = os.open(str(path), os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(
@@ -198,6 +260,31 @@ def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
             fh.flush()
             os.fsync(fh.fileno())
         os.replace(tmp_path, path)
+        _fsync_dir(path.parent)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
+def _exclusive_create_json(path: Path, payload: Mapping[str, Any]) -> None:
+    """Atomically publish a complete JSON file only when ``path`` is absent."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(dict(payload), fh, ensure_ascii=False, sort_keys=True)
+            fh.write("\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.link(tmp_path, path)
+        tmp_path.unlink()
+        _fsync_dir(path.parent)
     except Exception:
         tmp_path.unlink(missing_ok=True)
         raise
@@ -218,6 +305,10 @@ def register_prereg(
     root = Path(store_dir) if store_dir is not None else default_store_dir()
     root.mkdir(parents=True, exist_ok=True)
     param_hash = compute_param_hash(prereg_body)
+    scope_id = str(
+        prereg_body.get("holdout_scope_id")
+        or compute_holdout_scope_id(prereg_body)
+    )
     token = (single_touch_token or uuid.uuid4().hex).strip()
     if len(token) < 8:
         raise ResearchPreregError("single_touch_token too short")
@@ -228,6 +319,7 @@ def register_prereg(
         "prereg_id": rid,
         "param_hash": param_hash,
         "single_touch_token": token,
+        "holdout_scope_id": scope_id,
         "holdout_touched": False,
         "registered_at": registered_at,
         "payload": dict(prereg_body),
@@ -235,19 +327,16 @@ def register_prereg(
 
     if path.exists():
         existing = json.loads(path.read_text(encoding="utf-8"))
-        if str(existing.get("param_hash")) != param_hash:
+        validated = _validate_record(existing, expected_token=token, path=path)
+        if validated.param_hash != param_hash:
             raise ResearchPreregError(
                 f"single_touch_token={token!r} already registered with different param_hash"
             )
-        return RegisteredPrereg(
-            prereg_id=str(existing.get("prereg_id") or rid),
-            param_hash=param_hash,
-            single_touch_token=token,
-            holdout_touched=bool(existing.get("holdout_touched")),
-            registered_at=str(existing.get("registered_at") or registered_at),
-            payload=dict(existing.get("payload") or prereg_body),
-            path=str(path),
-        )
+        if validated.holdout_scope_id != scope_id:
+            raise ResearchPreregError(
+                f"single_touch_token={token!r} registered with different holdout_scope_id"
+            )
+        return validated
 
     try:
         fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
@@ -261,6 +350,7 @@ def register_prereg(
             fh.write("\n")
             fh.flush()
             os.fsync(fh.fileno())
+        _fsync_dir(root)
     except Exception:
         path.unlink(missing_ok=True)
         raise
@@ -269,9 +359,78 @@ def register_prereg(
         prereg_id=rid,
         param_hash=param_hash,
         single_touch_token=token,
+        holdout_scope_id=scope_id,
         holdout_touched=False,
         registered_at=registered_at,
         payload=dict(prereg_body),
+        path=str(path),
+    )
+
+
+def _validate_record(
+    raw: Mapping[str, Any],
+    *,
+    expected_token: str,
+    path: Path,
+) -> RegisteredPrereg:
+    payload_raw = raw.get("payload")
+    if not isinstance(payload_raw, Mapping):
+        raise ResearchPreregError(f"invalid prereg payload at {path}")
+    payload = dict(payload_raw)
+    token = str(raw.get("single_touch_token") or "")
+    if token != expected_token:
+        raise ResearchPreregError(
+            f"prereg token mismatch at {path}: record={token!r} expected={expected_token!r}"
+        )
+    stored_hash = str(raw.get("param_hash") or "")
+    computed_hash = compute_param_hash(payload)
+    if not stored_hash or stored_hash != computed_hash:
+        raise ResearchPreregError(
+            f"prereg param_hash mismatch at {path}: "
+            f"stored={stored_hash!r} computed={computed_hash!r}"
+        )
+    payload_hash = str(payload.get("param_hash") or stored_hash)
+    if payload_hash != stored_hash:
+        raise ResearchPreregError(f"payload param_hash mismatch at {path}")
+    payload_token = str(payload.get("single_touch_token") or token)
+    if payload_token != token:
+        raise ResearchPreregError(f"payload token mismatch at {path}")
+    scope_id = str(
+        raw.get("holdout_scope_id")
+        or payload.get("holdout_scope_id")
+        or compute_holdout_scope_id(payload)
+    )
+    computed_scope = compute_holdout_scope_id(payload)
+    if scope_id != computed_scope:
+        raise ResearchPreregError(
+            f"holdout_scope_id mismatch at {path}: "
+            f"stored={scope_id!r} computed={computed_scope!r}"
+        )
+    marker = _scope_marker_path(path.parent, scope_id)
+    legacy_marker = path.parent / f"{token}.holdout_consumed"
+    touched = (
+        bool(raw.get("holdout_touched"))
+        or marker.exists()
+        or legacy_marker.exists()
+    )
+    if marker.exists():
+        try:
+            marker_raw = json.loads(marker.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise ResearchPreregError(f"invalid holdout marker at {marker}") from exc
+        if (
+            str(marker_raw.get("holdout_scope_id") or "") != scope_id
+            or str(marker_raw.get("purpose") or "") != "holdout"
+        ):
+            raise ResearchPreregError(f"holdout marker mismatch at {marker}")
+    return RegisteredPrereg(
+        prereg_id=str(raw.get("prereg_id") or ""),
+        param_hash=stored_hash,
+        single_touch_token=token,
+        holdout_scope_id=scope_id,
+        holdout_touched=touched,
+        registered_at=str(raw.get("registered_at") or ""),
+        payload=payload,
         path=str(path),
     )
 
@@ -286,15 +445,7 @@ def load_prereg_by_token(
     if not path.exists():
         raise ResearchPreregError(f"unknown single_touch_token={token!r}")
     raw = json.loads(path.read_text(encoding="utf-8"))
-    return RegisteredPrereg(
-        prereg_id=str(raw.get("prereg_id") or ""),
-        param_hash=str(raw.get("param_hash") or ""),
-        single_touch_token=str(raw.get("single_touch_token") or token),
-        holdout_touched=bool(raw.get("holdout_touched")),
-        registered_at=str(raw.get("registered_at") or ""),
-        payload=dict(raw.get("payload") or {}),
-        path=str(path),
-    )
+    return _validate_record(raw, expected_token=token, path=path)
 
 
 def consume_single_touch(
@@ -303,30 +454,68 @@ def consume_single_touch(
     store_dir: Path | str | None = None,
     purpose: str = "holdout",
 ) -> RegisteredPrereg:
-    """Mark holdout as touched exactly once. Second call fails closed."""
+    """Mark holdout as touched exactly once (atomic via O_EXCL marker).
+
+    Concurrent callers: at most one creates ``{token}.holdout_consumed``;
+    the loser fails closed. The JSON record is updated after the marker wins.
+    """
     if purpose != "holdout":
         raise ResearchPreregError(f"unsupported touch purpose={purpose!r}")
     root = Path(store_dir) if store_dir is not None else default_store_dir()
+    root.mkdir(parents=True, exist_ok=True)
     path = _token_path(root, token)
     if not path.exists():
         raise ResearchPreregError(f"unknown single_touch_token={token!r}")
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    if bool(raw.get("holdout_touched")):
+    registered = load_prereg_by_token(token, store_dir=root)
+    if registered.holdout_touched:
+        raise ResearchPreregError(
+            f"holdout_scope_id={registered.holdout_scope_id!r} already consumed "
+            "for holdout"
+        )
+
+    marker = _scope_marker_path(root, registered.holdout_scope_id)
+    marker_payload = {
+        "single_touch_token": token,
+        "holdout_scope_id": registered.holdout_scope_id,
+        "param_hash": registered.param_hash,
+        "purpose": purpose,
+        "consumed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        _exclusive_create_json(marker, marker_payload)
+    except FileExistsError as exc:
         raise ResearchPreregError(
             f"single_touch_token={token!r} already consumed for holdout"
-        )
-    raw["holdout_touched"] = True
-    raw["holdout_touched_at"] = datetime.now(timezone.utc).isoformat()
-    raw["holdout_touch_purpose"] = purpose
-    _atomic_write_json(path, raw)
+        ) from exc
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        validated = _validate_record(raw, expected_token=token, path=path)
+        if bool(raw.get("holdout_touched")):
+            # Marker won but JSON already marked — treat as consumed.
+            raise ResearchPreregError(
+                f"single_touch_token={token!r} already consumed for holdout"
+            )
+        raw["holdout_touched"] = True
+        raw["holdout_touched_at"] = datetime.now(timezone.utc).isoformat()
+        raw["holdout_touch_purpose"] = purpose
+        _atomic_write_json(path, raw)
+    except ResearchPreregError:
+        # Marker already proves consumption — keep it so peers fail closed.
+        raise
+    except Exception:
+        # The exclusive marker is the durable one-touch truth. Once published,
+        # no later record-projection/fsync failure may reopen the budget.
+        raise
     return load_prereg_by_token(token, store_dir=root)
 
 
 __all__ = [
     "DEFAULT_STORE_DIR",
     "ExperimentPrereg",
+    "HOLDOUT_PROTOCOL_VERSION",
     "RegisteredPrereg",
     "ResearchPreregError",
+    "compute_holdout_scope_id",
     "compute_param_hash",
     "consume_single_touch",
     "default_store_dir",

@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-27 16:53
+> Snapshot: 2026-07-27 17:34
 
 ## 1. 入口面
 
@@ -167,7 +167,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 10,418 | calls 边 12,202 | imports 边 3,475 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 10,509 | calls 边 12,372 | imports 边 3,536 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -175,14 +175,14 @@
 |---|---|
 | services.duck_adapter | 72 |
 | services.data_sources | 29 |
-| services.data_sources.accepted_schema | 24 |
+| services.data_sources.accepted_schema | 25 |
+| services.data_sources.security_day_partition | 22 |
 | services.universe | 22 |
-| services.data_sources.security_day_partition | 20 |
+| services.institution_follow_b0_measure | 19 |
 | services.data_sources.holders_top10_schema | 18 |
-| services.institution_follow_b0_measure | 18 |
+| services.data_sources.nominal_ohlcv_schema | 17 |
 | services.institution_follow_edge_gates | 17 |
 | services.data_sources.margin_schema | 15 |
-| services.data_sources.nominal_ohlcv_schema | 15 |
 | services.database_manifest | 14 |
 | services.source_watermarks | 14 |
 | services.data_access | 13 |
@@ -202,8 +202,8 @@
 | backend/services/data_sources/contracts.py | 9 |
 | backend/services/tier12_consumer_cutover.py | 9 |
 | backend/services/tier12_publish_writer.py | 9 |
-| backend/services/institution_follow_b0_measure.py | 8 |
 | backend/services/pipeline/context.py | 8 |
+| backend/services/snapshot_nominal_bind.py | 8 |
 | frontend/src/components/Card.tsx | 8 |
 
 ### LOC top 10 (God module 候选)
@@ -217,9 +217,9 @@
 | backend/services/data_sources/holders_top10_acceptance.py | 800 |
 | backend/services/org_holding_aif10.py | 797 |
 | backend/services/pipeline/acquire.py | 797 |
+| backend/services/institution_follow_b0.py | 781 |
 | backend/services/data_sources/disclosure_event_partition.py | 779 |
 | backend/services/data_sources/security_day_partition.py | 779 |
-| backend/services/universe.py | 761 |
 
 ## 5. 概览
 

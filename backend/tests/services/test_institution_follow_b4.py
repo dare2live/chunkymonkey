@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import pytest
+from services.snapshot_nominal_bind import offline_fixture_bars
 
 from services.institution_follow_b0 import (
     BOUNDED_SCOPE,
     CANARY_ABLATION,
     CANARY_SCOPE,
     CanaryScopeOverclaimError,
+    REASON_OFFLINE_FIXTURE_NOT_FORMAL,
     build_b0_run,
 )
 from services.institution_follow_b0_measure import (
@@ -56,6 +58,10 @@ def _canary_snapshot(**overrides):
 
 
 def _bounded_snapshot(**overrides):
+    nominal_days = overrides.pop(
+        "nominal_days",
+        _weekday_compact_days(MIN_DAYS_FULL_PURGED_WF, start="20240102"),
+    )
     base = {
         "snapshot_id": "disclosure_e_bounded_b4",
         "scope": BOUNDED_SCOPE,
@@ -73,6 +79,10 @@ def _bounded_snapshot(**overrides):
             "stk_holdertrade": {
                 "partition": "20260713",
                 "date_set": ["20260518", "20260608", "20260706", "20260713"],
+            },
+            "nominal_ohlcv": {
+                "dataset_id": "tier0.market_data.nominal_ohlcv_daily",
+                "date_set": nominal_days,
             },
         },
     }
@@ -100,7 +110,7 @@ class _FakeNominalConn:
         return None
 
 
-def _weekday_compact_days(n_days: int, *, start: str = "20260401") -> list[str]:
+def _weekday_compact_days(n_days: int, *, start: str = "20240102") -> list[str]:
     from datetime import date
 
     y, m, d = int(start[:4]), int(start[4:6]), int(start[6:8])
@@ -118,7 +128,7 @@ def _synthetic_window_bars(
     n_days: int = 8, *, days: list[str] | None = None
 ) -> dict[str, list[dict]]:
     if days is None:
-        days = _weekday_compact_days(n_days, start="20260708")
+        days = _weekday_compact_days(n_days, start="20240102")
     else:
         days = list(days)[:n_days]
     codes = [
@@ -151,7 +161,7 @@ def _synthetic_window_bars(
                 }
             )
         bars[day] = rows
-    return bars
+    return offline_fixture_bars(bars)
 
 
 def test_b4_declares_institution_event_feature_block() -> None:
@@ -419,5 +429,6 @@ def test_b4_rich_coverage_measures_and_reports_delta() -> None:
     )
     assert run.feature_block.status == "measured_gated"
     assert verdict.claimable is False  # short-window / gates / lift honesty
-    assert verdict.verdict in {"reject", "inconclusive"}
+    assert verdict.verdict == "inconclusive"
+    assert verdict.reason == REASON_OFFLINE_FIXTURE_NOT_FORMAL
     assert "holdout_lift_stability" in verdict.details

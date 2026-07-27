@@ -21,7 +21,6 @@ from services.holdout_guard import (
 from services.institution_follow_b0_measure import (
     MeasuredB0Result,
     REASON_SHORT_WINDOW,
-    load_nominal_bars_by_day,
 )
 from services.institution_follow_edge_gates import (
     REASON_EDGE_GATES_PASSED,
@@ -61,6 +60,7 @@ REASON_PROTOCOL_READY_EDGE_UNMET = "measured_protocol_ready_edge_gates_unmet"
 REASON_ACCEPT_EDGE_GATES_UNMET = REASON_EDGE_GATES_UNMET
 REASON_ACCEPT_EDGE_GATES_PASSED = REASON_EDGE_GATES_PASSED
 REASON_SCAFFOLD_NO_MEASURED_EDGE = "scaffold_no_measured_edge"
+REASON_OFFLINE_FIXTURE_NOT_FORMAL = "offline_fixture_not_formal_evidence"
 MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0 = 5
 
 _VALID_VERDICTS = frozenset({"accept", "reject", "inconclusive"})
@@ -133,6 +133,9 @@ class MainRallyB0Run:
     holdout: HoldoutHookSpec
     artifact_manifest: dict[str, Any]
     notes: tuple[str, ...]
+    measurement_source: str = "not_measured"
+    prereg_registered: bool = False
+    holdout_consumed: bool = False
     setup_coverage: SetupCoverageMeasurement | None = None
     measured_b0: MeasuredB0Result | None = None
 
@@ -151,6 +154,9 @@ class MainRallyB0Run:
             "holdout": self.holdout.as_dict(),
             "artifact_manifest": dict(self.artifact_manifest),
             "notes": list(self.notes),
+            "measurement_source": self.measurement_source,
+            "prereg_registered": self.prereg_registered,
+            "holdout_consumed": self.holdout_consumed,
             "setup_coverage": (
                 self.setup_coverage.as_dict() if self.setup_coverage else None
             ),
@@ -273,12 +279,22 @@ def build_b0_run(
     nominal_conn=None,
     bars_by_day: Mapping[str, Any] | None = None,
     accepted_nominal_partitions: Sequence[str] | None = None,
+    prereg_store_dir: Path | str | None = None,
 ) -> MainRallyB0Run:
     payload = (
         dict(snapshot)
         if snapshot is not None
         else load_frozen_main_rally_snapshot(snapshot_path)
     )
+    if (
+        accepted_nominal_partitions is not None
+        and measure_paper
+        and bars_by_day is None
+    ):
+        raise MainRallyB0Error(
+            "formal measurement must use the frozen snapshot nominal date_set; "
+            "accepted_nominal_partitions override is fixture-only"
+        )
     if surface_status != REQUIRED_SURFACE_STATUS:
         raise MainRallyB0Error(
             f"surface_status must be {REQUIRED_SURFACE_STATUS!r}, "
@@ -286,7 +302,9 @@ def build_b0_run(
         )
 
     end = data_end_date or training_cutoff_before_holdout()
-    assert_holdout_untouched(end)
+    snap_nominal = _nominal_partitions_from_snapshot(payload)
+    actual_end = snap_nominal[-1] if snap_nominal else None
+    assert_holdout_untouched(end, actual_data_end=actual_end)
 
     canary = is_canary_scope(payload)
     bounded = is_bounded_scope(payload)
@@ -295,15 +313,6 @@ def build_b0_run(
     snap_id = str(payload.get("snapshot_id") or "")
     if not snap_id:
         raise MainRallyB0Error("snapshot_id required on DatasetSnapshot")
-
-    runtime_snap = dataset_snapshot_from_main_rally(payload)
-    prereg = build_experiment_prereg(
-        runtime_snap,
-        strategy_package=STRATEGY_PACKAGE,
-        block=BLOCK_ID,
-        hypothesis="main_rally_b0_setup_entry_short_horizon_no_edge_claim",
-    )
-    assert_snapshot_binding(runtime_snap, prereg=prereg)
 
     allowed = (
         bool(cutover_allowed)
@@ -318,30 +327,73 @@ def build_b0_run(
         coverage = measure_setup_coverage(
             payload, accepted_nominal_partitions=accepted_nominal_partitions
         )
+        if coverage is not None and coverage.accepted_nominal_partitions:
+            assert_holdout_untouched(
+                end, actual_data_end=coverage.accepted_nominal_partitions[-1]
+            )
 
-    measured: MeasuredB0Result | None = None
+    plan = None
+    fold_embargo = None
     if (
         measure_paper
         and coverage is not None
         and coverage.sufficient_for_measured_b0
         and not canary
     ):
+        from services.institution_follow_b0_measure import plan_walk_forward
+
+        plan = plan_walk_forward(list(coverage.accepted_nominal_partitions))
+        fold_embargo = fold_embargo_from_walk_forward_plan(plan)
+
+    runtime_snap = dataset_snapshot_from_main_rally(payload)
+    formal_measure = plan is not None and bars_by_day is None
+    prereg = build_experiment_prereg(
+        runtime_snap,
+        strategy_package=STRATEGY_PACKAGE,
+        block=BLOCK_ID,
+        hypothesis="main_rally_b0_setup_entry_short_horizon_no_edge_claim",
+        fold_embargo=fold_embargo,
+        register_store=formal_measure,
+        store_dir=prereg_store_dir,
+    )
+    assert_snapshot_binding(runtime_snap, prereg=prereg)
+
+    measured: MeasuredB0Result | None = None
+    if plan is not None and coverage is not None:
         days = list(coverage.accepted_nominal_partitions)
         owned = False
         conn = nominal_conn
         try:
+            from services.holdout_guard import consume_holdout_single_touch
+
             if bars_by_day is None:
                 if conn is None:
                     from services.data_access.resolver import connect_ro
 
                     conn = connect_ro("tushare_raw")
                     owned = True
-                bars = load_nominal_bars_by_day(conn, days)
+                from services.snapshot_nominal_bind import (
+                    assert_live_nominal_pointer_matches_snapshot,
+                    load_snapshot_bound_nominal_bars_by_day,
+                )
+
+                assert_live_nominal_pointer_matches_snapshot(
+                    payload, conn, days=days
+                )
+                if plan.holdout_dates:
+                    consume_holdout_single_touch(
+                        prereg.single_touch_token, store_dir=prereg_store_dir
+                    )
+                bars = load_snapshot_bound_nominal_bars_by_day(
+                    payload, conn, days=days
+                )
             else:
-                bars = {str(k): list(v) for k, v in bars_by_day.items()}
-            measured = measure_main_rally_b0_paper(bars, days)
-            # Bind real WF plan into prereg hooks (fail closed if plan invalid).
-            fold_embargo_from_walk_forward_plan(measured.walk_forward.as_dict())
+                from services.snapshot_nominal_bind import require_offline_fixture_bars
+
+                bars = require_offline_fixture_bars(bars_by_day)
+            measured = measure_main_rally_b0_paper(bars, days, walk_forward=plan)
+            if measured.walk_forward.as_dict() != plan.as_dict():
+                raise MainRallyB0Error("measured walk-forward plan drifted from prereg")
             assert_snapshot_binding(runtime_snap, prereg=prereg)
         finally:
             if owned and conn is not None:
@@ -377,6 +429,19 @@ def build_b0_run(
     if measured is not None:
         metrics_label = "paper_metrics_measured"
         paper_label = "measured"
+    measurement_source = (
+        "live_snapshot_canonical"
+        if measured is not None and formal_measure
+        else "offline_fixture"
+        if measured is not None and bars_by_day is not None
+        else "not_measured"
+    )
+    holdout_consumed = bool(
+        measured is not None
+        and formal_measure
+        and plan is not None
+        and plan.holdout_dates
+    )
 
     return MainRallyB0Run(
         experiment_id=experiment_id,
@@ -409,6 +474,9 @@ def build_b0_run(
             "optuna": False,
         },
         notes=tuple(notes),
+        measurement_source=measurement_source,
+        prereg_registered=bool(measured is not None and formal_measure),
+        holdout_consumed=holdout_consumed,
         setup_coverage=coverage,
         measured_b0=measured,
     )
@@ -481,6 +549,24 @@ def finalize_b0_verdict(
 
     measured = run.measured_b0
     if measured is not None:
+        if not has_formal_b0_evidence(run):
+            return ExperimentVerdict(
+                verdict="inconclusive",
+                reason=REASON_OFFLINE_FIXTURE_NOT_FORMAL,
+                blocked=True,
+                experiment_id=run.experiment_id,
+                block=run.block,
+                claimable=False,
+                details={
+                    "requested_verdict": requested_verdict,
+                    "measurement_source": run.measurement_source,
+                    "prereg_registered": run.prereg_registered,
+                    "holdout_consumed": run.holdout_consumed,
+                    "metrics": measured.metrics.as_dict(),
+                    "strategy_release": False,
+                    "note": "offline fixture measurements are diagnostic only",
+                },
+            )
         edge = evaluate_accept_edge_gates(
             measured.walk_forward,
             measured.metrics,
@@ -570,6 +656,16 @@ def finalize_b0_verdict(
             "setup_coverage": coverage.as_dict() if coverage else None,
             "strategy_release": False,
         },
+    )
+
+
+def has_formal_b0_evidence(run: MainRallyB0Run) -> bool:
+    """True only for preregistered, consumed, snapshot-bound live outcomes."""
+
+    return (
+        run.measurement_source == "live_snapshot_canonical"
+        and run.prereg_registered
+        and run.holdout_consumed
     )
 
 

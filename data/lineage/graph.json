@@ -677,6 +677,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_snapshot_nominal_bind.py",
+      "kind": "consume",
+      "src": "table:feature_store.fact_rally_ground_truth"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_rally_gt.py",
       "kind": "consume",
       "src": "table:feature_store.fact_rally_ground_truth"
@@ -1973,6 +1979,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/institution_follow_nominal_bars.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/main_rally_b1_measure.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -2010,6 +2022,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/pipeline/state_sensors.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/snapshot_nominal_bind.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
     },
@@ -2130,6 +2148,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_security_day_transport_modularity.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_snapshot_nominal_bind.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
     },
@@ -4853,6 +4877,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/institution_follow_nominal_bars.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/main_rally_b1_measure.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -4890,6 +4920,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/pipeline/state_sensors.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/snapshot_nominal_bind.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -5010,6 +5046,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_security_day_transport_modularity.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_snapshot_nominal_bind.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -5178,6 +5220,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_snapshot_nominal_bind.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
     },
@@ -7781,9 +7829,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1249,
-    "generated_at": "2026-07-27T01:26:35.511748+00:00",
-    "node_count": 444,
+    "edge_count": 1257,
+    "generated_at": "2026-07-27T09:38:10.137551+00:00",
+    "node_count": 447,
     "version": 2
   },
   "nodes": [
@@ -8758,6 +8806,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/institution_follow_nominal_bars.py"
+      },
+      "id": "consumer:backend/services/institution_follow_nominal_bars.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/institution_profile.py"
       },
       "id": "consumer:backend/services/institution_profile.py",
@@ -9081,6 +9137,14 @@
         "path": "backend/services/segments.py"
       },
       "id": "consumer:backend/services/segments.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/snapshot_nominal_bind.py"
+      },
+      "id": "consumer:backend/services/snapshot_nominal_bind.py",
       "kind": "consumer"
     },
     {
@@ -9609,6 +9673,14 @@
         "path": "backend/tests/services/test_security_day_transport_modularity.py"
       },
       "id": "consumer:backend/tests/services/test_security_day_transport_modularity.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_snapshot_nominal_bind.py"
+      },
+      "id": "consumer:backend/tests/services/test_snapshot_nominal_bind.py",
       "kind": "consumer"
     },
     {

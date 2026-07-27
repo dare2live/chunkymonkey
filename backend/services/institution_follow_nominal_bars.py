@@ -1,7 +1,7 @@
 """Load accepted canonical nominal OHLCV bars for institution_follow paper."""
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from services.data_sources.nominal_ohlcv_schema import CANONICAL_TABLE
 
@@ -25,10 +25,38 @@ def _norm_day(value: Any) -> str:
 def load_nominal_bars_by_day(
     conn,
     trading_days: Sequence[str],
+    *,
+    snapshot: Mapping[str, Any] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
+    """Load canonical nominal bars.
+
+    When ``snapshot`` is provided (strategy B0–B4 live paths), bind live
+    ``accepted_partition`` row_count/content_hash to the frozen generation
+    before any bar I/O.
+    """
     days = sorted({_norm_day(d) for d in trading_days if len(_norm_day(d)) == 8})
     if not days:
         return {}
+    if snapshot is not None:
+        from services.snapshot_nominal_bind import (
+            load_snapshot_bound_nominal_bars_by_day,
+        )
+
+        bound = load_snapshot_bound_nominal_bars_by_day(
+            snapshot, conn, days=days
+        )
+        return {
+            day: [
+                {
+                    key: (
+                        str(row[key]) if key == "ts_code" else row[key]
+                    )
+                    for key in _BAR_KEYS
+                }
+                for row in rows
+            ]
+            for day, rows in bound.items()
+        }
     placeholders = ", ".join(["?"] * len(days))
     sql = f"""
         SELECT replace(CAST(trade_date AS VARCHAR), '-', '') AS d,

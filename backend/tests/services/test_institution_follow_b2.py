@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import pytest
+from services.snapshot_nominal_bind import offline_fixture_bars
 
 from services.institution_follow_b0 import (
     BOUNDED_SCOPE,
     CANARY_ABLATION,
     CANARY_SCOPE,
     CanaryScopeOverclaimError,
+    REASON_OFFLINE_FIXTURE_NOT_FORMAL,
     REASON_PROTOCOL_READY_EDGE_UNMET,
     REQUIRED_SURFACE_STATUS,
     build_b0_run,
@@ -55,6 +57,10 @@ def _canary_snapshot(**overrides):
 
 
 def _bounded_snapshot(**overrides):
+    nominal_days = overrides.pop(
+        "nominal_days",
+        _weekday_compact_days(MIN_DAYS_FULL_PURGED_WF, start="20240102"),
+    )
     base = {
         "snapshot_id": "disclosure_e_bounded_b2",
         "scope": BOUNDED_SCOPE,
@@ -72,6 +78,10 @@ def _bounded_snapshot(**overrides):
             "stk_holdertrade": {
                 "partition": "20260713",
                 "date_set": ["20260518", "20260608", "20260706", "20260713"],
+            },
+            "nominal_ohlcv": {
+                "dataset_id": "tier0.market_data.nominal_ohlcv_daily",
+                "date_set": nominal_days,
             },
         },
     }
@@ -99,7 +109,7 @@ class _FakeNominalConn:
         return None
 
 
-def _weekday_compact_days(n_days: int, *, start: str = "20260401") -> list[str]:
+def _weekday_compact_days(n_days: int, *, start: str = "20240102") -> list[str]:
     from datetime import date
 
     y, m, d = int(start[:4]), int(start[4:6]), int(start[6:8])
@@ -117,7 +127,7 @@ def _synthetic_window_bars(
     n_days: int = 8, *, days: list[str] | None = None
 ) -> dict[str, list[dict]]:
     if days is None:
-        days = _weekday_compact_days(n_days, start="20260708")
+        days = _weekday_compact_days(n_days, start="20240102")
     else:
         days = list(days)[:n_days]
     codes = ["600000.SH", "000001.SZ", "300001.SZ", "688001.SH", "600519.SH"]
@@ -147,7 +157,7 @@ def _synthetic_window_bars(
                 }
             )
         bars[day] = rows
-    return bars
+    return offline_fixture_bars(bars)
 
 
 def test_b2_declares_market_sensing_feature_block() -> None:
@@ -278,9 +288,8 @@ def test_b2_measured_vs_b0_reports_delta_and_rejects_on_edge_gates() -> None:
     assert run.artifact_manifest["paper_fills"] == "measured"
     assert verdict.claimable is False
     assert verdict.verdict in {"reject", "inconclusive"}
-    if measured.claimable:
-        assert verdict.verdict == "reject"
-        assert verdict.reason == REASON_PROTOCOL_READY_EDGE_UNMET
+    assert verdict.verdict == "inconclusive"
+    assert verdict.reason == REASON_OFFLINE_FIXTURE_NOT_FORMAL
     assert verdict.details["delta_b2_minus_b0"] is not None
     # Owner opt-in 2026-07-20: B-pit mart cutover ON (reported status flag;
     # measurement still uses project-board breadth, not pulse mart).

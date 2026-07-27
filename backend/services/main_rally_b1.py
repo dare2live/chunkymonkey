@@ -25,11 +25,13 @@ from services.main_rally_b0 import (
     MainRallyB0Run,
     REASON_ACCEPT_EDGE_GATES_PASSED,
     REASON_CANARY_SCOPE_ONLY,
+    REASON_OFFLINE_FIXTURE_NOT_FORMAL,
     REASON_PROTOCOL_READY_EDGE_UNMET,
     REQUIRED_SURFACE_STATUS,
     STRATEGY_PACKAGE,
     build_b0_run,
     finalize_b0_verdict,
+    has_formal_b0_evidence,
     is_canary_scope,
     load_frozen_main_rally_snapshot,
 )
@@ -133,6 +135,7 @@ class MainRallyB1Run:
 def _run_measured_b1(
     b0: MainRallyB0Run,
     *,
+    snapshot: Mapping[str, Any],
     nominal_conn=None,
     state_conn=None,
     bars_by_day: Mapping[str, Any] | None = None,
@@ -152,9 +155,11 @@ def _run_measured_b1(
 
                 n_conn = connect_ro("tushare_raw")
                 owned_nominal = True
-            bars = load_nominal_bars_by_day(n_conn, days)
+            bars = load_nominal_bars_by_day(n_conn, days, snapshot=snapshot)
         else:
-            bars = {str(k): list(v) for k, v in bars_by_day.items()}  # type: ignore[arg-type]
+            from services.snapshot_nominal_bind import require_offline_fixture_bars
+
+            bars = require_offline_fixture_bars(bars_by_day)
 
         if state_by_day is None:
             if s_conn is None:
@@ -215,6 +220,9 @@ def build_b1_run(
         bars_by_day=bars_by_day,
         accepted_nominal_partitions=accepted_nominal_partitions,
     )
+    from services.snapshot_nominal_bind import assert_b0_run_matches_snapshot
+
+    assert_b0_run_matches_snapshot(base, payload)
     measured: MeasuredB1Result | None = None
     canary = is_canary_scope(payload)
     if (
@@ -224,6 +232,7 @@ def build_b1_run(
     ):
         measured = _run_measured_b1(
             base,
+            snapshot=payload,
             nominal_conn=nominal_conn,
             state_conn=state_conn,
             bars_by_day=bars_by_day,
@@ -418,6 +427,22 @@ def finalize_b1_verdict(
         ),
         "strategy_release": False,
     }
+
+    if not has_formal_b0_evidence(run.b0):
+        return ExperimentVerdict(
+            verdict="inconclusive",
+            reason=REASON_OFFLINE_FIXTURE_NOT_FORMAL,
+            blocked=True,
+            experiment_id=run.experiment_id,
+            block=run.block,
+            claimable=False,
+            details={
+                **details,
+                "depends_on": REASON_B1_DEPENDS_ON_B0,
+                "strategy_release": False,
+                "note": "B1 cannot promote diagnostic B0 fixture evidence",
+            },
+        )
 
     if not measured.claimable:
         return ExperimentVerdict(

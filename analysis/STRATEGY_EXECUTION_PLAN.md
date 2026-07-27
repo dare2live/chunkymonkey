@@ -61,7 +61,7 @@ Checklist（原 phase4 gate 折叠）：
 - [ ] owner signature in `goal.md`
 - [ ] foundation exit or explicit skip
 - [ ] factor_family inventory + continuity gates PASS（K1–K4）
-- [ ] fresh DatasetSnapshot + research_prereg_v1（param_hash + single-touch）
+- [ ] fresh DatasetSnapshot（nominal accepted generation 严格截止 holdout 前）+ research_prereg_v1（param_hash + stable holdout scope single-touch）
 - [ ] no Optuna / no Release / no holdout loosen in the remeasure knife
 - [ ] margin stays product-trust-gated；org mass still banned
 - [ ] verdict artifact path + `FIXED|reject` 诚实标签

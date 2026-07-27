@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from services.snapshot_nominal_bind import offline_fixture_bars
 
 from services.institution_follow_edge_gates import (
     REASON_HOLDOUT_LIFT_UNMET,
@@ -15,6 +16,7 @@ from services.main_rally_b0 import (
     BOUNDED_SCOPE,
     CANARY_SCOPE,
     CanaryScopeOverclaimError,
+    REASON_OFFLINE_FIXTURE_NOT_FORMAL,
     REASON_PROTOCOL_READY_EDGE_UNMET,
     REQUIRED_SURFACE_STATUS,
     STRATEGY_PACKAGE,
@@ -38,7 +40,7 @@ from services.main_rally_b1_measure import (
 )
 
 
-def _weekday_compact_days(n_days: int, *, start: str = "20260102") -> list[str]:
+def _weekday_compact_days(n_days: int, *, start: str = "20240102") -> list[str]:
     y, m, d = int(start[:4]), int(start[4:6]), int(start[6:8])
     out: list[str] = []
     while len(out) < n_days:
@@ -83,7 +85,7 @@ def _bounded_snapshot(**overrides):
                 },
             },
             "tier12_accepted": {
-                "partitions": ["20260717", "20260720"],
+                "partitions": ["20250429", "20250430"],
                 "artifact_dir": "data/lineage/tier12_publish_batches",
             },
         },
@@ -141,7 +143,7 @@ def _bars_with_setups(n_days: int = 180, pivot_idx: int = 130) -> dict[str, list
                     "amount": 1_000_000.0 * close,
                 }
             )
-    return bars
+    return offline_fixture_bars(bars)
 
 
 def _full_state_for_bars(
@@ -292,14 +294,8 @@ def test_b1_measured_vs_b0_reports_delta_and_rejects_on_edge_gates() -> None:
     assert run.artifact_manifest["paper_fills"] == "measured"
     assert verdict.claimable is False
     assert verdict.details["strategy_release"] is False
-    # Synthetic panel does not clear accept edge gates / holdout lift.
-    assert verdict.verdict in {"reject", "inconclusive"}
-    if measured.claimable:
-        assert verdict.verdict == "reject"
-        assert verdict.reason in {
-            REASON_PROTOCOL_READY_EDGE_UNMET,
-            REASON_HOLDOUT_LIFT_UNMET,
-        }
+    assert verdict.verdict == "inconclusive"
+    assert verdict.reason == REASON_OFFLINE_FIXTURE_NOT_FORMAL
     assert verdict.details["delta_b1_minus_b0"] is not None
     assert verdict.details["b0_metrics"] is not None
     assert verdict.details["metrics"]["n_trades_completed"] >= 0

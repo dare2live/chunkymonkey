@@ -190,11 +190,15 @@ def main(argv: list[str]) -> int:
     try:
         tier, pytest_args = parse_argv(argv)
         surface = load_surface(SURFACE_PATH)
+        paths = resolve_tier_paths(surface, tier)
+        if not paths:
+            print(f"[ci-pytest] tier={tier} paths=0 (nothing scheduled)", flush=True)
+            return 0
         cmd = build_pytest_cmd(surface, pytest_args, tier=tier)
     except SurfaceError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
-    print(f"[ci-pytest] tier={tier} paths={len(resolve_tier_paths(surface, tier))}", flush=True)
+    print(f"[ci-pytest] tier={tier} paths={len(paths)}", flush=True)
     proc = subprocess.run(cmd, cwd=BACKEND)
     return proc.returncode
 

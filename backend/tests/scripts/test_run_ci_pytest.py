@@ -53,8 +53,8 @@ def test_live_surface_no_overlap() -> None:
     assert not (nightly & optional_paths)
 
 
-def test_live_blocking_promotes_tier12_and_demotes_strategy() -> None:
-    """Gate redesign #1: PIT publish contracts block; strategy-paused → nightly."""
+def test_live_blocking_promotes_tier12_and_strategy_runtime_contracts() -> None:
+    """PIT publish and every wired B0/B1/B2/B4 source contract are blocking."""
     surface = runner.load_surface()
     blocking = set(surface["blocking_paths"])
     nightly = set(surface["nightly_paths"])
@@ -69,15 +69,19 @@ def test_live_blocking_promotes_tier12_and_demotes_strategy() -> None:
         assert path not in nightly
     for path in (
         "tests/services/test_main_rally_b0.py",
+        "tests/services/test_institution_follow_b0.py",
+    ):
+        assert path in blocking, f"B0 runtime contract must be blocking: {path}"
+        assert path not in nightly
+    for path in (
         "tests/services/test_main_rally_b1.py",
         "tests/services/test_main_rally_b2.py",
-        "tests/services/test_institution_follow_b0.py",
         "tests/services/test_institution_follow_b1.py",
         "tests/services/test_institution_follow_b2.py",
         "tests/services/test_institution_follow_b4.py",
     ):
-        assert path in nightly, f"strategy-paused must be nightly: {path}"
-        assert path not in blocking
+        assert path in blocking, f"strategy runtime contract must be blocking: {path}"
+        assert path not in nightly
 
 
 def test_resolve_tier_paths_blocking_nightly_all() -> None:
@@ -111,6 +115,17 @@ def test_build_pytest_cmd_nightly_tier() -> None:
     cmd = runner.build_pytest_cmd(surface, ["--tb=line"], tier="nightly")
     assert "tests/services/test_main_rally_b0.py" in cmd
     assert "tests/test_utils.py" not in cmd
+
+
+def test_main_empty_nightly_is_safe_noop(monkeypatch) -> None:
+    surface = _minimal_tiered(nightly_paths=[])
+    monkeypatch.setattr(runner, "load_surface", lambda _path: surface)
+    monkeypatch.setattr(
+        runner.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("empty nightly must not run pytest"),
+    )
+    assert runner.main(["--tier", "nightly"]) == 0
 
 
 def test_build_pytest_cmd_extra_args_override_default() -> None:

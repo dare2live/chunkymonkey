@@ -182,7 +182,7 @@ BestChoice 保持冻结 challenger：
 ## 10. 当前裁决
 
 - 当前没有可视为生产证书的策略 KPI；
-- 现有 `holdout_guard.py` 执行 training end `< holdout_start`（含 **actual** max）+ `research_prereg_store` 原子 prereg / `param_hash` / single-touch token（`research_prereg_v1`）。这仍 **不是** 完整 StrategyRelease；§9 发布门其余项缺失时产品最多 `research`；
+- 现有 `holdout_guard.py` 执行 training end `< holdout_start`（含 **actual** max）+ `research_prereg_store` 原子 prereg / `param_hash` / stable `holdout_scope_id` single-touch（锚定 snapshot + strategy + universe + protocol + governed holdout policy；新 UUID、block、fold/holdout date 均不得重置；当前文件 ledger 仅为单节点 fail-closed evidence）。正式 B0 必须按 `pointer metadata preflight → consume → canonical outcome load/hash` 顺序执行；typed fixture 只能形成 non-claimable 诊断结果。这仍 **不是** 完整 StrategyRelease；跨节点正式 owner、合格 freeze 与 §9 其余发布门缺失时产品最多 `research`；
 
 - rally ground truth、technical state、market pulse、institution profile 是可复用资产，不是发布策略；
 - 现有 market pulse 缺 availability/method/config hash，暂只适合当前展示；

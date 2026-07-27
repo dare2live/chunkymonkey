@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 import pytest
+from services.snapshot_nominal_bind import (
+    SnapshotNominalBindError,
+    offline_fixture_bars,
+)
 
 from routers import institution_profile as inst_router
 from services.holdout_guard import HoldoutBoundaryViolation, load_policy
@@ -15,6 +19,7 @@ from services.institution_follow_b0 import (
     REASON_CANARY_SCOPE_ONLY,
     REASON_MEASURED_COVERAGE_INSUFFICIENT,
     REASON_MEASURED_SHORT_WINDOW,
+    REASON_OFFLINE_FIXTURE_NOT_FORMAL,
     REASON_PROTOCOL_READY_EDGE_UNMET,
     REQUIRED_SURFACE_STATUS,
     STRATEGY_PACKAGE,
@@ -48,6 +53,14 @@ def _with_nominal(snapshot: dict, days: list[str]) -> dict:
         "partition": compact[-1] if compact else "",
         "training_cutoff": "20250531",
         "holdout_bound": True,
+        "accepted": [
+            {
+                "partition": d,
+                "content_hash": f"hash-{d}",
+                "row_count": 1,
+            }
+            for d in compact
+        ],
     }
     out["domains"] = domains
     return out
@@ -152,7 +165,7 @@ def _synthetic_window_bars(
                 }
             )
         bars[day] = rows
-    return bars
+    return offline_fixture_bars(bars)
 
 
 def test_required_surface_status_matches_research_router() -> None:
@@ -315,6 +328,77 @@ def test_b0_rejects_snapshot_nominal_past_declared_end() -> None:
         )
 
 
+def test_measured_paper_order_plan_pointer_consume_before_outcome_load(
+    monkeypatch, tmp_path
+) -> None:
+    """plan → pointer preflight → consume → canonical load/hash → measure."""
+    from services import institution_follow_b0 as b0_mod
+
+    order: list[str] = []
+    real_plan = b0_mod.plan_walk_forward
+    real_consume = b0_mod.consume_holdout_single_touch
+    real_measure = b0_mod.measure_b0_paper
+
+    def _plan(days, **kwargs):
+        order.append("plan")
+        return real_plan(days, **kwargs)
+
+    def _consume(token, **kwargs):
+        order.append("consume")
+        return real_consume(token, store_dir=tmp_path, **{
+            k: v for k, v in kwargs.items() if k != "store_dir"
+        })
+
+    def _pointer(snapshot, conn, **kwargs):
+        order.append("pointer")
+
+    def _load(snapshot, conn, *, days):
+        order.append("load")
+        assert "consume" in order
+        return {d: [] for d in days}
+
+    def _measure(bars, days, **kwargs):
+        order.append("measure")
+        assert order.index("consume") < order.index("load")
+        assert order.index("load") < order.index("measure")
+        return real_measure(bars, days, **kwargs)
+
+    monkeypatch.setattr(b0_mod, "plan_walk_forward", _plan)
+    monkeypatch.setattr(b0_mod, "consume_holdout_single_touch", _consume)
+    monkeypatch.setattr(b0_mod, "measure_b0_paper", _measure)
+    monkeypatch.setattr(
+        "services.snapshot_nominal_bind.assert_live_nominal_pointer_matches_snapshot",
+        _pointer,
+    )
+    monkeypatch.setattr(
+        "services.snapshot_nominal_bind.load_snapshot_bound_nominal_bars_by_day",
+        _load,
+    )
+    monkeypatch.setattr(
+        "services.research_prereg_store.DEFAULT_STORE_DIR",
+        tmp_path,
+    )
+    monkeypatch.setattr(
+        "services.research_prereg_store.default_store_dir",
+        lambda: tmp_path,
+    )
+
+    days = _weekday_compact_days(8, start="20250508")
+    snap = _with_nominal(_bounded_snapshot(), days)
+    # Force live load path (bars_by_day is None) with a dummy conn.
+    class _Conn:
+        pass
+
+    run = build_b0_run(
+        snapshot=snap,
+        measure_coverage=True,
+        measure_paper=True,
+        nominal_conn=_Conn(),
+    )
+    assert run.measured_b0 is not None
+    assert order[:5] == ["plan", "pointer", "consume", "load", "measure"]
+
+
 def test_short_window_uses_honest_minimal_wf_protocol() -> None:
     days = [
         "20250508",
@@ -334,6 +418,20 @@ def test_short_window_uses_honest_minimal_wf_protocol() -> None:
     assert plan.embargo_days >= 1
     assert len(plan.holdout_dates) == 2
     assert plan.reason == REASON_MEASURED_SHORT_WINDOW
+
+
+def test_plain_injected_bars_cannot_bypass_snapshot_binding() -> None:
+    days = _weekday_compact_days(8, start="20240102")
+    snap = _with_nominal(_bounded_snapshot(), days)
+    with pytest.raises(
+        SnapshotNominalBindError, match="offline_fixture_bars|may not bypass snapshot"
+    ):
+        build_b0_run(
+            snapshot=snap,
+            measure_coverage=True,
+            measure_paper=True,
+            bars_by_day={day: [] for day in days},
+        )
 
 
 def test_full_purged_wf_at_40_days_is_claimable_protocol() -> None:
@@ -417,7 +515,8 @@ def test_measured_short_window_verdict_inconclusive_not_claimable() -> None:
     assert verdict.verdict == "inconclusive"
     assert verdict.claimable is False
     assert verdict.blocked is True
-    assert verdict.reason == REASON_MEASURED_SHORT_WINDOW
+    assert verdict.reason == REASON_OFFLINE_FIXTURE_NOT_FORMAL
+    assert verdict.details["measurement_source"] == "offline_fixture"
     assert verdict.details["metrics"]["capacity"] == UNKNOWN
 
 
@@ -433,17 +532,11 @@ def test_measured_40d_protocol_ready_still_not_accept() -> None:
     assert run.measured_b0.claimable is True
     assert run.measured_b0.walk_forward.protocol == "purged_walk_forward"
     verdict = finalize_b0_verdict(run, requested_verdict="accept")
-    # Wired edge gates: synthetic momentum loses money / breaches DD → reject.
-    assert verdict.verdict == "reject"
+    # Diagnostic fixtures can exercise metrics but never produce a formal verdict.
+    assert verdict.verdict == "inconclusive"
     assert verdict.claimable is False
     assert verdict.blocked is True
-    assert verdict.reason == REASON_PROTOCOL_READY_EDGE_UNMET
-    gates = verdict.details["accept_edge_gates"]
-    assert gates["passed"] is False
-    assert "holdout_ok" in gates["checks"]
-    assert "drawdown_ok" in gates["checks"]
-    assert "eval_ok" in gates["checks"]
-    assert "trades_ok" in gates["checks"]
+    assert verdict.reason == REASON_OFFLINE_FIXTURE_NOT_FORMAL
 
 
 def test_accept_edge_gates_pass_only_when_all_thresholds_met() -> None:

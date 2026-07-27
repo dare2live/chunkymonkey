@@ -89,6 +89,15 @@ blocking_paths:
 - tests/services/test_factor_family_continuity_gates.py
 - tests/services/test_factor_family_frontier_projection.py
 - tests/services/test_research_prereg_store.py
+- tests/services/test_snapshot_nominal_bind.py
+- tests/services/test_main_rally_b0.py
+- tests/services/test_main_rally_b1.py
+- tests/services/test_main_rally_b2.py
+- tests/services/test_institution_follow_b0.py
+- tests/services/test_institution_follow_b1.py
+- tests/services/test_institution_follow_b2.py
+- tests/services/test_institution_follow_b4.py
+- tests/test_holdout_guard.py
 - tests/services/test_stock_limit_publish_b2.py
 - tests/services/test_stock_moneyflow_publish_b2.py
 - tests/services/test_type_b_fact_publish_catchup.py
@@ -128,14 +137,7 @@ blocking_paths:
 - tests/test_decision_intersection.py
 - tests/test_cx3_capability_bricks.py
 - tests/test_stock_screener.py
-nightly_paths:
-- tests/services/test_main_rally_b0.py
-- tests/services/test_main_rally_b1.py
-- tests/services/test_main_rally_b2.py
-- tests/services/test_institution_follow_b0.py
-- tests/services/test_institution_follow_b1.py
-- tests/services/test_institution_follow_b2.py
-- tests/services/test_institution_follow_b4.py
+nightly_paths: []
 ci_test_optional:
 - path: tests/data_governance/test_etl_hook.py
   reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
@@ -422,11 +424,6 @@ ci_test_optional:
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
     review, one triage slice at a time'
 - path: tests/test_holders_aif10.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/test_holdout_guard.py
   reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
     ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency

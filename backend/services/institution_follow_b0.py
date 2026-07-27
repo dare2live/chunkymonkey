@@ -23,15 +23,17 @@ from services.data_sources.nominal_ohlcv_schema import DATASET_ID as NOMINAL_OHL
 from services.holdout_guard import (
     HoldoutBoundaryViolation,
     assert_holdout_untouched,
+    consume_holdout_single_touch,
     load_policy,
     training_cutoff_before_holdout,
 )
 from services.institution_follow_b0_measure import (
     MeasuredB0Result,
     REASON_SHORT_WINDOW,
-    load_nominal_bars_by_day,
     measure_b0_paper,
+    plan_walk_forward,
 )
+from services.institution_follow_b0_runtime import run_measured_paper
 from services.institution_follow_edge_gates import (
     REASON_EDGE_GATES_PASSED,
     REASON_EDGE_GATES_UNMET,
@@ -41,6 +43,7 @@ from services.research_runtime import (
     ExperimentVerdict,
     VerdictKind,
     dataset_snapshot_from_disclosure,
+    fold_embargo_from_walk_forward_plan,
 )
 
 STRATEGY_PACKAGE = "institution_follow_v1"
@@ -57,6 +60,7 @@ REASON_PROTOCOL_READY_EDGE_UNMET = "measured_protocol_ready_edge_gates_unmet"
 REASON_ACCEPT_EDGE_GATES_UNMET = REASON_EDGE_GATES_UNMET
 REASON_ACCEPT_EDGE_GATES_PASSED = REASON_EDGE_GATES_PASSED
 REASON_SCAFFOLD_NO_MEASURED_EDGE = "scaffold_no_measured_edge"
+REASON_OFFLINE_FIXTURE_NOT_FORMAL = "offline_fixture_not_formal_evidence"
 # Bare-K needs a multi-day nominal window for any forward-return measurement.
 MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0 = 5
 
@@ -153,6 +157,9 @@ class InstitutionFollowB0Run:
     holdout: HoldoutHookSpec
     artifact_manifest: dict[str, Any]
     notes: tuple[str, ...]
+    measurement_source: str = "not_measured"
+    prereg_registered: bool = False
+    holdout_consumed: bool = False
     bare_k_coverage: BareKCoverageMeasurement | None = None
     measured_b0: MeasuredB0Result | None = None
 
@@ -171,6 +178,9 @@ class InstitutionFollowB0Run:
             "holdout": self.holdout.as_dict(),
             "artifact_manifest": dict(self.artifact_manifest),
             "notes": list(self.notes),
+            "measurement_source": self.measurement_source,
+            "prereg_registered": self.prereg_registered,
+            "holdout_consumed": self.holdout_consumed,
             "bare_k_coverage": (
                 self.bare_k_coverage.as_dict() if self.bare_k_coverage else None
             ),
@@ -337,44 +347,6 @@ def _default_pit_hooks(*, canary: bool, measured: bool) -> tuple[PitHookSpec, ..
     )
 
 
-def _run_measured_paper(
-    coverage: BareKCoverageMeasurement,
-    *,
-    nominal_conn=None,
-    bars_by_day: Mapping[str, Any] | None = None,
-) -> MeasuredB0Result | None:
-    """Run short-window WF + paper fills when coverage is ready.
-
-    Returns ``None`` only when coverage is insufficient. Load/measure failures
-    raise so the caller does not silently fall back to a scaffold verdict.
-    """
-
-    if not coverage.sufficient_for_measured_b0:
-        return None
-    days = list(coverage.accepted_nominal_partitions)
-    if not days:
-        return None
-
-    owned_conn = False
-    conn = nominal_conn
-    try:
-        if bars_by_day is None:
-            if conn is None:
-                from services.data_access.resolver import connect_ro
-
-                conn = connect_ro("tushare_raw")
-                owned_conn = True
-            bars = load_nominal_bars_by_day(conn, days)
-        else:
-            bars = {
-                str(k): list(v) for k, v in bars_by_day.items()  # type: ignore[arg-type]
-            }
-        return measure_b0_paper(bars, days)
-    finally:
-        if owned_conn and conn is not None:
-            conn.close()
-
-
 def build_b0_run(
     *,
     snapshot: Mapping[str, Any] | None = None,
@@ -386,6 +358,7 @@ def build_b0_run(
     measure_paper: bool = True,
     nominal_conn=None,
     bars_by_day: Mapping[str, Any] | None = None,
+    prereg_store_dir: Path | str | None = None,
 ) -> InstitutionFollowB0Run:
     """Build a B0 ExperimentRun bound to the disclosure snapshot.
 
@@ -416,9 +389,6 @@ def build_b0_run(
     if not snap_id:
         raise InstitutionFollowB0Error("snapshot_id required on DatasetSnapshot")
 
-    # Phase D boundary: adapt disclosure freeze into DatasetSnapshot (E consumes D).
-    runtime_snap = dataset_snapshot_from_disclosure(payload)
-
     allowed = (
         bool(cutover_allowed)
         if cutover_allowed is not None
@@ -434,15 +404,46 @@ def build_b0_run(
             cov_end = coverage.accepted_nominal_partitions[-1]
             assert_holdout_untouched(end, actual_data_end=cov_end)
 
-    measured: MeasuredB0Result | None = None
+    walk_forward = None
+    fold_embargo = None
     if (
         measure_paper
         and coverage is not None
         and coverage.sufficient_for_measured_b0
         and not canary
     ):
-        measured = _run_measured_paper(
-            coverage, nominal_conn=nominal_conn, bars_by_day=bars_by_day
+        walk_forward = plan_walk_forward(list(coverage.accepted_nominal_partitions))
+        fold_embargo = fold_embargo_from_walk_forward_plan(walk_forward)
+
+    # Freeze the actual plan before any measurement. Synthetic fixture runs
+    # remain unregistered and cannot become holdout evidence.
+    runtime_snap = dataset_snapshot_from_disclosure(payload)
+    from services.research_runtime import build_experiment_prereg
+
+    formal_measure = walk_forward is not None and bars_by_day is None
+    experiment_prereg = build_experiment_prereg(
+        runtime_snap,
+        strategy_package=STRATEGY_PACKAGE,
+        block=BLOCK_ID,
+        hypothesis="institution_follow_b0_bare_k_no_edge_claim",
+        fold_embargo=fold_embargo,
+        register_store=formal_measure,
+        store_dir=prereg_store_dir,
+    )
+
+    measured: MeasuredB0Result | None = None
+    if walk_forward is not None and coverage is not None:
+        measured = run_measured_paper(
+            coverage,
+            snapshot=payload,
+            single_touch_token=experiment_prereg.single_touch_token,
+            walk_forward=walk_forward,
+            prereg_store_dir=prereg_store_dir,
+            nominal_conn=nominal_conn,
+            bars_by_day=bars_by_day,
+            drift_error=InstitutionFollowB0Error,
+            consume_holdout=consume_holdout_single_touch,
+            measure=measure_b0_paper,
         )
 
     notes = [
@@ -474,6 +475,19 @@ def build_b0_run(
     if measured is not None:
         metrics_label = "paper_metrics_measured"
         paper_label = "measured"
+    measurement_source = (
+        "live_snapshot_canonical"
+        if measured is not None and formal_measure
+        else "offline_fixture"
+        if measured is not None and bars_by_day is not None
+        else "not_measured"
+    )
+    holdout_consumed = bool(
+        measured is not None
+        and formal_measure
+        and walk_forward is not None
+        and walk_forward.holdout_dates
+    )
 
     return InstitutionFollowB0Run(
         experiment_id=experiment_id,
@@ -497,6 +511,7 @@ def build_b0_run(
             "kind": "institution_follow_b0",
             "disclosure_snapshot": DISCLOSURE_SNAPSHOT_RELPATH,
             "research_runtime_snapshot": runtime_snap.boundary_dict(),
+            "prereg": experiment_prereg.as_dict(),
             "domains": sorted((payload.get("domains") or {}).keys()),
             "metrics": metrics_label,
             "paper_fills": paper_label,
@@ -504,6 +519,9 @@ def build_b0_run(
             "measured_b0": measured.as_dict() if measured else None,
         },
         notes=tuple(notes),
+        measurement_source=measurement_source,
+        prereg_registered=bool(measured is not None and formal_measure),
+        holdout_consumed=holdout_consumed,
         bare_k_coverage=coverage,
         measured_b0=measured,
     )
@@ -578,6 +596,23 @@ def finalize_b0_verdict(
 
     measured = run.measured_b0
     if measured is not None:
+        if not has_formal_b0_evidence(run):
+            return ExperimentVerdict(
+                verdict="inconclusive",
+                reason=REASON_OFFLINE_FIXTURE_NOT_FORMAL,
+                blocked=True,
+                experiment_id=run.experiment_id,
+                block=run.block,
+                claimable=False,
+                details={
+                    "requested_verdict": requested_verdict,
+                    "measurement_source": run.measurement_source,
+                    "prereg_registered": run.prereg_registered,
+                    "holdout_consumed": run.holdout_consumed,
+                    "metrics": measured.metrics.as_dict(),
+                    "note": "offline fixture measurements are diagnostic only",
+                },
+            )
         edge = evaluate_accept_edge_gates(
             measured.walk_forward,
             measured.metrics,
@@ -661,6 +696,16 @@ def finalize_b0_verdict(
             "surface_status": run.surface_status,
             "bare_k_coverage": coverage.as_dict() if coverage else None,
         },
+    )
+
+
+def has_formal_b0_evidence(run: InstitutionFollowB0Run) -> bool:
+    """True only for preregistered, consumed, snapshot-bound live outcomes."""
+
+    return (
+        run.measurement_source == "live_snapshot_canonical"
+        and run.prereg_registered
+        and run.holdout_consumed
     )
 
 

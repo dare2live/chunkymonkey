@@ -148,12 +148,18 @@ def build_experiment_prereg(
     """
     from services.research_prereg_store import register_prereg
 
+    if fold_embargo is None:
+        from services.holdout_guard import load_policy
+
+        fold_embargo = default_fold_embargo_hooks(
+            holdout_start=str(load_policy()["holdout_start"])
+        )
     prereg = ExperimentPrereg(
         hypothesis=hypothesis,
         primary_metric=primary_metric,
         stop_conditions=tuple(stop_conditions),
         search_space=tuple(search_space),
-        fold_embargo=fold_embargo or default_fold_embargo_hooks(),
+        fold_embargo=fold_embargo,
         strategy_package=strategy_package,
         block=block,
         snapshot_id=snapshot.snapshot_id,

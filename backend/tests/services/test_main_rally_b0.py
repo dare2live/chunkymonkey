@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from services.snapshot_nominal_bind import offline_fixture_bars
 
 from services.main_rally_b0 import (
     BLOCK_ID,
@@ -13,9 +14,11 @@ from services.main_rally_b0 import (
     CANARY_SCOPE,
     REASON_CANARY_SCOPE_ONLY,
     REASON_MEASURED_COVERAGE_INSUFFICIENT,
+    REASON_OFFLINE_FIXTURE_NOT_FORMAL,
     REASON_PROTOCOL_READY_EDGE_UNMET,
     STRATEGY_PACKAGE,
     CanaryScopeOverclaimError,
+    MainRallyB0Error,
     build_b0_run,
     finalize_b0_verdict,
     is_canary_scope,
@@ -96,10 +99,12 @@ def _bars_for_pivot_setup(
                 "amount": 1_000_000.0 * close,
             }
         )
-    return bars
+    return offline_fixture_bars(bars)
 
 
 def _bounded_snapshot(**overrides):
+    # Training-window dates only — never spill past declared holdout (20250531).
+    date_set = _weekday_compact_days(40, start="20240102")
     base = {
         "snapshot_id": "main_rally_bounded_test",
         "scope": BOUNDED_SCOPE,
@@ -109,9 +114,17 @@ def _bounded_snapshot(**overrides):
         "domains": {
             "nominal_ohlcv": {
                 "dataset_id": "tier0.market_data.nominal_ohlcv_daily",
-                "date_set": _weekday_compact_days(40),
+                "date_set": date_set,
                 "content_hash": "nomhash",
                 "config_hash": "nomcfg",
+                "accepted": [
+                    {
+                        "partition": d,
+                        "content_hash": f"hash-{d}",
+                        "row_count": 1,
+                    }
+                    for d in date_set
+                ],
             },
             "rally_gt": {
                 "taxonomy_version": "v2_20260702",
@@ -132,7 +145,7 @@ def _bounded_snapshot(**overrides):
                 },
             },
             "tier12_accepted": {
-                "partitions": ["20260717", "20260720"],
+                "partitions": ["20250401", "20250415"],
                 "artifact_dir": "data/lineage/tier12_publish_batches",
             },
         },
@@ -239,11 +252,12 @@ def test_thin_coverage_inconclusive_claimable_false() -> None:
     snap = _bounded_snapshot()
     # Inject thin nominal date_set into coverage path via fake conn-less override:
     # build with measure_paper False and force coverage via empty bars window.
+    thin_day = snap["domains"]["nominal_ohlcv"]["date_set"][0]
     run = build_b0_run(
         snapshot=snap,
         measure_coverage=True,
         measure_paper=False,
-        accepted_nominal_partitions=["20260717"],
+        accepted_nominal_partitions=[thin_day],
     )
     assert run.setup_coverage is not None
     assert run.setup_coverage.sufficient_for_measured_b0 is False
@@ -255,7 +269,7 @@ def test_thin_coverage_inconclusive_claimable_false() -> None:
 
 
 def test_measured_b0_on_synthetic_setup_claimable_false() -> None:
-    days = _weekday_compact_days(80)
+    days = _weekday_compact_days(80, start="20240102")
     # Build multi-code panel; inject one confirmable setup on 600000.
     bars = {d: [] for d in days}
     pivot_idx = 50
@@ -293,13 +307,53 @@ def test_measured_b0_on_synthetic_setup_claimable_false() -> None:
     assert measured.walk_forward.one_touch_holdout is True
     assert measured.prereg.signal == "rally_setup_pivot_confirmed_base_days"
     # Short window or thin setups → non-claimable protocol / edge unmet path.
-    snap = _bounded_snapshot()
+    # Snapshot date_set must include measured days and stay ≤ declared holdout.
+    snap = _bounded_snapshot(
+        domains={
+            "nominal_ohlcv": {
+                "dataset_id": "tier0.market_data.nominal_ohlcv_daily",
+                "date_set": days,
+                "content_hash": "nomhash",
+                "config_hash": "nomcfg",
+                "accepted": [
+                    {
+                        "partition": d,
+                        "content_hash": f"hash-{d}",
+                        "row_count": 1,
+                    }
+                    for d in days
+                ],
+            },
+            "rally_gt": {
+                "taxonomy_version": "v2_20260702",
+                "config_hash": "gtcfg",
+                "tables": {
+                    "fact_rally_ground_truth": {
+                        "row_count": 1,
+                        "content_hash": "gthash",
+                    },
+                    "fact_rally_negative": {
+                        "row_count": 1,
+                        "content_hash": "neghash",
+                    },
+                    "fact_rally_strata": {
+                        "row_count": 1,
+                        "content_hash": "stratahash",
+                    },
+                },
+            },
+            "tier12_accepted": {
+                "partitions": ["20250401"],
+                "artifact_dir": "data/lineage/tier12_publish_batches",
+            },
+        }
+    )
     run = build_b0_run(
         snapshot=snap,
         measure_coverage=True,
         measure_paper=True,
         accepted_nominal_partitions=days,
-        bars_by_day=bars,
+        bars_by_day=offline_fixture_bars(bars),
     )
     assert run.strategy_package == STRATEGY_PACKAGE
     assert run.block == BLOCK_ID
@@ -339,14 +393,166 @@ def test_frozen_snapshot_file_adapts_when_present() -> None:
     assert snap.snapshot_id
     assert payload.get("strategy_package") == STRATEGY_PACKAGE
     assert payload.get("cutover_allowed") is True
-    run, verdict = run_b0_scaffold(
-        snapshot=payload,
-        measure_coverage=True,
-        measure_paper=False,
+    # Live freeze currently spills past holdout — B0 must fail closed on actual_data_end.
+    from services.holdout_guard import HoldoutBoundaryViolation
+
+    with pytest.raises(HoldoutBoundaryViolation, match="actual_data_end"):
+        run_b0_scaffold(
+            snapshot=payload,
+            measure_coverage=True,
+            measure_paper=False,
+        )
+
+
+def test_snapshot_date_set_past_holdout_fails_closed() -> None:
+    from services.holdout_guard import HoldoutBoundaryViolation
+
+    spill = _weekday_compact_days(5, start="20250602")
+    snap = _bounded_snapshot(
+        domains={
+            "nominal_ohlcv": {
+                "dataset_id": "tier0.market_data.nominal_ohlcv_daily",
+                "date_set": spill,
+                "content_hash": "nomhash",
+                "config_hash": "nomcfg",
+                "accepted": [
+                    {
+                        "partition": d,
+                        "content_hash": f"hash-{d}",
+                        "row_count": 1,
+                    }
+                    for d in spill
+                ],
+            },
+            "rally_gt": {
+                "taxonomy_version": "v2_20260702",
+                "config_hash": "gtcfg",
+                "tables": {
+                    "fact_rally_ground_truth": {
+                        "row_count": 1,
+                        "content_hash": "gthash",
+                    },
+                    "fact_rally_negative": {
+                        "row_count": 1,
+                        "content_hash": "neghash",
+                    },
+                    "fact_rally_strata": {
+                        "row_count": 1,
+                        "content_hash": "stratahash",
+                    },
+                },
+            },
+            "tier12_accepted": {
+                "partitions": [],
+                "artifact_dir": "data/lineage/tier12_publish_batches",
+            },
+        }
     )
-    assert run.snapshot_id == snap.snapshot_id
+    with pytest.raises(HoldoutBoundaryViolation, match="actual_data_end"):
+        build_b0_run(snapshot=snap, measure_coverage=False, measure_paper=False)
+
+
+def test_fixture_b0_does_not_consume_formal_single_touch(tmp_path, monkeypatch) -> None:
+    """Synthetic fixture measurement cannot create formal holdout evidence."""
+
+    monkeypatch.setattr(
+        "services.research_prereg_store.DEFAULT_STORE_DIR",
+        tmp_path,
+    )
+    monkeypatch.setattr(
+        "services.research_prereg_store.default_store_dir",
+        lambda: tmp_path,
+    )
+    days = _weekday_compact_days(80, start="20240102")
+    bars = {d: [] for d in days}
+    pivot_idx = 50
+    win = 20
+    for i, day in enumerate(days):
+        for code in ["600000.SH", "000001.SZ", "300001.SZ", "688001.SH", "600519.SH"]:
+            if code == "600000.SH":
+                if i == pivot_idx:
+                    low, high, close = 9.0, 10.2, 9.5
+                elif abs(i - pivot_idx) <= win:
+                    low, high, close = 10.0, 11.0, 10.5
+                else:
+                    low, high, close = 10.0, 10.8, 10.4
+            else:
+                low, high, close = 10.0, 10.5, 10.2
+            bars[day].append(
+                {
+                    "ts_code": code,
+                    "open": close,
+                    "high": high,
+                    "low": low,
+                    "close": close,
+                    "pre_close": 10.0,
+                    "pct_chg": 1.0 if i == pivot_idx + win and code == "600000.SH" else 0.1,
+                    "vol": 1_000_000.0,
+                    "amount": 1_000_000.0 * close,
+                }
+            )
+    snap = _bounded_snapshot(
+        domains={
+            "nominal_ohlcv": {
+                "dataset_id": "tier0.market_data.nominal_ohlcv_daily",
+                "date_set": days,
+                "content_hash": "nomhash",
+                "config_hash": "nomcfg",
+                "accepted": [
+                    {"partition": d, "content_hash": f"hash-{d}", "row_count": 1}
+                    for d in days
+                ],
+            },
+            "rally_gt": {
+                "taxonomy_version": "v2_20260702",
+                "config_hash": "gtcfg",
+                "tables": {
+                    "fact_rally_ground_truth": {
+                        "row_count": 1,
+                        "content_hash": "gthash",
+                    },
+                    "fact_rally_negative": {
+                        "row_count": 1,
+                        "content_hash": "neghash",
+                    },
+                    "fact_rally_strata": {
+                        "row_count": 1,
+                        "content_hash": "stratahash",
+                    },
+                },
+            },
+            "tier12_accepted": {
+                "partitions": ["20250401"],
+                "artifact_dir": "data/lineage/tier12_publish_batches",
+            },
+        }
+    )
+    run = build_b0_run(
+        snapshot=snap,
+        measure_coverage=True,
+        measure_paper=True,
+        accepted_nominal_partitions=days,
+        bars_by_day=offline_fixture_bars(bars),
+    )
+    assert run.measured_b0 is not None
+    assert run.measured_b0.walk_forward.holdout_dates
+    verdict = finalize_b0_verdict(run, requested_verdict="accept")
+    assert verdict.verdict == "inconclusive"
     assert verdict.claimable is False
+    assert verdict.reason == REASON_OFFLINE_FIXTURE_NOT_FORMAL
+    assert run.measurement_source == "offline_fixture"
+    assert run.prereg_registered is False
+    assert run.holdout_consumed is False
+    assert list(tmp_path.iterdir()) == []
 
 
-def test_protocol_ready_edge_unmet_reason_exported() -> None:
-    assert REASON_PROTOCOL_READY_EDGE_UNMET
+def test_formal_b0_rejects_nominal_partition_override() -> None:
+    snap = _bounded_snapshot()
+    with pytest.raises(MainRallyB0Error, match="override is fixture-only"):
+        build_b0_run(
+            snapshot=snap,
+            measure_coverage=True,
+            measure_paper=True,
+            accepted_nominal_partitions=["20250401"],
+            nominal_conn=object(),
+        )

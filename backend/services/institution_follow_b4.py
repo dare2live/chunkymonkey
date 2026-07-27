@@ -19,11 +19,13 @@ from services.institution_follow_b0 import (
     InstitutionFollowB0Error,
     InstitutionFollowB0Run,
     REASON_ACCEPT_EDGE_GATES_PASSED,
+    REASON_OFFLINE_FIXTURE_NOT_FORMAL,
     REASON_PROTOCOL_READY_EDGE_UNMET,
     REQUIRED_SURFACE_STATUS,
     STRATEGY_PACKAGE,
     build_b0_run,
     finalize_b0_verdict,
+    has_formal_b0_evidence,
     is_canary_scope,
     load_frozen_disclosure_snapshot,
 )
@@ -157,9 +159,11 @@ def _run_measured_b4(
 
                 n_conn = connect_ro("tushare_raw")
                 owned_nominal = True
-            bars = load_nominal_bars_by_day(n_conn, days)
+            bars = load_nominal_bars_by_day(n_conn, days, snapshot=snapshot)
         else:
-            bars = {str(k): list(v) for k, v in bars_by_day.items()}  # type: ignore[arg-type]
+            from services.snapshot_nominal_bind import require_offline_fixture_bars
+
+            bars = require_offline_fixture_bars(bars_by_day)
 
         null_excl = 0
         miss_avail = 0
@@ -218,6 +222,9 @@ def build_b4_run(
         nominal_conn=nominal_conn,
         bars_by_day=bars_by_day,
     )
+    from services.snapshot_nominal_bind import assert_b0_run_matches_snapshot
+
+    assert_b0_run_matches_snapshot(base, payload)
     measured: MeasuredB4Result | None = None
     canary = is_canary_scope(payload)
     if (
@@ -423,6 +430,21 @@ def finalize_b4_verdict(
         "population_kind": POPULATION_KIND,
         "max_chase_days": MAX_CHASE_DAYS,
     }
+
+    if not has_formal_b0_evidence(run.b0):
+        return ExperimentVerdict(
+            verdict="inconclusive",
+            reason=REASON_OFFLINE_FIXTURE_NOT_FORMAL,
+            blocked=True,
+            experiment_id=run.experiment_id,
+            block=run.block,
+            claimable=False,
+            details={
+                **details,
+                "depends_on": REASON_B4_DEPENDS_ON_B0,
+                "note": "B4 cannot promote diagnostic B0 fixture evidence",
+            },
+        )
 
     if not measured.claimable:
         return ExperimentVerdict(
