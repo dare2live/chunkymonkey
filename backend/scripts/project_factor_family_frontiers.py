@@ -20,11 +20,11 @@ from services.factor_family_frontier_projection import (  # noqa: E402
 )
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--path", default="", help="Output projection JSON path")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     viol = assert_defer_reasons_honest()
     if viol:
@@ -57,6 +57,12 @@ def main() -> int:
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))
     print(f"[project] wrote {out} families={len(payload.get('families') or [])}")
+    violations = list(payload.get("violations") or [])
+    if violations:
+        print("[project] BLOCKED live frontier:", file=sys.stderr)
+        for item in violations:
+            print(f"  - {item}", file=sys.stderr)
+        return 1
     return 0
 
 

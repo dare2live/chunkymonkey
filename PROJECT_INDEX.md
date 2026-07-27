@@ -1,7 +1,7 @@
 # PROJECT_INDEX — Current Project Map
 
 > 状态：live navigation，非规则 owner
-> 更新：2026-07-27（strategy snapshot / prereg / holdout runtime hardening）
+> 更新：2026-07-27（factor-family K3 live frontier gate）
 > 当前目标看 `goal.md`（foundation CLOSED / `phase_closure_ready`；策略 paused）。
 > **执行方案仅两份**：底座 `analysis/FOUNDATION_EXECUTION_PLAN.md` · 策略 `analysis/STRATEGY_EXECUTION_PLAN.md`（RX 前 BLOCKED）。台账 `analysis/DOC_CLEANUP_20260723.md`。
 > 架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口看 `FEATURE_MAP.md` / CodeGraph。
@@ -63,7 +63,7 @@ AGENTS.md
 | 形态/阶段选股面 (5B) | Tier3 `GET /api/v3/screener/options` + `/form_stage`；config `stock_screener.yaml`；`stock_screener.py` + 共享 `form_production_read`（与档案 F 同一 production-read：fact brick + ACCEPTED_CUTOVER overlay；`sql_where_active_a_share`）；全局 `MAX(trade_date)` SLA → `status=stale`；UI `#/market`「形态/阶段选股」→`#/stock/:code`；证据 `capability_b_stock_screener_20260721.md`；pytest `tests/test_stock_screener.py` ∈ blocking |
 | Holders / frontier primitive | Shared `frontier_decision.decide_frontier` + **`plan_partition_catchup`**（tip-leap due=`source\accepted` P≤wm ≤40；非 tip+1）；holders formal SSOT = **canonical notice only**（**`fact_top10_holder_period` DROPPED 2026-07-26**；from-fact catchup/mirror retired；provider forward by_notice kept；证据 `holders_fact_retire_20260725.md`）；`stk_holdertrade` raw→canon catchup（日常 newest_first；全史 oldest_first 至 raw_only=0，live 已清）；证据 `partition_leap_integrity_20260724.md`；`stk_holdernumber`=`by_ann_date`；`by_ann_date`=`ann_reprobe`；`by_trade_date`=`atomic_skip`；org period hook 禁 by-date invent；holders 路径仍 `acquire._sync_holders_aif10`；**org trunc ops** `org_holding_period_repair_truncated.py`；**QFII ops drain** `qfii_period_drain.py`（oldest-first calendar holes via `qfii_client` helpers；日更只填 latest） |
 | Serve→derive closed loop | Law `analysis/serve_derive_closed_loop_law_20260723.md` + config `serve_derive_closed_loop.yaml` + `data_sources/pagination_integrity.py`（paginated land ≠ complete；**hard** trunc=page-cap/provider_count；**soft** `under_modern_baseline` 不进 repair queue；证据 `org_heuristic_soft_baseline_20260725.md`）；process `institution_profile` delta-gate + as_of seed；org `repair_accept_from_local_raw` / `provider_truncated`→单期 sharded repair / F6 `min_org_accepted_stocks`；证据 `org_provider_page_cap_fix_20260724.md`；… |
-| Factor-family inventory (RX 前) | Config `factor_family_inventory.yaml` + `check_factor_family_inventory.py`（结构门）+ `check_factor_family_gates.py`（frequency continuity 矩阵）+ `project_factor_family_frontiers.py`（K3 live defer 投影）+ 设计 `analysis/factor_family_governance_toplevel_20260724.md`；证据 `factor_family_k3_frontier_20260727.md` |
+| Factor-family inventory (RX 前) | Config `factor_family_inventory.yaml` + `check_factor_family_inventory.py`（结构门）+ `check_factor_family_gates.py`（frequency continuity 矩阵）+ `project_factor_family_frontiers.py`（绑定 inventory hash/freshness/status 的 K3 live defer 投影）+ `check_factor_family_frontier_live.py`（DB missing/query error/UNVERIFIED/stale 均 fail-closed）+ 设计 `analysis/factor_family_governance_toplevel_20260724.md`；证据 `analysis/factor_family_k3_live_gate_20260727.md` |
 | Brick registry (B5) | `brick_registry.yaml` + `check_brick_registry.py`（L2/L3 FeatureBlock + Type-B；moth claim PASS）；权威 `analysis/data_brick_architecture_20260721.md` |
 | Rewrite must-keep vs delete | 裁决折入 `analysis/FOUNDATION_EXECUTION_PLAN.md` §4：KEEP = sync replace / qfq incremental+full CTAS+in-module compact / landing+skip / delta rebuild；**DELETED** = `rewrite_legacy` True + canary CLI；禁 periodic dedupe/compact fixer |
 
