@@ -35,6 +35,24 @@ from services.institution_follow_b0_measure import (
 )
 
 
+def _with_nominal(snapshot: dict, days: list[str]) -> dict:
+    """Attach frozen nominal_ohlcv.date_set (pre-holdout training window)."""
+    out = dict(snapshot)
+    domains = dict(out.get("domains") or {})
+    compact = sorted(
+        {"".join(ch for ch in str(d) if ch.isdigit())[:8] for d in days}
+    )
+    domains["nominal_ohlcv"] = {
+        "dataset_id": "tier0.market_data.nominal_ohlcv_daily",
+        "date_set": compact,
+        "partition": compact[-1] if compact else "",
+        "training_cutoff": "20250531",
+        "holdout_bound": True,
+    }
+    out["domains"] = domains
+    return out
+
+
 def _canary_snapshot(**overrides):
     base = {
         "snapshot_id": "disclosure_e0_test_canary",
@@ -42,9 +60,9 @@ def _canary_snapshot(**overrides):
         "phase_e_ablation": CANARY_ABLATION,
         "cutover_allowed": True,
         "domains": {
-            "holders_top10": {"partition": "20260717", "date_set": ["20260717"]},
+            "holders_top10": {"partition": "20250508", "date_set": ["20250508"]},
             "org_holding": {"partition": "20190430", "date_set": ["20190430"]},
-            "stk_holdertrade": {"partition": "20260706", "date_set": ["20260706"]},
+            "stk_holdertrade": {"partition": "20250506", "date_set": ["20250506"]},
         },
     }
     base.update(overrides)
@@ -59,16 +77,27 @@ def _bounded_snapshot(**overrides):
         "cutover_allowed": True,
         "domains": {
             "holders_top10": {
-                "partition": "20260717",
-                "date_set": ["20260508", "20260616", "20260618", "20260619", "20260623", "20260703", "20260709", "20260710", "20260713", "20260714", "20260717"],
+                "partition": "20250516",
+                "date_set": [
+                    "20250408",
+                    "20250416",
+                    "20250418",
+                    "20250423",
+                    "20250503",
+                    "20250509",
+                    "20250510",
+                    "20250513",
+                    "20250514",
+                    "20250516",
+                ],
             },
             "org_holding": {
-                "partition": "20260430",
-                "date_set": ["20190430", "20260430"],
+                "partition": "20250430",
+                "date_set": ["20190430", "20250430"],
             },
             "stk_holdertrade": {
-                "partition": "20260713",
-                "date_set": ["20260518", "20260608", "20260706", "20260713"],
+                "partition": "20250513",
+                "date_set": ["20250418", "20250508", "20250506", "20250513"],
             },
         },
     }
@@ -76,27 +105,7 @@ def _bounded_snapshot(**overrides):
     return base
 
 
-class _FakeNominalConn:
-    def __init__(self, partitions: list[str]):
-        self._partitions = partitions
-
-    def execute(self, sql, params=None):  # noqa: ANN001
-        class _R:
-            def __init__(self, rows):
-                self._rows = rows
-
-            def fetchall(self):
-                return self._rows
-
-        if "accepted_partition" in sql:
-            return _R([(p,) for p in self._partitions])
-        return _R([])
-
-    def close(self) -> None:
-        return None
-
-
-def _weekday_compact_days(n_days: int, *, start: str = "20260401") -> list[str]:
+def _weekday_compact_days(n_days: int, *, start: str = "20250401") -> list[str]:
     from datetime import date
 
     y, m, d = int(start[:4]), int(start[4:6]), int(start[6:8])
@@ -116,7 +125,7 @@ def _synthetic_window_bars(
     """Build a tiny tradable panel for paper-fill unit tests."""
 
     if days is None:
-        days = _weekday_compact_days(n_days, start="20260708")
+        days = _weekday_compact_days(n_days, start="20250508")
     else:
         days = list(days)[:n_days]
     codes = ["600000.SH", "000001.SZ", "300001.SZ", "688001.SH", "600519.SH"]
@@ -258,12 +267,11 @@ def test_b0_wrong_surface_status_fails_closed() -> None:
 def test_b0_bounded_thin_nominal_coverage_inconclusive_never_accept() -> None:
     """A3 single-day accepted K → measured but insufficient; never accept."""
 
-    snap = _bounded_snapshot()
+    snap = _with_nominal(_bounded_snapshot(), ["20250516"])  # thinner than MIN days
     assert is_bounded_scope(snap)
     assert not is_canary_scope(snap)
 
-    fake = _FakeNominalConn(["20260717"])  # thinner than MIN days
-    run = build_b0_run(snapshot=snap, nominal_conn=fake)
+    run = build_b0_run(snapshot=snap)
     assert run.bare_k_coverage is not None
     assert run.bare_k_coverage.accepted_nominal_day_count == 1
     assert run.bare_k_coverage.sufficient_for_measured_b0 is False
@@ -282,26 +290,41 @@ def test_b0_bounded_thin_nominal_coverage_inconclusive_never_accept() -> None:
 
 
 def test_measure_bare_k_coverage_ready_when_enough_days() -> None:
-    days = [f"202607{str(i).zfill(2)}" for i in range(1, 8)]
-    cov = measure_bare_k_coverage(
-        _bounded_snapshot(),
-        nominal_conn=_FakeNominalConn(days),
-    )
+    days = _weekday_compact_days(7, start="20250508")
+    cov = measure_bare_k_coverage(_with_nominal(_bounded_snapshot(), days))
     assert cov.sufficient_for_measured_b0 is True
     assert cov.accepted_nominal_day_count == 7
     assert cov.reason == "measured_nominal_window_ready"
+    assert cov.details["nominal_source"] == "snapshot_domains.nominal_ohlcv.date_set"
+
+
+def test_b0_rejects_snapshot_nominal_past_holdout() -> None:
+    """Actual frozen nominal past holdout must fail closed (not declared-only)."""
+    snap = _with_nominal(_bounded_snapshot(), ["20250530", "20250602"])
+    with pytest.raises(HoldoutBoundaryViolation, match="actual_data_end"):
+        build_b0_run(snapshot=snap, measure_coverage=False)
+
+
+def test_b0_rejects_snapshot_nominal_past_declared_end() -> None:
+    snap = _with_nominal(_bounded_snapshot(), ["20250520", "20250528"])
+    with pytest.raises(HoldoutBoundaryViolation, match="exceeds declared"):
+        build_b0_run(
+            snapshot=snap,
+            data_end_date="20250525",
+            measure_coverage=False,
+        )
 
 
 def test_short_window_uses_honest_minimal_wf_protocol() -> None:
     days = [
-        "20260708",
-        "20260709",
-        "20260710",
-        "20260713",
-        "20260714",
-        "20260715",
-        "20260716",
-        "20260717",
+        "20250508",
+        "20250509",
+        "20250512",
+        "20250513",
+        "20250514",
+        "20250515",
+        "20250516",
+        "20250519",
     ]
     assert len(days) < MIN_DAYS_FULL_PURGED_WF
     plan = plan_walk_forward(days)
@@ -329,16 +352,17 @@ def test_full_purged_wf_at_40_days_is_claimable_protocol() -> None:
 
 
 def test_paper_fills_t1_nominal_with_costs_and_limit_stubs() -> None:
-    bars = _synthetic_window_bars(8)
+    days = _weekday_compact_days(8, start="20250508")
+    bars = _synthetic_window_bars(8, days=days)
     # Force limit-up buy block on 600000 entry day after first signal.
-    entry_day = "20260709"
+    entry_day = days[1]
     for row in bars[entry_day]:
         if row["ts_code"] == "600000.SH":
             row["pre_close"] = 10.0
             row["open"] = 11.0  # +10% main-board limit-up open
             row["vol"] = 1_000_000.0
     # Suspend one name on an exit day.
-    for row in bars["20260710"]:
+    for row in bars[days[2]]:
         if row["ts_code"] == "000001.SZ":
             row["vol"] = 0.0
 
@@ -381,12 +405,10 @@ def test_metrics_report_unknowns_explicit() -> None:
 
 
 def test_measured_short_window_verdict_inconclusive_not_claimable() -> None:
-    days = sorted(_synthetic_window_bars(8))
-    fake = _FakeNominalConn(days)
-    bars = _synthetic_window_bars(8)
+    days = _weekday_compact_days(8, start="20250508")
+    bars = _synthetic_window_bars(8, days=days)
     run = build_b0_run(
-        snapshot=_bounded_snapshot(),
-        nominal_conn=fake,
+        snapshot=_with_nominal(_bounded_snapshot(), days),
         bars_by_day=bars,
     )
     assert run.measured_b0 is not None
@@ -401,10 +423,10 @@ def test_measured_short_window_verdict_inconclusive_not_claimable() -> None:
 
 def test_measured_40d_protocol_ready_still_not_accept() -> None:
     days = _weekday_compact_days(MIN_DAYS_FULL_PURGED_WF)
+    assert days[-1] < str(load_policy()["holdout_start"]).replace("-", "")[:8]
     bars = _synthetic_window_bars(len(days), days=days)
     run = build_b0_run(
-        snapshot=_bounded_snapshot(),
-        nominal_conn=_FakeNominalConn(days),
+        snapshot=_with_nominal(_bounded_snapshot(), days),
         bars_by_day=bars,
     )
     assert run.measured_b0 is not None
@@ -479,10 +501,9 @@ def test_accept_edge_gates_pass_only_when_all_thresholds_met() -> None:
 
 
 def test_b0_ready_coverage_without_paper_still_scaffold() -> None:
-    days = [f"202607{str(i).zfill(2)}" for i in range(1, 8)]
+    days = _weekday_compact_days(7, start="20250508")
     run = build_b0_run(
-        snapshot=_bounded_snapshot(),
-        nominal_conn=_FakeNominalConn(days),
+        snapshot=_with_nominal(_bounded_snapshot(), days),
         measure_paper=False,
     )
     assert run.measured_b0 is None

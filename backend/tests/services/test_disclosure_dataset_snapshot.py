@@ -12,10 +12,13 @@ from services.data_sources.disclosure_boundaries import (
     DisclosureBoundaryError,
     refuse_accepted_publication_claim,
 )
+from services.data_sources.accepted_schema import ACCEPTED_TABLE
 from services.data_sources.disclosure_dataset_snapshot import (
     DISCLOSURE_SNAPSHOT_RELPATH,
     freeze_disclosure_dataset_snapshot,
 )
+from services.data_sources.nominal_ohlcv_schema import DATASET_ID as NOMINAL_DATASET
+from services.holdout_guard import training_cutoff_before_holdout
 from services.data_sources.disclosure_dual_write import (
     write_holders_top10_formal_then_mirror,
     write_org_holding_formal_then_mirror,
@@ -136,6 +139,36 @@ def _stk_row(**overrides):
     return base
 
 
+def _seed_nominal_accepted(conn, days: list[str] | None = None) -> list[str]:
+    """Seed nominal accepted_partition rows for freeze tests."""
+    if days is None:
+        days = ["20250508", "20250509", "20250512"]
+    for i, day in enumerate(days):
+        conn.execute(
+            f"""
+            INSERT INTO {ACCEPTED_TABLE} (
+                dataset_id, partition_value, batch_id, contract_version,
+                contract_hash, config_hash, row_count, content_hash,
+                observed_at, available_at, accepted_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                NOMINAL_DATASET,
+                day,
+                f"nom-batch-{day}-{i}",
+                "v1",
+                "contract-hash-nom",
+                "config-hash-nom",
+                10 + i,
+                f"content-hash-nom-{day}",
+                "2025-05-08T10:00:00+00:00",
+                "2025-05-08T10:00:00+00:00",
+                "2025-05-08T10:00:00+00:00",
+            ],
+        )
+    return days
+
+
 @pytest.fixture
 def conn():
     database = connect(":memory:")
@@ -182,6 +215,7 @@ def test_freeze_requires_three_domain_shadow_match(conn, tmp_path: Path) -> None
             {"holders_top10": conn, "org_holding": conn, "stk_holdertrade": conn},
             shadow=shadow,
             path=out,
+            require_nominal=False,
         )
     assert not out.exists()
 
@@ -215,18 +249,27 @@ def test_freeze_writes_minimal_snapshot_on_match(conn, tmp_path: Path) -> None:
         "holders_top10", "DatasetSnapshot", cutover_allowed=True
     )
 
+    nom_days = _seed_nominal_accepted(conn)
     out = tmp_path / "disclosure_dataset_snapshot.json"
     snap = freeze_disclosure_dataset_snapshot(
         {"holders_top10": conn, "org_holding": conn, "stk_holdertrade": conn},
         shadow=shadow,
         path=out,
+        nominal_conn=conn,
     )
     assert out.exists()
     assert snap.snapshot_id.startswith("disclosure_e0_")
     assert snap.cutover_allowed is True
     assert snap.scope == "canary_accepted_partitions"
-    assert set(snap.domains) == {"holders_top10", "org_holding", "stk_holdertrade"}
+    assert set(snap.domains) == {
+        "holders_top10",
+        "org_holding",
+        "stk_holdertrade",
+        "nominal_ohlcv",
+    }
     for domain, part in snap.domains.items():
+        if domain == "nominal_ohlcv":
+            continue
         assert part["partition"]
         assert part["config_hash"]
         assert part["content_hash"]
@@ -234,6 +277,9 @@ def test_freeze_writes_minimal_snapshot_on_match(conn, tmp_path: Path) -> None:
         assert part["batch_id"]
         assert part["date_set"] == [part["partition"]]
         assert len(part["accepted"]) == 1
+    assert snap.domains["nominal_ohlcv"]["date_set"] == nom_days
+    assert snap.domains["nominal_ohlcv"]["holdout_bound"] is True
+    assert snap.domains["nominal_ohlcv"]["training_cutoff"] == training_cutoff_before_holdout()
     payload = json.loads(out.read_text(encoding="utf-8"))
     assert payload["relpath"] == DISCLOSURE_SNAPSHOT_RELPATH
     assert payload["phase_e_ablation"] == "blocked_canary_scope_only"
@@ -275,6 +321,7 @@ def test_freeze_bounded_partition_sets(conn, tmp_path: Path) -> None:
     )
     assert shadow.cutover_allowed is True
 
+    _seed_nominal_accepted(conn, ["20250508", "20250509", "20250602"])
     out = tmp_path / "disclosure_dataset_snapshot_bounded.json"
     snap = freeze_disclosure_dataset_snapshot(
         {"holders_top10": conn, "org_holding": conn, "stk_holdertrade": conn},
@@ -286,6 +333,7 @@ def test_freeze_bounded_partition_sets(conn, tmp_path: Path) -> None:
             "stk_holdertrade": [PARTITION_STK, "20190103"],
         },
         extra_notes=("test_bounded",),
+        nominal_conn=conn,
     )
     assert snap.scope == "bounded_accepted_partitions"
     assert snap.phase_e_ablation == "bounded_scope_measured_b0_short_window"
@@ -294,3 +342,6 @@ def test_freeze_bounded_partition_sets(conn, tmp_path: Path) -> None:
     )
     assert len(snap.domains["stk_holdertrade"]["accepted"]) == 2
     assert "test_bounded" in snap.notes
+    # Holdout-bound freeze must drop post-cutoff nominal days.
+    assert snap.domains["nominal_ohlcv"]["date_set"] == ["20250508", "20250509"]
+    assert "20250602" not in snap.domains["nominal_ohlcv"]["date_set"]

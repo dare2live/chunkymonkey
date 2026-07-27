@@ -19,6 +19,17 @@ def test_assert_gate_accepts_training_window() -> None:
     hg.assert_holdout_untouched("20250531")
     hg.assert_holdout_untouched("2025-05-31")
     hg.assert_holdout_untouched(date(2024, 12, 31))
+    hg.assert_holdout_untouched("20250531", actual_data_end="20250530")
+
+
+def test_assert_gate_rejects_actual_end_in_holdout() -> None:
+    with pytest.raises(hg.HoldoutBoundaryViolation, match="actual_data_end"):
+        hg.assert_holdout_untouched("20250531", actual_data_end="20250601")
+
+
+def test_assert_gate_rejects_actual_past_declared() -> None:
+    with pytest.raises(hg.HoldoutBoundaryViolation, match="exceeds declared"):
+        hg.assert_holdout_untouched("20250520", actual_data_end="20250525")
 
 
 def test_default_training_cutoff_is_before_holdout() -> None:

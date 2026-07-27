@@ -1,7 +1,7 @@
 # PROJECT_INDEX — Current Project Map
 
 > 状态：live navigation，非规则 owner
-> 更新：2026-07-26（holders fact DROP）
+> 更新：2026-07-27（snapshot nominal freeze + holdout actual-bound）
 > 当前目标看 `goal.md`（foundation CLOSED / `phase_closure_ready`；策略 paused）。
 > **执行方案仅两份**：底座 `analysis/FOUNDATION_EXECUTION_PLAN.md` · 策略 `analysis/STRATEGY_EXECUTION_PLAN.md`（RX 前 BLOCKED）。台账 `analysis/DOC_CLEANUP_20260723.md`。
 > 架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口看 `FEATURE_MAP.md` / CodeGraph。
@@ -29,7 +29,7 @@ AGENTS.md
 | T1 stock state | `technical_states/`, `segments.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `form_production_read.py`, `market_pulse_tier12_read.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py` | 多轴状态可复用；C accept 分 `publish_scope=canary|project_universe`；`resolve_tier12_production_read` + B1/pulse 接线；**cutover yaml=true** → ACCEPTED_CUTOVER；**form enrich v1** + dossier/screener **typed hybrid**（accepted overlay name/pos/trend/breakout；purity/vol/sub=`hybrid_residual_fields`，非纯 accepted）；re-accept `20260717`/`20260720`；无 accept 日 fail-closed→LEGACY/fact |
 | T2 market sensing | `market_pulse.py`, `market_pulse_serve_read.py`, `market_pulse_scope.py`, `margin_pulse_promote_gate.py`, `universe_serve_filter.py`, `market_pulse_tier12_read.py`, `market_pulse_b_pit_read.py`, `b_pit_mart_cutover.py`, `project_universe_breadth.py`, `tier12_publish_{contract,writer,accept}.py`, `tier12_consumer_cutover.py`, `tier12_nominal_canary.py`, `tier12_project_universe.py`, API/frontend | **沪深A serve 白名单 FIXED**；**breadth READY** as `project_universe_pit` when B-pit `MART_CUTOVER`（窗外 typed EMPTY；窗内缺证据 UNTRUSTED；禁假 TRUSTED）；**F4 rzrqye READY** as external_aggregate on accepted days（`margin_pulse_promote.yaml`；应有却缺 UNTRUSTED；覆盖前/确认空 typed EMPTY）；B-pit shadow 窗 `20260121`–`20260722`；form 单轨 production-read |
 
-| T3 institution | `institution_profile.py` + … + `org_holding_aif10.py`（miaoxiang **sharded aif10** + `pagination_integrity` 100-page cap）+ `org_holding_period_catchup.py` + … | **首个正式策略包**；E0-HIST/F6 PASS；org = **period-gap + population + provider_truncated**；auto **N=1/run** … |
+| T3 institution | `institution_profile.py` + `disclosure_dataset_snapshot.py` + `institution_follow_b0.py` + `holdout_guard.py` + `org_holding_aif10.py`（miaoxiang **sharded aif10** + `pagination_integrity` 100-page cap）+ `org_holding_period_catchup.py` + … | **首个正式策略包**；E0-HIST/F6 PASS；org = **period-gap + population + provider_truncated**；auto **N=1/run**；**B0 snapshot-bound**：freeze `domains.nominal_ohlcv` through training cutoff；coverage 只读 snapshot date_set（禁 live full accepted）；`assert_holdout_untouched` 校 actual max（证据 `strategy_snapshot_holdout_bound_20260727.md`）；RX 仍 BLOCKED |
 | T3 main rally | `main_rally_dataset_snapshot.py`, `main_rally_b0.py`, `main_rally_b0_measure.py`, `main_rally_b1.py`, `main_rally_b1_measure.py`, `main_rally_b2.py`, `main_rally_b2_measure.py`, `rally_gt.py`, `rally_detect.py`, rally config/tests | GT 资产成熟；**F0+F1+F2+F3 FIXED**：`main_rally_v1` freeze + B0 setup-entry short-horizon + B1(+Tier1 stock state) + B2(+Tier2 market sensing/`MarketContextSnapshot` project-board breadth, 独立 ablate on B0, 非叠加 B1) measured，同 B0 folds/costs、`REQUIRE_HOLDOUT_LIFT_VS_B0` → 三者均 reject/`claimable=false`（共享 `research_runtime`；非 full-episode；F0–F3 可 checkpoint） |
 | T3 formulas | `bestchoice/FROZEN.md` + `evidence_manifest.json` | 冻结 challenger；Phase G 前不吸收 |
 | T4 decision/paper | `paper_portfolio.py`, frontend observation page | Legacy NONCONFORMING 观察账本；不是 paper execution |

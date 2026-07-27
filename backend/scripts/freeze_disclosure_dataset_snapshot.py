@@ -108,6 +108,8 @@ def main() -> int:
             path=path,
             partition_sets=_BOUNDED_SETS if args.bounded else None,
             extra_notes=_BOUNDED_NOTES if args.bounded else (),
+            # B0 consumers must not expand to live full accepted calendars.
+            nominal_conn=raw,
         )
         print(json.dumps(snap.as_dict(), indent=2, ensure_ascii=False, sort_keys=True))
         print(f"[freeze] wrote {path} scope={snap.scope}", file=sys.stderr)

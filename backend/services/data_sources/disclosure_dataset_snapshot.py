@@ -10,6 +10,7 @@ measured B0 coverage + short-window WF/paper (honest inconclusive).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -24,8 +25,10 @@ from services.data_sources.disclosure_boundaries import (
 )
 from services.data_sources.disclosure_research_read import cutover_allowed_from_shadow
 from services.data_sources.holders_top10_schema import DATASET_ID as HOLDERS_DATASET
+from services.data_sources.nominal_ohlcv_schema import DATASET_ID as NOMINAL_DATASET
 from services.data_sources.org_holding_schema import DATASET_ID as ORG_DATASET
 from services.data_sources.stk_holdertrade_schema import DATASET_ID as STK_DATASET
+from services.holdout_guard import training_cutoff_before_holdout
 
 DISCLOSURE_SNAPSHOT_RELPATH = "data/lineage/disclosure_dataset_snapshot.json"
 
@@ -129,6 +132,89 @@ def _load_accepted(
     return payload
 
 
+def _list_accepted_nominal_through(
+    conn,
+    *,
+    through: str,
+) -> list[dict[str, Any]]:
+    """Accepted nominal partitions with partition_value <= ``through`` (YYYYMMDD)."""
+    through_c = _compact_partition(through)
+    if len(through_c) != 8:
+        raise DisclosureBoundaryError(
+            "nominal_ohlcv",
+            reason="invalid_nominal_through",
+            detail=f"through={through!r}",
+        )
+    rows = conn.execute(
+        f"""
+        SELECT dataset_id,
+               replace(CAST(partition_value AS VARCHAR), '-', '') AS partition,
+               batch_id, contract_version, contract_hash, config_hash,
+               row_count, content_hash,
+               CAST(accepted_at AS VARCHAR) AS accepted_at
+          FROM {ACCEPTED_TABLE}
+         WHERE dataset_id = ?
+         ORDER BY 2
+        """,
+        [NOMINAL_DATASET],
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for vals in rows:
+        part = _compact_partition(vals[1])
+        if len(part) != 8 or part > through_c:
+            continue
+        out.append(
+            {
+                "dataset_id": str(vals[0]),
+                "partition": part,
+                "batch_id": str(vals[2] or ""),
+                "contract_version": str(vals[3] or ""),
+                "contract_hash": str(vals[4] or ""),
+                "config_hash": str(vals[5] or ""),
+                "row_count": int(vals[6] or 0),
+                "content_hash": str(vals[7] or ""),
+                "accepted_at": str(vals[8] or ""),
+            }
+        )
+    return out
+
+
+def _freeze_nominal_domain(
+    conn,
+    *,
+    through: str | None = None,
+) -> dict[str, Any]:
+    """Freeze nominal OHLCV accepted partitions bounded by training cutoff."""
+    cutoff = _compact_partition(through or training_cutoff_before_holdout())
+    accepted = _list_accepted_nominal_through(conn, through=cutoff)
+    if not accepted:
+        raise DisclosureBoundaryError(
+            "nominal_ohlcv",
+            reason="nominal_accepted_empty_for_snapshot",
+            detail=f"no accepted nominal partitions with partition<= {cutoff}",
+        )
+    date_set = [a["partition"] for a in accepted]
+    content = hashlib.sha256(
+        json.dumps(
+            [a["content_hash"] for a in accepted],
+            sort_keys=True,
+            ensure_ascii=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    config = accepted[-1]["config_hash"] or content
+    return {
+        "dataset_id": NOMINAL_DATASET,
+        "date_set": date_set,
+        "accepted": accepted,
+        "partition": date_set[-1],
+        "content_hash": content,
+        "config_hash": config,
+        "row_count": sum(int(a["row_count"]) for a in accepted),
+        "training_cutoff": cutoff,
+        "holdout_bound": True,
+    }
+
+
 def _normalize_partition_sets(
     partition_sets: Mapping[str, Sequence[str]] | None,
     *,
@@ -160,12 +246,19 @@ def freeze_disclosure_dataset_snapshot(
     path: Path | str | None = None,
     partition_sets: Mapping[str, Sequence[str]] | None = None,
     extra_notes: Sequence[str] = (),
+    nominal_conn=None,
+    nominal_through: str | None = None,
+    require_nominal: bool = True,
 ) -> DisclosureDatasetSnapshot:
     """Freeze DatasetSnapshot when three-domain cutover is allowed.
 
     Pass ``partition_sets`` with multiple dates per domain to freeze a
     ``bounded_accepted_partitions`` snapshot (explicit date sets + hashes).
     Omitting it keeps the canary single-partition freeze.
+
+    When ``require_nominal`` (default), also freeze accepted nominal OHLCV
+    partitions through ``nominal_through`` or the holdout training cutoff so
+    B0 consumers cannot silently expand to live full calendars.
     """
 
     shadow_payload = shadow.as_dict() if hasattr(shadow, "as_dict") else dict(shadow)
@@ -212,6 +305,20 @@ def freeze_disclosure_dataset_snapshot(
             "accepted": accepted_rows,
         }
 
+    if require_nominal:
+        nconn = nominal_conn if nominal_conn is not None else domain_conns.get(
+            "nominal_ohlcv"
+        )
+        if nconn is None:
+            raise DisclosureBoundaryError(
+                "nominal_ohlcv",
+                reason="snapshot_nominal_conn_missing",
+                detail="pass nominal_conn or domain_conns['nominal_ohlcv']",
+            )
+        domains["nominal_ohlcv"] = _freeze_nominal_domain(
+            nconn, through=nominal_through
+        )
+
     frozen_at = datetime.now(timezone.utc).isoformat()
     if multi:
         scope = SCOPE_BOUNDED
@@ -227,6 +334,7 @@ def freeze_disclosure_dataset_snapshot(
             "measured_b0_short_window_wf_paper_done",
             "b1_still_residual",
             "feature_store_profiles_not_included",
+            "nominal_ohlcv_frozen_through_training_cutoff",
         ]
     else:
         scope = SCOPE_CANARY
@@ -240,8 +348,13 @@ def freeze_disclosure_dataset_snapshot(
             "points_at_accepted_canary_partitions_only",
             "institution_follow_ablation_still_blocked",
             "feature_store_profiles_not_included",
+            "nominal_ohlcv_frozen_through_training_cutoff",
         ]
     notes.extend(str(n) for n in extra_notes if n)
+    if "nominal_ohlcv" in domains:
+        notes.append(
+            f"nominal_day_count={len(domains['nominal_ohlcv'].get('date_set') or [])}"
+        )
 
     snap = DisclosureDatasetSnapshot(
         snapshot_id=snapshot_id,

@@ -52,8 +52,18 @@ def training_cutoff_before_holdout(path: Path | None = None) -> str:
     return (holdout_start - timedelta(days=1)).strftime("%Y%m%d")
 
 
-def assert_holdout_untouched(data_end_date, conn=None) -> None:
-    """Reject training/tuning data whose inclusive end reaches holdout_start."""
+def assert_holdout_untouched(
+    data_end_date,
+    conn=None,
+    *,
+    actual_data_end=None,
+) -> None:
+    """Reject training/tuning when declared or actual end reaches holdout.
+
+    ``actual_data_end`` is the max partition/day actually loaded into the run
+    (e.g. snapshot nominal date_set max). Declared-only checks are insufficient
+    when consumers previously read live full accepted calendars.
+    """
     del conn  # Compatibility with current caller signatures; no database is read.
     holdout_start = _norm_yyyymmdd(load_policy()["holdout_start"])
     data_end = _norm_yyyymmdd(data_end_date)
@@ -62,6 +72,18 @@ def assert_holdout_untouched(data_end_date, conn=None) -> None:
             f"training data_end_date={data_end} reaches holdout_start={holdout_start}; "
             "holdout use requires a future atomic Tier3 release runtime"
         )
+    if actual_data_end is not None:
+        actual = _norm_yyyymmdd(actual_data_end)
+        if actual >= holdout_start:
+            raise HoldoutBoundaryViolation(
+                f"actual_data_end={actual} reaches holdout_start={holdout_start}; "
+                "loaded partitions must stay strictly before holdout"
+            )
+        if actual > data_end:
+            raise HoldoutBoundaryViolation(
+                f"actual_data_end={actual} exceeds declared data_end_date={data_end}; "
+                "runner must not load past the prereg/training cutoff"
+            )
 
 
 __all__ = [

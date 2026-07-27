@@ -246,22 +246,18 @@ def disclosure_date_sets_from_snapshot(
     return out
 
 
-def _list_accepted_nominal_partitions(conn) -> list[str]:
-    rows = conn.execute(
-        """
-        SELECT DISTINCT replace(CAST(partition_value AS VARCHAR), '-', '') AS p
-          FROM accepted_partition
-         WHERE dataset_id = ?
-         ORDER BY 1
-        """,
-        [NOMINAL_OHLCV_DATASET],
-    ).fetchall()
-    out: list[str] = []
-    for (raw,) in rows:
-        compact = "".join(ch for ch in str(raw or "") if ch.isdigit())[:8]
-        if len(compact) == 8:
-            out.append(compact)
-    return out
+def _nominal_partitions_from_snapshot(snapshot: Mapping[str, Any]) -> list[str]:
+    """Return frozen nominal date_set from DatasetSnapshot — never live accepted."""
+    domains = snapshot.get("domains") or {}
+    nominal = domains.get("nominal_ohlcv") or {}
+    dates = nominal.get("date_set") or []
+    return sorted(
+        {
+            "".join(ch for ch in str(d) if ch.isdigit())[:8]
+            for d in dates
+            if len("".join(ch for ch in str(d) if ch.isdigit())[:8]) == 8
+        }
+    )
 
 
 def measure_bare_k_coverage(
@@ -269,42 +265,18 @@ def measure_bare_k_coverage(
     *,
     nominal_conn=None,
 ) -> BareKCoverageMeasurement:
-    """Measure accepted nominal-K coverage for the disclosure date sets.
+    """Measure snapshot-frozen nominal-K coverage for the disclosure date sets.
 
-    Does not invent returns. With only the A3 single-day canary (or any
-    window shorter than ``MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0``) the
-    result is insufficient — honest inconclusive input for the verdict.
+    Partition membership comes only from ``domains.nominal_ohlcv.date_set``.
+    Live ``accepted_partition`` calendars are not consulted (fail-closed if the
+    freeze omitted nominal). ``nominal_conn`` is retained for API compatibility
+    with paper-bar loading callers but is unused for coverage membership.
     """
+    del nominal_conn  # Coverage is snapshot-bound; bars still use conn elsewhere.
 
     date_sets = disclosure_date_sets_from_snapshot(snapshot)
     disclosure_dates = sorted({d for parts in date_sets.values() for d in parts})
-
-    owned_conn = False
-    conn = nominal_conn
-    try:
-        if conn is None:
-            from services.data_access.resolver import connect_ro
-
-            conn = connect_ro("tushare_raw")
-            owned_conn = True
-        nominal_parts = _list_accepted_nominal_partitions(conn)
-    except Exception as exc:  # noqa: BLE001 — fail closed to measured unknown
-        return BareKCoverageMeasurement(
-            status="NOT_EVALUATED",
-            accepted_nominal_partitions=(),
-            accepted_nominal_day_count=0,
-            disclosure_date_sets=date_sets,
-            overlapping_eligible_window=None,
-            sufficient_for_measured_b0=False,
-            reason=REASON_MEASURED_COVERAGE_INSUFFICIENT,
-            details={
-                "error": str(exc)[:300],
-                "min_required_nominal_days": MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0,
-            },
-        )
-    finally:
-        if owned_conn and conn is not None:
-            conn.close()
+    nominal_parts = _nominal_partitions_from_snapshot(snapshot)
 
     n_days = len(nominal_parts)
     overlap_window: tuple[str, str] | None = None
@@ -333,6 +305,7 @@ def measure_bare_k_coverage(
             "disclosure_date_count": len(disclosure_dates),
             "a3_daily_accepted_thin": n_days < MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0,
             "nominal_dataset_id": NOMINAL_OHLCV_DATASET,
+            "nominal_source": "snapshot_domains.nominal_ohlcv.date_set",
             "measured_at": datetime.now(timezone.utc).isoformat(),
         },
     )
@@ -431,7 +404,9 @@ def build_b0_run(
         )
 
     end = data_end_date or training_cutoff_before_holdout()
-    assert_holdout_untouched(end)
+    snap_nominal = _nominal_partitions_from_snapshot(payload)
+    actual_end = snap_nominal[-1] if snap_nominal else None
+    assert_holdout_untouched(end, actual_data_end=actual_end)
 
     canary = is_canary_scope(payload)
     bounded = is_bounded_scope(payload)
@@ -455,6 +430,9 @@ def build_b0_run(
     coverage: BareKCoverageMeasurement | None = None
     if measure_coverage and (bounded or not canary):
         coverage = measure_bare_k_coverage(payload, nominal_conn=nominal_conn)
+        if coverage is not None and coverage.accepted_nominal_partitions:
+            cov_end = coverage.accepted_nominal_partitions[-1]
+            assert_holdout_untouched(end, actual_data_end=cov_end)
 
     measured: MeasuredB0Result | None = None
     if (
