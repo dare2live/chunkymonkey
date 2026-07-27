@@ -83,7 +83,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | **F3** | Holders landing **retention/archive** + smartmoney compact | L3 | archive 非 latest ACCEPTED→parquet；landing≈1×；compact reclaim | bare DELETE landing 当去重 | **FIXED** 2026-07-23（`holders_landing_retention_f3_20260723.md`；7.17M→236k；6.7→4.3 GiB） |
 | **F4** | Margin **1c** promote gate（shadow vs accepted） | L2/L3 | product-visible `promote_gate`；serve→accepted SSE+SZSE；READY as external_aggregate when criteria pass；应有却缺 UNTRUSTED；覆盖前 typed EMPTY | 无 shadow 假 TRUSTED / 把正常空 scare 成 fail-closed | **FIXED** 2026-07-23（`margin_f4_promote_gate_20260723.md`；gate=PROMOTED on accepted days；typed empty 2026-07-23 owner 纠偏） |
 | **F5** | BOARD / codegraph / maps **sync** | hygiene | `build_agent_board` 重生；BOARD=投影非执法 | 手改 BOARD 当真相 | **FIXED** 2026-07-23：投影反映 §6 exit + §6a 100% 定义 |
-| **F6** | S7 publication/sunset（按需） | Tier0 | **仅** owner 新 block | 假 COMPAT / blanket pre-accept | **PARTIAL** 2026-07-24：`stk_holdernumber` RESTORE（by_ann_date+DataAccess+dossier）；其余 orphan 仍 skip |
+| **F6** | S7 publication/sunset（按需）+ **org accepted pointer↔canonical** | Tier0 | **仅** owner 新 block；org pointer count 与 full canonical 一致（F6 live） | 假 COMPAT / blanket pre-accept；pointer 只记末 batch | **PARTIAL→path FIXED** 2026-07-27：accept 写 full-partition pointer；8/22 live repaired；证据 `org_holding_pointer_fix_20260727.md`；S7 orphan 仍 skip |
 | **F7** | Type-B enrichment | L3 | feature_store_profiles ACCEPTED；`institution_profile_edge_v0` declared；legacy_only 仅补 canonical 缺期 | 假 FIXED / Optuna | **FIXED** 2026-07-23（E0-HIST 后 canonical enrichment 齐；`新进` null `hold_change_num` typed OK） |
 | **F8** | qfq incremental/partitioned write | L3 | 默认 incremental：`f_latest` 值变 → 全历史 rewrite；值不变 → append；`--full` 保留 CTAS+compact | 用「定期 compact」代替语义；静默错历史 | **FIXED** 2026-07-23（`build_price_kline_qfq_tushare` auto/incremental/full） |
 | **F9** | Residual hygiene SLA（滞后超限即红） | L2/L3 | YAML `residual_hygiene.yaml`；Type-B raw→fact + ann tip vs eligible；store 2.985 + type_b post-evaluate；FAIL→degraded+ALERT；禁 Continuity READY 化妆 | 清零诚实 WARN；平行第二仪表盘；safe_commit 绑数据红死锁 | **FIXED path** 2026-07-26（`analysis/residual_hygiene_f9_20260726.md`） |
@@ -161,4 +161,4 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | F7/F8 | **FIXED**（仍非 Continuity READY 条件） |
 | 禁 Continuity READY 化妆 / retention/shadow 为冲清单 | **binding** |
 
-**100% usable status**：**MET**（≠ Continuity READY；≠ 零 WARN）。
+**100% usable status**：**MET for prior class-A probe (2026-07-23)**；**2026-07-27** 发现 org accepted pointer class-A → **repaired same day**（`org_holding_pointer_fix_20260727.md`）。策略 snapshot/holdout 洞仍挡 RX（见 STRATEGY），≠ Continuity READY。

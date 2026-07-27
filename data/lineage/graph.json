@@ -1871,6 +1871,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/repair_org_holding_accepted_pointers.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/update_watermark_sla.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -1974,6 +1980,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/org_holding_aif10.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/org_holding_pointer_integrity.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
     },
@@ -4727,6 +4739,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/repair_org_holding_accepted_pointers.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/update_watermark_sla.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -4830,6 +4848,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/org_holding_aif10.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/org_holding_pointer_integrity.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -7733,9 +7757,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1241,
-    "generated_at": "2026-07-26T02:30:14.343231+00:00",
-    "node_count": 441,
+    "edge_count": 1245,
+    "generated_at": "2026-07-27T00:42:31.644648+00:00",
+    "node_count": 443,
     "version": 2
   },
   "nodes": [
@@ -8161,6 +8185,14 @@
         "path": "backend/scripts/refresh_source_watermarks.py"
       },
       "id": "consumer:backend/scripts/refresh_source_watermarks.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
+        "path": "backend/scripts/repair_org_holding_accepted_pointers.py"
+      },
+      "id": "consumer:backend/scripts/repair_org_holding_accepted_pointers.py",
       "kind": "consumer"
     },
     {
@@ -8809,6 +8841,14 @@
         "path": "backend/services/org_holding_aif10.py"
       },
       "id": "consumer:backend/services/org_holding_aif10.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/org_holding_pointer_integrity.py"
+      },
+      "id": "consumer:backend/services/org_holding_pointer_integrity.py",
       "kind": "consumer"
     },
     {

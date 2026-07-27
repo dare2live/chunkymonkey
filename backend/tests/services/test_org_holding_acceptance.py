@@ -225,6 +225,31 @@ def test_accept_merge_preserves_sibling_report_date_in_shared_partition(conn) ->
     ).fetchall()
     assert len(rows) == 2
     assert {str(r[0]) for r in rows} == {"20181231", "20190331"}
+    # Class-A fix: accepted pointer must describe the merged partition, not last batch.
+    pointer = conn.execute(
+        f"""
+        SELECT row_count, content_hash
+          FROM {ACCEPTED_TABLE}
+         WHERE dataset_id = ? AND partition_value = ?
+        """,
+        [DATASET_ID, shared],
+    ).fetchone()
+    assert pointer is not None
+    assert int(pointer[0]) == 2
+    batch_q1_hash = conn.execute(
+        f"SELECT canonical_hash, canonical_row_count FROM {INGEST_BATCH_TABLE} "
+        f"WHERE batch_id = ?",
+        ["org_holding:q1"],
+    ).fetchone()
+    batch_annual_hash = conn.execute(
+        f"SELECT canonical_hash, canonical_row_count FROM {INGEST_BATCH_TABLE} "
+        f"WHERE batch_id = ?",
+        ["org_holding:annual"],
+    ).fetchone()
+    assert int(batch_q1_hash[1]) == 1
+    assert int(batch_annual_hash[1]) == 1
+    assert str(pointer[1]) != str(batch_annual_hash[0])
+    assert str(pointer[1]) != str(batch_q1_hash[0])
 
 
 def test_disclosure_handoff_rejects_wrong_contract_type() -> None:

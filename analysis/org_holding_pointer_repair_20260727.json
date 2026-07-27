@@ -1,0 +1,64 @@
+{
+  "dataset_id": "tier0.disclosure.org_holding_detail_period",
+  "dry_run": false,
+  "as_of": "2026-07-26T23:55:26.503325+00:00",
+  "repaired": 8,
+  "partitions": [
+    {
+      "partition_value": "20190430",
+      "before_row_count": 54890,
+      "after_row_count": 264793,
+      "before_hash": "49d49be6202ae92b1c1a517869d76d06c224e4b6efd17993c2a7eb52f9871ba6",
+      "after_hash": "ce42659810a5412e912ed8f56379cffd0f73cf88177f92ab2517b438ca25188a"
+    },
+    {
+      "partition_value": "20200430",
+      "before_row_count": 61519,
+      "after_row_count": 337819,
+      "before_hash": "aa66b95babb0d9120a308c2439c262fc70459209d1c87045dfaca226dab93fdd",
+      "after_hash": "0b7c3e214b0e674eadd5a817183076947c5e1302e010229fc99a2557a9232603"
+    },
+    {
+      "partition_value": "20210430",
+      "before_row_count": 70725,
+      "after_row_count": 509183,
+      "before_hash": "2989088c8f401446b6c4ab3db4d97f64648c5fafa45ceb5a76b0699e2568f218",
+      "after_hash": "926902e86b391b6ead2a21509037aa6d96936383987bcc55b8e61725a5fb92ba"
+    },
+    {
+      "partition_value": "20220430",
+      "before_row_count": 87104,
+      "after_row_count": 757709,
+      "before_hash": "346508d3006e95eafdbb53c7fcc476f91aa126252a2291db4bfcfc76fa2f12d7",
+      "after_hash": "31fd24ec97bd5f0b08bca4ce077af75bb9cbac4a904f0a5922aad404d933c50c"
+    },
+    {
+      "partition_value": "20230430",
+      "before_row_count": 94729,
+      "after_row_count": 710426,
+      "before_hash": "a8f3939d1c50e9234052abc814257213835403eea2a7f801d9c109c253e68659",
+      "after_hash": "769cc83002ac27aeda789deb76d59fac8acf563cd87d226c9eb881ceb28f85bf"
+    },
+    {
+      "partition_value": "20240430",
+      "before_row_count": 793823,
+      "after_row_count": 892634,
+      "before_hash": "c2e6f40b47fcb73f3eb853388d82f33e6672c958960da23209e48ae5998ed706",
+      "after_hash": "7362e6928be65795d74f57e60abe80a5dca1da1a8970c91bb83039a8cc8e0431"
+    },
+    {
+      "partition_value": "20250430",
+      "before_row_count": 661166,
+      "after_row_count": 759538,
+      "before_hash": "ee0ff357ff71332065dce18a6fbc6943eb08186ad05123d746b4805dbbd986b8",
+      "after_hash": "2195f50128a815cc0ac4b8457d092add686fdfa53b30c4adeab205370c4baee7"
+    },
+    {
+      "partition_value": "20260430",
+      "before_row_count": 832906,
+      "after_row_count": 944837,
+      "before_hash": "df8466868c29378198d1e19408f5b01c53365143d794d7b430d8ca33ac2e0ada",
+      "after_hash": "144d665d7aa032b4ec276015ce339ea658010a0e0d75904f28dfb86744282a88"
+    }
+  ]
+}

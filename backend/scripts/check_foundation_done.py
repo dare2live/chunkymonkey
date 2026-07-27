@@ -4,25 +4,11 @@
 Authority: analysis/foundation_phase_reeval_20260721.md §3
 Config: backend/config/foundation_done.yaml
 
-Semantics:
-  - FAIL on real gaps (fail-closed)
-  - Typed walls stay PASS when honestly maintained:
-      S7 23 ssot hard-stop kinds,
-      org mass by-date provider land banned + daily incremental-by-period required,
-      B5 Type-B enrichment_projection_partial defer
-  - Real gaps → FAIL (fail-closed)
-  - Typed walls (S7 23 ssot / org mass-ban+incremental / Type-B defer) → PASS
-  - F8 §15 behavior PASS only with ≥3 knife evidence (commits/knife≤1.5 + pre_knife)
-  - --skip-live: F4/F6 omit DuckDB probes but still PASS (CI offline); live run
-    is authoritative for phase_closure_ready
-  - Exit 0 for aggregate PASS|PARTIAL; exit 1 for FAIL; exit 2 crash
-  - phase_closure_ready=true only when every criterion is PASS
-    (then near-term track may leave foundation solidify for scheduled E/F)
+FAIL on real gaps; typed walls (S7 ssot / org mass-ban / Type-B defer) stay PASS
+when honest. --skip-live omits F4/F6 DuckDB probes (CI). phase_closure_ready
+requires all F1–F10 PASS. Exit 0 PASS|PARTIAL; 1 FAIL; 2 crash.
 
-Run:
-  PYTHONPATH=backend python backend/scripts/check_foundation_done.py
-  PYTHONPATH=backend python backend/scripts/check_foundation_done.py --json
-  PYTHONPATH=backend python backend/scripts/check_foundation_done.py --skip-live
+Run: PYTHONPATH=backend python backend/scripts/check_foundation_done.py [--json] [--skip-live]
 """
 from __future__ import annotations
 
@@ -453,6 +439,11 @@ def _e0_live_breadth(cfg: dict[str, Any]) -> tuple[dict[str, Any] | None, str | 
         org_con = duck_connect(str(org_path), read_only=True)
         try:
             org_max_stocks = max_accepted_stocks_across_partitions(org_con)
+            from services.org_holding_pointer_integrity import (
+                count_org_pointer_mismatches,
+            )
+
+            pointer_mismatches = count_org_pointer_mismatches(org_con)
         finally:
             org_con.close()
         return {
@@ -461,6 +452,8 @@ def _e0_live_breadth(cfg: dict[str, Any]) -> tuple[dict[str, Any] | None, str | 
             "daily_partitions": len(daily),
             "org_partitions": len(org),
             "org_max_accepted_stocks": org_max_stocks,
+            "org_pointer_mismatches": len(pointer_mismatches),
+            "org_pointer_mismatch_sample": pointer_mismatches[:5],
             "holders_daily_overlap": len(holders & daily),
             "stk_daily_overlap": len(stk & daily),
             "holders_range": [min(holders), max(holders)] if holders else [],
@@ -505,6 +498,12 @@ def check_f6_e0_breadth(cfg: dict[str, Any], *, skip_live: bool) -> dict[str, An
         gaps.append(
             f"org_max_accepted_stocks={org_stocks} < {min_org_stocks} (canary/thin)"
         )
+    org_ptr_mis = int(measured.get("org_pointer_mismatches") or 0)
+    if org_ptr_mis > 0:
+        gaps.append(
+            f"org_pointer_mismatches={org_ptr_mis} "
+            "(accepted row_count/content_hash != full canonical partition)"
+        )
     if gaps:
         return _crit(
             "F6",
@@ -520,7 +519,8 @@ def check_f6_e0_breadth(cfg: dict[str, Any], *, skip_live: bool) -> dict[str, An
             f"holders overlap {measured['holders_daily_overlap']}≥{min_overlap}; "
             f"stk overlap {measured['stk_daily_overlap']}; "
             f"org partitions={measured['org_partitions']} "
-            f"max_stocks={org_stocks}≥{min_org_stocks} "
+            f"max_stocks={org_stocks}≥{min_org_stocks}; "
+            f"org_pointer_mismatches=0 "
             f"(incremental-by-period; mass by-date banned)"
         ),
         evidence=measured,

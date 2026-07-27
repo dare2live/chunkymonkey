@@ -453,6 +453,48 @@ def _canonical_content_hash(
     return sha256_text(stable_json(payload))
 
 
+def partition_accepted_pointer_stats(
+    conn,
+    domain: DisclosureEventDomain,
+    partition: str,
+) -> tuple[int, str]:
+    """Full-partition row_count + content_hash for accepted_partition pointer.
+
+    For ``report_dates_in_batch`` domains (org_holding), one available_date may
+    hold multiple report_date batches. The pointer must describe the merged
+    canonical partition, not the last batch alone.
+    """
+    partition_col = domain.partition_field
+    fields = list(domain.content_hash_fields)
+    if not fields:
+        raise DisclosureEventError(
+            f"{domain.domain}: content_hash_fields empty; cannot build pointer"
+        )
+    select_cols = ", ".join(fields)
+    order_cols = ", ".join(f"CAST({k} AS VARCHAR)" for k in domain.grain)
+    result = conn.execute(
+        f"""
+        SELECT {select_cols}
+          FROM {domain.canonical_table}
+         WHERE {partition_col} = ?
+         ORDER BY {order_cols}
+        """,
+        [partition],
+    )
+    mapped: list[dict[str, Any]] = []
+    while True:
+        chunk = result.fetchmany(50_000)
+        if not chunk:
+            break
+        for row in chunk:
+            mapped.append(
+                {name: value for name, value in zip(fields, row, strict=True)}
+            )
+    # Rows already ordered by grain CAST VARCHAR — match _canonical_content_hash sort.
+    payload = [{name: row[name] for name in fields} for row in mapped]
+    return len(mapped), sha256_text(stable_json(payload))
+
+
 def _candidate_rows(
     conn,
     domain: DisclosureEventDomain,
@@ -622,6 +664,19 @@ def accept_disclosure_event_batch(
             values,
         )
         _call(after_step, "after_canonical_insert")
+        # Batch evidence stays batch-scoped; accepted pointer is partition-scoped.
+        # org_holding merges multiple report_date into one available_date partition —
+        # pointer row_count/content_hash must cover the full merged canonical set.
+        if domain.canonical_delete_scope == "report_dates_in_batch":
+            pointer_row_count, pointer_content_hash = partition_accepted_pointer_stats(
+                conn, domain, partition
+            )
+        else:
+            pointer_row_count, pointer_content_hash = row_count, content_hash
+        if pointer_row_count <= 0:
+            raise error_type(
+                f"{domain.domain} accept left empty canonical partition={partition}"
+            )
         conn.execute(
             f"""
             INSERT INTO {ACCEPTED_TABLE} (
@@ -647,8 +702,8 @@ def accept_disclosure_event_batch(
                 contract_version,
                 contract_hash,
                 config_hash,
-                row_count,
-                content_hash,
+                pointer_row_count,
+                pointer_content_hash,
                 observed_at,
                 available_at,
                 accepted_at,
@@ -700,6 +755,7 @@ __all__ = [
     "ensure_disclosure_event_schema",
     "event_cutoff_shanghai",
     "land_disclosure_event_batch",
+    "partition_accepted_pointer_stats",
     "partition_yyyymmdd",
     "require_disclosure_handoff",
 ]

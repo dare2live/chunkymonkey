@@ -26,6 +26,7 @@ member_script_prefixes:
   - build_        # 加工 builder (物化 L1/L2, bulk 读 clean canonical / 经 data_loaders)
   - audit_        # 审计工具 (直查真相源, 不能经被审对象读层)
   - check_        # 门脚本自身
+  - repair_       # accepted/pointer/partition repair (audit writers; not SERVE consumers)
   - db_           # DB 生命周期 (compact/delete/partition)
   - ingest_       # 采集落库
   - migrate_      # 迁移工具
@@ -88,6 +89,7 @@ member_service_files:
   # lhb_client.py 已退役物删 2026-06-29 (批2b: LHB 切 tushare top_list/top_inst, raw_lhb_daily 物删)
   - org_holding_aif10.py     # 机构持仓采集 (aif10 sanctioned 源 §4.3; 读 raw_org_holding_aif10 期次存在)
   - org_holding_population.py  # org 存在性/人口探测 (读 raw + canonical 计数; closed-loop gate)
+  - org_holding_pointer_integrity.py  # 2026-07-27: accepted pointer vs full canonical COUNT (class-A merge guard)
   - type_b_fact_publish_catchup.py  # B2 2026-07-24: same-run bounded raw→fact publish after registry drain
   - residual_hygiene.py  # F9 2026-07-26: Type-B publish lag + ann tip vs eligible SLA (audit; store 2.985 + type_b post-evaluate; not SERVE consumer)
   - org_holding_period_catchup.py  # org 中间季 bounded fill N=1/run (plan_partition_catchup + sync_period)

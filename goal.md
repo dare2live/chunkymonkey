@@ -33,7 +33,7 @@
 **近端 focus**：F4 serve→accepted **FIXED**；breadth B-pit promote **FIXED**（READY as project_universe_pit when MART_CUTOVER）；F7 Type-B enrichment **FIXED**；F8 qfq incremental **FIXED**。等 owner **显式 schedule RX** 才开 STRATEGY。**Optuna / Release 未开**。仍禁 S7 假 COMPAT / org invent / 松 holdout / Continuity 洗绿。
 
 
-**护栏**：formal frontier 与 drain soft 窗分立叙述；PIT+≤40d；§15 不放宽；org 增量见 `org_holding_incremental_loop_20260723.md`；禁全宇宙扫股东公告（`shareholder_update_check_design_20260723.md`）；serve=沪深A 含 ST；**F9 residual_hygiene** 约束 Type-B publish / ann tip 滞后（超 SLA → 日更 degraded；≠ Continuity READY 化妆）。
+**护栏**：formal frontier 与 drain soft 窗分立叙述；PIT+≤40d；§15 不放宽；org 增量见 `org_holding_incremental_loop_20260723.md`；禁全宇宙扫股东公告（`shareholder_update_check_design_20260723.md`）；serve=沪深A 含 ST；**F9 residual_hygiene** 约束 Type-B publish / ann tip 滞后（超 SLA → 日更 degraded；≠ Continuity READY 化妆）；**org accepted pointer = full canonical partition**（同 available 多 report 禁末 batch 覆盖；F6 计 mismatch）。
 
 ## 禁令
 

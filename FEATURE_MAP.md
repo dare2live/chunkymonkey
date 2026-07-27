@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-07-26 10:18
+> Snapshot: 2026-07-27 07:57
 
 ## 1. 入口面
 
@@ -167,25 +167,25 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 10,291 | calls 边 12,032 | imports 边 3,389 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 10,314 | calls 边 12,055 | imports 边 3,408 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
 | 模块 | import 处数 |
 |---|---|
-| services.duck_adapter | 70 |
+| services.duck_adapter | 71 |
 | services.data_sources | 29 |
+| services.data_sources.accepted_schema | 22 |
 | services.universe | 22 |
-| services.data_sources.accepted_schema | 20 |
 | services.data_sources.security_day_partition | 19 |
 | services.data_sources.holders_top10_schema | 18 |
 | services.institution_follow_b0_measure | 18 |
 | services.institution_follow_edge_gates | 17 |
 | services.data_sources.margin_schema | 15 |
+| services.database_manifest | 14 |
 | services.source_watermarks | 14 |
 | services.data_access | 13 |
 | services.data_sources.nominal_ohlcv_schema | 13 |
-| services.database_manifest | 13 |
 | services.data_sources.calendar_schema | 12 |
 | services.data_sources.stk_holdertrade_schema | 12 |
 
@@ -198,7 +198,7 @@
 | backend/services/institution_follow_edge_gates.py | 17 |
 | backend/services/source_watermarks.py | 14 |
 | backend/services/data_sources/disclosure_boundaries.py | 11 |
-| backend/services/database_manifest.py | 10 |
+| backend/services/database_manifest.py | 11 |
 | backend/services/data_sources/contracts.py | 9 |
 | backend/services/tier12_consumer_cutover.py | 9 |
 | backend/services/tier12_publish_writer.py | 9 |
