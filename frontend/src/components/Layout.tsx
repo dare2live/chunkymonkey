@@ -1,4 +1,15 @@
+import { Suspense } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+
+// 路由级懒加载 fallback: 克制编辑风, 不喂不卡顿。页面 chunk 首次进入时瞬现。
+function RouteFallback() {
+  return (
+    <div className="route-loading" role="status" aria-live="polite">
+      <span className="route-loading-dot" />
+      <span>载入中…</span>
+    </div>
+  );
+}
 
 // 产品洞察面在前, ops 面 (工作台) 收尾 — 每日打开先看趋势/关系/大局, 而非运维。
 const NAV_ITEMS = [
@@ -40,7 +51,9 @@ export function Layout() {
           )}
         </nav>
         <main className="content">
-          <Outlet />
+          <Suspense fallback={<RouteFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

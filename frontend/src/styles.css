@@ -159,6 +159,30 @@ td.holder-name.clickable {
   padding: 28px 32px 64px;
 }
 
+/* 路由懒加载 fallback: 克制编辑风, 居中弱提示, 不喂不闪 */
+.route-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 240px;
+  color: var(--text-faint);
+  font-size: var(--fs-small, 13px);
+  letter-spacing: 0.01em;
+}
+.route-loading-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.55;
+  animation: route-loading-pulse 0.9s ease-in-out infinite;
+}
+@keyframes route-loading-pulse {
+  0%, 100% { transform: scale(0.7); opacity: 0.35; }
+  50% { transform: scale(1); opacity: 0.8; }
+}
+
 .page {
   max-width: 1400px;
   margin: 0 auto;
