@@ -7,7 +7,6 @@
  *  v3 交互: 热力图/轮动表/资金流向榜 全模块行点击 → DrillPanel inline 逐层下钻
  *  (sw L1→L2→L3→成分股 / dc 板块→成分股), 叶子行点击跳 /institutions 检索该股。
  *  配色: 浅色纸感, echarts 颜色走 theme.ts UI 常量 (与 styles.css :root 同步)。 */
-import type { EChartsOption } from "echarts";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -47,7 +46,6 @@ import type {
   DrillStockRow,
   FlowBoardRow,
   FlowRegime,
-  HeatmapResp,
   PulseChain,
   RotationSector,
   SentimentPoint,
@@ -65,42 +63,24 @@ import { Card, FetchGate } from "../components/Card";
 import { EChart } from "../components/EChart";
 import { fmtDate, fmtInt, fmtNum } from "../format";
 import { useFetch } from "../hooks/useFetch";
-import { UI } from "../theme";
-
-/** rs_* 已是百分点 → 直接带符号显示, 不再 ×100。 */
-function fmtPts(x: number | null | undefined): string {
-  if (x === null || x === undefined || Number.isNaN(x)) return "—";
-  return `${x > 0 ? "+" : ""}${x.toFixed(1)}`;
-}
-
-/** pct_change 源值即百分数 (2.5 = +2.5%)。 */
-function fmtPctRaw(x: number | null | undefined): string {
-  if (x === null || x === undefined || Number.isNaN(x)) return "—";
-  return `${x > 0 ? "+" : ""}${x.toFixed(2)}%`;
-}
-
-/** 金额自适应中文单位 (源值=元 → 万/亿), 缺失 "—" (不用 0 糊弄)。 */
-function fmtAmountCn(x: number | null | undefined, signed = false): string {
-  if (x === null || x === undefined || Number.isNaN(x)) return "—";
-  const sign = signed && x > 0 ? "+" : "";
-  const a = Math.abs(x);
-  if (a >= 1e8) return `${sign}${(x / 1e8).toFixed(2)}亿`;
-  if (a >= 1e4) return `${sign}${(x / 1e4).toFixed(0)}万`;
-  return `${sign}${x.toFixed(0)}`;
-}
-
-/** 连板天梯 JSON ({"1":50,"2":10}) → 升序 [板数, 家数]; null (源缺日) / 解析失败 → []。 */
-function parseLadder(j: string | null): [string, number][] {
-  if (!j) return [];
-  try {
-    const o = JSON.parse(j) as Record<string, number>;
-    return Object.entries(o).sort((a, b) => Number(a[0]) - Number(b[0]));
-  } catch {
-    return [];
-  }
-}
-
-const fmtMD = (d: string) => `${d.slice(4, 6)}-${d.slice(6, 8)}`;
+import {
+  BEHAVIOR_DOT,
+  STRIPE_RGB,
+  fmtAmountCn,
+  fmtMD,
+  fmtPctRaw,
+  fmtPts,
+  p95,
+  parseLadder,
+  signClass,
+  stripeColor,
+} from "./market/format";
+import {
+  heatmapOption,
+  latentQuadrantOption,
+  multiSectorCurveOption,
+  sectorDrillCurveOption,
+} from "./market/chartOptions";
 
 const DC_NAMESPACE_TABS: { key: DcPulseChain; label: string }[] = [
   { key: "dc_industry", label: "东财行业" },
@@ -109,12 +89,6 @@ const DC_NAMESPACE_TABS: { key: DcPulseChain; label: string }[] = [
 
 function dcNamespaceLabel(chain: DcPulseChain): string {
   return chain === "dc_industry" ? "行业" : "概念";
-}
-
-/** 涨跌语义 class (A股红涨绿跌); 0/缺失无色。 */
-function signClass(x: number | null | undefined): string {
-  if (x === null || x === undefined || Number.isNaN(x) || x === 0) return "";
-  return x > 0 ? "pos" : "neg";
 }
 
 // ── v3: 资金流形态 (flow_regime) 展示层 ────────────────────────────────────
@@ -159,122 +133,6 @@ function MiniFlowStripe({ dates, values }: { dates: string[]; values: (number | 
       })}
     </span>
   );
-}
-
-// ── v3.5: 资金流向曲线 (逐日净流条纹之外的连续趋势视图) ──────────────────────
-// 设计: 单板块用"当日净流(柱) + 累计净流(线)"双轴组合 (细节视图, 缺日置零不连断);
-// 多板块对比用"累计净流(线)"单轴叠加 (趋势对比, 不做柱防止多组柱子互相遮挡)。
-// 累计从窗口首日起算 (非全历史累计), 仅表达"本窗口内资金净流入/流出的持续性", 非绝对仓位。
-
-/** 缺日(null)按0处理后前缀和 — 窗口内累计净流, 用于表达持续性趋势 (非绝对量)。 */
-function cumulativeSeries(values: (number | null)[]): number[] {
-  let acc = 0;
-  return values.map((v) => {
-    acc += v ?? 0;
-    return acc;
-  });
-}
-
-const CURVE_PALETTE = [
-  "#3b66d4", "#d4342c", "#0f8a4e", "#a06a00", "#7d5ba6", "#1f8a8c", "#c2703d", "#5c6bc0",
-];
-
-/** 多板块累计净流对比曲线 (topN 叠加, 单轴; 悬浮框汇总当日各线数值)。 */
-function multiSectorCurveOption(dates: string[], series: { name: string; values: (number | null)[] }[]): EChartsOption {
-  const md = dates.map(fmtMD);
-  return {
-    grid: { left: 64, right: 16, top: 8, bottom: 50 },
-    xAxis: {
-      type: "category",
-      data: md,
-      axisLabel: { color: UI.textFaint, fontSize: 11 },
-      axisLine: { lineStyle: { color: UI.border } },
-      axisTick: { show: false },
-    },
-    yAxis: {
-      type: "value",
-      axisLabel: { color: UI.textFaint, fontSize: 11, formatter: (v: number) => fmtAmountCn(v) },
-      splitLine: { lineStyle: { color: UI.borderSoft } },
-    },
-    legend: {
-      bottom: 0,
-      type: "scroll",
-      textStyle: { color: UI.textDim, fontSize: 11 },
-      itemWidth: 14,
-      itemHeight: 8,
-    },
-    tooltip: {
-      trigger: "axis",
-      valueFormatter: (v) => fmtAmountCn(v as number, true),
-    },
-    series: series.map((s, i) => ({
-      name: s.name,
-      type: "line",
-      showSymbol: false,
-      smooth: false,
-      lineStyle: { width: 2, color: CURVE_PALETTE[i % CURVE_PALETTE.length] },
-      itemStyle: { color: CURVE_PALETTE[i % CURVE_PALETTE.length] },
-      data: cumulativeSeries(s.values),
-    })),
-  };
-}
-
-/** 单板块细节曲线: 柱=当日净流 (色随涨跌), 线=窗口累计净流 (右轴)。 */
-function sectorDrillCurveOption(dates: string[], values: (number | null)[]): EChartsOption {
-  const md = dates.map(fmtMD);
-  const cum = cumulativeSeries(values);
-  return {
-    grid: { left: 64, right: 64, top: 8, bottom: 28 },
-    xAxis: {
-      type: "category",
-      data: md,
-      axisLabel: { color: UI.textFaint, fontSize: 11 },
-      axisLine: { lineStyle: { color: UI.border } },
-      axisTick: { show: false },
-    },
-    yAxis: [
-      {
-        type: "value",
-        name: "当日净流",
-        nameTextStyle: { color: UI.textFaint, fontSize: 10 },
-        axisLabel: { color: UI.textFaint, fontSize: 11, formatter: (v: number) => fmtAmountCn(v) },
-        splitLine: { lineStyle: { color: UI.borderSoft } },
-      },
-      {
-        type: "value",
-        name: "累计净流",
-        nameTextStyle: { color: UI.textFaint, fontSize: 10 },
-        axisLabel: { color: UI.textFaint, fontSize: 11, formatter: (v: number) => fmtAmountCn(v) },
-        splitLine: { show: false },
-      },
-    ],
-    tooltip: {
-      trigger: "axis",
-      formatter: (params) => {
-        const arr = params as unknown as { seriesName: string; value: number; axisValue: string }[];
-        if (!arr.length) return "";
-        const lines = arr.map((p) => `${p.seriesName}: ${fmtAmountCn(p.value, true)}`);
-        return `${arr[0].axisValue}<br/>${lines.join("<br/>")}`;
-      },
-    },
-    series: [
-      {
-        name: "当日净流",
-        type: "bar",
-        yAxisIndex: 0,
-        data: values.map((v) => (v === null ? null : { value: v, itemStyle: { color: v >= 0 ? UI.up : UI.down } })),
-      },
-      {
-        name: "累计净流",
-        type: "line",
-        yAxisIndex: 1,
-        showSymbol: false,
-        lineStyle: { width: 2, color: UI.accent },
-        itemStyle: { color: UI.accent },
-        data: cum,
-      },
-    ],
-  };
 }
 
 // ── v3: 统一下钻面板 (热力图/轮动表/资金流向榜 三处共用, 防三份实现漂移) ────
@@ -595,59 +453,6 @@ function PulseBand() {
 }
 
 // ── 卡1: 资金热力图 (dc 链, 板块×近N日 net_amount) ─────────────────────────
-
-function heatmapOption(resp: HeatmapResp): EChartsOption {
-  const dates = resp.dates.map(fmtMD);
-  const rows = [...resp.sectors].reverse(); // echarts y 类目自下而上 → 累计流入最强的放顶部
-  const yLabels = rows.map((s) => s.sector_name);
-  const data: [number, number, number][] = [];
-  let maxAbs = 0;
-  rows.forEach((s, y) => {
-    s.values.forEach((v, x) => {
-      if (v === null) return;
-      maxAbs = Math.max(maxAbs, Math.abs(v));
-      data.push([x, y, v]);
-    });
-  });
-  return {
-    grid: { left: 104, right: 8, top: 8, bottom: 28 },
-    xAxis: {
-      type: "category",
-      data: dates,
-      axisLabel: { color: UI.textFaint, fontSize: 11 },
-      axisLine: { show: false },
-      axisTick: { show: false },
-    },
-    yAxis: {
-      type: "category",
-      data: yLabels,
-      axisLabel: { color: UI.textFaint, width: 96, overflow: "truncate", fontSize: 11 },
-      axisLine: { show: false },
-      axisTick: { show: false },
-    },
-    // 分向色阶 绿→白→红, 白=零点: 零流入自然隐没, 强流向自然跳出; 图例藏起
-    visualMap: {
-      show: false,
-      min: -(maxAbs || 1),
-      max: maxAbs || 1,
-      dimension: 2,
-      inRange: { color: [UI.down, UI.bgPanel, UI.up] },
-    },
-    tooltip: {
-      formatter: (p) => {
-        const v = (p as unknown as { data: [number, number, number] }).data;
-        return `${yLabels[v[1]]} · ${dates[v[0]]}<br/>净流入: ${fmtAmountCn(v[2], true)}`;
-      },
-    },
-    series: [
-      {
-        type: "heatmap",
-        data,
-        itemStyle: { borderColor: UI.bgPanel, borderWidth: 1 },
-      },
-    ],
-  };
-}
 
 const HEATMAP_DAYS = [10, 20, 60] as const;
 
@@ -1226,22 +1031,6 @@ function LadderCard() {
 // ── 卡4b: 情绪温度条纹带 (climate-stripes 式: 每交易日一根色条, 三条平行光谱;
 //    无合成权重 — 三个变量各占一带, 不造"综合情绪分") ────────────────────────
 
-/** p95 分位封顶 (防单日极值压扁全带的色阶动态范围)。 */
-function p95(vals: number[]): number {
-  if (!vals.length) return 1;
-  const sorted = [...vals].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] || 1;
-}
-
-/** 白→语义色插值: v/cap 越大颜色越深; null=源缺日显灰纹。 */
-function stripeColor(v: number | null, cap: number, rgb: string): string {
-  if (v === null) return "var(--bg-panel-2)";
-  const t = Math.min(1, v / cap);
-  return `rgba(${rgb}, ${(t * 0.92).toFixed(3)})`;
-}
-
-const STRIPE_RGB = { up: "212, 52, 44", down: "15, 138, 78", warn: "160, 106, 0" } as const;
-
 function StripeRow({
   label, values, cap, rgb, hoverIdx, onHover,
 }: {
@@ -1512,127 +1301,6 @@ function WarningsCard() {
 
 // ── Cap A：资金决策辅助（Tier3 页签；与感知卡分离，保留零买卖暗示） ─────────
 // MVP floor = 潜伏象限图 (viz plan Alt1 / architecture Phase 3)；地形 hero 延后。
-
-const BEHAVIOR_DOT: Record<string, string> = {
-  latent: "#5b7a9d", // 冷灰蓝 = 潜伏（钱进价平）
-  chase: UI.up, // 涨红 = 抢筹
-  distribute: UI.down, // 跌绿 = 出货
-  unknown: UI.textFaint, // 未形成结论 — 永不画成 0
-};
-
-function latentQuadrantOption(rows: MoneyflowBoardRow[]): EChartsOption {
-  // Only plot full-window known metrics. Thin/unknown never land at (0,0).
-  const points = rows
-    .filter(
-      (r) =>
-        r.horizon.status === "known" &&
-        r.horizon.relative_ratio_pct != null &&
-        r.horizon.window_return_pct != null,
-    )
-    .map((r) => {
-      const cum = r.horizon.cum_net;
-      const absCum = cum == null || Number.isNaN(cum) ? 0 : Math.abs(cum);
-      const size = Math.max(8, Math.min(28, 8 + Math.sqrt(absCum / 1e8) * 10));
-      const beh = r.behavior.behavior;
-      return {
-        value: [r.horizon.window_return_pct as number, r.horizon.relative_ratio_pct as number, size],
-        name: r.sector_name ?? r.sector_code,
-        sector_code: r.sector_code,
-        behavior: beh,
-        behavior_zh: r.behavior.behavior_zh,
-        conclusion: r.conclusion,
-        itemStyle: { color: BEHAVIOR_DOT[beh] ?? BEHAVIOR_DOT.unknown, opacity: beh === "unknown" ? 0.45 : 0.85 },
-      };
-    });
-
-  return {
-    animationDuration: 280,
-    grid: { left: 56, right: 24, top: 36, bottom: 48 },
-    xAxis: {
-      name: "窗口涨跌 %",
-      nameLocation: "middle",
-      nameGap: 28,
-      nameTextStyle: { color: UI.textDim, fontSize: 11 },
-      type: "value",
-      axisLabel: { color: UI.textFaint, fontSize: 11, formatter: (v: number) => `${v}%` },
-      axisLine: { lineStyle: { color: UI.border } },
-      splitLine: { lineStyle: { color: UI.borderSoft } },
-    },
-    yAxis: {
-      name: "相对净流入 %",
-      nameTextStyle: { color: UI.textDim, fontSize: 11 },
-      type: "value",
-      axisLabel: { color: UI.textFaint, fontSize: 11, formatter: (v: number) => `${v}%` },
-      axisLine: { lineStyle: { color: UI.border } },
-      splitLine: { lineStyle: { color: UI.borderSoft } },
-    },
-    tooltip: {
-      trigger: "item",
-      formatter: (p: unknown) => {
-        const d = (p as { data?: (typeof points)[number] }).data;
-        if (!d) return "";
-        const [x, y] = d.value;
-        return [
-          `<b>${d.name}</b>`,
-          `${d.behavior_zh}`,
-          `涨跌 ${x.toFixed(2)}% · 相对流入 ${y.toFixed(2)}%`,
-          d.conclusion ? d.conclusion : "未形成结论",
-        ].join("<br/>");
-      },
-    },
-    series: [
-      {
-        type: "scatter",
-        symbolSize: (val: number[]) => val[2],
-        data: points,
-        markLine: {
-          silent: true,
-          symbol: "none",
-          lineStyle: { color: UI.border, type: "dashed", width: 1 },
-          data: [{ xAxis: 0 }, { yAxis: 0 }],
-          label: { show: false },
-        },
-        markArea: {
-          silent: true,
-          data: [
-            [
-              {
-                name: "潜伏",
-                xAxis: "min",
-                yAxis: 0,
-                itemStyle: { color: "rgba(91, 122, 157, 0.07)" },
-                label: {
-                  show: true,
-                  position: "insideTopLeft",
-                  color: "#5b7a9d",
-                  fontSize: 12,
-                  fontWeight: 600,
-                },
-              },
-              { xAxis: 0, yAxis: "max" },
-            ],
-            [
-              {
-                name: "抢筹",
-                xAxis: 0,
-                yAxis: 0,
-                itemStyle: { color: "rgba(212, 52, 44, 0.05)" },
-                label: {
-                  show: true,
-                  position: "insideTopRight",
-                  color: UI.up,
-                  fontSize: 12,
-                  fontWeight: 600,
-                },
-              },
-              { xAxis: "max", yAxis: "max" },
-            ],
-          ],
-        },
-      },
-    ],
-  };
-}
 
 function MoneyflowAssistPanel(props: { initialBehavior?: string | null }) {
   const [chain, setChain] = useState<AssistChain>("dc_industry");
