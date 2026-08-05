@@ -7,6 +7,7 @@ observational; research read policy decides canonical vs legacy fallback.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, Literal, Mapping
 
@@ -148,6 +149,10 @@ def _normalize_cell(field: str, value: Any) -> Any:
     if isinstance(value, bool):
         return value
     if isinstance(value, float):
+        # 诚实门: NaN/±inf = 不可测 → null (绝不糊成 0, 也不许进 JSON 崩 API;
+        # canonical avg_price NaN 残留见 org/holders 增量分区, 2026-08-05 实测 285 行)。
+        if math.isnan(value) or math.isinf(value):
+            return None
         return round(value, 6)
     if isinstance(value, int) and not isinstance(value, bool):
         return value
