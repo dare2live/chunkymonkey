@@ -154,6 +154,7 @@ class DuckConn:
             )
         self.duckdb_connect_wait_s = round(self.connect_mutex_wait_s + self.duckdb_lock_wait_s, 6)
         self.duckdb_connect_elapsed_s = round(time.monotonic() - connect_start, 6)
+        self.db_path = str(db_path)
         self.in_transaction = False
         # Optional attached DBs are read-only by default. Use
         # {"path": "...", "read_only": False} only for an explicit write edge.

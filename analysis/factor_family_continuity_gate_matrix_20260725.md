@@ -36,4 +36,4 @@ Moth: `factor-family-continuity-gate-matrix` claim in `.moth/assertions/claims.y
 
 ## Git
 
-SHA: _(fill after safe_commit)_
+SHA: **`622df8fff`** (pushed main)

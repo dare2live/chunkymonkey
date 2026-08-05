@@ -48,7 +48,7 @@
     "does_not_mutate_inventory_yaml",
     "rx_still_requires_owner_schedule"
   ],
-  "projected_at": "2026-07-27T08:11:19.557776+00:00",
+  "projected_at": "2026-08-05T00:58:56.606960+00:00",
   "verdict": "PASS",
   "violations": []
 }

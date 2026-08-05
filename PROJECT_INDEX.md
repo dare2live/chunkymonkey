@@ -47,6 +47,7 @@ AGENTS.md
 | `data/experiment_store.duckdb` | 实验 verdict/control；当前不代表完整 research runtime |
 | `backend/config/` | 目标只保留 active policy；过渡期 legacy registry 必须显式标 `NONCONFORMING` 并列入 Phase 迁移债务 |
 | `data/reports/tooling/` | 可重建工具证据，不是业务真相 |
+| `backend/services/duck_adapter.py` | 单一 DuckDB 访问层 `DuckConn`（连接互斥+锁等待计时）；实例暴露 `.db_path` 供观测/诊断 |
 
 精确数据库路径以 `backend/config/database_manifest.yaml` 为准；表、入口和 writer 以 live DB、`FEATURE_MAP.md`、CodeGraph 和 Moth 为准，不在本文件固定计数。
 
