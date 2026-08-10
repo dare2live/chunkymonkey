@@ -131,28 +131,104 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
     goal_path = repo / "goal.md"
     goal_text = goal_path.read_text(encoding="utf-8") if goal_path.is_file() else ""
 
+    _now = dt.datetime.now(dt.timezone.utc)  # Phase ψ.5 allowlist: 文档元数据时间戳非 trade_date
+    _today_compact = _now.strftime("%Y%m%d")
+
+    # yaml 的 cutover_allowed 是 owner **意图**；实际读面由 resolver 裁决。投影必须
+    # 两者都给，否则窗口走完后看板会继续显示一个已经不生效的 True。
+    #
+    # 探针日 = `expected_window_end + 1`，一个从 config 算出的**固定值**，语义是
+    # 「窗口末端之后的第一天，resolver 会怎么判」。刻意**不用** wall-clock「今天」：
+    #   (a) 自然日不是 trade_date。resolver 做的是裸字符串范围比较，没有交易日概念
+    #       (b_pit_mart_cutover.py 的 window 判定)；窗口若被延到未来，拿自然日去问
+    #       会对周末/节假日报出 MART_CUTOVER —— 正是本刀要消灭的那种误导性裁决。
+    #   (b) 随日期变的值一旦进 BOARD.md 正文或 agent_context.json，漂移门会在每次
+    #       跨天后必红（二者的比较面只排除顶层 generated_at），等于每天堵死所有提交。
+    # `window_lapsed` 是布尔，只在跨过窗口末端那天翻一次，此后恒定，幂等不破。
+    # rule-compliance: ok evidence=不作为 trade_date 使用，仅判定「窗口末端是否已成
+    #   过去时」——该判定是纯日历事实，与某日是否开市无关；送进 resolver 的是上面
+    #   从 config 算出的固定探针日，不是这个值。
+    _win_end = str(b_pit_gate.get("expected_window_end") or "").strip()
+    _window_lapsed = bool(_win_end) and _today_compact > _win_end
+
+    _probe_day = ""
+    if len(_win_end) == 8 and _win_end.isdigit():
+        _probe_day = (
+            dt.date(int(_win_end[:4]), int(_win_end[4:6]), int(_win_end[6:]))
+            + dt.timedelta(days=1)
+        ).strftime("%Y%m%d")
+
+    b_pit_effective: dict[str, Any]
+    try:
+        from services.b_pit_mart_cutover import resolve_b_pit_mart_production_read
+
+        # resolver 只读 config + lineage artifact，不连 DB，故此处零新增依赖。
+        _read = resolve_b_pit_mart_production_read(
+            _probe_day,
+            # 跟随 repo 参数，否则 fixture repo 下会穿透去读真实 config
+            config_path=repo / "backend" / "config" / "b_pit_mart_cutover.yaml",
+        )
+        b_pit_effective = {
+            "probe_day": _probe_day,
+            "probe_status": _read.status,
+            "probe_source": _read.source,
+            "probe_cutover_allowed": bool(_read.cutover_allowed),
+            "probe_reasons": list(_read.reasons)[:3],
+            "window_lapsed": _window_lapsed,
+        }
+    except Exception as exc:  # 投影永不因 resolver 异常而生成失败
+        b_pit_effective = {
+            "probe_day": _probe_day,
+            "probe_status": "UNRESOLVED",
+            "probe_source": "unknown",
+            "probe_cutover_allowed": False,
+            "probe_reasons": [f"{type(exc).__name__}: {exc}"[:120]],
+            "window_lapsed": _window_lapsed,
+        }
+
+    # 影子期到期由起点 + 上限算出，不写死状态串。eng_gov §13 =「10 个工作 session
+    # 或 14 天，先到者」；session 数无法从代码观测，故只判 14 天这一侧 —— 该侧到期
+    # 即不得再自称 open，须由 owner 裁决 cutover 或重置。
+    _shadow_start_day = dt.date(2026, 7, 20)  # eng_gov §13 起点 be8efc6f
+    _shadow_deadline_day = _shadow_start_day + dt.timedelta(days=14)
+    # 同 window_lapsed：只在跨过 deadline 那天翻一次，之后恒定 —— 不引入每日变动源。
+    _shadow_expired = _today_compact > _shadow_deadline_day.strftime("%Y%m%d")
+
     return {
-        "generated_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),  # Phase ψ.5 allowlist: 文档元数据时间戳非 trade_date
+        "generated_at": _now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "generated_from": "backend/scripts/build_agent_board.py",
         "enforcement": "projection_only_not_truth",
         "track": {
             "name": "transport_strangler_s1_s7",
             "status": "foundation_solidify_85pct_s7_wall_e0_thin",
-            "agent_os": "shadow_period_open_not_closed",
+            "agent_os": (
+                "shadow_period_EXPIRED_awaiting_owner_verdict"
+                if _shadow_expired
+                else "shadow_period_open_not_closed"
+            ),
             "a_to_h": "post_research_map_only_efgh_appendix",
             "wp1": "FIXED",
             "wp2": "FIXED",
             "wp3": "FIXED",
             "wp4": "FIXED",
             "wp5": "SKIPPED_occam",
-            "wp6": "POLICY_FIXED_shadow_open",
+            "wp6": (
+                "POLICY_FIXED_shadow_EXPIRED"
+                if _shadow_expired
+                else "POLICY_FIXED_shadow_open"
+            ),
             "shadow_started": "be8efc6f/2026-07-20",
-            "shadow_deadline": "10_sessions_or_14d_first",
+            "shadow_deadline": (
+                f"{_shadow_deadline_day.isoformat()} "
+                "(14d cap, or 10 work sessions — whichever first)"
+            ),
+            "shadow_expired": _shadow_expired,
         },
         "cutovers": {
             "b_pit_mart": {
                 "cutover_allowed": bool(b_pit_gate.get("cutover_allowed", False)),
                 "source": "backend/config/b_pit_mart_cutover.yaml",
+                "effective": b_pit_effective,
                 "window": {
                     "start": b_pit_gate.get("expected_window_start"),
                     "end": b_pit_gate.get("expected_window_end"),
@@ -217,6 +293,10 @@ def render_md(d: dict[str, Any]) -> str:
     add("> 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。")
     add(ENFORCEMENT_BANNER)
     add(f"{SNAPSHOT_PREFIX} {d['generated_at']}")
+    add(
+        "> ↑ **内容版本时刻，不是数据新鲜度**：本文件幂等 —— 内容未变时不重写，"
+        "该时间戳也就不刷新。数据前沿请查 accepted 分区表，勿据此判断。"
+    )
     add("")
     add("## Track")
     add("")
@@ -234,16 +314,36 @@ def render_md(d: dict[str, Any]) -> str:
             "(ceremony flip only; B-pit/C data cutover unrelated)"
         )
     add("")
-    add("## Cutovers (yaml projection)")
+    add("## Cutovers (yaml 意图 + resolver 实际裁决)")
     add("")
     bp = d["cutovers"]["b_pit_mart"]
     tc = d["cutovers"]["tier12_consumer"]
     add(
-        f"- B-pit mart `cutover_allowed={bp['cutover_allowed']}` "
+        f"- B-pit mart yaml `cutover_allowed={bp['cutover_allowed']}` "
         f"(shadow match={bp['shadow'].get('match_day_count')}/"
         f"diverge={bp['shadow'].get('diverge_day_count')}; "
         f"frontier={bp['shadow'].get('frontier_day')})"
     )
+    _eff = bp.get("effective") or {}
+    _eff_reason = (_eff.get("probe_reasons") or [None])[0]
+    # 背离 = yaml 说可切，但窗口末端已成过去时，且窗末+1 探针证实此后 fail-closed。
+    _divergent = (
+        bool(bp["cutover_allowed"])
+        and bool(_eff.get("window_lapsed"))
+        and not bool(_eff.get("probe_cutover_allowed"))
+    )
+    add(
+        f"  - {'**⚠ yaml 意图已不生效**' if _divergent else '窗口探针'} "
+        f"probe=`{_eff.get('probe_day')}`(窗末+1) status=`{_eff.get('probe_status')}` "
+        f"source=`{_eff.get('probe_source')}` window_lapsed=`{_eff.get('window_lapsed')}`"
+        + (f" — `{_eff_reason}`" if _eff_reason else "")
+    )
+    if _divergent:
+        add(
+            "  - attested 窗口末端已成过去时：晚于该日的任何 trade_date 一律 "
+            "fail-closed 回 legacy_mart —— 需 owner 裁决：重测 shadow 延窗 / "
+            "显式收回 cutover / 改滚动窗口语义。"
+        )
     acc = tc["accept"]
     add(
         f"- C consumer `cutover_allowed={tc['cutover_allowed']}` "

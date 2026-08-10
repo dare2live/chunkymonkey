@@ -2,18 +2,21 @@
 
 > 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。
 > **Projection only** — not an enforcement input. Cutover / readiness / PIT gates still resolve from yaml + code resolvers + accepted partitions.
-> Snapshot: 2026-07-23T10:54:22Z
+> Snapshot: 2026-08-10T08:33:31Z
+> ↑ **内容版本时刻，不是数据新鲜度**：本文件幂等 —— 内容未变时不重写，该时间戳也就不刷新。数据前沿请查 accepted 分区表，勿据此判断。
 
 ## Track
 
 - track: `transport_strangler_s1_s7` status=`foundation_solidify_85pct_s7_wall_e0_thin`
 - A→H: `post_research_map_only_efgh_appendix`
-- WP1: `FIXED` | WP2: `FIXED` | WP3: `FIXED` | WP4: `FIXED` | WP5: `SKIPPED_occam` | WP6: `POLICY_FIXED_shadow_open`
-- agent-OS: `shadow_period_open_not_closed` shadow start=`be8efc6f/2026-07-20` deadline=`10_sessions_or_14d_first` (ceremony flip only; B-pit/C data cutover unrelated)
+- WP1: `FIXED` | WP2: `FIXED` | WP3: `FIXED` | WP4: `FIXED` | WP5: `SKIPPED_occam` | WP6: `POLICY_FIXED_shadow_EXPIRED`
+- agent-OS: `shadow_period_EXPIRED_awaiting_owner_verdict` shadow start=`be8efc6f/2026-07-20` deadline=`2026-08-03 (14d cap, or 10 work sessions — whichever first)` (ceremony flip only; B-pit/C data cutover unrelated)
 
-## Cutovers (yaml projection)
+## Cutovers (yaml 意图 + resolver 实际裁决)
 
-- B-pit mart `cutover_allowed=True` (shadow match=120/diverge=0; frontier=20260722)
+- B-pit mart yaml `cutover_allowed=True` (shadow match=120/diverge=0; frontier=20260722)
+  - **⚠ yaml 意图已不生效** probe=`20260723`(窗末+1) status=`BLOCKED` source=`legacy_mart` window_lapsed=`True` — `trade_date_outside_shadow_window:20260723not_in_20260121_20260722`
+  - attested 窗口末端已成过去时：晚于该日的任何 trade_date 一律 fail-closed 回 legacy_mart —— 需 owner 裁决：重测 shadow 延窗 / 显式收回 cutover / 改滚动窗口语义。
 - C consumer `cutover_allowed=True` (accept 20260717: 4989/4989 scope=project_universe published=True)
 
 ## Phase D runtime (lineage projection)
