@@ -35,20 +35,51 @@
 
 **护栏**：formal frontier 与 drain soft 窗分立叙述；PIT+≤40d；§15 不放宽；org 增量见 `org_holding_incremental_loop_20260723.md`；禁全宇宙扫股东公告（`shareholder_update_check_design_20260723.md`）；serve=沪深A 含 ST；**F9 residual_hygiene** 约束 Type-B publish / ann tip 滞后（超 SLA → 日更 degraded；≠ Continuity READY 化妆）；**org accepted pointer = full canonical partition**（同 available 多 report 禁末 batch 覆盖；F6 计 mismatch）。
 
-## 治理边界重构（2026-08-10 诊断，owner 已认可，未开工）
+## 治理体系重构（2026-08-10 立项；owner 认可第一性原理设计；未开工）
 
-**根因**：**系统约束与脚手架约束混在一起** —— 系统约束 = 系统运行时必须成立的事（PIT、日历、单 writer、run_outcome 语义、population scope）；脚手架约束 = 开发时人/agent 该怎么做（Rule 10、commit 说明、PROJECT_INDEX 同步、BOARD 重生成）。二者受众、生命周期、坏掉的后果都不同，却混在同一批门、同一批文档里。
+### 诊断
 
-实证：`safe_commit` 19 道门 = **8 系统 + 9 脚手架 + 2 混合**；本轮脚手架门 3 次阻断系统修复提交（`project_index_sync` ×2、`agent_board` ×1）——**文档没同步挡住代码 bug 修复**。
+**系统约束与脚手架约束混在一起**。系统约束 = 系统运行时必须成立（PIT、日历、单 writer、`run_outcome` 语义、population scope）；脚手架约束 = 开发时人/agent 该怎么做（Rule 10、commit 说明、PROJECT_INDEX 同步、BOARD 重生成）。二者受众、变化频率、坏掉的后果都不同。
 
-派生解释（本轮多个发现的共同根因）：治理体系 49 道门全是空间维度（结构/引用/存在性）零时间维度，是因为**大部分是脚手架门**，而脚手架天然空间性；只有系统门才需要时间维度。
+实证：`safe_commit` 19 门 = **8 系统 + 9 脚手架 + 2 混合**；脚手架门 3 次阻断系统修复提交。这解释了更早两层根因 —— 49 道门全空间维度零时间维度，是因为大部分是脚手架门（脚手架天然空间性）；唯二自述型门恰是唯二卡住诚实提交者的门。
 
-**三步（按杠杆排序，均未开工）**：
-- **L1 门分家**：commit 路径只跑 8 道系统门（守数据正确性，必须阻断）；9 道脚手架门移出阻断路径 → warn + 汇总 + 批量修入口。脚手架失败不影响系统正确性，不该挡系统修复。
-- **L2 系统约束进运行时自检**：现 `daily_update` 只查 continuity + watermark SLA。判定类系统约束（b_pit cutover 是否仍在窗内、population contract、availability policy）必须在**每次运行**自检 —— `b_pit` 静默失效 13 个交易日无人知，正因它只在 commit 时被查，而那段时间无人 commit 相关代码：**系统跑了 13 次，一次都没自检过自己的约束**。
-- **L3 文档按受众分家**：`engineering_governance` §6/§11、`AGENTS` §4 是**系统约束**，应移进 `MASTER`；两份文件只留开发纪律。判据一句话：**这条约束是「系统必须这样运行」还是「开发时该这样做」？**
+### 三条原则
 
-**已知待并入的孤儿法条**：`run_outcome` 四态（`success`/`soft_waiting_clock`/`integrity_observe`/`hard_fail`）被 8 个代码文件依赖，但 `docs/` 三份 owner contract **零处提及** —— 活机制无 owner 级锚点。按 L3 判据应进 `MASTER`（系统语义），**不要**放 `engineering_governance`。
+1. **能机器生成的绝不人写** —— 状态 100% 可生成；人手写状态，从写下那刻起就在烂。
+2. **一个事实一个存放处，存在最靠近使用它的地方** —— 阈值被代码读→YAML；判据人和门共用→文档。**文档解释「为什么」，配置持有「是什么」。**
+3. **门装在受害发生的时刻，不装在最方便检查的时刻。**
+
+### 目标态：按变化频率分四层（不按主题分）
+
+| 层 | 内容 | 变化频率 | 载体 |
+|---|---|---|---|
+| **L0 宪法** | 不变量 / 判据 / 边界 | 几月 | 极少数文档 |
+| **L1 契约** | 阈值 / 窗口 / 白名单 / 注册表 | 几周 | YAML，被代码读 + schema 校验 |
+| **L2 状态** | 前沿 / 覆盖 / 门的实际裁决 | 每次运行 | **命令现查，零文件，禁人写** |
+| **L3 历史** | 做了什么 + 为什么 | 只追加 | **git commit，无独立文件** |
+
+推论：**`analysis/` 终点是 0 份**（已实证全仓 `open()/read_text()` 指向 analysis 零命中，无一是运行时依赖）；**ledger 退役**（commit message 已含 Q/Fix/Evidence/Residual，ledger 是 git log 的人工副本，必然滞后 —— 实证断档 77 个 commit 而 git 一条没丢；检索用 `git log --grep`，永不断档）。
+
+### 执行顺序（P1→P4.1→P2→P3；每步一刀一 safe_commit）
+
+- **P1 门重新分布**（最高杠杆，风险低，无依赖）
+  - P1.1 给 19 门打标签分三组：`diff-correctness`（这次改动本身对不对）/ `system-health`（系统运行时健康）/ `scaffold`（开发整理）
+  - P1.2 `system-health` 组挂进 `daily_update` 运行时自检
+  - P1.3 `scaffold` 组 commit 路径改 warn-only + 加批量修入口
+  - 验收：commit 路径只剩 `diff-correctness`；跑一次 daily_update 能报出 b_pit 窗口过期这类问题
+- **P4.1 孤儿法条归位**（紧迫，独立）：`run_outcome` 四态被 8 个代码文件依赖而 `docs/` 三份零提及 → 并入 **`MASTER`**（系统语义），**不要**放 `engineering_governance`
+- **P2 状态零手写**（依赖 P1.2）
+  - P2.1 扫出人工文档里全部 L2 状态（frontier/覆盖/计数）→ 换成查询指针
+  - P2.2 建单一状态入口（`chunkyctl status --json`），agent 一条命令拿全
+  - P2.3 BOARD 改现查，或快照带时刻 + 过期即警告
+- **P3 历史归 git**（依赖 P2.2）
+  - P3.1 commit message 模板固化 Q/Fix/Evidence/Residual（这才是 commit_msg 门的正确形态：查结构，不查关键词）
+  - P3.2 `chunkyctl history --grep` 包装 git log，替代 ledger 检索
+  - P3.3 ledger 冻结（read-only 不再追加）→ 退役
+  - P3.4 `analysis/` 归零（现 65 份；卡点是几十处注释性溯源要一起改，批量替换已试过一次并回滚，需更好策略）
+- **P4.2-4.4 文档按层归位**：`eng_gov §6/§11`、`AGENTS §4` 的系统约束移进 `MASTER`；三份 owner contract 重新划界（MASTER=系统法 / eng_gov=开发纪律 / strategy=研究发布）
+
+**迁移原则**：不追求一步到位，但新增任何文档前先问「这是 L0/L1/L2/L3 哪一层」—— 是 L2 就不许写，是 L3 就写进 commit message。
 
 ## 禁令
 
