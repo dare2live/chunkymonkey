@@ -3352,3 +3352,15 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - Fix `1e553c65e`（23:03，docs）：UI-等效 daily_update E2E 走查，continuity PASS，formal 增量 OK，仅剩 class-B PARTIAL；ci-surface-drift 3/3 passed。`baa239ac4`（23:13）：退役 orphan drain 域，catchup skip/publish 时重投影 margin accepted watermark，清理已 sunset 的 wm 墓碑，DONE 日志与 typed run_outcome 对齐；pytest 144 个定向用例 + CI blocking 1118 passed，live smoke watermark→20260722/v3。Rule10 记：orphan 表保留为冷残留（可选 lifecycle DROP）；margin projection 单一写者在 catchup path；SLA 仍是 audit-only。
 - Tests：`test_update_watermark_sla.py`、`test_pipeline.py`、`test_legacy_raw_plane_s7.py`、多个 `*_publish_b1/b2.py`。
 - Evidence：`analysis/post_close_update_e2e_20260723.md`。
+
+### 2026-08-10 — 治理体系全面审计：假门、stale 文档、系统/脚手架边界混淆
+- Q：项目改动大，需全面理解；随后 owner 追问「无效规则」「文档精简」「系统内外职能边界」。
+- 根因链（三层，逐层深入）：
+  1. **治理体系 49 道门全是空间维度**（结构/引用/边界/存在性），**零时间维度**（新鲜度/过期）——而这是时间序列数据平台，时间是第一性维度。四道门全绿时，B-pit cutover 已静默失效 13 交易日、goal/PROJECT_INDEX 的 frontier 落后两周、ledger 断档 77 个 commit。
+  2. **19 道门里唯二无法机器验证的（自述型：rule10 读自写 APPROVE 串、commit_msg 读关键词），恰是唯二会卡住诚实提交者的门**。真门只要真做了事就自动绿；假门只考验愿不愿写那行字。
+  3. **系统约束与脚手架约束混在一起**（owner 诊断，实证支持）：19 门 = 8 系统 + 9 脚手架 + 2 混合；脚手架门本轮 3 次阻断系统修复提交。这解释了第 1 层——门全是空间维度，是因为大部分是脚手架门。
+- Fix（10 刀）：`72fb73f48` 权威文档剔除运行时状态、判据「会因跑一次日更就变的值禁入人工维护文档」入 docs/README 生命周期表；`337e9346a` 拆两道自述型门（保留 REQUEST_CHANGES 阻断与 subject 长度阻断，取消无法验证的通过条件）；`3b525442b` BOARD/agent-boot 改读 resolver 探针（window_end+1 固定探针，非 wall-clock）+ 影子期到期改为算出；`b6c6a11a8` ledger 补 77 个断档 commit（拓扑范围 cf355dbd2..HEAD 锚定，非时区敏感的 --since）；`57e6ec499` 采纳事后独立审查的 REQUEST_CHANGES；`b7db05dfe` 修 calendar 门正则盲点（原正则要求 now() 空括号，带时区的正确写法反而绕过）；`9a6910f8a` 迭代删 23 份结论已入账文档（88→65）；`6f11aca23` 标注 14 处悬空证据引用；`76c0f8027` 标注 3 份活契约的过期状态类陈述；`58415b127` 修 moth takeover 4 处陈旧配置（data-status 已退役子命令 / chain-logs exit bug / pgrep 名单架空本节目的 / w1_chain 废弃日志名）。
+- 方法学产出（跨文档验证）：**文档写机制则长寿，写状态则必朽** —— 5 份活契约语义核实，所有漂移都在状态类陈述（仍 defer/仍待决/数字快照），机制类（判据逻辑、判断法典、枚举值）全部准确。
+- 三次实测证伪自己的方案：b_pit 标 P0（消费链实测后业务后果≈零）；「幂等未破」（只测同日，独立审查跨天实测发现次日起每次 commit 必红）；org skip-land（实测只值 10% 且防错对象，真因是 ops 修截断的三次全量重抓未清理，由 retention 覆盖）。
+- Evidence：本条即摘要；细节走各 commit `git show`。
+- Residual：治理边界重构 L1/L2/L3 见 `goal.md`「治理边界重构」段，均未开工；`run_outcome` 四态无 owner 级法条锚点；测试集全量审查（假绿/时间炸弹/断言旧契约）未做；landing retention + I4 有界增长门未做。

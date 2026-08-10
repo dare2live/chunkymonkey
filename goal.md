@@ -35,6 +35,21 @@
 
 **护栏**：formal frontier 与 drain soft 窗分立叙述；PIT+≤40d；§15 不放宽；org 增量见 `org_holding_incremental_loop_20260723.md`；禁全宇宙扫股东公告（`shareholder_update_check_design_20260723.md`）；serve=沪深A 含 ST；**F9 residual_hygiene** 约束 Type-B publish / ann tip 滞后（超 SLA → 日更 degraded；≠ Continuity READY 化妆）；**org accepted pointer = full canonical partition**（同 available 多 report 禁末 batch 覆盖；F6 计 mismatch）。
 
+## 治理边界重构（2026-08-10 诊断，owner 已认可，未开工）
+
+**根因**：**系统约束与脚手架约束混在一起** —— 系统约束 = 系统运行时必须成立的事（PIT、日历、单 writer、run_outcome 语义、population scope）；脚手架约束 = 开发时人/agent 该怎么做（Rule 10、commit 说明、PROJECT_INDEX 同步、BOARD 重生成）。二者受众、生命周期、坏掉的后果都不同，却混在同一批门、同一批文档里。
+
+实证：`safe_commit` 19 道门 = **8 系统 + 9 脚手架 + 2 混合**；本轮脚手架门 3 次阻断系统修复提交（`project_index_sync` ×2、`agent_board` ×1）——**文档没同步挡住代码 bug 修复**。
+
+派生解释（本轮多个发现的共同根因）：治理体系 49 道门全是空间维度（结构/引用/存在性）零时间维度，是因为**大部分是脚手架门**，而脚手架天然空间性；只有系统门才需要时间维度。
+
+**三步（按杠杆排序，均未开工）**：
+- **L1 门分家**：commit 路径只跑 8 道系统门（守数据正确性，必须阻断）；9 道脚手架门移出阻断路径 → warn + 汇总 + 批量修入口。脚手架失败不影响系统正确性，不该挡系统修复。
+- **L2 系统约束进运行时自检**：现 `daily_update` 只查 continuity + watermark SLA。判定类系统约束（b_pit cutover 是否仍在窗内、population contract、availability policy）必须在**每次运行**自检 —— `b_pit` 静默失效 13 个交易日无人知，正因它只在 commit 时被查，而那段时间无人 commit 相关代码：**系统跑了 13 次，一次都没自检过自己的约束**。
+- **L3 文档按受众分家**：`engineering_governance` §6/§11、`AGENTS` §4 是**系统约束**，应移进 `MASTER`；两份文件只留开发纪律。判据一句话：**这条约束是「系统必须这样运行」还是「开发时该这样做」？**
+
+**已知待并入的孤儿法条**：`run_outcome` 四态（`success`/`soft_waiting_clock`/`integrity_observe`/`hard_fail`）被 8 个代码文件依赖，但 `docs/` 三份 owner contract **零处提及** —— 活机制无 owner 级锚点。按 L3 判据应进 `MASTER`（系统语义），**不要**放 `engineering_governance`。
+
 ## 禁令
 
 - 静默 cutover / 无证据回翻 `cutover_allowed=false`；Optuna；E 松门；StrategyRelease
