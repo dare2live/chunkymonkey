@@ -1,5 +1,0 @@
-run_id: purge_f4_dim_data_asset_20260628
-db: smartmoney
-archive_dir: data/archive/purge_processed
-entries:
-  - {table: dim_data_asset, action: archive, bucket: rotted_registry, reason: "F4 退役: 烂掉的碎登记表 (67stale/68漏登/仅smartmoney/0强制); 职责归并 — layer/asset_class→data_layers.yaml, freshness→layer_health_defaults+sync_registry+table_health_overrides, producer/consumer→lineage, 退役态→mart_data_deprecation_record; data_health 改读 registry 投影 + DDL/seed/data_deprecation 全删"}

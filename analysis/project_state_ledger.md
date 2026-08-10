@@ -3134,7 +3134,7 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - Owner：体感 endless patching；问真问题 / 是否仅本仓 / 架构是否过复杂。
 - Judgment：主因=foundation/product CLOSED 后队列与 ceiling 错位；次因=编排交互边偶发真债；架构有罪=再生误读边+floor 绿幻觉，非应 greenfield。
 - Next：用产品 + ops 时钟 + owner 排期 E/F；默认禁止清 PARTIAL 代码刀。
-- Evidence：`analysis/why_patch_treadmill_20260722.md`；adversarial 576ee281 / a1c0b123。
+- Evidence：~~`analysis/why_patch_treadmill_20260722.md`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history**；adversarial 576ee281 / a1c0b123。
 
 ### 2026-07-22 — daily_update 通知刷屏分诊 + soft-degrade coalesce
 - Owner：Script Editor macOS 三连（FAIL+WARN+降级）= 假失败刷屏；rc=4 preflight / rc=5 stock_st·daily kidnap / rc=1 soft degrade 映射已知 RCA。
@@ -3163,7 +3163,7 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - Ship `backend/services/data_sources/frontier_decision.py`: typed compare outcomes + `plan_incremental_days` policies (`atomic_skip` / `ann_reprobe`); org hook remaps period-equal → skip (no by-date invent).
 - Wire: holders incremental via `decide_frontier(notice_date)`; sync_runner `by_ann_date` keeps wm day on equal/advance; `by_trade_date` unchanged semantics via same primitive.
 - Tests blocking: `test_frontier_decision.py` + `test_by_ann_date_equal_day_reprobe.py`; holders equal-day branches green.
-- Acceptance: `analysis/unified_frontier_detection_acceptance_20260723.md`; map updated. Residual: G4/G5, by_trade_date equal-day evidence gate, org期内 repair.
+- Acceptance: ~~`analysis/unified_frontier_detection_acceptance_20260723.md`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history**; map updated. Residual: G4/G5, by_trade_date equal-day evidence gate, org期内 repair.
 
 ### 2026-07-24 — org 分片抓取 + pagination integrity（100 页硬顶截断诚实化）
 - Q：东方财富 org（机构持股）v1 接口 page>100 时返回 pages=0 但实际 count~830k，此前静默截断落库未被察觉。

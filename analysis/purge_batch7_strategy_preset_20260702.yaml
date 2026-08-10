@@ -1,7 +1,0 @@
-# 批7 抓漏物删 strategy_preset (用户批0拍板"退役物删"但批1-4漏执行, 第4轮验dry抓出)
-# router backend/routers/strategy_preset.py 同批 git rm (DDL在router内自建, 无重建路径); Phase1 工作台从零设计参数管理
-run_id: purge_batch7_strategy_preset_20260702
-db: smartmoney
-archive_dir: data/archive/purge_batch3
-entries:
-  - {table: dim_strategy_preset, action: archive, bucket: retired_serving, reason: "批7抓漏: 策略预设表 3条seed默认值(稳健/激进/试验型 2026-06-14生成, 无用户自定义数据), 用户批0拍板退役物删, router+main.py include+data_layers声明同批清"}

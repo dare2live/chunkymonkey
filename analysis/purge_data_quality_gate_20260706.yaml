@@ -1,7 +1,0 @@
-# 退役 data_quality.py 全孤儿子系统 (全面数据审计 comprehensive_data_module_audit_20260706.md
-# 新 check_dead_references scan_e 抓获) — 唯一物化过的表, 归档后物删
-run_id: purge_data_quality_gate_20260706
-db: smartmoney
-archive_dir: data/archive/purge_processed
-entries:
-  - {table: mart_global_data_quality_gate, action: archive, bucket: dead_orphan_module, reason: "data_quality.py 全模块(3742行)零调用方退役: record_global_data_quality_gate 从未被任何router/service/pipeline调用, 128行为2026-06-28策略层重建前的历史遗留写入; 用户拍板删(2026-07-06)"}

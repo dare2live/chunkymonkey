@@ -1,8 +1,0 @@
-# 批3e 物删孤儿表 (0 消费方; schema_core DDL + data_layers 声明已清, 防 init 重建)
-run_id: purge_batch3e_orphan_dims_20260629
-db: smartmoney
-archive_dir: data/archive/purge_batch3
-entries:
-  - {table: financial_sync_state, action: drop, bucket: orphan, reason: "批3e: financial_client 退役遗留空表 0行 0消费方"}
-  - {table: dim_holder_alias, action: archive, bucket: orphan, reason: "批3e: TDX holder 别名孤儿维表 30行 0消费方 (TDX退役), DDL+data_layers已清"}
-  - {table: dim_data_source_priority, action: archive, bucket: orphan, reason: "批3e: 多源优先级孤儿表 10行 §4.3单源体制概念废 0消费方, DDL+data_layers已清"}

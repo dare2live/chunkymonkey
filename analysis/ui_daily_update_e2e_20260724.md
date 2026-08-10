@@ -96,6 +96,6 @@ Contrast (yesterday stale UI state before this run): prior idle API showed `inte
 
 ## Evidence files
 
-- `analysis/ui_daily_update_monitor_20260724.log` — 30s log tail during run
-- `data/reports/daily_20260724.json` — full delta_manifest + type_b_publish
-- Playwright snapshots: `.playwright-cli/page-2026-07-24T14-43-05-468Z.yml` (trigger), `page-2026-07-24T17-28-49-361Z.yml` (post-run API stall)
+- ~~`analysis/ui_daily_update_monitor_20260724.log`~~ — 30s log tail during run；**2026-08-10 删除**（308KB 进度刷屏日志，从未纳入 git；内容为 holders_aif10 103 分片的逐批进度与耗时，可由重跑复现，关键结论已摘入本文档正文）
+- `data/reports/daily_20260724.json` — full delta_manifest + type_b_publish（**这份才是该次运行的结构化真相**）
+- Playwright snapshots: `.playwright-cli/` 下的 `page-2026-07-24T14-43-05-468Z.yml` (trigger) / `page-2026-07-24T17-28-49-361Z.yml` (post-run API stall)；**该目录未纳入 git**，快照仅存于当时的本地工作区

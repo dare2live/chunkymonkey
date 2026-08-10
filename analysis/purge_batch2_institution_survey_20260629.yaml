@@ -1,9 +1,0 @@
-# 批2 数据源切 tushare — institution_survey 旧源 (aif10+akshare) 退役物删
-# 代码已退役 (批2a: institution_survey_client + acquire Step2i + clients_registry ClientSpec git rm,
-#   SERVE entity institution_survey 切 raw_tushare_stk_surv tushare 唯一)。表孤立; archive parquet 可逆。
-run_id: purge_batch2_institution_survey_20260629
-db: smartmoney
-archive_dir: data/archive/purge_batch2
-entries:
-  - {table: raw_institution_surveys, action: archive, bucket: retired_source, reason: "批2: institution_survey 切 tushare stk_surv 唯一(raw_tushare_stk_surv 360k已拉全), aif10+akshare 旧源退役 (institution_survey_client+acquire Step2i 已git rm)"}
-  - {table: mart_stock_survey_activity, action: archive, bucket: retired_source, reason: "批2: institution_survey_client 退役=派生不再rebuild, 解 U5 archive后被 client 每天复活的 purge↔resurrect 死循环"}

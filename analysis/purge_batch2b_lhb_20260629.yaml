@@ -1,8 +1,0 @@
-# 批2b 数据源切 tushare — LHB 龙虎榜旧源 (aif10+akshare) 退役物删
-# 代码已退役 (批2b: lhb_client + acquire Step2d + aif10 lhb_daily capability + clients_registry ClientSpec git rm;
-#   LHB 走 tushare top_list/top_inst, SERVE entity top_list/top_inst 已在)。下游 fact_lhb_event 已删=0 reader。archive 可逆。
-run_id: purge_batch2b_lhb_20260629
-db: smartmoney
-archive_dir: data/archive/purge_batch2
-entries:
-  - {table: raw_lhb_daily, action: archive, bucket: retired_source, reason: "批2b: LHB 切 tushare top_list(142k)/top_inst(178万)唯一, aif10+akshare raw_lhb_daily(58756) 退役 (lhb_client+acquire Step2d git rm; fact_lhb_event 已删 0 reader)"}

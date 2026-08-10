@@ -1,5 +1,0 @@
-run_id: purge_e_orphan_audit_report_20260628
-db: smartmoney
-archive_dir: data/archive/purge_processed
-entries:
-  - {table: mart_data_audit_report, action: archive, bucket: governance_orphan, reason: "残留清扫 E: 孤儿治理 mart (1 行 stale; audit 已改写 data/reports/data_audit_latest.json JSON, 此表无 live writer, 非 schema DDL, 仅 seed 元数据登记)"}

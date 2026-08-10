@@ -1,7 +1,0 @@
-# 批3b 物删 tushare 十大流通股东残表 (已被 aif10 取代; sync_registry域/data_access entity 已退役)
-# holder 主源 = 东财妙想 aif10 → fact_top10_holder_period (172万行 source='miaoxiang', LIVE 保留)
-run_id: purge_batch3b_top10_floatholders_20260629
-db: tushare_raw
-archive_dir: data/archive/purge_batch3
-entries:
-  - {table: raw_tushare_top10_floatholders, action: archive, bucket: legacy_source, reason: "批3b: tushare十大流通股东 1975788行, 已被aif10取代(holder主源=fact_top10_holder_period), tushare财报季驱动滞后~4月(§4.3实测600388). fan-in: 0 builder消费 + SERVE dossier已删 + sync_registry top10域退役 + data_access holders_top10 entity删. watermark已切aif10 fact."}

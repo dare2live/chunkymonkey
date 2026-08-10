@@ -1,7 +1,0 @@
-# 批3d2 物删 ETF K线源二件套 (tushare_raw 库; ETF子系统整体退役连带, 100%纯ETF无shared依赖)
-run_id: purge_batch3d2_fund_daily_adj_20260629
-db: tushare_raw
-archive_dir: data/archive/purge_batch3
-entries:
-  - {table: raw_tushare_fund_daily, action: archive, bucket: etf_retirement, reason: "批3d2: ETF场内基金未复权OHLCV 1367265行, 实测ts_code前缀100%纯15/51/56/58(场内ETF), 无个股/shared依赖, ETF子系统整体退役"}
-  - {table: raw_tushare_fund_adj, action: archive, bucket: etf_retirement, reason: "批3d2: ETF复权因子 1399013行, 实测ts_code前缀100%纯15/51/56/58, 无shared依赖, ETF子系统整体退役"}

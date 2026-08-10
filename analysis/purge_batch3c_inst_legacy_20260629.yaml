@@ -1,8 +1,0 @@
-# 批3c 物删机构旧表 (孤儿; writer institution_write Phase0已删, DDL/data_layers 已清防 init 重建)
-# 机构持仓明细主源切 aif10 raw_org_holding_aif10 (org_holding_aif10.py, 336077行 LIVE)
-run_id: purge_batch3c_inst_legacy_20260629
-db: smartmoney
-archive_dir: data/archive/purge_batch3
-entries:
-  - {table: inst_holdings, action: archive, bucket: orphan, reason: "批3c: 机构持仓明细旧表 34994行, writer institution_write Phase0物删, 0真实读消费方(security_master仅L12注释), aif10 raw_org_holding_aif10(336077)取代"}
-  - {table: inst_institutions, action: archive, bucket: orphan, reason: "批3c: 机构registry旧表 240行, 0真实读消费方, 孤儿(writer Phase0删)"}

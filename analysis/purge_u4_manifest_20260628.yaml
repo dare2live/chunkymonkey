@@ -1,6 +1,0 @@
-run_id: purge_u4_financial_20260628
-db: smartmoney
-archive_dir: data/archive/purge_processed
-entries:
-  - {table: fact_financial_derived, action: archive, bucket: financial_derived, reason: "加工层清空: 财务派生指标 (calc_financial_derived 退役, raw_tushare 财务保留可重建)"}
-  - {table: dim_financial_latest, action: archive, bucket: financial_derived, reason: "加工层清空: 最新财务快照维度 (派生)"}
