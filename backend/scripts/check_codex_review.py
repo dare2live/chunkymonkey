@@ -6,11 +6,16 @@
   写下一个否定裁决，写下它就意味着确有未消除的异议，忽略它是实质风险。
 * 缺少 ``APPROVE`` / ``APPROVE_WITH_NOTES`` **不再阻断**，降为提示。
 
-为什么取消 APPROVE 作为通过条件：本门的唯一输入是提交者自己写的 commit
-message（见 ``safe_commit.sh`` Step 4.5 与 ``.git/hooks/commit-msg``），它做的
-全部事情是在那段文本里正则匹配一行字符串。它无法验证审查是否发生、审查者是
-谁、是否独立于提交者。按本项目自己的判据（committer 自写 justification + 无
-复核 = 摆设），把它当红线门有三个坏结果：
+为什么取消 APPROVE 作为通过条件：本门**判定「审查是否发生」的唯一依据**，是提交
+者自己写的 commit message 里的一行正则匹配。
+
+（措辞精确化 —— 独立审查 finding A：本门确实还读 ``get_staged_files()`` 与
+``classify_commit_tier``，初版 docstring 写「唯一输入是 message」并不准确。但那
+些输入只决定**是否需要审查**、哪些文件算 risky；它们无法、也从未被用来验证审查
+本身是否发生。被降级的正是后者。）
+
+它无法验证审查是否发生、审查者是谁、是否独立于提交者。按本项目自己的判据
+（committer 自写 justification + 无复核 = 摆设），把它当红线门有三个坏结果：
 
 1. 挡不住不做审查的人 —— 补一行字即过；
 2. 只挡住不愿假称「审过了」的诚实提交者；
@@ -20,6 +25,11 @@ message（见 ``safe_commit.sh`` Step 4.5 与 ``.git/hooks/commit-msg``），它
 原则：**一件事若无法机器验证，就不要用机器门假装验证它 —— 写进规则，别写进
 闸。** 真要强制独立审查，enforcement 必须落在提交者够不到的地方（CI / PR 侧
 reviewer），本地 commit-msg hook 天然做不到。
+
+**未竟事项（独立审查 finding C）**：本次只做了「拆除」，没做「替代」，留下了
+一个真空 —— 旧门虽假，至少还给诚实提交者一个约束信号。补位方案（CI 侧强制
+reviewer，提交者够不到）尚未落地，在它落地前，L3 改动的独立审查完全依赖执行者
+自觉遵守 eng_gov §14 的纪律。这一点必须诚实写明，不得当作已解决。
 
 安全性不依赖本门：PIT / leakage / continuity / lineage / population / calendar
 等门读的是代码与数据，提交者无法用措辞影响它们。
