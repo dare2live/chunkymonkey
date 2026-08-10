@@ -10,18 +10,30 @@ sections:
     fail_regex: "FLAGS_PRESENT"
     ok_requires_regex: "NO_FLAGS|FLAGS_PRESENT"
   - id: running-jobs
-    title: "在跑的链/任务 (有 = 先别动库)"
-    command: ["bash", "-c", "pgrep -fl 'daily_update.sh|sync_runner|backfill_history|build_concept_events' || echo NONE_RUNNING"]
-    warn_regex: "daily_update|sync_runner|backfill|build_concept"
+    title: "在跑的写库任务 (有 = 先别动库)"
+    # 2026-08-10 修陈旧名单: 原列 backfill_history / build_concept_events 两个**已不
+    # 存在**的脚本(全仓无此文件, pgrep 永远抓不到), 而当时真实的 8 个写库脚本里只覆盖
+    # 到 2 个 —— 跑 org_holding_period_drain 等 ops 任务时本节会报 NONE_RUNNING,
+    # 接手者据此以为可以动库。这是本节存在的唯一理由被架空。
+    # 改用**模式**而非脚本名清单: 名单必然随新脚本再次陈旧, 模式能自动覆盖同类。
+    # 覆盖面: daily_update / sync_runner / *_drain* / *repair* / ingest_* /
+    #        db_compact / build_price_kline / persist_*
+    command: ["bash", "-c", "pgrep -fl 'daily_update\\.sh|sync_runner|_drain|repair_|ingest_|db_compact|build_price_kline|persist_' || echo NONE_RUNNING"]
+    warn_regex: "daily_update|sync_runner|_drain|repair_|ingest_|db_compact|build_price_kline|persist_"
     ok_requires_regex: "NONE_RUNNING|[0-9]"
   - id: git-status
     title: "脏 worktree (有未 commit = 上个 session 没收尾)"
     command: ["git", "status", "--short"]
     warn_regex: "."
   - id: chain-logs
-    title: "最近链日志尾部 (w1_chain*/chain9)"
-    command: ["bash", "-c", "for f in /tmp/w1_chain*.log /tmp/chunkymonkey_daily_update.log; do [ -f \"$f\" ] && echo \"== $f\" && tail -3 \"$f\"; done"]
+    # 2026-08-10: 去掉 w1_chain* —— 该命名是 2026-06 workflow 时代产物, 全仓已无
+    # 产生方, 留着只会让读者以为还有这样一条链。
+    title: "最近运行日志尾部 (daily_update)"
+    # 2026-08-10 修假 FAIL: 原命令在「一个日志都不存在」时, for 末次 [ -f ] 返回
+    # false 使整条 exit 1 —— 没有失败日志反而被判 FAIL。补 NO_CHAIN_LOGS 兜底。
+    command: ["bash", "-c", "found=0; for f in /tmp/chunkymonkey_daily_update.log; do if [ -f \"$f\" ]; then found=1; echo \"== $f\"; tail -3 \"$f\"; fi; done; [ $found -eq 1 ] || echo NO_CHAIN_LOGS"]
     fail_regex: "FAIL:"
+    ok_requires_regex: "NO_CHAIN_LOGS|== /tmp/"
     max_lines: 20
   - id: moth-assertions
     title: "moth 声称-实况对账 (弹仓)"
@@ -29,11 +41,15 @@ sections:
     timeout_s: 120
     ok_requires_regex: "verdict="
     fail_regex: "verdict=FAIL"
-  - id: data-status
-    title: "数据迁移状态仪表盘 (registry 驱动)"
-    command: ["bash", "scripts/chunkyctl", "data-status"]
+  # 2026-08-10 换命令: 原 `chunkyctl data-status` 已退役, chunkyctl 直接回
+  # "is retired and unavailable"（AGENTS.md §6 禁复活已退役 chunkyctl 子命令）,
+  # 于是本节永久 FAIL —— 门红了没人看, 等于整个 takeover 失效。改用当前阶段的
+  # 权威状态门 check_foundation_done --json（含 verdict 键）。
+  - id: foundation-gate
+    title: "地基阶段门 F1–F10 (当前阶段状态仪表盘)"
+    command: ["bash", "-c", "cd \"$(git rev-parse --show-toplevel)\" && PYTHONPATH=backend .venv/bin/python backend/scripts/check_foundation_done.py --json 2>/dev/null | head -c 600"]
     timeout_s: 180
     ok_requires_regex: "verdict"
-    fail_regex: "verdict=FAIL"
-    warn_regex: "verdict=WARN"
+    fail_regex: "\"verdict\": \"FAIL\""
+    warn_regex: "\"verdict\": \"PARTIAL\""
     max_lines: 25
