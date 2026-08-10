@@ -3164,3 +3164,187 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 - Wire: holders incremental via `decide_frontier(notice_date)`; sync_runner `by_ann_date` keeps wm day on equal/advance; `by_trade_date` unchanged semantics via same primitive.
 - Tests blocking: `test_frontier_decision.py` + `test_by_ann_date_equal_day_reprobe.py`; holders equal-day branches green.
 - Acceptance: `analysis/unified_frontier_detection_acceptance_20260723.md`; map updated. Residual: G4/G5, by_trade_date equal-day evidence gate, org期内 repair.
+
+### 2026-07-24 — org 分片抓取 + pagination integrity（100 页硬顶截断诚实化）
+- Q：东方财富 org（机构持股）v1 接口 page>100 时返回 pages=0 但实际 count~830k，此前静默截断落库未被察觉。
+- Fix `888bfde75`：按 SECURITY_CODE 分片（sharded）抓取绕开单页硬顶；`pagination_integrity` fail-closed，截断态落地前即拒绝 accept。
+- Tests：`test_pagination_integrity.py`（新增）、`test_org_holding_aif10.py`（扩）。
+- Evidence：`analysis/org_provider_page_cap_fix_20260724.md`。
+- Residual：历史已落库的截断分区需 ops 显式修复（见下一条）；holders/qfii 分片抓取延后处理。
+
+### 2026-07-24 至 2026-07-25 — org 有界补洞 N=1/run + ops 截断修复（禁 mass re-pull）
+- Q：历史截断分区（如 2025-12-31 落地 495209 行，应为 832907 行）如何补，同时不触发 ~830k 全量 mass refresh 红线。
+- Fix `cad72c61c`：显式 period drain + Type-B catchup 入口，按 report_date 限定 accept/delete 与 mass-guard，drain 逐最旧 quarter，`allow_existing_refresh=False`，≤40/session；`859dd6e8c`：2025-12-31 canary 修复 495209→832907 行（vs API 832906），fetch-only 校验 truncated=false；`b6135ba1b`：2025-06-30 修复证据（745991 行/truncated=false，report 20260724T235226Z），heuristic trunc 队列 23→19，page-cap 队列 13→0；`494d3005f` 补记修复 SHA 到证据文档（docs-only）；`d7bf8111b`：hard_truncated 重定义为「仅 page-cap」，2019-03-31 canary（provider_count==landed、stocks unchanged）证明 under_modern_baseline 只是 soft 观察、不触发 mass repair，live hard_truncated 清零。
+- Tests：`test_org_holding_truncation_audit.py`、`test_org_holding_acceptance.py`。
+- Evidence：`analysis/org_period_drain_now_20260724.md`、`analysis/org_canary_repair_20260724.log`、`analysis/org_fetch_validation_20260724.json`、`analysis/org_trunc_repair_ops_20260724.log`、`analysis/org_trunc_repair_drive_20260725.md`、`analysis/org_canary_q1_20190331_20260725.log`、`analysis/org_heuristic_soft_baseline_20260725.md`。
+- Residual：部分 provider 分页仍有 ~200k 行 cap（population probe under_populated=false）；非规范探测批次可能残留在落地表，未清。
+
+### 2026-07-27 — org accepted pointer 完整性（FULL OUTER + content_hash）
+- Q：多份公告（multi-report）共享同一 available_date 分区时，accepted pointer 的 row_count/content_hash 被最后一批覆盖，未覆盖分区内其它报告期。
+- Fix `9a02683e5`：停止 last-batch 覆盖，改按 `report_dates_in_batch` merge；新增 F6 count-mismatch 门；live 修复 8/22 个 mismatch 分区。`273d7b6be`：pointer 完整性收口证据，post-fix-audit 核verified。
+- Tests：`test_org_holding_acceptance.py`、`test_org_holding_pointer_integrity.py`（新增 199 行）、`test_check_foundation_done.py`。
+- Evidence：`analysis/org_holding_pointer_fix_20260727.md`、`analysis/org_holding_pointer_repair_20260727.json`。
+- Residual：`org_pointer_mismatches=0`（post-fix-audit 核实）；同批次 strategy snapshot/holdout 当时仍 BLOCKED for RX（无因果关系，仅同日并行提交）。
+
+### 2026-07-25 — QFII 缺失报告期 drain（22→0）
+- Q：daily 增量只补最新 plannable 报告期，历史 QFII 报告期空洞（missing）如何补而不越权。
+- Fix `364b0da6e`：ops-only oldest-first drain 脚本（经 `qfii_client` helper，非脚本层裸 SQL），跳过已有数据季度，SESSION_MAX=40；missing 判定=本地零行，非密度启发式。
+- Tests：qfii 相关 9/9 passed（commit message 记）。
+- Evidence：`analysis/qfii_period_drain_20260725.md`；live missing_after=0。
+
+### 2026-07-25 至 2026-07-26 — holders `fact_top10_holder_period` DROP，canonical notice 成为唯一 SSOT
+- Q：holders 数据存在 fact（冻结镜像）与 canonical（notice_date 水位）双平面，DataAccess/health/watermark 曾按冻结 fact 判断，导致 data_health 误报 yellow。
+- Fix `2d4a164e2`：DataAccess/health/watermark 改按 canonical notice tip 判断（`as_of=notice_date`），live data_health yellow 1→0；`312391eb9`：DROP `fact_top10_holder_period`，dossier/screener/episode 读路径迁 dim+canonical，砍 from-fact catchup 与旧镜像路径，post-fix-audit 后记 deprecation。
+- Tests：`test_dual_plane_faucet.py`（新增 73 行）、`test_disclosure_boundaries.py`、`test_disclosure_dual_write.py`、`test_holders_top10_acceptance.py`、`test_stock_dossier_api.py`、`test_stock_screener.py`、`test_db_health.py`、`test_holders_aif10.py`、`test_institution_profile.py`、`test_source_watermarks.py`（312391eb9 批量改）。
+- Evidence：`analysis/dual_plane_fix_plan_20260725.md`、`analysis/foundation_residual_rootcause_20260725.md`、`analysis/holders_fact_retire_20260725.md`。
+- Residual：fact/raw 层仍保留作 fill/compat；org soft 已在此前独立降级（非本条改动）。
+
+### 2026-07-25 — foundation F1–F10 全量再审计 + static checker false-FAIL 修复
+- Q：static checker 对 acquire-phase Type-B 步骤误判 false-FAIL。
+- Fix `f563dff63`：修 checker 误报；证据记录 F1–F10/continuity 全部 PASS，blocking pytest 1176 passed，doctor 1 yellow（=fact_top10 observe，即上条 holders DROP 前的状态）。
+- Evidence：`analysis/foundation_full_audit_20260725.md`。
+- Residual：Continuity READY / RX 当时仍未 claim；as_of frontiers 已文档化。
+
+### 2026-07-26 — F9 residual hygiene SLA（Type-B raw→fact + 公告 tip 滞后）
+- Q：Type-B raw→fact 发布滞后 / 公告 tip drift 此前只是遗留笔记，未接入门禁降级。
+- Fix `67c78377d`：把 YAML 阈值接入 store + type_b post-evaluate，publish/tip drift 会降级 daily_update；blocking pytest 1191 passed，live residual_hygiene overall PASS，按 trading-day（非 calendar-day）计滞后，Continuity READY 未被冲淡。`77d0020a6`：CI 环境 DuckDB（reference/raw）缺失时跳过 F9 type_b hygiene，避免 offline acquire 测试假降级；CI 根因=缺 reference.duckdb，skip PASS ≠ 静默 live SLA。
+- Tests：`test_residual_hygiene.py`（新增 185 行 + 后续 13 行补丁）。
+- Evidence：`analysis/residual_hygiene_f9_20260726.md`、`analysis/residual_hygiene_f9_live_20260726.json`。
+- Residual：A2/A3 现为 F9-gated 而非直接 drained；无 RX。
+
+### 2026-07-24 至 2026-07-27 — factor-family 治理 K1 结构门 / K2 频率连续性矩阵 / K3 live frontier 门
+- Q：RX（策略放行）前需要 factor family 层面的结构/频率/存活度门禁，此前无 SSOT。
+- Fix `0c202eb69`：factor-family governance 顶层设计（layers vs inventory，拉齐 vs shorten），scaffold `backend/config/factor_family_inventory.yaml`（仅设计+桩，当时未接门禁脚本）；`bcf33cf91`：moth smartmoney size band 提到 9GB（实测 8.72GB）；`a41500fbe`：K1 结构门 `check_factor_family_inventory`（ci blocking 1157 passed，moth 33/33）；`622df8fff`：K2 频率类型连续性门 `check_factor_family_gates.py`（blocking 1172/1172，moth claim）；`95cfd2697`：K3 live frontier 门收口（4/4 targeted tests，safe_commit 复验 blocking surface）；`e7c7b2bc0`：session backlog 状态刷新（docs-only，记 bcf33cf91/0c202eb69 之后、org repair in flight 的状态）。
+- Tests：`test_factor_family_inventory_gate.py`、`test_factor_family_continuity_gates.py`、`test_factor_family_frontier_projection.py`。
+- Evidence：`analysis/factor_family_governance_toplevel_20260724.md`、`analysis/factor_family_continuity_gate_matrix_20260725.md`、`analysis/factor_family_k3_live_gate_20260727.md`、`analysis/factor_family_k3_frontier_20260727.md`、`analysis/session_backlog_drive_20260724.md`。
+- Follow-up（`deebaf9ad`，2026-08-05）：暴露 `DuckConn.db_path`；回填 K2 矩阵 SHA；smartmoney size band 12→15GB（实测 13.69GB，moth assert 35/35，Rule10 codex APPROVE）。
+- Residual：K1/K2 为结构门，非 DuckDB frontier 实时校验（a41500fbe/622df8fff commit note 明记）；K4 见下条 strategy 集群。
+
+### 2026-07-27 — strategy: research_prereg_v1、snapshot holdout actual-bound、fail-closed lab control plane
+- Q：策略研究缺 pre-registration 原子记录；snapshot holdout 曾可被 live accepted calendar 扩张越界；lab 缺 fail-closed 控制面。
+- Fix `93ff86112`：`research_prereg_v1` 原子 param_hash/single-touch store + K3 frontier projection artifact + K4 STRATEGY plan inventory exit（post-fix-audit：无残留 StrategyRelease claim；multi-writer DB ledger 仍缺、RX schedule 仍 owner-only）。`69a9cbe89`：B0 覆盖不再随 live accepted calendar 扩张，freeze 按训练 cutoff 封顶，holdout 拒绝 actual>declared（bar OHLC 内容仍按冻结 membership 加载，非整行冻结）。`c0ffe51fd`：记录 fresh-freeze BLOCKED preflight 证据（shadow org MISMATCH 挡 cutover；foundation/factor 门 PASS；stale freeze fail-closed 无 nominal）。`4cbe50c06`：硬化 strategy snapshot holdout runtime（blocking 1314/1314）。`05572b0ae`：整改证据文档化（blocking 1317/1317 最终态）。`8fe7166cc`：加 fail-closed lab control plane（blocking 1337 passed；live inputs 仍 BLOCKED）。
+- Tests：`test_research_prereg_store.py`、`test_research_runtime.py`、`test_holdout_guard.py`、`test_institution_follow_b0/b1/b2/b4.py`、`test_main_rally_b0/b1/b2.py`、`test_snapshot_nominal_bind.py`（新增 267 行）、`test_strategy_lab.py`（新增 384 行）、`test_check_strategy_lab.py`。
+- Evidence：`analysis/strategy_prereg_k34_20260727.md`、`analysis/strategy_snapshot_holdout_bound_20260727.md`、`analysis/strategy_fresh_preflight_20260727.md`、`analysis/strategy_runtime_holdout_snapshot_fix_20260727.md`、`analysis/strategy_p0_holdout_hash_touch_f6_20260727.md`、`analysis/STRATEGY_EXECUTION_PLAN.md`。
+- Residual：非 StrategyRelease；RX 排期仍 owner-only；peer dirty analysis/logs 当时留 unstaged。
+
+### 2026-08-05 — 前端三连优化（echarts 按需引入 / 路由级 lazy / MarketPage 拆分）
+- Fix `2c7576db0`：echarts 全库 series/组件探测仅命中 line/bar/scatter/heatmap/sankey/parallel，改按需引入替代全量注册，echarts chunk 1036→622KB（-40%）。`dbaf7eda4`：路由级 `React.lazy` 代码分割，主 bundle 300→173KB，MarketPage/Workbench 等页面独立 chunk（实测 MarketPage 54KB/Workbench 21KB）。`2b5da1731`：MarketPage 纯函数/option 构建器拆到 `market/` 子模块（`format.ts` 格式化器+调色板，`chartOptions.ts` 4 个 echarts option 构建器），MarketPage 2383→2055 行。
+- Self-check（三条同源）：`tsc --noEmit` + `vite build` passed；每页 Suspense fallback 防回退白屏。
+- Evidence：无独立 analysis/*.md，证据在各 commit message 内联（bundle 体积实测数字）。
+
+### 2026-08-05 — disclosure shadow NaN/±inf→null 诚实门，修 `/api/v3/inst` 500
+- Q：`/api/v3/inst` 返回 500；根因 `canonical_stk_holdertrade.avg_price` NaN 残留实测 285 行（20260716-20260804 增量分区），disclosure shadow 的 `sample_mismatches` 把 NaN 直通给 `JSONResponse(allow_nan=False)`，序列化崩溃。
+- Fix `45732bb4f`：shadow 层 NaN/±inf→null 诚实门；实测修复后 profiles/signals 恢复 200。
+- post-fix-audit（5 步）：shadow 为 read-side 实时计算、无持久化，非 stale 问题；无 DB 写故无残留；诊断脚本 cleanup 已核实清理。
+- Residual：上游写入 NaN 的根因（canonical_stk_holdertrade avg_price 生成侧）未修，另行处理。
+
+### 2026-07-24 — stk_holdernumber RESTORE via by_ann_date + express/fina_mainbz DROP（S7 登记表清理）
+- Q：`raw_tushare_express`/`raw_tushare_fina_mainbz` 已退役但未 DROP；`stk_holdernumber`（股东人数）此前只是孤儿研究登记，未接 DataAccess。
+- Fix `b64e7990c`（07:38）：owner-signed DROP `raw_tushare_express`（26959 行）+ `raw_tushare_fina_mainbz`（25674 行），跳过 compact（~4MiB 可回收，文档化跳过原因）；`stk_holdernumber` 表保留但仍标 retired——明确其为孤儿研究登记，非 `holders_top10` 替代品。`9bde17735`（07:54）：复活 `stk_holdernumber` 为 typed raw_evidence，接 ann_date 增量 drain（非 by_ts_code mass）+ DataAccess `holder_number` + Cap F 的 fail-closed concentration/vs-price assist；Rule10 记：live vendor ann_date cross-section 已证实、drain fallback 已支持 by_ann_date、PIT on ann_date、尚无 formal accept plane（诚实标 share_float-class）、S7 wall 20/8/3、无 Optuna、禁 by_ts_code mass revive。
+- Tests：`test_holdernumber_assist.py`（新增 105 行）、`test_check_foundation_done.py`、`test_legacy_raw_plane_s7.py`、`test_stock_dossier_api.py`。
+- Evidence：`analysis/lifecycle_delete_manifest_express_fina_mainbz_20260724.yaml`、`analysis/stk_holdernumber_retire_evidence_20260724.md`。
+- Residual：`stk_holdernumber` 无 formal accept plane；DataAccess 层仍诚实标记为 share_float-class 而非一等公民。
+
+### 2026-07-24 — holders ann-axis mid-period 补洞 + 共享 frontier tip-leap partition catchup law + pre-formal holdertrade 回填
+- Q：`MAX(axis)` watermark 前跳（leap）后，落在 tip 之下的 source/accepted 空洞（PIT notice/ann 分区）未被追平；holders 稀疏 UPDATE_DATE 分区可能只留在 legacy fact 里。
+- Fix `542365446`（09:10）：`MAX(notice_date)` 可能推进但稀疏 UPDATE_DATE 分区仍只在 legacy fact；从本地 fact 修复并按 notice day 前向填充（同 holdernumber by_ann_date 模式）；post-fix-audit：无 stale consumer path，DataAccess/dossier 未变，无 mass/org invent。`c2a86ba6a`（09:21，docs）：确认 holders notice catchup + holdernumber by_ann_date 均已上线，排定 notice drain 的 ops backlog 顺序。`7432d2f8c`（09:46）与 `4bc41a6e5`（09:48）：commit message 完全相同（"fix(frontier): shared tip-leap partition catchup law."），相隔 2 分钟、改动范围不同——`7432d2f8c` 改 `backend/services/holders_aif10.py` + `analysis/data_axis_frequency_review_20260724.md`（132 行变更）；`4bc41a6e5` 新增 `backend/services/data_sources/frontier_decision.py` 扩展、`stk_holdertrade_catchup.py`（新文件 151 行）、`sync_runner.py` wiring、`holders_notice_catchup.py` 改、`analysis/partition_leap_integrity_20260724.md`（新文件 72 行）+ 对应测试（574 行变更）——按实况看是分阶段落地同一 law（先落一小块再补主体），非精确重复提交；Rule10 记两者共通：共享 `plan_partition_catchup` 拥有 due-set，holders 迁移到此原语（fact_only 1271→0），stk_holdertrade 接同一 law，set-difference due P≤wm bound≤40，禁 org mass，稀疏 ann 不补全日历。`3d984bc7c`（10:07）：回填 pre-formal holdertrade 历史入 canonical，live drain 1982 个 ann 分区（+63449 行）到 raw_only=0；post-fix-audit：holdertrade raw_only=0，holders fact_only=0，无 stale pre-formal defer。
+- Tests：`test_holders_aif10.py`、`test_frontier_decision.py`（新增 48 行）、`test_stk_holdertrade_catchup.py`（新增 92 行 + 2 行补丁）、`test_disclosure_dual_write.py`。
+- Evidence：`analysis/data_axis_frequency_review_20260724.md`、`analysis/holders_ann_date_axis_20260724.md`、`analysis/partition_leap_integrity_20260724.md`。
+- Residual：无 org mass；稀疏 ann 分区不触发全日历补全（policy 边界，非缺口）。
+
+### 2026-07-24 — org 有界补洞 N=1/run 管道底层实现（Period-domain incremental 裁决落地）
+- Q：org（机构持股）此前对缺失历史 quarter 只 log-not-fill，未真正补。
+- Fix `8b4649057`（10:46）：管道改为在最新 plannable 已完整时，经 `fill_older_period` + `plan_partition_catchup` 补一个最旧缺失 quarter；mass refresh 与 `backfill()` 仍禁用；PIT 经 disclosure-deadline accept path 不变；blocking pytest 1138/1138。
+- Tests：`test_org_holding_period_catchup.py`（新增 170 行）、`test_ops_manual_run.py`、`test_org_holding_aif10.py`。
+- Evidence：`analysis/org_period_bounded_fill_20260724.md`。
+- 说明：本条是同日晚些时候 `cad72c61c`（ops-script 层 oldest-first drain，见前一条「org 有界补洞 N=1/run + ops 截断修复」条目）所依赖的底层管道原语（`plan_partition_catchup`），两者共同构成 org period-domain incremental 的完整链路；本条为管道 wiring，`cad72c61c` 为其上的显式 ops 补洞脚本。
+
+### 2026-07-24 — Type-B fact 窗口 same-run 发布（注册表 drain 后 ≤40d 有界）
+- Q：Type-B 六个域 raw 领先 fact 的窗口如何追平，同时避免全量 rebuild 与 DuckDB 连接冲突。
+- Fix `8c90ef841`（13:39）：same-run catchup 比较 raw 与 fact 的 `MAX(trade_date)`，仅当 raw 领先时发布有界窗口（从不 full rebuild）；发布前先关闭只读探测连接以消除 DuckDB 连接冲突；blocking pytest 1146 passed。
+- Tests：`test_type_b_fact_publish_catchup.py`（新增 195 行）。
+- Evidence：`analysis/type_b_same_run_publish_20260724.md`。
+- Residual：≤40d 有界窗口，非全量；与 07-26 F9 residual hygiene SLA（见前一条目）是不同机制——F9 是阈值降级门，本条是发布管道本身。
+
+### 2026-07-23（10:08–23:13，单日高密度）— 前情说明
+以下 14 条覆盖 `cf355dbd2..HEAD` 拓扑范围内此前未入账的 37 个 commit（`cf355dbd2` 本身="unified frontier detection primitive"条已覆盖，不重复；`72fb73f48` 为文档治理方后续自行入账，此处不收）。全部发生在 2026-07-23 一天内（10:08 首个到 23:13 末个），按主题聚类，非时间流水。多条引用的原始证据文档已被同日 `2d8f1dbb9`（见下方"doc governance 折叠"条）批量归并/删除，凡现已不存在的文件本页明确标注「已删除」，不引用幽灵路径。
+
+### 2026-07-23 10:08–10:20 — 对抗审计开局（Agent A 结构复核 + red-team B）+ inst profile/episode 覆盖收紧
+- `8b352748b`（10:15）：Agent A 对 acquire→process 流程结构复核，PARTIAL 裁决——transport/frontier 主干健全；soft-clock vs integrity rollup、derive closure、population residual 排入后续刀列。`760a250b3`（10:16，Co-authored-by: Cursor）：red-team B 复核，live smartmoney 探测揭示 org period-gap 在 under-populated accept 时假绿、soft_outcome 吞掉 continuity FAIL、F6 partition-count vs population 有缺口——这两份审计是当天后续十余刀（closed-loop/F6/margin/holders/continuity）的立项依据。`f983a4550`（10:08）：`mart_inst_profile` 从「仅 rankable-closed」放宽到「全部非空 episode holder」显示，未测算 alpha 保持 NULL 不造假。`e1684edfc`（10:20）：ops `rebuild_all` 把 period_windows/episodes 追平到 holders frontier 20260721，live no_episode 55→0，top10 episode/profile 32191/32191 通过。
+- Tests：`test_institution_profile.py`、`test_institution_profile_api.py`。
+- Evidence：原始证据文档（`adversarial_acquire_process_review_A/B_20260723.md`、`inst_profile_coverage_lift_20260723.md`、`inst_episode_rebuild_catchup_20260723.md`）均已被 `2d8f1dbb9` 折叠删除，现无独立留存；本条内容据 commit body 与 diff 复原。
+
+### 2026-07-23 10:48–13:27 — closed-loop serve→derive law（inst 增量 delta-gate / org population 非空判断 / F6 底线 / as_of seed）
+- Q：institution_profile 刷新与 org population 是否"存在即跳过"，此前未区分"已处理"与"存在但欠采"。
+- Fix `ac9a96e85`（10:48）：`institution_profile` 按 daily process 做 delta-gate；org 拒绝在 under-populated 时做 existence-only skip；integrity_observe 与 soft clock 等待拆开，避免 ops 把空洞误读为 pending_publish；blocking 1069/1069 passed。Rule10 记：首次 post-deploy process 可能因缺 as_of 走全量 rebuild_all（~164s）；org under_populated 仅 observe 不触发 mass repair；F6 canary 上不 FAIL（设计如此）；rebuild_all 仍是可清空全量重建非行级 delta。`d7ee57c7c`（13:27）：消除残留——dense-raw canary 本地重接受，F6 对薄 org 分区判 FAIL，institution as_of 可 seed 使 daily process 不再意外全量重建；live 修复写 292380 canonical 行，canary 2→5524 stocks，FND-GATE F6 PASS。
+- Tests：`test_run_outcome.py`、`test_org_holding_aif10.py`、`test_pipeline_closed_loop.py`、`test_check_foundation_done.py`。
+- Evidence：`analysis/serve_derive_closed_loop_law_20260723.md`（`closed_loop_residual_closure_20260723.md` 已被 `2d8f1dbb9` 删除）。
+
+### 2026-07-23 13:50 — Cap F dossier 100% usable；margin frozen lag 降级为 observe 非 FAIL
+- Fix `d88167c5a`：live eligible_end=20260722 / local_max=20260716 时，continuity 标 `observe_frozen_stale` 而非 FAIL；dossier 侧新增 `stock_dossier_cap_f_usable` surface（pytest + live 600519 验证）；`on_demand≠no-calendar`，catchup 仍 BLOCKED 直到 population-scope 明确（非产品解冻）。post-fix-audit：无 stale「Continuity FAIL 当 actionable」误用于冻结 margin；无 MVP fog 残留声称 moneyflow_assist_not_in_mvp。
+- Tests：`test_check_continuity_integrity.py`、`test_safe_commit.py`、`test_pipeline.py`、`test_stock_dossier_api.py`。
+- Evidence：`analysis/dossier_100_usable_20260723.md`（`margin_calendar_catchup_blocker_20260723.md` 已被 `2d8f1dbb9` 删除）。
+
+### 2026-07-23 13:58–14:34 — DB bloat 审计 + `raw_tushare_stk_factor_pro` DROP（~5.2GiB）+ delete-then-refill 审计
+- Q：orphan 表占用空间，DROP 前需先核实 DataAccess 零消费 + 是否有隐藏 refill 路径。
+- Audit `43a106549`（13:58，只读测量）→ `44d29b0f1`（14:05，stk_factor_pro/holders/market owner 裁决）→ `32d022c91`（14:14，delete-then-refill 路径盘点：区分「必要幂等 replace」vs「意外 re-land/CTAS free-block」，标注 stk_factor_pro 的 sync_registry 当时仍活跃需一并 tombstone）。Fix `a75288129`（14:31）：owner-signed DROP `raw_tushare_stk_factor_pro`（7736955 行 deletion_record），tushare_raw compact 10.0→4.7GiB（用 EXPORT/IMPORT，因磁盘紧张不用 db_compact 峰值），tombstone sync_registry + 退役 S7 inventory 使 daily/on_demand 均无法 refill；blocking 1083/1083 passed，DataAccess 0 消费。`4b0e3637e`（14:33）+`76698aa8b`（14:34）：DROP 后复核（表已不在、explicit sync 报 KeyError）+ 排列当天剩余刀顺序（margin 1b WIP → holders skip-land → qfq compact）。
+- Tests：`test_check_foundation_done.py`、`test_legacy_raw_plane_s7.py`、多个 `*_publish_b1/b2.py` payload 快照更新。
+- Evidence：`analysis/db_bloat_deep_dive_20260723.md`、`analysis/lifecycle_delete_manifest_raw_tushare_stk_factor_pro_20260723.yaml`（`db_size_bloat_audit_20260723.md`、`db_refill_after_delete_audit_20260723.md`、`global_cleanup_rebuild_plan_20260723.md` 均已被 `2d8f1dbb9` 删除）。
+
+### 2026-07-23 14:04–14:57 — margin knife 1a/1b：accepted population scope fail-closed + v3 有界日历追补（rzrqye 仍 UNTRUSTED）
+- Q：margin registry 曾把 accepted 声明扩到 BSE/project_universe，需收窄到 SSE+SZSE 且日历有界解冻。
+- Fix `e6b3e44c5`（14:04）：registry accepted 声明收窄出 BSE/project_universe，v2 transport+freeze 保持到 1b 有界追补上线；Continuity 维持 `observe_frozen_stale`（不解冻）；live accepted 1823d 在收窄后仍可加载。`0f5af7e80`（14:37）：knife 1b — 仅日历合格的增量日解冻 on_demand land/accept，v2 BSE 证据只读保留，Continuity 允许因 margin 滞后 FAIL（非解冻的 cosmetic READY）；rzrqye 产品面继续 UNTRUSTED，无 `--all-due`/mass backfill 路径。`8f36809bf`（14:57）：commit message 写「qfq in-module post-CTAS compact (Knife 3)」，但实际 diff 只改 `margin_catchup_acquire.py`/`sync_runner.py`/`test_margin_catchup.py` 及 margin 相关 analysis 文档——内容是 margin catchup 而非 qfq，按实际改动归入本簇（消息与内容不符，如实记录不假设）。
+- Tests：`test_margin_population_scope.py`、`test_margin_catchup.py`、`test_margin_acceptance.py`、`test_margin_reconcile.py`、`test_margin_state.py`、`test_margin_projections.py`、`test_sync_execution_policy.py`、`test_dataset_contracts.py`。
+- Evidence：原始证据（`foundation_residual_fix_plan_20260723.md`、`margin_v3_bounded_catchup_1b_20260723.md`、`margin_catchup_live_20260723.md`）均已被 `2d8f1dbb9` 删除，现无独立留存；F4 阶段的后续证据见下方「holders F3 + margin F4」条目（覆盖 promote_gate，非本条 1a/1b 本身）。
+
+### 2026-07-23 14:47–15:05 — holders payload_hash skip-re-land（防 append storm，供 org landing 移植参考）
+- Q：disclosure holders_top10 落地表（landing，append-only）在 provider 对同一 `notice_date` 内容重复返回时，每次 ingest 都会原样再 append 一份，实测已堆到 avg_copies=31.86（约 32 倍冗余），且仍在持续累积。
+- 机制（`67cd81c27`，14:47）：新增 `backend/services/data_sources/holders_top10_skip_land.py`（44 行）。落地新批次前，先按 key（ts_code + notice_date）取该批次的 `payload_hash`（内容哈希），与 ACCEPTED 分区当前已落地的 `payload_hash` 比对——**完全相同则跳过本次 landing INSERT（不写）**；只要 `payload_hash` 有差异（真正的新内容/修订）则照常 append，append-only 语义不变，全程**不做 landing DELETE**。`backend/services/data_sources/holders_top10_acceptance.py`（+19 行）接入该跳过判断；`disclosure_dual_write.py`/`disclosure_transport.py` 同步改为使用跳过判断返回的 `batch_id`（而非调用方自行猜测），避免 dual-write 双写不一致。
+- 规模：防的是「同一 notice_date 内容不变、逐次 ingest 仍全量重复 append」这一类无界增长——修复前实测 avg_copies=31.86（即约 32 倍冗余仍留存在库内，属历史存量，本刀只挡新增不回填清理；历史 31x 存量的清理是另一把刀，见下方「holders F3 landing retention」条目，二者是"先止血、后清创"的两段式）。
+- 后续接线 `f1479f780`（15:05）：把 skip-land 接入实际 ingest 入口 `backend/scripts/ingest_holders_aif10.py`、`backend/scripts/ingest_org_holding_aif10.py`，并删除已冗余的 `backend/scripts/ingest_stk_holdertrade_canary.py`（61 行，旧 canary 脚本退役）；此 commit message 写的是「land qfq post-CTAS compact hook (Knife 3 code)」，但 diff 与 qfq/market 无关——同样是消息与内容不符（真正的 qfq Knife 3 落在下一条 `a49a99786`），如实记录。
+- Tests：`test_holders_top10_acceptance.py`（新增/扩 132 行，覆盖 skip 与 append 两类 case）、`test_disclosure_dual_write.py`。
+- Evidence：`backend/services/data_sources/holders_top10_skip_land.py`、`backend/tests/services/test_holders_top10_acceptance.py`（均为源码/测试路径，非 analysis 文档；原 analysis 证据 `global_cleanup_rebuild_plan_20260723.md`、`rewrite_mechanism_verdict_20260723.md` 均已被 `2d8f1dbb9` 删除）。
+- Residual（fix 时点）：avg_copies=31.86 的历史堆积未在本刀清理，留给 F3 retention 刀（见下条）。
+
+### 2026-07-23 15:06 — qfq post-CTAS compact 落地（真正的 Knife 3）
+- Q：qfq（前复权）DROP+CTAS 重建后磁盘 free-block 不回收，此前"reclaim 一次"不解决"更新流程持续再膨胀"。
+- Fix `a49a99786`：`build_price_kline_qfq_tushare.py`（+70 行）在成功 DROP+CTAS 后于模块内自动 compact（仅 prod 路径，`--no-compact` 可逃逸）；`clean`/`derive_qfq` 调用方不变，orchestrator 不耦合 DuckDB free-page 细节。实测 reclaim 1.439→0.719 GiB，free block 2940→1，qfq 行数 8412670。同一 commit 也删除了上一条 `d710395f5`（15:06，docs 整体计划完成度审计）刚创建的 `analysis/overall_plan_completion_audit_20260723.md`（208 行，创建后一个 commit 内即被移除/折叠，未见独立存续内容）。
+- Tests：`test_build_price_kline_qfq_tushare.py`（+51 行）。
+- Evidence：`analysis/market_compact_knife3_20260723.md` 已被 `2d8f1dbb9` 删除，现无独立留存；`analysis/db_bloat_deep_dive_20260723.md`、`analysis/db_storage_hygiene_20260721.md` 当时被同 commit 顺带更新（仍存在，但非本刀专属证据）。
+
+### 2026-07-23 15:19 — doc governance 折叠：62 篇 mid-flight analysis 笔记归并/删除，FOUNDATION + STRATEGY 两份执行路线图取代
+- Q：main/side-quest 计划文档散乱（62 份阶段性笔记），需要收敛到唯一路线图，否则 doc-governance/doc-drift 门会一直红。
+- Fix `2d8f1dbb9`：删除/折叠 62 个 `analysis/*.md`（含本页以上多条引用过的原始证据：`adversarial_acquire_process_review_A/B`、`inst_profile_coverage_lift`、`inst_episode_rebuild_catchup`、`closed_loop_residual_closure`、`margin_calendar_catchup_blocker`、`db_size_bloat_audit`、`db_refill_after_delete_audit`、`global_cleanup_rebuild_plan`、`foundation_residual_fix_plan`、`margin_v3_bounded_catchup_1b`、`margin_catchup_live`、`rewrite_mechanism_verdict`、`market_compact_knife3`、`DOC_AUTHORITY_20260722`、`MASTER_SYSTEM_TOPLEVEL_REEVAL_20260722` 等），新立 `analysis/FOUNDATION_EXECUTION_PLAN.md` + `analysis/STRATEGY_EXECUTION_PLAN.md` 作为两条执行路线图 SSOT，goal/docs 指针改指向这两份；保留 `section15_verify` 相关 artifact（FND-GATE F8 需要）；doc-governance/doc-drift PASS，blocking 1099 passed。post-fix-audit：cleanup verified 无残留悬空 analysis 引用（section15_verify 因 F8 需要而保留）。
+- Evidence：`analysis/DOC_CLEANUP_20260723.md`、`analysis/FOUNDATION_EXECUTION_PLAN.md`、`analysis/STRATEGY_EXECUTION_PLAN.md`。
+- 说明：本条解释了本页以上多条「原始证据文档已删除」的成因——本条是删除方，非独立缺口。**同样受影响、本 ledger 既有条目**（本条之前已入账、未在本轮补录范围内）：「2026-07-22 补丁跑步机判断」条引用的 `analysis/why_patch_treadmill_20260722.md`、以及「2026-07-23 unified frontier detection primitive」条引用的 `analysis/unified_frontier_detection_acceptance_20260723.md`，均已被本 commit 一并删除——这两条既有条目引用的证据路径现已失效，供后续 ledger 校验参考（本轮不修改既有条目内容，仅如实指出）。
+
+### 2026-07-23 15:27–15:53 — continuity Knife4 typed WARN doors + typed hk_holidays/event_sparse 清零 WARN×2
+- Fix `e32620976`（15:27）：`coverage_start` 改为按 obligation as_of frontier 判断而非表 MIN（PIT-clean typed door）；live continuity WARN 6→2，interior 空洞仍保留 annotate；无 READY 洗白、无删除 observe。`21aae4fd0`（15:53）：把 annotate 疲劳换成真日历——northbound-closed 天数只有在 hk_holidays 名单内才判 PASS，非名单内的空洞仍 FAIL；dividend `event_sparse` 允许 interior 空但保留 tail SLA；live continuity overall PASS，warn=0（非静音检查器）。Rule10 记：hk_holidays 残留非日历空洞仍 FAIL；新增 HK 休市日需先 vendor-0 探测再入 yaml。
+- Tests：`test_check_continuity_integrity.py`（两条各自扩测）。
+- Evidence：`analysis/continuity_knife4_20260723.md`、`analysis/continuity_f1_typed_gaps_20260723.md`。
+
+### 2026-07-23 15:31–15:39 — F5 board sync + §6 exit verification（PARTIAL usable）+ root-cause residual 裁决（禁为清单清残留）
+- Fix `c8d9110bb`（15:31）：foundation exit MET as_of 2026-07-23，continuity annotate WARN 保留（不洗白 READY）；顺手修 margin catchup 单测的 DEGRADED_FLAG 隔离问题（post-fix-audit 无 /tmp alert 污染残留）；Cap surfaces 39 passed，FND-GATE PASS。`0d0022188`（15:39，owner 纠偏）：明令「禁为清单清残留」——把 annotate/UNTRUSTED 归为 class-B honesty、holders×32（即上文 avg_copies=31.86）归为可选 class-C、F7/F8 排除在本轮 bar 外；本条仅 docs+board，无 class-A 代码改动；STRATEGY 仍 BLOCKED。
+- Evidence：`analysis/foundation_exit_verification_20260723.md`、`analysis/foundation_residual_rootcause_20260723.md`。
+
+### 2026-07-23 16:01–16:06 — holders F3 landing retention archive + smartmoney compact；margin F4 promote_gate（rzrqye 仍 UNTRUSTED）
+- Fix `16f5c370c`（16:01）：把非最新的 ACCEPTED landing 归档到 parquet 再 DELETE，只保留最新 ACCEPTED + inflight（这是前文 skip-land 挡住新增之后，对历史 31x 冗余存量的清理刀）；live 回收 7.17M→236k 行（约 1.05×），compact 6.7→4.3GiB；skip-land 继续挡住复发；post-fix-audit：canonical 未动，bak 已清，无残留堆积。Rule10 记：非裸 DROP landing、ingest_batch 元数据保留、归档 parquet 是冷备份存 `data/archive` 下、run_id 用 uuid 非 wall-clock end_date。`87a7921ef`（16:06）：新增 accepted-margin shadow loader + `/sentiment` 上的 typed `promote_gate`；live gate 状态 `PENDING_SERVE_CUTOVER`（v3 accepted 就绪时）；产品面信任仍 UNTRUSTED 直到 pulse serve cutover + 显式 promote；FOUNDATION F1/F3 FIXED，F4 PARTIAL。
+- Tests：`test_holders_landing_retention.py`（新增 161 行）、`test_margin_pulse_promote_gate.py`。
+- Evidence：`analysis/holders_landing_retention_f3_20260723.md`、`analysis/margin_f4_promote_gate_20260723.md`。
+
+### 2026-07-23 16:19–16:32 — CI calendar_gate 强化三连 + 当日 CI 复发模式记录
+- Q：CI run 29989954708 因 holders retention 脚本的 `%Y%m%dT%H%M%SZ` run_id 被误判为交易日 end_date 而红。
+- Fix `463e86714`（16:19）：探测器收窄到 date-only 格式 + 多行 Assign allowlist，真正的 wall-clock end_date 仍判红。`8a9597e27`（16:25）：新增 always-on surface drift 门（未分类 `test_*.py` 此前能绕过 L1 本地提交、导致公共 CI 持续红），并进一步收紧 Assign allowlist 使 run_id 不能连带静音相邻 end_date。`641cd4cd3`（16:30）：前一 commit 与并行分支的 margin WIP 撞车，未完整带上这两道门 + lineage 不同步；本条补齐 date-only allowlist + safe_commit Step 3.35 drift pytest，重建 `graph.json` 消除竞态漂移。`0b920fbc4`（16:32，docs）：记录当天 CI 复发模式（surface drift + calendar_gate）供后续排查参考。
+- Tests：`test_calendar_gate.py`（两轮各自扩测）。
+- Evidence：`analysis/ci_recurring_failures_20260723.md`。
+
+### 2026-07-23 17:26–20:22 — typed EMPTY vs UNTRUSTED 语义统一：Continuity/margin + breadth B-pit 窗口
+- Q：Continuity/margin 此前把"预期缺失"（日历/hk_holidays/known_empty/覆盖前）与"该有数据却没有"混为一谈，容易 greenwash 或误报。
+- Fix `5d7ca0e66`（17:26）：预期缺失判 PASS/EMPTY，合格日应有数据却没有仍判 FAIL/UNTRUSTED，不洗绿。`1f8b8c86a`（17:37，docs）：记录 FND-GATE PASS 10/10、Continuity PASS warn=0、Cap+update-flow pytest 通过，foundation exit+usable MET，无 class-A，STRATEGY 仍受 RX 门禁。`fb66a2135`（19:03）：breadth 只在有 B-pit `MART_CUTOVER` 证据时判 READY（否则同 rzrqye 走 EMPTY/UNTRUSTED）；Type-B attestation 在 E0-HIST 后判 ACCEPTED；qfq 默认改增量（f_latest-value 重写语义 + 全量 CTAS+compact 逃逸开关）；同时去掉 moth 绝对路径 evidence_paths 使 staged-snapshot assert 在 0.3.0 下可用。`e49897ec1`（20:22）：明确 breadth 在 B-pit 窗口外 = typed EMPTY（正常，非异常），窗口内缺证据才是 UNTRUSTED，MART_CUTOVER 才是 READY；`classify_breadth_day_absence` 按 yaml 窗口 20260121–20260722 判断；UI 区分「窗外 EMPTY」vs「窗内 UNTRUSTED」两种提示。
+- Tests：`test_market_pulse_scope.py`、`test_market_pulse_api.py`、`test_market_pulse.py`、`test_b_pit_mart_cutover.py`、`test_brick_registry_b5.py`、`test_disclosure_enrichment_projection.py`、`test_disclosure_research_read.py`、`test_build_price_kline_qfq_tushare.py`。
+- Evidence：`analysis/foundation_status_20260723.md`。
+
+### 2026-07-23 23:03–23:13 — post-close daily_update E2E + class-B 残留收口
+- Fix `1e553c65e`（23:03，docs）：UI-等效 daily_update E2E 走查，continuity PASS，formal 增量 OK，仅剩 class-B PARTIAL；ci-surface-drift 3/3 passed。`baa239ac4`（23:13）：退役 orphan drain 域，catchup skip/publish 时重投影 margin accepted watermark，清理已 sunset 的 wm 墓碑，DONE 日志与 typed run_outcome 对齐；pytest 144 个定向用例 + CI blocking 1118 passed，live smoke watermark→20260722/v3。Rule10 记：orphan 表保留为冷残留（可选 lifecycle DROP）；margin projection 单一写者在 catchup path；SLA 仍是 audit-only。
+- Tests：`test_update_watermark_sla.py`、`test_pipeline.py`、`test_legacy_raw_plane_s7.py`、多个 `*_publish_b1/b2.py`。
+- Evidence：`analysis/post_close_update_e2e_20260723.md`。
