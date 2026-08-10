@@ -87,7 +87,7 @@ config/market_pulse.yaml (RS 窗口/quiet 阈值) + data_layers 声明 (display/
 
 ## 4. serenity (@aleabitoreddit) 资产定位
 
-现存: `analysis/serenity_20260611/` 3 份 (METHODOLOGY_full / TRANSFERABILITY_critique / INTEGRATION_design,
+现存: ~~`analysis/serenity_20260611/`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history** 3 份 (METHODOLOGY_full / TRANSFERABILITY_critique / INTEGRATION_design,
 80K 提炼版; 未见推文原始库)。方法论两部分:
 - **sector rotation 流程** → 本设计 §1-§3 已吸收 (RS 排名/漏斗/警示信号)。
 - **产业链上下游/关键瓶颈研究** → 定位"结构增强层" (钱沿产业链传导: 上游涨价→中游承压), 需产业链

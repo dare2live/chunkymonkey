@@ -30,7 +30,7 @@
 
 ## 与"机构跟随策略"设计的关系
 
-用户追问"机构没法知道确切哪天建仓, 只能靠公告日次日买入验证, 有什么建议"——查证 `analysis/institution_follow_strategy_design_20260702.md`(2026-07-02定稿)发现这个问题**已经被设计过**: §4"跟随策略模拟"明确规定信号日=`notice_date`, 入场=信号日次交易日开盘(涨停顺延), 并有独立的"跟随对象PIT评级红线"(选机构只能用expanding window历史战绩, 不能用全期战绩选——否则是selection leakage)。
+用户追问"机构没法知道确切哪天建仓, 只能靠公告日次日买入验证, 有什么建议"——查证 ~~`analysis/institution_follow_strategy_design_20260702.md`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history** (2026-07-02定稿)发现这个问题**已经被设计过**: §4"跟随策略模拟"明确规定信号日=`notice_date`, 入场=信号日次交易日开盘(涨停顺延), 并有独立的"跟随对象PIT评级红线"(选机构只能用expanding window历史战绩, 不能用全期战绩选——否则是selection leakage)。
 
 但 `recent_signals()` 现在展示的 `median_alpha`/`win_rate_alpha` 是 **机构自身的历史战绩**(自身整窗VWAP成本口径, `mart_inst_profile` 产出), 不是"跟随该signal的预期收益"——这是设计文档里两个不同的问题(§3机构画像 vs §4跟随策略回测)被 `recent_signals()` 单个函数混着展示了。§4 真正的 execution-aware 跟随回测(含成本/涨跌停/PIT expanding-window机构评级)按设计文档 §5 探索弧规划走 E3-E5(sandbox验证→裁决→promote), 目前还没实现。
 

@@ -240,8 +240,8 @@
 | safe_commit 门集 | `scripts/safe_commit.sh` |
 | CI | `.github/workflows/ci.yml` |
 | FND-GATE | `backend/scripts/check_foundation_done.py` |
-| 墙钟实测 | `analysis/process_efficiency_validation_20260721.md` |
-| 吞吐诊断 | `analysis/throughput_bottleneck_diagnosis_20260721.md` |
+| 墙钟实测 | ~~`analysis/process_efficiency_validation_20260721.md`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history** |
+| 吞吐诊断 | ~~`analysis/throughput_bottleneck_diagnosis_20260721.md`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history** |
 | §15 / F8 | `analysis/section15_verify_20260721.md` |
 | eng_gov §14–§15 | `docs/engineering_governance.md` |
 

@@ -1,6 +1,6 @@
 # DB bloat deep-dive — 2026-07-23（owner Q&A addendum）
 
-> **生命周期**：evidence-only addendum to `analysis/db_size_bloat_audit_20260723.md`  
+> **生命周期**：evidence-only addendum to ~~`analysis/db_size_bloat_audit_20260723.md`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history**  
 > **方法**：read-only DuckDB + code cite；§6 = owner-signed DELETE outcome（已执行；本文件只记证据）  
 > **Measured**：2026-07-23 ~14:00 Asia/Shanghai（Q&A）；§6 execute ~14:10–14:14
 

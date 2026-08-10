@@ -2566,8 +2566,8 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
   4. Delist: primarily no nominal K on observation day — not acquire blacklists.
   5. Contrast: some `by_ts_code` legacy domains may pre-filter — non-formal path.
 - Touched: `docs/MASTER_TOPLEVEL_DESIGN.md` §5.1 (owner);
-  `goal.md` 已裁决; `analysis/plan_reeval_first_principles_20260720.md` §3.4;
-  `analysis/data_foundation_modularity_gap_20260720.md` §5 note;
+  `goal.md` 已裁决; ~~`analysis/plan_reeval_first_principles_20260720.md`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history** §3.4;
+  ~~`analysis/data_foundation_modularity_gap_20260720.md`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history** §5 note;
   `backend/config/universe_rules.yaml` header comment; BOARD regenerated.
 - **Did not**: code path change; E0/S7 advance; mass fetch; Optuna/Release.
 - **Status**: docs **FIXED** (authority aligned); program residuals unchanged
@@ -3095,13 +3095,13 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 
 ### 2026-07-21 — foundation E2E frontend update path
 
-- Evidence: `analysis/foundation_e2e_frontend_update_20260721.md` (PARTIAL).
+- Evidence: ~~`analysis/foundation_e2e_frontend_update_20260721.md`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history** (PARTIAL).
 - UI missing「数据更新」; API-equivalent `POST /api/v3/ops/jobs/daily_update/run` preflight-blocked on margin scope_blocked.
 - Modular incremental land_then_accept daily/ST/adj/basic `20260721` PASS; org plannable present → skip; pulse sector residual `20260720`.
 
 ### 2026-07-21 — foundation daily_update unblock
 
-- Evidence: `analysis/foundation_daily_update_unblock_20260721.md` (**FIXED** foundation path).
+- Evidence: ~~`analysis/foundation_daily_update_unblock_20260721.md`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history** (**FIXED** foundation path).
 - Commits: `a84e0867e` (margin `on_demand`+frozen; acquire hard-gate skip while disabled);
   `8bcc37dad` (orchestrator formal daily/ST latest-eligible land_then_accept / skip-if-accepted).
 - Proof: `ensure_pipeline_sync_ready` PASS domains=42; formal plan skip for `20260721`;
@@ -3110,14 +3110,14 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 
 ### 2026-07-21 — wire frontend 数据更新 button
 
-- Evidence: `analysis/foundation_daily_update_unblock_20260721.md` Knife 4 (**FIXED** UI path wiring).
+- Evidence: ~~`analysis/foundation_daily_update_unblock_20260721.md`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history** Knife 4 (**FIXED** UI path wiring).
 - Workbench `#/workbench` enabled;「数据更新」→ `POST /api/v3/ops/jobs/daily_update/run`;
   polls `GET .../jobs/daily_update` for writer/process/alert/log_tail.
 - Honest residual: full 42-domain `daily_update` wall-clock acquire still not re-proven after unblock.
 
 ### 2026-07-21 — holders × stock-dossier lineage audit (broader than samples)
 
-- Evidence: `analysis/holders_stock_dossier_lineage_audit_20260721.md` (**PARTIAL**).
+- Evidence: ~~`analysis/holders_stock_dossier_lineage_audit_20260721.md`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history** (**PARTIAL**).
 - Owner Q: sample PASS ≠ full PASS — canonical parse **218,444** rows PASS; 76/987k = full-history rewrite amp not net new; post-wm notices **30** codes / **380** rows.
 - Joins: dossier MVP dim∩can∩form∩ind **5117/5200**; holder→episode **99.3%**; holder→inst profile **54.2%**.
 - Fail-closed FIXED: dossier period streak reads same plane as rows (canonical vs stale fact).
@@ -3139,7 +3139,7 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 ### 2026-07-22 — daily_update 通知刷屏分诊 + soft-degrade coalesce
 - Owner：Script Editor macOS 三连（FAIL+WARN+降级）= 假失败刷屏；rc=4 preflight / rc=5 stock_st·daily kidnap / rc=1 soft degrade 映射已知 RCA。
 - Fix：`manual_job_wrapper` 对 rc=1+degraded flag 跳过 FAIL 横幅；`dispatcher --skip-macos`；`store._degraded_summary` 附 SLA 摘要。硬挡 rc=4/5 仍通知。
-- Evidence：`analysis/daily_update_notification_spam_triage_20260722.md`；tests `test_manual_job_wrapper` / `test_notification_dispatcher_skip_macos`。
+- Evidence：~~`analysis/daily_update_notification_spam_triage_20260722.md`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history**；tests `test_manual_job_wrapper` / `test_notification_dispatcher_skip_macos`。
 
 ### 2026-07-23 — shareholder/org update-check audit (no code knife)
 - Q：daily_update 是否应逐公司扫最新股东公告？
@@ -3149,7 +3149,7 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 
 ### 2026-07-23 — holders coverage alignment (notice frontier canary)
 
-- Evidence: `analysis/holders_stock_coverage_alignment_20260723.md` (**GAPS→HS_A ALIGNED**).
+- Evidence: ~~`analysis/holders_stock_coverage_alignment_20260723.md`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history** (**GAPS→HS_A ALIGNED**).
 - Canary: provider max=`20260723`=local wm date, but same-day late filers missing (**16** HS_A code×notice in `UPDATE_DATE≥2026-07-16`).
 - Sparse repair: `ingest_holders_aif10.py --symbols` 16 codes; ok=16 fail=0; post HS_A miss=0; BSE 12 pairs OUT_OF_SCOPE (∉ dim).
 - No mass / no org / no Optuna. Residual (planner): `provider_max≤wm` skip hid same-day lag → **FIXED** `e040f4889` (see next entry).
@@ -3308,7 +3308,7 @@ gate/tests；2026-07-02 产业链温度计设想已被新 taxonomy 架构取代�
 
 ### 2026-07-23 15:06 — qfq post-CTAS compact 落地（真正的 Knife 3）
 - Q：qfq（前复权）DROP+CTAS 重建后磁盘 free-block 不回收，此前"reclaim 一次"不解决"更新流程持续再膨胀"。
-- Fix `a49a99786`：`build_price_kline_qfq_tushare.py`（+70 行）在成功 DROP+CTAS 后于模块内自动 compact（仅 prod 路径，`--no-compact` 可逃逸）；`clean`/`derive_qfq` 调用方不变，orchestrator 不耦合 DuckDB free-page 细节。实测 reclaim 1.439→0.719 GiB，free block 2940→1，qfq 行数 8412670。同一 commit 也删除了上一条 `d710395f5`（15:06，docs 整体计划完成度审计）刚创建的 `analysis/overall_plan_completion_audit_20260723.md`（208 行，创建后一个 commit 内即被移除/折叠，未见独立存续内容）。
+- Fix `a49a99786`：`build_price_kline_qfq_tushare.py`（+70 行）在成功 DROP+CTAS 后于模块内自动 compact（仅 prod 路径，`--no-compact` 可逃逸）；`clean`/`derive_qfq` 调用方不变，orchestrator 不耦合 DuckDB free-page 细节。实测 reclaim 1.439→0.719 GiB，free block 2940→1，qfq 行数 8412670。同一 commit 也删除了上一条 `d710395f5`（15:06，docs 整体计划完成度审计）刚创建的 ~~`analysis/overall_plan_completion_audit_20260723.md`~~ **已被 `2d8f1dbb9`（2026-07-23 doc governance 删 62 份）删除，内容见 git history**（208 行，创建后一个 commit 内即被移除/折叠，未见独立存续内容）。
 - Tests：`test_build_price_kline_qfq_tushare.py`（+51 行）。
 - Evidence：`analysis/market_compact_knife3_20260723.md` 已被 `2d8f1dbb9` 删除，现无独立留存；`analysis/db_bloat_deep_dive_20260723.md`、`analysis/db_storage_hygiene_20260721.md` 当时被同 commit 顺带更新（仍存在，但非本刀专属证据）。
 
