@@ -157,7 +157,7 @@ def _load_holder_episodes(conn, code: str, holder_norms: list[str]) -> dict[str,
         "holder", "open_date", "close_date", "status", "n_adds", "n_trims",
         "ret_c1", "alpha_c1", "seeded", "is_passive",
     ]
-    as_of = datetime.now(_ASOF_TZ).date()
+    as_of = datetime.now(_ASOF_TZ).date()  # rule-compliance: ok evidence=持仓周期是自然日概念(披露开仓日→今天), 非交易日; basis 字段标为 disclosure_open_to_asof_holding
     for row in rows:
         d = dict(zip(cols, row))
         holder = str(d.pop("holder"))
@@ -202,7 +202,7 @@ def _episode_holding_days(
         if closed is None or closed < opened:
             return None, None
         return (closed - opened).days, "disclosure_open_to_close"
-    end = as_of or datetime.now(_ASOF_TZ).date()
+    end = as_of or datetime.now(_ASOF_TZ).date()  # rule-compliance: ok evidence=同上, 未平仓持仓天数按自然日计, 不查交易日历
     if end < opened:
         return None, None
     return (end - opened).days, "disclosure_open_to_asof_holding"

@@ -34,7 +34,20 @@ EXEMPT_PREFIXES = (
     "backend/tests/",
 )
 # B1: wall-clock 当"最新/今天"做交易日决策 (calendar.py 点名禁)
-WALLCLOCK = re.compile(r"datetime\.now\(\)\.date\(\)|date\.today\(\)|datetime\.today\(\)")
+# 2026-08-10 修盲点：原正则要求 now() 括号内为空，而带时区参数
+# （`datetime.now(tz).date()`）才是**正确**写法 —— 于是本门只抓得住写得不规范的
+# 代码，写规范了反而绕过。实测盲点覆盖 stock_dossier / org_holding_aif10 /
+# check_continuity_integrity 等真实调用点。
+#
+# 能力边界（诚实声明，不假装完备）：本门按**行**做正则匹配，把 `.now()` 与
+# `.date()` 拆成两行赋值仍可绕过（实例：build_agent_board.py 的
+# `_now = ...now(tz)` + 次行取值）。完备检测需要在 AST 上追踪返回值流向到
+# trade_date 形参，未实现。**本门是提示与显式声明的强制点，不是绕过的保证。**
+WALLCLOCK = re.compile(
+    r"datetime\.now\([^)]*\)\s*\.date\(\)"
+    r"|date\.today\(\)"
+    r"|datetime\.today\(\)"
+)
 # B2: SQL 日历天 cutoff (current_date - INTERVAL N DAY / now() - INTERVAL)
 SQL_CALDAY = re.compile(r"current_date\s*-\s*(?:INTERVAL|interval)|CURRENT_DATE\s*-\s*(?:INTERVAL|\d)|now\(\)\s*-\s*(?:INTERVAL|interval)", re.IGNORECASE)
 # B3: SQL 上界锚 (col <= CURRENT_DATE / <= CAST(CURRENT_DATE — wall-clock 当 PIT 决策上界, 周末/盘中 admit 未收盘日).
