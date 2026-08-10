@@ -10,6 +10,10 @@
 - 当前架构/研究/工程规则看 `docs/README.md` 指向的 owner；
 - 精确表数、行数、水位、命令和工具状态必须 live 重查；
 - 本账本中的历史数值仅说明当时证据，不能自动成为当前生产证书；
+- **`Evidence:` 字段指向的 `analysis/*` 若不存在，属预期**：过程记录按 `docs/README.md`
+  生命周期规则删除，git history 已保留。**本账本条目自身即结论摘要**（Q / Fix 带
+  commit sha / Tests / Evidence / Residual），不依赖被引文档存在 —— 要还原细节用该条
+  的 Fix sha 走 `git show`，不要因路径失效就认为结论不可信；
 - 普通过程叙述、旧计划和重复设计已于 2026-07-16 删除，git history 可恢复。
 
 ## 项目演变
