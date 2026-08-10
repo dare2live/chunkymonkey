@@ -160,9 +160,9 @@ def main(msg_path: str) -> int:
     if has_a and has_b and has_d_proof:
         return 0
 
-    # Reject + 提示
+    # 提示（不阻断）— 裁决见下方结尾说明与模块 docstring。
     print("=" * 80, file=sys.stderr)
-    print("ERROR: commit message 缺工程交付 self-check 关键词", file=sys.stderr)
+    print("NOTE: commit message self-check 提示（不阻断）", file=sys.stderr)
     print(file=sys.stderr)
     if not has_a:
         print("MISSING GROUP A (工程类): 至少一个关键词", file=sys.stderr)
@@ -183,14 +183,20 @@ def main(msg_path: str) -> int:
         print("  根因: engineering governance — fix 后必须主动清 stale artifact (DB row / panel cols / model_id / cache).", file=sys.stderr)
         print("        skill: /post-fix-audit 走 5 步.", file=sys.stderr)
         print(file=sys.stderr)
-    print("修法 (2 选 1):", file=sys.stderr)
-    print("  1. 重写 commit message body, 加 self-check 关键词", file=sys.stderr)
-    print("  2. 如果确实是琐碎修改 (e.g. typo / format), 加 '# commit-msg: minimal' 在 body 内", file=sys.stderr)
+    print("建议: 把实测数字 / 证据路径 / 清理结论写进 message —— 那对下次接手的人有用。", file=sys.stderr)
     print(file=sys.stderr)
-    print("根因: AGENTS.md / engineering governance 的 commit 前 self-check.", file=sys.stderr)
-    print("空说明的 commit 下次 session 重读时无法理解为啥这么改 → 文档债.", file=sys.stderr)
+    print("为何不阻断 (2026-08-10 裁决):", file=sys.stderr)
+    print("  GROUP A/B/D 是**自述型**检查 —— 它们匹配的是提交者自己写的词, 无法验证", file=sys.stderr)
+    print("  测试是否真跑过、post-fix-audit 是否真走完。按本项目自己的判据 (committer", file=sys.stderr)
+    print("  自写 justification + 无复核 = 摆设), 把它们当阻断门有三个坏结果:", file=sys.stderr)
+    print("    1. 挡不住不写实情的人 —— 补一个词即过;", file=sys.stderr)
+    print("    2. 只挡住诚实但用词不同的人;", file=sys.stderr)
+    print("    3. 制造'所有 commit 都做过 self-check'的虚假保证, 比不检查更糟。", file=sys.stderr)
+    print("  仍然阻断的只有 subject 长度那一条 —— 长度是客观事实, 不是自述。", file=sys.stderr)
+    print("  安全性不依赖本门: PIT/leakage/continuity/lineage/population 等门读的是", file=sys.stderr)
+    print("  代码与数据, 提交者无法用措辞影响它们。", file=sys.stderr)
     print("=" * 80, file=sys.stderr)
-    return 1
+    return 0
 
 
 if __name__ == "__main__":

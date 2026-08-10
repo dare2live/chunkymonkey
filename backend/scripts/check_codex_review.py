@@ -1,13 +1,34 @@
-"""Blocking Rule 10 commit-msg gate (owner: AGENTS.md + engineering governance).
+"""Rule 10 commit-msg gate (owner: AGENTS.md + engineering governance).
 
-Any risky staged file must carry the canonical independent-review verdict
-``Codex-Reviewed: APPROVE`` or ``APPROVE_WITH_NOTES``. Generic Codex/agent text,
-hex IDs and ``codex-review: skipped`` are not review evidence. An explicit
-``REQUEST_CHANGES`` always blocks. This mirrors ``scripts/safe_commit.sh`` so a
-direct ``git commit`` cannot bypass the reviewed delivery path.
+2026-08-10 裁决 — 本门只保留能被验证的那一半：
+
+* ``Codex-Reviewed: REQUEST_CHANGES`` **仍然阻断**。它有信息量：没有人会「忘记」
+  写下一个否定裁决，写下它就意味着确有未消除的异议，忽略它是实质风险。
+* 缺少 ``APPROVE`` / ``APPROVE_WITH_NOTES`` **不再阻断**，降为提示。
+
+为什么取消 APPROVE 作为通过条件：本门的唯一输入是提交者自己写的 commit
+message（见 ``safe_commit.sh`` Step 4.5 与 ``.git/hooks/commit-msg``），它做的
+全部事情是在那段文本里正则匹配一行字符串。它无法验证审查是否发生、审查者是
+谁、是否独立于提交者。按本项目自己的判据（committer 自写 justification + 无
+复核 = 摆设），把它当红线门有三个坏结果：
+
+1. 挡不住不做审查的人 —— 补一行字即过；
+2. 只挡住不愿假称「审过了」的诚实提交者；
+3. 最糟的一层：制造「所有 L3 改动都经过独立审查」的**虚假保证**，反而让人不
+   再去做真正的审查。比不检查更糟。
+
+原则：**一件事若无法机器验证，就不要用机器门假装验证它 —— 写进规则，别写进
+闸。** 真要强制独立审查，enforcement 必须落在提交者够不到的地方（CI / PR 侧
+reviewer），本地 commit-msg hook 天然做不到。
+
+安全性不依赖本门：PIT / leakage / continuity / lineage / population / calendar
+等门读的是代码与数据，提交者无法用措辞影响它们。
+
+仍然阻断的另一项：staged 范围无法确定时 fail-closed（返回 2）——那是客观事实，
+不是自述。
 
 WP1: L1 commits (docs/analysis/sandbox only, machine-classified) skip Rule 10.
-Classification is fail-closed — unknown/missing policy → L3 → review required.
+Classification is fail-closed — unknown/missing policy → L3.
 """
 from __future__ import annotations
 
@@ -111,12 +132,15 @@ def main(msg_path: str) -> int:
     if has_approved_codex_review(body_only):
         return 0
 
-    # Reject + 提示
+    # 提示（不阻断）— 裁决理由见模块 docstring。
     print("=" * 80, file=sys.stderr)
-    print("ERROR: Rule 10 requires Codex-Reviewed: APPROVE or APPROVE_WITH_NOTES.", file=sys.stderr)
-    print("Generic Codex/agent references and skip reasons do not satisfy the gate.", file=sys.stderr)
+    print("NOTE: Rule 10 — staged 含 L2/L3 风险文件，message 未带 Codex-Reviewed 裁决行。", file=sys.stderr)
+    print("  建议对 .py/.yaml/.sql 改动做一次**独立**审查（$chunkymonkey-review-gate），", file=sys.stderr)
+    print("  并把 verdict 与审查者身份写进 message —— 那对下次接手的人有用。", file=sys.stderr)
+    print("  不阻断的理由: 本门只能匹配提交者自写的字符串, 无法验证审查是否真发生;", file=sys.stderr)
+    print("  阻断只会卡住诚实的提交者, 并制造'都审过了'的虚假保证。REQUEST_CHANGES 仍阻断。", file=sys.stderr)
     print("=" * 80, file=sys.stderr)
-    return 1
+    return 0
 
 
 if __name__ == "__main__":

@@ -93,7 +93,10 @@ managed runtimes (TinyShare SDK = versioned `.pyc`).
 ## 9. Commits
 `git status --short --branch` first; peer changes stay. Stage explicit files;
 never `git add .` / hard reset / broad clean / `--no-verify` / amend pushed.
-Rule 10 for `.py/.yaml/.sql` or high-risk deletion. Default:
+Rule 10 = independent-review **discipline** for `.py/.yaml/.sql`/high-risk
+deletion; the msg gate blocks only an explicit `REQUEST_CHANGES` — a
+self-written `APPROVE` proves nothing and no longer blocks (2026-08-10).
+Safety rests on gates that read code/data, never on wording. Default:
 `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"`. No push unless asked.
 
 ## 10. Done

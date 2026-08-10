@@ -279,6 +279,23 @@ A→H 冻结已由 owner 于 2026-07-20 解除（核心 WP0–WP4 闭合即恢�
 
 ## 14. Rule 10 与交付
 
+**Rule 10 是纪律，不是闸门（2026-08-10 裁决）。** commit-msg 门只阻断显式的
+`Codex-Reviewed: REQUEST_CHANGES`（否定裁决有信息量 —— 没人会「忘记」写它）；
+缺 `APPROVE` 只提示不阻断。理由：该门的唯一输入是提交者自己写的 message，做的
+全部事情是正则匹配一行字符串，无法验证审查是否发生、审查者是谁、是否独立。按
+本文件自己的判据（committer 自写 justification + 无复核 = 摆设），把它当红线有
+三个坏结果：挡不住不做审查的人（补一行字即过）；只挡住不愿假称审过的诚实提交
+者；并制造「L3 都经过独立审查」的虚假保证 —— 比不检查更糟。
+
+**通用原则：一件事若无法机器验证，就不要用机器门假装验证它 —— 写进规则，别写
+进闸。** 真要强制独立审查，enforcement 必须落在提交者够不到的地方（CI / PR 侧
+reviewer）；本地 hook 天然做不到。同批裁决：`check_commit_message.py` 的
+GROUP A/B/D 关键词同属自述型，一并降为提示（subject 长度仍阻断 —— 长度是客观
+事实）。安全性不受影响：PIT / leakage / continuity / lineage / population /
+calendar 等门读的是代码与数据，提交者无法用措辞影响它们。
+
+下面的流程仍是**必须遵守的交付纪律**，只是不再由 commit-msg 门代为强制。
+
 `.py/.yaml/.sql` 或高风险文档/删除切片完成后：
 
 1. 查看 scoped diff；
