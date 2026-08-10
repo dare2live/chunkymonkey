@@ -39,6 +39,7 @@
 | 可机器重建的地图/报告 | 生成器输出目录，标明 generated |
 | 普通过程记录、旧计划、过期设计 | 删除；git history 已保留 |
 | 一次性探索 | `sandbox/`，结束即清理 |
+| **运行时状态**（frontier / watermark / 覆盖区间与天数 / 表行数 / DB 体积 / 窗口末端） | **不进任何人工维护文档**；查真相源（`accepted_partition`、DB、git）或生成投影（`BOARD.md`、`FEATURE_MAP.md`） |
 
 禁止：
 
@@ -46,7 +47,9 @@
 - 把过期内容移到新的 archive-of-archive；
 - 用“历史参考/暂留”让整份 stale 文档继续充当 active owner；
 - 在 README 维护已删除文件的长列表；
-- 把聊天结论当成唯一设计记录。
+- 把聊天结论当成唯一设计记录；
+- **在人工维护的文档里写死会随运行而变的值**。判据一句话：**这个值会不会因为系统正常跑一次日更就变？** 会变 = 运行时状态，只能指向真相源；不会变 = 不变量（契约起点 `data_start`、已发生的休市日、故意冻结的 `holdout_start`），写死是对的。
+  2026-08-10 实证：`goal.md` 写 `accepted daily→20260721`、`PROJECT_INDEX.md` 写 `→20260720`，而 `accepted_partition` 实测 `→20260804` —— 两份手写文档互相矛盾且同时落后实况两周，而 `check_doc_drift` 报 `stale_count=0`（它只查悬空链接与代码路径，不查语义与时效）。
 
 ## 修改规则
 

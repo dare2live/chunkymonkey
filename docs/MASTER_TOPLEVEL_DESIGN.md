@@ -292,7 +292,7 @@ B5 + 单一公式或公式组合
 
 第一条正式策略闭环是 `institution_follow_v1`：在 Tier0 硬门、Tier1/2 发布契约与研究运行时最小闭环之后，以披露 `available_at` 约束跑 B0→B1→B2→B4；跟随者可实现收益必须独立于机构自身持有收益。`main_rally` 与公式包随后接入同一 runtime。BestChoice 只作为冻结 challenger 资产，经 lineage、PIT 和本项目纸面执行验证后才能讨论吸收，禁止直接并入主策略。
 
-Provider 是可替换 adapter：业务真相在 accepted/canonical，不绑定单一供应商。正式 registry 域当前唯一 live adapter 是 TuShare；契约可换（第二源只加 adapter + landing 映射、不改 Tier1–4 读契约）是**目标态**，不是“仓库里只有一个供应商”的现状声明。东财妙想 aif10/`miaoxiang` 已是十大流通股东等披露域的 live 主写路径，但绕过 landing/accepted/canonical，现状标 **NONCONFORMING**，必须经披露域 formal 化（goal **E0**）迁入同一 transport，禁止 silent merge 或假装单源。不做通用插件框架。
+Provider 是可替换 adapter：业务真相在 accepted/canonical，不绑定单一供应商。契约可换（第二源只加 adapter + landing 映射、不改 Tier1–4 读契约）是**目标态**，不是“仓库里只有一个供应商”的现状声明。任何 provider——TuShare 与东财妙想 aif10/`miaoxiang` 同等——都必须走同一 transport（`landing→accepted→canonical`），禁止 silent merge、legacy 直写或假装单源。各域当前的 live adapter 与 formal 化进度是**运行时事实**，真相源为 `backend/config/sync_registry.yaml` + `legacy_raw_plane.yaml` + accepted 分区，**不在本文件固定**（写死即 stale）。不做通用插件框架。
 
 ## 10. Tier 4 决策与产品
 
