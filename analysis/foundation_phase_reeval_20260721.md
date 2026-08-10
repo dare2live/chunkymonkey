@@ -6,6 +6,25 @@
 
 ---
 
+## ⚠ 2026-08-10 核实：三处**状态类**陈述已过期（机制类判据未变）
+
+本文件作为 FND-GATE spec 的**机制部分仍然有效** —— F1–F10 十道门的存在、
+「real gap FAIL / typed wall PASS」的判定语义、以及实跑结论
+（`check_foundation_done.py` → `PASS=10 phase_closure_ready=true`）今天复跑仍成立。
+过期的只是写死在文中的**当时进度快照**，三处：
+
+| # | 文中原文 | 实况（2026-08-10 实测） | 推翻它的 commit |
+|---|---|---|---|
+| 1 | Type-B enrichment **defer**（§0 / §2.3 / §5.3 / §6 / §8 多处） | 已 **FIXED**：`brick_registry.yaml` 中 `institution_profile_edge_v0.status` 由 `partial` 改为 `declared`，`partial_reasons` 清空；实跑 F4 输出 `type_b_edge_status=declared`、`type_b_defer_codes=[]` | `fb66a2135`（2026-07-23） |
+| 2 | S7 余 **23/46 ssot**（§0 / §1.1 / §3 F2 行） | 实跑 **ssot=20 + 3 retired**（`stk_factor_pro`/`express`/`fina_mainbz` sunset；`stk_holdernumber` 07-24 RESTORE 回 ssot）；kinds = sync_orphan 10 / serve_l0_declared 8 / blocked_no_publication 2 | `stk_holdernumber` 恢复刀（07-24）等 |
+| 3 | F6 判据仅涉 holders/stk 重叠（§3 F6 行，暗示 org 不在判据内） | F6 已被**扩展**：`check_f6_e0_breadth()` 新增硬条件 `org_partitions>=1` 且 `org_max_accepted_stocks>=500` 且 `org_pointer_mismatches==0`（`check_foundation_done.py:495-507`） | `d7ee57c7c`（2026-07-23） |
+
+**读法**：本文的判据逻辑照读；任何具体数字与「仍 defer / 仍待决」类措辞，一律以
+`check_foundation_done.py` 实跑输出为准，不以本文为准。这也是本项目的通则 ——
+`docs/README.md` 生命周期表：**会因跑一次日更就变的值，不进人工维护文档**。
+
+---
+
 ## 0. 一句话裁决
 
 **相对既定方案（transport strangler S1–S7 + brick L0–L3 + E0 + DB 逻辑分层），数据地基约 **~94% 闭合**——S1–S6 与 S7 可行动项已 shipped；S7 余 **23/46 ssot** 为 **typed hard-stop 墙**（非未完成清单）；**E0-HIST/F6 PASS**；**§15 behavior PASS**（§15-VERIFY）；**foundation-done 机器门 PASS**（`phase_closure_ready=true`）。Type-B enrichment **defer**（registry 在方案内；enrichment 刀序超前）。策略轨 **paused**。

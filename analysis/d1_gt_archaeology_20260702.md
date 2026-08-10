@@ -177,6 +177,21 @@ stage 阈 0.30/0.85 / MACD WIN_GAIN=0.30 / MAX_HOLD=120 / 负样本 purge=±250 
 
 ### 4.3 v2 与 holdout 立法的接线 (本批同步交付)
 
+> ⚠ **本小节已过期（2026-08-10 核实）。§1–§4.2 的 GT 定义演化史与 v2 漏斗规则不受
+> 影响，仍是 `rally_gt.py` / `rally_detect.py` / `rally_gt.yaml` 引用的历史定义证据；
+> 只有下面这段"holdout 接线"被后续立法取代。现行机制见 `backend/services/
+> holdout_guard.py` 与 `backend/services/research_prereg_store.py`。**
+>
+> 具体差异：全局 `touch_budget=3` 预算制**已废除**，改为按 prereg 记录逐条发放唯一
+> `single_touch_token`、经 `consume_single_touch` / `consume_holdout_single_touch`
+> 一次性消费；`holdout_policy.yaml`（现 version 3）只剩 `holdout_start` 一个字段，
+> 不再有 `touch_budget` / `require_preregistration` / `freeze_rule`；
+> `register_criteria` / `touch_holdout` 两个函数已不存在。此外 `69a9cbe89` 给
+> `assert_holdout_untouched` 增加了 `actual_data_end` 参数，堵住"declared 合规但实际
+> 读到 live 全量日历"的口子（`holdout_guard.py:55-89`）。
+
+以下为 2026-07-02 当时的接线设计，**仅作历史记录，勿照此实现**：
+
 - `backend/config/holdout_policy.yaml`: holdout_start=20250601 / touch_budget=3 / require_preregistration=true / freeze_rule
 - `backend/services/holdout_guard.py`: register_criteria (预注册判据, 写 experiment_store.holdout_touch_log) /
   touch_holdout (全局预算制, 无预注册 raise, 耗尽 raise) / assert_holdout_untouched (训练路径守门)

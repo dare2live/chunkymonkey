@@ -215,7 +215,15 @@ ST 是 **E1 日级 membership 证据**（`stock_st` accepted partition），不�
 1. **qfq 在 market 库** ≠ 成交价真相；纸面必须用 nominal（MASTER §6.1）。
 2. **smartmoney 混 I0+D1 display** 是历史债；新 Tier1/2 发布走 contract/hash，不以此为借口拆库。
 3. **membership L0**：SW `index_member_all` 已 strangler 到 `v_sw_industry_pit`
-  （raw=compat）；**dc_member 仍 raw ssot** — S7 续刀；与 DB 分层正交。
+  （raw=compat）；~~**dc_member 仍 raw ssot** — S7 续刀~~ **已过期（2026-08-10 核实）**：
+  `b3b087956`（2026-07-21 17:31，即本文档写成当天下午）已把
+  `raw_tushare_dc_member` 由 `role: ssot` 改为 `role: compatibility` +
+  `publication_surface: fact_dc_member_daily`（见 `legacy_raw_plane.yaml:106-110`），
+  该条已收口，不再是待决项。**残留差异**：SW 侧落到**视图** `v_sw_industry_pit`，
+  dc_member 侧落到**物化表** `fact_dc_member_daily`（实测 25,610,728 行 = raw 行数
+  1:1，7 列中 4 列为 raw 复制、`available_at` 为 `trade_date+18h` 纯函数、
+  `source_table` 为常量、`built_at` 仅 4 个批次取值）—— 是否改为视图属独立的存储
+  优化议题，与本节的 strangler 收口无关。与 DB 分层正交。
 4. **BOARD 非执法**；DB 边界以 manifest + 本设计 + goal 为准。
 
 ---
@@ -227,7 +235,7 @@ ST 是 **E1 日级 membership 证据**（`stock_st` accepted partition），不�
 | 序 | 切片 | 内容 | 退出条件 | 禁做 |
 |---:|---|---|---|---|
 | **D8-1** | 路由收编文档化 | manifest ↔ sync_registry ↔ data_access 三角 **单页真相**（本文件 + FEATURE_MAP 生成校验） | drift gate 零 dangling db alias | 新「路由表」表 |
-| **D8-2** | S7 续 — membership L0 | SW index_member → PIT view **done**；dc_member 仍 **formal \| sunset** | inventory ssot 再降；moth green | 盲删 raw |
+| **D8-2** | S7 续 — membership L0 | SW index_member → PIT view **done**；~~dc_member 仍 formal \| sunset~~ → **dc_member 亦 done**（`b3b087956` 2026-07-21，raw 降 compatibility + `publication_surface=fact_dc_member_daily`；2026-08-10 核实）。**本行原文已过期，勿据此认为该刀未开** | inventory ssot 再降；moth green | 盲删 raw |
 | **D8-3** | S7 续 — legacy raw 域 | 按 `legacy_raw_plane.yaml` 逐域 parity → cutover 或 sunset | 单域零 ssot 或显式 fill 文档 | dual-write 窗 |
 | **D8-4** | E0 residual | disclosure provider land（非仅 local-raw）；org full-universe | NONCONFORMING 路径隔离 | silent merge |
 | **D8-5** | market qfq lineage | placeholder batch_id 补齐或读面标 UNTRUSTED 至 derive 证据完整 | qfq 重建 manifest 可审计 | qfq 当 exec 价 |
