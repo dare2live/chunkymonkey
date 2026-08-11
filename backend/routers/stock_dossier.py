@@ -655,7 +655,7 @@ def dossier(
         "holder_number": holder_number,
         "lineage": {
             "status": "attested_usable",
-            "audit": "analysis/dossier_100_usable_20260723.md",
+            "audit": "git log --grep dossier_100_usable",
             "prior_audit": "analysis/FOUNDATION_EXECUTION_PLAN.md",
 
             "holders_parse_integrity": "PASS",

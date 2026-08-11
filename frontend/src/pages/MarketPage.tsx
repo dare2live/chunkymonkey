@@ -1,5 +1,5 @@
 /** Tier2 市场感知页 — widget 独立取数；现行边界见 docs/MASTER_TOPLEVEL_DESIGN.md。
- *  历史交互证据: analysis/market_pulse_design_20260702.md（evidence-only）。
+ *  历史交互证据: git log --grep market_pulse_design（evidence-only）。
  *  红线: 感知层只描述现状 (资金在哪/流向哪/什么形态/温度如何), 零买卖暗示文案。
  *  措辞规范 (v3.4 + 2026-07-03 用户纠偏): flow_regime 中文显示名用克制金融术语
  *  (脉冲/横盘累积/上行累积/下行累积), 禁口语化/戏剧化字样。

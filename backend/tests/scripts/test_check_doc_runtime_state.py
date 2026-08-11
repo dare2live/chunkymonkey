@@ -75,11 +75,15 @@ def test_missing_scan_target_is_reported_not_skipped(tmp_path: Path) -> None:
 
 # ── 假阳性方向：这些不是状态，不许报 ──────────────────────────────────
 def test_dates_inside_filenames_are_not_state(tmp_path: Path) -> None:
-    """首版踩过的坑：`analysis/DOC_CLEANUP_20260723.md` 是文件引用，不是状态声明。"""
+    """首版踩过的坑：`some_cleanup_20260723.md` 这类文件名是引用，不是状态声明。
+
+    样例名不带 `analysis/` 前缀：这是**测试数据**，既不该跟着真实文件的存废走，
+    也不该被 doc_drift 当成一条悬空的文档引用。
+    """
     _doc(
         tmp_path,
         "goal.md",
-        "见 `analysis/DOC_CLEANUP_20260723.md` 与 `foundation_phase_reeval_20260721.md`\n",
+        "见 `some_cleanup_20260723.md` 与 `some_plan_20260721.md`\n",
     )
     report = mod.scan(_policy(tmp_path, files=["goal.md"]), repo=tmp_path)
     assert report["overall"] == "PASS", report["findings"]

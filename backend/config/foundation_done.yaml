@@ -58,7 +58,7 @@ b5:
   type_b_defer_codes: []
 
 # §15 behavior (F8) — PASS after §15-VERIFY (2026-07-21)
-# Evidence authority: analysis/section15_verify_20260721.md
+# Evidence authority: git log --grep section15_verify
 section_15:
   status: PASS
   reason: section15_verify_three_consecutive_l3_knives
@@ -69,7 +69,7 @@ section_15:
   evidence:
     measured_at: "2026-07-21"
     commits_per_knife: 1.0
-    artifact: analysis/section15_verify_20260721.md
+    artifact: git log --grep section15_verify
     knives:
       - name: e0-hist
         commits: 1

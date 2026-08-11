@@ -12,7 +12,7 @@
 2026-07-21 gate redesign #1 (Occam): split the offline surface into
 `blocking_paths` (L2/L3 safe_commit + CI) and `nightly_paths` (async).
 `--tier blocking|nightly|all` selects which list runs. Default = blocking.
-See analysis/gate_redesign_occams_20260721.md.
+See git log --grep gate_redesign_occams.
 
 This script is the ONLY place that turns `backend/config/ci_pytest_surface.yaml`
 into an actual pytest invocation. Both `.github/workflows/ci.yml` and

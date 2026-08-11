@@ -7,7 +7,7 @@ This module only maintains the open-day serve projection used by legacy ops
 consumers (horizon checks, scheduling helpers).  Prototype/content hashes from
 this table must never be treated as an accepted generation proof.
 
-R1 根因 3 修复（历史证据: analysis/data_foundation_root_causes_20260703.md；
+R1 根因 3 修复（历史证据: git log --grep data_foundation_root_causes；
 现行边界: docs/MASTER_TOPLEVEL_DESIGN.md）:
 dim 曾缺生产 writer；raw trade_cal full_refresh 正常但零传导 → horizon 倒计时。
 pipeline acquire 在 sync 后调 ``build_latest`` 只刷新 serve projection。

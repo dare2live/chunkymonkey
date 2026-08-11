@@ -1,7 +1,7 @@
 """market_pulse.py — Tier2 市场感知引擎（历史编号 B4/C4）。
 
 现行边界: docs/MASTER_TOPLEVEL_DESIGN.md + docs/strategy_validation_contract.md。
-历史设计证据: analysis/market_pulse_design_20260702.md（evidence-only）。
+历史设计证据: git log --grep market_pulse_design（evidence-only）。
 用户定调: "看钱在哪里从哪里流出流向哪里 … 哪里资金悄悄的在流入、哪里悄悄在流出"。
 
 三个 namespace 并列 (vendor 自洽红线, 任何计算禁跨 namespace JOIN):
@@ -1410,7 +1410,7 @@ def build_latest(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]
     窗口/streak 在全量源历史上重算后只插缺日 → 增量行与全量重建逐 bit 一致 (确定性)。
     顺序: 板块表先补, 全市场表后补 (top_sectors_json 读板块表)。
 
-    迟到列回补（历史根因证据: analysis/data_foundation_root_causes_20260703.md）:
+    迟到列回补（历史根因证据: git log --grep data_foundation_root_causes）:
     行一旦插入即定格, 而 t+1 披露域 (margin/龙虎榜/limit) 在早跑日尚未到 raw → 该日行以 NULL
     (或部分行半值) 入库后永不回补。修法 = 每次增量对最近 lookback_late_days 个**已存在**源日
     DELETE+重插 — 复用全史窗口/streak 机制, 重插行与全量重建逐 bit 一致, 幂等 (行数不变仅列值治愈)。

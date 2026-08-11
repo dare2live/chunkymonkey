@@ -217,7 +217,7 @@ def _check_kline_completeness(conn: duckdb.DuckDBPyConnection) -> CheckResult:
     正解 = clean-vs-source: M2 的职责是无损变换 raw_tushare_daily→qfq, 该验的是"clean 丢了 source 有的行吗",
     与停牌/退市/日历无关 (源本就没有停牌日 = 合法非缺口)。实测新口径 0 丢失行。
     M1(acquire) 的"是否拉全 tushare" 由 sync watermark/drain 守 (另一阶段的门), 不在此 calendar 比对。
-    口径证据: analysis/kline_completeness_crywolf_fix_20260624.md
+    口径证据: git log --grep kline_completeness_crywolf_fix
     """
     cfg = AUDIT_RULES.get("kline_checks", {})
     table = _to_str(cfg.get("source_table"), "market.v_price_kline_qfq")   # clean (serving) 表

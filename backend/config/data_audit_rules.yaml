@@ -12,7 +12,7 @@ kline_checks:
   # → 停牌/退市股被当缺口, 实测 1711股/31.5% 误报 (感知死: 门长期红被无视, 真缺口溜过)。
   # 正解 = clean-vs-source: M2(clean)的职责是无损变换 raw→qfq, 该验"clean 丢了 source 有的行吗",
   # 与停牌/退市/日历无关 (源本就没停牌日=合法)。实测新口径 0 丢失行。M1(acquire)的"拉全tushare"由
-  # sync watermark/drain 守 (另一阶段门), 不在此 calendar 比对。历史口径证据=analysis/kline_completeness_crywolf_fix_20260624.md
+  # sync watermark/drain 守 (另一阶段门), 不在此 calendar 比对。历史口径证据=git log --grep kline_completeness_crywolf_fix
   source_raw_table: raw_tushare_daily      # clean 的上游源 (build_price_kline_qfq_tushare 从它×adj_factor 建); 在 tushare_raw 库
   source_raw_code_column: ts_code          # 带后缀 .SZ/.SH, 比对去后缀对齐 clean.code
   source_raw_date_column: trade_date       # YYYYMMDD

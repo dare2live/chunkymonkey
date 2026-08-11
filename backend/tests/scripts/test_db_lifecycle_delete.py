@@ -1,6 +1,6 @@
 """db_lifecycle_delete live 守护面单测 (2026-07-06 全面数据审计根因根治).
 
-历史根因证据=analysis/comprehensive_data_module_audit_20260706.md pit_leakage_spotcheck 维度:
+历史根因证据=git log --grep comprehensive_data_module_audit pit_leakage_spotcheck 维度:
 原 _live_surface() 只扫 daily_update.sh 里正则抓到的脚本名 + serving/recommendation/scoring/
 ensemble 四个目录——结构性排除 backend/scripts/ 整个目录, 导致"表已删但治理脚本仍用 SQL
 字符串引用"这类死引用在删表前完全检测不到 (data_quality.py 3742行零调用方模块正是这样

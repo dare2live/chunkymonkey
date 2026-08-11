@@ -4,7 +4,7 @@
 `days[0] == (start or _last_watermark_date(...) or "")` —— 调用方显式传 --start 时
 这个判据必然为真 (days[0] 本就是由 start_d=start 算出的), 导致任何手工
 `--start X --end Y` 范围回填都静默丢第一天。此 bug 是在响应全面数据审计
-(analysis/comprehensive_data_module_audit_20260706.md) 修复 stk_limit page_limit
+(git log --grep comprehensive_data_module_audit) 修复 stk_limit page_limit
 截断问题时实测踩出的: --start 20260615 --end 20260703 回填后, 20260615 当天
 仍缺 1493 行, 复查发现是这个独立的、此前从未被发现的 sync_runner 逻辑 bug。
 

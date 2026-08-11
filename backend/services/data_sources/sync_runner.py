@@ -635,7 +635,7 @@ _TUSHARE_SOURCE: Any = None
 
 def _adapter(source_name: str):
     """2026-07-07 精简: 原经 get_registry().get_source() 间接查找已删 (registry.py/base.py
-    多源 fallback 机制 0 消费方物删, 见 analysis/data_sources_registry_retirement_20260707.md)。
+    多源 fallback 机制 0 消费方物删, 见 git log --grep data_sources_registry_retirement)。
     sync_registry.yaml 47 域全声明 source: tushare, 单例直连即可。A5: formal 边界只许 tushare。"""
     global _TUSHARE_SOURCE
     from services.data_sources.formal_boundaries import (
@@ -782,7 +782,7 @@ def _by_ts_code_batches(
     硬真相源 — 不拉 B/BJ/三板/无K线退市股的逐股数据。owner 2026-07-22: ST 属白名单，
     不是与 B/BJ 同类的排除板。
     **include_st (默认 true)**: 产品/参考域拉活跃 ST；策略域可显式 `include_st: false`
-    收窄（非白名单真相）。见 analysis/hs_a_whitelist_includes_st_20260722.md。
+    收窄（非白名单真相）。见 git log --grep hs_a_whitelist_includes_st。
     """
     from services.universe import get_active_universe
 
@@ -3307,7 +3307,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         # 组合域静默失效 (声明 data_type="热基" 却始终请求不到, 只拿到与 date_param 无关的默认返回)。
         # 与 by_code_list 分支 (L790) 同款合并语义, 批参数优先于 fixed (date_param 不应被 fixed 覆盖)。
         fixed = dict(spec.get("fixed_params") or {})
-        # split_by (2026-07-08 根因修复, owner=analysis/gap_root_cause_20260708.md): margin 域
+        # split_by (2026-07-08 根因修复, owner=git log --grep gap_root_cause): margin 域
         # 裸调 pro.margin(trade_date=d) 在 2026 年偶发(~0.5%交易日)漏返 BSE/SZSE(vendor 网关对
         # "无过滤条件汇总查询"存在补全遗漏的怪癖), 但显式加 exchange_id=SSE/SZSE/BSE 逐个查询
         # 100% 拿全(含历史已发生的漏返日期实测验证)。这不是分页截断(_fetch_paged 管不了),
@@ -3792,7 +3792,7 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     # "完整日"口径 = 行数达 min_rows 的日; 不足日视同缺口重拉 (MERGE 幂等, 重拉安全)。
     # 复审 HIGH: 旧版 DISTINCT 把 vendor 截断批 (在表但残缺) 当完整, 会洗白 run_domain
     # 标记的 suspect 日且永无重拉机制。
-    # 时代分段 (2026-07-09 根因修复, owner=analysis/gap_root_cause_20260708.md 全审计节):
+    # 时代分段 (2026-07-09 根因修复, owner=git log --grep gap_root_cause 全审计节):
     # 行数随标的池扩容长期单调增长的域 (margin_detail 2019年941行→2026年3400+行), 静态
     # min_rows 锚定当前基线后, drain 会把早期"真实完整但行数低于今日阈值"的历史日永久判成
     # 缺口反复重拉不收敛 (实测 margin_detail 2000 阈值 → 594 个 2019-2021 真实完整日成幻影

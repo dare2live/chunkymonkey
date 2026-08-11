@@ -1,6 +1,6 @@
 """check_continuity_integrity — 数据连续性/完整性常驻审查器 (R1 根因 2/4/6 机械门, 2026-07-03).
 
-owner=analysis/data_foundation_root_causes_20260703.md 根因2 (allow_empty 吞故障空: top_inst 16 缺日 /
+owner=git log --grep data_foundation_root_causes 根因2 (allow_empty 吞故障空: top_inst 16 缺日 /
 block_trade 20250917 中间空洞) + 根因4 (SLA 只测"最近动过"不测"该到的到了没": ths_hot 热基子榜断流
 4 个月 / stk_factor_pro 停 11 天零痕迹) + 根因6 (声明-实测漂移: data_start 错位 5 域 / income 深史
 2008-2021 仅 5-15% 覆盖)。把一次性审计 (data_foundation_audit_20260703.json continuity 部分)
@@ -24,7 +24,7 @@ block_trade 20250917 中间空洞) + 根因4 (SLA 只测"最近动过"不测"该
   cross_section      横截面异常 (同域范围): 单日行数 < 近 20 观测日滚动中位 x row_dip_ratio = WARN
                      (row_dip_tolerance: true 域降 pass, 需逐域单独审查声明, 不从 gap_tolerance
                      继承——2026-07-08 教训: stk_surv 曾因 gap_tolerance 掩盖真实 page_limit 截断
-                     bug, 见 analysis/gap_root_cause_20260708.md); grain 含 exchange_id/data_type
+                     bug, 见 git log --grep gap_root_cause); grain 含 exchange_id/data_type
                      类分组列的域, 基线组当日缺失 = FAIL (known_group_gaps 精确墓碑)。
   group_freshness    分组新鲜度 (声明 freshness_group_col 的域): 各组 MAX(date) 落后 > SLA x 3
                      交易日 = FAIL (ths_hot 子榜断流型); dead_groups 墓碑排除。
@@ -206,7 +206,7 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
             # 反复重新调查同一件已结案的事)。仅压 declared_drift 这一条, sparse_history/其余
             # 检测不受影响(那些若仍有信号价值应继续曝光)。
             "data_start_reviewed": bool(entry.get("data_start_reviewed", False)),
-            # 2026-07-08 从 gap_tolerance 拆分独立字段(owner=analysis/gap_root_cause_20260708.md):
+            # 2026-07-08 从 gap_tolerance 拆分独立字段(owner=git log --grep gap_root_cause):
             # gap_tolerance 原语义只覆盖 calendar_gaps(整日缺失), 曾被泛化误用去连带抑制
             # cross_section 的 row_dip——代价是任何"因日历稀疏理由"打了 gap_tolerance 的域,
             # 其行数骤降信号会被无关判断连带静默(stk_surv 正是实例: 2026-07-05 因日历空洞
@@ -595,7 +595,7 @@ def check_cross_section(
                 f"源端确实部分覆盖 -> 消费侧需口径标记 (mart n_exchanges 类)")
         return _result("cross_section", spec, status, detail, hint)
     if dips:
-        # 2026-07-08 修正(owner=analysis/gap_root_cause_20260708.md): 曾用 gap_tolerance 抑制
+        # 2026-07-08 修正(owner=git log --grep gap_root_cause): 曾用 gap_tolerance 抑制
         # row_dip(2026-07-08 早前一版逻辑), 但 gap_tolerance 是为 calendar_gaps(整日缺失)设计的
         # 判断, 与 row_dip(行数骤降但非零)是不同的失效模式, 泛化复用导致真实盲区——stk_surv
         # 因日历稀疏理由早被打了 gap_tolerance, 结果它同时存在的系统性 page_limit 截断 bug

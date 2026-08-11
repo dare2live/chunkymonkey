@@ -6,7 +6,7 @@
 #   - `nightly_paths`  — strategy-paused / heavier offline suite (`--tier nightly`)
 #   - `ci_test_optional` — intentionally NOT run by commit/CI (with reason)
 # Full-repo remainder stays optional until triage. Map:
-#   analysis/gate_redesign_occams_20260721.md
+#   git log --grep gate_redesign_occams
 #
 # Owner: this file + backend/scripts/run_ci_pytest.py. Consumed IDENTICALLY by:
 #   - .github/workflows/ci.yml ("Run offline tests" step) via `--tier blocking`

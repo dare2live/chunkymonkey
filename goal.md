@@ -2,10 +2,10 @@
 
 > 状态：live controller board
 > 手写：objective / 已裁决 / 禁令 / 下一步。**运行时状态现查 `scripts/chunkyctl status`**（零文件；非执法输入）。
-> 完成证据：`scripts/chunkyctl history --grep <关键词>`（git log 即原件）；时期导航 `--eras`。交接：`analysis/account_switch_handoff_20260720.md`。
+> 完成证据：`scripts/chunkyctl history --grep <关键词>`（git log 即原件）；时期导航 `--eras`。交接：`chunkyctl history --grep "account-switch"`。
 > **执行方案（仅两份；abolished 主方案/支线）**：底座 `analysis/FOUNDATION_EXECUTION_PLAN.md` · 策略 `analysis/STRATEGY_EXECUTION_PLAN.md`（RX 前 BLOCKED）。
-> **清理台账**：`analysis/DOC_CLEANUP_20260723.md`。Owner 立法仍只认 `docs/README.md` 三份 contracts。
-> **活契约引用（非第二 backlog）**：`analysis/foundation_phase_reeval_20260721.md` · `analysis/data_brick_architecture_20260721.md` · `analysis/db_layering_toplevel_design_20260721.md` · `analysis/architecture_fix_treadmill_first_principles_20260722.md` · `analysis/serve_derive_closed_loop_law_20260723.md` · `analysis/org_holding_incremental_loop_20260723.md` · `analysis/hs_a_whitelist_includes_st_20260722.md`。
+> **清理台账**：`chunkyctl history --grep "文档收敛"`。Owner 立法仍只认 `docs/README.md` 三份 contracts。
+> **活契约引用（非第二 backlog）**：`analysis/foundation_phase_reeval_20260721.md` · `analysis/data_brick_architecture_20260721.md` · `analysis/db_layering_toplevel_design_20260721.md` · `analysis/architecture_fix_treadmill_first_principles_20260722.md` · `analysis/serve_derive_closed_loop_law_20260723.md` · `analysis/org_holding_incremental_loop_20260723.md` · `chunkyctl history --grep "ST 白名单"`。
 
 ## 当前 objective
 
@@ -76,6 +76,7 @@
 - **P3 历史归 git**（依赖 P2.2）
   - P3.2 **FIXED**（2026-08-11）：`scripts/chunkyctl history`（`--grep` 逐刀 / `--eras` 时期 / `--full` 出正文）
   - P3.3 **FIXED**（2026-08-11）：ledger **直接退役**（非冻结）。实测三条依据：① 同一刀逐字对比，commit message 是 ledger 的**超集**（`16f5c370c`：ledger 记 4 条 Rule10，commit 记 6 条）；② 「早期 commit 太薄」不成立——2026-04~05 期 1133 个 commit 中位 783 字符/20 行、41% 带证据结构；③ 169 条里唯一 git 不直接给的只有 **6 段时期叙事（2030 字符）**，已转成 `era/*` annotated tag（`--eras` 可查）。删后 `check_doc_drift` 抓出 9 处需求侧死引用，全部改指 `chunkyctl history`
+  - P3.4 **进行中**（2026-08-11）：`analysis/` **55 → 16 份**。已删 39 份（36 EVIDENCE + 3 SUPERSEDED，逐份读过内容而非按文件名推断）。删后门抓出 **13 处活文档幽灵引用 + 68 处代码/配置死指针**，全部改指 `git log --grep`/`chunkyctl history` —— 这正是「删供给侧必清需求侧」。**剩 16 份是搬家不是删**：4 份纯 RULE + 12 份 MIXED，里面装着多处代码写成 `Authority:` 在用的活规则（变量积木分层 L0–L4、物理 DB 分层、frontier 决策原语、partition leap 法条、Cap A–F 能力定义…），MASTER **目前完全没有**这两章。工作量：MASTER ~275 行 / eng_gov ~95 行 / strategy ~55 行；**`backend/config/*.yaml` 零新增**（阈值/窗口/白名单早已全部落 yaml，L1 契约层本就干净）
   - P3.1 **未做**：commit message 模板固化 Q/Fix/Evidence/Residual（commit_msg 门的正确形态：查结构，不查关键词）
   - P3.4 `analysis/` 归零（现 65 份；卡点是几十处注释性溯源要一起改，批量替换已试过一次并回滚，需更好策略）
 - **P4.2-4.4 文档按层归位**：`eng_gov §6/§11`、`AGENTS §4` 的系统约束移进 `MASTER`；三份 owner contract 重新划界（MASTER=系统法 / eng_gov=开发纪律 / strategy=研究发布）
@@ -106,9 +107,9 @@
 
 架构硬决定摘要：积木=`module+data+config+contract+evidence`；landing 保留供应商响应；日历与 universe 同级硬门；名义 OHLCV=成交真相；一数据集一 writer；`manual_only`；静态 PASS≠`live_readiness`。完整条文见 `docs/MASTER_TOPLEVEL_DESIGN.md`。
 
-**Formal daily/ST acquire（owner 2026-07-21；ST∈白名单澄清 2026-07-22）**：acquire = 全市场按 `trade_date`（`raw_evidence`），**禁止** exclude-then-fetch。**沪深A 白名单含 ST/*ST**；排除仅 B/BJ/三板/观察日无名义K。`stock_st` = accepted 日级 **membership 证据**（谁在何时是 ST），**不是** universe denylist，也不是 acquire 排除名单；同日 `zero_rows`=`pending_publish` 属发布窗，勿误读为「不要 ST」。BSE/三板 landing 可含，经 board 白名单过滤。Owner：`docs/MASTER_TOPLEVEL_DESIGN.md` §5.1 + `analysis/hs_a_whitelist_includes_st_20260722.md`。
+**Formal daily/ST acquire（owner 2026-07-21；ST∈白名单澄清 2026-07-22）**：acquire = 全市场按 `trade_date`（`raw_evidence`），**禁止** exclude-then-fetch。**沪深A 白名单含 ST/*ST**；排除仅 B/BJ/三板/观察日无名义K。`stock_st` = accepted 日级 **membership 证据**（谁在何时是 ST），**不是** universe denylist，也不是 acquire 排除名单；同日 `zero_rows`=`pending_publish` 属发布窗，勿误读为「不要 ST」。BSE/三板 landing 可含，经 board 白名单过滤。Owner：`docs/MASTER_TOPLEVEL_DESIGN.md` §5.1 + `chunkyctl history --grep "ST 白名单"`。
 
-**Gate pytest 分层（owner 2026-07-21 redesign #1 SHIPPED）**：`ci_pytest_surface.yaml` = `blocking_paths` + `nightly_paths` + optional；`run_ci_pytest.py --tier blocking|nightly|all`；L2/L3 safe_commit + CI = **`--tier blocking`**（非全量 985）；tier12 publish contract **promoted**；strategy-paused main_rally/institution_follow → **nightly**。详见 `analysis/gate_redesign_occams_20260721.md`。
+**Gate pytest 分层（owner 2026-07-21 redesign #1 SHIPPED）**：`ci_pytest_surface.yaml` = `blocking_paths` + `nightly_paths` + optional；`run_ci_pytest.py --tier blocking|nightly|all`；L2/L3 safe_commit + CI = **`--tier blocking`**（非全量 985）；tier12 publish contract **promoted**；strategy-paused main_rally/institution_follow → **nightly**。详见 `chunkyctl history --grep "gate redesign"`。
 
 **S7 sync_orphan standby（owner Q2）**：**NO** blanket pre-accept of 14 orphans（无 consumer / 无 contract / 大宗成本 / 假 readiness）。保持 ssot 墙；`legacy_raw_plane.yaml` **publication_watchlist** = 未来策略需要时的 publication 候选（非自动队列）；薄门：sync_orphan 进 DataAccess → `check_legacy_raw_plane` FAIL。**禁假 COMPAT**。
 

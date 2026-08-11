@@ -1,6 +1,6 @@
 """check_grain_uniqueness — grain 声明持续审计门 (R1 根因1 机械门, 2026-07-03).
 
-owner=docs/engineering_governance.md；历史根因证据=analysis/data_foundation_root_causes_20260703.md。
+owner=docs/engineering_governance.md；历史根因证据=git log --grep data_foundation_root_causes。
 根因1: grain 声明是"猜的"不是"验的" —
 注册时单日抽样查不出低频多行模式 (多年度研报/多席位/双榜), 而 2026-06-22 上线的批内
 drop_duplicates(grain) 把错误 grain 从良性 (多行共存) 升级为恶性 (静默销毁,

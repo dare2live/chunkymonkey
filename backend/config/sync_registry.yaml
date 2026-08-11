@@ -84,7 +84,7 @@ domains:
     pit_anchor: "trade_date; 盘后更新 -> JOIN t-1 (与 moneyflow 同)"
     available_after: "18:00"
     data_start: "20230911"        # 2026-06-28 修: 实测源端真起点=20230911 (旧 20230901 早10天致 20230901-08 假缺口每天重探); 东财个股资金流 ~2023-09 起
-    known_empty_days: ["20231122"]   # 2026-07-10 撤销之撤销 (owner=analysis/gap_root_cause_20260708.md
+    known_empty_days: ["20231122"]   # 2026-07-10 撤销之撤销 (owner=git log --grep gap_root_cause
       # 第四轮节): 2026-07-09 那次"实测vendor现返5075行"的撤销测错域 — 5075 行是姊妹表
       # raw_tushare_moneyflow(个股资金流, 无_dc后缀)的值, 本域 raw_tushare_moneyflow_dc(东财板块
       # 资金流)当日实测仍 0 行 (邻日 20231120/21/23/24 均 5320+行, 交易日历确认该日 is_trading=1
@@ -107,7 +107,7 @@ domains:
     data_start: "20230103"        # 2026-06-12: 对齐实际落库防 drain 开闸 (文档支持 2020 起, B 书 W6 需要时回填再改回 20200102)
     freshness_sla_trading_days: 1
     min_rows_per_batch: 10        # 跌停冰点日可能极少, 仅防 0 行
-    page_limit: 1000   # 2026-07-09 根因深查第二轮收尾发现(owner=analysis/gap_root_cause_20260708.md):
+    page_limit: 1000   # 2026-07-09 根因深查第二轮收尾发现(owner=git log --grep gap_root_cause):
                         # 20250407(全球暴跌日, 真实2836只跌停)本地恰好卡整数2500 = 同步当时网关
                         # 截断残留(vendor现裸调已返全量, 全历史仅此1天中招, 已重拉补齐2834行)。
                         # 防御性分页防未来极端行情日复发——与 stk_limit(同为涨跌停榜, 2026-07-06
@@ -132,7 +132,7 @@ domains:
                         # 静默丢 ~1500 行/天连续 3 周 (20260615-20260703 实测), 下游
                         # fact_stock_form_daily.buyable 同期出现等量 NULL。5000 留出安全边际
                         # (server 隐式上限观测约 5800, 5000 确保稳定触发分页)。回填见
-                        # analysis/comprehensive_data_module_audit_20260706.md P0#1。
+                        # git log --grep comprehensive_data_module_audit P0#1。
     pit_anchor: "trade_date; 8:40 盘前更新 -> t 日盘前即可用 (罕见的当日可用源)"
     available_after: "08:40"
     data_start: "20190102"   # 2026-07-04 buyable NULL 根因修复: 原 20220104 声明过窄, 实弹探测
@@ -216,7 +216,7 @@ domains:
     available_after: "t+1"
     data_start: "20190102"        # 对齐 K线窗口 (源头 20100331 有, 消费方=D2 特征只需 K线窗内; 实测首日 949 个股)
     freshness_sla_trading_days: 2  # t+1 披露节奏, 给 1 天缓冲
-    min_rows_per_batch: 2000      # 2026-07-08 从 800 提高(owner=analysis/gap_root_cause_20260708.md):
+    min_rows_per_batch: 2000      # 2026-07-08 从 800 提高(owner=git log --grep gap_root_cause):
                                    # 800 是历史地板值(2019首日949行), 测不出 20260703 真实52%截断
                                    # (3472→1652)。2000 锚定当前(2026)真实基线 0.6x, 让下次复发直接
                                    # 进 failure_queue。
@@ -300,7 +300,7 @@ domains:
       rebuild_policy: replay_landing_then_refetch
       retirement_condition: replacement_contract_and_consumer_cutover
 
-  # ── 市场感知 v2 族 (2026-07-02 调研+实弹; owner=analysis/market_pulse_design_20260702.md v2 第二批) ──
+  # ── 市场感知 v2 族 (2026-07-02 调研+实弹; owner=git log --grep market_pulse_design v2 第二批) ──
   dc_daily:                          # 东财板块指数 OHLC (行业/概念/地域全类型): dc 链 RS 双窗 + 广度/龙头史深 2025->2020
     source: tushare
     api: dc_daily
@@ -550,7 +550,7 @@ domains:
   #   drain 每跑 typed unsupported → soft DEGRADED。墓碑化本条目防回流。
   #   2026-07-24 owner DROP: raw_tushare_fina_mainbz archive+DROP
   #   (run_id=express_fina_mainbz_retirement_20260724; 25674 rows parquet)。
-  #   证据: analysis/post_close_update_e2e_20260723.md §5–6.
+  #   证据: git log --grep post_close_update_e2e §5–6.
 
   # ── 旧源退役批 (2026-06-11 用户决策: 能在 tushare 获取的就从 tushare 获取) ──
   # 替代对象: lhb_daily(aif10, 实测滞后13天) / profit_forecast / external_attention /
@@ -611,7 +611,7 @@ domains:
       # 缺失19.7%), 本地库多个日期恰好卡在整数3000印证同型截断。1500分页安全边际(远低于硬顶),
       # 已激活 _fetch_paged 既有分页防线。此为 by_ann_date 修复(周末数据)之后独立发现的第二个
       # 根因, 全历史需再次重新分页回填(见下方 backfill 记录)。
-    batch_mode: by_ann_date   # 2026-07-08 根因修复(owner=analysis/gap_root_cause_20260708.md,
+    batch_mode: by_ann_date   # 2026-07-08 根因修复(owner=git log --grep gap_root_cause,
       # 本次根因深查最严重发现, 比其余3域加总影响都大): 原 by_trade_date 只在**交易日历**上取
       # report_date 的枚举值, 但 report_date 是研报**发布日**(真实日历概念), 实测周六/日均有
       # 大量真实研报(抽样5个周六58-320行/5个周日163-1048行, 跨2022-2026年), 意味着 by_trade_date
@@ -637,7 +637,7 @@ domains:
                               # (0611/0612/0618/0702/0706, 已重拉补齐) — 这条只覆盖"整体量级递减"
                               # 本身, 不代表放弃对真缺口的检测(已用实测修正; 字段从 gap_tolerance
                               # 拆分, 此域从无 calendar_gaps 问题)。
-                              # 补记(根因深查 workflow, owner=analysis/gap_root_cause_20260708.md):
+                              # 补记(根因深查 workflow, owner=git log --grep gap_root_cause):
                               # report_rc 存在持续、低幅、数月不收敛的背景噪音(vendor侧研报小范围
                               # 修订/补录, 7个月后仍有差距不趋零)——这是该域的常态特征非缺陷, 但
                               # 深查同时抓到一个独立的更大缺口(20260328, vendor 602行本地0行, 100%
@@ -674,7 +674,7 @@ domains:
     freshness_date_column: surv_date   # 2026-06-22 P0-6: 调研无trade_date列, SLA探测改surv_date
     min_rows_per_batch: 1
     allow_empty_batch: true   # 部分交易日无机构调研披露
-    page_limit: 200   # 2026-07-08 根因深查(owner=analysis/gap_root_cause_20260708.md)实锤: 该接口
+    page_limit: 200   # 2026-07-08 根因深查(owner=git log --grep gap_root_cause)实锤: 该接口
                        # 裸调/limit>400 均硬顶400行(20260423裸调=400, 但实测真实量2989, 丢87%);
                        # limit=200分页(offset 0/200/…/2800)精确收齐2989/2989无重复; 7/7历史抽样
                        # 命中400的交易日复核100%证实被截断, 22%~87%不等——本条2026-07-05曾错误
@@ -757,7 +757,7 @@ domains:
     pit_anchor: "trade_date; 沪深港通当日盘后 -> JOIN t-1"
     available_after: "18:00"
     data_start: "20141117"   # 沪股通开通日
-      # 2026-07-08 复核不改动(owner=analysis/gap_root_cause_20260708.md): pit_anchor文字与
+      # 2026-07-08 复核不改动(owner=git log --grep gap_root_cause): pit_anchor文字与
       # report_rc/forecast同构("JOIN t-1")一度怀疑该套用"K线边界结构性孤立"物删2019年前数据
       # ——2-agent独立调查+对抗综合裁定**不适用**, 关键区分: 本域grain=[trade_date]是逐日全量
       # 流水(每交易日必有一行, 描述"当日北向净流入"这一独立完整事实), 不是report_rc/forecast
@@ -1007,7 +1007,7 @@ domains:
     target_table: raw_tushare_forecast
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, end_date, ann_date]   # 同股同期可修订 (revision 不同 ann_date) → grain 含 ann_date; 实弹峰值日 632 行无截断
-    batch_mode: by_ann_date   # 2026-07-08 根因修复(owner=analysis/gap_root_cause_20260708.md, 与
+    batch_mode: by_ann_date   # 2026-07-08 根因修复(owner=git log --grep gap_root_cause, 与
       # report_rc 同型): 原 by_trade_date 只在交易日历上枚举, 但 ann_date 是真实披露日历日,
       # 实测周末确有预告(20260321周六1条/20240622周六4条), by_trade_date 结构性排除这些日期。
       # 改用 by_ann_date(全日历日枚举), date_param 沿用 ann_date。
@@ -1015,7 +1015,7 @@ domains:
     pit_anchor: "ann_date; 业绩预告公告日 (盘中/盘后披露) -> JOIN t-1 保守 (PEAD 事件锚, 早于正式财报)"
     available_after: "t+1"
     data_start: "20190102"   # 2026-07-08 推翻 2026-07-05 R4 workflow"与income同类保留全历史"的
-      # 误判(owner=analysis/gap_root_cause_20260708.md, 用户"2008至今?不是说过跟K线时间周期一样
+      # 误判(owner=git log --grep gap_root_cause, 用户"2008至今?不是说过跟K线时间周期一样
       # 么"当场点破矛盾, 2-agent独立复核+对抗综合确认): forecast 的 pit_anchor 与 report_rc
       # 几乎逐字相同(都是"事件公告日 -> JOIN t-1"精确锚点), git历史证实 forecast/report_rc 曾是
       # 同批次(commit 00cb09e2/2212a5cf)引入的姐妹消费函数(load_forecast/load_analyst_reports,
@@ -1114,7 +1114,7 @@ domains:
   #   每跑 typed unsupported → soft DEGRADED。墓碑化本条目防回流。
   #   2026-07-24 owner DROP: raw_tushare_express archive+DROP
   #   (run_id=express_fina_mainbz_retirement_20260724; 26959 rows parquet)。
-  #   证据: analysis/post_close_update_e2e_20260723.md §5–6.
+  #   证据: git log --grep post_close_update_e2e §5–6.
 
   fina_indicator:   # 财务指标 (2026-06-14 实弹核证: 167 项衍生指标 ROE/ROA/毛利率/负债率 = 直接因子料)
     source: tushare
@@ -1144,7 +1144,7 @@ domains:
     # 招股书历史披露孤例(如001x前缀2021+创业板注册制新股), 非声明错误; 2023年覆盖5201/5246(99.1%)
     # 已上市股交叉验证准确, data_start=20230101 不需要改动, 保留现状。
 
-  # ── P0 (2026-06-17 tushare 选股潜力研究, owner=analysis/tushare_alpha_potential_research_20260617.md): 口径对齐项目(行业=申万/概念=东财, 禁同花顺) ──
+  # ── P0 (2026-06-17 tushare 选股潜力研究, owner=git log --grep tushare_alpha_potential_research): 口径对齐项目(行业=申万/概念=东财, 禁同花顺) ──
   sw_daily:   # 申万行业日线 (行业口径=申万与项目一致; sector_momentum/行业相对强弱分层; 实弹 439-587 指数/日)
     source: tushare
     api: sw_daily
@@ -1168,7 +1168,7 @@ domains:
     target_table: raw_tushare_share_float
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, ann_date, float_date, holder_name]
-    batch_mode: by_ann_date   # 2026-07-08 根因修复(owner=analysis/gap_root_cause_20260708.md, 与
+    batch_mode: by_ann_date   # 2026-07-08 根因修复(owner=git log --grep gap_root_cause, 与
       # report_rc/forecast 同型, 本域第二个独立根因——第一个是下方 page_limit 截断): 原
       # by_trade_date 只在交易日历上枚举, 但 ann_date 是解禁公告的真实披露日历日, 实测周末确有
       # 不小数量的公告(20260321周六12条/20240622周六102条), by_trade_date 结构性排除这些
@@ -1179,7 +1179,7 @@ domains:
                        # 上限)。对 20260318(本地5999行/仅1次sync无拼接侥幸)做 offset 分页实测:
                        # offset=0/6000 均整页满 6000 行, 真实总量 >=12000 (原分析>=30916, 本次复核
                        # 保守下界), 本地缺失 50%+。补 page_limit 激活既有 _fetch_paged 分页防线;
-                       # 390 个受影响交易日需要单独回填 (见 analysis/r4_completion_20260704.md)。
+                       # 390 个受影响交易日需要单独回填 (见 git log --grep r4_completion)。
     pit_anchor: "ann_date 公告日 (float_date 未来解禁=前瞻已知, 0 泄露)"
     available_after: "t+1"
     data_start: "20190102"
@@ -1195,7 +1195,7 @@ domains:
   # stk_factor_pro 域 2026-07-23 owner DELETE 退役:
   #   raw_tushare_stk_factor_pro (~5.2GiB sync_orphan, 0 DataAccess/serve 消费者) 已 lifecycle DROP +
   #   tushare_raw compact (10.0→4.7GiB). 墓碑化本条目以防 daily/--all-due/显式 sync 回流重建。
-  #   证据: analysis/db_bloat_deep_dive_20260723.md §6; mart_data_deletion_record
+  #   证据: git log --grep db_bloat_deep_dive §6; mart_data_deletion_record
   #   run_id=raw_tushare_stk_factor_pro_retirement_20260723. API 能力若未来需要须新域+新消费者+owner 再开。
 
   # stk_holdernumber 2026-07-24 owner RESTORE (was tombstoned baa239ac4):
@@ -1205,7 +1205,7 @@ domains:
   #   ann_date=20250429 → 2508 rows; enddate also returns but hits 3000 page cap).
   #   Ban: by_ts_code mass full-universe daily. Scope = documented raw_evidence
   #   (no formal accept plane yet). Consumer = DataAccess holder_number + dossier assist.
-  #   Evidence: analysis/stk_holdernumber_retire_evidence_20260724.md.
+  #   Evidence: git log --grep stk_holdernumber_retire_evidence.
   stk_holdernumber:   # 股东户数 (筹码集中慢变量; 辅助因子/dossier; 非择时)
     source: tushare
     api: stk_holdernumber

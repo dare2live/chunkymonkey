@@ -1,6 +1,6 @@
 """十大流通股东 — 东方财富妙想 aif10 数据源服务 (主源, 2026-06-24).
 
-源决策: analysis/miaoxiang_aif10_source_decision_20260624.md (用户拍板).
+源决策: git log --grep miaoxiang_aif10_source_decision (用户拍板).
 按新数据模块分层 (获取/清洗/加工/存储 各司其职), 接入 pipeline acquire stage
 (范例 = _sync_institution_survey)。本模块内部亦按阶段分函数:
 

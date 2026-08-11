@@ -4,7 +4,7 @@
 任何声明 fixed_params 的 by_trade_date 域静默失效。此 bug 是在排查"ths_hot 热基子榜"
 时发现的 (曾误以为注册独立域 synthetic_fixed_domain + data_type="热基" 能救回热基数据; 后续
 逐值实测证实 tushare ths_hot 接口对 data_type 参数已彻底忽略, 该域最终撤销 — 见
-sync_registry.yaml ths_hot.dead_groups 注释与 analysis/r4_completion_20260704.md #1)。
+sync_registry.yaml ths_hot.dead_groups 注释与 git log --grep r4_completion #1)。
 本 bug 修复本身独立成立 (fixed_params 合并是通用架构缺陷), 与"热基"业务判断的
 对错无关, 故此处保留合成测试域 (非真实生产域) 验证合并机制。
 本门锁定: 批次实际传给 adapter 的 params 必须含 fixed_params 全部键值 + date_param。

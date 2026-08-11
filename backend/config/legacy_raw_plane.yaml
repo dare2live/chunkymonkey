@@ -116,7 +116,7 @@ tables:
 
   raw_tushare_express:
     role: retired
-    note: "Owner DROP 2026-07-24: sync_orphan sunset; table archived+DROPped (26959 rows → data/archive/lifecycle/raw_tushare_express.parquet); sync_registry tombstoned baa239ac4; run_id=express_fina_mainbz_retirement_20260724. See analysis/post_close_update_e2e_20260723.md."
+    note: "Owner DROP 2026-07-24: sync_orphan sunset; table archived+DROPped (26959 rows → data/archive/lifecycle/raw_tushare_express.parquet); sync_registry tombstoned baa239ac4; run_id=express_fina_mainbz_retirement_20260724. See git log --grep post_close_update_e2e."
 
   raw_tushare_fina_indicator:
     role: ssot
@@ -125,7 +125,7 @@ tables:
 
   raw_tushare_fina_mainbz:
     role: retired
-    note: "Owner DROP 2026-07-24: sync_orphan sunset; table archived+DROPped (25674 rows → data/archive/lifecycle/raw_tushare_fina_mainbz.parquet); sync_registry tombstoned baa239ac4; run_id=express_fina_mainbz_retirement_20260724. See analysis/post_close_update_e2e_20260723.md."
+    note: "Owner DROP 2026-07-24: sync_orphan sunset; table archived+DROPped (25674 rows → data/archive/lifecycle/raw_tushare_fina_mainbz.parquet); sync_registry tombstoned baa239ac4; run_id=express_fina_mainbz_retirement_20260724. See git log --grep post_close_update_e2e."
 
   raw_tushare_forecast:
     role: ssot
@@ -234,12 +234,12 @@ tables:
 
   raw_tushare_stk_factor_pro:
     role: retired
-    note: "Owner DELETE 2026-07-23: sync_orphan sunset; table DROPped + tushare_raw compacted; sync_registry tombstoned (no refill). See analysis/db_bloat_deep_dive_20260723.md §6."
+    note: "Owner DELETE 2026-07-23: sync_orphan sunset; table DROPped + tushare_raw compacted; sync_registry tombstoned (no refill). See git log --grep db_bloat_deep_dive §6."
 
   raw_tushare_stk_holdernumber:
     role: ssot
     kind: serve_l0_declared
-    note: "Owner RESTORE 2026-07-24: by_ann_date incremental + DataAccess holder_number + dossier assist (concentration/vs-price). Documented raw_evidence scope; no formal accept plane. NOT holders_top10. See analysis/stk_holdernumber_retire_evidence_20260724.md."
+    note: "Owner RESTORE 2026-07-24: by_ann_date incremental + DataAccess holder_number + dossier assist (concentration/vs-price). Documented raw_evidence scope; no formal accept plane. NOT holders_top10. See git log --grep stk_holdernumber_retire_evidence."
 
   raw_tushare_stk_holdertrade:
     role: compatibility

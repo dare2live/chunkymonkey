@@ -1,6 +1,6 @@
 # market_pulse.yaml — Tier2 市场感知阈值真相源
 # 现行边界: docs/MASTER_TOPLEVEL_DESIGN.md + docs/strategy_validation_contract.md。
-# 历史设计证据: analysis/market_pulse_design_20260702.md (evidence-only)。
+# 历史设计证据: git log --grep market_pulse_design (evidence-only)。
 # 用户定调: "看钱在哪里从哪里流出流向哪里 … 哪里资金悄悄的在流入、哪里悄悄在流出"。
 # 三个 namespace 并列 (vendor 自洽红线, 任何计算禁跨 namespace JOIN):
 #   dc_industry = 东财行业层级；dc_concept = 东财概念多标签；二者不可混成一个东财桶
@@ -30,7 +30,7 @@ mkt_valuation_code: "000300.SH"  # 大盘估值/换手行 (raw_tushare_index_dai
 # ── C4 退潮预警 (routers/market_pulse.py 消费; 描述性预警线, 非买卖信号) ──
 warning_quiet_outflow_days: 3 # dc 链连续悄悄流出天数 >= 该值 进退潮预警卡 (C4 契约 2026-07-02 默认, 待用户调参)
 
-# ── 迟到列回补 (历史根因证据: analysis/data_foundation_root_causes_20260703.md) ──
+# ── 迟到列回补 (历史根因证据: git log --grep data_foundation_root_causes) ──
 lookback_late_days: 3         # 每次 build_latest 对最近 N 个已存在源日 DELETE+重插 (t+1 披露域
                               # margin/龙虎榜/limit 早跑日 NULL/半值行的治愈窗口)。3 = 覆盖 t+1 常规
                               # 迟到 + 一次失败重放周期 (audit 20260703 pulse finding: margin 实测比

@@ -33,7 +33,7 @@ def run_clean(ctx: PipelineContext) -> None:
 
 
 def _data_audit() -> None:
-    # 2026-07-10 修审计环空转（历史证据=analysis/gap_root_cause_20260708.md 第四轮节）:
+    # 2026-07-10 修审计环空转（历史证据=git log --grep gap_root_cause 第四轮节）:
     # 原实现 FAIL 只 print 不上报 — run_and_record 判 check_pass 只看 ctx.degraded_msgs 是否
     # 新增, 审计 FAIL 时 clean 仍记 check_pass, stage_runner 上游门照常放行 process 在审计不过
     # 的数据上加工, 无 flag 无告警 = "审计环是纯观测非门"。改为 FAIL 即 raise, 由外层 ctx.step

@@ -44,7 +44,7 @@ def _live_surface() -> list[Path]:
     """daily_update 调用脚本集 + serving/ensemble/scoring/recommendation + backend/scripts/
     (治理/审计/build_* 一次性脚本) + backend/services/pipeline/ (真实当前调用图) = live 服务面。
 
-    2026-07-06 全面数据审计根因根治（历史证据=analysis/comprehensive_data_module_audit_20260706.md；
+    2026-07-06 全面数据审计根因根治（历史证据=git log --grep comprehensive_data_module_audit；
     现行 owner=docs/engineering_governance.md
     pit_leakage_spotcheck 维度): 原实现只对 `scripts/daily_update.sh` 做正则抓已调用脚本名 +
     `serving/recommendation/scoring/ensemble` 四个目录——**结构性排除 `backend/scripts/` 整个

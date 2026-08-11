@@ -5,7 +5,7 @@ via ``sync_period(..., allow_existing_refresh=False)``. NOT ``backfill()`` / NOT
 mass refresh.
 
 Law: ``plan_partition_catchup`` (calendar \\ local_raw, P≤plannable,
-oldest_first, N=1). Evidence: ``analysis/org_period_bounded_fill_20260724.md``.
+oldest_first, N=1). Evidence: ``git log --grep org_period_bounded_fill``.
 """
 from __future__ import annotations
 

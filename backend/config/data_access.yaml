@@ -261,7 +261,7 @@ entities:
     # 十大流通股东。Formal SSOT = canonical after E0 land→accept.
     # fact_top10_holder_period DROPPED 2026-07-26 (no compat fallback).
     # PIT/availability axis = notice_date (disclosure known-at), not report_date tip folklore.
-    # Evidence: analysis/holders_fact_retire_20260725.md
+    # Evidence: git log --grep holders_fact_retire
     db: smartmoney
     table: canonical_top10_float_holders_period
     layer: L1

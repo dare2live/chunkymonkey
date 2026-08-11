@@ -452,7 +452,7 @@ def test_cross_section_row_dip_tolerance_downgrades_to_pass():
     """report_rc/share_float 型: 已逐域单独审查的天然高方差域(row_dip_tolerance=true)骤降降 pass,
     未设域(false, 默认)仍照常 warn_row_dip (red-green 对照)。
 
-    2026-07-08 字段从 gap_tolerance 拆分(owner=analysis/gap_root_cause_20260708.md): stk_surv
+    2026-07-08 字段从 gap_tolerance 拆分(owner=git log --grep gap_root_cause): stk_surv
     曾因日历稀疏理由(calendar_gaps 用途)被打 gap_tolerance, 若沿用旧的"gap_tolerance 连带抑制
     row_dip"逻辑, 会掩盖它同时存在的系统性 page_limit 截断 bug(丢 22%~87%)。row_dip 的容忍
     必须逐域单独声明, 不得从 gap_tolerance 继承——本测试改用独立的 row_dip_tolerance 字段。"""

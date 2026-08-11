@@ -4,8 +4,8 @@ Companion to ``holders_aif10`` incremental. From-fact catchup retired with
 ``fact_top10_holder_period`` DROP (2026-07-26). Remaining path = provider
 forward by ``UPDATE_DATE`` day land. Never by_ts_code mass or org invent.
 
-Evidence: ``analysis/holders_ann_date_axis_20260724.md`` ·
-``analysis/holders_fact_retire_20260725.md``.
+Evidence: ``git log --grep holders_ann_date_axis`` ·
+``git log --grep holders_fact_retire``.
 """
 from __future__ import annotations
 

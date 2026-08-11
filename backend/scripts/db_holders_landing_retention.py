@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Holders landing retention — archive non-latest ACCEPTED batches, reclaim disk.
 
-Policy (analysis/db_bloat_deep_dive_20260723.md §B / FOUNDATION F3):
+Policy (git log --grep db_bloat_deep_dive §B / FOUNDATION F3):
   - KEEP landing for latest ACCEPTED batch per partition_value
   - KEEP landing for non-ACCEPTED batches (LANDED/REJECTED — in-flight audit)
   - ARCHIVE other ACCEPTED landing rows to parquet (cold fuse), then DELETE
