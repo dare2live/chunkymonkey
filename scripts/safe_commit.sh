@@ -716,21 +716,15 @@ fi
 
 # 4. Commit message keyword check (manual preview)
 echo
-echo "=== Step 4: commit message keyword ==="
+echo "=== Step 4: commit message 结构自检 (Q/Fix/Evidence/Residual) ==="
 if gate_enabled commit_msg; then
-keywords_a="测试|test pass|fallback|unit|实测|evidence|backtest|measured|audit|ann|sharpe|max_dd"
-keywords_b="PIT|OOS|walk-forward|expanding|实测|evidence|backtest|measured|audit|annual|年化|sharpe|max_dd|calmar"
-has_a=$(echo "$MSG" | grep -ciE "$keywords_a" || true)
-has_b=$(echo "$MSG" | grep -ciE "$keywords_b" || true)
-has_minimal=$(echo "$MSG" | grep -c "commit-msg: minimal" || true)
-has_skip=$(echo "$MSG" | grep -c "codex-review: skipped" || true)
-if [[ "$has_a" == "0" && "$has_minimal" == "0" ]]; then
-    echo "WARNING: commit message 缺 GROUP A 关键词 (test/fallback/实测/evidence/...)"
-    echo "建议加 '# commit-msg: minimal' 或加关键词"
-fi
-echo "GROUP A match: $has_a, GROUP B match: $has_b, minimal: $has_minimal, codex-skip: $has_skip"
+# 与 commit-msg hook 共用同一实现, 不在 shell 里维护第二份关键词表 ——
+# 旧版这里有一张 `sharpe|calmar|max_dd` 词表, 与 hook 各写一份且都会烂。
+MSG_FILE="$STAGED_INDEX_DIR/COMMIT_MSG_STRUCT"
+printf '%s\n' "$MSG" > "$MSG_FILE"
+PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_commit_message.py" "$MSG_FILE" || true
 else
-    echo "[commit-tier] skip commit_msg preview (tier=$COMMIT_TIER)"
+    echo "[commit-tier] skip commit_msg (tier=$COMMIT_TIER)"
 fi
 
 # 4.5. Codex review gate (Rule 10 blocking; one policy owner shared with commit-msg hook)

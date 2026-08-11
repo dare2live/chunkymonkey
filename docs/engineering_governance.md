@@ -354,9 +354,12 @@ A→H 冻结已由 owner 于 2026-07-20 解除（核心 WP0–WP4 闭合即恢�
 
 **通用原则：一件事若无法机器验证，就不要用机器门假装验证它 —— 写进规则，别写
 进闸。** 真要强制独立审查，enforcement 必须落在提交者够不到的地方（CI / PR 侧
-reviewer）；本地 hook 天然做不到。同批裁决：`check_commit_message.py` 的
-GROUP A/B/D 关键词同属自述型，一并降为提示（subject 长度仍阻断 —— 长度是客观
-事实）。安全性不受影响：PIT / leakage / continuity / lineage / population /
+reviewer）；本地 hook 天然做不到。同批裁决：`check_commit_message.py` 的关键词组同属自述型，一并降为提示（subject 长度仍阻断
+—— 长度是客观事实）。**2026-08-11 再进一步**：关键词表整体换成 **Q / Fix / Evidence / Residual
+四段结构**自检。理由是关键词有两个毛病 —— 词表必然烂（某时点的产物，项目换了说法就失效而
+没人回来改），且贴个词就能过（它检验字符串出现，不是「说清楚了」）。结构检查改问「这四件事
+你说了吗」，尤其逼出最后一问「留了什么坑」。**它同样验证不了真假**，所以仍是 warn-only 的
+清单而非验证；shell 与 hook 两条路径共用同一实现，不各维护一份词表。安全性不受影响：PIT / leakage / continuity / lineage / population /
 calendar 等门读的是代码与数据，提交者无法用措辞影响它们。
 
 **未竟事项（不得当作已解决）**：本次只做了「拆除」没做「替代」。旧门虽假，至少

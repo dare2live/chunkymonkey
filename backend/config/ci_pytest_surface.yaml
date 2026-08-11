@@ -123,6 +123,7 @@ blocking_paths:
 - tests/services/test_project_status.py
 - tests/scripts/test_check_doc_runtime_state.py
 - tests/scripts/test_history_cli.py
+- tests/scripts/test_check_commit_message.py
 # 2026-08-11 promote (one triage slice, per that entry 自己写的 promotion 条件):
 # 实测纯 tmp_path fixture, 无 DB/网络, 12 例 0.03s —— offline-CI safe。
 # 促发因: P4.1 修了 check_doc_governance 的 C7 假阳性, 其回归测试不能不在 CI 面上。
