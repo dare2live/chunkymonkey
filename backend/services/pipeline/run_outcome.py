@@ -1,7 +1,10 @@
 """Typed daily_update run_outcome — single compute point for exit/wrapper/notify/UI.
 
-Authority: analysis/architecture_fix_treadmill_first_principles_20260722.md §C2
-Amended: analysis/serve_derive_closed_loop_law_20260723.md — integrity ≠ clock.
+Authority: docs/MASTER_TOPLEVEL_DESIGN.md §5.4 (系统语义, owner 级法条; 2026-08-11
+P4.1 孤儿法条归位 — 此前四态被 8 个代码文件依赖而三份 owner contract 零提及)。
+Origin: analysis/architecture_fix_treadmill_first_principles_20260722.md §C2;
+amended by analysis/serve_derive_closed_loop_law_20260723.md — integrity ≠ clock.
+文档与本模块 enum 的一致性由 moth 断言 run-outcome-four-states-law 锁定。
 
 RunOutcome ∈ {success, soft_waiting_clock, integrity_observe, hard_fail}
 

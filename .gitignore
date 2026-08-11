@@ -56,3 +56,6 @@ bestchoice/.git/
 .venv/
 data/concept_snapshots/
 data/archive/
+
+# playwright CLI 本地控制台日志 (工具产物, 非项目资产; 2026-08-11 收口: 长期 untracked 让每次 moth takeover 假报脏 worktree)
+.playwright-cli/

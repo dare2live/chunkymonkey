@@ -63,6 +63,11 @@ _ANALYSIS_REF_RE = re.compile(r"(?<![\w/])analysis/[\w\-./]+\.(?:md|py|json|yaml
 _SCRIPT_REF_RE = re.compile(
     r"\b((?:audit|build|check|probe|run|backfill|modal|seed|update|optimize|refresh|generate|gen|migrate)_[\w]+\.py)\b"
 )  # C6: 常见命令式脚本名；全路径引用另由 check_doc_drift 覆盖
+# 同一份文档里若已用**存在的全路径**引用了某个文件，那它就不是「悬空的命令名」——
+# 该维度归 check_doc_drift（本正则的注释一直这么写，但实现漏了这一步）。
+# 反例 (2026-08-11 实测): MASTER §5.4 写 `backend/services/pipeline/run_outcome.py`，
+# 前缀 `run_` 命中命令名启发式，而它是 service 模块不在 scripts/ 下 → 假 WARN。
+_FULL_PATH_REF_RE = re.compile(r"(?<![\w/])((?:backend|frontend|scripts)/[\w\-./]+\.py)\b")
 _CHUNKYCTL_COMMAND_RE = re.compile(r"\b(?:scripts/)?chunkyctl\s+([a-z][\w-]*)\b")
 _FEATURE_MAP_COMMAND_RE = re.compile(r"^\|\s*`([a-z][\w-]*)`\s*\|")
 _GENERATED_DOCS = ("FEATURE_MAP.md", "BOARD.md")
@@ -226,7 +231,14 @@ def run(root: Path) -> tuple[list[str], list[str]]:
                 fails.append(f"C4 {rel_doc} 引用不存在的 {ref} (幽灵引用)")
             elif ref in retired_like:
                 warns.append(f"C6 {rel_doc} 引用已退役/被取代的 {ref} — 历史叙述合法, 当 owner 引用须改指现行文件")
+        covered_by_full_path = {
+            path.rsplit("/", 1)[-1]
+            for path in set(_FULL_PATH_REF_RE.findall(text))
+            if (root / path).is_file()
+        }
         for ref in set(_SCRIPT_REF_RE.findall(text)):
+            if ref in covered_by_full_path:
+                continue  # 全路径且真实存在 → 不是悬空命令名，交给 check_doc_drift
             if not any((d / ref).exists() for d in script_dirs):
                 # WARN 级 (2026-06-16 立, 暂不 FAIL): 先暴露 reset 删脚本致 doc→命令悬空 backlog (25+ 处),
                 # doc 清理收口后翻 FAIL 守门 (原 audit_docs_graph gate 已删=此盲区累积根因)。

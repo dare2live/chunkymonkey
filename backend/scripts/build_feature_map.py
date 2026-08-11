@@ -51,6 +51,11 @@ DYNAMIC_WRITE_RE = re.compile(
     r"|MERGE\s+INTO)\s+[\"'`]?\{"
 )
 CG_STATS_PREFIX = "> Codegraph:"
+# codegraph 索引派生的排名表 — 与计数行同源同因, 同样不参与漂移判定 (见 _body)。
+CG_VOLATILE_SUBSECTIONS = (
+    "### 被 import 最多的模块",
+    "### 跨文件 fan-in 最高的文件",
+)
 
 
 def tracked_files(repo: Path) -> set[str] | None:
@@ -372,11 +377,29 @@ def render_md(d: dict) -> str:
 
 
 def _body(text: str) -> str:
-    """漂移比对体: 剔除时间戳行 + codegraph 计数行 (后者每次 sync 必变, 计入即假漂移)."""
-    return "\n".join(
-        ln for ln in text.splitlines()
-        if not ln.startswith(SNAPSHOT_PREFIX) and not ln.startswith(CG_STATS_PREFIX)
-    )
+    """漂移比对体: 剔除时间戳行 + 全部 codegraph 派生的易变面。
+
+    计数行早就被剔除 (它每次 sync 必变)。2026-08-11 实测发现**排名表和计数行同源同因**:
+    全量索引与增量索引的 calls 边数不同 (12,619 vs 12,434), top-N 的尾部名次因此翻转 ——
+    于是 worktree 说「无漂移」而 safe_commit 的 fresh 快照说「漂移」, 连续两刀假红。
+    漂移门要证的是「派生地图是否与源一致」, 不是「两个索引的排名是否逐字相同」;
+    把易变排名计入判定, 只会训练人无视这道门。表本身仍保留在文档里供人读。
+    """
+    out: list[str] = []
+    skipping = False
+    for ln in text.splitlines():
+        if ln.startswith(SNAPSHOT_PREFIX) or ln.startswith(CG_STATS_PREFIX):
+            continue
+        if ln.startswith(CG_VOLATILE_SUBSECTIONS):
+            skipping = True
+            continue
+        if skipping:
+            if ln.startswith(("### ", "## ")):
+                skipping = False
+            else:
+                continue
+        out.append(ln)
+    return "\n".join(out)
 
 
 def main() -> int:

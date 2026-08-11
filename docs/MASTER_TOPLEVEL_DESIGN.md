@@ -214,6 +214,44 @@ landing 证据、首错停批且禁止 legacy DML。全局 projection 继续诚�
 
 每个 active config 必须有类型校验；未知键、悬空引用和错误类型 fail closed。显式的 Python wiring 是允许的，依赖关系不必藏进通用 DAG 或插件系统。
 
+### 5.4 运行结果的 typed 语义（`run_outcome`）
+
+§5 的 Contract 一行要求每块积木声明**失败传播**。一次管线运行的失败传播语义由
+typed `run_outcome` 承载，它是系统语义（运行时必须成立），不是开发纪律 —— 故 owner
+在本文件，不在 `engineering_governance.md`。单一计算点 = `backend/services/pipeline/run_outcome.py`。
+
+**四态，穷尽且互斥：**
+
+| 态 | 含义 | 判据 | exit |
+|---|---|---|---|
+| `success` | 该做的都做了 | 无任何 degraded | 0 |
+| `soft_waiting_clock` | 在等时钟，不是缺陷 | 只有**具名**软态（`pending_publish` / `pre_available_after_zero_rows` / `same_day_vendor_vacuum` / drain 残余缺口…） | 1 |
+| `integrity_observe` | 真实的数据/派生洞，**不是**等时钟 | 有完整性类 degraded（continuity、residual_hygiene、system_health 自检…），**或**任何无法归类的 degraded | 1 |
+| `hard_fail` | 现在就得处理，链路已断 | AUTH / PREFLIGHT / TIER0 / WRITER BLOCK | 2 writer · 3 auth · 4 preflight · 5 tier0 |
+
+**四条不可放宽的规则：**
+
+1. **归类不明 ≠ 等时钟。** 认不出的 degraded 归 `integrity_observe`，不是
+   `soft_waiting_clock`。「等时钟」是需要被证明的具名状态，不是兜底桶 —— 反向兜底
+   等于把未知问题渲染成「正常等待」。
+2. **完整性 ≠ 时钟**（`serve_derive_closed_loop_law` 的裁决）：数据有洞和「今天数据
+   还没发布」是两件事，不许合并成一个琥珀色。
+3. **下游只渲染，不重新推断。** exit code、Script Editor wrapper、macOS 通知、
+   workbench 一律读 `run_outcome` 字段；**禁止**从「rc != 0」反推 FAIL —— 软态与完整性
+   观测的 rc 都是 1，按 rc 推断会把观测渲染成失败，把「日更红了」变成噪音。
+4. **报告 JSON 是真相源，exit 是渲染器。** `data/reports/daily_*.json` 里的
+   `run_outcome` / `run_outcome_label` / `run_outcome_reason` / `run_outcome_exit_code`
+   / `run_outcome_classified` 才是对象；进程退出码只是它的一个投影。
+
+**Rollup 顺序**（任一命中即定，不再下推）：任何 hard → `hard_fail`；否则有完整性或
+不可归类 → `integrity_observe`；否则有具名软态 → `soft_waiting_clock`；否则 `success`。
+
+消费面（改任一处都要回看本节）：`backend/services/pipeline/run.py`、
+`backend/services/pipeline/store.py`、`backend/services/notification/dispatcher.py`、
+`backend/routers/ops_manual_run.py`、`scripts/manual_job_wrapper.py`、
+`frontend/src/api/ops.ts` + `frontend/src/pages/WorkbenchPage.tsx`。
+本节与代码 enum 的一致性由 moth 断言 `run-outcome-four-states-law` 机械锁定。
+
 ## 6. Tier 0 数据地基
 
 ### 6.1 交易数据

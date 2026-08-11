@@ -68,7 +68,7 @@
   - P1.3：scaffold 门 `gate_fail` 走 warn 分支 + commit 尾部汇总 + `scripts/chunkyctl scaffold-fix`
   - 验收实测：commit 路径只剩 `diff_correctness`（`chunkyctl gates --check` PASS，19 门三处一致）；`daily_update --dry --skip-sync --date 20260811` 报出 `system_health cutover_effective FAIL`（b_pit attested 窗口 20260121–20260722 已过期，20260810 → BLOCKED/legacy_mart），typed `run_outcome=integrity_observe`
   - **交给 owner 的两条裁决**（检查报出来了，修不了）：① b_pit `cutover_allowed=true` 但窗口过期 → 重新 attest 或改回 `false`；② tier12 `consumer_cutover.cutover_allowed=true` 但最新交易日无 accepted partition（WARN，逐日回落属预期，非结构性）
-- **P4.1 孤儿法条归位**（紧迫，独立）：`run_outcome` 四态被 8 个代码文件依赖而 `docs/` 三份零提及 → 并入 **`MASTER`**（系统语义），**不要**放 `engineering_governance`
+- **P4.1 孤儿法条归位** — **FIXED**（2026-08-11）：`run_outcome` 四态法条落 **`MASTER` §5.4**（系统语义；确认没放 `engineering_governance`）。含四态判据表、rollup 顺序、exit 映射、四条不可放宽规则（归类不明≠等时钟 / 完整性≠时钟 / 下游只渲染不按 rc 反推 / 报告 JSON 是真相源 exit 是渲染器）、消费面清单。`backend/services/pipeline/run_outcome.py` docstring 的 Authority 从 `analysis/` 改指 MASTER，analysis 两份降为 Origin。文档↔enum 一致性由 moth `run-outcome-four-states-law` 锁死（任一侧增删态即红）。顺手修 `check_doc_governance` C7 假阳性：真实存在的**全路径**引用不再当成悬空命令名（该维度本就归 `check_doc_drift`，注释早写了实现漏了），加两个方向的回归测试
 - **P2 状态零手写**（依赖 P1.2）
   - P2.1 扫出人工文档里全部 L2 状态（frontier/覆盖/计数）→ 换成查询指针
   - P2.2 建单一状态入口（`chunkyctl status --json`），agent 一条命令拿全

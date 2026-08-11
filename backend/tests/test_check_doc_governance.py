@@ -135,6 +135,39 @@ def test_common_command_style_script_names_must_exist(tmp_path):
     }
 
 
+def test_existing_full_path_is_not_a_dangling_command_name(tmp_path):
+    """C7 只管「悬空的命令名」；真实存在的全路径归 check_doc_drift。
+
+    2026-08-11 实测反例：MASTER §5.4 引用 backend/services/pipeline/run_outcome.py，
+    前缀 run_ 命中命令名启发式，而它是 service 模块不在 scripts/ 下 → 假 WARN。
+    """
+    _seed_authority_docs(tmp_path)
+    _write(tmp_path / "backend" / "services" / "pipeline" / "run_outcome.py", "x = 1\n")
+    _write(
+        tmp_path / "docs" / "MASTER_TOPLEVEL_DESIGN.md",
+        "单一计算点 = `backend/services/pipeline/run_outcome.py`。\n",
+    )
+
+    fails, warns = run(tmp_path)
+
+    assert fails == []
+    assert not [w for w in warns if "run_outcome.py" in w]
+
+
+def test_full_path_that_does_not_exist_still_warns(tmp_path):
+    """豁免只对**存在**的全路径生效，不能被写全路径就绕过。"""
+    _seed_authority_docs(tmp_path)
+    _write(
+        tmp_path / "docs" / "MASTER_TOPLEVEL_DESIGN.md",
+        "见 `backend/services/pipeline/run_ghost.py`。\n",
+    )
+
+    fails, warns = run(tmp_path)
+
+    assert fails == []
+    assert [w for w in warns if "run_ghost.py" in w]
+
+
 def test_parallel_live_doc_is_rejected(tmp_path):
     _seed_authority_docs(tmp_path)
     _write(tmp_path / "docs" / "NEW_PLAN.md", "# parallel owner\n")

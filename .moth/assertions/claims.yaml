@@ -120,6 +120,28 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -q 'check_codex_review.py' scripts/safe_commit.sh && grep -q 'has_rejected_codex_review' backend/scripts/check_codex_review.py && grep -q 'REQUEST_CHANGES_REVIEW_RE' backend/scripts/check_codex_review.py && grep -q 'gate_fail rule10 6' scripts/safe_commit.sh && PYTHONPATH=backend python3 -c \"import sys; sys.path.insert(0,'backend'); from services.governance_gates import load_registry; sys.exit(0 if load_registry().group_of('rule10')=='diff_correctness' else 1)\" && echo RULE10_BLOCKING"]
     expect: {op: regex, pattern: "RULE10_BLOCKING"}
+  - id: run-outcome-four-states-law
+    claim: "run_outcome 四态 (success/soft_waiting_clock/integrity_observe/hard_fail) 的法条 owner = docs/MASTER_TOPLEVEL_DESIGN.md §5.4 (系统语义, 非开发纪律); 文档列出的态与 services/pipeline/run_outcome.py 的 enum 逐字一致, 任一侧增删态而不同步即红"
+    type: shell
+    command:
+      - bash
+      - -c
+      - |
+        python3 - <<'PY'
+        import pathlib, re, sys
+        code = pathlib.Path("backend/services/pipeline/run_outcome.py").read_text(encoding="utf-8")
+        doc = pathlib.Path("docs/MASTER_TOPLEVEL_DESIGN.md").read_text(encoding="utf-8")
+        states = set(re.findall(r'^OUTCOME_\w+: RunOutcome = "(\w+)"', code, re.M))
+        parts = doc.split("### 5.4")
+        if len(parts) != 2:
+            sys.exit("MASTER 缺 §5.4 run_outcome 法条")
+        section = parts[1].split("## 6.")[0]
+        documented = set(re.findall(r"^\| `(\w+)` \|", section, re.M))
+        if not states or states != documented:
+            sys.exit(f"run_outcome 法条漂移: code={sorted(states)} doc={sorted(documented)}")
+        print("RUN_OUTCOME_LAW_LOCKED")
+        PY
+    expect: {op: regex, pattern: "RUN_OUTCOME_LAW_LOCKED"}
   - id: governance-gate-distribution-wired
     claim: "门分布策略 (backend/config/governance_gates.yaml) 是唯一 owner：safe_commit 经 gate_policy --names 取分组决定阻断/warn/不跑，system_health 组每道都挂在 daily_update 的 store 运行时自检上；三处门名副本 (registry / classify_commit_tier / safe_commit fail-closed 兜底串) 由 gate_policy --check 机械对账"
     type: shell
