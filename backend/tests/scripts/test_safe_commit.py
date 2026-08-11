@@ -6,6 +6,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SAFE_COMMIT = REPO_ROOT / "scripts" / "safe_commit.sh"
@@ -294,14 +296,30 @@ def test_rule10_still_blocks_explicit_request_changes(tmp_path: Path) -> None:
     result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: REQUEST_CHANGES")
     assert result.returncode != 0
 
-def test_doc_governance_failure_warns_but_does_not_block(tmp_path: Path) -> None:
-    """P1: doc_governance 属 scaffold —— 文档没闭合不该挡住代码修复。"""
+@pytest.mark.parametrize(
+    "gate,script",
+    [
+        ("project_index_sync", "check_project_index_sync.py"),
+        ("doc_drift", "check_doc_drift.py"),
+        ("doc_governance", "check_doc_governance.py"),
+        ("doc_runtime_state", "check_doc_runtime_state.py"),
+    ],
+)
+def test_scaffold_gate_failure_warns_but_never_goes_silent(
+    tmp_path: Path, gate: str, script: str
+) -> None:
+    """B3: 降级只准去掉**阻断力**, 不准连**检测**一起丢。
+
+    warn-only 最容易悄悄退化成 warn-nothing —— 失败被 `|| true` 吞掉、输出被 `2>/dev/null`
+    盖住, 表面全绿实则这道门已经死了, 而且**没有任何信号**说它死了(比它直接报红更危险)。
+    所以每道 scaffold 门都必须证明两件事同时成立: 点名自己 + 不阻断。
+    """
     repo = _make_repo_with_staged_python(tmp_path)
-    _write(repo / "backend" / "scripts" / "check_doc_governance.py", "raise SystemExit(1)\n")
-    assert _run(["git", "add", "backend/scripts/check_doc_governance.py"], repo).returncode == 0
+    _write(repo / "backend" / "scripts" / script, "raise SystemExit(1)\n")
+    assert _run(["git", "add", f"backend/scripts/{script}"], repo).returncode == 0
     result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: APPROVE")
-    assert "WARN-ONLY [doc_governance]" in result.stdout
-    assert result.returncode == 0
+    assert f"WARN-ONLY [{gate}]" in result.stdout, "降级后必须仍然点名报出来"
+    assert result.returncode == 0, "scaffold 门不得阻断提交"
 
 def test_stale_staged_feature_map_warns_but_does_not_block(tmp_path: Path) -> None:
     """P1 起 feature_map 属 scaffold 组 —— 陈旧只提示不阻断。
@@ -442,3 +460,38 @@ exit 9
     assert "Codex-Reviewed: APPROVE" in _run(
         ["git", "log", "-1", "--format=%B"], repo
     ).stdout
+
+
+def test_moth_gate_runs_coupling_even_when_assert_fails(tmp_path: Path) -> None:
+    """B3: assert 挂掉不得吞掉 coupling —— 两项独立跑, 不许 elif 短路。
+
+    warn-only 把 gate_fail 从 `exit` 变成 `return 0`, 于是原来无害的 `if A; then …
+    elif B; then …` 变成了「A 一挂 B 永远不跑」。表面上门还在, 实际少查一半, 且没有信号。
+    """
+    repo = _make_repo_with_staged_python(tmp_path)
+    (repo / ".moth").mkdir(exist_ok=True)
+    _write(repo / ".moth" / "profile.yaml", "version: 1\n")
+    bin_dir = repo / "fakebin"
+    bin_dir.mkdir()
+    log = repo / "moth_calls.log"
+    # assert 必失败, coupling 必成功; 若被短路吞掉, log 里就不会有 coupling。
+    stub = bin_dir / "moth"
+    stub.write_text(
+        "#!/bin/sh\n"
+        f'echo "$1" >> "{log}"\n'
+        'if [ "$1" = "assert" ]; then exit 1; fi\nexit 0\n',
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    assert _run(["git", "add", "-A"], repo).returncode == 0
+
+    result = _run(
+        ["bash", "scripts/safe_commit.sh", "test audit\nCodex-Reviewed: APPROVE"],
+        repo,
+        env={**os.environ, "SAFE_COMMIT_NO_PUSH": "1", "PATH": f"{bin_dir}:{os.environ['PATH']}"},
+    )
+    calls = log.read_text(encoding="utf-8").split() if log.exists() else []
+    assert "assert" in calls, "前置条件: assert 应被调用"
+    assert "coupling" in calls, "assert 失败后 coupling 仍必须跑 —— 不许 elif 短路"
+    assert "WARN-ONLY [moth]" in result.stdout
+

@@ -224,14 +224,23 @@ if [[ -f "$STAGED_INDEX_DIR/.moth/profile.yaml" ]]; then
         if [[ -d "$(pwd)/.venv" && ! -e "$STAGED_INDEX_DIR/.venv" ]]; then
             ln -s "$(pwd)/.venv" "$STAGED_INDEX_DIR/.venv"
         fi
+        # 两项必须**各自独立**跑, 不能用 elif 串起来: P1 之前 gate_fail 是 exit, assert 挂了
+        # 就整个终止, 短路无害; 降成 warn-only 后 gate_fail 返回 0, elif 会让 coupling 在
+        # assert 一挂时**永远不再执行** —— 耦合检查连同它的发现一起消失且无任何信号。
+        # (2026-08-11 B3 实测发现的检测面回退; 由 test_moth_gate_runs_coupling_even_when_assert_fails 锁定)
+        MOTH_OK=1
         if ! (cd "$STAGED_INDEX_DIR" && moth assert --repo .); then
             echo "ERROR: staged snapshot Moth assertions 未闭合。"
-            gate_fail moth 2
-        elif ! (cd "$STAGED_INDEX_DIR" && moth coupling --repo .); then
+            MOTH_OK=0
+        fi
+        if ! (cd "$STAGED_INDEX_DIR" && moth coupling --repo .); then
             echo "ERROR: staged snapshot Moth coupling 未闭合。"
-            gate_fail moth 2
-        else
+            MOTH_OK=0
+        fi
+        if [[ "$MOTH_OK" == "1" ]]; then
             echo "[moth] staged snapshot PASS"
+        else
+            gate_fail moth 2
         fi
     fi
 else

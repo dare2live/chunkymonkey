@@ -389,6 +389,17 @@ stage -> validate -> canonical replace/merge -> accepted_partition
 
 watermark、连续性、SLA 和待重试清单最终从 `AcceptedPartition` 投影，不再各自回写第二套状态。用 kill-point 测试证明任一步中断都不会出现“数据已变、验收未变”或相反状态。
 
+同一物理 DB / 表 / 输出目录的写入必须串行 —— DuckDB 是单写者，并发写不是“不好看”而是真会写坏文件。
+
+**缺失只能传播为缺失。** historical decision 必须显式带 as-of / available-at；取不到值就传播 `NULL/unknown`，
+禁止 latest / **0** / demo fallback。单独点名 0：它在绝大多数数值域里是**合法值**，静默把 NULL 写成 0
+不会报错，只会让下游的均值、比率和排序悄悄失真 —— 这是本仓最隐蔽的一类数据污染。
+
+**裁决分两层，且两层互不传递（双向）。** 单域 canary 只由该域自己的 accepted partition / reconcile /
+projection / failure 证据裁决；full pipeline、消费者切换与发布另受全局 continuity / SLA / failure 阻断。
+两个方向都不许串味：全局绿不能洗绿一个自己没闭合的域，**全局红也不能反向抹掉一个已经证明干净的域**。
+反方向违反直觉（出大事了本能想把所有东西都当坏的），但把已闭合的证据重新打成未知，等于让排查永远收敛不了。
+
 ### 6.2 分类体系
 
 “统一口径”指统一身份、时间和访问契约，不指强造一棵全局分类树：

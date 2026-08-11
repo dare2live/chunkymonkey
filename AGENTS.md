@@ -36,23 +36,18 @@ config, accepted evidence). No plugin/DAG/event-bus, one-table-per-module/
 version, or YAML programming language. Semantic boundaries before file/DB moves.
 
 ## 4. Tier 0 truth (blocking)
-- Landing preserves provider response; universe/business filter later + reason.
-- Formal dataset: typed population scope (`raw_evidence` /
-  `external_aggregate` / `project_universe_pit`) + typed availability
-  `axis/rule/at`; transport/batch never defines publication availability. One
-  immutable contract from one registry snapshot through runner/writer/state/
-  audit/consumers; no downstream config reload.
-- External venue aggregates ≠ project-universe metrics; later delisting must
-  not rewrite earlier eligibility. Daily pop = `traded_on_observation_date`.
-  Nominal = execution truth; qfq derived (method/as-of/lineage).
-- `stage→validate→publish→accepted_partition` atomic. Reject future partitions
-  before adapter/DB/writer I/O; validate transport before side effects; never
-  normalize duplicates into valid. Sync `trigger_mode=manual|automatic`
-  (manual may skip `same_day_at` on open days; weekends/holidays bind both).
-- 0 rows / permission / schema / timeout / connection are distinct; fail closed.
-  Watermark/SLA/failure queues project accepted facts — not parallel writers.
-  Audits default read-only DuckDB; serialize writes. Naked `available_after=t+1`
-  stays domain-local. After data/PIT/schema/cache fix: `$post-fix-audit`.
+本节曾把 Tier 0 语义抄一遍；15 条里 12 条是 `MASTER §5.1/§6.1` 的近逐字副本 —— 两份副本
+只会各自漂移，出分歧时没人知道哪份算数。**语义归 MASTER，这里只留 agent 要做的动作。**
+
+- **契约本身**：population scope 三类 / availability `axis/rule/at` / `trigger_mode` 与
+  `same_day_at` / 一次执行一份 immutable contract / 拒未来分区 / `stage→validate→publish→
+  accepted_partition` / watermark 是投影不是第二套写面 —— 全部见 `docs/MASTER_TOPLEVEL_DESIGN.md`
+  §5.1 与 §6.1。**动 Tier 0 前读那两节，不要读本节的转述。**
+- **调用失败分类**：0 行 / 空响应 / 权限页 / 字段缺失 / **超时** / **连接失败** 必须分开归类，
+  不得用 0 行冒充成功 —— 见 `docs/engineering_governance.md` §6。注意它与 MASTER §5.1 的
+  「伪证据清单」**不是同一份**：那份管“什么证据不配进 accepted”，这份管“这次调用为什么没拿到数据”。
+- **审计姿势**：DuckDB 审计默认 `read_only=True`，写入串行 —— 同 §6。
+- 改完数据 / PIT / schema / cache：跑 `$post-fix-audit`。
 
 ## 5. Classification / sensing / state / strategy
 Namespaces separate; names=labels not keys; concepts M2M; crosswalks need

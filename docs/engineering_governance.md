@@ -140,16 +140,12 @@ Phase 出口或提交前再放大到相关联合回归 / 全量 backend / `moth 
 ## 6. 数据与数据库纪律
 
 - 审计默认 `read_only=True`；大表先聚合、抽样或 LIMIT；
-- landing 不做 universe/business filter；过滤发生在 canonical/serve，并保留 reason；
-- 每个正式数据集声明 `raw_evidence`、`external_aggregate` 或 `project_universe_pit` population scope；
-  缺 policy id/version/hash 或用 external aggregate 冒充项目股票池时 fail closed；
-- 交易日历与 universe policy 从同一次执行快照派生并贯穿 fetch/validate/accept/audit/consumer；
-  禁止 runner 与下游各自重读 YAML、内联前缀或用今天的退市/ST 状态清洗历史；
-- 每个发布数据集一个 writer；其他模块只读公开契约；
-- 同一 DuckDB/表/输出目录的写入必须串行；
-- 先 stage/validate，再在一个可证明的事务边界内发布数据与 accepted partition；
+- **数据集契约本身**（landing 不过滤 / 三类 population scope / 一次执行一份快照贯穿全链 /
+  一个 writer / 同库写串行 / `stage→validate→publish→accepted`）见 `MASTER §5.1` `§6.1`，
+  本节不再复述。仍在本节的例外：**历史上某天 t 的退市/ST 归属不得被 t 之后的状态变化重写** ——
+  MASTER §5.1 覆盖的是「退市不得反删过去交易日」与「ST 不作为池排除名单」，与这条时间不可变性不是同一条；
 - 0 行、空响应、权限页、字段缺失、超时、连接失败分别分类；不得用 0 行冒充成功；
-- historical decision 必须显式 as-of/available-at；缺失传播 `NULL/unknown`，禁止 latest/0/demo fallback；
+- historical decision 的 as-of / 禁 0-fallback 已升为系统语义，见 `MASTER §6.1`；
 - 修 writer/schema/PIT 后必须检查旧表、cache、JSON、watermark、报告、前端和后台进程残留；
 - **DuckDB 的 `DROP`/`DELETE` 不释放文件块，单独 `CHECKPOINT` 也不缩小文件** —— 它只刷 WAL/catalog。
   批量 DROP（lifecycle/purge）之后必须显式跑
@@ -284,9 +280,7 @@ operation count 和坏例 turning red，不能只用小样本耗时作证。
 readiness 属于 state 与 reconcile 之上的 orchestration，必须单向依赖二者；state/proof 层不得
 反向 import reconcile。拆文件后要检查静态依赖图，不得用 function-local import 掩盖循环。
 
-裁决分两层：单域 canary 只由该域的 accepted partition、reconcile、projection 与 failure
-证据裁决；full pipeline、消费者切换和发布仍受全局 continuity/SLA/failure 阻断。全局告警
-不能洗绿单域，也不能反向抹掉已经闭合的单域证据。
+裁决分两层且互不传递（双向）—— 已升为系统语义，见 `MASTER §6.1`。
 
 `daily_update` 的 store 阶段跑 **system_health 运行时自检**（owner =
 `backend/config/governance_gates.yaml` 的 `runtime_checks`，见 §14.1）：continuity、
