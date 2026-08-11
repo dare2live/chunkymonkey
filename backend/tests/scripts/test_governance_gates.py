@@ -159,8 +159,8 @@ def test_always_on_ci_surface_drift_stays_blocking() -> None:
 def test_scaffold_fix_entrypoint_exists_for_every_regenerable_artifact() -> None:
     reg = gg.load_registry()
     fixes = {f.from_gate: f for f in reg.scaffold_fixes}
-    for name in ("feature_map", "agent_board"):
-        assert fixes[name].kind == "regenerate"
+    # agent_board 于 P2.3 随 BOARD.md 退役 —— board 已是现查投影，没有产物可重生。
+    assert fixes["feature_map"].kind == "regenerate"
     assert all(f.from_gate in reg.names_in_group("scaffold") for f in reg.scaffold_fixes)
     chunkyctl = (REPO / "scripts" / "chunkyctl").read_text(encoding="utf-8")
     assert "scaffold-fix)" in chunkyctl

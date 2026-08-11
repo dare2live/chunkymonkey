@@ -275,7 +275,7 @@ def persist(*, force: bool = False, repo: Path = REPO) -> dict[str, Any]:
                 "n_trades_completed": measure.get("n_trades_completed"),
             },
         },
-        "consumers": ["backend/scripts/build_agent_board.py"],
+        "consumers": ["backend/scripts/agent_board_projection.py"],
     }
     _write_json(manifest_path, manifest)
     print(

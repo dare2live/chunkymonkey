@@ -15,7 +15,10 @@ from services import project_status as ps
 
 
 REPO = Path(__file__).resolve().parents[3]
-SECTIONS = ("calendar", "accepted_frontier", "source_watermarks", "cutovers", "gates", "alerts")
+SECTIONS = (
+    "calendar", "accepted_frontier", "source_watermarks",
+    "cutovers", "gates", "board", "alerts",
+)
 
 
 def _is_typed(section: object) -> bool:
@@ -91,6 +94,7 @@ def test_render_text_surfaces_unavailable_reasons() -> None:
         "source_watermarks": ps._unavailable("smartmoney_unreachable:OSError"),
         "cutovers": ps._unavailable("cutover_check_failed:X"),
         "gates": ps._unavailable("gate_registry_unavailable:Y"),
+        "board": ps._unavailable("board_projection_failed:W"),
         "alerts": ps._unavailable("flag_dir_unreadable:Z"),
     }
     text = ps.render_text(fake)
@@ -100,6 +104,7 @@ def test_render_text_surfaces_unavailable_reasons() -> None:
         "smartmoney_unreachable",
         "cutover_check_failed",
         "gate_registry_unavailable",
+        "board_projection_failed",
         "flag_dir_unreadable",
     ):
         assert reason in text, f"渲染吞掉了 {reason}"

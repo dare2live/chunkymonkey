@@ -45,22 +45,25 @@ def _runner(table):
 
 
 def _write_board(root: pathlib.Path, **overrides) -> None:
-    board = {
-        "generated_at": "2026-07-20T09:00:00Z",
-        "track": {"name": "agent-os-redesign", "a_to_h": "suspended_at_d8b69090"},
-        "cutovers": {
-            "b_pit_mart": {"cutover_allowed": False},
-            "tier12_consumer": {"cutover_allowed": False},
-        },
-        "phase_e": {"overall_status": "measured_reject_no_gain"},
-        "bans": ["Optuna / E gate loosen / StrategyRelease / margin thaw"],
-        "next_knives_frozen": ["or stop"],
-        "goal_hand_excerpt": "## 当前 objective",
-    }
-    board.update(overrides)
-    path = root / "data" / "board" / "agent_context.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(board), encoding="utf-8")
+    """P2.3 起 board 是**现查投影**，没有落盘文件可造 —— 改为准备它的输入。
+
+    投影读 config + lineage artifact + goal.md；fixture 只需给出前两者的最小合法形态，
+    boot 就能拿到一份真实计算出来的板，而不是一份被测试硬塞进去的假板。
+    """
+    cfg = root / "backend" / "config"
+    cfg.mkdir(parents=True, exist_ok=True)
+    (cfg / "b_pit_mart_cutover.yaml").write_text(
+        "mart_cutover:\n  cutover_allowed: false\n  expected_window_end: '20260722'\n",
+        encoding="utf-8",
+    )
+    (cfg / "tier12_publish.yaml").write_text(
+        "consumer_cutover:\n  cutover_allowed: false\n", encoding="utf-8"
+    )
+    (root / "goal.md").write_text("## 当前 objective\n- fixture\n", encoding="utf-8")
+    for rel, payload in (overrides.get("lineage") or {}).items():
+        path = root / "data" / "lineage" / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 def test_git_summary_parses_branch_and_dirty_counts():
@@ -153,21 +156,16 @@ def test_board_summary_reads_generated_context(tmp_path):
     _write_board(tmp_path)
     section = agent_boot.board_summary(tmp_path)
     assert section["status"] == "ok"
-    assert section["track"]["a_to_h"] == "suspended_at_d8b69090"
     assert section["cutover_allowed"] == {"b_pit_mart": False, "tier12_consumer": False}
-    assert section["phase_e_overall"] == "measured_reject_no_gain"
+    assert section["track"]["name"]
 
 
-def test_board_summary_missing_or_invalid_is_error_with_regen_hint(tmp_path):
+def test_board_summary_errors_when_projection_inputs_are_missing(tmp_path):
+    """现查跑得通 ≠ 现查可信：config 缺失时投影退化成全缺省空板，必须报 error。"""
     missing = agent_boot.board_summary(tmp_path)
     assert missing["status"] == "error"
-    assert "build_agent_board" in missing["fix"]
-
-    path = tmp_path / "data" / "board" / "agent_context.json"
-    path.parent.mkdir(parents=True)
-    path.write_text("{broken", encoding="utf-8")
-    invalid = agent_boot.board_summary(tmp_path)
-    assert invalid["status"] == "error"
+    assert "inputs missing" in missing["error"]
+    assert "agent_board_projection" in missing["fix"]
 
 
 def test_collect_overall_and_exit_semantics(tmp_path):
@@ -207,7 +205,7 @@ def test_render_text_is_one_page_with_all_sections(tmp_path):
         "## read next",
     ):
         assert heading in text
-    assert "suspended_at_d8b69090" in text
+    assert "chunkyctl status" in text, "boot 必须把前沿类问题指向 L2 现查入口"
     assert "goal.md" in text
     assert "one Rule10" in text
     assert "pre-knife" in text
@@ -223,4 +221,4 @@ def test_render_text_surfaces_board_error_and_fix(tmp_path):
     assert data["overall"] == "error"  # board missing
     text = agent_boot.render_text(data)
     assert "ERROR" in text
-    assert "build_agent_board" in text
+    assert "agent_board_projection" in text

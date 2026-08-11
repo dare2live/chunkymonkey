@@ -3,7 +3,7 @@
 
 `scripts/chunkyctl agent-boot` aggregates the session-start evidence an agent
 needs on boot — git status summary, Moth snapshot summary, CodeGraph index
-status, and the generated board (`data/board/agent_context.json`) — into one
+status, and the live board projection (现查, 无落盘文件) — into one
 page of text or JSON, so a fresh agent does not have to ingest the full Moth
 snapshot or replay four commands by hand.
 
@@ -24,8 +24,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 REPO = Path(__file__).resolve().parents[2]
-BOARD_JSON = Path("data") / "board" / "agent_context.json"
-BOARD_REGEN = "PYTHONPATH=backend python backend/scripts/build_agent_board.py"
+BOARD_REGEN = "PYTHONPATH=backend python backend/scripts/agent_board_projection.py"
 
 Runner = Callable[[list[str]], dict[str, Any]]
 
@@ -135,16 +134,27 @@ def codegraph_summary(run: Runner) -> dict[str, Any]:
 
 
 def board_summary(repo: Path) -> dict[str, Any]:
-    path = repo / BOARD_JSON
+    """现查投影 (P2.3)：不再读 `data/board/agent_context.json` 那份落盘副本。
+
+    此前 boot 读文件、文件靠一道漂移门保证不烂 —— 于是 agent 每次 session 实际读到的
+    是「上次谁记得重生成」的快照。collect() 只读 config/lineage/goal.md，实测 0.3s
+    且不连库，现查比维护「文件 + 保证文件不烂的门」便宜得多。
+    """
     try:
-        board = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(board, dict):
-            raise ValueError("board is not a JSON object")
+        from scripts.agent_board_projection import collect as board_collect
+
+        board = board_collect(repo)
         track = board["track"]
         cutovers = board["cutovers"]
-    except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
+        missing = [k for k, ok in (board.get("inputs_present") or {}).items() if not ok]
+        if missing:
+            # 投影能跑通不等于投影可信：config 缺失时它退化成一份全缺省的空板。
+            return {"name": "board", "status": "error",
+                    "error": f"board projection inputs missing: {missing}",
+                    "fix": BOARD_REGEN}
+    except Exception as exc:  # noqa: BLE001 — 投影失败必须显式报错，不许静默空板
         return {"name": "board", "status": "error",
-                "error": f"{BOARD_JSON.as_posix()} unreadable/invalid: {exc}",
+                "error": f"board projection failed: {type(exc).__name__}: {exc}",
                 "fix": BOARD_REGEN}
     phase_e = board.get("phase_e") or {}
     return {
@@ -187,7 +197,7 @@ def collect(repo: Path = REPO, run: Runner | None = None) -> dict[str, Any]:
         "sections": sections,
         "read_next": [
             "goal.md (hand-written objective/裁决/禁令/下一步)",
-            "BOARD.md (generated status projection — 勿手改)",
+            "scripts/chunkyctl status (L2 运行时状态现查: 前沿/滞后/水位/cutover/告警)",
             "docs/README.md → 按任务读唯一 owner 文档",
             "history: rg/tail analysis/project_state_ledger.md (不整读)",
         ],

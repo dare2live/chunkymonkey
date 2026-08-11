@@ -77,11 +77,16 @@ def test_unknown_path_fail_closed_l3() -> None:
     assert result["tier"] == "L3"
 
 
-def test_board_md_is_l1() -> None:
-    result = clas.classify(["BOARD.md", "data/board/agent_context.json"], scan_content=False)
-    assert result["tier"] == "L1"
-    assert "agent_board" in result["gates"]
+def test_retired_board_artifact_is_no_longer_special_cased() -> None:
+    """BOARD.md / agent_context.json 于 2026-08-11 P2.3 退役 (board 改现查、零文件)。
 
+    政策里不该再为它们留 L1 特例 —— 留着就是给一个已不存在的产物开后门。
+    """
+    policy = clas.load_policy(POLICY)
+    assert "BOARD.md" not in policy["l1_files"]
+    assert "agent_board" not in policy["tier_gates"]["L1"]
+    assert "agent_board" not in policy["tier_gates"]["L2"]
+    assert "agent_board" not in clas.ALL_GATES_ORDERED
 
 def test_feature_map_alone_is_l3() -> None:
     """FEATURE_MAP is generated; hand edits must not take the L1 light path."""

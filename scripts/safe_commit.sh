@@ -84,7 +84,7 @@ done
 echo
 echo "=== Step 1.5: commit tier classification ==="
 COMMIT_TIER="L3"
-COMMIT_TIER_GATES="project_index_sync feature_map agent_board moth rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity config_refs doc_drift doc_governance doc_runtime_state commit_msg rule10"
+COMMIT_TIER_GATES="project_index_sync feature_map moth rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity config_refs doc_drift doc_governance doc_runtime_state commit_msg rule10"
 if [[ -f "backend/scripts/classify_commit_tier.py" && -f "backend/config/commit_tiers.yaml" ]]; then
     if COMMIT_TIER_JSON=$(PYTHONPATH=backend "$PY" backend/scripts/classify_commit_tier.py 2>/tmp/cm_tier_err.out); then
         if parsed=$("$PY" -c '
@@ -208,26 +208,6 @@ else
 fi
 else
     echo "[commit-tier] skip feature_map (tier=$COMMIT_TIER)"
-fi
-
-# 2.65 Agent board gate — generated projection of accepted facts / cutover yaml / E ladder.
-echo
-echo "=== Step 2.65: agent board gate (staged snapshot, read-only) ==="
-if gate_enabled agent_board; then
-if [[ -f "$STAGED_BACKEND/scripts/build_agent_board.py" ]]; then
-    if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/build_agent_board.py" --check --quiet; then
-        echo "[agent-board] staged snapshot fresh; current worktree was not modified"
-    else
-        echo "ERROR: staged BOARD.md / data/board/agent_context.json 与 accepted 事实投影不一致。"
-        echo "正解: PYTHONPATH=backend python backend/scripts/build_agent_board.py 后显式 stage。"
-        gate_fail agent_board 2
-    fi
-else
-    echo "ERROR: staged snapshot 缺 build_agent_board.py；生成板门不得静默跳过。"
-    gate_fail agent_board 2
-fi
-else
-    echo "[commit-tier] skip agent_board (tier=$COMMIT_TIER)"
 fi
 
 # 2.7 Moth gate — Moth 0.3.0 resolves profile repo_path relative to process cwd.

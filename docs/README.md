@@ -19,7 +19,6 @@
 |---|---|
 | `../PROJECT_INDEX.md` | 短项目导航与当前资产判断，不是规则 owner |
 | `../FEATURE_MAP.md` | 机器生成的入口/数据域/writer 地图；可重建，不手改 |
-| `../BOARD.md` | 机器生成的 agent 状态投影（cutover/E/accepted）；可重建，不手改，**投影-only，非执法输入** |
 | `../analysis/FOUNDATION_EXECUTION_PLAN.md` | 数据底座执行 backlog（evidence-only；`goal.md` 指向） |
 | `../analysis/STRATEGY_EXECUTION_PLAN.md` | 后续策略执行 backlog（RX 前 BLOCKED；evidence-only） |
 | `../analysis/DOC_CLEANUP_20260723.md` | 2026-07-23 文档收敛台账（kept/deleted） |

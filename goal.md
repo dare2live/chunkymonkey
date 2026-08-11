@@ -1,7 +1,7 @@
 # ChunkyMonkey Goal
 
 > 状态：live controller board
-> 手写：objective / 已裁决 / 禁令 / 下一步。状态投影见 `BOARD.md`（生成，勿手改；**非执法输入**）。
+> 手写：objective / 已裁决 / 禁令 / 下一步。**运行时状态现查 `scripts/chunkyctl status`**（零文件；非执法输入）。
 > 完成证据：`analysis/project_state_ledger.md`（关键词查）。交接：`analysis/account_switch_handoff_20260720.md`。
 > **执行方案（仅两份；abolished 主方案/支线）**：底座 `analysis/FOUNDATION_EXECUTION_PLAN.md` · 策略 `analysis/STRATEGY_EXECUTION_PLAN.md`（RX 前 BLOCKED）。
 > **清理台账**：`analysis/DOC_CLEANUP_20260723.md`。Owner 立法仍只认 `docs/README.md` 三份 contracts。
@@ -13,12 +13,12 @@
 
 已落地硬事实（勿回滚；细节见 FOUNDATION §2 + git）：
 - C + B-pit **`cutover_allowed=true`**（`b38e9ac5`）→ `ACCEPTED_CUTOVER` / `MART_CUTOVER`；dual-track residual **NONE**
-- accepted daily / ST 已 cutover；起点 **`20190102`** / **`20220104`** 是契约常量。**当前 frontier 是运行时状态 — 查 `accepted_partition` 或 `BOARD.md`，禁止在本文件写死**（2026-08-10 实测：手写的 `→20260721` 已落后实况 `→20260804` 两周，PROJECT_INDEX 另写 `→20260720`，两份手写文档互相矛盾）；form/qfq/pulse 跟 formal；工作台一键更新 + Cap E 分步节点 FIXED
+- accepted daily / ST 已 cutover；起点 **`20190102`** / **`20220104`** 是契约常量。**当前 frontier 是运行时状态 — 现查 `scripts/chunkyctl status`，禁止在本文件写死**（2026-08-10 实测：手写的 `→20260721` 已落后实况 `→20260804` 两周，PROJECT_INDEX 另写 `→20260720`，两份手写文档互相矛盾）；form/qfq/pulse 跟 formal；工作台一键更新 + Cap E 分步节点 FIXED
 - Phase D runtime FIXED；Phase F F0–F3 ladder measured **reject** / `claimable=false`（可 checkpoint；≠ Release）
 - Delivery-OS：eng_gov **§15**（一刀=Rule10+safe_commit；异步 CI；L3 pre-knife；不放宽 PIT/≤40d）
 - CX-1…CX-4 PASS；Cap A/B/D/E/F usable；margin v3 path + holders skip-land + qfq in-module compact FIXED
 
-启动：`scripts/chunkyctl agent-boot`；状态：`BOARD.md`（投影）。
+启动：`scripts/chunkyctl agent-boot`；运行时状态：`scripts/chunkyctl status`（现查，零文件）。
 
 ## 下一步
 
@@ -71,8 +71,8 @@
 - **P4.1 孤儿法条归位** — **FIXED**（2026-08-11）：`run_outcome` 四态法条落 **`MASTER` §5.4**（系统语义；确认没放 `engineering_governance`）。含四态判据表、rollup 顺序、exit 映射、四条不可放宽规则（归类不明≠等时钟 / 完整性≠时钟 / 下游只渲染不按 rc 反推 / 报告 JSON 是真相源 exit 是渲染器）、消费面清单。`backend/services/pipeline/run_outcome.py` docstring 的 Authority 从 `analysis/` 改指 MASTER，analysis 两份降为 Origin。文档↔enum 一致性由 moth `run-outcome-four-states-law` 锁死（任一侧增删态即红）。顺手修 `check_doc_governance` C7 假阳性：真实存在的**全路径**引用不再当成悬空命令名（该维度本就归 `check_doc_drift`，注释早写了实现漏了），加两个方向的回归测试
 - **P2 状态零手写**（依赖 P1.2）
   - P2.1 **FIXED**（2026-08-11）：机器门 `check_doc_runtime_state` + `doc_runtime_state.yaml`（默认禁止紧凑日期 + 显式豁免须写明为何是常量；豁免失效自报），注册为第 20 道门（scaffold，warn-only）。抓到并修掉上一轮人工清理漏掉的：`PROJECT_INDEX` 的 `→20260720`（正是 2026-08-10 审计点名那一处）、`至 20260721`，以及 `23/46 ssot` vs 同文件 `20/46`（实跑真值 `ssot=20`）自相矛盾。**结论：靠人扫必漏，所以门比清理重要**
-  - P2.2 **FIXED**（2026-08-11）：`scripts/chunkyctl status [--json]` = L2 单一现查入口（`services/project_status.py`；零文件、退出码恒 0 报事实不裁决）。给出 accepted 前沿 + **距最近已完成交易日的交易日滞后**、源水位、cutover 声明 vs 实际、门分布、告警 flag。此前**没有任何一条命令**能回答「前沿在哪」——真相散在两个库，而 `docs/README` 让人查 `BOARD.md`，BOARD 第 6 行却明说自己没有该值。坏指针一并修正
-  - P2.3 **未开工**：BOARD 改现查（`agent_boot` 现在读的是 `data/board/agent_context.json` 文件而非 `collect()`，实测 `collect()` 仅 0.3s 且不连库，改现查几乎零成本）
+  - P2.2 **FIXED**（2026-08-11）：`scripts/chunkyctl status [--json]` = L2 单一现查入口（`services/project_status.py`；零文件、退出码恒 0 报事实不裁决）。给出 accepted 前沿 + **距最近已完成交易日的交易日滞后**、源水位、cutover 声明 vs 实际、门分布、告警 flag。此前**没有任何一条命令**能回答「前沿在哪」——真相散在两个库，而当时的 `docs/README` 把人指向一个明说自己没有该值的生成文件。坏指针一并修正
+  - P2.3 **FIXED**（2026-08-11）：board 改**现查、零文件**。`agent_boot` 与 `chunkyctl status` 现调 `agent_board_projection.collect()`（实测 0.3s、不连库）；`BOARD.md` + `data/board/agent_context.json` 两个落盘产物与 `agent_board` 漂移门一并退役（门 20→19），旧的 `build_agent_board` 脚本改名为 `backend/scripts/agent_board_projection.py` 并去掉写盘/`--check`。新增诚实性护栏：投影声明 `inputs_present`，config 缺失时 boot 报 error 而不是渲染一份全缺省的空板
 - **P3 历史归 git**（依赖 P2.2）
   - P3.1 commit message 模板固化 Q/Fix/Evidence/Residual（这才是 commit_msg 门的正确形态：查结构，不查关键词）
   - P3.2 `chunkyctl history --grep` 包装 git log，替代 ledger 检索

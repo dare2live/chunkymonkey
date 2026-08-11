@@ -127,7 +127,7 @@ blocking_paths:
 # 促发因: P4.1 修了 check_doc_governance 的 C7 假阳性, 其回归测试不能不在 CI 面上。
 - tests/test_check_doc_governance.py
 - tests/scripts/test_check_codex_review.py
-- tests/scripts/test_build_agent_board.py
+- tests/scripts/test_agent_board_projection.py
 - tests/scripts/test_agent_boot.py
 - tests/scripts/test_pre_knife_audit.py
 - tests/scripts/test_persist_phase_d_experiment_runs.py

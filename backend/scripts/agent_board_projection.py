@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""Generate agent status board from accepted facts / config / lineage.
+"""Agent status board **projection** — 现查, 零文件 (goal.md P2.3)。
 
-Owner pattern mirrors ``build_feature_map.py``:
-  - sole writer of BOARD.md + data/board/agent_context.json
-  - projection only — never an enforcement input (resolvers remain truth)
-  - ``--check`` drift gate for safe_commit
+从 config / lineage artifact / goal.md 手写段派生当前 track / cutover 意图与实际裁决 /
+Phase D·E 裁决 / 禁令。**投影 only, 永不是执法输入** —— resolver 才是真相。
 
-Hand-written truth stays in goal.md (objective / 裁决 / 禁令 / 下一步).
+2026-08-11 退役了 `BOARD.md` + `data/board/agent_context.json` 两个落盘产物及其
+`agent_board` 漂移门: 它们装的是 L2 状态, 而 L2 契约是「命令现查、零文件、禁人写」。
+实测 collect() 仅 0.3s 且不连库, 现查比维护文件 + 维护一道保证文件不烂的门更便宜;
+那道门本轮审计里还实际阻断过一次文档修正。
+
+消费方: `scripts/chunkyctl status`(经 services/project_status.py) 与
+`scripts/chunkyctl agent-boot`(backend/scripts/agent_boot.py) 现调 collect()。
+手写真相仍在 goal.md (objective / 裁决 / 禁令 / 下一步)。
 """
 from __future__ import annotations
 
@@ -20,8 +25,6 @@ from typing import Any
 import yaml
 
 REPO = Path(__file__).resolve().parents[2]
-MD_OUT = REPO / "BOARD.md"
-JSON_OUT = REPO / "data" / "board" / "agent_context.json"
 SNAPSHOT_PREFIX = "> Snapshot:"
 ENFORCEMENT_BANNER = (
     "> **Projection only** — not an enforcement input. Cutover / readiness / "
@@ -91,8 +94,10 @@ def _goal_hand_excerpt(goal_text: str, *, max_chars: int = 1200) -> str:
 
 
 def collect(repo: Path = REPO) -> dict[str, Any]:
-    b_pit = _load_yaml(repo / "backend" / "config" / "b_pit_mart_cutover.yaml")
-    tier12 = _load_yaml(repo / "backend" / "config" / "tier12_publish.yaml")
+    b_pit_path = repo / "backend" / "config" / "b_pit_mart_cutover.yaml"
+    tier12_path = repo / "backend" / "config" / "tier12_publish.yaml"
+    b_pit = _load_yaml(b_pit_path)
+    tier12 = _load_yaml(tier12_path)
     b_pit_gate = (b_pit.get("mart_cutover") or {}) if b_pit else {}
     c_gate = (tier12.get("consumer_cutover") or {}) if tier12 else {}
 
@@ -195,8 +200,15 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
     _shadow_expired = _today_compact > _shadow_deadline_day.strftime("%Y%m%d")
 
     return {
+        # 现查后必须声明**输入是否齐全**: 缺 config 时投影会退化成一份「看起来正常
+        # 但全是缺省值」的空板 —— 那正是项目禁的「空扫描冒充 PASS」。消费方据此判 error。
+        "inputs_present": {
+            "b_pit_cutover_yaml": b_pit_path.is_file(),
+            "tier12_publish_yaml": tier12_path.is_file(),
+            "goal_md": goal_path.is_file(),
+        },
         "generated_at": _now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "generated_from": "backend/scripts/build_agent_board.py",
+        "generated_from": "backend/scripts/agent_board_projection.py (现查, 不落盘)",
         "enforcement": "projection_only_not_truth",
         "track": {
             "name": "transport_strangler_s1_s7",
@@ -288,14 +300,14 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
 def render_md(d: dict[str, Any]) -> str:
     L: list[str] = []
     add = L.append
-    add("# BOARD — generated agent status projection")
+    add("# BOARD — agent status projection (现查, 不落盘)")
     add("")
-    add("> 由 `backend/scripts/build_agent_board.py` 重生成，**勿手改**。")
+    add("> 由 `scripts/chunkyctl status` / `agent-boot` **现查生成**；本文不落盘，无需也无法「手改」。")
     add(ENFORCEMENT_BANNER)
-    add(f"{SNAPSHOT_PREFIX} {d['generated_at']}")
+    add(f"{SNAPSHOT_PREFIX} {d['generated_at']} (现查时刻)")
     add(
-        "> ↑ **内容版本时刻，不是数据新鲜度**：本文件幂等 —— 内容未变时不重写，"
-        "该时间戳也就不刷新。数据前沿请查 accepted 分区表，勿据此判断。"
+        "> ↑ 现查时刻。**本投影不含数据前沿** —— 前沿 / 滞后 / 水位 / 告警查 "
+        "`scripts/chunkyctl status`（accepted 分区表为真相源）。"
     )
     add("")
     add("## Track")
@@ -414,69 +426,22 @@ def render_md(d: dict[str, Any]) -> str:
     return "\n".join(L)
 
 
-def _body(text: str) -> str:
-    return "\n".join(
-        ln for ln in text.splitlines() if not ln.startswith(SNAPSHOT_PREFIX)
-    )
-
-
-def write_outputs(d: dict[str, Any], *, check: bool, quiet: bool) -> int:
-    md = render_md(d)
-    old_md = MD_OUT.read_text(encoding="utf-8") if MD_OUT.exists() else ""
-    md_drift = _body(old_md) != _body(md)
-
-    json_text = json.dumps(d, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-    old_json = JSON_OUT.read_text(encoding="utf-8") if JSON_OUT.exists() else ""
-    d_cmp = {k: v for k, v in d.items() if k != "generated_at"}
-    old_cmp_text = old_json
-    try:
-        old_obj = json.loads(old_json) if old_json else {}
-        if isinstance(old_obj, dict):
-            old_obj.pop("generated_at", None)
-            old_cmp_text = json.dumps(old_obj, ensure_ascii=False, sort_keys=True)
-    except json.JSONDecodeError:
-        # rule-compliance: ok evidence=malformed_prior_board_treated_as_full_drift
-        old_cmp_text = old_json
-    new_cmp_text = json.dumps(d_cmp, ensure_ascii=False, sort_keys=True)
-    json_drift = old_cmp_text != new_cmp_text
-
-    if check:
-        if md_drift or json_drift:
-            print(
-                "BOARD.md / data/board/agent_context.json 漂移 — "
-                "跑 PYTHONPATH=backend python backend/scripts/build_agent_board.py",
-                file=sys.stderr,
-            )
-            return 1
-        if not quiet:
-            print("agent board fresh")
-        return 0
-
-    JSON_OUT.parent.mkdir(parents=True, exist_ok=True)
-    if md_drift or not MD_OUT.exists():
-        MD_OUT.write_text(md, encoding="utf-8")
-    JSON_OUT.write_text(json_text, encoding="utf-8")
-    if not quiet:
-        print(
-            f"BOARD.md + agent_context.json written "
-            f"(b_pit_cutover={d['cutovers']['b_pit_mart']['cutover_allowed']}, "
-            f"c_cutover={d['cutovers']['tier12_consumer']['cutover_allowed']})"
-        )
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
+    """打印投影。**不写盘** —— L2 状态零文件 (goal.md P2.3)。
+
+    2026-08-11 之前这里写 BOARD.md + data/board/agent_context.json, 于是每次跨天
+    都要重生+提交, 还得配一道 agent_board 漂移门来保证它不烂 —— 那道门本轮审计里
+    实际阻断过一次文档修正。既然 collect() 只要 0.3s 且不连库, 现查比存文件便宜,
+    文件与它的门一起退役。消费方: `chunkyctl status` 与 `chunkyctl agent-boot` 现调。
+    """
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--check", action="store_true")
-    ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--json", action="store_true", help="机器读 JSON")
     ap.add_argument("--root", type=Path, default=REPO)
     args = ap.parse_args(argv)
-    global MD_OUT, JSON_OUT
-    if args.root != REPO:
-        MD_OUT = args.root / "BOARD.md"
-        JSON_OUT = args.root / "data" / "board" / "agent_context.json"
     data = collect(args.root)
-    return write_outputs(data, check=args.check, quiet=args.quiet)
+    print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) if args.json
+          else render_md(data))
+    return 0
 
 
 if __name__ == "__main__":

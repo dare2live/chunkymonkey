@@ -234,6 +234,33 @@ def gate_distribution() -> dict[str, Any]:
         return _unavailable(f"gate_registry_unavailable:{type(exc).__name__}")
 
 
+def board_projection() -> dict[str, Any]:
+    """轨道 / cutover **意图** / 禁令 / Phase 裁决 —— 从 config 与 lineage artifact 现查。
+
+    与上面的 ``cutover_effectiveness()`` 成对: 这里是 yaml 声明的意图, 那里是 resolver
+    的实际裁决。两者必须并排出现 —— 只报意图正是 b_pit 静默失效 13 个交易日的成因。
+    """
+    try:
+        from scripts.agent_board_projection import collect
+
+        d = collect()
+        cutovers = d.get("cutovers") or {}
+        return {
+            "status": "ok",
+            "track": (d.get("track") or {}).get("name"),
+            "track_status": (d.get("track") or {}).get("status"),
+            "cutover_intent": {
+                name: (body or {}).get("cutover_allowed")
+                for name, body in cutovers.items()
+            },
+            "phase_e_overall": (d.get("phase_e") or {}).get("overall_status"),
+            "bans": len(d.get("bans") or []),
+            "full_render": "scripts/chunkyctl agent-boot",
+        }
+    except Exception as exc:  # noqa: BLE001
+        return _unavailable(f"board_projection_failed:{type(exc).__name__}")
+
+
 def alert_flags() -> dict[str, Any]:
     """/tmp 告警 flag —— 上一次跑批留下的未闭合观测。"""
     try:
@@ -256,6 +283,7 @@ def collect_status() -> dict[str, Any]:
         "source_watermarks": source_watermarks(),
         "cutovers": cutover_effectiveness(),
         "gates": gate_distribution(),
+        "board": board_projection(),
         "alerts": alert_flags(),
     }
 
@@ -312,6 +340,16 @@ def render_text(status: dict[str, Any]) -> str:
         for group, names in gates["groups"].items():
             lines.append(f"- {group} ({len(names)}): {' '.join(names)}")
         lines.append(f"- 运行时自检: {' '.join(gates['runtime_checks'])}")
+
+    board = status["board"]
+    lines.append("\n## 轨道 / cutover 意图")
+    if board.get("status") != "ok":
+        lines.append(f"- unavailable: {board.get('reason')}")
+    else:
+        lines.append(f"- track={board['track']} ({board['track_status']}) "
+                     f"phase_e={board['phase_e_overall']} 禁令 {board['bans']} 条")
+        lines.append(f"- cutover 意图(yaml): {board['cutover_intent']} — 实际裁决见上一节")
+        lines.append(f"- 完整投影: {board['full_render']}")
 
     alerts = status["alerts"]
     lines.append("\n## 告警 flag")

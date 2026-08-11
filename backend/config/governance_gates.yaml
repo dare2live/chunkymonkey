@@ -62,14 +62,6 @@ commit_gates:
     checks: "FEATURE_MAP.md 派生地图与 staged 源快照一致"
     why: "机器可重生的投影；陈旧 = 重新跑一次生成器，不是系统故障。"
 
-  agent_board:
-    group: scaffold
-    checks: "BOARD.md / data/board/agent_context.json 与 accepted 事实投影一致"
-    why: >-
-      投影新鲜度本身是脚手架 (BOARD 明确非执法输入)。但它内部算出的
-      b_pit cutover 实际裁决是真系统信号 —— 那一半已抽成
-      runtime_checks.cutover_effective，不再靠「有人提交代码」触发。
-
   moth:
     group: scaffold
     checks: "moth assert (仓库自述断言) + moth coupling"
@@ -214,7 +206,9 @@ runtime_checks:
     skip_when_dry: true
 
   - id: cutover_effective
-    from_gate: agent_board
+    # runtime-native: 它此前挂在 agent_board 门下, 而 agent_board 已随 BOARD.md 退役
+    # (P2.3)。检查本身与任何 commit 门无关 —— 它查的是 config 声明是否仍生效。
+    from_gate: null
     script: backend/scripts/check_cutover_effective.py
     args:
       - "--json-out"
@@ -237,12 +231,7 @@ scaffold_fix:
     from_gate: feature_map
     kind: regenerate
     command: ["backend/scripts/build_feature_map.py"]
-    note: "重生 FEATURE_MAP.md + data/feature_map.json"
-  - id: agent_board
-    from_gate: agent_board
-    kind: regenerate
-    command: ["backend/scripts/build_agent_board.py"]
-    note: "重生 BOARD.md + data/board/agent_context.json"
+    note: "重生 FEATURE_MAP.md + data/feature_map.json (BOARD 已于 P2.3 改现查, 无产物可重生)"
   - id: doc_drift
     from_gate: doc_drift
     kind: report

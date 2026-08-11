@@ -92,7 +92,6 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
         "'reasons':['fixture_l3'],'paths':[]}))\n",
     )
     _write(
-        repo / "backend" / "scripts" / "build_agent_board.py",
         "raise SystemExit(0)\n",
     )
     _write(repo / "BOARD.md", "generated board fixture\n")

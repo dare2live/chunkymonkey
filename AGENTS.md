@@ -3,8 +3,8 @@
 Authority: `AGENTS.md` → `goal.md` → `docs/README.md` owners
 (`MASTER_TOPLEVEL_DESIGN.md`, `strategy_validation_contract.md`,
 `engineering_governance.md`) → Codex skills → live tooling/data.
-`CLAUDE.md` legacy (explicit historical request only). `BOARD.md` +
-`data/board/agent_context.json` = generated projection, never enforcement.
+`CLAUDE.md` legacy (explicit historical request only). Board = **live projection**
+(`chunkyctl status` / `agent-boot`; zero files since P2.3), never enforcement.
 History: targeted `rg`/`tail` of `analysis/project_state_ledger.md` only.
 
 ## 1. Boot

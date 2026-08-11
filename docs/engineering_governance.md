@@ -11,7 +11,7 @@
 1. `AGENTS.md`；
 2. `goal.md`；
 3. `scripts/chunkyctl agent-boot`（一页聚合 git status + Moth 摘要 + CodeGraph 状态 +
-   生成板 `BOARD.md`/`data/board/agent_context.json`；只读投影，非执法输入）；
+   board 现查投影（零文件，`agent_board_projection.py`）；只读，非执法输入）；
 4. 按任务读取本目录中的唯一 owner 文档；
 5. 用只读 DB/API/命令验证易漂移事实。
 
@@ -271,7 +271,7 @@ Agent-OS 核心面（WP0–WP4）已落地：tiered `safe_commit`、生成板、
 |---|---|
 | 影子期起点 | WP4 land = `be8efc6f` / 2026-07-20 |
 | 影子期长度 | **10 个工作 session 或 14 天（先到者）** |
-| 新表面（现行） | `agent-boot`；`BOARD.md`/`agent_context.json`；L1/L2/L3 tiers；AGENTS ≤100 |
+| 新表面（现行） | `agent-boot`；`chunkyctl status`（board+L2 现查，零文件）；L1/L2/L3 tiers；AGENTS ≤100 |
 | 旧路径（影子保留） | 手拼 `git`+`moth snapshot`+`codegraph status` boot；手抄 goal 状态段 |
 | 仪式 cutover 条件 | 门覆盖 parity 机器 diff 为空（每门在其触发面仍可红）**且**影子期无真相回归 |
 | 任一回归 | 影子期重置；必要时回退 L3 全门 |
@@ -414,7 +414,7 @@ accept/PIT/calendar/fail-closed/cutover/E 门 / Rule 10 / ≤40d 语义**。
 - **并行 subagents**：仅当写集不相交且不碰共享真相文件时，父可并行派
   disjoint 刀；派前用 `moth coupling --repo . --impact <name>`（或
   `chunkyctl pre-knife`）证明非重叠。**必须串行的共享面**：
-  `goal.md`/`BOARD.md`/ledger/`PROJECT_INDEX.md`/`AGENTS.md`/docs owner 三文档/
+  `goal.md`/ledger/`PROJECT_INDEX.md`/`AGENTS.md`/docs owner 三文档/
   `.moth/`/`commit_tiers.yaml`/`safe_commit.sh`/`ci.yml`；同一 DuckDB 的写；
   provider 采集 job；git stage/commit/push 窗口；Rule 10 verdict 与最终验收
   （controller-owned）。机器话：两把刀的 `git diff --name-only` 预期集合相交，

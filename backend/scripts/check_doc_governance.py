@@ -70,7 +70,8 @@ _SCRIPT_REF_RE = re.compile(
 _FULL_PATH_REF_RE = re.compile(r"(?<![\w/])((?:backend|frontend|scripts)/[\w\-./]+\.py)\b")
 _CHUNKYCTL_COMMAND_RE = re.compile(r"\b(?:scripts/)?chunkyctl\s+([a-z][\w-]*)\b")
 _FEATURE_MAP_COMMAND_RE = re.compile(r"^\|\s*`([a-z][\w-]*)`\s*\|")
-_GENERATED_DOCS = ("FEATURE_MAP.md", "BOARD.md")
+# BOARD.md 于 2026-08-11 P2.3 退役 (L2 状态改现查, 零文件)。
+_GENERATED_DOCS = ("FEATURE_MAP.md",)
 _ROOT_ACTIVE_DOCS = ("AGENTS.md", "goal.md", "PROJECT_INDEX.md")
 
 

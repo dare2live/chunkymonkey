@@ -4,10 +4,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts import build_agent_board as board
+from scripts import agent_board_projection as board
 
 
 REPO = Path(__file__).resolve().parents[3]
+
+
+def _strip_snapshot(md: str) -> str:
+    """剔除现查时刻行 —— 它每次都不同, 不属于「投影内容是否稳定」的判定面。"""
+    return "\n".join(
+        ln for ln in md.splitlines() if not ln.startswith(board.SNAPSHOT_PREFIX)
+    )
 
 
 def test_collect_cutovers_reflects_live_yaml() -> None:
@@ -110,15 +117,15 @@ def test_board_stable_across_wall_clock_day_rollover(monkeypatch) -> None:
 
     _FrozenDT.offset_days = 0
     d0 = board.collect(REPO)
-    md0 = board._body(board.render_md(d0))
+    md0 = _strip_snapshot(board.render_md(d0))
     _FrozenDT.offset_days = 1
     d1 = board.collect(REPO)
-    md1 = board._body(board.render_md(d1))
+    md1 = _strip_snapshot(board.render_md(d1))
 
-    assert md0 == md1, "BOARD.md 正文跨天漂移 → agent_board 门次日必红"
+    assert md0 == md1, "投影正文跨天漂移 → boot 每天读到不同的板"
     j0 = {k: v for k, v in d0.items() if k != "generated_at"}
     j1 = {k: v for k, v in d1.items() if k != "generated_at"}
-    assert j0 == j1, "agent_context.json 跨天漂移 → agent_board 门次日必红"
+    assert j0 == j1, "投影对象跨天漂移 → 同一状态被渲染成两种说法"
 
 
 def test_render_flags_yaml_vs_effective_divergence() -> None:
@@ -185,8 +192,9 @@ def test_phase_d_run_projected() -> None:
 
 def test_render_marks_generated_and_non_enforcement() -> None:
     md = board.render_md(board.collect(REPO))
-    assert "勿手改" in md
     assert "Projection only" in md
+    assert "现查" in md, "必须标明是现查投影而非落盘文件"
+    assert "chunkyctl status" in md, "前沿类问题必须被指向 L2 现查入口"
 
 
 def test_render_marks_legacy_false_fixture(tmp_path: Path) -> None:
@@ -197,27 +205,21 @@ def test_render_marks_legacy_false_fixture(tmp_path: Path) -> None:
     assert "cutover_allowed=False" in md or "cutover_allowed=false" in md
 
 
-def test_check_fresh_after_write(tmp_path: Path) -> None:
-    # Isolate outputs under tmp while reading live sources from REPO.
-    import scripts.build_agent_board as mod
+def test_projection_writes_no_files(tmp_path: Path, monkeypatch, capsys) -> None:
+    """P2.3 契约: 投影只打印, 绝不落盘。落盘就是又造一份会烂的 L2 状态。"""
+    import scripts.agent_board_projection as mod
 
-    old_md, old_json = mod.MD_OUT, mod.JSON_OUT
-    try:
-        mod.MD_OUT = tmp_path / "BOARD.md"
-        mod.JSON_OUT = tmp_path / "data" / "board" / "agent_context.json"
-        data = mod.collect(REPO)
-        assert mod.write_outputs(data, check=False, quiet=True) == 0
-        assert mod.write_outputs(data, check=True, quiet=True) == 0
-        # Stale hand edit must turn red.
-        mod.MD_OUT.write_text(mod.MD_OUT.read_text(encoding="utf-8") + "\nstale\n", encoding="utf-8")
-        assert mod.write_outputs(data, check=True, quiet=True) == 1
-    finally:
-        mod.MD_OUT, mod.JSON_OUT = old_md, old_json
+    monkeypatch.chdir(tmp_path)
+    before = set(tmp_path.rglob("*"))
+    assert mod.main(["--root", str(REPO)]) == 0
+    assert mod.main(["--json", "--root", str(REPO)]) == 0
+    assert set(tmp_path.rglob("*")) == before, "投影落盘了"
+    assert "BOARD" in capsys.readouterr().out
 
 
-def test_json_roundtrip_keys() -> None:
-    data = board.collect(REPO)
-    text = json.dumps(data, ensure_ascii=False, sort_keys=True)
-    again = json.loads(text)
-    assert again["bans"]
-    assert again["sources"]
+def test_no_write_surface_remains() -> None:
+    """写盘/--check 能力必须真删干净, 不留半退役的死路径。"""
+    import scripts.agent_board_projection as mod
+
+    for attr in ("MD_OUT", "JSON_OUT", "write_outputs", "_body"):
+        assert not hasattr(mod, attr), f"{attr} 应随 P2.3 一起退役"

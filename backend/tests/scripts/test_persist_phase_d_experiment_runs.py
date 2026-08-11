@@ -25,7 +25,7 @@ def test_persist_writes_immutable_run_and_manifest(tmp_path: Path) -> None:
         "purged_fold_1",
         "purged_fold_2",
     ]
-    assert "backend/scripts/build_agent_board.py" in manifest["consumers"]
+    assert "backend/scripts/agent_board_projection.py" in manifest["consumers"]
 
     run_path = tmp_path / manifest["runs"]["b0_bound"]
     payload = json.loads(run_path.read_text(encoding="utf-8"))

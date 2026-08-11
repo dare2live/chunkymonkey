@@ -14,22 +14,18 @@ on:
       - 'docs/**'
       - 'analysis/**'
       - 'sandbox/**'
-      - 'data/board/**'
       - 'goal.md'
       - 'PROJECT_INDEX.md'
       - 'README.md'
-      - 'BOARD.md'
   pull_request:
     branches: [main]
     paths-ignore:
       - 'docs/**'
       - 'analysis/**'
       - 'sandbox/**'
-      - 'data/board/**'
       - 'goal.md'
       - 'PROJECT_INDEX.md'
       - 'README.md'
-      - 'BOARD.md'
 
 jobs:
   test:

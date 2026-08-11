@@ -40,7 +40,7 @@ EXEMPT_PREFIXES = (
 # check_continuity_integrity 等真实调用点。
 #
 # 能力边界（诚实声明，不假装完备）：本门按**行**做正则匹配，把 `.now()` 与
-# `.date()` 拆成两行赋值仍可绕过（实例：build_agent_board.py 的
+# `.date()` 拆成两行赋值仍可绕过（实例：agent_board_projection.py 的
 # `_now = ...now(tz)` + 次行取值）。完备检测需要在 AST 上追踪返回值流向到
 # trade_date 形参，未实现。**本门是提示与显式声明的强制点，不是绕过的保证。**
 WALLCLOCK = re.compile(
