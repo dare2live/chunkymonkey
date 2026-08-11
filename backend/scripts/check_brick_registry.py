@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """B5 gate: L2/L3 brick registry completeness + hop/raw/orphan/Type-B honesty.
 
-Checks (authority: analysis/data_brick_architecture_20260721.md):
+Checks (authority: docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)):
   1. brick_registry.yaml version=1 + max_composite_hops
   2. L2 bricks are primitives; deps never L3/L4; no silent raw_* bypass
   3. L3 feature_blocks hop depth ≤ max_composite_hops

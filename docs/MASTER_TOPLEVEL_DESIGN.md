@@ -252,6 +252,49 @@ typed `run_outcome` 承载，它是系统语义（运行时必须成立），不
 `frontend/src/api/ops.ts` + `frontend/src/pages/WorkbenchPage.tsx`。
 本节与代码 enum 的一致性由 moth 断言 `run-outcome-four-states-law` 机械锁定。
 
+### 5.5 变量积木分层（L0–L4）
+
+传输轴（§3.1）说的是**一个数据集怎么走完生命周期**，业务轴（§3.2）说的是**谁能依赖谁**。
+这一节说第三件事：**一个变量属于哪一层**。三者正交，不是同一把尺子换个说法。
+
+| 层 | 是什么 | **不是**什么 | writer / 依赖 |
+|---|---|---|---|
+| **L0 证据** | 供应商响应原样 + `batch_id`/`observed_at`/contract hash | 项目 universe 真相；可回测特征；「干净 K 线」 | acquire/land 唯一 writer；population=`raw_evidence` |
+| **L1 接受事实** | 项目接受的 canonical 行 + `accepted_partition` 代际证明 | qfq 分析视图；Tier1 状态；vendor 全集冒充池 | accept 模块唯一 writer，**零 provider 调用** |
+| **L2 原语** | 从 L1**确定性**派生的基础变量，每条带 `available_at`/method/unit/denominator/coverage/definition hash | 含未来 label 的列；跨口径 conserved-money 求和；未声明 availability 的 mart 列 | **仅依赖 L1**（+ reference 维表）；禁读 L3/L4 |
+| **L3 组合砖** | 版本化组合，lineage 完整（输入 brick id + config hash → 输出 schema） | 无限深度 ad-hoc SQL；策略 verdict；Optuna 搜索空间 | 可依赖 L2 或**一层** L3，**深度上限 2 hop** |
+| **L4 策略产物** | 在**冻结** `DatasetSnapshot` 上产生的候选/信号/实验列，PIT 截断 0-diff | daily_update 的默认重算面；未发布 StrategyRelease 的生产输入 | 有 prereg/verdict 才持久化，否则用 CTE/artifact |
+
+**依赖硬规则**（违反任一条即 fail-closed，不是风格建议）：
+
+1. **偏序** `L4 → L3 → L2 → L1 → L0`；下层禁读上层；禁止成环。
+2. 跨层发布必须带 §5.1 的最小契约集（dataset_id / grain / population scope /
+   availability axis-rule-at / config hash / writer / consumers）。
+3. L2 起每条变量必须有 `available_at` 决策时点语义；`manual` 早抓不改变 consumer 的
+   `max(observed_at, publication_cutoff)`（§5.1）。
+4. **同输入同 hash → 同输出**必须可证；hash 变则是新 brick 版本，**不静默覆盖**。
+5. L3 的输入必须在 lineage 里可枚举；**缺 lineage = UNTRUSTED，不是「大概对」**。
+6. 生产 derive/compute 默认 `from_accepted=True`；读 legacy raw 须显式逃生参数 +
+   inventory 登记，**没有静默 UNION**。
+7. **L3 深度上限 2 hop** —— 这是「禁止无限变量 DAG」的可执行形式：链越深，泄漏越不可审计。
+
+**明确禁止的反模式**（每条都对应一次真实代价）：无限变量 DAG（泄漏不可审计）·
+每模块一表 / 每公式一表（表爆炸）· plugin bus 或通用 DAG（YAML 图编程、隐式依赖）·
+dual-write 迁移窗（两平面 ssot 漂移；正解是 shadow parity → **原子 cutover** 或 sunset）·
+serve 回写 Tier0（dual-track 复活）· 「残破感 → 重写」（丢掉 cutover 与 measured reject 的证据）。
+
+### 5.6 物理数据库分层：为什么不按层拆库
+
+逻辑分层（§5.5）与物理文件是**两件事**。按加工阶段拆成 `raw.duckdb` / `primary.duckdb` /
+`feature.duckdb` 看似整齐，实际代价是：**accept 事务跨库** → `landing→canonical` 不再原子；
+ATTACH 链变长；并且给「dual-write 同步两库」制造了理由 —— 那正是 `goal.md` 禁令里
+「第二 DB」要挡的东西。
+
+**裁决：物理布局由 `database_manifest.yaml` 路由 + 语义契约约束，不由加工阶段决定。**
+
+**唯一合法的拆库理由是写锁 / retention / owner 冲突**，不是「看起来更有层次」。既有先例：
+`tushare_raw` 从 `smartmoney` 拆出，因为二者的写锁窗口与 retention 策略真的冲突。
+
 ## 6. Tier 0 数据地基
 
 ### 6.1 交易数据

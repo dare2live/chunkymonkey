@@ -1,7 +1,7 @@
 # 因子族治理 · 顶层设计（2026-07-24）
 
 > **生命周期**：evidence-only · **非** owner bible  
-> **Authority chain**：`goal.md` → `docs/MASTER_TOPLEVEL_DESIGN.md` → `docs/strategy_validation_contract.md` → `analysis/data_brick_architecture_20260721.md`  
+> **Authority chain**：`goal.md` → `docs/MASTER_TOPLEVEL_DESIGN.md` → `docs/strategy_validation_contract.md` → `docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)`  
 > **Companion stub**：`backend/config/factor_family_inventory.yaml`（声明面；门未接线）  
 > **Moth**：`moth inspect --repo . --task-kind architecture_orchestration` @ 2026-07-24（见 §7）  
 > **Verdict**：**FIXED（设计）** · 实现 = 下一刀 inventory+gate 脚本（RX 前）
@@ -274,6 +274,6 @@ Tier0 可审计事实 → Tier1 状态 → Tier2 感知 → Tier3 冻结 snapsho
 ## 9. References
 
 - `goal.md` · `docs/MASTER_TOPLEVEL_DESIGN.md` · `docs/strategy_validation_contract.md`  
-- `analysis/data_brick_architecture_20260721.md` · `analysis/data_axis_frequency_review_20260724.md`  
+- `docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)` · `analysis/data_axis_frequency_review_20260724.md`  
 - `analysis/STRATEGY_EXECUTION_PLAN.md` · `analysis/serve_derive_closed_loop_law_20260723.md`  
 - `backend/config/brick_registry.yaml` · `sync_registry.yaml` · `serve_derive_closed_loop.yaml`

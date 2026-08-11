@@ -190,7 +190,7 @@ assertions:
     command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_legacy_raw_plane.py >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
   - id: brick-registry-l2-l3
-    claim: "B5 brick registry 门全绿：L2 primitives vs L3 FeatureBlocks+Type-B edge 已登记；禁 silent raw bypass；L3 max_composite_hops≤2；FEATURE_BLOCK_ID 无 orphan；data_layers L2_feature 表均在 outputs；status=partial 须 typed partial_reasons。owner=backend/scripts/check_brick_registry.py + brick_registry.yaml；权威=analysis/data_brick_architecture_20260721.md"
+    claim: "B5 brick registry 门全绿：L2 primitives vs L3 FeatureBlocks+Type-B edge 已登记；禁 silent raw bypass；L3 max_composite_hops≤2；FEATURE_BLOCK_ID 无 orphan；data_layers L2_feature 表均在 outputs；status=partial 须 typed partial_reasons。owner=backend/scripts/check_brick_registry.py + brick_registry.yaml；权威=docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)"
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_brick_registry.py >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}

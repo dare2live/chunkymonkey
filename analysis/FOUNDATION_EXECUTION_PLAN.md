@@ -38,8 +38,8 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | `plan_reeval_*` / `forward_program_efgh_*` / treadmill closeout 等 | 旧 roadmap / 支线 | **deleted**；git history |
 
 仍 **living subordinate**（立法/契约引用，非第二 backlog）：
-`foundation_phase_reeval_20260721.md`（FND-GATE）、`data_brick_architecture_20260721.md`、
-`db_layering_toplevel_design_20260721.md`、`architecture_fix_treadmill_first_principles_20260722.md`、
+`foundation_phase_reeval_20260721.md`（FND-GATE）、`docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)`、
+`docs/MASTER_TOPLEVEL_DESIGN.md §5.6 (物理分层裁决)`、`architecture_fix_treadmill_first_principles_20260722.md`、
 `serve_derive_closed_loop_law_20260723.md`、`org_holding_incremental_loop_20260723.md`、
 `shareholder_update_check_design_20260723.md`、`hs_a_whitelist_includes_st_20260722.md`、
 `data_frontier_detection_system_20260723.md`、`product_decision_assist_backlog_20260721.md`、

@@ -1,6 +1,6 @@
 # Brick registry (L2 primitives / L3 FeatureBlocks + Type-B edge) — B5 strangler
 #
-# Authority: analysis/data_brick_architecture_20260721.md
+# Authority: docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)
 # Gate: backend/scripts/check_brick_registry.py (+ moth claim + doctor section)
 #
 # Orthogonal to legacy data_layers.yaml:

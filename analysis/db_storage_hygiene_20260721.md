@@ -2,7 +2,7 @@
 
 > **生命周期**：evidence-only / executed reclaim note（非 owner contract；不替代 eng_gov §10）
 > Authority: `docs/engineering_governance.md` §10; `backend/scripts/db_lifecycle_delete.py`;
-> `backend/scripts/db_compact.py`; `analysis/db_layering_toplevel_design_20260721.md` §3.1 / §5.3.
+> `backend/scripts/db_compact.py`; `docs/MASTER_TOPLEVEL_DESIGN.md §5.6 (物理分层裁决)` §3.1 / §5.3.
 
 ## Verdict
 

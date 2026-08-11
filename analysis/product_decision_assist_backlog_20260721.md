@@ -1,7 +1,7 @@
 # Product decision-assist backlog (2026-07-21)
 
 > 状态：evidence-only / **capability definitions**（A–F defs still valid; near-term knives **CLOSED**)
-> Layer authority: `analysis/data_brick_architecture_20260721.md` (L0–L3) + `docs/MASTER_TOPLEVEL_DESIGN.md` Tier0–4.
+> Layer authority: `docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)` (L0–L3) + `docs/MASTER_TOPLEVEL_DESIGN.md` Tier0–4.
 > Execution backlog: `analysis/FOUNDATION_EXECUTION_PLAN.md`（产品残差）· Cap F 证据 `dossier_100_usable_20260723.md`.
 > **Complex-viz:** `analysis/frontend_complex_viz_plan_20260722.md`（consumes Cap A/D；无新 backend MVP）.
 

@@ -1,7 +1,7 @@
 # 数据地基阶段重评（2026-07-21）
 
 > **生命周期**：evidence-only / **foundation closure sequencing**（由 `goal.md` 授权近端排序；不替代 `docs/MASTER_TOPLEVEL_DESIGN.md` 立法）  
-> **证据输入**：live gates；`data_brick_architecture_20260721.md`；`db_layering_toplevel_design_20260721.md`；执行面 `FOUNDATION_EXECUTION_PLAN.md` / `STRATEGY_EXECUTION_PLAN.md`  
+> **证据输入**：live gates；`docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)`；`docs/MASTER_TOPLEVEL_DESIGN.md §5.6 (物理分层裁决)`；执行面 `FOUNDATION_EXECUTION_PLAN.md` / `STRATEGY_EXECUTION_PLAN.md`  
 > **禁令延续**：E/F 仅 STRATEGY 开门后；G/H/Release/Optuna；假 COMPAT/假 FIXED；org invent；第五产品
 
 ---
@@ -88,8 +88,8 @@
 
 | 项 | 状态 |
 |---|---|
-| `db_layering_toplevel_design_20260721.md` | **authority shipped**（逻辑 E0→R1；物理单 DuckDB） |
-| `data_brick_architecture_20260721.md` | **authority shipped** |
+| `docs/MASTER_TOPLEVEL_DESIGN.md §5.6 (物理分层裁决)` | **authority shipped**（逻辑 E0→R1；物理单 DuckDB） |
+| `docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)` | **authority shipped** |
 | §15 knife-merge | **policy FIXED**；**behavior PASS**（§15-VERIFY；见 `section15_verify_20260721.md`） |
 | WP6 agent-OS shadow | ceremony 开放；**不**阻塞 foundation-done |
 
@@ -237,7 +237,7 @@
 | 文档 | 本重评 |
 |---|---|
 | `plan_reeval_first_principles_20260720.md` | 排序母体；§11 近端菜单由 **本文件 supersede** |
-| `data_brick_architecture_20260721.md` | L0–L3 立法；B5 defer enrichment |
+| `docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)` | L0–L3 立法；B5 defer enrichment |
 | `goal.md` | 执行板；近端 track = **foundation solidify** |
 | `BOARD.md` | 生成投影；随 goal 再生 |
 
