@@ -40,8 +40,8 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 仍 **living subordinate**（立法/契约引用，非第二 backlog）：
 `foundation_phase_reeval_20260721.md`（FND-GATE）、`docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)`、
 `docs/MASTER_TOPLEVEL_DESIGN.md §5.6 (物理分层裁决)`、`architecture_fix_treadmill_first_principles_20260722.md`、
-`docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)`、`org_holding_incremental_loop_20260723.md`、
-`shareholder_update_check_design_20260723.md`、`hs_a_whitelist_includes_st_20260722.md`、
+`docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)`、`docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (披露域增量策略)`、
+`docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (披露域增量策略)`、`hs_a_whitelist_includes_st_20260722.md`、
 `docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (前沿判定)`、`product_decision_assist_backlog_20260721.md`、
 `db_storage_hygiene_20260721.md`、`db_bloat_deep_dive_20260723.md`（yaml 删表证据锚）。
 

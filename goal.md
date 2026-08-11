@@ -5,7 +5,7 @@
 > 完成证据：`scripts/chunkyctl history --grep <关键词>`（git log 即原件）；时期导航 `--eras`。交接：`chunkyctl history --grep "account-switch"`。
 > **执行方案（仅两份；abolished 主方案/支线）**：底座 `analysis/FOUNDATION_EXECUTION_PLAN.md` · 策略 `analysis/STRATEGY_EXECUTION_PLAN.md`（RX 前 BLOCKED）。
 > **清理台账**：`chunkyctl history --grep "文档收敛"`。Owner 立法仍只认 `docs/README.md` 三份 contracts。
-> **活契约引用（非第二 backlog）**：`analysis/foundation_phase_reeval_20260721.md` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.6 (物理分层裁决)` · `analysis/architecture_fix_treadmill_first_principles_20260722.md` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)` · `analysis/org_holding_incremental_loop_20260723.md` · `chunkyctl history --grep "ST 白名单"`。
+> **活契约引用（非第二 backlog）**：`analysis/foundation_phase_reeval_20260721.md` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.6 (物理分层裁决)` · `analysis/architecture_fix_treadmill_first_principles_20260722.md` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (披露域增量策略)` · `chunkyctl history --grep "ST 白名单"`。
 
 ## 当前 objective
 
@@ -33,7 +33,7 @@
 **近端 focus**：F4 serve→accepted **FIXED**；breadth B-pit promote **FIXED**（READY as project_universe_pit when MART_CUTOVER）；F7 Type-B enrichment **FIXED**；F8 qfq incremental **FIXED**。等 owner **显式 schedule RX** 才开 STRATEGY。**Optuna / Release 未开**。仍禁 S7 假 COMPAT / org invent / 松 holdout / Continuity 洗绿。
 
 
-**护栏**：formal frontier 与 drain soft 窗分立叙述；PIT+≤40d；§15 不放宽；org 增量见 `org_holding_incremental_loop_20260723.md`；禁全宇宙扫股东公告（`shareholder_update_check_design_20260723.md`）；serve=沪深A 含 ST；**F9 residual_hygiene** 约束 Type-B publish / ann tip 滞后（超 SLA → 日更 degraded；≠ Continuity READY 化妆）；**org accepted pointer = full canonical partition**（同 available 多 report 禁末 batch 覆盖；F6 计 mismatch）。
+**护栏**：formal frontier 与 drain soft 窗分立叙述；PIT+≤40d；§15 不放宽；org 增量见 `docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (披露域增量策略)`；禁全宇宙扫股东公告（`docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (披露域增量策略)`）；serve=沪深A 含 ST；**F9 residual_hygiene** 约束 Type-B publish / ann tip 滞后（超 SLA → 日更 degraded；≠ Continuity READY 化妆）；**org accepted pointer = full canonical partition**（同 available 多 report 禁末 batch 覆盖；F6 计 mismatch）。
 
 ## 治理体系重构（2026-08-10 立项；owner 认可第一性原理设计；未开工）
 
@@ -76,7 +76,7 @@
 - **P3 历史归 git**（依赖 P2.2）
   - P3.2 **FIXED**（2026-08-11）：`scripts/chunkyctl history`（`--grep` 逐刀 / `--eras` 时期 / `--full` 出正文）
   - P3.3 **FIXED**（2026-08-11）：ledger **直接退役**（非冻结）。实测三条依据：① 同一刀逐字对比，commit message 是 ledger 的**超集**（`16f5c370c`：ledger 记 4 条 Rule10，commit 记 6 条）；② 「早期 commit 太薄」不成立——2026-04~05 期 1133 个 commit 中位 783 字符/20 行、41% 带证据结构；③ 169 条里唯一 git 不直接给的只有 **6 段时期叙事（2030 字符）**，已转成 `era/*` annotated tag（`--eras` 可查）。删后 `check_doc_drift` 抓出 9 处需求侧死引用，全部改指 `chunkyctl history`
-  - P3.4 **进行中**（2026-08-11）：`analysis/` **55 → 16 份**。已删 39 份（36 EVIDENCE + 3 SUPERSEDED，逐份读过内容而非按文件名推断）。删后门抓出 **13 处活文档幽灵引用 + 68 处代码/配置死指针**，全部改指 `git log --grep`/`chunkyctl history` —— 这正是「删供给侧必清需求侧」。**剩 10 份是搬家不是删**（4 份纯 RULE 已全部并完；MIXED 已拆 2 份 → MASTER §5.5–§5.8 + eng_gov §9.1）：4 份纯 RULE + 12 份 MIXED，里面装着多处代码写成 `Authority:` 在用的活规则（变量积木分层 L0–L4、物理 DB 分层、frontier 决策原语、partition leap 法条、Cap A–F 能力定义…），MASTER **目前完全没有**这两章。工作量：MASTER ~275 行 / eng_gov ~95 行 / strategy ~55 行；**`backend/config/*.yaml` 零新增**（阈值/窗口/白名单早已全部落 yaml，L1 契约层本就干净）
+  - P3.4 **进行中**（2026-08-11）：`analysis/` **55 → 16 份**。已删 39 份（36 EVIDENCE + 3 SUPERSEDED，逐份读过内容而非按文件名推断）。删后门抓出 **13 处活文档幽灵引用 + 68 处代码/配置死指针**，全部改指 `git log --grep`/`chunkyctl history` —— 这正是「删供给侧必清需求侧」。**剩 8 份是搬家不是删**（4 份纯 RULE 已全部并完；MIXED 已拆 4 份 → MASTER §5.5–§5.8 + eng_gov §9.1）：4 份纯 RULE + 12 份 MIXED，里面装着多处代码写成 `Authority:` 在用的活规则（变量积木分层 L0–L4、物理 DB 分层、frontier 决策原语、partition leap 法条、Cap A–F 能力定义…），MASTER **目前完全没有**这两章。工作量：MASTER ~275 行 / eng_gov ~95 行 / strategy ~55 行；**`backend/config/*.yaml` 零新增**（阈值/窗口/白名单早已全部落 yaml，L1 契约层本就干净）
   - P3.1 **未做**：commit message 模板固化 Q/Fix/Evidence/Residual（commit_msg 门的正确形态：查结构，不查关键词）
   - P3.4 `analysis/` 归零（现 65 份；卡点是几十处注释性溯源要一起改，批量替换已试过一次并回滚，需更好策略）
 - **P4.2-4.4 文档按层归位**：`eng_gov §6/§11`、`AGENTS §4` 的系统约束移进 `MASTER`；三份 owner contract 重新划界（MASTER=系统法 / eng_gov=开发纪律 / strategy=研究发布）
