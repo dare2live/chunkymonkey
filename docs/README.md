@@ -19,8 +19,8 @@
 |---|---|
 | `../PROJECT_INDEX.md` | 短项目导航与当前资产判断，不是规则 owner |
 | `../FEATURE_MAP.md` | 机器生成的入口/数据域/writer 地图；可重建，不手改 |
-| `../analysis/FOUNDATION_EXECUTION_PLAN.md` | 数据底座执行 backlog（evidence-only；`goal.md` 指向） |
-| `../analysis/STRATEGY_EXECUTION_PLAN.md` | 后续策略执行 backlog（RX 前 BLOCKED；evidence-only） |
+| `../goal.md「下一步」执行 backlog` | 数据底座执行 backlog（evidence-only；`goal.md` 指向） |
+| `../goal.md「下一步」执行 backlog + strategy_validation_contract.md §3.2/§3.3` | 后续策略执行 backlog（RX 前 BLOCKED；evidence-only） |
 | `../analysis/DOC_CLEANUP_20260723.md` | 2026-07-23 文档收敛台账（kept/deleted） |
 
 `CLAUDE.md` 是 legacy compatibility pointer，Codex 默认不读。旧 session handoff / workflow checkpoint 体系已经退役；新会话从 git、Moth、CodeGraph 和 live data 重建状态。跨 Cursor 账号续作时另读 owner 明示的 `../analysis/account_switch_handoff_20260720.md`（入 git，非旧 checkpoint 体系）。
@@ -37,6 +37,7 @@
 | 可机器重建的地图/报告 | 生成器输出目录，标明 generated |
 | 普通过程记录、旧计划、过期设计 | 删除；git history 已保留 |
 | 一次性探索 | `sandbox/`，结束即清理 |
+| **一次性实测证据**（审计 JSON、删除 manifest、ops log） | `data/audit/historical/`。**`analysis/` 已于 2026-08-11 归零并退役** —— 规则进 owner contract、历史进 commit message、证据进 `data/`；重建该目录由 `check_doc_governance` C3 判红 |
 | **运行时状态**（frontier / watermark / 覆盖区间与天数 / 表行数 / DB 体积 / 窗口末端） | **不进任何人工维护文档**；现查 **`scripts/chunkyctl status`**（L2 单一入口，零文件；`--json` 给 agent）。执法由 `check_doc_runtime_state` 机械对账 |
 
 禁止：

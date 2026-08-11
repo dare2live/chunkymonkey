@@ -9,7 +9,7 @@
 检查项 (FAIL 退出码 1):
   C1 goal.md 行数 <= 上限 (薄入口契约)
   C2 docs/*.md 必须精确匹配四文件 authority allowlist
-  C3 非 ledger 的 analysis/*.md 必须是 evidence-only，且不得声明 live/self-owner/待主会话
+  C3 analysis/ 必须保持归零（2026-08-11 P3.4 完成；重建 = 第二套规则文档复辟）
   C4 控制面文档引用的 analysis/* 必须存在 (防幽灵引用误导)
   C5 superseded-by 指向的文件必须存在 (防断链)
   C6 控制面文档引用 retired/superseded 文件 → WARN (叙述历史合法, 当 owner 引用须人审)
@@ -29,7 +29,10 @@ import re
 import sys
 from pathlib import Path
 
-GOAL_MAX_LINES = 132  # 当前 compact controller board 121 行，保留约 10% 变更余量
+# 上限防的是 **changelog 堆积**，不是防真实 backlog。2026-08-11 把两份 analysis 执行计划的
+# 待办并入 goal.md（规则段已进 owner contract），它成为唯一说「下一步」的地方 —— 内容性质变了，
+# 阈值随之重设。判据没变：goal.md 里出现「已完成」叙述就是破契约，那些归 commit message。
+GOAL_MAX_LINES = 160
 DOCS_ALLOWLIST = {
     "README.md",
     "MASTER_TOPLEVEL_DESIGN.md",
@@ -142,30 +145,25 @@ def _status_of(path: Path) -> tuple[str, str | None]:
     return ("default", None)
 
 
-def _analysis_header_failure(path: Path, root: Path) -> str | None:
-    # ledger 于 2026-08-11 P3.3 退役 (历史归 git: `chunkyctl history --grep` / `--eras`),
-    # 故不再有「唯一 query-only 历史索引」这个豁免 —— analysis/ 下每一份都必须是
-    # evidence-only, 且目标是全部归零。
-    rel = path.relative_to(root).as_posix()
-    try:
-        head = "\n".join(
-            path.read_text(encoding="utf-8", errors="ignore").splitlines()[:_HEADER_SCAN_LINES]
-        )
-    except OSError as exc:
-        return f"C3 {rel} header 不可读: {exc}"
-    violations: list[str] = []
-    if not _EVIDENCE_ONLY_RE.search(head):
-        violations.append("缺 evidence-only 声明")
-    if _LIVE_STATUS_RE.search(head):
-        violations.append("声明 live")
-    if _SELF_OWNER_RE.search(head):
-        violations.append("声明 self-owner")
-    if _PENDING_MAIN_SESSION_RE.search(head):
-        violations.append("声明待主会话，形成悬空第二真相源")
-    if not violations:
-        return None
-    return f"C3 {rel} analysis 只能是 evidence-only: {', '.join(violations)}"
+def _analysis_dir_failure(root: Path) -> str | None:
+    """C3: `analysis/` 归零后必须**保持**为零。
 
+    2026-08-11 P3.4 把 55 份 analysis 文档清完: 规则并进三份 owner contract, 历史归 git
+    commit message, 一次性实测证据移 `data/audit/historical/`。留着空目录不设门, 下一次
+    「先放这儿回头再整理」就会让它长回来 —— 那正是第二套规则文档的复辟路径。
+
+    要重新启用它必须显式改本门 + `docs/README.md` 生命周期表, 不能靠往里丢文件既成事实。
+    """
+    d = root / "analysis"
+    if not d.exists():
+        return None
+    leftovers = sorted(p.relative_to(root).as_posix() for p in d.rglob("*") if p.is_file())
+    if not leftovers:
+        return None
+    return (
+        f"C3 analysis/ 应保持归零, 实测残留 {len(leftovers)} 个文件: {leftovers[:5]} "
+        "(规则并进 owner contract / 历史进 commit message / 实测证据进 data/audit/historical)"
+    )
 
 def run(root: Path) -> tuple[list[str], list[str]]:
     fails: list[str] = []
@@ -175,7 +173,7 @@ def run(root: Path) -> tuple[list[str], list[str]]:
     if goal.exists():
         n = len(goal.read_text(encoding="utf-8", errors="ignore").splitlines())
         if n > GOAL_MAX_LINES:
-            fails.append(f"C1 goal.md {n} 行 > {GOAL_MAX_LINES} (薄入口契约破裂 — 完成项移 ledger)")
+            fails.append(f"C1 goal.md {n} 行 > {GOAL_MAX_LINES} (薄入口契约破裂 — 完成项写进 commit message, 查 `chunkyctl history`)")
 
     docs_dir = root / "docs"
     if docs_dir.exists():
@@ -207,19 +205,12 @@ def run(root: Path) -> tuple[list[str], list[str]]:
     control_plane = governed_doc_paths(root)
     retired_commands = _retired_chunkyctl_commands(root)
 
+    analysis_failure = _analysis_dir_failure(root)
+    if analysis_failure:
+        fails.append(analysis_failure)
+
+    # `analysis/` 归零后没有 superseded 链可跟；保留空集让 C5/C6 的下游逻辑照常短路。
     retired_like: set[str] = set()
-    for f in (root / "analysis").glob("*.md") if (root / "analysis").exists() else []:
-        header_failure = _analysis_header_failure(f, root)
-        if header_failure:
-            fails.append(header_failure)
-        status, target = _status_of(f)
-        rel = f.relative_to(root).as_posix()
-        if status == "superseded":
-            retired_like.add(rel)
-            if target and not (root / target.strip("`")).exists():
-                fails.append(f"C5 {rel} 的 superseded-by 目标不存在: {target}")
-        elif status == "retired":
-            retired_like.add(rel)
 
     # C6: 控制面 doc 不引用不存在的脚本命令 (2026-06-16 补盲区: reset 删 audit_docs_graph 等致 doc→脚本悬空累积 17 处无门拦;
     #     原 C3 只查 analysis/, 不查 backend/scripts 命令名)。脚本命名约定前缀 = 命令引用, 在 backend/scripts 或 scripts/ 必存在。

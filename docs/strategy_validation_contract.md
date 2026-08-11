@@ -78,6 +78,44 @@
 一句话判据：**缺口的成因决定处置方式**。把「供应商从来没有」和「我们漏采了」当成同一件事，
 就会用拉齐掩盖真实的流程债，或者用缩窗换一个更好看的结果。
 
+### 3.2 研究开门条件（BLOCKED → 可执行）
+
+策略轨默认 **BLOCKED**。同时满足以下全部才可开，缺一即关：
+
+1. 地基出口已 MET（后续若回退，本门**自动重关**，不需要人再判一次）；
+2. `goal.md` 里 owner 的**显式一句**排期，并写入与 typed config 一致的授权 id；
+3. **同 protocol**：development snapshot 只含 train/validation；sealed holdout 独立冻结且
+   worker 不可见；同一 universe / folds / 成本 / 执行约束；
+4. 因子族登记与其 continuity/live 门全 PASS；
+5. §5 禁令未破。
+
+开门那一刀必须同时具备：fresh development snapshot（accepted generation 严格截止在 holdout
+之前）+ sealed holdout 的不透明引用 + canonical pointer/content、逐日 universe membership、
+availability 与各层 generation/hash 证据 + verdict artifact 路径与**诚实标签**（reject 也算交付）。
+
+### 3.3 研究计算准入：唯一数据入口与四级阶梯
+
+```text
+accepted canonical → 冻结 DatasetSnapshot（带 accepted/hash 证据）
+  → 只读 ResearchInputBundle → prereg / folds / 成本 / 执行
+  → 纯本地 trial evaluator → 不可变的逐 trial artifact
+  → 单一 owner reducer → ExperimentVerdict
+```
+
+`ResearchInputBundle` **只接受 development snapshot**，构造时即拒绝任何 sealed-holdout 分区
+或 Tier3 label 输入 —— 拒绝发生在构造时，不是使用时，因为「构造了但没用」无法证明。
+
+算力四级阶梯，**逐级解锁不得跳级**：
+
+1. **现在**：本地、手动、只读 smoke，`claimable=false`；
+2. **RX**：须 `goal.md` 排期 + fresh freeze + sealed holdout ref + 全部证据 + purged walk-forward；
+3. **Optuna**：在 RX 之外**另开**一个 phase；search space 非空且每项必须真的改变 behavior hash
+   （否则就是白跑）；objective 只读 development validation；
+4. **远程算力**：最后一步，前提是同 bundle/spec 的本地与远端结果 **hash 0 diff**、只读 bundle、
+   不碰项目 DB。
+
+跳级的代价都一样：拿一个没有证据链的结果去做真金白银的决定。
+
 ## 4. 标签、状态和特征边界
 
 - `StockStateDaily` 与 `PatternEvent` 只使用截至 decision time 可见的数据；

@@ -1,6 +1,6 @@
 # stock_flow_streak.yaml — Cap CX-3 stock-level net-inflow streak universe
 # Tier3/product serve brick (NOT Tier0/Tier2 truth).
-# Authority: analysis/FOUNDATION_EXECUTION_PLAN.md §2 (CX-3 DONE)
+# Authority: goal.md「下一步」执行 backlog §2 (CX-3 DONE)
 # Source: fact_stock_moneyflow_dc_daily.net_amount (vendor imbalance proxy, 万元).
 # Fail-closed when moneyflow_dc as_of lags SLA — never narrate a stale streak board.
 version: 1

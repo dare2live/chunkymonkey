@@ -1,7 +1,7 @@
 """technical_states — Tier1 股票状态/形态模块（历史编号 B2）。
 
 设计契约: docs/MASTER_TOPLEVEL_DESIGN.md §7;
-审查证据库: analysis/technical_states_audit_20260702.json (14 confirmed / 40 keeps)。
+审查证据库: data/audit/historical/technical_states_audit_20260702.json (14 confirmed / 40 keeps)。
 
 骨架 (契约 §3, 16 文件 → 7 + config):
   features.py  日线 12+3 维特征 + resample 只闭合 bar (H1/H8/medium)

@@ -27,21 +27,6 @@ def _seed_authority_docs(root: pathlib.Path) -> None:
         _write(root / "docs" / name, f"# {name}\n")
 
 
-def test_warning_is_not_reported_as_pass_or_success(tmp_path, capsys):
-    _seed_authority_docs(tmp_path)
-    _write(tmp_path / "goal.md", "see `analysis/old.md`\n")
-    _write(tmp_path / "analysis" / "old.md", "> 状态: retired；evidence-only\n")
-
-    fails, warns = run(tmp_path)
-    assert fails == []
-    assert warns
-
-    assert main(["--root", str(tmp_path)]) == 1
-    output = capsys.readouterr().out
-    assert "verdict=WARN" in output
-    assert "verdict=PASS" not in output
-
-
 def test_live_doc_reference_to_retired_chunkyctl_command_fails(tmp_path):
     _seed_authority_docs(tmp_path)
     _write(tmp_path / "AGENTS.md", "Run `scripts/chunkyctl docs --format markdown`.\n")
@@ -54,59 +39,6 @@ def test_live_doc_reference_to_retired_chunkyctl_command_fails(tmp_path):
 
     assert warns == []
     assert any("退役 CLI" in finding and "chunkyctl docs" in finding for finding in fails)
-
-
-def test_historical_analysis_content_is_not_scanned_as_live_policy(tmp_path):
-    _seed_authority_docs(tmp_path)
-    _write(tmp_path / "AGENTS.md", "Current policy.\n")
-    _write(
-        tmp_path / "analysis" / "old_plan.md",
-        "# Old plan\n\n> 状态：evidence-only；本文不拥有当前规则。\n\nRun `scripts/chunkyctl docs`.\n",
-    )
-    _write(tmp_path / "backend" / "scripts" / "chunkyctl.py", '_RETIRED = ("docs",)\n')
-
-    assert run(tmp_path) == ([], [])
-
-
-def test_non_ledger_analysis_markdown_requires_evidence_only_header(tmp_path):
-    _seed_authority_docs(tmp_path)
-    _write(tmp_path / "analysis" / "undecided.md", "# Still looks like a live plan\n")
-
-    fails, warns = run(tmp_path)
-
-    assert warns == []
-    assert any("evidence-only" in finding and "analysis/undecided.md" in finding for finding in fails)
-
-
-def test_analysis_evidence_header_rejects_live_self_owner_and_pending_main_session(tmp_path):
-    _seed_authority_docs(tmp_path)
-    cases = {
-        "live.md": "> 状态：live\n",
-        "self_owner.md": "> 状态：evidence-only；owner: self\n",
-        "pending.md": "> 状态：evidence-only；待主会话决定是否转正\n",
-    }
-    for name, header in cases.items():
-        _write(tmp_path / "analysis" / name, f"# Evidence\n\n{header}")
-
-    fails, warns = run(tmp_path)
-
-    assert warns == []
-    assert all(any(name in finding for finding in fails) for name in cases)
-
-
-def test_every_analysis_markdown_needs_the_evidence_only_header(tmp_path):
-    """ledger 于 2026-08-11 P3.3 退役后，analysis/ 不再有任何 header 豁免。
-
-    历史归 git（`chunkyctl history`），所以「唯一 query-only 历史索引」这个特例
-    没有存在理由 —— 留着就是给一个已不存在的文件开后门。
-    """
-    _seed_authority_docs(tmp_path)
-    _write(tmp_path / "analysis" / "project_state_ledger.md", "# 历史\n")
-    _write(tmp_path / "analysis" / "whatever.md", "# 过程\n")
-
-    fails, _ = run(tmp_path)
-
-    assert len([f for f in fails if "C3" in f]) == 2, "两份都该因缺 evidence-only 头被判 FAIL"
 
 
 def test_generated_feature_map_cannot_list_retired_cli_as_current(tmp_path):
@@ -214,3 +146,13 @@ def test_bestchoice_second_control_plane_is_rejected(tmp_path):
         "C9" in finding and "goal.md" in finding and "第二 control plane" in finding
         for finding in fails
     )
+
+
+def test_analysis_dir_must_stay_at_zero(tmp_path):
+    """2026-08-11 P3.4 归零后必须**保持**为零 —— 留空目录不设门，下一次「先放这儿」就会长回来。"""
+    _seed_authority_docs(tmp_path)
+    assert run(tmp_path) == ([], []), "analysis/ 不存在时应无 finding"
+
+    _write(tmp_path / "analysis" / "somebody_put_it_back.md", "# 又一份平行规则\n")
+    fails, _ = run(tmp_path)
+    assert any("analysis/ 应保持归零" in f for f in fails), "重建 analysis/ 必须红"

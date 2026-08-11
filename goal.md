@@ -3,9 +3,9 @@
 > 状态：live controller board
 > 手写：objective / 已裁决 / 禁令 / 下一步。**运行时状态现查 `scripts/chunkyctl status`**（零文件；非执法输入）。
 > 完成证据：`scripts/chunkyctl history --grep <关键词>`（git log 即原件）；时期导航 `--eras`。交接：`chunkyctl history --grep "account-switch"`。
-> **执行方案（仅两份；abolished 主方案/支线）**：底座 `analysis/FOUNDATION_EXECUTION_PLAN.md` · 策略 `analysis/STRATEGY_EXECUTION_PLAN.md`（RX 前 BLOCKED）。
+> **执行方案（仅两份；abolished 主方案/支线）**：底座 `goal.md「下一步」执行 backlog` · 策略 `goal.md「下一步」执行 backlog + strategy_validation_contract.md §3.2/§3.3`（RX 前 BLOCKED）。
 > **清理台账**：`chunkyctl history --grep "文档收敛"`。Owner 立法仍只认 `docs/README.md` 三份 contracts。
-> **活契约引用（非第二 backlog）**：`docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维)` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.6 (物理分层裁决)` · `analysis/architecture_fix_treadmill_first_principles_20260722.md` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (披露域增量策略)` · `chunkyctl history --grep "ST 白名单"`。
+> **活契约引用（非第二 backlog）**：`docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维)` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.6 (物理分层裁决)` · `docs/engineering_governance.md §3.1 (何时不该开刀)` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (披露域增量策略)` · `chunkyctl history --grep "ST 白名单"`。
 
 ## 当前 objective
 
@@ -32,10 +32,21 @@
 
 ## 下一步
 
-**执行权威 = 仅两份方案**：底座 `analysis/FOUNDATION_EXECUTION_PLAN.md`（§6 exit MET；
-100% usable = **无 class-A**，判据见 eng_gov §9.1）· 策略 `analysis/STRATEGY_EXECUTION_PLAN.md`
-（**仍 BLOCKED**，须本文件显式 schedule RX —— exit MET **不等于**自动开 RX）。
-残差一律进这两份 backlog，不新开第三份。
+**执行 backlog 就在本节**（2026-08-11 起：原两份 `analysis/` 执行计划已并入这里 —— 规则段进
+owner contract，进度段在此。**不再有第二个说「下一步」的地方**）。
+
+*底座*（exit 已 MET；「100% usable」= 无 class-A，判据 eng_gov §9.1）
+- **A2** `stk_holdernumber` `MAX(ann_date)` tip vs eligible —— 超 SLA 由 F9 residual_hygiene 判红
+- **A3** Type-B fact publish 短滞后（moneyflow / limit / index / dc）—— 同跑 catchup
+- **A4** org 中间历史季洞 —— **DEFER**：仅显式 backfill 刀，日常增量路径不变
+- **A5** cyq 消费口径（历史段 FAIL）—— **DEFER**：消费前换算或弃用，非采集轴问题
+
+*策略*（**仍 BLOCKED**；开门条件见 `strategy_validation_contract.md` §3.2 —— exit MET **不等于**
+自动开 RX，须本文件显式排期）
+- **S0** Strategy Lab 本地框架 —— **PARTIAL**，两份 live 输入不合格前只能 `claimable=false` smoke
+- **S1→S2** RX-E / RX-F 同 protocol remeasure（诚实 reject 也算交付，**≠** Release）
+- **S3** 公式挑战（仅 RX 后）· **S4** Release + 纸面执行 · **S5** Optuna（**另需**显式开 phase，双签字）
+- 默认序 S1→S2→S3→S4，S5 最后
 
 **护栏**（长期有效，非进度）：formal frontier 与 drain soft 窗分立叙述 · PIT + ≤40d ·
 §15 不放宽 · serve = 沪深A 含 ST · 禁为清单洗绿（class-B 诚实状态**留着就是做对了**）。

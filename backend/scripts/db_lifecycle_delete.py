@@ -13,7 +13,7 @@
 dry-run 默认 (列计划 + 跑 live 守护); --execute 才归档+留痕+DROP。DROP 不回收文件块 → 之后须跑 db_compact。
 
 用法:
-  python backend/scripts/db_lifecycle_delete.py --manifest analysis/lifecycle_delete_manifest_20260614.yaml
+  python backend/scripts/db_lifecycle_delete.py --manifest data/audit/historical/lifecycle_delete_manifest_20260614.yaml
   python backend/scripts/db_lifecycle_delete.py --manifest <m> --execute
 """
 from __future__ import annotations

@@ -3,7 +3,7 @@
 # Purpose: keep non-blocking residuals from drifting forever under daily_update.
 # This is NOT Continuity READY cosmetics and does NOT clear honest WARN/UNTRUSTED.
 #
-# Authority: analysis/FOUNDATION_EXECUTION_PLAN.md F9
+# Authority: goal.md「下一步」执行 backlog F9
 # Wire: acquire type_b post-evaluate + store Step 2.985 check_residual_hygiene.py
 # Fail closed for update consumption (degraded + ALERT flag); does not block code commits.
 

@@ -656,7 +656,7 @@ def dossier(
         "lineage": {
             "status": "attested_usable",
             "audit": "git log --grep dossier_100_usable",
-            "prior_audit": "analysis/FOUNDATION_EXECUTION_PLAN.md",
+            "prior_audit": "goal.md「下一步」执行 backlog",
 
             "holders_parse_integrity": "PASS",
             "stock_holder_assoc_readiness": "FIXED",

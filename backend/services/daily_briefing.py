@@ -4,7 +4,7 @@ Aggregates already-published conclusions/why/observations into one narrative.
 Never invents freshness: any Cap A/D input untrusted/stale → status=stale,
 narrative=None, sections=[] (fail-closed). Does not write Tier0/Tier2.
 
-Authority: analysis/FOUNDATION_EXECUTION_PLAN.md §2 (CX-3 DONE)
+Authority: goal.md「下一步」执行 backlog §2 (CX-3 DONE)
 """
 from __future__ import annotations
 

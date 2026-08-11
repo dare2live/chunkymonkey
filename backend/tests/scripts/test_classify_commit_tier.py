@@ -23,7 +23,7 @@ def test_live_policy_validates() -> None:
 
 def test_l1_docs_only() -> None:
     result = clas.classify(
-        ["goal.md", "docs/README.md", "analysis/FOUNDATION_EXECUTION_PLAN.md"],
+        ["goal.md", "docs/README.md", "sandbox/probe.md"],
         scan_content=False,
     )
     assert result["tier"] == "L1"

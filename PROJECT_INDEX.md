@@ -3,7 +3,7 @@
 > 状态：live navigation，非规则 owner
 > 更新：2026-07-27（strategy-lab fail-closed control plane）
 > 当前目标看 `goal.md`（foundation CLOSED / `phase_closure_ready`；strategy-lab installed 但 live inputs BLOCKED，正式策略 paused）。
-> **执行方案仅两份**：底座 `analysis/FOUNDATION_EXECUTION_PLAN.md` · 策略 `analysis/STRATEGY_EXECUTION_PLAN.md`（RX 前 BLOCKED）。台账 `chunkyctl history --grep "文档收敛"`。
+> **执行方案仅两份**：底座 `goal.md「下一步」执行 backlog` · 策略 `goal.md「下一步」执行 backlog + strategy_validation_contract.md §3.2/§3.3`（RX 前 BLOCKED）。台账 `chunkyctl history --grep "文档收敛"`。
 > 架构看 `docs/MASTER_TOPLEVEL_DESIGN.md`；机器入口看 `FEATURE_MAP.md` / CodeGraph。
 > **Board = 现查投影，零文件**（`scripts/chunkyctl status` / `agent-boot`；`backend/scripts/agent_board_projection.py`）：cutover 行并列 **yaml 意图 + resolver 实际裁决**，背离显式标注 —— 窗口走完后 yaml 仍 true 而 resolver 每日 fail-closed 回 legacy 的可见化；影子期到期由起点+上限**算出**非写死状态串。`BOARD.md` / `data/board/agent_context.json` 及 `agent_board` 漂移门已于 2026-08-11 P2.3 退役（L2 状态只许现查）。
 
@@ -15,7 +15,7 @@ AGENTS.md
   -> docs/MASTER_TOPLEVEL_DESIGN.md
   -> docs/strategy_validation_contract.md
   -> docs/engineering_governance.md
-  -> analysis/FOUNDATION_EXECUTION_PLAN.md | STRATEGY_EXECUTION_PLAN.md  (execution only)
+  -> goal.md「下一步」执行 backlog | goal.md「下一步」执行 backlog + strategy_validation_contract.md §3.2/§3.3  (execution only)
 ```
 
 历史只查 `scripts/chunkyctl history`（`--grep` 逐刀 / `--eras` 时期）。`CLAUDE.md`、dated analysis 不是 live authority。
@@ -67,7 +67,7 @@ AGENTS.md
 | Serve→derive closed loop | Law `docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)` + config `serve_derive_closed_loop.yaml` + `data_sources/pagination_integrity.py`（paginated land ≠ complete；**hard** trunc=page-cap/provider_count；**soft** `under_modern_baseline` 不进 repair queue；证据 `org_heuristic_soft_baseline_20260725.md`）；process `institution_profile` delta-gate + as_of seed；org `repair_accept_from_local_raw` / `provider_truncated`→单期 sharded repair / F6 `min_org_accepted_stocks`；证据 `org_provider_page_cap_fix_20260724.md`；… |
 | Factor-family inventory (RX 前) | Config `factor_family_inventory.yaml` + `check_factor_family_inventory.py`（结构门）+ `check_factor_family_gates.py`（frequency continuity 矩阵）+ `project_factor_family_frontiers.py`（绑定 inventory hash/freshness/status 的 K3 live defer 投影）+ `check_factor_family_frontier_live.py`（DB missing/query error/UNVERIFIED/stale 均 fail-closed）+ 设计 `docs/MASTER_TOPLEVEL_DESIGN.md §9.1 (因子族边界) + strategy_validation_contract.md §3.1 (窗口对齐)`；K3 收口证据 `95cfd2697`（细节 `chunkyctl history --grep factor-family --full`） |
 | Brick registry (B5) | `brick_registry.yaml` + `check_brick_registry.py`（L2/L3 FeatureBlock + Type-B；moth claim PASS）；权威 `docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)` |
-| Rewrite must-keep vs delete | 裁决折入 `analysis/FOUNDATION_EXECUTION_PLAN.md` §4：KEEP = sync replace / qfq incremental+full CTAS+in-module compact / landing+skip / delta rebuild；**DELETED** = `rewrite_legacy` True + canary CLI；禁 periodic dedupe/compact fixer |
+| Rewrite must-keep vs delete | 裁决折入 `goal.md「下一步」执行 backlog` §4：KEEP = sync replace / qfq incremental+full CTAS+in-module compact / landing+skip / delta rebuild；**DELETED** = `rewrite_legacy` True + canary CLI；禁 periodic dedupe/compact fixer |
 
 | Manual single-domain sync/canary/replay | `scripts/chunkyctl sync --domain DOMAIN`；`trade_cal` full generation；`daily`/`stock_st` 须显式 `--start/--end`（同日或 ≤40 交易日）；`--drain` 对三域 inapplicable；其它 disabled/formal 仍 fail closed |
 | Shared tooling snapshot | `moth snapshot --repo .` |

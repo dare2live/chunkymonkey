@@ -19,7 +19,6 @@ version: 1
 # 生成投影单独手改必须走 L3 全门 (feature-map drift 门在 L1 被剪枝)。
 l1_prefixes:
   - docs/
-  - analysis/
   - sandbox/
   - data/board/
 l1_files:

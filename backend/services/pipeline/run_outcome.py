@@ -3,7 +3,7 @@
 Authority: docs/MASTER_TOPLEVEL_DESIGN.md §5.4 (系统语义, owner 级法条; 2026-08-11
 P4.1 孤儿法条归位 — 此前四态被 8 个代码文件依赖而三份 owner contract 零提及)。
 「完整性 ≠ 等时钟」这条判断同时是 §5.8 判断法典的 L3; 二者是同一条法的两个入口。
-Origin: analysis/architecture_fix_treadmill_first_principles_20260722.md §C2 (待并入)。
+Origin: docs/engineering_governance.md §3.1 (何时不该开刀) §C2 (待并入)。
 文档与本模块 enum 的一致性由 moth 断言 run-outcome-four-states-law 锁定。
 
 RunOutcome ∈ {success, soft_waiting_clock, integrity_observe, hard_fail}

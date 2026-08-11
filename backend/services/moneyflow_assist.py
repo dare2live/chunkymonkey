@@ -5,7 +5,7 @@ Never writes behavior labels into Tier0/Tier2. Moneyflow = vendor imbalance
 proxy (AGENTS.md), not conserved cash.
 
 Authority: docs/MASTER_TOPLEVEL_DESIGN.md §10.1 (产品能力边界) (Cap A) +
-analysis/FOUNDATION_EXECUTION_PLAN.md §2.
+goal.md「下一步」执行 backlog §2.
 """
 from __future__ import annotations
 

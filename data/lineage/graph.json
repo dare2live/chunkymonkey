@@ -47,7 +47,7 @@
           "trade_date",
           "ts_code"
         ],
-        "pit_anchor": "trade_date; 每日筹码及胜率盘后更新 -> JOIN t-1; winner_rate + cost_5/15/50/85/95pct + weight_avg 实测在录; C0 黑箱审计 20260612 FAIL (J1 spearman 0.8972<0.95 / J2 8.53pp>5 / J3 0.072<0.99) -> winner_rate 疑似未复权坐标口径 (J3 实现缺陷致未确证), 与本地 qfq CYQ 不可直接互换, 消费前必须口径换算或弃用; evidence=analysis/c0_cyq_audit_20260612.json"
+        "pit_anchor": "trade_date; 每日筹码及胜率盘后更新 -> JOIN t-1; winner_rate + cost_5/15/50/85/95pct + weight_avg 实测在录; C0 黑箱审计 20260612 FAIL (J1 spearman 0.8972<0.95 / J2 8.53pp>5 / J3 0.072<0.99) -> winner_rate 疑似未复权坐标口径 (J3 实现缺陷致未确证), 与本地 qfq CYQ 不可直接互换, 消费前必须口径换算或弃用; evidence=data/audit/historical/c0_cyq_audit_20260612.json"
       },
       "dst": "table:tushare_raw.raw_tushare_cyq_perf",
       "kind": "acquire",
@@ -7884,7 +7884,7 @@
   ],
   "meta": {
     "edge_count": 1266,
-    "generated_at": "2026-08-11T10:55:46.479696+00:00",
+    "generated_at": "2026-08-11T13:36:46.754751+00:00",
     "node_count": 449,
     "version": 2
   },

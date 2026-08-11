@@ -1,5 +1,5 @@
 # daily_briefing.yaml — CX-3 Tier3 narrative consumer (NOT Tier0/Tier2 truth)
-# Authority: analysis/FOUNDATION_EXECUTION_PLAN.md §2 (CX-3 DONE); Cap defs product_decision_assist_backlog
+# Authority: goal.md「下一步」执行 backlog §2 (CX-3 DONE); Cap defs product_decision_assist_backlog
 # Aggregates Cap A moneyflow conclusions + Cap D intersection why + Cap B screener why.
 # Any Cap A/B/D input untrusted/stale → status=stale, narrative=null (fail-closed).
 version: 1
