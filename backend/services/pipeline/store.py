@@ -31,27 +31,12 @@ def run_store(ctx: PipelineContext) -> None:
         ctx.run_script("backend/scripts/refresh_source_watermarks.py",
                        degraded_msg="watermark refresh 失败 — SLA 体系将持续误报 stale")
 
-    # Step 2.98: 数据连续性/完整性常驻审查 (R1 根因2/4/6 机械门 2026-07-03: 中间空洞/横截面骤降/
-    #   子榜断流/声明-实测漂移/by_ts_code 断流)。FAIL = degraded + 专属 flag (非 FAIL 自愈清 flag,
-    #   与 /tmp/chunkymonkey_ALERT_*.flag 告警链同模式); read_only 全库扫描, skip_sync 也跑 (库存审查)。
-    if not ctx.dry:
-        ctx.run_script(
-            "backend/scripts/check_continuity_integrity.py",
-            ["--alert-flag", "/tmp/chunkymonkey_ALERT_continuity.flag",
-             "--json-out", f"data/audit/continuity_{ctx.date}.json"],
-            degraded_msg=("continuity/integrity 审查 FAIL — 库存数据缺日/断流/横截面异常 "
-                          f"(详 data/audit/continuity_{ctx.date}.json + ALERT_continuity.flag)"))
-
-    # Step 2.985: FOUNDATION F9 residual hygiene — Type-B publish lag + ann tip vs eligible.
-    # FAIL = degraded + flag; does not wash Continuity READY; honest WARN/UNTRUSTED out of scope.
-    if not ctx.dry:
-        ctx.run_script(
-            "backend/scripts/check_residual_hygiene.py",
-            ["--alert-flag", "/tmp/chunkymonkey_ALERT_residual_hygiene.flag",
-             "--json-out", f"data/audit/residual_hygiene_{ctx.date}.json"],
-            degraded_msg=("residual_hygiene FAIL — Type-B publish / ann tip lag over SLA "
-                          f"(详 data/audit/residual_hygiene_{ctx.date}.json + "
-                          "ALERT_residual_hygiene.flag)"))
+    # Step 2.98: system_health 组运行时自检 (goal.md「治理体系重构」P1.2)。
+    #   continuity / residual_hygiene 原本就在这里；grain_uniqueness / lineage_catalog /
+    #   cutover_effective 是从 commit 路径归位过来的 —— 它们查的是库里现有数据与
+    #   config 声明的生效性，与「有没有人恰好提交代码」无关。清单 owner =
+    #   backend/config/governance_gates.yaml，本函数不许再手写第二份。
+    run_system_health_checks(ctx)
 
     # Step 2.99: acquisition 后重算同一 SLA 投影。preflight 仅保留 before/readiness 证据，
     # 最终报告和告警只消费此 post-acquire artifact，避免已修复分区仍被旧报告误报。
@@ -66,6 +51,50 @@ def run_store(ctx: PipelineContext) -> None:
 
     # Step 5: data-health 报告 + outcome-keyed 告警送达
     write_report_and_alert(ctx)
+
+
+def run_system_health_checks(ctx: PipelineContext) -> list[dict[str, Any]]:
+    """按 governance_gates.yaml 的登记跑 system_health 组；FAIL = degraded + 续跑。
+
+    「门装在受害发生的时刻」——这些检查读的是 live 数据与 config 的实际生效性，
+    受害时刻是每次跑日更，所以它们属于这里，不属于 commit 路径。执行器注入
+    ``ctx.run_script``：子进程继承 writer lease 与日志，失败即记 degraded（不静默）。
+
+    登记表不可用 = 自检整组没跑，本身就是降级事实，必须记录而不是当成通过。
+    """
+    from services.governance_gates import (
+        GatePolicyError,
+        RuntimeCheckSpec,
+        load_registry,
+        run_runtime_checks,
+    )
+
+    ctx.log("--- system_health 运行时自检 (owner: backend/config/governance_gates.yaml) ---")
+    try:
+        registry = load_registry()
+    except GatePolicyError as exc:
+        ctx.degraded(
+            f"system_health 自检整组未执行 — 门登记表不可用 ({exc}); "
+            "continuity/grain/cutover 本次无人查"
+        )
+        return []
+
+    def _run(spec: RuntimeCheckSpec, args: list[str]) -> int:
+        # run_script 失败时已按 degraded_msg 记账；此处只把成败转成退出码。
+        ok = ctx.run_script(
+            spec.script, list(args), degraded_msg=spec.rendered_degraded_msg(date=ctx.date)
+        )
+        return 0 if ok else 1
+
+    rows = run_runtime_checks(_run, date=ctx.date, dry=ctx.dry, registry=registry)
+    failed = [r["id"] for r in rows if r["status"] == "fail"]
+    skipped = [r["id"] for r in rows if r["status"] == "skipped_dry"]
+    ctx.log(
+        f"system_health: {len(rows) - len(failed) - len(skipped)} pass / "
+        f"{len(failed)} fail / {len(skipped)} skipped(dry)"
+        + (f" — FAIL: {', '.join(failed)}" if failed else "")
+    )
+    return rows
 
 
 def write_report_and_alert(

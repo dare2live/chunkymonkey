@@ -62,11 +62,12 @@
 
 ### 执行顺序（P1→P4.1→P2→P3；每步一刀一 safe_commit）
 
-- **P1 门重新分布**（最高杠杆，风险低，无依赖）
-  - P1.1 给 19 门打标签分三组：`diff-correctness`（这次改动本身对不对）/ `system-health`（系统运行时健康）/ `scaffold`（开发整理）
-  - P1.2 `system-health` 组挂进 `daily_update` 运行时自检
-  - P1.3 `scaffold` 组 commit 路径改 warn-only + 加批量修入口
-  - 验收：commit 路径只剩 `diff-correctness`；跑一次 daily_update 能报出 b_pit 窗口过期这类问题
+- **P1 门重新分布** — **FIXED**（2026-08-11）
+  - 分组 owner = `backend/config/governance_gates.yaml`（与 tier 正交）：`diff_correctness` 10 阻断 / `system_health` 2 归运行时 / `scaffold` 7 warn-only。条文 `engineering_governance.md` §14.1
+  - P1.2：`daily_update` store 阶段跑 `runtime_checks`（continuity · residual_hygiene · grain_uniqueness · **cutover_effective** · lineage_catalog）；`system_health` 门未挂运行时 → `load_registry()` 直接抛错，不许「摘掉却无人接手」
+  - P1.3：scaffold 门 `gate_fail` 走 warn 分支 + commit 尾部汇总 + `scripts/chunkyctl scaffold-fix`
+  - 验收实测：commit 路径只剩 `diff_correctness`（`chunkyctl gates --check` PASS，19 门三处一致）；`daily_update --dry --skip-sync --date 20260811` 报出 `system_health cutover_effective FAIL`（b_pit attested 窗口 20260121–20260722 已过期，20260810 → BLOCKED/legacy_mart），typed `run_outcome=integrity_observe`
+  - **交给 owner 的两条裁决**（检查报出来了，修不了）：① b_pit `cutover_allowed=true` 但窗口过期 → 重新 attest 或改回 `false`；② tier12 `consumer_cutover.cutover_allowed=true` 但最新交易日无 accepted partition（WARN，逐日回落属预期，非结构性）
 - **P4.1 孤儿法条归位**（紧迫，独立）：`run_outcome` 四态被 8 个代码文件依赖而 `docs/` 三份零提及 → 并入 **`MASTER`**（系统语义），**不要**放 `engineering_governance`
 - **P2 状态零手写**（依赖 P1.2）
   - P2.1 扫出人工文档里全部 L2 状态（frontier/覆盖/计数）→ 换成查询指针

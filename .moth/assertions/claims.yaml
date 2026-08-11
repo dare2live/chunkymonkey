@@ -116,10 +116,15 @@ assertions:
     command: ["grep", "-c", "refresh_source_watermarks.py", "backend/services/pipeline/store.py"]
     expect: {op: ">=", value: 1}
   - id: safe-commit-rule10-blocking
-    claim: "safe_commit 和 commit-msg 共用 backend/scripts/check_codex_review.py 的高风险 staged 文件判定；只接受 APPROVE/APPROVE_WITH_NOTES，任意 REQUEST_CHANGES 均阻断；策略 PIT/发布证书仍由 strategy validation contract 独立负责"
+    claim: "safe_commit 和 commit-msg 共用 backend/scripts/check_codex_review.py 的高风险 staged 文件判定；显式 REQUEST_CHANGES 与 staged 范围不可判定仍阻断（缺 APPROVE 自 2026-08-10 起只提示，见该脚本 docstring）；rule10 在 governance_gates.yaml 属 diff_correctness 组，故 gate_fail 走阻断分支；策略 PIT/发布证书仍由 strategy validation contract 独立负责"
     type: shell
-    command: ["bash", "-c", "grep -q 'check_codex_review.py' scripts/safe_commit.sh && grep -q 'has_rejected_codex_review' backend/scripts/check_codex_review.py && grep -q 'REQUEST_CHANGES_REVIEW_RE' backend/scripts/check_codex_review.py && grep -q 'exit 6' scripts/safe_commit.sh && echo RULE10_BLOCKING"]
+    command: ["bash", "-c", "grep -q 'check_codex_review.py' scripts/safe_commit.sh && grep -q 'has_rejected_codex_review' backend/scripts/check_codex_review.py && grep -q 'REQUEST_CHANGES_REVIEW_RE' backend/scripts/check_codex_review.py && grep -q 'gate_fail rule10 6' scripts/safe_commit.sh && PYTHONPATH=backend python3 -c \"import sys; sys.path.insert(0,'backend'); from services.governance_gates import load_registry; sys.exit(0 if load_registry().group_of('rule10')=='diff_correctness' else 1)\" && echo RULE10_BLOCKING"]
     expect: {op: regex, pattern: "RULE10_BLOCKING"}
+  - id: governance-gate-distribution-wired
+    claim: "门分布策略 (backend/config/governance_gates.yaml) 是唯一 owner：safe_commit 经 gate_policy --names 取分组决定阻断/warn/不跑，system_health 组每道都挂在 daily_update 的 store 运行时自检上；三处门名副本 (registry / classify_commit_tier / safe_commit fail-closed 兜底串) 由 gate_policy --check 机械对账"
+    type: shell
+    command: ["bash", "-c", "grep -q 'gate_policy.py --names scaffold' scripts/safe_commit.sh && grep -q 'run_system_health_checks' backend/services/pipeline/store.py && PYTHONPATH=backend python3 backend/scripts/gate_policy.py --check >/dev/null && echo GATE_DISTRIBUTION_WIRED"]
+    expect: {op: regex, pattern: "GATE_DISTRIBUTION_WIRED"}
   - id: coupling-no-orphan-refs
     claim: "Moth 可枚举的表/脚本/config/assertion 耦合无孤儿；source/config→文档引用由独立 doc-drift assertion 覆盖，不把本 claim 夸大为全仓证明"
     type: shell

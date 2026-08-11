@@ -78,6 +78,11 @@ Notes:
   map         = regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only.
   pipeline    = manually run one declared data stage; full manual chain remains daily_update.sh.
   lineage     = generated dependency projection; impact <table> audits fan-in before delete/migrate.
+  gates       = 门分布策略 (backend/config/governance_gates.yaml): 无参打印三组分布表;
+                --check 与 classify_commit_tier / safe_commit.sh 门名对账;
+                --run-system-health 手动跑 system_health 组 (daily_update 里自动跑同一份)。
+  scaffold-fix = scaffold 组 (warn-only) 的批量收口: 重生 FEATURE_MAP/BOARD, 并列出
+                只能人改的 doc_drift / doc_governance / PROJECT_INDEX 缺口。
 EOF
 }
 
@@ -186,6 +191,15 @@ case "$cmd" in
     # Generated lineage projection: build | impact <t> | provenance <t> | dead | show <t>
     # 删/迁表前 `chunkyctl lineage impact <table>` 自动 fan-in (替代手 grep)。
     PYTHONPATH=backend "$PY" backend/scripts/lineage_cli.py "$@"
+    ;;
+  gates)
+    # 门分布策略 (goal.md 治理体系重构 P1): 无参=人读分组表;
+    # --check 三处门名对账; --run-system-health 手动跑运行时自检组。
+    PYTHONPATH=backend "$PY" backend/scripts/gate_policy.py "$@"
+    ;;
+  scaffold-fix)
+    # scaffold 组 warn-only 的配套批量收口入口 (能重生的重生, 只能报的报清单)。
+    PYTHONPATH=backend "$PY" backend/scripts/gate_policy.py --scaffold-fix "$@"
     ;;
   *)
     echo "ERROR: unknown chunkyctl command: $cmd" >&2

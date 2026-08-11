@@ -73,12 +73,14 @@ AGENTS.md
 | Shared tooling snapshot | `moth snapshot --repo .` |
 | Business/tool assertions | `moth assert --repo .` |
 | Coupling/deletion impact | `moth coupling --repo . --impact <name>` |
+| 门分布策略 / 运行时自检 / 脚手架收口 | `scripts/chunkyctl gates`（分组表）· `gates --check`（登记表 ↔ `classify_commit_tier` ↔ `safe_commit.sh` 兜底串 三处门名对账）· `gates --run-system-health`（手动跑 `runtime_checks` 组：continuity/residual_hygiene/grain_uniqueness/**cutover_effective**/lineage_catalog）· `scripts/chunkyctl scaffold-fix`（重生 FEATURE_MAP/BOARD + 报人工缺口）；owner=`backend/config/governance_gates.yaml` + `backend/services/governance_gates.py`；条文 `docs/engineering_governance.md` §14.1 |
+| Cutover 声明 vs 实际裁决 | `PYTHONPATH=backend python backend/scripts/check_cutover_effective.py`；把**最近已完成交易日**（日历真相源，非 wall-clock）送进 b_pit / tier12 production resolver：b_pit 无逐日输入依赖故任何背离=FAIL（跑日更不自愈，须 owner 重 attest 或改回 false）；tier12 逐日 accepted 依赖是 config 写明的预期回落故=WARN；日历不可达=UNVERIFIED（exit 2，不算通过）。已挂进 `daily_update` store |
 | Code discovery | `codegraph explore "<question>"` |
 | CodeGraph refresh | `codegraph sync .` |
 | Doc governance | `PYTHONPATH=backend python backend/scripts/check_doc_governance.py` |
 | Doc drift | `PYTHONPATH=backend python backend/scripts/check_doc_drift.py --check` |
 | Live continuity | `PYTHONPATH=backend python backend/scripts/check_continuity_integrity.py` (`FAIL` 直接非零；daily/ST 读 `accepted_partition` formal frontier；**F1 typed gaps FIXED** — `hk_holidays`/`event_sparse`/known_empty → 预期空 PASS；应有却缺 FAIL；禁 mute/READY cosmetics；证据 `analysis/continuity_f1_typed_gaps_20260723.md`）；**F9 residual hygiene** `check_residual_hygiene.py` + `residual_hygiene.yaml`（Type-B raw→fact + ann tip vs eligible；store 2.985；超 SLA → degraded+ALERT；缺库/CI offline → skip PASS 不 degrade；≠ Continuity READY 化妆；证据 `analysis/residual_hygiene_f9_20260726.md`）；**org accepted pointer** FULL OUTER + content_hash（F6 `org_pointer_mismatches`；repair `repair_org_holding_accepted_pointers.py`；证据 `analysis/org_holding_pointer_fix_20260727.md`）；**2026-07-25 full audit** `analysis/foundation_full_audit_20260725.md`；**dual-plane faucet FIXED** → **holders fact DROP FIXED** `analysis/holders_fact_retire_20260725.md`（canonical notice SSOT；names=`dim_active_a_stock`） |
-| Local reviewed commit | `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"`（WP1：L1/L2/L3；政策=`backend/config/commit_tiers.yaml`；L2/L3 跑与 CI **同 blocking 面** pytest=`ci_pytest_surface.yaml` via `run_ci_pytest.py --tier blocking` — **1 `ci_pytest` gate**，非按用例计独立门；`nightly_paths` 异步；gate 分层见 `analysis/gate_redesign_occams_20260721.md`；**2026-08-10 自述型门降级**：`rule10` 只阻断显式 `Codex-Reviewed: REQUEST_CHANGES`（缺 APPROVE 仅提示）、`commit_msg` GROUP A/B/D 降为提示（subject <10 字符仍阻断）—— 二者唯一输入是提交者自写文本，无法验证审查/测试是否真发生；读代码与数据的 17 道实质门未动，条文见 `AGENTS.md` §9 + `docs/engineering_governance.md` §14） |
+| Local reviewed commit | `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"`（WP1：L1/L2/L3；政策=`backend/config/commit_tiers.yaml`；L2/L3 跑与 CI **同 blocking 面** pytest=`ci_pytest_surface.yaml` via `run_ci_pytest.py --tier blocking` — **1 `ci_pytest` gate**，非按用例计独立门；`nightly_paths` 异步；gate 分层见 `analysis/gate_redesign_occams_20260721.md`；**2026-08-10 自述型门降级**：`rule10` 只阻断显式 `Codex-Reviewed: REQUEST_CHANGES`（缺 APPROVE 仅提示）、`commit_msg` GROUP A/B/D 降为提示（subject <10 字符仍阻断）—— 二者唯一输入是提交者自写文本，无法验证审查/测试是否真发生；读代码与数据的 17 道实质门未动，条文见 `AGENTS.md` §9 + `docs/engineering_governance.md` §14；**2026-08-11 门重新分布 P1**：分组=`backend/config/governance_gates.yaml`，与 tier 正交 —— `diff_correctness` 10 门阻断、`system_health` 2 门（grain/continuity）commit 不跑改由 `daily_update` store 自检、`scaffold` 7 门 warn-only 配 `chunkyctl scaffold-fix`；策略文件不可读 → 全阻断 fail-closed；条文 §14.1） |
 | Tier1/2 full-universe accept (manual) | `PYTHONPATH=backend python backend/scripts/persist_tier12_full_universe_accept.py --decision-date YYYYMMDD`；cutover-aware（ON 时要求 resolver ACCEPTED_CUTOVER；永不翻 yaml）；form enrich 经 `load_form_rows_exact_day` |
 | Phase D ExperimentRun persist (idempotent) | `PYTHONPATH=backend python backend/scripts/persist_phase_d_experiment_runs.py [--force]`；b0_bound + runtime-owned measured_offline；claimable 恒 false |
 | Strategy Lab readiness (read-only) | `PYTHONPATH=backend python backend/scripts/check_strategy_lab.py --framework --json`；区分 `framework_installed` 与 `framework_ready`；当前两份 live input 不合格时返回 rc=2，绝不把 control-plane installed 洗成策略可跑 |
@@ -104,9 +106,11 @@ AGENTS.md
 
 The current migration and blockers are maintained only in `goal.md`.
 
-`safe_commit.sh` separately reports live continuity as `READY / DEGRADED / UNVERIFIED / BLOCKED`.
-Only verifier/report contradictions block a repair commit; every non-READY state still blocks Tier0
-consumption/release and must be closed by a separate continuity rerun.
+Live continuity 已于 2026-08-11（P1 门重新分布）从 commit 路径归位到 `daily_update` 的
+`system_health` 自检（`READY / DEGRADED / UNVERIFIED / BLOCKED` 现由日更报告与
+`chunkyctl gates --run-system-health` 给出）。**commit 不再产生也不再消费任何 live
+readiness 声明**；每个非 READY 状态仍阻断 Tier0 消费/发布，必须由单独一次 continuity
+重跑闭合。
 
 ## 6. Target package boundaries
 

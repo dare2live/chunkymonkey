@@ -96,7 +96,10 @@ never `git add .` / hard reset / broad clean / `--no-verify` / amend pushed.
 Rule 10 = independent-review **discipline** for `.py/.yaml/.sql`/high-risk
 deletion; the msg gate blocks only an explicit `REQUEST_CHANGES` — a
 self-written `APPROVE` proves nothing and no longer blocks (2026-08-10).
-Safety rests on gates that read code/data, never on wording. Default:
+Safety rests on gates that read code/data, never on wording. Gate distribution
+(`governance_gates.yaml`, eng_gov §14.1) is orthogonal to tier: `diff_correctness`
+blocks; `system_health` runs in `daily_update`, not at commit; `scaffold` warns
+only (`chunkyctl scaffold-fix`). Bad policy file → all gates block. Default:
 `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"`. No push unless asked.
 
 ## 10. Done

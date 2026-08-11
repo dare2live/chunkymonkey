@@ -76,7 +76,9 @@ staged snapshot，再统一使用 `--repo .`；禁止留在主工作树中用绝
 
 Moth PASS 只有在 verifier 自身能红、没有 warning 被 regex 洗成 PASS 时才是证据。业务门仍由项目脚本/配置/表拥有，不能搬进 Moth 重写第二套规则。
 
-代码提交适格与实时数据就绪是两个状态机。`safe_commit.sh` 必须校验 live continuity 的 JSON、扫描面、交易日锚、计数和退出码一致性，并原样报告 `READY / DEGRADED / UNVERIFIED / BLOCKED`；空扫描、skipped、库不可达或 WARN 都不得冒充 READY。verifier 崩溃/坏报告仍阻断提交，但有效的供应商/数据库数据 FAIL 只阻断数据更新、下游消费和发布，不得造成“数据坏了，所以修复代码也无法提交”的死锁。任何非 READY 状态下，提交都不等于 Tier0 就绪；continuity 直接检查、故障队列、ALERT、日更管线以及 doctor 对现存 flag 的读面继续保持非绿，直到真实数据修复并单独复验。GitHub CI 只跑离线 contract/unit 门（`requirements-ci.txt` + `check_universe_filter --skip-live-readiness`）；live continuity / DuckDB readiness 仍只在本地评估，不得把缺库 IOException 写成 CI 红灯。
+代码提交适格与实时数据就绪是两个状态机。**2026-08-11（P1 门重新分布，§14.1）把这条分离做彻底了**：live continuity 不再在 commit 路径上评估，改由 `daily_update` 的 `system_health` 自检拥有（`chunkyctl gates --run-system-health` 是等价手动入口）。原因是它从来就不是关于「这次 diff 对不对」的判断 —— 之前只是「顺手在 commit 时查一下」，代价是每次 L3 提交都要全库扫描，且制造过「数据坏了所以修复代码也难提交」的张力。
+
+自检必须校验 live continuity 的 JSON、扫描面、交易日锚、计数和退出码一致性，并原样报告 `READY / DEGRADED / UNVERIFIED / BLOCKED`；空扫描、skipped、库不可达或 WARN 都不得冒充 READY。有效的供应商/数据库数据 FAIL 阻断数据更新、下游消费和发布。任何非 READY 状态下，提交都不等于 Tier0 就绪 —— 现在这句话更硬：**commit 根本不再产生任何 readiness 声明**。continuity 直接检查、故障队列、ALERT、日更管线以及 doctor 对现存 flag 的读面继续保持非绿，直到真实数据修复并单独复验。GitHub CI 只跑离线 contract/unit 门（`requirements-ci.txt` + `check_universe_filter --skip-live-readiness`）；live continuity / DuckDB readiness 仍只在本地评估，不得把缺库 IOException 写成 CI 红灯。
 
 复杂度扫描是线索，不是判决。只有在真实数据规模、调用路径和最小复现证明后才修改性能热点。
 
@@ -231,6 +233,12 @@ readiness 属于 state 与 reconcile 之上的 orchestration，必须单向依�
 证据裁决；full pipeline、消费者切换和发布仍受全局 continuity/SLA/failure 阻断。全局告警
 不能洗绿单域，也不能反向抹掉已经闭合的单域证据。
 
+`daily_update` 的 store 阶段跑 **system_health 运行时自检**（owner =
+`backend/config/governance_gates.yaml` 的 `runtime_checks`，见 §14.1）：continuity、
+residual_hygiene、grain_uniqueness、cutover_effective、lineage_catalog。FAIL =
+degraded + 续跑 + 写 flag，绝不静默；`--dry` 只跳过声明了 `skip_when_dry` 的重扫描项。
+手动等价入口 `scripts/chunkyctl gates --run-system-health`。
+
 执行前验证交易日历、授权、writer lease、目标 partition、源 availability 和成本；执行后查真实表内容、accepted state/watermark、failure queue 和 ALERT。进程 exit 0 不是数据齐全证明。
 
 脚本存在不等于正在自动运行；判断自动化必须查 launchd/cron/launchctl/installer/registry 的真实 fan-in。
@@ -326,8 +334,43 @@ SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"
 (`backend/scripts/classify_commit_tier.py` + `backend/config/commit_tiers.yaml`).
 Agents cannot self-downgrade; unknown/deletion/bad policy → L3 full gates.
 L1 = docs/analysis/sandbox light gates; L2 = tests/routers/frontend + Rule 10;
-L3 = writer/PIT/schema/config/deletion = current full gate set. Grain/continuity
-live-DB readiness projections run on L3 only; no commit upgrades Tier0 readiness.
+L3 = writer/PIT/schema/config/deletion = current full gate set.
+
+### 14.1 门的分布：按「谁受害、何时受害」分组（2026-08-11 P1 落地）
+
+tier 剪枝管**跑不跑**，分组管**跑红了会怎样**，两维正交。owner =
+`backend/config/governance_gates.yaml`（唯一存放处；`gate_policy.py --check`
+把它与 `classify_commit_tier` 和 `safe_commit.sh` 的 fail-closed 兜底串三处对账）。
+
+| 组 | 判据 | commit 路径 | 归属 |
+|---|---|---|---|
+| `diff_correctness` | 这次 diff 本身错 | **阻断** | rule_compliance / ci_pytest / sandbox_isolation / serve_read_layer / calendar_usage / population_contract / lineage_drift / dead_references / config_refs / rule10 |
+| `system_health` | 数据 / 策略 / 钱受害 | **不跑** | grain_uniqueness / continuity → `daily_update` store 阶段自检 |
+| `scaffold` | 下一个开发者受害 | **warn-only** | project_index_sync / feature_map / agent_board / moth / doc_drift / doc_governance / commit_msg |
+
+判据来自实证而非偏好（2026-08-10 审计，见 ledger 同日条目）：脚手架门本轮 3 次
+阻断系统修复提交（文档没同步挡住代码 bug 修复），而 b_pit cutover 是否仍生效 ——
+一个纯运行时事实 —— 被装在 commit 路径上，于是「有没有人恰好提交相关代码」决定
+了它何时被查，系统跑了 13 次没人查。**受害时刻在运行时的检查，就不该装在 commit
+时刻。**
+
+约束（不可放宽）：
+
+- 分组只改变**后果**，从不删除检查。`system_health` 组的每道门必须挂在
+  `runtime_checks` 上，否则 `load_registry()` 直接抛错（拒绝「从 commit 摘掉却
+  没人接手」）。
+- fail-closed：策略文件不可读 → 所有门按 `diff_correctness` 阻断（= 改动前行为）。
+- warn-only 不是放水：scaffold 未闭合项在 commit 尾部一次性列全，配套批量收口
+  入口 `scripts/chunkyctl scaffold-fix`。
+- always-on 的 `ci_surface_drift`（Step 3.35）不参与分组，任何 tier 都阻断。
+- 静态 PASS 仍不升级 live readiness：commit 通过 ≠ Tier0 数据就绪。
+
+```bash
+scripts/chunkyctl gates                      # 人读分组表
+scripts/chunkyctl gates --check              # 三处门名对账
+scripts/chunkyctl gates --run-system-health  # 手动跑运行时自检组
+scripts/chunkyctl scaffold-fix               # 脚手架批量收口
+```
 
 不 `--no-verify` 绕门，不 amend 已 push commit，不在未授权时 push。交付报告必须区分 `FIXED/PARTIAL/BLOCKED`，列 residual、验收命令和 owner。
 

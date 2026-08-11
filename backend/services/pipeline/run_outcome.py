@@ -42,9 +42,12 @@ _SOFT_RE = re.compile(
 )
 
 # Integrity observe — real data/derive holes; not "等时钟".
+# system_health = governance_gates.yaml 的运行时自检组前缀 (goal.md 治理重构 P1.2);
+# 它报的都是库存/声明生效性问题，属于完整性观测，不是「等时钟」。
 _INTEGRITY_RE = re.compile(
     r"("
     r"continuity/integrity"
+    r"|system_health"
     r"|residual_hygiene"
     r"|data_audit"
     r"|库存断流"

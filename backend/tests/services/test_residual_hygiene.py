@@ -161,12 +161,21 @@ def test_evaluate_type_b_pass_when_caught_up():
 
 
 def test_store_wires_residual_hygiene_after_continuity():
-    backend = Path(__file__).resolve().parents[2]
-    src = (backend / "services" / "pipeline" / "store.py").read_text(encoding="utf-8")
-    cont = src.index("check_continuity_integrity.py")
-    hyg = src.index("check_residual_hygiene.py")
-    assert hyg > cont
-    assert "ALERT_residual_hygiene.flag" in src
+    """2026-08-11 P1 门重新分布后，接线的真相源是 governance_gates.yaml 的
+    runtime_checks（store.py 只按登记表跑），故顺序与 alert flag 在登记表里断言。"""
+    from services.governance_gates import load_registry
+
+    src = (
+        Path(__file__).resolve().parents[2] / "services" / "pipeline" / "store.py"
+    ).read_text(encoding="utf-8")
+    assert "run_system_health_checks" in src, "store 必须跑 system_health 组"
+
+    checks = load_registry().runtime_checks
+    ids = [c.id for c in checks]
+    assert ids.index("residual_hygiene") > ids.index("continuity")
+    hygiene = next(c for c in checks if c.id == "residual_hygiene")
+    assert hygiene.script.endswith("check_residual_hygiene.py")
+    assert "/tmp/chunkymonkey_ALERT_residual_hygiene.flag" in hygiene.args
 
 
 def test_type_b_catchup_evaluates_residual_hygiene():

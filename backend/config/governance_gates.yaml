@@ -1,0 +1,255 @@
+# governance_gates.yaml — 门的分布策略 (L1 契约层; goal.md「治理体系重构」P1)
+#
+# Owner: docs/engineering_governance.md §14 (交付纪律) + 本文件。
+# 消费方 (代码读, 不是文档抄):
+#   - scripts/safe_commit.sh          经 backend/scripts/gate_policy.py 取分组 → 阻断/warn/不跑
+#   - backend/services/pipeline/store.py  取 runtime_checks → daily_update 运行时自检
+#   - backend/scripts/gate_policy.py  CLI: --names / --table / --check / --run-system-health
+#
+# 分布判据 (goal.md 三条原则之三「门装在受害发生的时刻，不装在最方便检查的时刻」)：
+#   问「谁受害、何时受害」，不问「这条规则属于哪个主题」。
+#     这次 diff 本身错   → commit 阻断      → group=diff_correctness
+#     数据 / 策略 / 钱   → 运行时自检       → group=system_health
+#     下一个开发者/agent → 提示不阻断       → group=scaffold
+#
+# 实证起点 (2026-08-10 治理审计, ledger 同日条目)：19 门里大部分是脚手架门，
+# 脚手架门本轮 3 次阻断系统修复提交 (project_index_sync ×2 / agent_board ×1)；
+# 而真正的系统约束 (b_pit cutover 是否仍生效) 装在 commit 路径上，于是「有没有人
+# 恰好提交相关代码」决定了它何时被查 —— 系统跑了 13 次没人查。
+#
+# fail-closed 铁律: 本文件缺失 / 不可解析 / 门名与 classify_commit_tier 不一致时，
+# gate_policy 返回空分组 → safe_commit 退回「全部阻断」，绝不因配置坏掉而放行。
+# 门只按分组改变**后果**，永不删除；tier 剪枝 (L1/L2/L3) 是正交的另一维，
+# owner 仍是 backend/config/commit_tiers.yaml。
+
+version: 1
+
+groups:
+  diff_correctness:
+    victim: this_diff
+    harm_at: commit
+    commit_behavior: block
+    runtime_behavior: none
+    why: "这次改动本身就是错的；不拦住它，错误立刻进主干。"
+  system_health:
+    victim: data_strategy_money
+    harm_at: runtime
+    commit_behavior: not_run
+    runtime_behavior: report
+    why: >-
+      受害时刻是系统跑起来的时候，不是有人提交代码的时候。装在 commit 路径 =
+      检查时机取决于有没有人恰好提交相关代码。
+  scaffold:
+    victim: next_developer
+    harm_at: next_session
+    commit_behavior: warn
+    runtime_behavior: none
+    why: >-
+      坏掉只让下一个接手的人多花时间，不让系统出错、不让数据变脏。阻断它 =
+      用文档没同步挡住代码 bug 修复。批量修入口 scripts/chunkyctl scaffold-fix。
+
+# 19 门 (名字与 scripts/safe_commit.sh 的 gate 标签、
+# backend/scripts/classify_commit_tier.py 的 ALL_GATES_ORDERED 一一对应；
+# 三者一致性由 backend/tests/scripts/test_governance_gates.py 锁死)。
+commit_gates:
+  project_index_sync:
+    group: scaffold
+    checks: "改了 service/script/yaml 就必须同批改 PROJECT_INDEX.md"
+    why: "索引陈旧只让下次 session 的地图不准；它挡不住任何一个真实缺陷。"
+
+  feature_map:
+    group: scaffold
+    checks: "FEATURE_MAP.md 派生地图与 staged 源快照一致"
+    why: "机器可重生的投影；陈旧 = 重新跑一次生成器，不是系统故障。"
+
+  agent_board:
+    group: scaffold
+    checks: "BOARD.md / data/board/agent_context.json 与 accepted 事实投影一致"
+    why: >-
+      投影新鲜度本身是脚手架 (BOARD 明确非执法输入)。但它内部算出的
+      b_pit cutover 实际裁决是真系统信号 —— 那一半已抽成
+      runtime_checks.cutover_effective，不再靠「有人提交代码」触发。
+
+  moth:
+    group: scaffold
+    checks: "moth assert (仓库自述断言) + moth coupling"
+    why: "断言过期误导的是下一个读它的人；数据与 PIT 不依赖它。"
+
+  rule_compliance:
+    group: diff_correctness
+    checks: "staged diff 里的魔数 / 估算参数缺 evidence|measured|from yaml 注释"
+    why: "扫的就是这次 diff 的内容；拍脑袋常数一旦进主干就成了别人的既定事实。"
+
+  ci_pytest:
+    group: diff_correctness
+    checks: "与 public CI 同面的 blocking pytest"
+    why: "这次改动是否打破现有契约 —— 典型的 diff 正确性。"
+
+  sandbox_isolation:
+    group: diff_correctness
+    checks: "backend/ 引用 sandbox/ (C1) / 探索 runner 漏进 backend/scripts (C3)"
+    why: "实验残留是被这次 diff 带进来的；下一刀再查就已经污染了主代码。"
+
+  serve_read_layer:
+    group: diff_correctness
+    checks: "非成员消费者绕过 DataAccess 裸查 / entity 声明链断 / L2 bypass"
+    why: "旁路读是这次 diff 写下的代码形状，静态可判。"
+
+  calendar_usage:
+    group: diff_correctness
+    checks: "wall-clock 当最新交易日 / SQL CURRENT_DATE 当上界"
+    why: "第零条规定的静态执法面；绕过日历是这行代码本身的缺陷。"
+
+  population_contract:
+    group: diff_correctness
+    checks: "staged registry/policy/binder 静态契约绑定 (verdict=PASS)"
+    why: >-
+      静态契约面属于这次 diff。同一脚本报的 live_readiness 从来只是投影、
+      不阻断，真的 live 数据裁决在 continuity 运行时自检里。
+
+  lineage_drift:
+    group: diff_correctness
+    checks: "提交版 data/lineage/graph.json 与重生结果逐字一致"
+    why: >-
+      主因是这次 diff 改了 registry/schema/消费方却没重生血缘。但重生同时扫
+      live DuckDB information_schema，故 live 表增删也能让无关 diff 变红 ——
+      这一面已同时登记进 runtime_checks.lineage_catalog，运行时先发现。
+
+  dead_references:
+    group: diff_correctness
+    checks: "删模块/表/文件后引用方未清 (死 import / config 死路径 / 孤儿脚本)"
+    why: "删除动作就在这次 diff 里；漏清引用方是这一刀没做完。"
+
+  grain_uniqueness:
+    group: system_health
+    checks: "全域按声明 grain GROUP BY 有无重复组 (live DuckDB)"
+    why: >-
+      查的是库里现有数据，与本次 diff 无关。grain 声明错会被批内去重升级成
+      静默销毁 —— 受害时刻是每次跑批写表，不是提交代码。
+
+  continuity:
+    group: system_health
+    checks: "应有交易日缺日 / 中间空洞 / 子榜断流 / 声明-实测漂移 (live DuckDB)"
+    why: >-
+      纯 live 数据 readiness。safe_commit 里它早已只打印不阻断 (2026-07-17
+      分离 code fitness 与 data readiness)，现在连跑都不跑 —— 归位到日更。
+
+  config_refs:
+    group: diff_correctness
+    checks: "data_access.yaml 引的 layer 值在 data_layers.yaml 有定义"
+    why: "跨 config 悬空引用是这次 diff 写下的，纯静态。"
+
+  doc_drift:
+    group: scaffold
+    checks: "活文档引用的代码路径 / 本地链接实际存在"
+    why: "悬空引用害的是按图索骥的下一个人；系统照常跑。"
+
+  doc_governance:
+    group: scaffold
+    checks: "活文档 owner 唯一 / 无 retired CLI / fails=0 warns=0"
+    why: "文档生命周期纪律；坏掉不改变任何运行时行为。"
+
+  commit_msg:
+    group: scaffold
+    checks: "commit message 关键词提示 (GROUP A/B)"
+    why: "自述型；本来就只打印 WARNING 不阻断，登记在此保持一致。"
+
+  rule10:
+    group: diff_correctness
+    checks: "显式 Codex-Reviewed: REQUEST_CHANGES 阻断 + staged 范围不可判定 fail-closed"
+    why: >-
+      2026-08-10 已拆掉无法验证的那一半 (缺 APPROVE 不再阻断)。剩下两条都是
+      客观且只关于这次 diff 的事实：有人对**这一刀**写下了未消除的否定裁决，
+      或者门根本无法确定 staged 范围。AGENTS.md §9 保留其阻断力。
+
+# ── 运行时自检 (daily_update) ────────────────────────────────────────────
+# system_health 组的门在这里落地，外加两类本来就只该活在运行时的检查。
+# store.py 逐条跑，失败 = degraded (记录 + 续跑 + 写 flag)，绝不静默。
+# degraded_msg 必须能被 services/pipeline/run_outcome.py 的 _INTEGRITY_RE 命中，
+# 否则会落进 "other" 而不是 typed integrity_observe。
+runtime_checks:
+  - id: continuity
+    from_gate: continuity
+    script: backend/scripts/check_continuity_integrity.py
+    args:
+      - "--alert-flag"
+      - "/tmp/chunkymonkey_ALERT_continuity.flag"
+      - "--json-out"
+      - "data/audit/continuity_{date}.json"
+    degraded_msg: >-
+      system_health continuity/integrity 审查 FAIL — 库存数据缺日/断流/横截面异常
+      (详 data/audit/continuity_{date}.json + ALERT_continuity.flag)
+    skip_when_dry: true
+
+  - id: residual_hygiene
+    from_gate: null
+    script: backend/scripts/check_residual_hygiene.py
+    args:
+      - "--alert-flag"
+      - "/tmp/chunkymonkey_ALERT_residual_hygiene.flag"
+      - "--json-out"
+      - "data/audit/residual_hygiene_{date}.json"
+    degraded_msg: >-
+      system_health residual_hygiene FAIL — Type-B publish / ann tip lag over SLA
+      (详 data/audit/residual_hygiene_{date}.json + ALERT_residual_hygiene.flag)
+    skip_when_dry: true
+
+  - id: grain_uniqueness
+    from_gate: grain_uniqueness
+    script: backend/scripts/check_grain_uniqueness.py
+    args: []
+    degraded_msg: >-
+      system_health grain_uniqueness FAIL — 某表按声明 grain 有重复组
+      (grain 声明不足或 MERGE 幂等破坏; 批内去重会把它升级成静默销毁)
+    skip_when_dry: true
+
+  - id: cutover_effective
+    from_gate: agent_board
+    script: backend/scripts/check_cutover_effective.py
+    args:
+      - "--json-out"
+      - "data/audit/cutover_effective_{date}.json"
+    degraded_msg: >-
+      system_health cutover_effective FAIL — config 声明的 cutover 与 resolver
+      实际裁决背离 (attested 窗口已成过去时 → 消费方其实一直走 legacy 路径;
+      详 data/audit/cutover_effective_{date}.json)
+    skip_when_dry: false
+
+  - id: lineage_catalog
+    from_gate: lineage_drift
+    script: backend/scripts/check_lineage_drift.py
+    args: []
+    degraded_msg: >-
+      system_health lineage_catalog FAIL — 血缘图与现实(registry/代码/live DuckDB
+      information_schema)漂移; 运行时命中通常意味着库里的表被增删而血缘未重生
+    skip_when_dry: false
+
+# ── 脚手架批量修 ────────────────────────────────────────────────────────
+# scaffold 组不再阻断提交，代价是必须有一个「一条命令修完」的入口，
+# 否则 warn 会被无限忽略。scripts/chunkyctl scaffold-fix 消费本节。
+scaffold_fix:
+  - id: feature_map
+    from_gate: feature_map
+    kind: regenerate
+    command: ["backend/scripts/build_feature_map.py"]
+    note: "重生 FEATURE_MAP.md + data/feature_map.json"
+  - id: agent_board
+    from_gate: agent_board
+    kind: regenerate
+    command: ["backend/scripts/build_agent_board.py"]
+    note: "重生 BOARD.md + data/board/agent_context.json"
+  - id: doc_drift
+    from_gate: doc_drift
+    kind: report
+    command: ["backend/scripts/check_doc_drift.py"]
+    note: "悬空引用需人改文档指向，机器只能报清单"
+  - id: doc_governance
+    from_gate: doc_governance
+    kind: report
+    command: ["backend/scripts/check_doc_governance.py"]
+    note: "owner/生命周期违规需人裁决，机器只能报清单"
+  - id: project_index_sync
+    from_gate: project_index_sync
+    kind: report
+    command: ["backend/scripts/check_project_index_sync.py"]
+    note: "活索引节要写什么是人的判断，机器只报缺口"

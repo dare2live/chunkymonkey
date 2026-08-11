@@ -14,6 +14,14 @@
 # Classifier owner: backend/scripts/classify_commit_tier.py +
 # backend/config/commit_tiers.yaml. Missing/bad classifier → L3 fail-closed.
 #
+# 门分布 (正交于 tier; goal.md「治理体系重构」P1, owner backend/config/governance_gates.yaml):
+#   diff_correctness → 阻断 (这次 diff 本身错, 受害时刻就是 commit)
+#   system_health    → commit 路径不跑, 归 scripts/daily_update.sh 运行时自检
+#                      (查的是 live 数据与 config 生效性, 与本次 diff 无关)
+#   scaffold         → warn-only, 批量修 `scripts/chunkyctl scaffold-fix`
+#                      (坏掉只让下一个接手的人多花时间, 不让系统出错)
+# 策略文件不可读 → 全部门按 diff_correctness 阻断 (fail-closed, 等于旧行为)。
+#
 # 流程:
 #   1. git status — list staged files
 #   1.5 classify_commit_tier → COMMIT_TIER + gate allowlist
@@ -105,12 +113,55 @@ else
     echo "WARNING: classify_commit_tier.py or commit_tiers.yaml missing → L3 fail-closed"
 fi
 
+# ── 1.6 门分布策略 (goal.md「治理体系重构」P1; owner backend/config/governance_gates.yaml) ──
+# 三组按「谁受害、何时受害」切:
+#   diff_correctness = 这次 diff 本身错   → commit 阻断
+#   system_health    = 数据/策略/钱受害   → commit 不跑, 归 daily_update 运行时自检
+#   scaffold         = 下一个开发者受害   → warn-only + `scripts/chunkyctl scaffold-fix`
+# tier 剪枝 (L1/L2/L3) 是正交的另一维, owner 仍是 commit_tiers.yaml, 两者都满足才跑。
+# fail-closed: 策略不可读 → 两个名单都空 → 所有门按 diff_correctness 阻断 (= 旧行为)。
+GATES_SCAFFOLD="$(PYTHONPATH=backend "$PY" backend/scripts/gate_policy.py --names scaffold 2>/dev/null || true)"
+GATES_SYSTEM_HEALTH="$(PYTHONPATH=backend "$PY" backend/scripts/gate_policy.py --names system_health 2>/dev/null || true)"
+if [[ -z "$GATES_SCAFFOLD" || -z "$GATES_SYSTEM_HEALTH" ]]; then
+    echo "WARNING: 门分布策略不可用 → 全部门按 diff_correctness 阻断 (fail-closed)"
+    GATES_SCAFFOLD=""
+    GATES_SYSTEM_HEALTH=""
+else
+    echo "[gate-policy] scaffold=warn-only:[$GATES_SCAFFOLD]"
+    echo "[gate-policy] system_health→daily_update:[$GATES_SYSTEM_HEALTH]"
+fi
+SCAFFOLD_WARNED=""
+
+gate_group() {
+    case " $GATES_SCAFFOLD " in *" $1 "*) echo scaffold; return 0 ;; esac
+    case " $GATES_SYSTEM_HEALTH " in *" $1 "*) echo system_health; return 0 ;; esac
+    echo diff_correctness
+}
+
 gate_enabled() {
     local g="$1"
+    # system_health 组在 commit 路径不跑 —— 它查的是 live 数据与 config 生效性,
+    # 与本次 diff 无关; 受害时刻在运行时, 门已归位 daily_update。
+    case " $GATES_SYSTEM_HEALTH " in
+        *" $g "*) return 1 ;;
+    esac
     case " $COMMIT_TIER_GATES " in
         *" $g "*) return 0 ;;
         *) return 1 ;;
     esac
+}
+
+# 门失败的统一出口: 分组决定后果 (阻断 vs 记 warn 续跑)。不许在门体内直接 exit,
+# 否则「后果由分组定义」就退化成散落在 700 行里的硬编码。
+gate_fail() {
+    local g="$1" code="$2"
+    if [[ "$(gate_group "$g")" == "scaffold" ]]; then
+        echo "WARN-ONLY [$g]: 脚手架门未闭合 — 不阻断提交 (受害者=下一个开发者, 非本次 diff)。"
+        echo "  批量修: scripts/chunkyctl scaffold-fix"
+        SCAFFOLD_WARNED="$SCAFFOLD_WARNED $g"
+        return 0
+    fi
+    exit "$code"
 }
 
 # 2. PROJECT_INDEX sync check
@@ -119,13 +170,12 @@ echo "=== Step 2: PROJECT_INDEX sync check ==="
 if gate_enabled project_index_sync; then
 if [[ ! -f "$STAGED_BACKEND/scripts/check_project_index_sync.py" ]]; then
     echo "ERROR: staged snapshot 缺 check_project_index_sync.py，拒绝用 worktree 版本代验。"
-    exit 2
-fi
-if ! PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_project_index_sync.py" 2>&1 | tail -5; then
+    gate_fail project_index_sync 2
+elif ! PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_project_index_sync.py" 2>&1 | tail -5; then
     echo
     echo "ERROR: PROJECT_INDEX.md 未同步."
     echo "修法: 更新 PROJECT_INDEX.md 对应活索引节 (历史叙事写 ledger, 不进 INDEX changelog) + git add PROJECT_INDEX.md"
-    exit 2
+    gate_fail project_index_sync 2
 fi
 else
     echo "[commit-tier] skip project_index_sync (tier=$COMMIT_TIER)"
@@ -140,23 +190,21 @@ if [[ -f "$STAGED_BACKEND/scripts/build_feature_map.py" ]]; then
     if ! codegraph init "$STAGED_INDEX_DIR" > "$STAGED_INDEX_DIR/codegraph-sync.out" 2>&1; then
         tail -20 "$STAGED_INDEX_DIR/codegraph-sync.out"
         echo "ERROR: staged snapshot CodeGraph 初始化失败，无法验证 FEATURE_MAP。"
-        exit 2
-    fi
-    if ! codegraph sync "$STAGED_INDEX_DIR" >> "$STAGED_INDEX_DIR/codegraph-sync.out" 2>&1; then
+        gate_fail feature_map 2
+    elif ! codegraph sync "$STAGED_INDEX_DIR" >> "$STAGED_INDEX_DIR/codegraph-sync.out" 2>&1; then
         tail -20 "$STAGED_INDEX_DIR/codegraph-sync.out"
         echo "ERROR: staged snapshot CodeGraph 构建失败，无法验证 FEATURE_MAP。"
-        exit 2
-    fi
-    if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/build_feature_map.py" --check --quiet; then
+        gate_fail feature_map 2
+    elif PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/build_feature_map.py" --check --quiet; then
         echo "[feature-map] staged snapshot fresh; current worktree was not modified"
     else
         echo "ERROR: staged FEATURE_MAP.md 与 staged source snapshot 不一致。"
         echo "正解: 在隔离 staged snapshot 上重生、review 后显式 stage；不得提交当前 dirty-tree 派生物。"
-        exit 2
+        gate_fail feature_map 2
     fi
 else
     echo "ERROR: staged snapshot 缺 build_feature_map.py；生成地图门不得静默跳过。"
-    exit 2
+    gate_fail feature_map 2
 fi
 else
     echo "[commit-tier] skip feature_map (tier=$COMMIT_TIER)"
@@ -172,11 +220,11 @@ if [[ -f "$STAGED_BACKEND/scripts/build_agent_board.py" ]]; then
     else
         echo "ERROR: staged BOARD.md / data/board/agent_context.json 与 accepted 事实投影不一致。"
         echo "正解: PYTHONPATH=backend python backend/scripts/build_agent_board.py 后显式 stage。"
-        exit 2
+        gate_fail agent_board 2
     fi
 else
     echo "ERROR: staged snapshot 缺 build_agent_board.py；生成板门不得静默跳过。"
-    exit 2
+    gate_fail agent_board 2
 fi
 else
     echo "[commit-tier] skip agent_board (tier=$COMMIT_TIER)"
@@ -191,20 +239,21 @@ if gate_enabled moth; then
 if [[ -f "$STAGED_INDEX_DIR/.moth/profile.yaml" ]]; then
     if ! command -v moth >/dev/null 2>&1; then
         echo "ERROR: staged snapshot 声明 Moth profile，但 moth CLI 不可用。"
-        exit 2
+        gate_fail moth 2
+    else
+        if [[ -d "$(pwd)/.venv" && ! -e "$STAGED_INDEX_DIR/.venv" ]]; then
+            ln -s "$(pwd)/.venv" "$STAGED_INDEX_DIR/.venv"
+        fi
+        if ! (cd "$STAGED_INDEX_DIR" && moth assert --repo .); then
+            echo "ERROR: staged snapshot Moth assertions 未闭合。"
+            gate_fail moth 2
+        elif ! (cd "$STAGED_INDEX_DIR" && moth coupling --repo .); then
+            echo "ERROR: staged snapshot Moth coupling 未闭合。"
+            gate_fail moth 2
+        else
+            echo "[moth] staged snapshot PASS"
+        fi
     fi
-    if [[ -d "$(pwd)/.venv" && ! -e "$STAGED_INDEX_DIR/.venv" ]]; then
-        ln -s "$(pwd)/.venv" "$STAGED_INDEX_DIR/.venv"
-    fi
-    if ! (cd "$STAGED_INDEX_DIR" && moth assert --repo .); then
-        echo "ERROR: staged snapshot Moth assertions 未闭合。"
-        exit 2
-    fi
-    if ! (cd "$STAGED_INDEX_DIR" && moth coupling --repo .); then
-        echo "ERROR: staged snapshot Moth coupling 未闭合。"
-        exit 2
-    fi
-    echo "[moth] staged snapshot PASS"
 else
     echo "[moth] no staged profile; not applicable to this fixture/repository"
 fi
@@ -218,12 +267,11 @@ echo "=== Step 3: rule compliance ==="
 if gate_enabled rule_compliance; then
 if [[ ! -f "$STAGED_BACKEND/scripts/check_rule_compliance.py" ]]; then
     echo "ERROR: staged snapshot 缺 check_rule_compliance.py，拒绝用 worktree 版本代验。"
-    exit 3
-fi
-if ! PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_rule_compliance.py" 2>&1 | tail -5; then
+    gate_fail rule_compliance 3
+elif ! PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_rule_compliance.py" 2>&1 | tail -5; then
     echo
     echo "ERROR: rule compliance 失败. 见上 error."
-    exit 3
+    gate_fail rule_compliance 3
 fi
 else
     echo "[commit-tier] skip rule_compliance (tier=$COMMIT_TIER)"
@@ -266,15 +314,13 @@ echo "=== Step 3.4: CI pytest surface (L2/L3 blocking) ==="
 if gate_enabled ci_pytest; then
 if [[ ! -f "$STAGED_BACKEND/scripts/run_ci_pytest.py" ]]; then
     echo "ERROR: staged snapshot 缺 run_ci_pytest.py；L2/L3 不得跳过 CI 同面 pytest。"
-    exit 3
-fi
-if [[ ! -f "$STAGED_BACKEND/config/ci_pytest_surface.yaml" ]]; then
+    gate_fail ci_pytest 3
+elif [[ ! -f "$STAGED_BACKEND/config/ci_pytest_surface.yaml" ]]; then
     echo "ERROR: staged snapshot 缺 ci_pytest_surface.yaml；L2/L3 不得跳过 CI 同面 pytest。"
-    exit 3
-fi
+    gate_fail ci_pytest 3
 # Run against the live worktree (tests need repo pytest.ini + fixtures). Paths
 # come only from the staged SSOT yaml via the staged runner — never a hand list.
-if ! (
+elif ! (
     CHUNKYMONKEY_REPO="$(pwd)" \
     CI_PYTEST_SURFACE="$STAGED_BACKEND/config/ci_pytest_surface.yaml" \
     PYTHONPATH=backend "$PY" "$STAGED_BACKEND/scripts/run_ci_pytest.py" \
@@ -284,9 +330,10 @@ if ! (
     echo "ERROR: CI pytest blocking surface 红 — 本地 L2/L3 必须与 public CI 同面绿。"
     echo "正解: 修失败测试, 或把路径从 blocking_paths 移到 nightly_paths / ci_test_optional(带 reason)。"
     echo "勿 --no-verify 绕; 勿改 accept/PIT/cutover 门去洗绿。"
-    exit 3
+    gate_fail ci_pytest 3
+else
+    echo "[ci-pytest] PASS (blocking surface = .github/workflows/ci.yml)"
 fi
-echo "[ci-pytest] PASS (blocking surface = .github/workflows/ci.yml)"
 else
     echo "[commit-tier] skip ci_pytest (tier=$COMMIT_TIER)"
 fi
@@ -318,7 +365,7 @@ else
     echo "ERROR: 沙盒隔离门 — 测试产物漏进主项目 (C1 backend引用sandbox / C3 探索runner漏主脚本)。"
     echo "正解: 探索弧产物全留 sandbox; promotion 是方法确认后单独步骤 (真edge confirmed_by_owner=1 才进主项目)。"
     echo "误报修 check_sandbox_isolation.py 本身, 不 --no-verify 绕。"
-    exit 5
+    gate_fail sandbox_isolation 5
 fi
 else
     echo "[commit-tier] skip sandbox_isolation (tier=$COMMIT_TIER)"
@@ -338,7 +385,7 @@ else
     echo "ERROR: SERVE 读层门红 — 非成员消费者内联裸查, 或 entity 声明链断, 或实验runner漏进backend。"
     echo "正解: 消费者取数走 services.data_access.DataAccess; 加工builder登记进 data_module_members.yaml; 实验入 sandbox。"
     echo "误报修 check_serve_read_layer.py 本身, 不 --no-verify 绕。"
-    exit 5
+    gate_fail serve_read_layer 5
 fi
 else
     echo "[commit-tier] skip serve_read_layer (tier=$COMMIT_TIER)"
@@ -356,7 +403,7 @@ else
     echo "ERROR: 交易日历强制使用门红 — 内联 wall-clock(date.today/datetime.now)当最新交易日 或 SQL <=CURRENT_DATE 上界锚。"
     echo "正解: services.calendar.latest_closed_or_raise (交易日历真相源); 合法日历天窗口加 # rule-compliance: ok evidence=。"
     echo "误报修 check_calendar_usage.py 本身, 不 --no-verify 绕。"
-    exit 5
+    gate_fail calendar_usage 5
 fi
 else
     echo "[commit-tier] skip calendar_usage (tier=$COMMIT_TIER)"
@@ -373,7 +420,7 @@ if ! PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_universe_
     --format json > "$POPULATION_JSON"; then
     cat "$POPULATION_JSON" 2>/dev/null || true
     echo "ERROR: staged population contract gate failed."
-    exit 5
+    gate_fail population_contract 5
 fi
 if ! "$PY" - "$POPULATION_JSON" <<'PY'
 import json
@@ -392,7 +439,7 @@ print(
 )
 PY
 then
-    exit 5
+    gate_fail population_contract 5
 fi
 else
     echo "[commit-tier] skip population_contract (tier=$COMMIT_TIER)"
@@ -405,14 +452,13 @@ echo "=== Step 3.96: lineage drift (staged snapshot, blocking) ==="
 if gate_enabled lineage_drift; then
 if [[ ! -f "$STAGED_BACKEND/scripts/check_lineage_drift.py" ]]; then
     echo "ERROR: staged snapshot 缺 check_lineage_drift.py。"
-    exit 5
-fi
-if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_lineage_drift.py"; then
+    gate_fail lineage_drift 5
+elif PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_lineage_drift.py"; then
     echo "[lineage-drift] staged snapshot PASS"
 else
     echo "ERROR: staged 血缘图与 staged source/config/live catalog 漂移。"
     echo "正解: 从 exact staged snapshot 重生 data/lineage/graph.json 后显式 stage。"
-    exit 5
+    gate_fail lineage_drift 5
 fi
 else
     echo "[commit-tier] skip lineage_drift (tier=$COMMIT_TIER)"
@@ -431,7 +477,7 @@ else
     echo "ERROR: 死引用门红 — 删了模块/表/文件但引用方未清 (孤儿脚本/死import/config引死路径):"
     grep -E "✗|FAIL:" /tmp/cm_deadref.out | head -40
     echo "正解: 删引用方 / repoint 现存 / 引用方也是残留则一并删。误报修 check_dead_references.py 本身, 不 --no-verify 绕。"
-    exit 5
+    gate_fail dead_references 5
 fi
 else
     echo "[commit-tier] skip dead_references (tier=$COMMIT_TIER)"
@@ -450,10 +496,10 @@ else
     echo "ERROR: grain 门红 — 某表按声明 grain 有重复组 (grain 声明不足或 MERGE 幂等破坏):"
     grep -E "FAIL|dup" /tmp/cm_grain.out | head -20
     echo "正解: 核 grain 是否漏列 (report_rc/block_trade 反例) → 修 registry grain + 重拉自清。误报修脚本本身。"
-    exit 5
+    gate_fail grain_uniqueness 5
 fi
 else
-    echo "[commit-tier] skip grain_uniqueness (tier=$COMMIT_TIER)"
+    echo "[gate] skip grain_uniqueness — system_health 组已归位 daily_update 运行时自检 (或 tier=$COMMIT_TIER 剪枝)"
 fi
 
 # Step 3.99: continuity-integrity evidence (2026-07-06 全面数据审计根因根治 —
@@ -565,7 +611,7 @@ PY
     echo "CONTINUITY VERIFIER ERROR — malformed/missing report or exit/report contradiction."
     cat "$CONTINUITY_ERR" 2>/dev/null || true
     head -20 "$CONTINUITY_JSON" 2>/dev/null || true
-    exit 5
+    gate_fail continuity 5
 fi
 
 IFS='|' read -r continuity_class continuity_overall continuity_pass continuity_fail \
@@ -605,11 +651,11 @@ case "$continuity_class" in
         ;;
     * )
         echo "CONTINUITY VERIFIER ERROR — unknown classification: $continuity_state"
-        exit 5
+        gate_fail continuity 5
         ;;
 esac
 else
-    echo "[commit-tier] skip continuity (tier=$COMMIT_TIER)"
+    echo "[gate] skip continuity — system_health 组已归位 daily_update 运行时自检 (或 tier=$COMMIT_TIER 剪枝)"
 fi
 
 # Step 3.991/992: 2026-07-06 全面数据审计根因根治 — 治理脚本覆盖率盲区之二: 18 个
@@ -626,7 +672,7 @@ else
     echo "ERROR: config-refs 门红 — data_access entity 引用的 layer 词汇在 data_layers.yaml 里没有定义:"
     cat /tmp/cm_configrefs.out
     echo "正解: 补 data_layers.yaml 声明 / 改 data_access.yaml 用现存层名。误报修脚本本身, 不 --no-verify 绕。"
-    exit 5
+    gate_fail config_refs 5
 fi
 else
     echo "[commit-tier] skip config_refs (tier=$COMMIT_TIER)"
@@ -642,7 +688,7 @@ else
     echo "ERROR: doc-drift 门红 — 活文档(活索引/AGENTS/docs)引用了已删文件路径:"
     cat /tmp/cm_docdrift.out
     echo "正解: 改文档指向现存路径 / 标 deprecated 头注豁免。误报修脚本本身, 不 --no-verify 绕。"
-    exit 5
+    gate_fail doc_drift 5
 fi
 else
     echo "[commit-tier] skip doc_drift (tier=$COMMIT_TIER)"
@@ -657,9 +703,9 @@ if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_doc_governa
 else
     cat /tmp/cm_docgov.out
     echo
-    echo "ERROR: doc-governance 门红 — FAIL/WARN 均不得提交。"
+    echo "ERROR: doc-governance 门红 — FAIL/WARN 均未闭合。"
     echo "正解: 修 owner、退役 CLI、幽灵链接或文档生命周期；不放宽 gate。"
-    exit 5
+    gate_fail doc_governance 5
 fi
 else
     echo "[commit-tier] skip doc_governance (tier=$COMMIT_TIER)"
@@ -694,10 +740,22 @@ if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_codex_revie
     echo "Rule 10 PASS: canonical staged check_codex_review gate"
 else
     echo "ERROR: Rule 10 blocking review gate failed."
-    exit 6
+    gate_fail rule10 6
 fi
 else
     echo "[commit-tier] skip rule10 (tier=$COMMIT_TIER)"
+fi
+
+# 4.9 脚手架汇总 — warn-only 不等于「可以永远忽略」。一次性列全 + 指到批量修入口,
+# 否则 warn 会被逐条无视, 分组就成了放水而不是重新分布。
+echo
+echo "=== Step 4.9: scaffold 汇总 (warn-only) ==="
+if [[ -n "${SCAFFOLD_WARNED// /}" ]]; then
+    echo "本次未闭合的脚手架门:${SCAFFOLD_WARNED}"
+    echo "  不阻断提交 — 受害者是下一个接手的人, 不是数据, 也不是本次 diff。"
+    echo "  批量收口: scripts/chunkyctl scaffold-fix   (能重生的重生, 只能报的报清单)"
+else
+    echo "[scaffold] 全部闭合"
 fi
 
 # 5. Commit + optional push + codegraph

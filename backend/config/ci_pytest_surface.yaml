@@ -118,6 +118,7 @@ blocking_paths:
 - tests/scripts/test_check_calendar_usage.py
 - tests/scripts/test_ci_paths_policy.py
 - tests/scripts/test_classify_commit_tier.py
+- tests/scripts/test_governance_gates.py
 - tests/scripts/test_check_codex_review.py
 - tests/scripts/test_build_agent_board.py
 - tests/scripts/test_agent_boot.py
