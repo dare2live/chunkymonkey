@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """FND-GATE: foundation-done aggregate checklist (F1–F10).
 
-Authority: analysis/foundation_phase_reeval_20260721.md §3
+Authority: docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维) §3
 Config: backend/config/foundation_done.yaml
 
 FAIL on real gaps; typed walls (S7 ssot / org mass-ban / Type-B defer) stay PASS

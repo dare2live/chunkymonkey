@@ -1,6 +1,6 @@
 """Frequency-typed continuity / readiness gate matrix for factor families (RX prereg).
 
-Authority: analysis/factor_family_governance_toplevel_20260724.md
+Authority: docs/MASTER_TOPLEVEL_DESIGN.md §9.1 (因子族边界) + strategy_validation_contract.md §3.1 (窗口对齐)
 
 v1 scope (structural + sync_registry wire; no DuckDB):
   - each family declares continuity_gate.mode aligned with frequency + availability_axis

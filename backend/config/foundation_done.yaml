@@ -1,6 +1,6 @@
 # Foundation-done aggregate gate (F1–F10)
 #
-# Authority: analysis/foundation_phase_reeval_20260721.md §3
+# Authority: docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维) §3
 # Owner script: backend/scripts/check_foundation_done.py
 # Doctor section + moth claim + offline tests wire this file.
 #
@@ -18,7 +18,7 @@
 #   - phase_closure_ready (E/F may schedule) requires every criterion PASS
 
 version: 1
-authority: analysis/foundation_phase_reeval_20260721.md
+authority: docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维)
 
 # S7 typed hard-stop wall (F2) — counts are the wall, not residual debt
 s7_ssot_wall:

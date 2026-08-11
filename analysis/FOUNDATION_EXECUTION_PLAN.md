@@ -38,12 +38,12 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | `plan_reeval_*` / `forward_program_efgh_*` / treadmill closeout 等 | 旧 roadmap / 支线 | **deleted**；git history |
 
 仍 **living subordinate**（立法/契约引用，非第二 backlog）：
-`foundation_phase_reeval_20260721.md`（FND-GATE）、`docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)`、
+`docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维)`（FND-GATE）、`docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)`、
 `docs/MASTER_TOPLEVEL_DESIGN.md §5.6 (物理分层裁决)`、`architecture_fix_treadmill_first_principles_20260722.md`、
 `docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)`、`docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (披露域增量策略)`、
 `docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (披露域增量策略)`、`hs_a_whitelist_includes_st_20260722.md`、
-`docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (前沿判定)`、`product_decision_assist_backlog_20260721.md`、
-`db_storage_hygiene_20260721.md`、`db_bloat_deep_dive_20260723.md`（yaml 删表证据锚）。
+`docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (前沿判定)`、`docs/MASTER_TOPLEVEL_DESIGN.md §10.1 (产品能力边界)`、
+`docs/engineering_governance.md §6 (compact 纪律) + §10 (archive 保险丝)`、`db_bloat_deep_dive_20260723.md`（yaml 删表证据锚）。
 
 ---
 
@@ -101,7 +101,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 
 ### 3b. 数据轴/频率评审残差（2026-07-24；非 class-A）
 
-证据：`analysis/data_axis_frequency_review_20260724.md`。本轮 **无新错轴**；不改 update-flow。
+证据：`strategy_validation_contract.md §4 + sync_registry.yaml 域注释`。本轮 **无新错轴**；不改 update-flow。
 
 | # | 项 | 类型 | Exit | 状态 |
 |---|---|---|---|---|
@@ -128,7 +128,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | `rewrite_legacy` True 写回 / canary CLI / 定期 dedupe fixer | **DELETED / BANNED** |
 | Continuity READY 靠删检查 | **BANNED** |
 
-机制细节：`db_storage_hygiene_20260721.md` · `db_bloat_deep_dive_20260723.md`。
+机制细节：`docs/engineering_governance.md §6 (compact 纪律) + §10 (archive 保险丝)` · `db_bloat_deep_dive_20260723.md`。
 
 ---
 

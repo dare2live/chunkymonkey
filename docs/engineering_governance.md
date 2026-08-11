@@ -125,7 +125,14 @@ Phase 出口或提交前再放大到相关联合回归 / 全量 backend / `moth 
 - 先 stage/validate，再在一个可证明的事务边界内发布数据与 accepted partition；
 - 0 行、空响应、权限页、字段缺失、超时、连接失败分别分类；不得用 0 行冒充成功；
 - historical decision 必须显式 as-of/available-at；缺失传播 `NULL/unknown`，禁止 latest/0/demo fallback；
-- 修 writer/schema/PIT 后必须检查旧表、cache、JSON、watermark、报告、前端和后台进程残留。
+- 修 writer/schema/PIT 后必须检查旧表、cache、JSON、watermark、报告、前端和后台进程残留；
+- **DuckDB 的 `DROP`/`DELETE` 不释放文件块，单独 `CHECKPOINT` 也不缩小文件** —— 它只刷 WAL/catalog。
+  批量 DROP（lifecycle/purge）之后必须显式跑
+  `python backend/scripts/db_compact.py --db <alias> --execute`（ATTACH-copy 重写 + row/constraint/index
+  parity 校验），核对 parity 通过再删 `*_precompact_bak.duckdb`。**「我 CHECKPOINT 过了」不等于空间已回收**
+  —— 这个误解会让库只增不减。`build_price_kline_qfq_tushare` 已自带重建后 compact（逃生
+  `--no-compact`）；其余批次仍需手动补跑。`tushare_raw` 是 Tier0 写面，随时可能被写入，
+  compact 前需显式 owner 判断，不进日常回收流程。
 
 ## 7. 配置与 hardcoding
 
@@ -186,6 +193,11 @@ moth snapshot --repo .
 那个 N 就没有意义 —— 它把「会复发的缺陷」和「正确的告警」加在了一起。
 
 ## 10. 删除与目录整理
+
+`data/archive/<subdir>`（子目录名由各 lifecycle/purge manifest 的 `archive_dir` 决定，集合随
+manifest 增减、**不是固定枚举**）是治理性删除留下的**冷 parquet 证据保险丝，不是杂物目录**。
+禁止批量清空或当作「占空间的历史堆债」处理；只能逐目录、凭「该批删除已无审计/回溯需求」的
+证据清理。做磁盘清理的人最容易在这里一键删掉几百 MB 的删除审计证据。
 
 删除前必须同时检查：
 

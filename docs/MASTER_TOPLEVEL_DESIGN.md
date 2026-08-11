@@ -449,6 +449,16 @@ B5 + 单一公式或公式组合
 
 Provider 是可替换 adapter：业务真相在 accepted/canonical，不绑定单一供应商。契约可换（第二源只加 adapter + landing 映射、不改 Tier1–4 读契约）是**目标态**，不是“仓库里只有一个供应商”的现状声明。任何 provider——TuShare 与东财妙想 aif10/`miaoxiang` 同等——都必须走同一 transport（`landing→accepted→canonical`），禁止 silent merge、legacy 直写或假装单源。各域当前的 live adapter 与 formal 化进度是**运行时事实**，真相源为 `backend/config/sync_registry.yaml` + `legacy_raw_plane.yaml` + accepted 分区，**不在本文件固定**（写死即 stale）。不做通用插件框架。
 
+### 9.1 因子族登记的边界
+
+因子族登记（`factor_family_inventory`）是 Tier3 研究运行时**之上**的一层治理行：按语义族
+（价量 / 状态 / 感知 / 资金代理 / 披露 / 公式）聚合 L2–L3 brick 与采集域，声明各族的 B 阶梯
+角色、频率轴、堆叠资格与日更责任面。
+
+它**不**替代 §5.5 的 L0–L4 变量分层，**不**替代物理表分层声明，**也不是**在复活「一张大
+特征面板表」。一个冻结 `DatasetSnapshot` 的输入闭包必须能唯一映射到登记表的一行或多行；
+消融一次只允许 +1 个 FeatureBlock。族级的机械判定值以配置与检查脚本实跑为准，不写进本文。
+
 ## 10. Tier 4 决策与产品
 
 正式链路必须是：
@@ -463,6 +473,24 @@ ExperimentVerdict
 ```
 
 每个候选必须能追到策略发布、实验、数据快照、配置 hash 和决策时点。产品页面可以展示研究中的证据，但必须明确 `research/unknown/stale/blocked/released`，不能用“看起来完整”的 mock、latest fallback 或 qfq 成交价伪装生产能力。
+
+### 10.1 产品能力边界
+
+产品面的每个能力都有一条**不能越过的边界**；越过时症状都一样——展示层看起来更强了，
+而证据链断了：
+
+- **资金流决策辅助**：多窗口/相对比率/方向标签是 L2–L3 组合列，必须带 `available_at`、
+  method、unit、denominator、coverage、config hash。行为标签与结论文案属产品消费面，
+  可版本化，但**禁止回写 Tier0 canonical**；展示只能消费 accepted 分区或已发布特征，
+  不得读 landing、不得静默 legacy fill。
+- **形态/阶段选股面**：它依赖 Tier1 accept，**不**代表选股产品已具备策略立法资格。
+  进寻优或发布前必须走 `strategy_validation_contract.md`。
+- **交集类决策辅助**：多链交集是辅助面，不是排名裸抛。任一输入滞后于日更前沿或覆盖未知时
+  必须 fail-closed 或标 unknown —— **禁止在 stale/UNTRUSTED 输入上伪造「最强」分数**。
+- **分步流水线卡**：一键日更保持默认路径；分步只能镜像既有 acquire→land/accept→derive→
+  process→serve 边界并调用既有 API/CLI，**不得发明第二条编排 DAG**。
+- **个股档案**：沪深A 白名单是唯一合法 serve 门槛。每个 tab 要么可用、要么给出类型化的失败
+  原因，**禁止半死静默空态**；关联信息必须先过关联 + 血缘 + serve 审计，抽样绿不能充当完整性证据。
 
 ## 11. 迁移顺序
 
@@ -482,6 +510,17 @@ ExperimentVerdict
 | H | 决策 / 名义价纸面 / 产品 | candidate 全链可追溯；NONCONFORMING 观察账本隔离或退役 |
 
 每个 Phase 都用 strangler 方式迁移：契约先行、旧新并跑、逐字段对账、消费者切换、最后删除旧 writer/表/config。Phase 0/1 控制面原语已完成，证据在 commit message（`chunkyctl history --grep "Phase 0"`），不在本表重复充当业务就绪证明。
+
+**地基「完成」不是主观判断，是十项类型化检查联合 PASS。** 从 foundation solidify 切到
+scheduled 研究/策略阶段之间有一道机器可判的出口门（`backend/scripts/check_foundation_done.py`
++ `backend/config/foundation_done.yaml`），十维分别覆盖 strangler transport 的每一根支柱：
+F1 传输模块化 · F2 legacy 面诚实分型（无假 COMPAT）· F3 无假 publication · F4 brick registry
+与血缘门 · F5 披露域传输三模式 · F6 披露域 accept 广度门槛 · F7 禁 mass/by-date invent ·
+F8 刀级合并行为门 · F9 策略轨未开且前沿诚实 · F10 双轨残差为零。
+
+十维不是凑数：F1–F2 管传输、F3 管反假绿、F4 管血缘、F5–F7 管披露域闭合、F8 管流程纪律、
+F9 管策略暂停、F10 管双轨清洁。**要增删或合并其中任一项，必须先论证「覆盖仍然完整」** ——
+否则就是在不知不觉中把某根支柱移出验收面。具体阈值与实时裁决以脚本实跑为准，不在本文写死。
 
 ## 12. 明确不做
 

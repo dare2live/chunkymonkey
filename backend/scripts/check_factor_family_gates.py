@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """L2 gate: factor-family frequency-typed continuity / readiness matrix.
 
-Authority: analysis/factor_family_governance_toplevel_20260724.md
+Authority: docs/MASTER_TOPLEVEL_DESIGN.md §9.1 (因子族边界) + strategy_validation_contract.md §3.1 (窗口对齐)
 
 Run:
   PYTHONPATH=backend python backend/scripts/check_factor_family_gates.py

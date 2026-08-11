@@ -45,7 +45,7 @@ DEFAULT_POLICY = REPO / "backend" / "config" / "doc_runtime_state.yaml"
 
 # 紧凑 8 位日期, 且**必须独立成词**。
 # 词边界不是装饰: 文件名里的日期 (形如 `xxx_20260723.md`、
-# `foundation_phase_reeval_20260721.md`) 前面是 `_`, 属标识符的一部分, 不是状态声明;
+# `some_plan_20260721.md`) 前面是 `_`, 属标识符的一部分, 不是状态声明;
 # 真正的状态声明前面是 `→` / 空格 / 反引号 / `=`。首版没排除它, 一跑出来近八成是文件名
 # 噪音 —— 噪音门等于没门, 人会直接学会无视它。
 _COMPACT_DATE_RE = re.compile(r"(?<![\w-])(20\d{6})(?![\w-])")

@@ -13,7 +13,7 @@ Freshness (mirrors ``/pulse/strongest`` + Cap 4D honesty): the global as-of
 trade date beyond the configured SLA — stale → ``status=stale`` + empty rows,
 never a silently outdated screen.
 
-Authority: analysis/product_decision_assist_backlog_20260721.md (Cap B) +
+Authority: docs/MASTER_TOPLEVEL_DESIGN.md §10.1 (产品能力边界) (Cap B) +
 analysis/FOUNDATION_EXECUTION_PLAN.md §2.
 """
 from __future__ import annotations
