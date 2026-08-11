@@ -1679,6 +1679,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/project_status.py",
+      "kind": "consume",
+      "src": "table:reference.dim_trading_calendar"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/rally_gt.py",
       "kind": "consume",
       "src": "table:reference.dim_trading_calendar"
@@ -1853,6 +1859,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/data_module_members.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/database_manifest.yaml",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -2022,6 +2034,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/pipeline/state_sensors.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/project_status.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
     },
@@ -4223,6 +4241,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/data_module_members.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_data_source_watermark"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:smartmoney.mart_data_source_watermark"
@@ -4254,6 +4278,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/pipeline/store.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_data_source_watermark"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/project_status.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_data_source_watermark"
     },
@@ -4757,6 +4787,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/data_module_members.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/database_manifest.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -4926,6 +4962,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/pipeline/state_sensors.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/project_status.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -7841,9 +7883,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1259,
-    "generated_at": "2026-08-11T01:30:59.476412+00:00",
-    "node_count": 448,
+    "edge_count": 1266,
+    "generated_at": "2026-08-11T03:02:11.792511+00:00",
+    "node_count": 449,
     "version": 2
   },
   "nodes": [
@@ -9077,6 +9119,14 @@
         "path": "backend/services/primitives/seed.py"
       },
       "id": "consumer:backend/services/primitives/seed.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/project_status.py"
+      },
+      "id": "consumer:backend/services/project_status.py",
       "kind": "consumer"
     },
     {

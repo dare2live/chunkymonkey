@@ -346,7 +346,7 @@ tier 剪枝管**跑不跑**，分组管**跑红了会怎样**，两维正交。o
 |---|---|---|---|
 | `diff_correctness` | 这次 diff 本身错 | **阻断** | rule_compliance / ci_pytest / sandbox_isolation / serve_read_layer / calendar_usage / population_contract / lineage_drift / dead_references / config_refs / rule10 |
 | `system_health` | 数据 / 策略 / 钱受害 | **不跑** | grain_uniqueness / continuity → `daily_update` store 阶段自检 |
-| `scaffold` | 下一个开发者受害 | **warn-only** | project_index_sync / feature_map / agent_board / moth / doc_drift / doc_governance / commit_msg |
+| `scaffold` | 下一个开发者受害 | **warn-only** | project_index_sync / feature_map / agent_board / moth / doc_drift / doc_governance / doc_runtime_state / commit_msg |
 
 判据来自实证而非偏好（2026-08-10 审计，见 ledger 同日条目）：脚手架门本轮 3 次
 阻断系统修复提交（文档没同步挡住代码 bug 修复），而 b_pit cutover 是否仍生效 ——
@@ -366,11 +366,26 @@ tier 剪枝管**跑不跑**，分组管**跑红了会怎样**，两维正交。o
 - 静态 PASS 仍不升级 live readiness：commit 通过 ≠ Tier0 数据就绪。
 
 ```bash
+scripts/chunkyctl status                     # L2 运行时状态单一现查入口 (零文件)
 scripts/chunkyctl gates                      # 人读分组表
 scripts/chunkyctl gates --check              # 三处门名对账
 scripts/chunkyctl gates --run-system-health  # 手动跑运行时自检组
 scripts/chunkyctl scaffold-fix               # 脚手架批量收口
 ```
+
+### 14.2 L2 状态零手写（P2）
+
+**运行时状态只许现查，不许人写。** 唯一入口 `scripts/chunkyctl status`
+（`backend/services/project_status.py`；零文件、不缓存、退出码恒 0 —— 它报事实不做裁决，
+红绿仍归 continuity / watermark SLA / cutover_effective 各自的门）。
+
+执法 = `check_doc_runtime_state`（scaffold 组）：扫活文档里的紧凑 8 位日期，未在
+`backend/config/doc_runtime_state.yaml` 声明的一律报出；失效的豁免也报。它**不做语义
+猜测** —— 默认禁止 + 显式豁免，因为写豁免这个动作本身就强制作者回答「这是契约常量
+还是运行时状态」。本仓约定历史叙述写 `2026-07-24`（带连字符）、状态写紧凑格式，故只
+扫紧凑格式即可避开历史叙述。
+
+判据仍是 `docs/README.md` 那一句：**这个值会不会因为系统正常跑一次日更就变？**
 
 不 `--no-verify` 绕门，不 amend 已 push commit，不在未授权时 push。交付报告必须区分 `FIXED/PARTIAL/BLOCKED`，列 residual、验收命令和 owner。
 

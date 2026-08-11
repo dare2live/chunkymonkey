@@ -49,6 +49,11 @@ member_service_files:
   - universe.py              # 交易日历级硬真相源 (不能依赖派生读层)
   - kline_source.py          # K线写侧 normalize
   - data_audit.py            # 审计
+  - project_status.py        # L2 现查投影 (goal.md P2.2): 直查 accepted_partition /
+                             #   mart_data_source_watermark / dim_trading_calendar 这些**真相源本身**
+                             #   报前沿与滞后。与 data_audit 同性质 —— 审计/状态投影不能经被审
+                             #   对象的读层拿数, 否则读层坏了它就跟着一起瞎。它不消费 PIT 业务
+                             #   数据、不产表、不做裁决 (裁决仍归 continuity/SLA/cutover 各自的门)。
   - institution_profile.py   # M3 加工 builder (2026-07-02 W1: 读 raw/L1 物化 feature_store L2 画像;
                              #   与 build_price_kline_qfq_tushare 同性质)。**2026-07-08 决议**: 产物表
                              #   (mart_inst_profile/mart_inst_profile_dim/fact_inst_episode) 不注册进

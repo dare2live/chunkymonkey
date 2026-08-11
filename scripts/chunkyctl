@@ -78,6 +78,10 @@ Notes:
   map         = regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only.
   pipeline    = manually run one declared data stage; full manual chain remains daily_update.sh.
   lineage     = generated dependency projection; impact <table> audits fan-in before delete/migrate.
+  status      = L2 运行时状态**单一现查入口** (零文件): accepted 前沿 + 距最近已完成交易日的
+                交易日滞后、源水位、cutover 声明 vs 实际、门分布、告警 flag。`--json` 给 agent。
+                退出码恒 0 —— 它报事实不做裁决; 红绿仍归 continuity / watermark SLA /
+                cutover_effective 各自的门。人工维护的文档禁止再抄这些值, 只许指向本命令。
   gates       = 门分布策略 (backend/config/governance_gates.yaml): 无参打印三组分布表;
                 --check 与 classify_commit_tier / safe_commit.sh 门名对账;
                 --run-system-health 手动跑 system_health 组 (daily_update 里自动跑同一份)。
@@ -191,6 +195,11 @@ case "$cmd" in
     # Generated lineage projection: build | impact <t> | provenance <t> | dead | show <t>
     # 删/迁表前 `chunkyctl lineage impact <table>` 自动 fan-in (替代手 grep)。
     PYTHONPATH=backend "$PY" backend/scripts/lineage_cli.py "$@"
+    ;;
+  status)
+    # L2 运行时状态单一现查入口 (goal.md P2.2): 前沿/滞后/水位/cutover/门/告警。
+    # 零文件 —— 每次现查, 不落盘不缓存; 退出码恒 0 (报状态不做裁决)。
+    PYTHONPATH=backend "$PY" -m services.project_status "$@"
     ;;
   gates)
     # 门分布策略 (goal.md 治理体系重构 P1): 无参=人读分组表;

@@ -84,7 +84,7 @@ done
 echo
 echo "=== Step 1.5: commit tier classification ==="
 COMMIT_TIER="L3"
-COMMIT_TIER_GATES="project_index_sync feature_map agent_board moth rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity config_refs doc_drift doc_governance commit_msg rule10"
+COMMIT_TIER_GATES="project_index_sync feature_map agent_board moth rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity config_refs doc_drift doc_governance doc_runtime_state commit_msg rule10"
 if [[ -f "backend/scripts/classify_commit_tier.py" && -f "backend/config/commit_tiers.yaml" ]]; then
     if COMMIT_TIER_JSON=$(PYTHONPATH=backend "$PY" backend/scripts/classify_commit_tier.py 2>/tmp/cm_tier_err.out); then
         if parsed=$("$PY" -c '
@@ -709,6 +709,25 @@ else
 fi
 else
     echo "[commit-tier] skip doc_governance (tier=$COMMIT_TIER)"
+fi
+
+# Step 3.994: 人工文档写死运行时状态的对账门 (goal.md P2.1)。
+# 唯一查**语义时效**的门 —— doc_drift/doc_governance 只查悬空链接与代码路径, 于是
+# 「两份手写文档互相矛盾且同时落后两周」能在它们全绿时发生 (2026-08-10 实证)。
+echo
+echo "=== Step 3.994: doc-runtime-state (文档写死运行时状态对账) ==="
+if gate_enabled doc_runtime_state; then
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_doc_runtime_state.py" > /tmp/cm_docstate.out 2>&1; then
+    head -2 /tmp/cm_docstate.out
+else
+    cat /tmp/cm_docstate.out
+    echo
+    echo "ERROR: 活文档里有未声明的运行时状态 (写死的前沿/计数, 或已失效的豁免)。"
+    echo "正解: 改成指向 \`scripts/chunkyctl status\`; 确属常量则在 backend/config/doc_runtime_state.yaml 写明理由。"
+    gate_fail doc_runtime_state 5
+fi
+else
+    echo "[commit-tier] skip doc_runtime_state (tier=$COMMIT_TIER)"
 fi
 
 # 4. Commit message keyword check (manual preview)

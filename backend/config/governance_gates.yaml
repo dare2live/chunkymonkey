@@ -149,6 +149,14 @@ commit_gates:
     checks: "活文档 owner 唯一 / 无 retired CLI / fails=0 warns=0"
     why: "文档生命周期纪律；坏掉不改变任何运行时行为。"
 
+  doc_runtime_state:
+    group: scaffold
+    checks: "人工活文档里未声明的紧凑日期 / 写死的旧前沿 / 已失效的豁免"
+    why: >-
+      写死的运行时状态坏掉时，系统照常跑，受害的是下一个照着文档做判断的人
+      (2026-08-10 实证: 两份手写文档互相矛盾且同时落后两周，误导了整整两周)。
+      故 warn-only；但它是**唯一**查语义时效的门 —— 其余文档门只查悬空链接与代码路径。
+
   commit_msg:
     group: scaffold
     checks: "commit message 关键词提示 (GROUP A/B)"
@@ -253,3 +261,8 @@ scaffold_fix:
     kind: report
     command: ["backend/scripts/check_project_index_sync.py"]
     note: "活索引节要写什么是人的判断，机器只报缺口"
+  - id: doc_runtime_state
+    from_gate: doc_runtime_state
+    kind: report
+    command: ["backend/scripts/check_doc_runtime_state.py"]
+    note: "写死的状态该改成指针还是该声明为常量，是人的判断；机器给出真相源当前值"

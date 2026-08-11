@@ -55,6 +55,9 @@ tier_gates:
     - agent_board
     - doc_drift
     - doc_governance
+    # 2026-08-11 P2.1: 文档写死运行时状态的对账门。L1 = 纯文档提交, 正是最容易
+    # 把陈旧前沿/计数写进去的那一类, 所以它必须在 L1 就跑 (scaffold 组 warn-only)。
+    - doc_runtime_state
     - commit_msg
   L2:
     - project_index_sync
@@ -72,6 +75,7 @@ tier_gates:
     - config_refs
     - doc_drift
     - doc_governance
+    - doc_runtime_state
     - commit_msg
     - rule10
   L3: all

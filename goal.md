@@ -70,9 +70,9 @@
   - **交给 owner 的两条裁决**（检查报出来了，修不了）：① b_pit `cutover_allowed=true` 但窗口过期 → 重新 attest 或改回 `false`；② tier12 `consumer_cutover.cutover_allowed=true` 但最新交易日无 accepted partition（WARN，逐日回落属预期，非结构性）
 - **P4.1 孤儿法条归位** — **FIXED**（2026-08-11）：`run_outcome` 四态法条落 **`MASTER` §5.4**（系统语义；确认没放 `engineering_governance`）。含四态判据表、rollup 顺序、exit 映射、四条不可放宽规则（归类不明≠等时钟 / 完整性≠时钟 / 下游只渲染不按 rc 反推 / 报告 JSON 是真相源 exit 是渲染器）、消费面清单。`backend/services/pipeline/run_outcome.py` docstring 的 Authority 从 `analysis/` 改指 MASTER，analysis 两份降为 Origin。文档↔enum 一致性由 moth `run-outcome-four-states-law` 锁死（任一侧增删态即红）。顺手修 `check_doc_governance` C7 假阳性：真实存在的**全路径**引用不再当成悬空命令名（该维度本就归 `check_doc_drift`，注释早写了实现漏了），加两个方向的回归测试
 - **P2 状态零手写**（依赖 P1.2）
-  - P2.1 扫出人工文档里全部 L2 状态（frontier/覆盖/计数）→ 换成查询指针
-  - P2.2 建单一状态入口（`chunkyctl status --json`），agent 一条命令拿全
-  - P2.3 BOARD 改现查，或快照带时刻 + 过期即警告
+  - P2.1 **FIXED**（2026-08-11）：机器门 `check_doc_runtime_state` + `doc_runtime_state.yaml`（默认禁止紧凑日期 + 显式豁免须写明为何是常量；豁免失效自报），注册为第 20 道门（scaffold，warn-only）。抓到并修掉上一轮人工清理漏掉的：`PROJECT_INDEX` 的 `→20260720`（正是 2026-08-10 审计点名那一处）、`至 20260721`，以及 `23/46 ssot` vs 同文件 `20/46`（实跑真值 `ssot=20`）自相矛盾。**结论：靠人扫必漏，所以门比清理重要**
+  - P2.2 **FIXED**（2026-08-11）：`scripts/chunkyctl status [--json]` = L2 单一现查入口（`services/project_status.py`；零文件、退出码恒 0 报事实不裁决）。给出 accepted 前沿 + **距最近已完成交易日的交易日滞后**、源水位、cutover 声明 vs 实际、门分布、告警 flag。此前**没有任何一条命令**能回答「前沿在哪」——真相散在两个库，而 `docs/README` 让人查 `BOARD.md`，BOARD 第 6 行却明说自己没有该值。坏指针一并修正
+  - P2.3 **未开工**：BOARD 改现查（`agent_boot` 现在读的是 `data/board/agent_context.json` 文件而非 `collect()`，实测 `collect()` 仅 0.3s 且不连库，改现查几乎零成本）
 - **P3 历史归 git**（依赖 P2.2）
   - P3.1 commit message 模板固化 Q/Fix/Evidence/Residual（这才是 commit_msg 门的正确形态：查结构，不查关键词）
   - P3.2 `chunkyctl history --grep` 包装 git log，替代 ledger 检索

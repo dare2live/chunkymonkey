@@ -1,0 +1,97 @@
+# doc_runtime_state.yaml — 人工文档里「写死运行时状态」的对账政策 (L1 契约层)
+#
+# Owner: docs/README.md 文档生命周期节 + docs/engineering_governance.md §14.1。
+# 消费方: backend/scripts/check_doc_runtime_state.py (scaffold 组门 + scaffold-fix)。
+#
+# **为什么是「默认禁止 + 显式豁免」而不是「智能判断」** (2026-08-11 实证):
+# 2026-08-10 那轮已经专门清理过一次手写 frontier, 把 goal.md / PROJECT_INDEX 的
+# 前沿改成了指针。两周后同一份 PROJECT_INDEX 里仍有三处漏网 (`→20260720`、
+# `至 20260721`、`cutover ON`), 且 `23/46 ssot` 与同文件另一处的 `20/46` 自相矛盾。
+# 结论: **靠人扫必漏**。所以门不去猜哪个数字是状态 —— 凡是紧凑 8 位日期一律质问,
+# 要么删、要么在此显式豁免并写明理由。零假阴性; 假阳性用一次性豁免收口, 而写豁免
+# 本身就强制作者回答「这是契约常量还是运行时状态」。
+#
+# **为什么扫紧凑日期就够**: 本仓稳定约定 —— 历史叙述写 `2026-07-24` (带连字符),
+# 运行时状态写 `20260720` (紧凑)。故只扫紧凑格式天然避开历史叙述, 不需要语义分析。
+#
+# 豁免会自清: 列在这里但文档里已经不存在的条目会被报成 stale exemption ——
+# 豁免清单本身也不许烂。
+
+version: 1
+
+# 扫描面 = 人工维护的活文档。生成投影 (BOARD.md / FEATURE_MAP.md) 不扫:
+# 它们本来就该装状态, 且由各自的 drift 门保证新鲜。
+# ledger 不扫: 只追加的历史账本, 按设计记录当时的状态快照。
+scan_files:
+  - goal.md
+  - AGENTS.md
+  - PROJECT_INDEX.md
+  - docs/README.md
+  - docs/MASTER_TOPLEVEL_DESIGN.md
+  - docs/engineering_governance.md
+  - docs/strategy_validation_contract.md
+
+# 全局契约常量: 这些日期不会因为跑一次日更而变, 在任何文档里出现都合法。
+# 加一条前先自问 docs/README 的那句判据: 它会不会因为系统正常跑一次日更就变?
+global_constants:
+  - value: "20190102"
+    reason: "accepted nominal OHLCV 契约起点 (goal.md 已裁决的常量)"
+  - value: "20220104"
+    reason: "accepted stock_st 契约起点 (asymmetric ST raw floor)"
+  - value: "20261231"
+    reason: "交易日历生成 horizon 上界 (日历契约, 非数据前沿)"
+
+# 逐文件豁免: 写明**为什么这个具体日期在这个具体文件里是合法的**。
+# 理由不能是「它现在是对的」—— 那是状态; 只能是「它永远不会因跑批而变」。
+file_exemptions:
+  - file: goal.md
+    value: "20260810"
+    reason: "P1 验收实测记录 (已发生的一次运行的证据, 属 L3 历史叙述)"
+  - file: goal.md
+    value: "20260804"
+    reason: "2026-08-10 前沿漂移实证的原文引用 (历史证据, 非当前声明)"
+  - file: goal.md
+    value: "20260721"
+    reason: "同上 —— 该实证记录的正是这个过期值本身"
+  - file: goal.md
+    value: "20260720"
+    reason: "同上 —— 该实证记录的正是这个过期值本身"
+  - file: goal.md
+    value: "20260121"
+    reason: "b_pit attested 窗口起点, 引自 b_pit_mart_cutover.yaml 的已冻结证据窗"
+  - file: goal.md
+    value: "20260722"
+    reason: "b_pit attested 窗口末端, 同上 (窗口本身是 config 常量; 是否仍生效由 cutover_effective 现查)"
+  - file: goal.md
+    value: "20260811"
+    reason: "P1/P4.1 验收实测的运行日期 (已发生的一次运行的证据, 属 L3 历史叙述)"
+  - file: PROJECT_INDEX.md
+    value: "20260717"
+    reason: "Tier1/2 full-universe accept **事件日** (已发生的一次 accept, 不随日更前移; 当前前沿现查 chunkyctl status)"
+  - file: PROJECT_INDEX.md
+    value: "20260720"
+    reason: "同上 —— 第二次 re-accept 的事件日 (form enrich v1)"
+  - file: PROJECT_INDEX.md
+    value: "20260121"
+    reason: "b_pit attested shadow 窗起点, 引自 b_pit_mart_cutover.yaml 的冻结证据窗 (config 常量)"
+  - file: PROJECT_INDEX.md
+    value: "20260722"
+    reason: "b_pit attested shadow 窗末端, 同上; **是否仍生效**由 check_cutover_effective 现查, 不由本文档声称"
+  - file: PROJECT_INDEX.md
+    value: "20260804"
+    reason: "2026-08-11 修复说明里引用的真相源实测值 (记录当时差距的证据, 非当前声明)"
+  - file: docs/README.md
+    value: "20260721"
+    reason: "文档生命周期判据的反例引文 (演示什么叫写死状态)"
+  - file: docs/README.md
+    value: "20260720"
+    reason: "同上"
+  - file: docs/README.md
+    value: "20260804"
+    reason: "同上"
+
+# 前沿对账: 文档里未豁免的日期若落在 (契约起点, live frontier) 之间, 极可能是
+# 一份写死的旧前沿 —— 报告时附上真相源的当前值, 让人一眼看出差多少。
+frontier_reference:
+  dataset_id: tier0.market_data.nominal_ohlcv_daily
+  hint: "当前值现查 `scripts/chunkyctl status`; 人工文档只许指向该命令, 不许抄值"

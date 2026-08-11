@@ -49,6 +49,7 @@ KNOWN_GATES = frozenset({
     "config_refs",
     "doc_drift",
     "doc_governance",
+    "doc_runtime_state",
     "commit_msg",
     "rule10",
 })
@@ -71,6 +72,7 @@ ALL_GATES_ORDERED = (
     "config_refs",
     "doc_drift",
     "doc_governance",
+    "doc_runtime_state",
     "commit_msg",
     "rule10",
 )

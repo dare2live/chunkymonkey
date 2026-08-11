@@ -73,6 +73,7 @@ AGENTS.md
 | Shared tooling snapshot | `moth snapshot --repo .` |
 | Business/tool assertions | `moth assert --repo .` |
 | Coupling/deletion impact | `moth coupling --repo . --impact <name>` |
+| **L2 运行时状态（唯一现查入口）** | `scripts/chunkyctl status`（人读）/ `--json`（agent）；owner=`backend/services/project_status.py`。给出 accepted 前沿 + **距最近已完成交易日的交易日滞后**、源水位、cutover 声明 vs 实际、门分布、告警 flag。**零文件、不缓存、退出码恒 0**（报事实不做裁决；红绿归 continuity / watermark SLA / `check_cutover_effective` 各自的门）。人工维护文档**禁止再抄这些值**，只许指向本命令 —— 执法 `check_doc_runtime_state`（第 20 道门，scaffold warn-only）+ `backend/config/doc_runtime_state.yaml` |
 | 门分布策略 / 运行时自检 / 脚手架收口 | `scripts/chunkyctl gates`（分组表）· `gates --check`（登记表 ↔ `classify_commit_tier` ↔ `safe_commit.sh` 兜底串 三处门名对账）· `gates --run-system-health`（手动跑 `runtime_checks` 组：continuity/residual_hygiene/grain_uniqueness/**cutover_effective**/lineage_catalog）· `scripts/chunkyctl scaffold-fix`（重生 FEATURE_MAP/BOARD + 报人工缺口）；owner=`backend/config/governance_gates.yaml` + `backend/services/governance_gates.py`；条文 `docs/engineering_governance.md` §14.1 |
 | Cutover 声明 vs 实际裁决 | `PYTHONPATH=backend python backend/scripts/check_cutover_effective.py`；把**最近已完成交易日**（日历真相源，非 wall-clock）送进 b_pit / tier12 production resolver：b_pit 无逐日输入依赖故任何背离=FAIL（跑日更不自愈，须 owner 重 attest 或改回 false）；tier12 逐日 accepted 依赖是 config 写明的预期回落故=WARN；日历不可达=UNVERIFIED（exit 2，不算通过）。已挂进 `daily_update` store |
 | Code discovery | `codegraph explore "<question>"` |
@@ -92,7 +93,7 @@ AGENTS.md
 
 | Priority | Defect | Consequence |
 |---:|---|---|
-| P0 | K accepted + form/qfq/segments/pulse 至 `20260721`（扇区/DC pulse 可能滞后）；legacy raw daily 仍 `20260716`（预期）；`index_dailybasic` 短窗 min_rows 拒写；margin **1b+F4 FIXED** = acquire 日历缺口 land/accept（v3 SSE+SZSE）+ pulse serve→accepted（prefer v3/fallback gen；`promote_gate=PROMOTED` → rzrqye **READY** external_aggregate；应有却缺 UNTRUSTED；覆盖前 typed EMPTY；证据 `margin_f4_promote_gate_20260723.md`）；禁 mass / 假 TRUSTED | 两融列在 accepted 日可用；估值水位可能 stale |
+| P0 | K accepted + form/qfq/segments/pulse 前沿 = **运行时状态，现查 `scripts/chunkyctl status`**（扇区/DC pulse 可能滞后；legacy raw daily 不再前进属预期，非缺陷）；`index_dailybasic` 短窗 min_rows 拒写；margin **1b+F4 FIXED** = acquire 日历缺口 land/accept（v3 SSE+SZSE）+ pulse serve→accepted（prefer v3/fallback gen；`promote_gate=PROMOTED` → rzrqye **READY** external_aggregate；应有却缺 UNTRUSTED；覆盖前 typed EMPTY；证据 `margin_f4_promote_gate_20260723.md`）；禁 mass / 假 TRUSTED | 两融列在 accepted 日可用；估值水位可能 stale |
 | P0 | E 120d checkpointed measured reject/no-gain；C full-universe accept `20260717`（4989）+ `20260720`（4991）form enrich v1；D FIXED；F0+F1+F2 main_rally B0/B1 reject/`claimable=false`；B-pit 120d shadow **120/120 MATCH**；C/B-pit cutover **ON**（ACCEPTED_CUTOVER / MART_CUTOVER；无 accept/窗外日 fail-closed→legacy）；pulse drill 双轨 form 读已退役 | 下一刀 F3 main_rally B2（market sensing，同 B0 snapshot/folds/costs）**或** stop（非 Optuna / 非松门 / 非 mass backfill / 非静默 cutover / 非 StrategyRelease） |
 | P0 | qfq physical lineage FIXED (batch_id/ingested_at/factor_as_of); not execution truth; **F8 FIXED** — default **incremental** (`f_latest` value change → full-history rewrite; unchanged → append); `--full` DROP+CTAS then **in-module** `db_compact` (escape `--no-compact`); incremental skips compact | Pin batch_id; never treat qfq as nominal execution price; ban silent stale pre-rebase history |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
@@ -168,8 +169,8 @@ accept 路径跳过 provider auth / acquire；disclosure 三域同 land/accept f
 `--from-local-raw`（三域；empty_skip）或 provider land（`stk_holdertrade`+`holders_top10` only；
 org mass by-date invent banned / daily incremental-by-period）。`holders_top10` land：**ACCEPTED + same `payload_hash` → skip re-land**（防 ~32× append storm；真新内容仍 append-only；禁 bare DELETE landing）。**F3 retention FIXED**（archive 非 latest ACCEPTED → parquet；landing 7.17M→236k≈1.05×；smartmoney compact 6.7→4.3 GiB；证据 `analysis/holders_landing_retention_f3_20260723.md`）。S5 derive（FIXED）+ S7 near-FIXED / stronger PARTIAL：
 `chunkyctl derive qfq|form` + form library + pipeline clean/process 默认
-accepted-only；`--allow-legacy-fill` 逃生；daily accepted `20190102`→`20260720`
-（ST asymmetric `20220104`）；`legacy_raw_plane.yaml` + gate（**23/46 ssot** typed hard-stop wall；B1+B2 done；本阶段不再开 S7 刀）；§15 `pre-knife`；`check_foundation_done.py` FND-GATE（F1–F10 PASS；`phase_closure_ready=true`；F8 §15-VERIFY）。近端：owner-scheduled E/F only（见 `foundation_phase_reeval_20260721.md`；E0-HIST/F6 + FND-GATE + §15-VERIFY PASS）。
+accepted-only；`--allow-legacy-fill` 逃生；daily accepted 起点 `20190102`
+（ST asymmetric `20220104`）——**前沿是运行时状态，现查 `scripts/chunkyctl status`，禁止在本文件写死**（2026-08-11 实测：此处原写 `→20260720` 而真相源已是 `20260804`，正是 2026-08-10 审计点名、上一轮清理漏掉的那一处）；`legacy_raw_plane.yaml` + gate（ssot/compatibility/retired **计数现查** `check_legacy_raw_plane.py`，勿抄；2026-08-11 实测此处原写 `23/46` 而实跑 `ssot=20`，与本文件 T0 行的 `20/46` 自相矛盾；B1+B2 done；本阶段不再开 S7 刀）；§15 `pre-knife`；`check_foundation_done.py` FND-GATE（F1–F10 PASS；`phase_closure_ready=true`；F8 §15-VERIFY）。近端：owner-scheduled E/F only（见 `foundation_phase_reeval_20260721.md`；E0-HIST/F6 + FND-GATE + §15-VERIFY PASS）。
 S6 serve（FIXED）：
 `market_pulse_serve_read` + DataAccess entities；router 零 `# serve-exempt:`；D5 全绿。
 `observation_population.py` 的 default
