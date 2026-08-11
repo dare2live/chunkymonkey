@@ -376,21 +376,19 @@ def render_md(d: dict) -> str:
     return "\n".join(L) + "\n"
 
 
-def _body(text: str) -> str:
-    """漂移比对体: 剔除时间戳行 + 全部 codegraph 派生的易变面。
+def _body(text: str, *, include_rankings: bool = False) -> str:
+    """漂移比对体: 剔除时间戳行 + 计数行; 排名表按 ``include_rankings`` 取舍。
 
-    计数行早就被剔除 (它每次 sync 必变)。2026-08-11 实测发现**排名表和计数行同源同因**:
-    全量索引与增量索引的 calls 边数不同 (12,619 vs 12,434), top-N 的尾部名次因此翻转 ——
+    计数行永远剔除 (它每次 sync 必变)。排名表**与计数行同源同因**: 全量索引与增量
+    索引的 calls 边数不同 (2026-08-11 实测 12,619 vs 12,434), top-N 尾部名次因此翻转,
     于是 worktree 说「无漂移」而 safe_commit 的 fresh 快照说「漂移」, 连续两刀假红。
-    漂移门要证的是「派生地图是否与源一致」, 不是「两个索引的排名是否逐字相同」;
-    把易变排名计入判定, 只会训练人无视这道门。表本身仍保留在文档里供人读。
     """
     out: list[str] = []
     skipping = False
     for ln in text.splitlines():
         if ln.startswith(SNAPSHOT_PREFIX) or ln.startswith(CG_STATS_PREFIX):
             continue
-        if ln.startswith(CG_VOLATILE_SUBSECTIONS):
+        if not include_rankings and ln.startswith(CG_VOLATILE_SUBSECTIONS):
             skipping = True
             continue
         if skipping:
@@ -400,6 +398,31 @@ def _body(text: str) -> str:
                 continue
         out.append(ln)
     return "\n".join(out)
+
+
+def _cg_stats_line(text: str) -> str:
+    for ln in text.splitlines():
+        if ln.startswith(CG_STATS_PREFIX):
+            return ln
+    return ""
+
+
+def bodies_drifted(old: str, new: str) -> bool:
+    """两侧索引口径相同就连排名表一起比; 口径不同才放过排名表。
+
+    2026-08-11 独立审查 finding #2 指出: 无条件整表排除虽然消灭了假红, 却把这两张表
+    变成了**永久检测盲区** —— 热点整体换掉也不会红。审查建议的「比 rank-1 / 比 top-N
+    集合」并不成立: 实测那次抖动恰恰就是集合成员变化 (尾行 `accepted_schema.py 7`
+    ↔ `frontend/src/components/Card.tsx 8`), 按集合比同样会假红。
+
+    正解是**按口径条件化**: codegraph 计数行相同 = 两侧出自同一索引口径, 此时排名差异
+    只能来自真实源变化, 该比; 计数行不同 = 一侧全量一侧增量 (safe_commit 的 fresh 快照
+    对 worktree 增量索引就是这种情形), 排名差异是口径噪音, 不该比。盲区从「永久」缩成
+    「仅跨索引口径比对时」。
+    """
+    stats_old, stats_new = _cg_stats_line(old), _cg_stats_line(new)
+    same_index = bool(stats_new) and stats_old == stats_new
+    return _body(old, include_rankings=same_index) != _body(new, include_rankings=same_index)
 
 
 def main() -> int:
@@ -424,7 +447,7 @@ def main() -> int:
 
     md = render_md(d)
     old = MD_OUT.read_text(encoding="utf-8") if MD_OUT.exists() else ""
-    drifted = _body(old) != _body(md)
+    drifted = bodies_drifted(old, md)
 
     if args.check:
         if drifted:

@@ -154,6 +154,25 @@ def test_existing_full_path_is_not_a_dangling_command_name(tmp_path):
     assert not [w for w in warns if "run_outcome.py" in w]
 
 
+def test_same_basename_elsewhere_does_not_cover_a_dangling_command(tmp_path):
+    """2026-08-11 独立审查 finding #1：豁免必须按行，不能按整份文档收 basename。
+
+    否则一处合法的全路径会顺带放行另一处**同名但确实悬空**的裸命令引用。
+    """
+    _seed_authority_docs(tmp_path)
+    _write(tmp_path / "backend" / "services" / "foo" / "audit_thing.py", "x = 1\n")
+    _write(
+        tmp_path / "docs" / "MASTER_TOPLEVEL_DESIGN.md",
+        "实现见 `backend/services/foo/audit_thing.py`。\n"
+        "运维时先跑 `audit_thing.py --check` 收尾（scripts/ 下已不存在）。\n",
+    )
+
+    fails, warns = run(tmp_path)
+
+    assert fails == []
+    assert [w for w in warns if "audit_thing.py" in w], "同名裸命令悬空必须仍然 WARN"
+
+
 def test_full_path_that_does_not_exist_still_warns(tmp_path):
     """豁免只对**存在**的全路径生效，不能被写全路径就绕过。"""
     _seed_authority_docs(tmp_path)

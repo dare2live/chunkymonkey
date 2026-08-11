@@ -48,6 +48,13 @@ STATUS_WARN = "warn"
 STATUS_FAIL = "fail"
 STATUS_UNVERIFIED = "unverified"
 
+# tier12 的**逐日**回落原因：当天没有 accepted partition。config 注释写明这属预期，
+# 发布一期即自愈 → WARN。其余原因 (definition_version / config_hash 与已发布 payload
+# 不一致、canary scope 冲突等) 是**结构性**的，跑多少次日更都不会自愈 → FAIL，与 b_pit
+# 同级。2026-08-11 独立审查 finding #3: 首版把所有非生效原因一律判 WARN，等于让一个
+# 永久坏掉的 cutover 配置永远顶着「这是预期回落」的标签 —— 恰恰是本检查要消灭的失效模式。
+_TIER12_TRANSIENT_REASONS = frozenset({"missing_accept", "no_accepted_partition_for_day"})
+
 _OVERALL_BY_RANK = {0: "PASS", 1: "WARN", 2: "FAIL"}
 _RANK = {STATUS_PASS: 0, STATUS_WARN: 1, STATUS_UNVERIFIED: 1, STATUS_FAIL: 2}
 _EXIT = {"PASS": 0, "WARN": 2, "FAIL": 1}
@@ -142,23 +149,35 @@ def _tier12_finding(day: str) -> dict[str, Any]:
         }
     decision = resolve_tier12_consumer_cutover(day)
     effective = bool(decision.cutover_allowed)
+    reasons = list(decision.reasons)
+    transient = bool(reasons) and all(r in _TIER12_TRANSIENT_REASONS for r in reasons)
+
+    if effective:
+        status, detail = STATUS_PASS, f"声明与实际一致：{day} → {decision.status}/{decision.source}"
+    elif transient:
+        status = STATUS_WARN
+        detail = (
+            f"声明 cutover_allowed=true 但 {day} → {decision.status}/{decision.source}。"
+            "原因是当天没有 accepted partition —— 逐日回落是 config 写明的预期行为，"
+            "发布一期即自愈，故记 WARN 不记 FAIL；但「声明已切换、实际走 legacy」必须被看见"
+        )
+    else:
+        status = STATUS_FAIL
+        detail = (
+            f"声明 cutover_allowed=true 但 {day} → {decision.status}/{decision.source}，"
+            f"原因 {reasons[:3]} **不是**逐日回落 —— 这是 config 与已发布 payload 的结构性"
+            "不一致，跑多少次日更都不会自愈，须 owner 裁决（与 b_pit 同级）"
+        )
     return {
         "check": "tier12_consumer",
-        "status": STATUS_PASS if effective else STATUS_WARN,
+        "status": status,
         "declared_cutover_allowed": True,
         "trade_date": day,
         "resolved_status": decision.status,
         "resolved_source": decision.source,
-        "reasons": list(decision.reasons)[:5],
-        "detail": (
-            f"声明与实际一致：{day} → {decision.status}/{decision.source}"
-            if effective
-            else (
-                f"声明 cutover_allowed=true 但 {day} → {decision.status}/"
-                f"{decision.source}。逐日 accepted partition 依赖是 config 写明的预期"
-                "回落，故记 WARN 不记 FAIL —— 但「声明已切换、实际走 legacy」必须被看见"
-            )
-        ),
+        "reasons": reasons[:5],
+        "transient_reason": transient,
+        "detail": detail,
     }
 
 

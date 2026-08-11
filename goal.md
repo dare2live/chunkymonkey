@@ -64,10 +64,10 @@
 
 - **P1 门重新分布** — **FIXED**（2026-08-11）
   - 分组 owner = `backend/config/governance_gates.yaml`（与 tier 正交）：`diff_correctness` 10 阻断 / `system_health` 2 归运行时 / `scaffold` 7 warn-only。条文 `engineering_governance.md` §14.1
-  - P1.2：`daily_update` store 阶段跑 `runtime_checks`（continuity · residual_hygiene · grain_uniqueness · **cutover_effective** · lineage_catalog）；`system_health` 门未挂运行时 → `load_registry()` 直接抛错，不许「摘掉却无人接手」
+  - P1.2：`daily_update` store 阶段跑 `runtime_checks`（continuity · residual_hygiene · grain_uniqueness · **cutover_effective**；lineage_catalog 已于同日按独立审查证据撤出 —— 它在运行时报的是开发者状态非数据健康）；`system_health` 门未挂运行时 → `load_registry()` 直接抛错，不许「摘掉却无人接手」
   - P1.3：scaffold 门 `gate_fail` 走 warn 分支 + commit 尾部汇总 + `scripts/chunkyctl scaffold-fix`
-  - 验收实测：commit 路径只剩 `diff_correctness`（`chunkyctl gates --check` PASS，19 门三处一致）；`daily_update --dry --skip-sync --date 20260811` 报出 `system_health cutover_effective FAIL`（b_pit attested 窗口 20260121–20260722 已过期，20260810 → BLOCKED/legacy_mart），typed `run_outcome=integrity_observe`
-  - **交给 owner 的两条裁决**（检查报出来了，修不了）：① b_pit `cutover_allowed=true` 但窗口过期 → 重新 attest 或改回 `false`；② tier12 `consumer_cutover.cutover_allowed=true` 但最新交易日无 accepted partition（WARN，逐日回落属预期，非结构性）
+  - 验收实测：commit 路径只剩 `diff_correctness`（`chunkyctl gates --check` PASS；门数随 P2.1 增至 20，三处一致由 `--check` 机械保证）；`daily_update --dry --skip-sync --date 20260811` 报出 `system_health cutover_effective FAIL`（b_pit attested 窗口 20260121–20260722 已过期，20260810 → BLOCKED/legacy_mart），typed `run_outcome=integrity_observe`
+  - **交给 owner 的两条裁决**（检查报出来了，修不了）：① b_pit `cutover_allowed=true` 但窗口过期 → 重新 attest 或改回 `false`；② tier12 `consumer_cutover.cutover_allowed=true` 但最新交易日无 accepted partition（WARN —— 2026-08-11 独立审查后已改为**按原因分级**：只有「当天没 accepted」这种逐日回落算 WARN，`config_hash_mismatch` 等结构性原因判 FAIL，与 b_pit 同级）
 - **P4.1 孤儿法条归位** — **FIXED**（2026-08-11）：`run_outcome` 四态法条落 **`MASTER` §5.4**（系统语义；确认没放 `engineering_governance`）。含四态判据表、rollup 顺序、exit 映射、四条不可放宽规则（归类不明≠等时钟 / 完整性≠时钟 / 下游只渲染不按 rc 反推 / 报告 JSON 是真相源 exit 是渲染器）、消费面清单。`backend/services/pipeline/run_outcome.py` docstring 的 Authority 从 `analysis/` 改指 MASTER，analysis 两份降为 Origin。文档↔enum 一致性由 moth `run-outcome-four-states-law` 锁死（任一侧增删态即红）。顺手修 `check_doc_governance` C7 假阳性：真实存在的**全路径**引用不再当成悬空命令名（该维度本就归 `check_doc_drift`，注释早写了实现漏了），加两个方向的回归测试
 - **P2 状态零手写**（依赖 P1.2）
   - P2.1 **FIXED**（2026-08-11）：机器门 `check_doc_runtime_state` + `doc_runtime_state.yaml`（默认禁止紧凑日期 + 显式豁免须写明为何是常量；豁免失效自报），注册为第 20 道门（scaffold，warn-only）。抓到并修掉上一轮人工清理漏掉的：`PROJECT_INDEX` 的 `→20260720`（正是 2026-08-10 审计点名那一处）、`至 20260721`，以及 `23/46 ssot` vs 同文件 `20/46`（实跑真值 `ssot=20`）自相矛盾。**结论：靠人扫必漏，所以门比清理重要**

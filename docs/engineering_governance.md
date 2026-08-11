@@ -235,7 +235,7 @@ readiness 属于 state 与 reconcile 之上的 orchestration，必须单向依�
 
 `daily_update` 的 store 阶段跑 **system_health 运行时自检**（owner =
 `backend/config/governance_gates.yaml` 的 `runtime_checks`，见 §14.1）：continuity、
-residual_hygiene、grain_uniqueness、cutover_effective、lineage_catalog。FAIL =
+residual_hygiene、grain_uniqueness、cutover_effective。FAIL =
 degraded + 续跑 + 写 flag，绝不静默；`--dry` 只跳过声明了 `skip_when_dry` 的重扫描项。
 手动等价入口 `scripts/chunkyctl gates --run-system-health`。
 

@@ -231,18 +231,27 @@ def run(root: Path) -> tuple[list[str], list[str]]:
                 fails.append(f"C4 {rel_doc} 引用不存在的 {ref} (幽灵引用)")
             elif ref in retired_like:
                 warns.append(f"C6 {rel_doc} 引用已退役/被取代的 {ref} — 历史叙述合法, 当 owner 引用须改指现行文件")
-        covered_by_full_path = {
-            path.rsplit("/", 1)[-1]
-            for path in set(_FULL_PATH_REF_RE.findall(text))
-            if (root / path).is_file()
-        }
-        for ref in set(_SCRIPT_REF_RE.findall(text)):
-            if ref in covered_by_full_path:
-                continue  # 全路径且真实存在 → 不是悬空命令名，交给 check_doc_drift
-            if not any((d / ref).exists() for d in script_dirs):
-                # WARN 级 (2026-06-16 立, 暂不 FAIL): 先暴露 reset 删脚本致 doc→命令悬空 backlog (25+ 处),
-                # doc 清理收口后翻 FAIL 守门 (原 audit_docs_graph gate 已删=此盲区累积根因)。
-                warns.append(f"C7 {rel_doc} 引用不存在脚本命令 {ref} (reset 删/改名后悬空; 清理 backlog, 收口后翻 FAIL)")
+        # 豁免必须**按行**判定 (2026-08-11 独立审查 finding #1): 按整份文档收集
+        # basename 会让「同名但确实悬空的裸命令」被另一处无关的合法全路径顺带放行 ——
+        # 实测反例: 文档里既写 `backend/services/foo/audit_thing.py` (存在), 又另起一行
+        # 写 `audit_thing.py --check` (scripts/ 下不存在), 结果零 WARN。
+        # 归属关系只在同一行成立: 全路径与它的裸名指的是同一个东西。
+        for lineno, line in enumerate(text.splitlines(), 1):
+            covered_on_this_line = {
+                path.rsplit("/", 1)[-1]
+                for path in set(_FULL_PATH_REF_RE.findall(line))
+                if (root / path).is_file()
+            }
+            for ref in set(_SCRIPT_REF_RE.findall(line)):
+                if ref in covered_on_this_line:
+                    continue  # 同行的全路径且真实存在 → 交给 check_doc_drift
+                if not any((d / ref).exists() for d in script_dirs):
+                    # WARN 级 (2026-06-16 立, 暂不 FAIL): 先暴露 reset 删脚本致 doc→命令悬空
+                    # backlog (25+ 处), doc 清理收口后翻 FAIL 守门。
+                    warns.append(
+                        f"C7 {rel_doc}:{lineno} 引用不存在脚本命令 {ref} "
+                        "(reset 删/改名后悬空; 清理 backlog, 收口后翻 FAIL)"
+                    )
         referenced_commands = set(_CHUNKYCTL_COMMAND_RE.findall(text))
         if rel_doc == "FEATURE_MAP.md":
             referenced_commands.update(_feature_map_commands(text))

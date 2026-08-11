@@ -32,9 +32,9 @@ def run_store(ctx: PipelineContext) -> None:
                        degraded_msg="watermark refresh 失败 — SLA 体系将持续误报 stale")
 
     # Step 2.98: system_health 组运行时自检 (goal.md「治理体系重构」P1.2)。
-    #   continuity / residual_hygiene 原本就在这里；grain_uniqueness / lineage_catalog /
-    #   cutover_effective 是从 commit 路径归位过来的 —— 它们查的是库里现有数据与
-    #   config 声明的生效性，与「有没有人恰好提交代码」无关。清单 owner =
+    #   continuity / residual_hygiene 原本就在这里；grain_uniqueness / cutover_effective
+    #   是从 commit 路径归位过来的 —— 它们查的是库里现有数据与 config 声明的生效性，
+    #   与「有没有人恰好提交代码」无关。清单 owner =
     #   backend/config/governance_gates.yaml，本函数不许再手写第二份。
     run_system_health_checks(ctx)
 

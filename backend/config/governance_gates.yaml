@@ -111,9 +111,11 @@ commit_gates:
     group: diff_correctness
     checks: "提交版 data/lineage/graph.json 与重生结果逐字一致"
     why: >-
-      主因是这次 diff 改了 registry/schema/消费方却没重生血缘。但重生同时扫
-      live DuckDB information_schema，故 live 表增删也能让无关 diff 变红 ——
-      这一面已同时登记进 runtime_checks.lineage_catalog，运行时先发现。
+      漂移的成因是这次 diff 改了 registry/schema/消费方却没重生血缘 —— 纯 diff 正确性。
+      2026-08-11 曾把它的 live-catalog 面也挂进运行时自检，独立审查实测推翻：它在运行时
+      报的是「有人改了代码没重生血缘」这种**开发者状态**，与数据健康无关（审查那次命中
+      正是因为本会话在改代码），且写锁期的降级路径从未验证。已撤出 runtime_checks ——
+      放一个信号含义不明的检查进日更，只会训练人无视 degraded。
 
   dead_references:
     group: diff_correctness
@@ -217,19 +219,14 @@ runtime_checks:
     args:
       - "--json-out"
       - "data/audit/cutover_effective_{date}.json"
+    # 文案必须涵盖全部触发条件, 不能写死其中一种。2026-08-11 独立审查 finding #4:
+    # 首版写死「attested 窗口已过期」, 但本检查的退出码把 FAIL(1)/WARN(2)/UNVERIFIED(2)
+    # 都收敛成非零, 于是日历不可达 (与窗口毫无关系) 也会读到一条讲窗口过期的告警。
+    # 精确原因在 JSON 里, 告警头条不许误导。
     degraded_msg: >-
-      system_health cutover_effective FAIL — config 声明的 cutover 与 resolver
-      实际裁决背离 (attested 窗口已成过去时 → 消费方其实一直走 legacy 路径;
-      详 data/audit/cutover_effective_{date}.json)
-    skip_when_dry: false
-
-  - id: lineage_catalog
-    from_gate: lineage_drift
-    script: backend/scripts/check_lineage_drift.py
-    args: []
-    degraded_msg: >-
-      system_health lineage_catalog FAIL — 血缘图与现实(registry/代码/live DuckDB
-      information_schema)漂移; 运行时命中通常意味着库里的表被增删而血缘未重生
+      system_health cutover_effective 非 PASS — config 声明的 cutover 与 resolver
+      实际裁决背离, 或生效性无法验证 (结构性背离/逐日回落/日历不可达三选一,
+      精确原因见 data/audit/cutover_effective_{date}.json)
     skip_when_dry: false
 
 # ── 脚手架批量修 ────────────────────────────────────────────────────────

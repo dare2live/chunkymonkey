@@ -510,6 +510,10 @@ fi
 #   静态 verifier/测试本身仍由前述 exact-index gates + Rule 10 阻断。
 echo
 echo "=== Step 3.99: continuity-integrity evidence (live data readiness) ==="
+# 本块自 2026-08-11 P1 起只在 **fail-closed 路径**可达 (continuity 属 system_health 组,
+# gate_enabled 常规下直接返回 false)。刻意保留而非删除: 门策略坏掉时它必须还在, 而那正是
+# 最需要「验证器自身可信」的时刻 —— 下面那段 JSON/计数/退出码自洽校验守的就是这个。
+# 2026-08-11 独立审查 finding #5 记录了这块的可达性, 结论是设计如此, 非死代码。
 if gate_enabled continuity; then
 CONTINUITY_JSON="$STAGED_INDEX_DIR/.continuity.json"
 CONTINUITY_ERR="$STAGED_INDEX_DIR/.continuity.err"
