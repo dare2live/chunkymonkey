@@ -9,33 +9,38 @@
 
 ## 当前 objective
 
-**轨道 = foundation solidify CLOSED**（2026-07-21；母体 = transport strangler S1–S7 + brick L0–L3 + E0 + DB 分层；**phase_closure_ready=true**）。模块化 **S1–S6 FIXED**；**S7 near-FIXED**（**20 ssot + 3 retired** typed hard-stop 墙；B1+B2 done；禁假 COMPAT；`stk_factor_pro`+`express`/`fina_mainbz` sunset/DROP；**2026-07-24 `stk_holdernumber` RESTORE** `by_ann_date`+DataAccess+dossier assist）。**E0-HIST / F6 PASS**（holders≥120 trading-day overlap）。**FND-GATE PASS**（F1–F10 全 PASS；F8 §15-VERIFY **PASS**）。**§15 behavior PASS**（连续 3 刀 commits/knife=1.0 + pre-knife）。**B5** registry/qfq **FIXED**；Type-B enrichment **FIXED**；qfq incremental **FIXED**；breadth B-pit promote **FIXED**。A→H = **后置研究地图**；**E/F remeasure paused**（可 schedule，未开）。WP0–WP4 闭合；**WP6 shadow 期已超 `engineering_governance.md` §13 上限**（起点 `be8efc6f`/2026-07-20 + 「10 session 或 14 天先到者」→ 2026-08-03 到期；2026-08-10 发现仍标「开放」），待 owner 裁决 cutover 或重置。**§15 knife-merge binding 不变**。
+**轨道 = foundation solidify CLOSED**（母体 = transport strangler S1–S7 + brick 分层 + E0 + DB 分层）。
+逐项完成史查 `chunkyctl history --grep <关键词>`；FND-GATE 十维实时裁决跑
+`check_foundation_done.py` —— **本节不再复述已闭合项**（复述必然滞后，本轮实证过）。
 
-已落地硬事实（勿回滚；细节见 FOUNDATION §2 + git）：
-- C + B-pit **`cutover_allowed=true`**（`b38e9ac5`）→ `ACCEPTED_CUTOVER` / `MART_CUTOVER`；dual-track residual **NONE**
-- accepted daily / ST 已 cutover；起点 **`20190102`** / **`20220104`** 是契约常量。**当前 frontier 是运行时状态 — 现查 `scripts/chunkyctl status`，禁止在本文件写死**（2026-08-10 实测：手写的 `→20260721` 已落后实况 `→20260804` 两周，PROJECT_INDEX 另写 `→20260720`，两份手写文档互相矛盾）；form/qfq/pulse 跟 formal；工作台一键更新 + Cap E 分步节点 FIXED
-- Phase D runtime FIXED；Phase F F0–F3 ladder measured **reject** / `claimable=false`（可 checkpoint；≠ Release）
-- Delivery-OS：eng_gov **§15**（一刀=Rule10+safe_commit；异步 CI；L3 pre-knife；不放宽 PIT/≤40d）
-- CX-1…CX-4 PASS；Cap A/B/D/E/F usable；margin v3 path + holders skip-land + qfq in-module compact FIXED
+**当前 blocker**
+- **数据线滞后**：accepted 日线落后若干交易日，滞后数现查 `scripts/chunkyctl status`。它连带卡住
+  b_pit 影子比对与 tier12 逐日发布 —— 三者是一条串行链，不是三个独立问题。
+- **b_pit cutover 声明与实际背离**：yaml 写 `cutover_allowed=true`，而 attested 窗口末端已成过去时 →
+  resolver 对窗外任何 trade_date 一律 fail-closed 回 legacy。`adv_dec_ratio` 是 institution_follow
+  B2 的 risk_on 门输入，**不是展示指标**，故这不是化妆问题。处置见「剩余计划 C2」。
+- **WP6 仪式影子期已过 `engineering_governance.md` §13 上限**，须 owner 裁决 cutover 或重置。
+
+已裁决硬事实（勿回滚）：
+- accepted daily / ST 起点 **`20190102`** / **`20220104`** 是契约常量；**当前 frontier 是运行时状态，
+  现查 `chunkyctl status`，禁止在本文件写死**（2026-08-10 两份手写文档互相矛盾且同时落后两周）
+- Phase F ladder measured **reject** / `claimable=false`（可 checkpoint；**≠** Release）
+- Delivery-OS：eng_gov §15（一刀 = Rule10 + safe_commit；异步 CI；L3 pre-knife；不放宽 PIT / ≤40d）
+- A→H = 后置研究地图；**E/F remeasure paused**（须 owner 显式 schedule 才开；`foundation_done.yaml` 的 `strategy_pause.goal_must_contain` 按字面匹配本短语，改写措辞会让 F9 变红）
 
 启动：`scripts/chunkyctl agent-boot`；运行时状态：`scripts/chunkyctl status`（现查，零文件）。
 
 ## 下一步
 
-**执行权威（what next）** = 仅两份方案：
-1. **数据底座** → `analysis/FOUNDATION_EXECUTION_PLAN.md`（§6 exit **MET**；**100% usable MET** = 无 class-A；根因 `docs/engineering_governance.md §9.1 (残留分类 A/B/C/D)`；annotate/UNTRUSTED = class-B 诚实 OK）
-2. **后续策略** → `analysis/STRATEGY_EXECUTION_PLAN.md`（**仍 BLOCKED** until 本文件显式 schedule RX — exit MET ≠ 自动开 RX）
+**执行权威 = 仅两份方案**：底座 `analysis/FOUNDATION_EXECUTION_PLAN.md`（§6 exit MET；
+100% usable = **无 class-A**，判据见 eng_gov §9.1）· 策略 `analysis/STRATEGY_EXECUTION_PLAN.md`
+（**仍 BLOCKED**，须本文件显式 schedule RX —— exit MET **不等于**自动开 RX）。
+残差一律进这两份 backlog，不新开第三份。
 
-**foundation-done 已闭合**（F1–F10 PASS；`phase_closure_ready=true`；CX-1…CX-4 PASS）。FND-GATE spec = `docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维)`。无「主方案 vs 支线」——残差一律进上述 backlog。
+**护栏**（长期有效，非进度）：formal frontier 与 drain soft 窗分立叙述 · PIT + ≤40d ·
+§15 不放宽 · serve = 沪深A 含 ST · 禁为清单洗绿（class-B 诚实状态**留着就是做对了**）。
 
-**已闭合（勿回滚）**：S1–S6 FIXED；S7 near-FIXED（禁假 COMPAT；无 owner 新 block 不开 S7 刀）；E0-HIST/F6 PASS；org **incremental-check-every-run**（mass/by-date invent banned）；B5 registry/qfq/Type-B enrichment **FIXED**；qfq incremental **FIXED**；breadth B-pit promote **FIXED**；Cap F dossier usable FIXED；margin 1a+1b+**F4 serve→accepted** FIXED（SSE+SZSE；rzrqye READY as external_aggregate on accepted days；缺日 UNTRUSTED；禁假 TRUSTED/project_universe）；holders skip-land FIXED；qfq in-module compact FIXED；Serve→derive 闭环 FIXED；跑步机 0–3 FIXED；§15-VERIFY PASS；**Continuity Knife4 FIXED**；**foundation §6 exit MET** + **100% usable MET**（无 class-A；annotate WARN = class-B；禁为清单洗绿）。
-
-**近端 focus**：F4 serve→accepted **FIXED**；breadth B-pit promote **FIXED**（READY as project_universe_pit when MART_CUTOVER）；F7 Type-B enrichment **FIXED**；F8 qfq incremental **FIXED**。等 owner **显式 schedule RX** 才开 STRATEGY。**Optuna / Release 未开**。仍禁 S7 假 COMPAT / org invent / 松 holdout / Continuity 洗绿。
-
-
-**护栏**：formal frontier 与 drain soft 窗分立叙述；PIT+≤40d；§15 不放宽；org 增量见 `docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (披露域增量策略)`；禁全宇宙扫股东公告（`docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (披露域增量策略)`）；serve=沪深A 含 ST；**F9 residual_hygiene** 约束 Type-B publish / ann tip 滞后（超 SLA → 日更 degraded；≠ Continuity READY 化妆）；**org accepted pointer = full canonical partition**（同 available 多 report 禁末 batch 覆盖；F6 计 mismatch）。
-
-## 治理体系重构（2026-08-10 立项；owner 认可第一性原理设计；未开工）
+## 治理体系重构（2026-08-10 立项；L1/L2/L3 层已落地，收尾中）
 
 ### 诊断
 
@@ -60,26 +65,31 @@
 
 推论：**`analysis/` 终点是 0 份**（已实证全仓 `open()/read_text()` 指向 analysis 零命中，无一是运行时依赖）；**ledger 退役**（commit message 已含 Q/Fix/Evidence/Residual，ledger 是 git log 的人工副本，必然滞后 —— 实证断档 77 个 commit 而 git 一条没丢；检索用 `git log --grep`，永不断档）。
 
-### 执行顺序（P1→P4.1→P2→P3；每步一刀一 safe_commit）
+### 剩余计划（完成项查 `chunkyctl history --grep 治理`，本节只朝前看）
 
-- **P1 门重新分布** — **FIXED**（2026-08-11）
-  - 分组 owner = `backend/config/governance_gates.yaml`（与 tier 正交）：`diff_correctness` 10 阻断 / `system_health` 2 归运行时 / `scaffold` 7 warn-only。条文 `engineering_governance.md` §14.1
-  - P1.2：`daily_update` store 阶段跑 `runtime_checks`（continuity · residual_hygiene · grain_uniqueness · **cutover_effective**；lineage_catalog 已于同日按独立审查证据撤出 —— 它在运行时报的是开发者状态非数据健康）；`system_health` 门未挂运行时 → `load_registry()` 直接抛错，不许「摘掉却无人接手」
-  - P1.3：scaffold 门 `gate_fail` 走 warn 分支 + commit 尾部汇总 + `scripts/chunkyctl scaffold-fix`
-  - 验收实测：commit 路径只剩 `diff_correctness`（`chunkyctl gates --check` PASS；门数随 P2.1 增至 20，三处一致由 `--check` 机械保证）；`daily_update --dry --skip-sync --date 20260811` 报出 `system_health cutover_effective FAIL`（b_pit attested 窗口 20260121–20260722 已过期，20260810 → BLOCKED/legacy_mart），typed `run_outcome=integrity_observe`
-  - **交给 owner 的两条裁决**（检查报出来了，修不了）：① b_pit `cutover_allowed=true` 但窗口过期 → 重新 attest 或改回 `false`；② tier12 —— owner 2026-08-11 裁决**发布**，已执行：实测它卡在派生链 `tier12 ← form ← qfq ← accepted 日线` 三层之下，依次推进 qfq / form / 发布后该日 `ACCEPTED_CUTOVER` 生效（过程与实测数见 `chunkyctl history --grep tier12 --full`）。**最新交易日仍 BLOCKED 是数据缺口所致，非发布问题**——待 owner 排期补数
-- **P4.1 孤儿法条归位** — **FIXED**（2026-08-11）：`run_outcome` 四态法条落 **`MASTER` §5.4**（系统语义；确认没放 `engineering_governance`）。含四态判据表、rollup 顺序、exit 映射、四条不可放宽规则（归类不明≠等时钟 / 完整性≠时钟 / 下游只渲染不按 rc 反推 / 报告 JSON 是真相源 exit 是渲染器）、消费面清单。`backend/services/pipeline/run_outcome.py` docstring 的 Authority 从 `analysis/` 改指 MASTER，analysis 两份降为 Origin。文档↔enum 一致性由 moth `run-outcome-four-states-law` 锁死（任一侧增删态即红）。顺手修 `check_doc_governance` C7 假阳性：真实存在的**全路径**引用不再当成悬空命令名（该维度本就归 `check_doc_drift`，注释早写了实现漏了），加两个方向的回归测试
-- **P2 状态零手写**（依赖 P1.2）
-  - P2.1 **FIXED**（2026-08-11）：机器门 `check_doc_runtime_state` + `doc_runtime_state.yaml`（默认禁止紧凑日期 + 显式豁免须写明为何是常量；豁免失效自报），注册为第 20 道门（scaffold，warn-only）。抓到并修掉上一轮人工清理漏掉的：`PROJECT_INDEX` 的 `→20260720`（正是 2026-08-10 审计点名那一处）、`至 20260721`，以及 `23/46 ssot` vs 同文件 `20/46`（实跑真值 `ssot=20`）自相矛盾。**结论：靠人扫必漏，所以门比清理重要**
-  - P2.2 **FIXED**（2026-08-11）：`scripts/chunkyctl status [--json]` = L2 单一现查入口（`services/project_status.py`；零文件、退出码恒 0 报事实不裁决）。给出 accepted 前沿 + **距最近已完成交易日的交易日滞后**、源水位、cutover 声明 vs 实际、门分布、告警 flag。此前**没有任何一条命令**能回答「前沿在哪」——真相散在两个库，而当时的 `docs/README` 把人指向一个明说自己没有该值的生成文件。坏指针一并修正
-  - P2.3 **FIXED**（2026-08-11）：board 改**现查、零文件**。`agent_boot` 与 `chunkyctl status` 现调 `agent_board_projection.collect()`（实测 0.3s、不连库）；`BOARD.md` + `data/board/agent_context.json` 两个落盘产物与 `agent_board` 漂移门一并退役（门 20→19），旧的 `build_agent_board` 脚本改名为 `backend/scripts/agent_board_projection.py` 并去掉写盘/`--check`。新增诚实性护栏：投影声明 `inputs_present`，config 缺失时 boot 报 error 而不是渲染一份全缺省的空板
-- **P3 历史归 git**（依赖 P2.2）
-  - P3.2 **FIXED**（2026-08-11）：`scripts/chunkyctl history`（`--grep` 逐刀 / `--eras` 时期 / `--full` 出正文）
-  - P3.3 **FIXED**（2026-08-11）：ledger **直接退役**（非冻结）。实测三条依据：① 同一刀逐字对比，commit message 是 ledger 的**超集**（`16f5c370c`：ledger 记 4 条 Rule10，commit 记 6 条）；② 「早期 commit 太薄」不成立——2026-04~05 期 1133 个 commit 中位 783 字符/20 行、41% 带证据结构；③ 169 条里唯一 git 不直接给的只有 **6 段时期叙事（2030 字符）**，已转成 `era/*` annotated tag（`--eras` 可查）。删后 `check_doc_drift` 抓出 9 处需求侧死引用，全部改指 `chunkyctl history`
-  - P3.4 **进行中**（2026-08-11）：`analysis/` **55 → 16 份**。已删 39 份（36 EVIDENCE + 3 SUPERSEDED，逐份读过内容而非按文件名推断）。删后门抓出 **13 处活文档幽灵引用 + 68 处代码/配置死指针**，全部改指 `git log --grep`/`chunkyctl history` —— 这正是「删供给侧必清需求侧」。**剩 3 份**（4 纯 RULE + 9 MIXED 已并完 → MASTER §5.5–§5.8/§9.1/§10.1/§11 · eng_gov §6/§9.1/§10 · strategy §3.1）。剩下 2 份是执行计划（backlog 非规则，处置方式另议）+ 1 份 treadmill（待拆）：4 份纯 RULE + 12 份 MIXED，里面装着多处代码写成 `Authority:` 在用的活规则（变量积木分层 L0–L4、物理 DB 分层、frontier 决策原语、partition leap 法条、Cap A–F 能力定义…），MASTER **目前完全没有**这两章。工作量：MASTER ~275 行 / eng_gov ~95 行 / strategy ~55 行；**`backend/config/*.yaml` 零新增**（阈值/窗口/白名单早已全部落 yaml，L1 契约层本就干净）
-  - P3.1 **未做**：commit message 模板固化 Q/Fix/Evidence/Residual（commit_msg 门的正确形态：查结构，不查关键词）
-  - P3.4 `analysis/` 归零（现 65 份；卡点是几十处注释性溯源要一起改，批量替换已试过一次并回滚，需更好策略）
-- **P4.2-4.4 文档按层归位**：`eng_gov §6/§11`、`AGENTS §4` 的系统约束移进 `MASTER`；三份 owner contract 重新划界（MASTER=系统法 / eng_gov=开发纪律 / strategy=研究发布）
+**已闭合**：P1 门重新分布 · P4.1 孤儿法条归位 · P2 状态零手写（含 board 现查）· P3.2/P3.3 历史归 git（ledger 退役）· P3.4 主体（`analysis/` 55→3）。四层里 L1 契约 / L2 状态 / L3 历史均已到位。
+
+**A. 治理收尾**（无外部依赖，可连续做）
+- A1 拆 `architecture_fix_treadmill`：MUST STAY 清单 / 「ops 残差≠开刀」触发规则 / 死亡条款 → eng_gov
+- A2 两份执行计划的处置：它们是 backlog（L2 进度 + L3 历史 + 少量 L0 禁令），**不是**规则文档 —— 禁令段并入 owner，进度段随任务消解，不照搬前几批的「并进宪法」
+- A3 P3.1 commit message 结构门：查 Q/Fix/Evidence/Residual **结构**，不查关键词
+- A4 P4.2–4.4 三份 owner 重新划界：`eng_gov §6/§11`、`AGENTS §4` 里的系统约束移进 MASTER
+
+**B. 门体系残留**（本轮自查与独立审查暴露）
+- B1 `check_no_emoji` 在 git hook 里执法但不在 19 门登记表 —— 登记或退役，不留登记表外的执法点
+- B2 `test_safe_commit.py` 25 例失败（沙箱 fixture 缺 `test_ci_pytest_surface_drift.py`，全死在 always-on 门）
+- B3 其余 scaffold 门是否因 P1 降级产生检测范围回退 —— 独立审查点出的盲区，未查
+
+**C. 数据线**（严格串行，后项依赖前项）
+- C1 补 accepted 缺口（日线滞后见 `chunkyctl status`）
+- C2 → 跑 b_pit 影子比对取证据 → 据此续窗或把 `cutover_allowed` 改回 false。**不许为让门变绿而跳过比对**（§5.8 谄媚死）
+- C3 → tier12 补发布剩余交易日
+- C4 核实 `org_holding` 期轴滞后是否属正常披露节奏（期轴不适用交易日 SLA，需按可披露期判定）
+
+**D. 待 owner 裁决**
+- D1 b_pit 去留 —— 排在 C2 之后，非独立决策
+- D2 Cap C（产品 UX 偏好）：建议丢弃，因它**无可机器验证的判据**，写进文档只会多一份会烂的东西
+- D3 WP6 仪式影子期已过 eng_gov §13 上限，须裁决 cutover 或重置
 
 **迁移原则**：不追求一步到位，但新增任何文档前先问「这是 L0/L1/L2/L3 哪一层」—— 是 L2 就不许写，是 L3 就写进 commit message。
 
@@ -107,22 +117,16 @@
 
 架构硬决定摘要：积木=`module+data+config+contract+evidence`；landing 保留供应商响应；日历与 universe 同级硬门；名义 OHLCV=成交真相；一数据集一 writer；`manual_only`；静态 PASS≠`live_readiness`。完整条文见 `docs/MASTER_TOPLEVEL_DESIGN.md`。
 
-**Formal daily/ST acquire（owner 2026-07-21；ST∈白名单澄清 2026-07-22）**：acquire = 全市场按 `trade_date`（`raw_evidence`），**禁止** exclude-then-fetch。**沪深A 白名单含 ST/*ST**；排除仅 B/BJ/三板/观察日无名义K。`stock_st` = accepted 日级 **membership 证据**（谁在何时是 ST），**不是** universe denylist，也不是 acquire 排除名单；同日 `zero_rows`=`pending_publish` 属发布窗，勿误读为「不要 ST」。BSE/三板 landing 可含，经 board 白名单过滤。Owner：`docs/MASTER_TOPLEVEL_DESIGN.md` §5.1 + `chunkyctl history --grep "ST 白名单"`。
+**Formal daily/ST acquire · 手动 sync 时钟 · 披露域增量** 三条裁决的正文已归位 `docs/MASTER_TOPLEVEL_DESIGN.md` §5.1/§5.7 —— 本文件不再留副本（副本必然与 owner 漂移）。要点仍成立：全市场按 `trade_date` 拉、禁 exclude-then-fetch、沪深A 含 ST/*ST、`stock_st` 是 membership 证据不是 denylist、org 按可披露期缺则拉一期有则 skip、禁 mass 与 by-date invent。
 
-**Gate pytest 分层（owner 2026-07-21 redesign #1 SHIPPED）**：`ci_pytest_surface.yaml` = `blocking_paths` + `nightly_paths` + optional；`run_ci_pytest.py --tier blocking|nightly|all`；L2/L3 safe_commit + CI = **`--tier blocking`**（非全量 985）；tier12 publish contract **promoted**；strategy-paused main_rally/institution_follow → **nightly**。详见 `chunkyctl history --grep "gate redesign"`。
+**Gate pytest 分层**：owner = `backend/config/ci_pytest_surface.yaml`（`blocking` / `nightly` / optional 三面 + 每条 optional 带 reason），L2/L3 与 CI 同跑 `--tier blocking`。分层理由与当初的取舍查 `chunkyctl history --grep "gate redesign"`。
 
 **S7 sync_orphan standby（owner Q2）**：**NO** blanket pre-accept of 14 orphans（无 consumer / 无 contract / 大宗成本 / 假 readiness）。保持 ssot 墙；`legacy_raw_plane.yaml` **publication_watchlist** = 未来策略需要时的 publication 候选（非自动队列）；薄门：sync_orphan 进 DataAccess → `check_legacy_raw_plane` FAIL。**禁假 COMPAT**。
 
-**Period-domain incremental（owner Q3 + hard lock；2026-07-23 纠偏；2026-07-24 bounded fill + ops drain）**：每次 `daily_update` / 显式 sync 对 org（及同类 period 域）**必须** check latest plannable vs local raw+accepted；**raw 缺 → 拉一期；raw 有 accepted 无 → accept from local-raw；都有 → skip + next-period unlock log**；**plannable 完整且中间季有洞 → 每 auto run 填最老缺季 N=1**（`fill_older_period` via `sync_period(..., allow_existing_refresh=False)` + `plan_partition_catchup` oldest_first）。**Ops/manual 可显式 loop 直到 `missing_older_count→0`（≤40/session）** — `backend/scripts/org_holding_period_drain.py`；**auto 仍 N=1/run**（`ORG_PERIOD_CATCHUP_MAX=1`）。**NEVER** 每次点击全市场单期 ~830k mass re-pull / unbounded page crawl refresh / by-date invent / pipeline `backfill()`。实现：`org_holding_period_gap_report` + `org_holding_period_catchup` + `sync_org_holding_incremental`；表面：`delta_manifest.acquire_summary.incremental` + due_plan period 行；mass ban 不变。**Paginated land 诚实**：East Money v1 等同 filter **100 页硬顶** — truncated land 不得当 complete skip；`pagination_integrity` + org sharded fetch；daily 下一步 = **有界 repair** 非跳过（实现 `888bfde75`；细节查 ledger「2026-07-24 org 分片抓取 + pagination integrity」条）。
-
 **Product 系统 + Agent-OS 演进裁决（owner，针对 Fable5 提案）**：后续演进 = **strangler + 聚焦**，非 greenfield 重写。仅三把杠杆：(1) 单一读 SSOT 经 resolver（禁旁路直读）；(2) 本地 L2/L3 pytest = CI test-list 唯一 SSOT；(3) god-seam strangler，按 blast radius 分步收编，不整体推倒。
 
-手动 sync：`trigger_mode=manual` 不受 `same_day_at 18:00` 挡；自动更新与 consumer `available_at` 仍受 clock；交易日历对两者硬约束。见近端 focus（drain 流式 + probe-first FIXED）。
+## 禁止误报（交付判据）
 
-## 边做边测
+切片循环见 `docs/engineering_governance.md` §5（坏例先红 → 最小实现 → 绿 → 窄回归 → 挑战 verifier → stale 审计 → `FIXED|PARTIAL|BLOCKED`）。
 
-坏例先红 → 最小实现 → 绿 → 窄回归 → 挑战 verifier →（PIT/schema/writer）stale 审计 → `FIXED|PARTIAL|BLOCKED`。
-
-## Blocker / 禁止误报
-
-交易所汇总≠沪深池。accepted 行数≠业务正确。continuity 非 READY≠代码不可提交。E measured reject ≠ StrategyRelease。函数存在/WARN/fixture 绿≠交付。BOARD≠执法输入。
+交易所汇总 ≠ 沪深池。accepted 行数 ≠ 业务正确。continuity 非 READY ≠ 代码不可提交。measured reject ≠ StrategyRelease。函数存在 / WARN / fixture 绿 ≠ 交付。**投影 ≠ 执法输入**（board 已改现查、零文件）。

@@ -44,27 +44,6 @@ global_constants:
 # 逐文件豁免: 写明**为什么这个具体日期在这个具体文件里是合法的**。
 # 理由不能是「它现在是对的」—— 那是状态; 只能是「它永远不会因跑批而变」。
 file_exemptions:
-  - file: goal.md
-    value: "20260810"
-    reason: "P1 验收实测记录 (已发生的一次运行的证据, 属 L3 历史叙述)"
-  - file: goal.md
-    value: "20260804"
-    reason: "2026-08-10 前沿漂移实证的原文引用 (历史证据, 非当前声明)"
-  - file: goal.md
-    value: "20260721"
-    reason: "同上 —— 该实证记录的正是这个过期值本身"
-  - file: goal.md
-    value: "20260720"
-    reason: "同上 —— 该实证记录的正是这个过期值本身"
-  - file: goal.md
-    value: "20260121"
-    reason: "b_pit attested 窗口起点, 引自 b_pit_mart_cutover.yaml 的已冻结证据窗"
-  - file: goal.md
-    value: "20260722"
-    reason: "b_pit attested 窗口末端, 同上 (窗口本身是 config 常量; 是否仍生效由 cutover_effective 现查)"
-  - file: goal.md
-    value: "20260811"
-    reason: "P1/P4.1 验收实测的运行日期 (已发生的一次运行的证据, 属 L3 历史叙述)"
   - file: PROJECT_INDEX.md
     value: "20260717"
     reason: "Tier1/2 full-universe accept **事件日** (已发生的一次 accept, 不随日更前移; 当前前沿现查 chunkyctl status)"
