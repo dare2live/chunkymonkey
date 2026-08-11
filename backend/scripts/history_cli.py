@@ -8,7 +8,7 @@
   ledger 是 commit 的中文缩写版, 信息**更少**。
 * 「早期 commit 太薄所以只能靠 ledger」不成立: 2026-04~05 期 1133 个 commit 中位
   783 字符 / 20 行, 41% 带证据或残留结构; 反而比中期更长。
-* ledger 唯一不能被 `git log` 直接替代的, 只有 **5 条时期叙事**(合计 1785 字符) ——
+* ledger 唯一不能被 `git log` 直接替代的, 只有 **6 段时期叙事**(合计 2030 字符) ——
   它们不是原始记录, 是「这 1133 个 commit 该从哪看起」的导航。该导航已转成
   annotated git tag (`era/*`), 由本命令的 ``--eras`` 列出。
 
@@ -37,9 +37,9 @@ _SEP = "\x01"
 _REC = "\x02"
 
 
-def _git(args: list[str]) -> str:
+def _git(args: list[str], *, repo: Path | None = None) -> str:
     proc = subprocess.run(
-        ["git", *args], cwd=str(REPO), capture_output=True, text=True, check=False
+        ["git", *args], cwd=str(repo or REPO), capture_output=True, text=True, check=False
     )
     if proc.returncode != 0:
         raise RuntimeError((proc.stderr or "git failed").strip()[:300])
@@ -53,6 +53,7 @@ def search(
     until: str | None = None,
     limit: int = 40,
     full: bool = False,
+    repo: Path | None = None,
 ) -> list[dict[str, str]]:
     """按关键词 / 时间窗查 commit。多个 --grep 之间是**或**关系 (git 默认)。"""
     args = ["log", "--all", f"--format=%h{_SEP}%ad{_SEP}%s{_SEP}%b{_REC}", "--date=short"]
@@ -64,7 +65,7 @@ def search(
         args.append(f"--until={until}")
     args += ["-i", f"-{limit}"]
 
-    out = _git(args)
+    out = _git(args, repo=repo)
     rows: list[dict[str, str]] = []
     for record in out.split(_REC):
         if _SEP not in record:
@@ -84,9 +85,9 @@ def search(
     return rows
 
 
-def eras() -> list[dict[str, str]]:
+def eras(repo: Path | None = None) -> list[dict[str, str]]:
     """时期导航 = annotated tag。tag message 就是叙事本身, 不是指向文件的链接。"""
-    out = _git(["tag", "-l", "-n99", "--sort=creatordate"])
+    out = _git(["tag", "-l", "-n99", "--sort=creatordate"], repo=repo)
     rows: list[dict[str, str]] = []
     current: dict[str, str] | None = None
     for line in out.splitlines():
