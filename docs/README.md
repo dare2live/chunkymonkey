@@ -22,7 +22,6 @@
 | `../analysis/FOUNDATION_EXECUTION_PLAN.md` | 数据底座执行 backlog（evidence-only；`goal.md` 指向） |
 | `../analysis/STRATEGY_EXECUTION_PLAN.md` | 后续策略执行 backlog（RX 前 BLOCKED；evidence-only） |
 | `../analysis/DOC_CLEANUP_20260723.md` | 2026-07-23 文档收敛台账（kept/deleted） |
-| `../analysis/project_state_ledger.md` | 唯一历史账本；按关键词查询，不作为启动全文 |
 
 `CLAUDE.md` 是 legacy compatibility pointer，Codex 默认不读。旧 session handoff / workflow checkpoint 体系已经退役；新会话从 git、Moth、CodeGraph 和 live data 重建状态。跨 Cursor 账号续作时另读 owner 明示的 `../analysis/account_switch_handoff_20260720.md`（入 git，非旧 checkpoint 体系）。
 
@@ -34,7 +33,7 @@
 |---|---|
 | 当前目标、阻断、下一步 | `goal.md` |
 | 稳定架构/工程/验证规则 | 上表唯一 owner；优先修改，不新建平行文档 |
-| 已完成工作与不可复现实证 | `analysis/project_state_ledger.md` |
+| 已完成工作与不可复现实证 | **commit message**（Q/Fix/Evidence/Residual）；检索 `scripts/chunkyctl history --grep`。时期叙事 = `era/*` annotated tag（`--eras`） |
 | 可机器重建的地图/报告 | 生成器输出目录，标明 generated |
 | 普通过程记录、旧计划、过期设计 | 删除；git history 已保留 |
 | 一次性探索 | `sandbox/`，结束即清理 |

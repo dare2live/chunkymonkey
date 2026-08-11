@@ -94,14 +94,19 @@ def test_analysis_evidence_header_rejects_live_self_owner_and_pending_main_sessi
     assert all(any(name in finding for finding in fails) for name in cases)
 
 
-def test_project_state_ledger_is_the_only_analysis_markdown_header_exception(tmp_path):
-    _seed_authority_docs(tmp_path)
-    _write(
-        tmp_path / "analysis" / "project_state_ledger.md",
-        "# Ledger\n\n> 状态：historical evidence index，query-only\n",
-    )
+def test_every_analysis_markdown_needs_the_evidence_only_header(tmp_path):
+    """ledger 于 2026-08-11 P3.3 退役后，analysis/ 不再有任何 header 豁免。
 
-    assert run(tmp_path) == ([], [])
+    历史归 git（`chunkyctl history`），所以「唯一 query-only 历史索引」这个特例
+    没有存在理由 —— 留着就是给一个已不存在的文件开后门。
+    """
+    _seed_authority_docs(tmp_path)
+    _write(tmp_path / "analysis" / "project_state_ledger.md", "# 历史\n")
+    _write(tmp_path / "analysis" / "whatever.md", "# 过程\n")
+
+    fails, _ = run(tmp_path)
+
+    assert len([f for f in fails if "C3" in f]) == 2, "两份都该因缺 evidence-only 头被判 FAIL"
 
 
 def test_generated_feature_map_cannot_list_retired_cli_as_current(tmp_path):

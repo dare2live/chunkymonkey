@@ -364,7 +364,7 @@ ExperimentVerdict
 | G | 公式包 + BestChoice 对决 | namespaced 重放；B5 单块；异常高指标先反证 |
 | H | 决策 / 名义价纸面 / 产品 | candidate 全链可追溯；NONCONFORMING 观察账本隔离或退役 |
 
-每个 Phase 都用 strangler 方式迁移：契约先行、旧新并跑、逐字段对账、消费者切换、最后删除旧 writer/表/config。Phase 0/1 控制面原语已完成，证据在 ledger，不在本表重复充当业务就绪证明。
+每个 Phase 都用 strangler 方式迁移：契约先行、旧新并跑、逐字段对账、消费者切换、最后删除旧 writer/表/config。Phase 0/1 控制面原语已完成，证据在 commit message（`chunkyctl history --grep "Phase 0"`），不在本表重复充当业务就绪证明。
 
 ## 12. 明确不做
 

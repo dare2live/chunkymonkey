@@ -12,7 +12,6 @@ evidence_paths:
   engineering_governance: docs/engineering_governance.md
   docs_map: docs/README.md
   feature_map: FEATURE_MAP.md
-  project_state_ledger: analysis/project_state_ledger.md
   # Codex global AGENTS + skills live under ~/.codex — moth 0.3.0 require_repo_local
   # rejects absolute paths outside the checkout (breaks staged-snapshot safe_commit).
   # Agents still read those skills via $skill paths; do not reintroduce absolute evidence_paths.
@@ -25,7 +24,7 @@ instruction_sources:
     - Codex skills
     - live tooling output
   context_only:
-    - analysis/project_state_ledger.md
+    - chunkyctl history
   ignored_by_default:
     - CLAUDE.md
   legacy_exception: Open CLAUDE.md only when the user explicitly requests historical comparison or migration.
@@ -37,7 +36,8 @@ notes: >
   checks such as data integrity, taxonomy/PIT, strategy promotion, data health,
   and launchd/cron/installer references to retired or missing entrypoints.
   goal.md is the compact live controller board; the three owner contracts under
-  docs/ define architecture, validation, and engineering; project_state_ledger
-  is historical evidence and should be queried, not loaded wholesale.
+  docs/ define architecture, validation, and engineering; history has no file —
+  query it with `scripts/chunkyctl history --grep <term>` / `--eras` (git is the
+  original, the retired ledger was a lagging hand copy).
 assertion_packs:
   - .moth/assertions/claims.yaml

@@ -18,7 +18,7 @@ AGENTS.md
   -> analysis/FOUNDATION_EXECUTION_PLAN.md | STRATEGY_EXECUTION_PLAN.md  (execution only)
 ```
 
-历史只查 `analysis/project_state_ledger.md`。`CLAUDE.md`、dated analysis 不是 live authority。
+历史只查 `scripts/chunkyctl history`（`--grep` 逐刀 / `--eras` 时期）。`CLAUDE.md`、dated analysis 不是 live authority。
 
 ## 2. Product map
 
@@ -65,7 +65,7 @@ AGENTS.md
 | 形态/阶段选股面 (5B) | Tier3 `GET /api/v3/screener/options` + `/form_stage`；config `stock_screener.yaml`；`stock_screener.py` + 共享 `form_production_read`（与档案 F 同一 production-read：fact brick + ACCEPTED_CUTOVER overlay；`sql_where_active_a_share`）；全局 `MAX(trade_date)` SLA → `status=stale`；UI `#/market`「形态/阶段选股」→`#/stock/:code`；证据 `capability_b_stock_screener_20260721.md`；pytest `tests/test_stock_screener.py` ∈ blocking |
 | Holders / frontier primitive | Shared `frontier_decision.decide_frontier` + **`plan_partition_catchup`**（tip-leap due=`source\accepted` P≤wm ≤40；非 tip+1）；holders formal SSOT = **canonical notice only**（**`fact_top10_holder_period` DROPPED 2026-07-26**；from-fact catchup/mirror retired；provider forward by_notice kept；证据 `holders_fact_retire_20260725.md`）；`stk_holdertrade` raw→canon catchup（日常 newest_first；全史 oldest_first 至 raw_only=0，live 已清）；证据 `partition_leap_integrity_20260724.md`；`stk_holdernumber`=`by_ann_date`；`by_ann_date`=`ann_reprobe`；`by_trade_date`=`atomic_skip`；org period hook 禁 by-date invent；holders 路径仍 `acquire._sync_holders_aif10`；**org trunc ops** `org_holding_period_repair_truncated.py`；**QFII ops drain** `qfii_period_drain.py`（oldest-first calendar holes via `qfii_client` helpers；日更只填 latest） |
 | Serve→derive closed loop | Law `analysis/serve_derive_closed_loop_law_20260723.md` + config `serve_derive_closed_loop.yaml` + `data_sources/pagination_integrity.py`（paginated land ≠ complete；**hard** trunc=page-cap/provider_count；**soft** `under_modern_baseline` 不进 repair queue；证据 `org_heuristic_soft_baseline_20260725.md`）；process `institution_profile` delta-gate + as_of seed；org `repair_accept_from_local_raw` / `provider_truncated`→单期 sharded repair / F6 `min_org_accepted_stocks`；证据 `org_provider_page_cap_fix_20260724.md`；… |
-| Factor-family inventory (RX 前) | Config `factor_family_inventory.yaml` + `check_factor_family_inventory.py`（结构门）+ `check_factor_family_gates.py`（frequency continuity 矩阵）+ `project_factor_family_frontiers.py`（绑定 inventory hash/freshness/status 的 K3 live defer 投影）+ `check_factor_family_frontier_live.py`（DB missing/query error/UNVERIFIED/stale 均 fail-closed）+ 设计 `analysis/factor_family_governance_toplevel_20260724.md`；K3 收口证据 `95cfd2697`（细节查 ledger「2026-07-24 至 2026-07-27 factor-family 治理 K1/K2/K3」条） |
+| Factor-family inventory (RX 前) | Config `factor_family_inventory.yaml` + `check_factor_family_inventory.py`（结构门）+ `check_factor_family_gates.py`（frequency continuity 矩阵）+ `project_factor_family_frontiers.py`（绑定 inventory hash/freshness/status 的 K3 live defer 投影）+ `check_factor_family_frontier_live.py`（DB missing/query error/UNVERIFIED/stale 均 fail-closed）+ 设计 `analysis/factor_family_governance_toplevel_20260724.md`；K3 收口证据 `95cfd2697`（细节 `chunkyctl history --grep factor-family --full`） |
 | Brick registry (B5) | `brick_registry.yaml` + `check_brick_registry.py`（L2/L3 FeatureBlock + Type-B；moth claim PASS）；权威 `analysis/data_brick_architecture_20260721.md` |
 | Rewrite must-keep vs delete | 裁决折入 `analysis/FOUNDATION_EXECUTION_PLAN.md` §4：KEEP = sync replace / qfq incremental+full CTAS+in-module compact / landing+skip / delta rebuild；**DELETED** = `rewrite_legacy` True + canary CLI；禁 periodic dedupe/compact fixer |
 
@@ -97,7 +97,7 @@ AGENTS.md
 | P0 | E 120d checkpointed measured reject/no-gain；C full-universe accept `20260717`（4989）+ `20260720`（4991）form enrich v1；D FIXED；F0+F1+F2 main_rally B0/B1 reject/`claimable=false`；B-pit 120d shadow **120/120 MATCH**；C/B-pit cutover **ON**（ACCEPTED_CUTOVER / MART_CUTOVER；无 accept/窗外日 fail-closed→legacy）；pulse drill 双轨 form 读已退役 | 下一刀 F3 main_rally B2（market sensing，同 B0 snapshot/folds/costs）**或** stop（非 Optuna / 非松门 / 非 mass backfill / 非静默 cutover / 非 StrategyRelease） |
 | P0 | qfq physical lineage FIXED (batch_id/ingested_at/factor_as_of); not execution truth; **F8 FIXED** — default **incremental** (`f_latest` value change → full-history rewrite; unchanged → append); `--full` DROP+CTAS then **in-module** `db_compact` (escape `--no-compact`); incremental skips compact | Pin batch_id; never treat qfq as nominal execution price; ban silent stale pre-rebase history |
 | P0 | Legacy DC PIT residue lacks exit/re-entry/type; writer retired | Existing DB view cannot be used as historical taxonomy truth |
-| P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书（`formal_boundaries` 文案已澄清）；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal/ledger 跟踪 canary 授权点 |
+| P1 | formal `boundary_inventory` 仅为静态/测试资源，非 doctor readiness 证书（`formal_boundaries` 文案已澄清）；canary_pending 域无 countdown 出口 | 豁免不可见即永久；须在 goal.md 跟踪 canary 授权点 |
 | P1 | Live DC snapshot/pulse tables predate namespace fix until manual rebuild | Code contract is fixed but stored rows still need controlled reconciliation |
 | P1 | Market pulse mixes taxonomy, measurements, rolling/regime, write/read；仍读错误 scope raw | B-ext FIXED；B-pit shadow MATCH 120/120（membership proxy）；mart cutover=true（owner opt-in）→ 窗内切 project_universe_pit，窗外 fail-closed |
 | P1 | Stock state/market regime rows lack config/input version | Historical outputs cannot prove which definition produced them |
@@ -203,5 +203,5 @@ Current lineage discovery is conservative static evidence: literals in disabled 
 
 - `bestchoice/` must match `FROZEN.md` and its manifest exactly; it has no independent goal/agent/handoff/runtime and must not be folded into production during cleanup.
 - `sandbox/` is disposable exploration; only `sandbox/README.md` is durable.
-- `analysis/` is not a second docs tree. Keep only the ledger and necessary non-reproducible evidence; ordinary plans and narratives belong in git history.
+- `analysis/` is not a second docs tree; its target is **zero files**. Rules belong in the owner contracts, history belongs in git commit messages (`chunkyctl history`).
 - `.agents/skills/` mirrors generic skills and is not the project policy owner; project-specific skills live under `/Users/dp/.codex/skills/chunkymonkey-*`.

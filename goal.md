@@ -2,7 +2,7 @@
 
 > 状态：live controller board
 > 手写：objective / 已裁决 / 禁令 / 下一步。**运行时状态现查 `scripts/chunkyctl status`**（零文件；非执法输入）。
-> 完成证据：`analysis/project_state_ledger.md`（关键词查）。交接：`analysis/account_switch_handoff_20260720.md`。
+> 完成证据：`scripts/chunkyctl history --grep <关键词>`（git log 即原件）；时期导航 `--eras`。交接：`analysis/account_switch_handoff_20260720.md`。
 > **执行方案（仅两份；abolished 主方案/支线）**：底座 `analysis/FOUNDATION_EXECUTION_PLAN.md` · 策略 `analysis/STRATEGY_EXECUTION_PLAN.md`（RX 前 BLOCKED）。
 > **清理台账**：`analysis/DOC_CLEANUP_20260723.md`。Owner 立法仍只认 `docs/README.md` 三份 contracts。
 > **活契约引用（非第二 backlog）**：`analysis/foundation_phase_reeval_20260721.md` · `analysis/data_brick_architecture_20260721.md` · `analysis/db_layering_toplevel_design_20260721.md` · `analysis/architecture_fix_treadmill_first_principles_20260722.md` · `analysis/serve_derive_closed_loop_law_20260723.md` · `analysis/org_holding_incremental_loop_20260723.md` · `analysis/hs_a_whitelist_includes_st_20260722.md`。
@@ -74,9 +74,9 @@
   - P2.2 **FIXED**（2026-08-11）：`scripts/chunkyctl status [--json]` = L2 单一现查入口（`services/project_status.py`；零文件、退出码恒 0 报事实不裁决）。给出 accepted 前沿 + **距最近已完成交易日的交易日滞后**、源水位、cutover 声明 vs 实际、门分布、告警 flag。此前**没有任何一条命令**能回答「前沿在哪」——真相散在两个库，而当时的 `docs/README` 把人指向一个明说自己没有该值的生成文件。坏指针一并修正
   - P2.3 **FIXED**（2026-08-11）：board 改**现查、零文件**。`agent_boot` 与 `chunkyctl status` 现调 `agent_board_projection.collect()`（实测 0.3s、不连库）；`BOARD.md` + `data/board/agent_context.json` 两个落盘产物与 `agent_board` 漂移门一并退役（门 20→19），旧的 `build_agent_board` 脚本改名为 `backend/scripts/agent_board_projection.py` 并去掉写盘/`--check`。新增诚实性护栏：投影声明 `inputs_present`，config 缺失时 boot 报 error 而不是渲染一份全缺省的空板
 - **P3 历史归 git**（依赖 P2.2）
-  - P3.1 commit message 模板固化 Q/Fix/Evidence/Residual（这才是 commit_msg 门的正确形态：查结构，不查关键词）
-  - P3.2 `chunkyctl history --grep` 包装 git log，替代 ledger 检索
-  - P3.3 ledger 冻结（read-only 不再追加）→ 退役
+  - P3.2 **FIXED**（2026-08-11）：`scripts/chunkyctl history`（`--grep` 逐刀 / `--eras` 时期 / `--full` 出正文）
+  - P3.3 **FIXED**（2026-08-11）：ledger **直接退役**（非冻结）。实测三条依据：① 同一刀逐字对比，commit message 是 ledger 的**超集**（`16f5c370c`：ledger 记 4 条 Rule10，commit 记 6 条）；② 「早期 commit 太薄」不成立——2026-04~05 期 1133 个 commit 中位 783 字符/20 行、41% 带证据结构；③ 169 条里唯一 git 不直接给的只有 **6 段时期叙事（2030 字符）**，已转成 `era/*` annotated tag（`--eras` 可查）。删后 `check_doc_drift` 抓出 9 处需求侧死引用，全部改指 `chunkyctl history`
+  - P3.1 **未做**：commit message 模板固化 Q/Fix/Evidence/Residual（commit_msg 门的正确形态：查结构，不查关键词）
   - P3.4 `analysis/` 归零（现 65 份；卡点是几十处注释性溯源要一起改，批量替换已试过一次并回滚，需更好策略）
 - **P4.2-4.4 文档按层归位**：`eng_gov §6/§11`、`AGENTS §4` 的系统约束移进 `MASTER`；三份 owner contract 重新划界（MASTER=系统法 / eng_gov=开发纪律 / strategy=研究发布）
 

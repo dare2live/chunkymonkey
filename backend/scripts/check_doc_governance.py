@@ -4,7 +4,6 @@
   - 控制面 (goal.md / AGENTS.md / PROJECT_INDEX.md / docs/*.md) = live
   - CLAUDE.md 是 legacy Claude artifact, 不属于 Codex 活控制面
   - FEATURE_MAP.md = generated projection: 参与引用/CLI 漂移检查, 不计人类 active docs 数量
-  - analysis/project_state_ledger.md = 唯一 query-only 历史索引
   - 其余 analysis/*.md = evidence-only，前 10 行必须显式声明，禁止成为 live/self owner
 
 检查项 (FAIL 退出码 1):
@@ -144,8 +143,9 @@ def _status_of(path: Path) -> tuple[str, str | None]:
 
 
 def _analysis_header_failure(path: Path, root: Path) -> str | None:
-    if path.name == "project_state_ledger.md":
-        return None
+    # ledger 于 2026-08-11 P3.3 退役 (历史归 git: `chunkyctl history --grep` / `--eras`),
+    # 故不再有「唯一 query-only 历史索引」这个豁免 —— analysis/ 下每一份都必须是
+    # evidence-only, 且目标是全部归零。
     rel = path.relative_to(root).as_posix()
     try:
         head = "\n".join(

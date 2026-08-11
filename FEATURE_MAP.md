@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-08-11 10:54
+> Snapshot: 2026-08-11 13:54
 
 ## 1. 入口面
 
@@ -18,6 +18,7 @@
 | `map` | regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only. |
 | `pipeline` | manually run one declared data stage; full manual chain remains daily_update.sh. |
 | `lineage` | generated dependency projection; impact <table> audits fan-in before delete/migrate. |
+| `history` | 项目历史检索。`--grep <词>` 查逐刀细节（`git log`，可加 `--full` 出正文）； |
 | `status` | L2 运行时状态**单一现查入口** (零文件): accepted 前沿 + 距最近已完成交易日的 |
 | `gates` | 门分布策略 (backend/config/governance_gates.yaml): 无参打印三组分布表; |
 | `scaffold-fix` |  |
@@ -170,7 +171,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 10,816 | calls 边 12,534 | imports 边 3,585 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 10,837 | calls 边 12,644 | imports 边 3,586 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -207,7 +208,7 @@
 | backend/services/tier12_publish_writer.py | 9 |
 | backend/services/pipeline/context.py | 8 |
 | backend/services/snapshot_nominal_bind.py | 8 |
-| backend/services/data_sources/accepted_schema.py | 7 |
+| frontend/src/components/Card.tsx | 8 |
 
 ### LOC top 10 (God module 候选)
 
@@ -226,7 +227,7 @@
 
 ## 5. 概览
 
-- chunkyctl 子命令 11 | launchd 任务 0 | router 7 (端点 32)
+- chunkyctl 子命令 12 | launchd 任务 0 | router 7 (端点 32)
 - sync_registry 数据域 44
 - 产表 33 (多 writer 11)
 

@@ -91,7 +91,7 @@ layer_health_defaults:
 #   月季末均返回 0 行, 仅 12-31 年末有数据(2024-12-31=16行/2025-12-31=5611行) —— 该报告实为
 #   **年度**快照非季度, 第一轮"quarterly"标注是错的; 且唯一消费方 v3_picture 已随 2026-06-28
 #   纯数据平台重建整体退役, 该表已成孤儿 —— 用户拍板 2026-07-07 整表物删 (见
-#   analysis/project_state_ledger.md 的数据源退役索引), 本行随之移除。
+#   chunkyctl history 的数据源退役索引), 本行随之移除。
 #   ②holders formal SSOT = canonical_top10_float_holders_period (notice_date 近乎逐日;
 #   fact_top10_holder_period DROPPED 2026-07-26). SLA 168h(7天, 覆盖节假日缓冲)。
 #   ③raw_org_holding_aif10/raw_qfii_holding_quarterly
@@ -113,13 +113,13 @@ table_health_overrides:
 tables:
   # raw_aif10_valuation_quantile 2026-07-07 随 aif10_capability_client 模块整体退役物删
   # (唯一消费方 v3_picture 已随 2026-06-28 重建退役, 且早在其存活期就因 latest-snapshot
-  # leakage 从未被特征管线接入), 历史索引见 analysis/project_state_ledger.md
+  # leakage 从未被特征管线接入), 历史索引见 chunkyctl history
   raw_org_holding_aif10: L0_source  # 2026-06-24 补tag (aif10机构持仓明细raw镜像, 前会话漏登致data-layer-integrity FAIL)
   raw_qfii_holding_quarterly: L0_source
   dim_active_a_stock: L1_foundation
   # dim_all_ever_listed / dim_listing_status 2026-07-07 整表退役:
   # 前者无存活 writer 冻结 10+ 周, 后者 0 业务读者且唯一 builder 无生产调用方;
-  # 历史裁决索引见 analysis/project_state_ledger.md。
+  # 历史裁决索引见 chunkyctl history。
   dim_fee_schedule: L1_foundation
   dim_liquidity_threshold: L1_foundation
   dim_market_segment: L1_foundation

@@ -91,7 +91,7 @@ def main() -> int:
         print(f"  {f}", file=sys.stderr)
     print(file=sys.stderr)
     print("修法 (3 选 1):", file=sys.stderr)
-    print("  1. 修改 PROJECT_INDEX.md 对应活索引节 (数据资产/模块/yaml/坑); 历史叙事写 analysis/project_state_ledger.md, 不进 INDEX changelog,", file=sys.stderr)
+    print("  1. 修改 PROJECT_INDEX.md 对应活索引节 (数据资产/模块/yaml/坑); 历史叙事写 commit message, 不进 INDEX changelog,", file=sys.stderr)
     print("     然后 `git add PROJECT_INDEX.md` 再 commit", file=sys.stderr)
     print("  2. 如果确实不需要 (例: 纯 bug fix 不影响结构), `git commit --no-verify` 跳过", file=sys.stderr)
     print("     注意: --no-verify 会绕过所有 hook, 慎用", file=sys.stderr)

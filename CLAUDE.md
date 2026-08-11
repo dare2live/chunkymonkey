@@ -10,4 +10,4 @@
 3. `docs/README.md` 指向的唯一 owner contracts
 4. live `git` / Moth / CodeGraph / DB / API evidence
 
-历史 Claude 命令、旧 provider、自动恢复、旧 KPI、退役模块和旧设计均不在此保留；需要历史比较时从 git history 或 `analysis/project_state_ledger.md` 按关键词检索。
+历史 Claude 命令、旧 provider、自动恢复、旧 KPI、退役模块和旧设计均不在此保留；需要历史比较时从 git history 或 `chunkyctl history --grep` 按关键词检索。

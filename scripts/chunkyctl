@@ -78,6 +78,9 @@ Notes:
   map         = regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only.
   pipeline    = manually run one declared data stage; full manual chain remains daily_update.sh.
   lineage     = generated dependency projection; impact <table> audits fan-in before delete/migrate.
+  history     = 项目历史检索。`--grep <词>` 查逐刀细节（`git log`，可加 `--full` 出正文）；
+                `--eras` 列时期导航（annotated tag，叙事就在 tag message 里）。
+                git 是唯一原件：不再有必然滞后的人工账本副本。
   status      = L2 运行时状态**单一现查入口** (零文件): accepted 前沿 + 距最近已完成交易日的
                 交易日滞后、源水位、cutover 声明 vs 实际、门分布、告警 flag。`--json` 给 agent。
                 退出码恒 0 —— 它报事实不做裁决; 红绿仍归 continuity / watermark SLA /
@@ -195,6 +198,11 @@ case "$cmd" in
     # Generated lineage projection: build | impact <t> | provenance <t> | dead | show <t>
     # 删/迁表前 `chunkyctl lineage impact <table>` 自动 fan-in (替代手 grep)。
     PYTHONPATH=backend "$PY" backend/scripts/lineage_cli.py "$@"
+    ;;
+  history)
+    # 项目历史检索 (goal.md P3.2): --grep 查逐刀细节 (git log), --eras 看时期导航
+    # (annotated tag)。git 是唯一原件 —— 不再有 ledger 这类必然滞后的人工副本。
+    PYTHONPATH=backend "$PY" backend/scripts/history_cli.py "$@"
     ;;
   status)
     # L2 运行时状态单一现查入口 (goal.md P2.2): 前沿/滞后/水位/cutover/门/告警。

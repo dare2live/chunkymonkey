@@ -5,7 +5,7 @@ Authority: `AGENTS.md` → `goal.md` → `docs/README.md` owners
 `engineering_governance.md`) → Codex skills → live tooling/data.
 `CLAUDE.md` legacy (explicit historical request only). Board = **live projection**
 (`chunkyctl status` / `agent-boot`; zero files since P2.3), never enforcement.
-History: targeted `rg`/`tail` of `analysis/project_state_ledger.md` only.
+History: `chunkyctl history --grep <term>` (git log) / `--eras` (annotated tags).
 
 ## 1. Boot
 1. Read `goal.md`.

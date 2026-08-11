@@ -18,7 +18,7 @@
 需要完整工具证据时仍可单独跑 `git status --short --branch`、`moth snapshot --repo .`、
 `codegraph status .`；agent-boot 只是聚合入口，不替代任何 gate 的原始输出。
 
-`analysis/project_state_ledger.md` 只用 `rg`/`tail` 查询历史。旧 session handoff / workflow checkpoint 体系已退役；恢复状态必须重新读取 git、Moth、CodeGraph 和 live data。`CLAUDE.md` 是 legacy Claude 文件，Codex 默认不读。
+历史查询用 `scripts/chunkyctl history --grep`（git log 是原件，永不断档）/ `--eras`（时期导航）。旧 session handoff / workflow checkpoint 体系已退役；恢复状态必须重新读取 git、Moth、CodeGraph 和 live data。`CLAUDE.md` 是 legacy Claude 文件，Codex 默认不读。
 
 ## 2. 必用 skills
 
@@ -183,7 +183,7 @@ rg -n "<name>" backend scripts docs analysis .moth
 
 - live authority：`AGENTS.md`、`goal.md` 和 `docs/README.md` 列出的 owner；
 - generated/read model：`FEATURE_MAP.md` 等可重建地图；
-- historical evidence：`analysis/project_state_ledger.md` 或必要的不可复现实证。
+- historical evidence：commit message（Q/Fix/Evidence/Residual），检索 `chunkyctl history`；必要的不可复现实测数据进 `data/`。
 
 过期计划和普通叙述由 git history 保留，不另建 archive 目录。
 
@@ -252,7 +252,7 @@ degraded + 续跑 + 写 flag，绝不静默；`--dry` 只跳过声明了 `skip_w
 - `check_doc_governance` 同时 `fails=0` 且 `warns=0`；
 - `check_doc_drift` 无 stale；
 - 生成地图区分 active/retired，不从帮助文字猜生命周期；
-- goal 只写当前 objective/blocker/plan；历史移 ledger。
+- goal 只写当前 objective/blocker/plan；历史进 commit message。
 
 验收命令：
 
@@ -280,7 +280,7 @@ Agent-OS 核心面（WP0–WP4）已落地：tiered `safe_commit`、生成板、
 WP5 shared DuckDB memory fixture pack：**Occam 跳过**——无 WP1 基线证明测试建库
 是显著耗时热点；需要时再开，不预建。
 
-轨道关闭（agent-OS track CLOSED）仍要求停机检查单全绿（见 ledger / goal 残余），
+轨道关闭（agent-OS track CLOSED）仍要求停机检查单全绿（见 goal 残余），
 含：影子期结束 + 旧仪式真删 + T0 墙钟实测入账 + 一次真实 L2/T2 路径证据。
 A→H 冻结已由 owner 于 2026-07-20 解除（核心 WP0–WP4 闭合即恢复 A→H 刀；
 影子期/仪式 cutover 残余照常，与 A→H 互不阻塞）。
@@ -348,7 +348,7 @@ tier 剪枝管**跑不跑**，分组管**跑红了会怎样**，两维正交。o
 | `system_health` | 数据 / 策略 / 钱受害 | **不跑** | grain_uniqueness / continuity → `daily_update` store 阶段自检 |
 | `scaffold` | 下一个开发者受害 | **warn-only** | project_index_sync / feature_map / agent_board / moth / doc_drift / doc_governance / doc_runtime_state / commit_msg |
 
-判据来自实证而非偏好（2026-08-10 审计，见 ledger 同日条目）：脚手架门本轮 3 次
+判据来自实证而非偏好（2026-08-10 审计，`chunkyctl history --since 2026-08-10 --full`）：脚手架门本轮 3 次
 阻断系统修复提交（文档没同步挡住代码 bug 修复），而 b_pit cutover 是否仍生效 ——
 一个纯运行时事实 —— 被装在 commit 路径上，于是「有没有人恰好提交相关代码」决定
 了它何时被查，系统跑了 13 次没人查。**受害时刻在运行时的检查，就不该装在 commit
@@ -391,7 +391,7 @@ scripts/chunkyctl scaffold-fix               # 脚手架批量收口
 
 ## 15. 编排与墙钟政策（delivery tax；不触碰真相门）
 
-T0 基线（2026-07-20 实测，非估算；证据=ledger 同日条目）：L1 commit 门 1.6s、
+T0 基线（2026-07-20 实测，非估算；证据=`chunkyctl history --since 2026-07-20 --full`）：L1 commit 门 1.6s、
 L2 17.0s（moth assert 7.3s + staged-snapshot cold codegraph 3.8s）、L3 27.1s、
 `agent-boot` 11.6s（moth snapshot ≈7s）、CI 单次 ≈1min。结论：机械门不是墙钟
 瓶颈；瓶颈在编排仪式（每 slice 同步等 CI、每 micro-commit 一次 Rule 10、
@@ -403,7 +403,7 @@ accept/PIT/calendar/fail-closed/cutover/E 门 / Rule 10 / ≤40d 语义**。
 **刀** = 一个逻辑单元（例：单域 S7 formal|sunset、单 CLI 面、单 E0 域 land
 路径）。刀内允许多文件、一次 stage、**一次 Rule 10**、**一次
 `safe_commit`**。禁止把同一刀拆成「docs commit → 小改 commit → 测 commit」各
-审一次。验收信号：`commits/knife ≤ 1.5`；ledger 条目写明刀边界。
+审一次。验收信号：`commits/knife ≤ 1.5`；commit message 写明刀边界。
 
 - **异步 CI（pipelining，不是放松）**：L2/L3 本地先绿同一 **blocking** pytest 面
   （`backend/config/ci_pytest_surface.yaml` via `run_ci_pytest.py --tier blocking`，亦是
@@ -414,7 +414,7 @@ accept/PIT/calendar/fail-closed/cutover/E 门 / Rule 10 / ≤40d 语义**。
 - **并行 subagents**：仅当写集不相交且不碰共享真相文件时，父可并行派
   disjoint 刀；派前用 `moth coupling --repo . --impact <name>`（或
   `chunkyctl pre-knife`）证明非重叠。**必须串行的共享面**：
-  `goal.md`/ledger/`PROJECT_INDEX.md`/`AGENTS.md`/docs owner 三文档/
+  `goal.md`/`PROJECT_INDEX.md`/`AGENTS.md`/docs owner 三文档/
   `.moth/`/`commit_tiers.yaml`/`safe_commit.sh`/`ci.yml`；同一 DuckDB 的写；
   provider 采集 job；git stage/commit/push 窗口；Rule 10 verdict 与最终验收
   （controller-owned）。机器话：两把刀的 `git diff --name-only` 预期集合相交，
@@ -446,7 +446,7 @@ scripts/chunkyctl pre-knife <name>
 - **显式不做（Occam，有测量背书）**：`agent-boot --fast`（只省 ~7s/session，
   moth 状态是 boot 的价值本体）；L2 门集手术（17s 非痛点，动 `commit_tiers.yaml`
   = L3+审查+影子期 parity 风险）；CI concurrency/cancel 机械；T0 自动测量 hook
-  （一次 ledger 实测入账即闭合 WP6 该残余，复测按需手跑）。
+  （一次实测写进 commit message 即闭合 WP6 该残余，复测按需手跑）。
 - CI 对 L1 docs/board-only push 不再起跑：`ci.yml` `paths-ignore` 镜像
   `commit_tiers.yaml` L1 面（policy owner），子集关系由
   `backend/tests/scripts/test_ci_paths_policy.py` 机器守护。
