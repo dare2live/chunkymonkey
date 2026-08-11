@@ -84,18 +84,33 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
         repo / "backend" / "scripts" / "classify_commit_tier.py",
         "import json\n"
         "print(json.dumps({'tier':'L3','gates':["
-        "'project_index_sync','feature_map','agent_board','moth','rule_compliance',"
+        "'project_index_sync','feature_map','moth','rule_compliance',"
         "'sandbox_isolation','serve_read_layer','calendar_usage',"
         "'population_contract','lineage_drift','dead_references',"
-        "'grain_uniqueness','continuity','config_refs','doc_drift',"
-        "'doc_governance','commit_msg','rule10'],"
+        "'grain_uniqueness','continuity','no_emoji','config_refs','doc_drift',"
+        "'doc_governance','doc_runtime_state','commit_msg','rule10'],"
         "'reasons':['fixture_l3'],'paths':[]}))\n",
     )
+    # 2026-08-11: agent_board 门随 BOARD.md 退役(P2.3); no_emoji / doc_runtime_state 新登记。
+    # always-on 的 ci-surface-drift 不看 tier, 沙箱必须真有这个测试文件, 否则 Step 3.35
+    # 直接 exit 3 —— 这正是本文件长期 25 例全红的根因(全死在门体系之前, 与被测逻辑无关)。
     _write(
-        "raise SystemExit(0)\n",
+        repo / "backend" / "tests" / "scripts" / "test_ci_pytest_surface_drift.py",
+        "def test_stub():\n    assert True\n",
     )
-    _write(repo / "BOARD.md", "generated board fixture\n")
-    _write(repo / "data" / "board" / "agent_context.json", "{}\n")
+    _write(repo / "backend" / "scripts" / "check_no_emoji.py", "raise SystemExit(0)\n")
+    _write(repo / "backend" / "scripts" / "check_doc_runtime_state.py",
+           "print('[doc-runtime-state] stub PASS')\nraise SystemExit(0)\n")
+    _write(repo / "backend" / "scripts" / "check_commit_message.py", "raise SystemExit(0)\n")
+    # gate_policy 不可用时 safe_commit 走 fail-closed(全阻断) —— 沙箱给最小实现, 让
+    # 分组语义(scaffold=warn / system_health=skip)在测试里也真的生效。
+    _write(
+        repo / "backend" / "scripts" / "gate_policy.py",
+        "import sys\n"
+        "g = sys.argv[sys.argv.index('--names')+1] if '--names' in sys.argv else ''\n"
+        "print({'scaffold':'project_index_sync feature_map moth doc_drift doc_governance "
+        "doc_runtime_state commit_msg','system_health':'grain_uniqueness continuity'}.get(g,''))\n",
+    )
     _write(repo / "backend" / "config" / "commit_tiers.yaml", "version: 1\n")
     _write(repo / "backend" / "scripts" / "check_project_index_sync.py", "raise SystemExit(0)\n")
     _write(repo / "backend" / "scripts" / "check_rule_compliance.py", "raise SystemExit(0)\n")
@@ -233,14 +248,13 @@ raise SystemExit(0 if actual == expected else 1)
     ).returncode == 0
 
 
-def test_rule10_blocks_empty_skip_reason_for_staged_python(tmp_path: Path) -> None:
+def test_rule10_missing_approve_only_notes_since_20260810(tmp_path: Path) -> None:
+    """2026-08-10 裁决: 缺 APPROVE 不再阻断 —— 该门只能匹配提交者自写的字符串,
+    验证不了审查是否真发生; 阻断只挡住不愿假称「审过了」的诚实提交者。"""
     repo = _make_repo_with_staged_python(tmp_path)
-
-    result = _safe_commit(repo, "test audit\ncodex-review: skipped reason=   ")
-
-    assert result.returncode == 6
-    assert "Rule 10 requires" in result.stdout
-
+    result = _safe_commit_no_push(repo, "test audit without any review verdict")
+    assert result.returncode == 0
+    assert "NOTE: Rule 10" in result.stdout or "NOTE: Rule 10" in result.stderr
 
 def test_rule10_blocks_request_changes_review_verdict(tmp_path: Path) -> None:
     repo = _make_repo_with_staged_python(tmp_path)
@@ -274,269 +288,48 @@ def test_rule10_accepts_approved_review_for_staged_python(tmp_path: Path) -> Non
     assert "SAFE_COMMIT_DRY_RUN=1" in result.stdout
 
 
-def test_rule10_blocks_meaningful_skip_reason_for_staged_python(tmp_path: Path) -> None:
+def test_rule10_still_blocks_explicit_request_changes(tmp_path: Path) -> None:
+    """仍阻断的那一半: 没人会「忘记」写下否定裁决, 写了就意味着有未消除的异议。"""
     repo = _make_repo_with_staged_python(tmp_path)
+    result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: REQUEST_CHANGES")
+    assert result.returncode != 0
 
-    result = _safe_commit(repo, "test audit\ncodex-review: skipped reason=docs-only rename")
-
-    assert result.returncode == 6
-    assert "skip reasons do not satisfy the gate" in result.stdout
-
-
-def test_doc_governance_failure_blocks_commit(tmp_path: Path) -> None:
+def test_doc_governance_failure_warns_but_does_not_block(tmp_path: Path) -> None:
+    """P1: doc_governance 属 scaffold —— 文档没闭合不该挡住代码修复。"""
     repo = _make_repo_with_staged_python(tmp_path)
-    _write(
-        repo / "backend" / "scripts" / "check_doc_governance.py",
-        "print('doc-governance verdict=WARN fails=0 warns=1')\nraise SystemExit(1)\n",
-    )
+    _write(repo / "backend" / "scripts" / "check_doc_governance.py", "raise SystemExit(1)\n")
     assert _run(["git", "add", "backend/scripts/check_doc_governance.py"], repo).returncode == 0
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 5
-    assert "doc-governance 门红" in result.stdout
-    assert "SAFE_COMMIT_DRY_RUN=1" not in result.stdout
-
-
-def test_live_continuity_failure_blocks_data_readiness_not_code_commit(tmp_path: Path) -> None:
-    """可变 live DB/provider 故障必须显式曝光，但不能形成“坏了所以修复代码也无法提交”的死锁。"""
-    repo = _make_repo_with_staged_python(tmp_path)
-    _write_continuity_stub(
-        repo,
-        _continuity_report(overall="FAIL", statuses=("fail_stale_tail",)),
-        rc=1,
-    )
-    assert _run(
-        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
-    ).returncode == 0
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
+    result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: APPROVE")
+    assert "WARN-ONLY [doc_governance]" in result.stdout
     assert result.returncode == 0
-    assert "LIVE DATA READINESS: BLOCKED" in result.stdout
-    assert "code commit continues" in result.stdout
-    assert "COMMIT ALLOWED != TIER0 DATA READY" in result.stdout
-    assert "Rule 10 PASS" in result.stdout
-    assert "SAFE_COMMIT_DRY_RUN=1" in result.stdout
 
+def test_stale_staged_feature_map_warns_but_does_not_block(tmp_path: Path) -> None:
+    """P1 起 feature_map 属 scaffold 组 —— 陈旧只提示不阻断。
 
-def test_live_continuity_bad_json_is_verifier_error(tmp_path: Path) -> None:
+    受害者是下一个读地图的人, 不是这次 diff; 用它挡住代码修复正是 P1 要消灭的。
+    """
     repo = _make_repo_with_staged_python(tmp_path)
-    _write(
-        repo / "backend" / "scripts" / "check_continuity_integrity.py",
-        "print('not-json')\nraise SystemExit(1)\n",
-    )
-    assert _run(
-        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
-    ).returncode == 0
+    _write(repo / "backend" / "scripts" / "build_feature_map.py", "raise SystemExit(1)\n")
+    assert _run(["git", "add", "backend/scripts/build_feature_map.py"], repo).returncode == 0
 
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 5
-    assert "CONTINUITY VERIFIER ERROR" in result.stdout
-    assert "SAFE_COMMIT_DRY_RUN=1" not in result.stdout
+    result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: APPROVE")
+    assert "WARN-ONLY [feature_map]" in result.stdout
+    assert result.returncode == 0, "scaffold 门不得阻断提交"
 
 
-def test_live_continuity_exit_report_mismatch_is_verifier_error(tmp_path: Path) -> None:
+def test_system_health_gates_are_not_run_at_commit(tmp_path: Path) -> None:
+    """P1: continuity / grain 查的是 live 数据, 与本次 diff 无关 —— commit 路径不跑。
+
+    原先这里有 13 个用例断言 continuity 在 commit 路径的各种降级语义; 那套行为已整体
+    归位 `daily_update` 的 system_health 自检(见 governance_gates.yaml)。留着它们就是
+    在测一个不再存在的执法点。
+    """
     repo = _make_repo_with_staged_python(tmp_path)
-    _write_continuity_stub(
-        repo,
-        _continuity_report(overall="FAIL", statuses=("fail_stale_tail",)),
-        rc=0,
-    )
-    assert _run(
-        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
-    ).returncode == 0
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 5
-    assert "CONTINUITY VERIFIER ERROR" in result.stdout
-    assert "SAFE_COMMIT_DRY_RUN=1" not in result.stdout
-
-
-def test_live_continuity_db_unreachable_is_unverified_not_ready(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-    _write_continuity_stub(
-        repo,
-        _continuity_report(overall="PASS", statuses=("db_unreachable",)),
-        rc=0,
-    )
-    assert _run(
-        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
-    ).returncode == 0
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
+    result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: APPROVE")
     assert result.returncode == 0
-    assert "LIVE DATA READINESS: UNVERIFIED" in result.stdout
-    assert "db_unreachable=1" in result.stdout
-    assert "LIVE DATA READINESS: READY" not in result.stdout
-    assert "SAFE_COMMIT_DRY_RUN=1" in result.stdout
-
-
-def test_live_continuity_summary_mismatch_is_verifier_error(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-    payload = _continuity_report(overall="PASS", statuses=("pass",))
-    payload["summary"]["counts"]["pass"] = 0
-    _write_continuity_stub(repo, payload, rc=0)
-    assert _run(
-        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
-    ).returncode == 0
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 5
-    assert "CONTINUITY VERIFIER ERROR" in result.stdout
-
-
-def test_live_continuity_empty_scan_surface_is_verifier_error(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-    _write_continuity_stub(repo, _continuity_report(statuses=()), rc=0)
-    assert _run(
-        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
-    ).returncode == 0
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 5
-    assert "CONTINUITY VERIFIER ERROR" in result.stdout
-
-
-def test_live_continuity_missing_latest_expected_is_verifier_error(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-    payload = _continuity_report()
-    del payload["latest_expected"]
-    _write_continuity_stub(repo, payload, rc=0)
-    assert _run(
-        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
-    ).returncode == 0
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 5
-    assert "CONTINUITY VERIFIER ERROR" in result.stdout
-
-
-def test_live_continuity_skipped_scan_is_unverified(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-    _write_continuity_stub(
-        repo,
-        _continuity_report(statuses=("skipped_missing_table",)),
-        rc=0,
-    )
-    assert _run(
-        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
-    ).returncode == 0
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 0
-    assert "LIVE DATA READINESS: UNVERIFIED" in result.stdout
-    assert "skipped=1" in result.stdout
-    assert "skipped_missing_table" in result.stdout
-
-
-def test_live_continuity_warn_is_degraded_and_visible(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-    _write_continuity_stub(
-        repo,
-        _continuity_report(overall="WARN", statuses=("warn_row_dip",)),
-        rc=0,
-    )
-    assert _run(
-        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
-    ).returncode == 0
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 0
-    assert "LIVE DATA READINESS: DEGRADED" in result.stdout
-    assert "warn=1" in result.stdout
-    assert "warn_row_dip" in result.stdout
-
-
-def test_live_continuity_warn_plus_db_is_unverified_without_hiding_warn(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-    _write_continuity_stub(
-        repo,
-        _continuity_report(
-            overall="WARN", statuses=("warn_row_dip", "db_unreachable")
-        ),
-        rc=0,
-    )
-    assert _run(
-        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
-    ).returncode == 0
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 0
-    assert "LIVE DATA READINESS: UNVERIFIED" in result.stdout
-    assert "warn=1" in result.stdout
-    assert "db_unreachable=1" in result.stdout
-    assert "warn_row_dip" in result.stdout
-
-
-def test_live_continuity_fail_plus_db_is_blocked_without_hiding_db(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-    _write_continuity_stub(
-        repo,
-        _continuity_report(
-            overall="FAIL", statuses=("fail_stale_tail", "db_unreachable")
-        ),
-        rc=1,
-    )
-    assert _run(
-        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
-    ).returncode == 0
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 0
-    assert "LIVE DATA READINESS: BLOCKED" in result.stdout
-    assert "fail=1" in result.stdout
-    assert "db_unreachable=1" in result.stdout
-    assert "db_unreachable" in result.stdout
-
-
-def test_live_continuity_pass_with_nonzero_exit_is_verifier_error(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-    _write_continuity_stub(repo, _continuity_report(), rc=1)
-    assert _run(
-        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
-    ).returncode == 0
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 5
-    assert "CONTINUITY VERIFIER ERROR" in result.stdout
-
-
-def test_live_continuity_unknown_count_category_is_verifier_error(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-    payload = _continuity_report()
-    payload["summary"]["counts"]["future_category"] = 999
-    _write_continuity_stub(repo, payload, rc=0)
-    assert _run(
-        ["git", "add", "backend/scripts/check_continuity_integrity.py"], repo
-    ).returncode == 0
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 5
-    assert "CONTINUITY VERIFIER ERROR" in result.stdout
-
-
-def test_stale_staged_feature_map_blocks_even_when_worktree_is_dirty(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-    _stage_feature_map_fixture(repo, source="v2\n", rendered="map:v1\n")
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 2
-    assert "staged FEATURE_MAP.md" in result.stdout
-
+    for gate in ("grain_uniqueness", "continuity"):
+        assert f"skip {gate}" in result.stdout, f"{gate} 应在 commit 路径被跳过"
+    assert "LIVE DATA READINESS" not in result.stdout, "commit 不再产生任何 readiness 声明"
 
 def test_feature_map_gate_ignores_unstaged_worktree_change(tmp_path: Path) -> None:
     repo = _make_repo_with_staged_python(tmp_path)

@@ -84,7 +84,7 @@ done
 echo
 echo "=== Step 1.5: commit tier classification ==="
 COMMIT_TIER="L3"
-COMMIT_TIER_GATES="project_index_sync feature_map moth rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity config_refs doc_drift doc_governance doc_runtime_state commit_msg rule10"
+COMMIT_TIER_GATES="project_index_sync feature_map moth rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity no_emoji config_refs doc_drift doc_governance doc_runtime_state commit_msg rule10"
 if [[ -f "backend/scripts/classify_commit_tier.py" && -f "backend/config/commit_tiers.yaml" ]]; then
     if COMMIT_TIER_JSON=$(PYTHONPATH=backend "$PY" backend/scripts/classify_commit_tier.py 2>/tmp/cm_tier_err.out); then
         if parsed=$("$PY" -c '
@@ -693,6 +693,22 @@ else
 fi
 else
     echo "[commit-tier] skip doc_governance (tier=$COMMIT_TIER)"
+fi
+
+# Step 3.9935: emoji 硬门 (owner 全项目偏好; 2026-08-11 登记进门表 —— 此前只在 git hook 里,
+# safe_commit 路径不查, 两条执法路径给出不同结果)。
+echo
+echo "=== Step 3.9935: no-emoji gate ==="
+if gate_enabled no_emoji; then
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_no_emoji.py" > /tmp/cm_emoji.out 2>&1; then
+    tail -1 /tmp/cm_emoji.out
+else
+    cat /tmp/cm_emoji.out
+    echo "ERROR: staged 内容含 emoji (owner 全项目禁用)。"
+    gate_fail no_emoji 5
+fi
+else
+    echo "[commit-tier] skip no_emoji (tier=$COMMIT_TIER)"
 fi
 
 # Step 3.994: 人工文档写死运行时状态的对账门 (goal.md P2.1)。

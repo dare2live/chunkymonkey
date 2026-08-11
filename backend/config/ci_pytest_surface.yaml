@@ -124,6 +124,10 @@ blocking_paths:
 - tests/scripts/test_check_doc_runtime_state.py
 - tests/scripts/test_history_cli.py
 - tests/scripts/test_check_commit_message.py
+# 2026-08-11 promote: 它当初进 optional 的理由是「坏的」(沙箱 fixture 缺 always-on 门要的
+# test_ci_pytest_surface_drift.py, 25 例全死在门体系之前)。修好后 14 例约 15s、纯离线,
+# 且它是唯一端到端验 safe_commit 门语义的测试 —— 恰恰最不该在 CI 面之外。
+- tests/scripts/test_safe_commit.py
 # 2026-08-11 promote (one triage slice, per that entry 自己写的 promotion 条件):
 # 实测纯 tmp_path fixture, 无 DB/网络, 12 例 0.03s —— offline-CI safe。
 # 促发因: P4.1 修了 check_doc_governance 的 C7 假阳性, 其回归测试不能不在 CI 面上。
@@ -200,11 +204,6 @@ ci_test_optional:
     review, one triage slice at a time'
 - path: tests/scripts/test_perf_p1_trade_date.py
   reason: perf+slow marker -- timing-budget test, opt-in only (pytest.ini excludes by default)
-- path: tests/scripts/test_safe_commit.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
 - path: tests/scripts/test_update_watermark_sla.py
   reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
     ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
