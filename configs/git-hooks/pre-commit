@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# ChunkyMonkey pre-commit hook — `git commit` 直调时的兜底防线。
+#
+# Owner: docs/engineering_governance.md §14.1 + backend/config/governance_gates.yaml。
+#
+# **为什么它入了 git** (2026-08-11 P3 收口时发现): 此前 hook 只存在于每台机器的
+# `.git/hooks/` 里 —— 不入版本、不被审查、不被任何门覆盖, 新克隆的人根本没有这道防线,
+# 而它恰恰是绕过 safe_commit 直接 `git commit` 时的唯一兜底。现改为仓库内可审查文件,
+# 经 `git config core.hooksPath configs/git-hooks` 生效 (一次性, 见 eng_gov §14.1)。
+#
+# **后果由分组决定, 与 safe_commit 同源**: 同一道门不能在两条执法路径上给出不同后果。
+# 实测反例 (2026-08-11): P1 把 project_index_sync 降为 warn-only, 但本 hook 仍硬阻断,
+# 于是「已经改成不阻断的门」照样挡住了提交 —— 正是本轮治理要消灭的「两处执法互相打架」。
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+if [ -x ".venv/bin/python3" ]; then PY=".venv/bin/python3"; elif command -v python3 >/dev/null 2>&1; then PY="python3"; else PY="python"; fi
+
+# Merge commit: 无新代码, 历史已审, 跳过 (不等于给新工作背书)
+if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+    echo "[pre-commit] skip: merge commit detected (MERGE_HEAD exists)"
+    exit 0
+fi
+
+# 分组名单与 safe_commit 取自同一处; 取不到 → 名单为空 → 全部按阻断处理 (fail-closed)。
+SCAFFOLD="$(PYTHONPATH=backend "$PY" backend/scripts/gate_policy.py --names scaffold 2>/dev/null || true)"
+
+run_gate() {   # $1=登记表里的门名 (无对应登记则恒阻断)  $2..=命令
+    local name="$1"; shift
+    if "$@"; then return 0; fi
+    case " $SCAFFOLD " in
+        *" $name "*)
+            echo "[pre-commit] WARN-ONLY [$name]: 脚手架门未闭合 — 不阻断 (受害者=下一个开发者)。"
+            echo "             批量修: scripts/chunkyctl scaffold-fix"
+            return 0 ;;
+    esac
+    exit 1
+}
+
+run_gate project_index_sync  "$PY" backend/scripts/check_project_index_sync.py
+run_gate rule_compliance     "$PY" backend/scripts/check_rule_compliance.py
+run_gate no_emoji            "$PY" backend/scripts/check_no_emoji.py
+run_gate population_contract "$PY" backend/scripts/check_universe_filter.py --staged

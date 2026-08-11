@@ -239,3 +239,19 @@ def test_cutover_report_is_unverified_when_calendar_is_unreachable(monkeypatch) 
 def test_cutover_check_is_registered_as_a_runtime_check() -> None:
     ids = {c.id for c in gg.load_registry().runtime_checks}
     assert "cutover_effective" in ids
+
+
+# ── 5. 两条执法路径同源 (2026-08-11 P3 收口发现的 P1 漏洞) ──────────────
+def test_git_hook_is_versioned_and_group_aware() -> None:
+    """`git commit` 直调走 hook，走 safe_commit 走门 —— 后果必须由同一份分组决定。
+
+    实测反例：P1 把 project_index_sync 降为 warn-only，而 hook 仍硬阻断，且 hook 当时
+    只存在于各自机器的 `.git/hooks/`（不入版本、不被审查、新克隆根本没有这道防线）。
+    """
+    hook = REPO / "configs" / "git-hooks" / "pre-commit"
+    assert hook.is_file(), "hook 必须入 git，否则新克隆没有兜底且无人能审"
+    text = hook.read_text(encoding="utf-8")
+    assert "gate_policy.py --names scaffold" in text, "hook 必须消费同一份分组策略"
+    assert "WARN-ONLY" in text, "scaffold 组在 hook 路径也必须只 warn"
+    # fail-closed: 取不到名单时不得放行
+    assert "|| true" in text and 'case " $SCAFFOLD "' in text

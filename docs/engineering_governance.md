@@ -365,7 +365,15 @@ tier 剪枝管**跑不跑**，分组管**跑红了会怎样**，两维正交。o
 - always-on 的 `ci_surface_drift`（Step 3.35）不参与分组，任何 tier 都阻断。
 - 静态 PASS 仍不升级 live readiness：commit 通过 ≠ Tier0 数据就绪。
 
+**两条执法路径必须同源。** `git commit` 直调时走 `configs/git-hooks/`（入 git、可审查、
+经 `git config core.hooksPath configs/git-hooks` 生效，**新克隆需执行一次**）；走
+`safe_commit.sh` 时走上表。二者的**后果都由分组决定**，取自同一份
+`governance_gates.yaml`。2026-08-11 实测反例：P1 把 `project_index_sync` 降为 warn-only，
+而当时的 hook 只存在于各自机器的 `.git/hooks/`（不入版本、不被审查、新克隆根本没有），
+仍旧硬阻断 —— 同一道门在两条路径上给出相反后果，且其中一条无人能看见。
+
 ```bash
+git config core.hooksPath configs/git-hooks  # 新克隆一次性设置
 scripts/chunkyctl status                     # L2 运行时状态单一现查入口 (零文件)
 scripts/chunkyctl gates                      # 人读分组表
 scripts/chunkyctl gates --check              # 三处门名对账

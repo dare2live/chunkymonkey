@@ -141,11 +141,19 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if not (args.grep or args.since or args.until):
             ap.error("给个 --grep 关键词, 或 --since/--until 时间窗, 或 --eras")
-        _print_search(
-            search(grep=args.grep, since=args.since, until=args.until,
-                   limit=args.limit, full=args.full),
-            full=args.full,
-        )
+        rows = search(grep=args.grep, since=args.since, until=args.until,
+                      limit=args.limit, full=args.full)
+        # 历史有两个面: 逐刀细节在 commit, 时期叙事在 annotated tag。--grep 必须同时搜,
+        # 否则查「地基 reset」这种只存在于时期叙事里的词会零命中 —— 实测踩到过。
+        hit_eras = [
+            e for e in eras()
+            if any(p.lower() in (e["tag"] + "\n" + e["text"]).lower() for p in (args.grep or []))
+        ] if args.grep else []
+        if hit_eras:
+            print("=== 时期导航命中 ===")
+            _print_eras(hit_eras)
+            print("=== 逐刀命中 ===")
+        _print_search(rows, full=args.full)
     except RuntimeError as exc:
         print(f"[history] git 查询失败: {exc}", file=sys.stderr)
         return 1
