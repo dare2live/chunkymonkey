@@ -396,7 +396,7 @@ tier 剪枝管**跑不跑**，分组管**跑红了会怎样**，两维正交。o
 
 | 组 | 判据 | commit 路径 | 归属 |
 |---|---|---|---|
-| `diff_correctness` | 这次 diff 本身错 | **阻断** | rule_compliance / ci_pytest / sandbox_isolation / serve_read_layer / calendar_usage / population_contract / lineage_drift / dead_references / no_emoji / config_refs / rule10 |
+| `diff_correctness` | 这次 diff 本身错 | **阻断** | staged_worktree_parity / rule_compliance / ci_pytest / sandbox_isolation / serve_read_layer / calendar_usage / population_contract / lineage_drift / dead_references / no_emoji / config_refs / rule10 |
 | `system_health` | 数据 / 策略 / 钱受害 | **不跑** | grain_uniqueness / continuity → `daily_update` store 阶段自检 |
 | `scaffold` | 下一个开发者受害 | **warn-only** | project_index_sync / feature_map / agent_board / moth / doc_drift / doc_governance / doc_runtime_state / commit_msg |
 

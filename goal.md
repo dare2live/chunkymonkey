@@ -80,27 +80,24 @@ owner contract，进度段在此。**不再有第二个说「下一步」的地�
 
 **已闭合**：P1 门重新分布 · P4.1 孤儿法条归位 · P2 状态零手写（含 board 现查）· P3.2/P3.3 历史归 git（ledger 退役）· P3.4 主体（`analysis/` 55→3）。四层里 L1 契约 / L2 状态 / L3 历史均已到位。
 
-**A. 治理收尾**（无外部依赖，可连续做）
-- A1 拆 `architecture_fix_treadmill`：MUST STAY 清单 / 「ops 残差≠开刀」触发规则 / 死亡条款 → eng_gov
-- A2 两份执行计划的处置：它们是 backlog（L2 进度 + L3 历史 + 少量 L0 禁令），**不是**规则文档 —— 禁令段并入 owner，进度段随任务消解，不照搬前几批的「并进宪法」
-- A3 P3.1 commit message 结构门：查 Q/Fix/Evidence/Residual **结构**，不查关键词
-- A4 P4.2–4.4 三份 owner 重新划界：`eng_gov §6/§11`、`AGENTS §4` 里的系统约束移进 MASTER
-
-**B. 门体系残留**（本轮自查与独立审查暴露）
-- B1 `check_no_emoji` 在 git hook 里执法但不在 19 门登记表 —— 登记或退役，不留登记表外的执法点
-- B2 `test_safe_commit.py` 25 例失败（沙箱 fixture 缺 `test_ci_pytest_surface_drift.py`，全死在 always-on 门）
-- B3 其余 scaffold 门是否因 P1 降级产生检测范围回退 —— 独立审查点出的盲区，未查
+**A/B 已闭合**（治理收尾 + 门体系残留）：`analysis/` 归零并退役 · commit message 改结构自检 ·
+三份 owner 重新划界（AGENTS §4 十五条里 12 条曾是 MASTER 的近逐字副本）· `check_no_emoji` 登记为第 20 门 ·
+`test_safe_commit` 从长期 25 红修到 18 绿并转正 CI · B3 查出 moth 门的 `elif` 在 warn-only 下短路掉
+`moth coupling`（warn-only 退化成 warn-nothing 的实例，已修 + 参数化守卫锁定）。
 
 **C. 数据线**（严格串行，后项依赖前项）
 - C1 补 accepted 缺口（日线滞后见 `chunkyctl status`）
 - C2 → 跑 b_pit 影子比对取证据 → 据此续窗或把 `cutover_allowed` 改回 false。**不许为让门变绿而跳过比对**（§5.8 谄媚死）
 - C3 → tier12 补发布剩余交易日
-- C4 核实 `org_holding` 期轴滞后是否属正常披露节奏（期轴不适用交易日 SLA，需按可披露期判定）
+- ~~C4~~ **已闭合**：`org_holding` 前沿落在 Q1 的法定披露截止日(2026-04-30)，H1 要到 08-31 —— 不是缺口。
+  `chunkyctl status` 现已对期轴数据集直接报下一期解锁日，不再让人重新论证一遍
 
 **D. 待 owner 裁决**
 - D1 b_pit 去留 —— 排在 C2 之后，非独立决策
 - D2 Cap C（产品 UX 偏好）：建议丢弃，因它**无可机器验证的判据**，写进文档只会多一份会烂的东西
 - D3 WP6 仪式影子期已过 eng_gov §13 上限，须裁决 cutover 或重置
+- **D4 tushare 授权 2026-08-12 15:43 到期（即明日）** —— 到期后全部 Tier0 采集停摆。只能由 owner 续费，
+  agent 无法代劳。（日志此前照抄供应商 `week` 字段显示「remaining_weeks=4」，与真相差 4 周，已改为按 `limitDate` 现算）
 
 **迁移原则**：不追求一步到位，但新增任何文档前先问「这是 L0/L1/L2/L3 哪一层」—— 是 L2 就不许写，是 L3 就写进 commit message。
 

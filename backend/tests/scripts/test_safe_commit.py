@@ -86,7 +86,7 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
         repo / "backend" / "scripts" / "classify_commit_tier.py",
         "import json\n"
         "print(json.dumps({'tier':'L3','gates':["
-        "'project_index_sync','feature_map','moth','rule_compliance',"
+        "'staged_worktree_parity','project_index_sync','feature_map','moth','rule_compliance',"
         "'sandbox_isolation','serve_read_layer','calendar_usage',"
         "'population_contract','lineage_drift','dead_references',"
         "'grain_uniqueness','continuity','no_emoji','config_refs','doc_drift',"
@@ -494,4 +494,29 @@ def test_moth_gate_runs_coupling_even_when_assert_fails(tmp_path: Path) -> None:
     assert "assert" in calls, "前置条件: assert 应被调用"
     assert "coupling" in calls, "assert 失败后 coupling 仍必须跑 —— 不许 elif 短路"
     assert "WARN-ONLY [moth]" in result.stdout
+
+
+def test_staged_worktree_drift_blocks_commit(tmp_path: Path) -> None:
+    """`git add` 之后又编辑 —— 你测的和你要提交的不是同一份。
+
+    ci_pytest 门刻意拿 live worktree 跑(测试需要 repo 的 pytest.ini 与 fixture), 所以它对
+    这种漂移**结构性失明**: 跑的是手上的版本, 提交的是索引里的版本。2026-08-11 同一天咬两次
+    (一次提交声明落空, 一次带着本地已修好的红测试上线导致 CI 红), 故立此门。
+    """
+    repo = _make_repo_with_staged_python(tmp_path)
+    # backend/sample.py 已 staged (见 fixture); 现在只改工作树, 不 git add。
+    _write(repo / "backend" / "sample.py", "print('edited after git add')\n")
+
+    result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: APPROVE")
+    assert result.returncode != 0, "staged 与工作树不一致必须阻断"
+    assert "backend/sample.py" in result.stdout, "必须点名是哪个文件漂移了"
+    assert "staged" in result.stdout.lower()
+
+
+def test_staged_worktree_parity_passes_when_index_matches(tmp_path: Path) -> None:
+    """反向: 没有漂移时这道门必须放行, 不能变成拦一切的噪音门。"""
+    repo = _make_repo_with_staged_python(tmp_path)
+    result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: APPROVE")
+    assert result.returncode == 0
+    assert "[staged-worktree-parity] PASS" in result.stdout
 

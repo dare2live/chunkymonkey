@@ -67,6 +67,13 @@ commit_gates:
     checks: "moth assert (仓库自述断言) + moth coupling"
     why: "断言过期误导的是下一个读它的人；数据与 PIT 不依赖它。"
 
+  staged_worktree_parity:
+    group: diff_correctness
+    checks: "每个 staged 的 .py, 其索引内容 == 工作树内容"
+    why: >
+      ci_pytest 刻意拿 live worktree 跑(测试需要 repo 的 pytest.ini 与 fixture), 因此它对
+      「工作树 != 索引」结构性失明 —— 跑的是手上的版本, 提交的是索引里的版本。两次事故同一动作:
+      `git add` 之后又编辑。范围只限 .py: 其余门都读 staged 快照对漂移免疫, 只有 ci_pytest 会被骗, 而骗它的介质就是 pytest 导入执行的 .py。开到所有文件会误伤 `git add -p` 分批提交。
   rule_compliance:
     group: diff_correctness
     checks: "staged diff 里的魔数 / 估算参数缺 evidence|measured|from yaml 注释"

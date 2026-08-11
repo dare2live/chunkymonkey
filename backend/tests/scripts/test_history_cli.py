@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import subprocess
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -70,7 +71,20 @@ def test_narrative_only_in_tag_is_still_findable(repo: Path) -> None:
 
 
 def test_time_window_narrows_without_keyword(repo: Path) -> None:
-    assert hc.search(since="1970-01-01", repo=repo), "时间窗查询必须可用"
+    """时间窗必须真的过滤，而不只是「没报错」。
+
+    **不要用 1970-01-01 当「足够早」的哨兵**：git 的 timestamp_t 是无符号的，而
+    `--since` 按**本地时区**解析。在 UTC+8 下 `1970-01-01 00:00` = epoch -28800，
+    回绕成天文数字后 git 静默返回空 —— 本机(UTC+8)必红、CI(UTC)必绿，是宿主环境
+    渗进测试的又一变体(参见 test_safe_commit 沙箱那条)。实测: TZ=Asia/Shanghai 0 行,
+    TZ=UTC 与 TZ=America/New_York 各 1 行, 三次运行结果一致。
+    """
+    everything = hc.search(since="2000-01-01", repo=repo)
+    assert everything, "足够早的起点必须查得到全部 commit"
+
+    # 未来的起点必须把它们全部排除 —— 这才证明窗口在过滤，而非查询恰好没报错。
+    future = (datetime.now().astimezone() + timedelta(days=2)).strftime("%Y-%m-%d")
+    assert hc.search(since=future, repo=repo) == [], "未来起点不该查到任何历史"
 
 
 # ── 命令面 ──────────────────────────────────────────────────────────────

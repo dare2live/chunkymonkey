@@ -139,7 +139,12 @@ def test_degraded_messages_classify_as_integrity_observe() -> None:
 
 # ── 3. scaffold 组在 commit 路径的后果由分组决定 ────────────────────────
 def test_gates_use_gate_fail_instead_of_hardcoded_exit() -> None:
-    text = SAFE_COMMIT.read_text(encoding="utf-8")
+    # 只扫**调用点**: 注释里解释 gate_fail 语义的散文(如「gate_fail 返回 0」)不是调用,
+    # 扫进来会把中文词当成门名。剥掉整行注释再匹配。
+    text = "\n".join(
+        ln for ln in SAFE_COMMIT.read_text(encoding="utf-8").splitlines()
+        if not ln.lstrip().startswith("#")
+    )
     called = set(re.findall(r"gate_fail (\w+) ", text))
     reg = gg.load_registry()
     # commit_msg 没有失败路径 (它本来就只打印 WARNING)。

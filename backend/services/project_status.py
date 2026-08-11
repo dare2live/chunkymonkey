@@ -145,6 +145,7 @@ def accepted_frontier(anchor: str | None) -> dict[str, Any]:
                         "frontier_is_date": _is_date_like(frontier),
                         "partitions": partitions,
                         "lag_trading_days": lag,
+                        "period_axis": _period_axis_note(dataset_id, frontier),
                     }
                 )
         except Exception as exc:  # noqa: BLE001
@@ -167,6 +168,36 @@ def accepted_frontier(anchor: str | None) -> dict[str, Any]:
         "errors": errors or None,
         "note": "滞后=距最近已完成交易日的交易日数；期轴数据集(季报等)的该值不构成 SLA 判定",
     }
+
+
+def _period_axis_note(dataset_id: str, frontier: Any) -> str | None:
+    """期轴数据集: 把「落后 N 交易日」这个无意义的大数字换成「下一期什么时候才该有」。
+
+    `org_holding_detail_period` 前沿停在 20260430 会显示「落后 69 交易日」, 看着像断流,
+    实际 20260430 正是 Q1 的**法定披露截止日** —— H1 要到 08-31 才依法必须存在。日轴的
+    滞后算术套在期轴上只会制造假警报, 而每次都要有人重新论证一遍「这是正常节奏」。
+    真相源 = `org_holding_aif10.disclosure_deadline()` 里的监管硬约束, 不在这里重写一份。
+    """
+    if "_period" not in dataset_id:
+        return None
+    try:
+        from services.org_holding_aif10 import disclosure_deadline
+    except Exception:  # noqa: BLE001
+        return None
+    txt = str(frontier or "")
+    if len(txt) != 8 or not txt.isdigit():
+        return None
+    iso = f"{txt[:4]}-{txt[4:6]}-{txt[6:]}"
+    for period_md, label in (("03-31", "Q1"), ("06-30", "H1"), ("09-30", "Q3"), ("12-31", "年报")):
+        for year in (int(txt[:4]) - 1, int(txt[:4])):
+            period = f"{year}-{period_md}"
+            if disclosure_deadline(period) == iso:
+                nxt = {"03-31": ("06-30", year), "06-30": ("09-30", year),
+                       "09-30": ("12-31", year), "12-31": ("03-31", year + 1)}[period_md]
+                nxt_deadline = disclosure_deadline(f"{nxt[1]}-{nxt[0]}")
+                return (f"期轴: 前沿={label}({period}) 的法定披露截止; "
+                        f"下一期 {nxt[1]}-{nxt[0]} 截止 {nxt_deadline} —— 之前不构成缺口")
+    return "期轴数据集: 滞后交易日数不构成 SLA 判定"
 
 
 def source_watermarks(limit: int = 12) -> dict[str, Any]:
@@ -309,6 +340,8 @@ def render_text(status: dict[str, Any]) -> str:
             lag = d["lag_trading_days"]
             lag_txt = "—" if lag is None else f"落后 {lag} 交易日"
             lines.append(f"  - {d['dataset_id']:<52} {d['frontier']:<10} {lag_txt}  [{d['db']}]")
+            if d.get("period_axis"):
+                lines.append(f"      ↳ {d['period_axis']}")
         if fr.get("errors"):
             lines.append(f"  - 探测失败: {fr['errors']}")
         lines.append(f"  - 注: {fr['note']}")

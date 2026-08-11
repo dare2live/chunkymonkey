@@ -49,6 +49,7 @@ tier_gates:
     - project_index_sync
     - sandbox_isolation
     - no_emoji
+    - staged_worktree_parity
     - doc_drift
     - doc_governance
     # 2026-08-11 P2.1: 文档写死运行时状态的对账门。L1 = 纯文档提交, 正是最容易
@@ -69,6 +70,7 @@ tier_gates:
     - dead_references
     - config_refs
     - no_emoji
+    - staged_worktree_parity
     - doc_drift
     - doc_governance
     - doc_runtime_state

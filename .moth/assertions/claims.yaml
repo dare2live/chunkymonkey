@@ -24,10 +24,16 @@ assertions:
     query: "SELECT count(*) FROM duckdb_tables()"
     expect: {op: ">=", value: 29}
   - id: smartmoney-size-band
-    claim: "smartmoney 当前 control/serving 库体量 0.2-15GB 带内 (…2026-07-24 ~8.72GB→9GB; 2026-07-25 org trunc sharded repair 实测 ~11.16GB → 抬 9GB→12GB; 2026-08-05 日更 drain 合法增长实测 13.69GB (dc_member +644k 回填 + holders/org 增量, 无 wal, 单文件派生自 accepted partition) → 抬 12GB→15GB, 仍单文件派生自 accepted partition 非 bloat)；越界提示异常膨胀、错库或 retention 漂移，不代表项目是纯数据平台"
+    claim: "smartmoney 当前 control/serving 库体量 0.2-15GB 带内 (…2026-07-24 ~8.72GB→9GB; 2026-07-25 org trunc sharded repair 实测 ~11.16GB → 抬 9GB→12GB; 2026-08-05 日更 drain 合法增长实测 13.69GB (dc_member +644k 回填 + holders/org 增量, 无 wal, 单文件派生自 accepted partition) → 抬 12GB→15GB, 仍单文件派生自 accepted partition 非 bloat; 2026-08-12 日更后实测 16.69GB, `pragma_database_size` 显示 free 1554/total 63660 = 2.44%(wal=0) 即 97.6% 活数据 → 抬 15GB→20GB)；越界提示错库或 retention 漂移。**膨胀本身改由 [[smartmoney-bloat-ratio]] 断言直接测**, 本条只管绝对量级 —— 因为绝对带对「DROP 完没 compact」是瞎的"
     type: file_size
     path: data/smartmoney.duckdb
-    expect: {op: between, low: 200000000, high: 15000000000}
+    expect: {op: between, low: 200000000, high: 20000000000}
+  - id: smartmoney-bloat-ratio
+    claim: "smartmoney 死块占比 < 25% —— 这才是 size-band 真正想抓的东西。绝对体量带是个**棘轮**: 9→12→15GB 三次都是「实测合法增长」后抬带, 每次抬带都是一次橡皮图章的机会, 而且它对「DROP 完没 compact」这件事本身是瞎的(文件不缩, 带内照样过)。按 eng_gov §6, DuckDB 的 DROP/DELETE 不释放文件块, 单独 CHECKPOINT 也不缩文件 —— 死块占比直接测这件事, 且**不随合法增长漂移**。2026-08-12 实测 free 1554/total 63660 = 2.44%, 库 97.6% 是活数据(wal=0), 故当日抬带 15→20GB 是追认真实数据而非放过膨胀。超阈处置: `python backend/scripts/db_compact.py --db smartmoney --execute` 后核 parity。"
+    type: duckdb_sql
+    database: data/smartmoney.duckdb
+    query: "SELECT CAST(round(100.0 * free_blocks / nullif(total_blocks, 0), 2) AS DOUBLE) FROM pragma_database_size()"
+    expect: {op: "<", value: 25.0}
   - id: calendar-floor
     claim: "交易日历起点 == 2005-01-04 (2026-06-12 扩展+七项验证 PASS; 回退 = 静默 clamp 复发)。2026-06-27 §9 拆库: dim_trading_calendar 迁 reference.duckdb, 断言库改 reference"
     type: duckdb_sql

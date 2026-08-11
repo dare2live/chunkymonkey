@@ -84,7 +84,7 @@ done
 echo
 echo "=== Step 1.5: commit tier classification ==="
 COMMIT_TIER="L3"
-COMMIT_TIER_GATES="project_index_sync feature_map moth rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity no_emoji config_refs doc_drift doc_governance doc_runtime_state commit_msg rule10"
+COMMIT_TIER_GATES="staged_worktree_parity project_index_sync feature_map moth rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity no_emoji config_refs doc_drift doc_governance doc_runtime_state commit_msg rule10"
 if [[ -f "backend/scripts/classify_commit_tier.py" && -f "backend/config/commit_tiers.yaml" ]]; then
     if COMMIT_TIER_JSON=$(PYTHONPATH=backend "$PY" backend/scripts/classify_commit_tier.py 2>/tmp/cm_tier_err.out); then
         if parsed=$("$PY" -c '
@@ -248,6 +248,42 @@ else
 fi
 else
     echo "[commit-tier] skip moth (tier=$COMMIT_TIER)"
+fi
+
+# 2.9 Staged/worktree parity —— 必须排在**所有**读 worktree 的门之前。
+#
+# 为什么存在: ci_pytest 门刻意拿 live worktree 跑测试(见 Step 3.4 注释: 测试需要 repo 的
+# pytest.ini 与 fixture)。这意味着**它对「工作树 ≠ 索引」结构性失明** —— 跑的是你手上的
+# 版本, 提交的是索引里的版本。已经咬过两次(2026-08-11 `26b1d6901` 的 history_cli 声明落空、
+# 同日 `92f98f6e5` 带着已在本地修好的红测试上线, CI 红)。两次都是同一个动作:
+# `git add` 之后又编辑, 然后提交。
+#
+# 范围**只限 .py**, 这是刻意收窄的: feature_map / lineage / moth / doc_* 这些门都读
+# STAGED_INDEX_DIR, 对漂移天然免疫(且有用例专门验证它们在漂移下仍judge索引版本);
+# **只有 ci_pytest 会被骗**, 而它骗人的介质就是 pytest 真正导入并执行的 .py。
+# 把门开到所有文件会误伤 `git add -p` 这类正当分批提交, 也会让上述用例无法构造场景。
+#
+# 不变量: 每个 staged 的 .py, 其**索引内容 == 工作树内容**。
+echo
+echo "=== Step 2.9: staged/worktree parity ==="
+if gate_enabled staged_worktree_parity; then
+    STAGED_FILES="$(git diff --cached --name-only -- '*.py')"
+    DIRTY_FILES="$(git diff --name-only -- '*.py')"
+    DRIFTED=""
+    if [[ -n "$STAGED_FILES" && -n "$DIRTY_FILES" ]]; then
+        DRIFTED="$(comm -12 <(printf '%s\n' "$STAGED_FILES" | sort -u) \
+                            <(printf '%s\n' "$DIRTY_FILES" | sort -u))"
+    fi
+    if [[ -n "$DRIFTED" ]]; then
+        echo "ERROR: 以下 .py 已 staged, 但工作树里还有未 staged 的改动 —— ci_pytest 跑的是工作树版本, 你测的和你要提交的不是同一份:"
+        printf '  %s\n' $DRIFTED
+        echo "  修法: \`git add <上列文件>\` 后重跑; 若那些改动**不该**进本次提交, 先 stash 它们。"
+        gate_fail staged_worktree_parity 2
+    else
+        echo "[staged-worktree-parity] PASS (staged 内容 == 工作树内容)"
+    fi
+else
+    echo "[commit-tier] skip staged_worktree_parity (tier=$COMMIT_TIER)"
 fi
 
 # 3. Rule compliance

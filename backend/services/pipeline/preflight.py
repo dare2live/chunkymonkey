@@ -141,13 +141,18 @@ def ensure_tushare_authorized(ctx: PipelineContext) -> dict[str, Any] | None:
     ctx.tushare_auth_status = status
     opened_at = status["opened_at"]
     expires_at = status["expires_at"]
-    remaining_weeks = status["remaining_weeks"]
+    # `remaining_weeks` 是**照抄供应商的 `week` 字段**, 不是算出来的 —— 2026-08-11 实测
+    # 它报 4 而 limitDate 说次日到期, 差 4 周。名字里的 "remaining" 会让人读完日志以为
+    # 还有一个月, 而真相是明天就断。真相源是 limitDate(绝对时刻), 故这里现算天数;
+    # 供应商那个字段照原样标注来源, 不再让它冒充剩余量。裁决本来就只看 expires_at。
+    now = datetime.now(expires_at.tzinfo)
+    remaining_days = (expires_at - now).days
     ctx.log(
         "--- Authorization: OK "
         f"opened_at={opened_at.isoformat()} expires_at={expires_at.isoformat()} "
-        f"remaining_weeks={remaining_weeks} ---"
+        f"remaining_days={remaining_days} (vendor week field={status['remaining_weeks']}, "
+        "非剩余量) ---"
     )
-    now = datetime.now(expires_at.tzinfo)
     if expires_at - now <= timedelta(days=warning_days):
         ctx.degraded(
             "tushare authorization expires soon: "

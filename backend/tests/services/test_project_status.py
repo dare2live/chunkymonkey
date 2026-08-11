@@ -116,3 +116,23 @@ def test_date_like_and_calendar_bounds() -> None:
     assert not ps._is_date_like("")
     assert ps._calendar_bounds("20260804") == "2026-08-04"
     assert ps._calendar_bounds("trade_cal:SSE") == "trade_cal:SSE"
+
+
+def test_period_axis_note_replaces_meaningless_lag_with_next_unlock() -> None:
+    """C4: 期轴数据集的「落后 69 交易日」是把日轴算术套在期轴上, 只会制造假警报。
+
+    真正该回答的是「下一期什么时候才依法必须存在」。前沿 20260430 = Q1 的法定披露截止,
+    H1 要到 08-31 —— 在那之前它**不构成缺口**, 不该每次都要有人重新论证一遍。
+    截止日的真相源是 `org_holding_aif10.disclosure_deadline()` 的监管硬约束, 这里不重写。
+    """
+    note = ps._period_axis_note("tier0.disclosure.org_holding_detail_period", "20260430")
+    assert note is not None
+    assert "Q1" in note and "2026-08-31" in note and "不构成缺口" in note
+
+    # 认不出具体期次的期轴数据集: 仍要说明滞后数不作 SLA 判定, 不能沉默。
+    assert "不构成 SLA 判定" in ps._period_axis_note(
+        "tier0.disclosure.top10_float_holders_period", "20260805"
+    )
+    # 日轴数据集不加注 —— 它的滞后是真滞后。
+    assert ps._period_axis_note("tier0.market_data.nominal_ohlcv_daily", "20260804") is None
+
