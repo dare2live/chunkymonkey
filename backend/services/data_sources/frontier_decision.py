@@ -1,6 +1,6 @@
 """Shared frontier decision primitive — local axis max vs target probe/calendar.
 
-Owner model (analysis/data_frontier_detection_system_20260723.md):
+Owner model (docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (前沿判定)):
   local max(axis) → calendar/disclosure rule → should-have set → fetch gap
 
 This is one typed compare + day-window policy helper — not a DetectionService,
@@ -9,7 +9,7 @@ plugin bus, or DAG. Generalized from holders equal-day sparse fix (e040f4889).
 Axis values are domain frontiers (trade_date / notice_date / ann_date /
 report_period), never wall-clock 「对昨天」.
 
-Partition leap catchup (analysis/partition_leap_integrity_20260724.md):
+Partition leap catchup (docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (分区补洞法)):
   Tip watermark advances via MAX(axis) can skip sparse mid partitions.
   Holes sit **at or below** the tip (set difference), not tip+1.
   ``plan_partition_catchup`` owns the due-set law; domain modules execute

@@ -295,6 +295,40 @@ ATTACH 链变长；并且给「dual-write 同步两库」制造了理由 —— 
 **唯一合法的拆库理由是写锁 / retention / owner 冲突**，不是「看起来更有层次」。既有先例：
 `tushare_raw` 从 `smartmoney` 拆出，因为二者的写锁窗口与 retention 策略真的冲突。
 
+### 5.7 数据前沿判定与分区补洞
+
+「该拉哪些数据」不是拿 wall-clock 跟昨天比出来的。统一模型只有一句：
+**`本地 max(轴) → 日历/披露规则 → 应有集合 → 与已有作差`**。单一实现
+`services.data_sources.frontier_decision`（typed outcomes，不是 DetectionService / plugin / DAG）。
+
+**五个 typed outcome，缺一不可**：
+
+| outcome | 含义 |
+|---|---|
+| `skip_behind` | 目标 < 本地（provider 或日历落后于我们） |
+| `equal_day_population_gap` | 目标 == 本地 → **日期相等不等于人口完备** |
+| `advance_window` | 目标 > 本地，或目标未知 → 开窗 |
+| `pending_clock` | 发布钟未到（由调用方声明，不由这里猜） |
+| `hard_fail` | 探针失败 → fail-closed |
+
+第二条是最容易被省掉的一条：**「最新日期一样」不证明「那天的证券一个不缺」**。把它折叠进
+`skip` 就会静默漏人口。
+
+**分区 tip-leap —— 洞在 tip 之下，不在 tip+1。** 水位按 `MAX(轴)` 前进时，稀疏的中间分区
+可能还留在 source 里而 accepted 的 tip 已经越过了它们。此时「从 tip+1 继续拉」永远补不到
+那些洞。根本法是**集合差**而非游标推进：
+
+```text
+due = (source_partitions \ accepted_partitions)              -- A: 源有而未接受
+    ∪ (calendar_partitions \ accepted \ known_empty)          -- B: 日历应有而缺（调用方显式要求稠密时才启用）
+      且 partition ≤ watermark                                -- 不越过水位造未来分区
+      且 |due| ≤ 40                                           -- 有界，禁 mass backfill
+```
+
+职责三分，不得合并：**法**在 `plan_partition_catchup`（集合差 + tip 过滤 + 上界）；
+**执行**在各域的 catchup 模块（只做 accept/land）；**接线**是每次增量**先修洞再前进**。
+域模块自己发明补洞逻辑 = 每个域各修一个 bandage，正是这条法要终结的。
+
 ## 6. Tier 0 数据地基
 
 ### 6.1 交易数据

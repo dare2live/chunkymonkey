@@ -1,0 +1,50 @@
+{
+  "artifacts": {
+    "accepted": "data/lineage/tier12_publish_batches/accepted_20260804.json",
+    "batch": "data/lineage/tier12_publish_batches/batch_20260804.json",
+    "coverage": "data/lineage/tier12_publish_batches/coverage_full_universe_20260804.json",
+    "summary": "data/lineage/tier12_publish_batches/full_universe_accept_20260804.json"
+  },
+  "available_at": "20260804T160000+0800",
+  "config_hash": "184d82ed71a15d61768ce001250b8de86efa1aa0e5ae742bfdf5619d5c24fdd4",
+  "consumer_cutover_default": {
+    "cutover_allowed": true,
+    "reasons": [
+      "gates_passed"
+    ],
+    "status": "ACCEPTED_CUTOVER"
+  },
+  "content_hash": "9daa04a76ac264d898b50b8ce3391072b299528429e8c72947cb4f8800076a92",
+  "coverage_excluded_count": 0,
+  "cutover_allowed": false,
+  "decision_date": "20260804",
+  "definition_version": "stock_state_stage_pattern_v1",
+  "generated_at": "2026-08-11T07:44:07.975832+00:00",
+  "input_snapshot_id": "nominal_ohlcv_pit:20260804:n25963",
+  "kind": "tier12_full_universe_accept_summary",
+  "market_details": {
+    "adv_n": 3406,
+    "b_pit_cutover_allowed": false,
+    "dec_n": 1664,
+    "flat_n": 127,
+    "method": "board_filtered_nominal_breadth",
+    "not_pulse_mart": true,
+    "row_count_used": 5197,
+    "skipped_off_board": 0,
+    "writer": "tier12_publish_writer"
+  },
+  "market_trust_status": "READY",
+  "not_claims": [
+    "not_consumer_cutover",
+    "not_strategy_release",
+    "not_b_pit_cutover",
+    "not_phase_c_complete",
+    "continuity_not_upgraded_by_accept"
+  ],
+  "population_kind": "project_universe_pit",
+  "publish_scope": "project_universe",
+  "published": true,
+  "status": "ACCEPTED",
+  "stock_row_count": 5197,
+  "universe_membership_size": 5197
+}

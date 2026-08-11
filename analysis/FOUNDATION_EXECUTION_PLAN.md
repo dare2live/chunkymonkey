@@ -42,7 +42,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 `docs/MASTER_TOPLEVEL_DESIGN.md §5.6 (物理分层裁决)`、`architecture_fix_treadmill_first_principles_20260722.md`、
 `serve_derive_closed_loop_law_20260723.md`、`org_holding_incremental_loop_20260723.md`、
 `shareholder_update_check_design_20260723.md`、`hs_a_whitelist_includes_st_20260722.md`、
-`data_frontier_detection_system_20260723.md`、`product_decision_assist_backlog_20260721.md`、
+`docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (前沿判定)`、`product_decision_assist_backlog_20260721.md`、
 `db_storage_hygiene_20260721.md`、`db_bloat_deep_dive_20260723.md`（yaml 删表证据锚）。
 
 ---
@@ -61,7 +61,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | Margin 1b v3 bounded catchup **in acquire** | FIXED path | `0f5af7e80` 一带；补跑 CLI≠正解 |
 | Holders ACCEPTED+same payload_hash skip-land | FIXED path | `67cd81c27` |
 | Holders notice-axis catchup（mid-period holes） | FIXED path | `542365446`；证据 `holders_ann_date_axis_20260724.md`；live drain 见 §3b |
-| Shared `plan_partition_catchup` tip-leap law | FIXED path | `frontier_decision.plan_partition_catchup`；holders 迁入 + `stk_holdertrade` 接线；证据 `partition_leap_integrity_20260724.md` |
+| Shared `plan_partition_catchup` tip-leap law | FIXED path | `frontier_decision.plan_partition_catchup`；holders 迁入 + `stk_holdertrade` 接线；证据 `docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (分区补洞法)` |
 | Holdernumber RESTORE `by_ann_date` | FIXED | `9bde17735` |
 | Market qfq post-CTAS in-module compact | FIXED | `8f36809bf` / `a49a99786` |
 | Rewrite：删 canary + `rewrite_legacy` True 写回 | FIXED | git；见 §4 |
@@ -106,7 +106,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 | # | 项 | 类型 | Exit | 状态 |
 |---|---|---|---|---|
 | **A1** | holders fact→canonical notice 洞 drain（≈1271；含 600388/`20260613`） | ops | catchup 清空 fact-only | **CLOSED** 2026-07-24 live：fact_only=0；`20260613`∈canon+accepted |
-| **A1b** | 共享 tip-leap catchup law + 跨域接线 | L2 | `plan_partition_catchup`；holders 迁入；≥1 披露域接线；证据 `partition_leap_integrity_20260724.md` | **FIXED path**（holdertrade wired；raw 锁后量化 interior） |
+| **A1b** | 共享 tip-leap catchup law + 跨域接线 | L2 | `plan_partition_catchup`；holders 迁入；≥1 披露域接线；证据 `docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (分区补洞法)` | **FIXED path**（holdertrade wired；raw 锁后量化 interior） |
 | **A2** | holdernumber `MAX(ann_date)` tip vs eligible | F9 gate | tip lag >fail SLA → residual_hygiene FAIL/degraded | **F9 门禁管辖**（稀疏合法；超限即红；非本刀 mass drain） |
 | **A3** | Type-B fact publish 短滞后（moneyflow/limit/index/dc） | F9 gate | 同跑 catchup 后仍 raw≫fact 超 fail SLA → degraded | **F9 门禁管辖**（catchup 仍负责追平；本门防无限漂） |
 | **A4** | org 中间历史季洞 | backfill knife | 仅显式刀；日常 incremental 不变 | **DEFER** |

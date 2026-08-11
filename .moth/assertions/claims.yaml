@@ -135,7 +135,11 @@ assertions:
         parts = doc.split("### 5.4")
         if len(parts) != 2:
             sys.exit("MASTER 缺 §5.4 run_outcome 法条")
-        section = parts[1].split("## 6.")[0]
+        # 取到**下一个 ### 小节**为止, 不是到 "## 6."。2026-08-11 实测: 在 §5.4 与 §6
+        # 之间插入 §5.5–§5.7 后, 原切法把 §5.7 的前沿 outcome 名也当成了 run_outcome 的态
+        # —— 断言自己抓到了自己的取节假设失效, 这正是它该做的。
+        rest = parts[1]
+        section = rest.split("\n### ")[0].split("\n## ")[0]
         documented = set(re.findall(r"^\| `(\w+)` \|", section, re.M))
         if not states or states != documented:
             sys.exit(f"run_outcome 法条漂移: code={sorted(states)} doc={sorted(documented)}")
