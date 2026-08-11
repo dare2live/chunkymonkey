@@ -46,7 +46,7 @@ def _next_knives(*, b_on: bool, c_on: bool) -> list[str]:
     win on ordering. Cutover yaml only gates opt-in lines when gates are false.
     """
     knives = [
-        "FOUNDATION §6 exit + 100% usable MET (no class-A): analysis/foundation_residual_rootcause_20260723.md",
+        "FOUNDATION §6 exit + 100% usable MET (no class-A): docs/engineering_governance.md §9.1 (残留分类 A/B/C/D)",
         "STRATEGY blocked: analysis/STRATEGY_EXECUTION_PLAN.md until goal.md explicit RX schedule",
         "foundation phase_closure_ready — F1–F10 PASS (analysis/foundation_phase_reeval_20260721.md)",
         "FND-GATE / §15-VERIFY FIXED; org incremental-check-every-run (mass banned)",

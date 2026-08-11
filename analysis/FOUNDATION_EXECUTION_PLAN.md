@@ -18,7 +18,7 @@
 
 **退出（foundation exit → 才可开 STRATEGY）**：下表 TODO 中带 **exit-gate** 的项全部 `FIXED|CLOSED`（或 owner 明示 skip），且禁令未破。
 
-**「100% usable」≠ Continuity READY / 零 WARN**：见 §6a + `analysis/foundation_residual_rootcause_20260723.md`。
+**「100% usable」≠ Continuity READY / 零 WARN**：见 §6a + `docs/engineering_governance.md §9.1 (残留分类 A/B/C/D)`。
 Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A 复发债 / B 诚实状态 / C 历史堆 / D 假残留。
 
 ---
@@ -40,7 +40,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 仍 **living subordinate**（立法/契约引用，非第二 backlog）：
 `foundation_phase_reeval_20260721.md`（FND-GATE）、`docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)`、
 `docs/MASTER_TOPLEVEL_DESIGN.md §5.6 (物理分层裁决)`、`architecture_fix_treadmill_first_principles_20260722.md`、
-`serve_derive_closed_loop_law_20260723.md`、`org_holding_incremental_loop_20260723.md`、
+`docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)`、`org_holding_incremental_loop_20260723.md`、
 `shareholder_update_check_design_20260723.md`、`hs_a_whitelist_includes_st_20260722.md`、
 `docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (前沿判定)`、`product_decision_assist_backlog_20260721.md`、
 `db_storage_hygiene_20260721.md`、`db_bloat_deep_dive_20260723.md`（yaml 删表证据锚）。
@@ -151,7 +151,7 @@ Owner 纠偏（2026-07-23）：禁止为清清单而清残留；先分 class-A �
 
 ### 6a. 100% usable（owner 纠偏 2026-07-23）
 
-证据：`analysis/foundation_residual_rootcause_20260723.md`。
+证据：`docs/engineering_governance.md §9.1 (残留分类 A/B/C/D)`。
 
 | 要求 | 状态 |
 |---|---|

@@ -1,6 +1,6 @@
 """Serve→derive closed-loop helpers (single compute for process plan + gates).
 
-Authority: analysis/serve_derive_closed_loop_law_20260723.md
+Authority: docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)
 Config: backend/config/serve_derive_closed_loop.yaml
 """
 from __future__ import annotations
