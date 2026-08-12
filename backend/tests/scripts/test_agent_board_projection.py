@@ -65,9 +65,12 @@ def test_phase_e_ladder_projected() -> None:
 
 def test_b_pit_shadow_match_counts() -> None:
     shadow = board.collect(REPO)["cutovers"]["b_pit_mart"]["shadow"]
-    assert shadow["match_day_count"] == 120
+    # 断言**不变量**而非那次测量的具体天数: 窗口每延长一次(补数据后重测)天数就变,
+    # 把 120 写死等于让测试追着运行时状态跑 —— 与「文档不许写死前沿」是同一条纪律。
+    # 真正要守的是: 每一天都 MATCH, 且零背离零错误。
+    assert shadow["ratios_match_all"] is True, "全窗必须每天都 MATCH"
     assert shadow["diverge_day_count"] == 0
-    assert shadow["ratios_match_all"] is True
+    assert shadow["match_day_count"] >= 120, "窗口不得缩短到原 attested 规模(120 天)以下"
 
 
 def test_b_pit_effective_comes_from_resolver_not_yaml_flag() -> None:

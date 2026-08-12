@@ -171,8 +171,16 @@ def test_b2_declares_market_sensing_feature_block() -> None:
     assert run.feature_block.status == "declared_scaffold"
     assert run.surface_status == REQUIRED_SURFACE_STATUS
     assert "b2_market_sensing_block" in run.notes
-    # Owner opt-in 2026-07-20: B-pit mart cutover ON (reported status flag).
-    assert run.feature_block.as_dict()["b_pit_cutover_allowed"] is True
+    # 这里要守的**不变量**是「B2 转发 resolver 的实际裁决」, 不是「裁决当下是 True」——
+    # 后者是治理状态(config 的 attested 窗口与影子证据是否一致), 会随每次重测/续窗变化,
+    # 由 test_b_pit_effective_comes_from_resolver_not_yaml_flag 专门盯。把状态钉死在这里,
+    # 等于让 B2 的单测追着治理状态跑(2026-08-12 实证: 一次合法的影子重测就让这两例变红)。
+    from services.b_pit_mart_cutover import resolve_b_pit_mart_cutover
+    reported = run.feature_block.as_dict()["b_pit_cutover_allowed"]
+    assert isinstance(reported, bool)
+    assert reported == bool(resolve_b_pit_mart_cutover("20260717").cutover_allowed), (
+        "B2 必须转发 resolver 的实际裁决, 不得改报 yaml 意图"
+    )
 
 
 def test_pulse_mart_refused_fail_closed() -> None:
@@ -293,7 +301,10 @@ def test_b2_measured_vs_b0_reports_delta_and_rejects_on_edge_gates() -> None:
     assert verdict.details["delta_b2_minus_b0"] is not None
     # Owner opt-in 2026-07-20: B-pit mart cutover ON (reported status flag;
     # measurement still uses project-board breadth, not pulse mart).
-    assert verdict.details["b_pit_cutover_allowed"] is True
+    from services.b_pit_mart_cutover import resolve_b_pit_mart_cutover as _rs
+    assert verdict.details["b_pit_cutover_allowed"] == bool(
+        _rs("20260717").cutover_allowed
+    ), "同上: 守「转发 resolver」这条不变量, 不钉死治理状态"
 
 
 def test_holdout_lift_stability_rejects_equal_b0_holdout() -> None:

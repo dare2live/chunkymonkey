@@ -1,0 +1,44 @@
+{
+  "coverage_excluded_count": 0,
+  "decision_date": "20260806",
+  "exclusion_reason_counts": {},
+  "exclusions_sample": [],
+  "generated_at": "2026-08-12T00:36:50.798520+00:00",
+  "input_row_count": 25984,
+  "kind": "tier12_full_universe_coverage",
+  "lookback_days": [
+    "20260731",
+    "20260803",
+    "20260804",
+    "20260805",
+    "20260806"
+  ],
+  "notes": [
+    "coverage_gaps_excluded_with_reason",
+    "not_silent_pad",
+    "not_consumer_cutover",
+    "not_strategy_release",
+    "not_phase_c_complete"
+  ],
+  "pit_excluded_count": 0,
+  "population_kind": "project_universe_pit",
+  "smoke_gate": {
+    "available_at": "20260806T160000+0800",
+    "config_hash": "184d82ed71a15d61768ce001250b8de86efa1aa0e5ae742bfdf5619d5c24fdd4",
+    "decision_date": "20260806",
+    "definition_version": "stock_state_stage_pattern_v1",
+    "market_attestation_status": "PUBLISHABLE_SCAFFOLD",
+    "market_available_at": "20260806T160000+0800",
+    "market_config_hash": "8c6b68d4b42fb2385e29fffe87b04c6cb4ee3f730a704c53294937c48fb5c215",
+    "market_definition_version": "market_sensing_project_breadth_v0",
+    "ok": true,
+    "pit_excluded_count": 0,
+    "published": false,
+    "status": "WRITTEN_UNPUBLISHED",
+    "stock_state_count": 5200
+  },
+  "universe_membership_size": 5200,
+  "universe_policy_hash": "2c2318a6d5bccd96af03478ff4e5871362110d9e22b9849adb243c06a1c73d0a",
+  "universe_policy_id": "active_a_share_trading_universe",
+  "written_stock_row_count": 5200
+}

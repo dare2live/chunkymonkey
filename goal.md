@@ -85,15 +85,19 @@ owner contract，进度段在此。**不再有第二个说「下一步」的地�
 `test_safe_commit` 从长期 25 红修到 18 绿并转正 CI · B3 查出 moth 门的 `elif` 在 warn-only 下短路掉
 `moth coupling`（warn-only 退化成 warn-nothing 的实例，已修 + 参数化守卫锁定）。
 
-**C. 数据线**（严格串行，后项依赖前项）
-- C1 补 accepted 缺口（日线滞后见 `chunkyctl status`）
-- C2 → 跑 b_pit 影子比对取证据 → 据此续窗或把 `cutover_allowed` 改回 false。**不许为让门变绿而跳过比对**（§5.8 谄媚死）
-- C3 → tier12 补发布剩余交易日
-- ~~C4~~ **已闭合**：`org_holding` 前沿落在 Q1 的法定披露截止日(2026-04-30)，H1 要到 08-31 —— 不是缺口。
-  `chunkyctl status` 现已对期轴数据集直接报下一期解锁日，不再让人重新论证一遍
+**C 已闭合**（数据线）：daily 与 stock_st 两个 `on_demand` 域的尾部断流已补齐（两域前沿现已追平交易日锚，
+滞后 0；行数单调无截断，现查 `chunkyctl status`）· qfq/form 已跟进 · tier12 补发 5 期，`stock_row_count ==
+universe_membership_size == 5205`（无静默填充）→ **tier12_consumer 转 PASS**（ACCEPTED_CUTOVER）·
+org_holding 期轴非缺口已定论。
 
 **D. 待 owner 裁决**
-- D1 b_pit 去留 —— 排在 C2 之后，非独立决策
+- **D1 b_pit 去留 —— 证据已备齐，收敛成一行 YAML 的取舍**：影子比对整窗重测**全数 MATCH，
+  零背离零错误**，`max_abs_ratio_delta=0.0`；`universe_policy_hash` 与契约期望逐字相同（未漂移）。
+  resolver 现在的 reasons **只剩 `window_end_mismatch` 一条** —— 即把
+  `b_pit_mart_cutover.yaml` 的 `expected_window_end` 对齐到影子重测的窗末即可 MART_CUTOVER，
+  不改则维持 fail-closed 回 legacy。**具体日期现查** `chunkyctl status` 与
+  `data/lineage/b_pit_breadth_shadow/summary.json`（写死在这里明天就过期）。
+  契约明写「MATCH alone never silent-flips this flag —— 翻是 owner 的显式动作」，故不代劳。
 - D2 Cap C（产品 UX 偏好）：建议丢弃，因它**无可机器验证的判据**，写进文档只会多一份会烂的东西
 - D3 WP6 仪式影子期已过 eng_gov §13 上限，须裁决 cutover 或重置
 - **D4 tushare 授权 2026-08-12 15:43 到期（即明日）** —— 到期后全部 Tier0 采集停摆。只能由 owner 续费，
