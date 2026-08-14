@@ -240,7 +240,6 @@ def run_full_universe_accept(
         "not_claims": [
             "not_consumer_cutover",
             "not_strategy_release",
-            "not_b_pit_cutover",
             "not_phase_c_complete",
             "continuity_not_upgraded_by_accept",
         ],

@@ -77,7 +77,6 @@ def main(argv: list[str] | None = None) -> int:
             "not_consumer_cutover",
             "not_full_universe",
             "not_strategy_release",
-            "not_b_pit_cutover",
             "canary_scale_only",
         ],
     }

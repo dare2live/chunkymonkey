@@ -156,7 +156,7 @@ def test_board_summary_reads_generated_context(tmp_path):
     _write_board(tmp_path)
     section = agent_boot.board_summary(tmp_path)
     assert section["status"] == "ok"
-    assert section["cutover_allowed"] == {"b_pit_mart": False, "tier12_consumer": False}
+    assert section["cutover_allowed"] == {"tier12_consumer": False}
     assert section["track"]["name"]
 
 

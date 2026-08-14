@@ -163,12 +163,8 @@ def board_summary(repo: Path) -> dict[str, Any]:
         "generated_at": board.get("generated_at"),
         "track": track,
         "cutover_allowed": {
-            "b_pit_mart": (cutovers.get("b_pit_mart") or {}).get("cutover_allowed"),
             "tier12_consumer": (cutovers.get("tier12_consumer") or {}).get("cutover_allowed"),
         },
-        # yaml 意图之外必须带 resolver 探针：窗口走完后 yaml 仍 true 而实际
-        # fail-closed 回 legacy，只报前者就是本页误导 agent 的原样复现。
-        "b_pit_effective": (cutovers.get("b_pit_mart") or {}).get("effective") or {},
         "phase_e_overall": phase_e.get("overall_status"),
         "bans": board.get("bans") or [],
         "next_knives_frozen": board.get("next_knives_frozen") or [],
@@ -256,13 +252,8 @@ def render_text(d: dict[str, Any]) -> str:
         t = b["track"]
         add(f"- snapshot {b.get('generated_at')} | track `{t.get('name')}` | A→H `{t.get('a_to_h')}`")
         ca = b["cutover_allowed"]
-        add(f"- cutover_allowed (yaml 意图): b_pit_mart={ca.get('b_pit_mart')} "
+        add(f"- cutover_allowed (yaml 意图): "
             f"tier12_consumer={ca.get('tier12_consumer')} | phase_e={b.get('phase_e_overall')}")
-        eff = b.get("b_pit_effective") or {}
-        if ca.get("b_pit_mart") and eff.get("window_lapsed") and not eff.get("probe_cutover_allowed"):
-            add(f"- **b_pit 实际已不生效**: attested 窗口末端已成过去时；"
-                f"窗末+1 探针 {eff.get('probe_day')} → {eff.get('probe_status')}"
-                f"/{eff.get('probe_source')} — 晚于窗末的 trade_date 一律 fail-closed 回 legacy")
         for ban in b.get("bans") or []:
             add(f"- ban: {ban}")
         for item in b.get("next_knives_frozen") or []:

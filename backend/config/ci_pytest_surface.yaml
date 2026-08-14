@@ -77,7 +77,6 @@ blocking_paths:
 - tests/services/test_margin_catchup.py
 - tests/services/test_margin_pulse_promote_gate.py
 - tests/services/test_observation_population.py
-- tests/services/test_project_universe_breadth.py
 - tests/services/test_population_scope.py
 - tests/services/test_sync_execution_policy.py
 - tests/services/test_security_day_transport_modularity.py
@@ -205,11 +204,6 @@ ci_test_optional:
 - path: tests/scripts/test_perf_p1_trade_date.py
   reason: perf+slow marker -- timing-budget test, opt-in only (pytest.ini excludes by default)
 - path: tests/scripts/test_update_watermark_sla.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/services/test_b_pit_mart_cutover.py
   reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
     ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency

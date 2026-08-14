@@ -269,7 +269,7 @@ def board_projection() -> dict[str, Any]:
     """轨道 / cutover **意图** / 禁令 / Phase 裁决 —— 从 config 与 lineage artifact 现查。
 
     与上面的 ``cutover_effectiveness()`` 成对: 这里是 yaml 声明的意图, 那里是 resolver
-    的实际裁决。两者必须并排出现 —— 只报意图正是 b_pit 静默失效 13 个交易日的成因。
+    的实际裁决。两者必须并排出现 —— 只报意图正是 cutover 声明静默失效 13 个交易日的成因。
     """
     try:
         from scripts.agent_board_projection import collect

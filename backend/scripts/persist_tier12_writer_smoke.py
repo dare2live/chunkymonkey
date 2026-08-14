@@ -86,7 +86,6 @@ def _compact_summary(batch_dict: dict[str, Any], smoke: dict[str, Any]) -> dict[
                 "row_count_used",
                 "skipped_off_board",
                 "method",
-                "b_pit_cutover_allowed",
             )
         },
         "notes": batch_dict.get("notes"),
@@ -94,7 +93,6 @@ def _compact_summary(batch_dict: dict[str, Any], smoke: dict[str, Any]) -> dict[
             "not_accepted_partition",
             "not_strategy_release",
             "not_publish_complete",
-            "not_b_pit_cutover",
             "canary_scope_not_full_universe",
         ],
     }

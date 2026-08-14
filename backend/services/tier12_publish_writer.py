@@ -425,7 +425,6 @@ def _build_market_context(
             "flat_n": flat,
             "row_count_used": used,
             "skipped_off_board": skipped_off_board,
-            "b_pit_cutover_allowed": False,
             "not_pulse_mart": True,
         },
     )

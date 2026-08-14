@@ -170,24 +170,6 @@ def test_scaffold_fix_entrypoint_exists_for_every_regenerable_artifact() -> None
     chunkyctl = (REPO / "scripts" / "chunkyctl").read_text(encoding="utf-8")
     assert "scaffold-fix)" in chunkyctl
 
-
-# ── 4. cutover 生效性检查 (b_pit 是本轮的实证起点) ──────────────────────
-def test_b_pit_finding_fails_once_the_attested_window_lapses() -> None:
-    from services.b_pit_mart_cutover import load_b_pit_mart_cutover_config
-
-    cfg = load_b_pit_mart_cutover_config()
-    if not cfg.cutover_allowed:
-        pytest.skip("cutover_allowed=false — 没有声明就无从背离")
-    end = str(cfg.expected_window_end)
-    after = (
-        dt.date(int(end[:4]), int(end[4:6]), int(end[6:])) + dt.timedelta(days=1)
-    ).strftime("%Y%m%d")
-    finding = cce._b_pit_finding(after)
-    assert finding["status"] == cce.STATUS_FAIL
-    assert finding["window_lapsed"] is True
-    assert finding["resolved_status"] != "MART_CUTOVER"
-
-
 def test_tier12_structural_reason_is_fail_not_warn(monkeypatch) -> None:
     """2026-08-11 独立审查 finding #3：只有「当天没 accepted」才配叫预期回落。
 

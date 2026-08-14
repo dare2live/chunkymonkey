@@ -324,7 +324,7 @@ Agent-OS 核心面（WP0–WP4）已落地：tiered `safe_commit`、生成板、
 | 旧路径（影子保留） | 手拼 `git`+`moth snapshot`+`codegraph status` boot；手抄 goal 状态段 |
 | 仪式 cutover 条件 | 门覆盖 parity 机器 diff 为空（每门在其触发面仍可红）**且**影子期无真相回归 |
 | 任一回归 | 影子期重置；必要时回退 L3 全门 |
-| **不在本政策内** | B-pit/C **数据面** `cutover_allowed`（继续冻结；与仪式切换无关） |
+| **不在本政策内** | tier12 **数据面** `cutover_allowed`（与仪式切换无关） |
 
 WP5 shared DuckDB memory fixture pack：**Occam 跳过**——无 WP1 基线证明测试建库
 是显著耗时热点；需要时再开，不预建。
@@ -401,7 +401,7 @@ tier 剪枝管**跑不跑**，分组管**跑红了会怎样**，两维正交。o
 | `scaffold` | 下一个开发者受害 | **warn-only** | project_index_sync / feature_map / agent_board / moth / doc_drift / doc_governance / doc_runtime_state / commit_msg |
 
 判据来自实证而非偏好（2026-08-10 审计，`chunkyctl history --since 2026-08-10 --full`）：脚手架门本轮 3 次
-阻断系统修复提交（文档没同步挡住代码 bug 修复），而 b_pit cutover 是否仍生效 ——
+阻断系统修复提交（文档没同步挡住代码 bug 修复），而 cutover 声明是否仍生效 ——
 一个纯运行时事实 —— 被装在 commit 路径上，于是「有没有人恰好提交相关代码」决定
 了它何时被查，系统跑了 13 次没人查。**受害时刻在运行时的检查，就不该装在 commit
 时刻。**

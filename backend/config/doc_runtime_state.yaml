@@ -51,12 +51,6 @@ file_exemptions:
     value: "20260720"
     reason: "同上 —— 第二次 re-accept 的事件日 (form enrich v1)"
   - file: PROJECT_INDEX.md
-    value: "20260121"
-    reason: "b_pit attested shadow 窗起点, 引自 b_pit_mart_cutover.yaml 的冻结证据窗 (config 常量)"
-  - file: PROJECT_INDEX.md
-    value: "20260722"
-    reason: "b_pit attested shadow 窗末端, 同上; **是否仍生效**由 check_cutover_effective 现查, 不由本文档声称"
-  - file: PROJECT_INDEX.md
     value: "20260804"
     reason: "2026-08-11 修复说明里引用的真相源实测值 (记录当时差距的证据, 非当前声明)"
   - file: docs/README.md

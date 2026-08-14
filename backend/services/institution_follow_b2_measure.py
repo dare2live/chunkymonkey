@@ -23,7 +23,6 @@ from services.institution_follow_b0_measure import (
     measure_b0_paper,
 )
 from services.institution_follow_edge_gates import evaluate_accept_edge_gates
-from services.b_pit_mart_cutover import resolve_b_pit_mart_cutover
 from services.market_pulse_scope import attest_market_pulse_scope
 from services.universe import ACTIVE_A_SHARE_PREFIXES
 
@@ -202,11 +201,6 @@ class MeasuredB2Result:
             "definition_version": DEFINITION_VERSION,
             "method": METHOD_ID,
             "population_kind": POPULATION_KIND,
-            "b_pit_cutover_allowed": bool(
-                resolve_b_pit_mart_cutover(
-                    max(self.context_by_day) if self.context_by_day else "20260717"
-                ).cutover_allowed
-            ),
         }
 
 
@@ -219,7 +213,6 @@ def refuse_pulse_mart_as_market_context(
 
     day = _norm_day(trade_date)
     attest = attest_market_pulse_scope(day)
-    b_pit = resolve_b_pit_mart_cutover(day)
     return MarketContextSnapshot(
         decision_time=day,
         available_at=available_at,
@@ -235,8 +228,6 @@ def refuse_pulse_mart_as_market_context(
         refuse_reason=REASON_B2_PULSE_UNTRUSTED,
         details={
             "pulse_overall_status": attest.overall_status,
-            "cutover_allowed": bool(b_pit.cutover_allowed),
-            "b_pit_mart_cutover": b_pit.as_dict(),
             "missing_available_at": not bool(available_at),
             "available_at_reason": (
                 None
@@ -244,10 +235,11 @@ def refuse_pulse_mart_as_market_context(
                 else REASON_B2_PULSE_NO_AVAILABLE_AT
             ),
             "note": (
-                "legacy pulse mart refused as historical B2 market context "
-                "regardless of B-pit mart cutover state; use project-universe "
-                "shadow breadth (b_pit cutover governs the pulse router mart, "
-                "not this feature source)"
+                "legacy pulse mart refused as historical B2 market context; "
+                "B2 computes its own board-filtered breadth from accepted "
+                "nominal bars (see build_market_context_from_nominal_bars). "
+                "2026-08-14: b_pit cutover 层已退役 —— 它对本特征源本就零裁决权, "
+                "只是往 details 盖戳"
             ),
         },
     )
@@ -356,12 +348,9 @@ def build_market_context_from_nominal_bars(
             "row_count_used": used,
             "skipped_off_board": skipped_off_board,
             "skipped_no_pct": skipped_no_pct,
-            "b_pit_cutover_allowed": bool(
-                resolve_b_pit_mart_cutover(day).cutover_allowed
-            ),
             "note": (
                 "shadow project-board breadth from accepted nominal bars; "
-                "not legacy pulse mart; B-pit mart cutover gate consulted"
+                "not legacy pulse mart"
             ),
         },
     )

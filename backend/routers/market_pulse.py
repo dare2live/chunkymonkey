@@ -20,7 +20,7 @@
   GET /api/v3/pulse/sentiment   情绪温度时序 (涨跌停/炸板率/涨跌比 + v2 连板天梯/晋级率/
                                 秒板/封单/两融/大盘PE换手/龙虎榜, mart_market_pulse_daily);
                                 旁路 population_scope / shadow_reconcile / cutover_allowed
-                                + tier12_production_read（Phase C）+ b_pit_mart_production_read
+                                + tier12_production_read（Phase C）
                                 （B-pit mart 门；cutover ON→MART_CUTOVER，窗外/缺影 fail-closed→LEGACY mart；
                                 产品信任：窗外 EMPTY / 窗内缺 UNTRUSTED / 窗内有证 READY；不改 days 数值）
   GET /api/v3/pulse/warnings    退潮预警 (跌出 RS top-N [v3 锁 L1] + 连续静默流出 >= 阈值)
@@ -46,11 +46,7 @@ from services import market_pulse as mp
 from services import market_pulse_serve_read as pulse_serve
 from services.duck_adapter import connect as duck_connect
 from services.data_access import resolver
-from services.market_pulse_scope import (
-    NORMAL_BREADTH_ABSENCE_KINDS,
-    attest_market_pulse_scope,
-    classify_breadth_day_absence,
-)
+from services.market_pulse_scope import attest_market_pulse_scope
 from services.market_pulse_shadow_reconcile import reconcile_market_pulse_shadow
 from services.margin_pulse_promote_gate import (
     NORMAL_ABSENCE_KINDS,
@@ -58,11 +54,6 @@ from services.margin_pulse_promote_gate import (
     evaluate_margin_pulse_promote_gate,
     load_margin_pulse_promote_config,
 )
-from services.b_pit_mart_cutover import (
-    BPitMartCutoverConfig,
-    load_b_pit_mart_cutover_config,
-)
-from services.market_pulse_b_pit_read import attest_pulse_b_pit_mart_production_read
 from services.market_pulse_tier12_read import attest_pulse_tier12_production_read
 
 router = APIRouter()
@@ -71,9 +62,6 @@ router = APIRouter()
 _TIER12_ARTIFACT_ROOT = None
 _TIER12_CUTOVER_CONFIG = None
 _TIER12_CONFIG_PATH = None
-_B_PIT_ARTIFACT_ROOT = None
-_B_PIT_CUTOVER_CONFIG = None
-_B_PIT_CONFIG_PATH = None
 # F4: test overrides; production loads margin_pulse_promote.yaml (fail-closed defaults).
 _MARGIN_PROMOTE_CFG = None
 
@@ -84,17 +72,6 @@ def _margin_promote_cfg():
     return load_margin_pulse_promote_config()
 
 
-def _b_pit_cutover_cfg() -> BPitMartCutoverConfig:
-    """Typed B-pit window bounds for breadth EMPTY vs UNTRUSTED classification."""
-    if _B_PIT_CUTOVER_CONFIG is not None:
-        if isinstance(_B_PIT_CUTOVER_CONFIG, BPitMartCutoverConfig):
-            return _B_PIT_CUTOVER_CONFIG
-        if isinstance(_B_PIT_CUTOVER_CONFIG, dict):
-            raw = _B_PIT_CUTOVER_CONFIG
-            if "mart_cutover" not in raw:
-                raw = {"mart_cutover": raw}
-            return BPitMartCutoverConfig.from_mapping(raw)
-    return load_b_pit_mart_cutover_config(_B_PIT_CONFIG_PATH)
 
 
 def _shadow_reconcile_for_day(conn, trade_date: str) -> dict[str, Any]:
@@ -593,7 +570,6 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
     → typed EMPTY（正常空，同 rzrqye 覆盖前）；窗内应有却缺 → UNTRUSTED。
     Phase C: ``tier12_production_read`` 经 ``resolve_tier12_production_read``；
     cutover ON → ACCEPTED_CUTOVER，缺 accept fail-closed → LEGACY。B-pit:
-    ``b_pit_mart_production_read`` 经 ``resolve_b_pit_mart_production_read``；
     cutover ON → MART_CUTOVER，窗外/缺影 fail-closed → LEGACY mart（产品信任层
     窗外=EMPTY，窗内缺=UNTRUSTED）。``days`` 数值不改。
     """
@@ -610,38 +586,17 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
         artifact_root=_TIER12_ARTIFACT_ROOT,
         config_path=_TIER12_CONFIG_PATH,
     )
-    b_pit = attest_pulse_b_pit_mart_production_read(
-        latest,
-        config=_B_PIT_CUTOVER_CONFIG,
-        artifact_root=_B_PIT_ARTIFACT_ROOT,
-        config_path=_B_PIT_CONFIG_PATH,
-    )
     if latest:
         shadow = _shadow_reconcile_for_day(conn, latest)
         promote_gate = _promote_gate_for_day(conn, latest, shadow)
         margin_empty = promote_gate.get("status") == "EMPTY_OK"
-        breadth_promoted = (
-            b_pit.get("status") == "MART_CUTOVER"
-            and b_pit.get("source") == "project_universe_pit"
+        # 2026-08-14 b_pit 退役: 广度不再需要「窗口内才可信」的判定 —— 它一直读的就是
+        # accepted canonical + 板块前缀白名单(见 market_pulse._NOMINAL_DAILY_SQL)。
+        # 仍保留 typed-empty: 某日真的没有广度行时, 要报「正常空」而不是静默 0。
+        breadth_empty = not any(
+            r.get("adv_dec_ratio") is not None for r in day_rows if str(r.get("trade_date")) == latest
         )
-        breadth_empty = False
-        breadth_empty_reason = None
-        if not breadth_promoted:
-            bcfg = _b_pit_cutover_cfg()
-            absence = classify_breadth_day_absence(
-                latest,
-                window_start=bcfg.expected_window_start,
-                window_end=bcfg.expected_window_end,
-                is_trading_day=True,
-            )
-            # Resolver may also stamp outside-window; treat as not_expected.
-            for reason in b_pit.get("reasons") or ():
-                if "trade_date_outside_shadow_window" in str(reason):
-                    absence = "not_expected"
-                    break
-            if absence in NORMAL_BREADTH_ABSENCE_KINDS:
-                breadth_empty = True
-                breadth_empty_reason = f"typed_empty_{absence}"
+        breadth_empty_reason = "typed_empty_no_breadth_row" if breadth_empty else None
         scope = attest_market_pulse_scope(
             latest,
             margin_source_accepted=bool(cfg.pulse_source_accepted),
@@ -652,7 +607,6 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
                 if margin_empty
                 else None
             ),
-            breadth_promoted=breadth_promoted,
             breadth_empty=breadth_empty,
             breadth_empty_reason=breadth_empty_reason,
         ).as_dict()
@@ -680,8 +634,6 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
         "promote_gate": promote_gate,
         "cutover_allowed": bool(tier12.get("cutover_allowed", False)),
         "tier12_production_read": tier12,
-        "b_pit_mart_cutover_allowed": bool(b_pit.get("cutover_allowed", False)),
-        "b_pit_mart_production_read": b_pit,
     }
 
 

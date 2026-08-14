@@ -23,11 +23,9 @@ def test_collect_cutovers_reflects_live_yaml() -> None:
     gates true; this must not hardcode a stale false expectation."""
     data = board.collect(REPO)
     assert data["enforcement"] == "projection_only_not_truth"
-    b_pit_yaml = board._load_yaml(REPO / "backend" / "config" / "b_pit_mart_cutover.yaml")
     tier12_yaml = board._load_yaml(REPO / "backend" / "config" / "tier12_publish.yaml")
-    expected_b_pit = bool((b_pit_yaml.get("mart_cutover") or {}).get("cutover_allowed", False))
     expected_tier12 = bool((tier12_yaml.get("consumer_cutover") or {}).get("cutover_allowed", False))
-    assert data["cutovers"]["b_pit_mart"]["cutover_allowed"] == expected_b_pit
+    assert "b_pit_mart" not in data["cutovers"], "已退役的 b_pit cutover 面不得复活"
     assert data["cutovers"]["tier12_consumer"]["cutover_allowed"] == expected_tier12
 
 
@@ -36,9 +34,6 @@ def _write_legacy_false_repo(tmp_path: Path) -> Path:
     the LEGACY (pre-opt-in) path independent of live repo cutover state."""
     cfg = tmp_path / "backend" / "config"
     cfg.mkdir(parents=True)
-    (cfg / "b_pit_mart_cutover.yaml").write_text(
-        "mart_cutover:\n  cutover_allowed: false\n", encoding="utf-8"
-    )
     (cfg / "tier12_publish.yaml").write_text(
         "consumer_cutover:\n  cutover_allowed: false\n", encoding="utf-8"
     )
@@ -49,7 +44,6 @@ def test_collect_cutovers_legacy_false_fixture(tmp_path: Path) -> None:
     fixture_repo = _write_legacy_false_repo(tmp_path)
     data = board.collect(fixture_repo)
     assert data["enforcement"] == "projection_only_not_truth"
-    assert data["cutovers"]["b_pit_mart"]["cutover_allowed"] is False
     assert data["cutovers"]["tier12_consumer"]["cutover_allowed"] is False
 
 
@@ -61,41 +55,6 @@ def test_phase_e_ladder_projected() -> None:
     assert blocks["b4"]["verdict"] == "inconclusive"
     assert data["phase_e"]["any_claimable"] is False
     assert data["phase_e"]["strategy_release"] is False
-
-
-def test_b_pit_shadow_match_counts() -> None:
-    shadow = board.collect(REPO)["cutovers"]["b_pit_mart"]["shadow"]
-    # 断言**不变量**而非那次测量的具体天数: 窗口每延长一次(补数据后重测)天数就变,
-    # 把 120 写死等于让测试追着运行时状态跑 —— 与「文档不许写死前沿」是同一条纪律。
-    # 真正要守的是: 每一天都 MATCH, 且零背离零错误。
-    assert shadow["ratios_match_all"] is True, "全窗必须每天都 MATCH"
-    assert shadow["diverge_day_count"] == 0
-    assert shadow["match_day_count"] >= 120, "窗口不得缩短到原 attested 规模(120 天)以下"
-
-
-def test_b_pit_effective_comes_from_resolver_not_yaml_flag() -> None:
-    """投影必须给出 resolver 的实际裁决，不能只报 yaml 意图。
-
-    2026-08-10 实测事故：yaml `cutover_allowed=true`，但 shadow 窗口末端
-    `20260722` 已过，resolver 自 `20260723` 起每日 fail-closed 回 legacy_mart；
-    BOARD 只读 yaml flag（`bool(b_pit_gate.get("cutover_allowed"))`），于是对一个
-    已停用 13 个交易日的能力持续报绿。删掉 effective 或改回只读 yaml 即此测试红。
-    """
-    from services.b_pit_mart_cutover import resolve_b_pit_mart_production_read
-
-    eff = board.collect(REPO)["cutovers"]["b_pit_mart"].get("effective")
-    assert eff is not None, "b_pit_mart 必须带 effective（resolver 探针裁决）"
-    assert len(eff["probe_day"]) == 8 and eff["probe_day"].isdigit()
-    truth = resolve_b_pit_mart_production_read(
-        eff["probe_day"],
-        config_path=REPO / "backend" / "config" / "b_pit_mart_cutover.yaml",
-    )
-    assert eff["probe_status"] == truth.status
-    assert eff["probe_cutover_allowed"] is bool(truth.cutover_allowed)
-    assert eff["probe_source"] == truth.source
-    assert isinstance(eff["window_lapsed"], bool)
-
-
 def test_board_stable_across_wall_clock_day_rollover(monkeypatch) -> None:
     """跨天不得产生漂移，否则 agent_board 门会每天堵死所有提交。
 
@@ -129,28 +88,6 @@ def test_board_stable_across_wall_clock_day_rollover(monkeypatch) -> None:
     j0 = {k: v for k, v in d0.items() if k != "generated_at"}
     j1 = {k: v for k, v in d1.items() if k != "generated_at"}
     assert j0 == j1, "投影对象跨天漂移 → 同一状态被渲染成两种说法"
-
-
-def test_render_flags_yaml_vs_effective_divergence() -> None:
-    """yaml 说 true 而 resolver 说 false 时，渲染必须显式标注背离并指向处置。"""
-    data = board.collect(REPO)
-    bp = data["cutovers"]["b_pit_mart"]
-    text = board.render_md(data)
-    assert "resolver 实际裁决" in text
-    eff = bp["effective"]
-    diverged = (
-        bool(bp["cutover_allowed"])
-        and bool(eff["window_lapsed"])
-        and not bool(eff["probe_cutover_allowed"])
-    )
-    if diverged:
-        assert "yaml 意图已不生效" in text
-        assert eff["probe_status"] in text
-        assert eff["probe_day"] in text
-        assert "owner 裁决" in text
-    else:
-        assert "yaml 意图已不生效" not in text
-
 
 def test_shadow_deadline_is_computed_not_hardcoded() -> None:
     """影子期到期必须由起点 + 上限算出，不是写死的状态串。

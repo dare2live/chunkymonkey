@@ -4,12 +4,15 @@
 owner: backend/config/governance_gates.yaml (runtime_checks.cutover_effective)
 + goal.md「治理体系重构」P1.2。
 
-**为什么需要这道检查** (2026-08-10 治理审计实证)：`b_pit_mart_cutover.yaml` 写着
+**为什么需要这道检查** (2026-08-10 治理审计实证)：当时 `b_pit_mart_cutover.yaml` 写着
 ``cutover_allowed: true``，而 attested shadow 窗口末端是 ``20260722`` —— 之后的任何
 trade_date 一律 fail-closed 回 legacy mart。也就是说这个「已切换」的声明**早就不生效
 了**，消费方一直走旧路径，而 goal.md / BOARD 仍按 True 叙述。整整 13 个交易日没人发现，
 因为唯一会算出这个背离的地方 (BOARD 投影) 挂在 **commit** 路径上 —— 查不查取决于
 「有没有人恰好提交相关代码」。受害时刻是每次跑日更，门就该装在日更里。
+(b_pit 那套两轨+窗口已于 2026-08-14 整层退役 —— 实测它与生产 mart 逐日全等、
+risk_on 翻转 0 次，即「切换」前后是同一个数。本检查保留 tier12 一侧，
+立门的理由不变：**声明与实际裁决的背离必须在受害时刻被看见**。)
 
 判据 (不做关键词猜测)：把**最近一个已完成收盘的交易日**送进各自的 production
 resolver —— 那正是消费方真实会问的那一天。真相源是交易日历
@@ -17,12 +20,12 @@ resolver —— 那正是消费方真实会问的那一天。真相源是交易�
 
 分级 (区分「永远修不好」与「今天恰好没有」)：
 
-* ``b_pit_mart`` → **FAIL**。它没有逐日输入依赖：窗口 / policy hash / definition
-  version 都是 config 常量，一旦对不上，**再跑多少次日更也不会自愈**，只有 owner
-  重新 attest 或把标志改回 false 才能闭合。
 * ``tier12_consumer`` → **WARN**。它按设计逐日依赖 accepted partition，某天没有
   accepted 就回落 legacy 是**写在 config 注释里的预期行为**；把它当 FAIL 会 cry wolf。
   但「声明 true 而今天实际走 legacy」仍是必须被看见的观测，不能静默。
+
+分级保留「结构性 vs 逐日」两档 —— 结构性背离(policy hash / definition version /
+canary scope 冲突)跑多少次日更都不会自愈 → FAIL；逐日回落 → WARN。
 
 退出码：0=PASS / 1=FAIL (结构性背离, 需 owner 裁决) / 2=WARN 或 UNVERIFIED
 (逐日回落, 或日历/artifact 不可达导致无法判定 —— 「查不了」不等于「没问题」)。
@@ -50,7 +53,7 @@ STATUS_UNVERIFIED = "unverified"
 
 # tier12 的**逐日**回落原因：当天没有 accepted partition。config 注释写明这属预期，
 # 发布一期即自愈 → WARN。其余原因 (definition_version / config_hash 与已发布 payload
-# 不一致、canary scope 冲突等) 是**结构性**的，跑多少次日更都不会自愈 → FAIL，与 b_pit
+# 不一致、canary scope 冲突等) 是**结构性**的，跑多少次日更都不会自愈 → FAIL，与逐日回落
 # 同级。2026-08-11 独立审查 finding #3: 首版把所有非生效原因一律判 WARN，等于让一个
 # 永久坏掉的 cutover 配置永远顶着「这是预期回落」的标签 —— 恰恰是本检查要消灭的失效模式。
 _TIER12_TRANSIENT_REASONS = frozenset({"missing_accept", "no_accepted_partition_for_day"})
@@ -74,58 +77,6 @@ def _latest_trade_date() -> tuple[str | None, str]:
     if len(compact) != 8:
         return None, f"calendar_returned_unparseable:{day!r}"
     return compact, str(day)
-
-
-def _b_pit_finding(day: str) -> dict[str, Any]:
-    from services.b_pit_mart_cutover import (
-        load_b_pit_mart_cutover_config,
-        resolve_b_pit_mart_production_read,
-    )
-
-    cfg = load_b_pit_mart_cutover_config()
-    declared = bool(cfg.cutover_allowed)
-    window_end = str(cfg.expected_window_end or "")
-    if not declared:
-        return {
-            "check": "b_pit_mart",
-            "status": STATUS_PASS,
-            "declared_cutover_allowed": False,
-            "trade_date": day,
-            "resolved_status": None,
-            "resolved_source": None,
-            "reasons": [],
-            "detail": "cutover_allowed=false — 没有声明，也就无从背离",
-        }
-    read = resolve_b_pit_mart_production_read(day)
-    effective = read.status == "MART_CUTOVER"
-    window_lapsed = bool(window_end) and day > window_end
-    if effective:
-        detail = f"声明与实际一致：{day} → {read.status}/{read.source}"
-    elif window_lapsed:
-        detail = (
-            f"attested 窗口 {cfg.expected_window_start}–{window_end} 已成过去时；"
-            f"{day} → {read.status}/{read.source}。晚于窗末的任何 trade_date 一律 "
-            "fail-closed 回 legacy —— 跑日更不会自愈，须 owner 重新 attest 或把 "
-            "cutover_allowed 改回 false"
-        )
-    else:
-        detail = (
-            f"声明 cutover_allowed=true 但 {day} → {read.status}/{read.source}；"
-            "非窗口原因 (definition/hash/shadow 证据不匹配)，同样须 owner 裁决"
-        )
-    return {
-        "check": "b_pit_mart",
-        "status": STATUS_PASS if effective else STATUS_FAIL,
-        "declared_cutover_allowed": True,
-        "trade_date": day,
-        "resolved_status": read.status,
-        "resolved_source": read.source,
-        "window_start": cfg.expected_window_start,
-        "window_end": window_end,
-        "window_lapsed": window_lapsed,
-        "reasons": list(read.reasons)[:5],
-        "detail": detail,
-    }
 
 
 def _tier12_finding(day: str) -> dict[str, Any]:
@@ -166,7 +117,7 @@ def _tier12_finding(day: str) -> dict[str, Any]:
         detail = (
             f"声明 cutover_allowed=true 但 {day} → {decision.status}/{decision.source}，"
             f"原因 {reasons[:3]} **不是**逐日回落 —— 这是 config 与已发布 payload 的结构性"
-            "不一致，跑多少次日更都不会自愈，须 owner 裁决（与 b_pit 同级）"
+            "不一致，跑多少次日更都不会自愈，须 owner 裁决"
         )
     return {
         "check": "tier12_consumer",
@@ -181,7 +132,7 @@ def _tier12_finding(day: str) -> dict[str, Any]:
     }
 
 
-_CHECKS = (_b_pit_finding, _tier12_finding)
+_CHECKS = (_tier12_finding,)
 
 
 def evaluate() -> dict[str, Any]:

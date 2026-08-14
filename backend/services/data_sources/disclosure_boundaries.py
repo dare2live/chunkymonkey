@@ -463,7 +463,6 @@ def attest_disclosure_research_surface(
                 "feature_store_profiles_typed_enrichment_projection",
                 "dataset_snapshot_canary_scope_freezable",
                 "phase_e_smoke_eligible_ablation_still_blocked",
-                "b_pit_cutover_remains_blocked_separately",
             ),
         )
 
@@ -494,7 +493,6 @@ def attest_disclosure_research_surface(
             "legacy_research_fallback_with_nonconforming_label",
             "institution_follow_blocked_until_e0_gate",
             "dataset_snapshot_blocked_until_three_domain_match",
-            "b_pit_cutover_remains_blocked_separately",
         ),
     )
 

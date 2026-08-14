@@ -20,7 +20,7 @@ ledger 必然滞后 (实证曾断档 77 个 commit 而 git 一条没丢), 而 gi
 因为它不是副本, 它就是原件。
 
 用法:
-    scripts/chunkyctl history --grep b_pit           # 关键词查逐刀细节
+    scripts/chunkyctl history --grep cutover         # 关键词查逐刀细节
     scripts/chunkyctl history --grep cutover --full  # 带完整 message 正文
     scripts/chunkyctl history --eras                 # 时期导航
     scripts/chunkyctl history --since 2026-07-01 --until 2026-08-01

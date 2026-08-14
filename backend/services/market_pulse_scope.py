@@ -22,8 +22,6 @@ from typing import Any, Literal
 TrustStatus = Literal["EMPTY", "UNTRUSTED", "BLOCKED", "NOT_EVALUATED", "READY"]
 
 # Same semantics as margin: not_expected / confirmed_empty = normal EMPTY.
-BreadthAbsenceKind = Literal["not_expected", "confirmed_empty", "expected_missing"]
-NORMAL_BREADTH_ABSENCE_KINDS = frozenset({"not_expected", "confirmed_empty"})
 
 
 @dataclass(frozen=True)
@@ -74,39 +72,6 @@ def _rank(status: TrustStatus) -> int:
     return order[status]
 
 
-def classify_breadth_day_absence(
-    trade_date: str,
-    *,
-    window_start: str,
-    window_end: str,
-    is_trading_day: bool = True,
-    confirmed_empty: bool = False,
-) -> BreadthAbsenceKind:
-    """Classify why B-pit project_universe_pit breadth evidence is absent.
-
-    Outside the attested shadow window (pre-coverage / not-yet-due) or on a
-    non-trade day → ``not_expected`` (typed EMPTY). Inside the window where we
-    claim evidence should exist → ``expected_missing`` (UNTRUSTED). Never invent
-    READY.
-    """
-
-    day = str(trade_date or "").replace("-", "")
-    start = str(window_start or "").replace("-", "")
-    end = str(window_end or "").replace("-", "")
-    if len(day) != 8 or not day.isdigit():
-        return "expected_missing"
-    if not is_trading_day:
-        return "not_expected"
-    if len(start) == 8 and start.isdigit() and day < start:
-        return "not_expected"
-    if len(end) == 8 and end.isdigit() and day > end:
-        return "not_expected"
-    if confirmed_empty:
-        return "confirmed_empty"
-    # No window bounds → cannot prove "not expected"; stay expected_missing.
-    return "expected_missing"
-
-
 def attest_market_pulse_scope(
     trade_date: str,
     *,
@@ -116,14 +81,13 @@ def attest_market_pulse_scope(
     margin_promoted: bool = False,
     margin_empty: bool = False,
     margin_empty_reason: str | None = None,
-    breadth_promoted: bool = False,
     breadth_empty: bool = False,
     breadth_empty_reason: str | None = None,
 ) -> MarketPulseScopeReport:
     """Attest pulse field population scope.
 
-    Breadth becomes READY only when B-pit production read consumed
-    (``breadth_promoted`` → project_universe_pit). Typed empty (not expected /
+    Breadth 直接按其真实来源(accepted canonical + 板块前缀白名单)判 READY;
+    2026-08-14 前它取决于已退役的 b_pit cutover。Typed empty (not expected /
     confirmed empty) → EMPTY. Unexpected missing promote evidence → UNTRUSTED —
     never fake READY from raw mart numbers.
 
@@ -149,22 +113,22 @@ def attest_market_pulse_scope(
             "not_raw_tushare_daily_masquerade"
         )
         breadth_surface = "observation_membership.traded_on_observation_date"
-    elif breadth_promoted:
+    else:
+        # 2026-08-14 b_pit 退役: 此前这里是三分支, 而**两个非空分支都在说假话** ——
+        #   promoted 分支声明 source_surface=observation_membership.traded_on_observation_date,
+        #     但 router 自己的 docstring 写明「days 数值不改」, 那个数从没经过 membership;
+        #   untrusted 分支声明 breadth_surface=tr.raw_tushare_daily / "reads raw or unfiltered",
+        #     但 market_pulse._NOMINAL_DAILY_SQL 优先读 canonical_nominal_ohlcv_daily,
+        #     raw 只补缺日, 且影子实测整窗 raw 腿贡献 0 行。
+        # 现在只描述这个数**实际**是怎么来的, 不再声明它没走过的来源。
         breadth_status = "READY"
         breadth_kind = "project_universe_pit"
         breadth_reason = (
-            "b_pit_mart_cutover_project_universe_pit_promoted; "
-            "not_raw_tushare_daily_breadth"
+            "accepted_canonical_nominal_with_board_prefix_whitelist; "
+            "raw_tushare_daily_only_backfills_missing_days; "
+            "not_raw_tushare_daily_masquerade"
         )
-        breadth_surface = "observation_membership.traded_on_observation_date"
-    else:
-        breadth_status = "UNTRUSTED"
-        breadth_kind = "raw_evidence"
-        breadth_reason = (
-            "breadth_reads_raw_or_unfiltered_nominal; not accepted "
-            "traded_on_observation_date project_universe_pit"
-        )
-        breadth_surface = "tr.raw_tushare_daily"
+        breadth_surface = "tr.canonical_nominal_ohlcv_daily(sql_where_active_a_share)"
 
     if margin_empty:
         reason = margin_empty_reason or "typed_empty_not_expected_or_confirmed"
@@ -228,10 +192,8 @@ def attest_market_pulse_scope(
     ]
     if breadth_empty:
         notes.append("breadth_typed_empty_normal_absence")
-    elif breadth_promoted:
-        notes.append("breadth_promoted_project_universe_pit")
     else:
-        notes.append("breadth_untrusted_until_b_pit_mart_cutover")
+        notes.append("breadth_accepted_canonical_board_prefix")
     if margin_empty:
         notes.append("rzrqye_typed_empty_normal_absence")
     elif margin_promoted and margin_source_accepted:
@@ -276,12 +238,9 @@ def refuse_project_universe_claim_for_legacy_pulse(
 
 
 __all__ = [
-    "BreadthAbsenceKind",
     "MarketPulseScopeReport",
-    "NORMAL_BREADTH_ABSENCE_KINDS",
     "PulseFieldScopeAttestation",
     "TrustStatus",
     "attest_market_pulse_scope",
-    "classify_breadth_day_absence",
     "refuse_project_universe_claim_for_legacy_pulse",
 ]

@@ -14,11 +14,7 @@
 `check_foundation_done.py` —— **本节不再复述已闭合项**（复述必然滞后，本轮实证过）。
 
 **当前 blocker**
-- **数据线滞后**：accepted 日线落后若干交易日，滞后数现查 `scripts/chunkyctl status`。它连带卡住
-  b_pit 影子比对与 tier12 逐日发布 —— 三者是一条串行链，不是三个独立问题。
-- **b_pit cutover 声明与实际背离**：yaml 写 `cutover_allowed=true`，而 attested 窗口末端已成过去时 →
-  resolver 对窗外任何 trade_date 一律 fail-closed 回 legacy。`adv_dec_ratio` 是 institution_follow
-  B2 的 risk_on 门输入，**不是展示指标**，故这不是化妆问题。处置见「剩余计划 C2」。
+- **数据线滞后**：accepted 日线落后若干交易日，滞后数现查 `scripts/chunkyctl status`。
 - **WP6 仪式影子期已过 `engineering_governance.md` §13 上限**，须 owner 裁决 cutover 或重置。
 
 已裁决硬事实（勿回滚）：
@@ -91,14 +87,9 @@ universe_membership_size == 5205`（无静默填充）→ **tier12_consumer 转 
 org_holding 期轴非缺口已定论。
 
 **D. 待 owner 裁决**
-- **D1 b_pit 去留 —— 证据已备齐，收敛成一行 YAML 的取舍**：影子比对整窗重测**全数 MATCH，
-  零背离零错误**，`max_abs_ratio_delta=0.0`；`universe_policy_hash` 与契约期望逐字相同（未漂移）。
-  resolver 现在的 reasons **只剩 `window_end_mismatch` 一条** —— 即把
-  `b_pit_mart_cutover.yaml` 的 `expected_window_end` 对齐到影子重测的窗末即可 MART_CUTOVER，
-  不改则维持 fail-closed 回 legacy。**具体日期现查** `chunkyctl status` 与
-  `data/lineage/b_pit_breadth_shadow/summary.json`（写死在这里明天就过期）。
-  契约明写「MATCH alone never silent-flips this flag —— 翻是 owner 的显式动作」，故不代劳。
-- D2 Cap C（产品 UX 偏好）：建议丢弃，因它**无可机器验证的判据**，写进文档只会多一份会烂的东西
+- D2 Cap C（「页内分 tab，别做长滚动页」）：**丢弃**。理由不是原先写的「无机器判据」——那会让人误以为
+  前端不存在；真实理由是**代码已是它的载体**（`MarketPage.tsx` 等四处均已 tab 化，MASTER §10.1 已在
+  约束 tab 的诚实性），文字副本纯冗余。
 - D3 WP6 仪式影子期已过 eng_gov §13 上限，须裁决 cutover 或重置
 - **D4 tushare 授权 2026-08-12 15:43 到期（即明日）** —— 到期后全部 Tier0 采集停摆。只能由 owner 续费，
   agent 无法代劳。（日志此前照抄供应商 `week` 字段显示「remaining_weeks=4」，与真相差 4 周，已改为按 `limitDate` 现算）

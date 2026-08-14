@@ -5,7 +5,6 @@ import pytest
 
 from services.market_pulse_scope import (
     attest_market_pulse_scope,
-    classify_breadth_day_absence,
     refuse_project_universe_claim_for_legacy_pulse,
 )
 
@@ -18,50 +17,28 @@ def test_legacy_pulse_fields_are_untrusted_external_or_raw() -> None:
     )
     assert report.overall_status == "UNTRUSTED"
     by_field = {item.field: item for item in report.fields}
-    assert by_field["adv_dec_ratio"].population_kind == "raw_evidence"
+    # 2026-08-14 b_pit 退役: 广度按真实来源(accepted canonical + 板块前缀)判 READY。
+    # 此前它被判 raw_evidence/UNTRUSTED, 而那句「reads raw or unfiltered nominal」
+    # 与 market_pulse._NOMINAL_DAILY_SQL 实际优先读 canonical 相矛盾 —— 是假证。
+    assert by_field["adv_dec_ratio"].population_kind == "project_universe_pit"
+    assert by_field["adv_dec_ratio"].status == "READY"
     assert by_field["rzrqye"].population_kind == "external_aggregate"
     assert by_field["rzrqye_chg"].status == "UNTRUSTED"
     assert "margin_sum_includes_BSE_external_venue" in report.notes
     assert "rzrqye_untrusted_until_promote_consumed" in report.notes
-    assert "breadth_untrusted_until_b_pit_mart_cutover" in report.notes
+    assert "breadth_accepted_canonical_board_prefix" in report.notes
 
 
 def test_missing_optional_evidence_still_untrusted_never_ready() -> None:
     report = attest_market_pulse_scope("20240102")
     assert report.overall_status == "UNTRUSTED"
     assert report.overall_status != "READY"
-    assert all(item.status == "UNTRUSTED" for item in report.fields)
-
-
-def test_classify_breadth_outside_window_is_not_expected() -> None:
-    # B-pit attested window 20260121–20260722 (live yaml).
-    assert (
-        classify_breadth_day_absence(
-            "20240108", window_start="20260121", window_end="20260722"
-        )
-        == "not_expected"
-    )
-    assert (
-        classify_breadth_day_absence(
-            "20260801", window_start="20260121", window_end="20260722"
-        )
-        == "not_expected"
-    )
-    assert (
-        classify_breadth_day_absence(
-            "20260717", window_start="20260121", window_end="20260722"
-        )
-        == "expected_missing"
-    )
-    assert (
-        classify_breadth_day_absence(
-            "20260717", window_start="", window_end=""
-        )
-        == "expected_missing"
+    # 广度已按真实来源 READY; 其余字段仍需各自的 promote 证据。
+    assert all(
+        item.status == "UNTRUSTED" for item in report.fields if item.field != "adv_dec_ratio"
     )
 
-
-def test_promoted_rzrqye_ready_breadth_still_untrusted_without_b_pit() -> None:
+def test_promoted_rzrqye_ready_alongside_breadth() -> None:
     report = attest_market_pulse_scope(
         "20260722",
         margin_exchange_ids=("SSE", "SZSE"),
@@ -72,9 +49,9 @@ def test_promoted_rzrqye_ready_breadth_still_untrusted_without_b_pit() -> None:
     assert by_field["rzrqye"].status == "READY"
     assert by_field["rzrqye"].population_kind == "external_aggregate"
     assert by_field["rzrqye"].source_surface == "tr.canonical_margin_exchange_daily"
-    assert by_field["adv_dec_ratio"].status == "UNTRUSTED"
-    # overall stays UNTRUSTED while breadth lacks B-pit promote evidence
-    assert report.overall_status == "UNTRUSTED"
+    # 2026-08-14: 广度不再需要 b_pit promote 证据 —— 它按真实来源就是 READY。
+    assert by_field["adv_dec_ratio"].status == "READY"
+    assert report.overall_status == "READY"
     assert "rzrqye_promoted_external_aggregate_sse_szse" in report.notes
 
 
@@ -84,14 +61,13 @@ def test_promoted_breadth_and_rzrqye_overall_ready() -> None:
         margin_exchange_ids=("SSE", "SZSE"),
         margin_source_accepted=True,
         margin_promoted=True,
-        breadth_promoted=True,
     )
     by_field = {item.field: item for item in report.fields}
     assert by_field["adv_dec_ratio"].status == "READY"
     assert by_field["adv_dec_ratio"].population_kind == "project_universe_pit"
     assert by_field["rzrqye"].status == "READY"
     assert report.overall_status == "READY"
-    assert "breadth_promoted_project_universe_pit" in report.notes
+    assert "breadth_accepted_canonical_board_prefix" in report.notes
     assert "rzrqye_promoted_external_aggregate_sse_szse" in report.notes
 
 
@@ -110,23 +86,6 @@ def test_typed_empty_breadth_is_empty_not_untrusted() -> None:
     assert "normal_absence_not_fail_closed" in by_field["adv_dec_ratio"].reason
     assert report.overall_status == "READY"  # EMPTY ranks with READY
     assert "breadth_typed_empty_normal_absence" in report.notes
-
-
-def test_in_window_gap_stays_untrusted_never_empty() -> None:
-    """Inside attested window without promote → UNTRUSTED (real gap), not EMPTY."""
-    report = attest_market_pulse_scope(
-        "20260717",
-        breadth_promoted=False,
-        breadth_empty=False,
-        margin_empty=True,
-        margin_empty_reason="typed_empty_not_expected",
-    )
-    by_field = {item.field: item for item in report.fields}
-    assert by_field["adv_dec_ratio"].status == "UNTRUSTED"
-    assert by_field["rzrqye"].status == "EMPTY"
-    assert report.overall_status == "UNTRUSTED"
-    assert "breadth_untrusted_until_b_pit_mart_cutover" in report.notes
-
 
 def test_serve_accepted_without_promote_stays_untrusted() -> None:
     report = attest_market_pulse_scope(
@@ -150,9 +109,8 @@ def test_typed_empty_rzrqye_is_empty_not_untrusted() -> None:
     by_field = {item.field: item for item in report.fields}
     assert by_field["rzrqye"].status == "EMPTY"
     assert "normal_absence_not_fail_closed" in by_field["rzrqye"].reason
-    assert by_field["adv_dec_ratio"].status == "UNTRUSTED"
-    # overall still UNTRUSTED from breadth — but rzrqye itself is typed empty OK
-    assert report.overall_status == "UNTRUSTED"
+    assert by_field["adv_dec_ratio"].status == "READY"
+    assert report.overall_status == "READY"
     assert "rzrqye_typed_empty_normal_absence" in report.notes
 
 

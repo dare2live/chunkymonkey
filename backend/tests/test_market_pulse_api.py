@@ -321,21 +321,13 @@ def test_sentiment_v2_fields(client):
     assert t12["status"] == "BLOCKED"
     assert any("missing_accept" in r for r in t12["reasons"])
     assert "pulse_ui_attestation" in t12["notes"]
-    # B-pit mart cutover ON, but fixture day is outside the attested shadow
-    # window [20260121, 20260722] → fail closed to legacy mart (BLOCKED).
-    assert body["b_pit_mart_cutover_allowed"] is False
-    bpit = body["b_pit_mart_production_read"]
-    assert bpit["uses_legacy"] is True
-    assert bpit["cutover_allowed"] is False
-    assert bpit["status"] == "BLOCKED"
-    assert bpit["source"] == "legacy_mart"
-    assert any("trade_date_outside_shadow_window" in r for r in bpit["reasons"])
-    assert "pulse_ui_attestation" in bpit["notes"]
-    # Outside B-pit window → breadth typed EMPTY (normal), not UNTRUSTED scare.
-    assert by_field["adv_dec_ratio"]["status"] == "EMPTY"
-    assert "normal_absence_not_fail_closed" in by_field["adv_dec_ratio"]["reason"]
-    assert "breadth_typed_empty_normal_absence" in scope["notes"]
-    assert "breadth_untrusted_until_b_pit_mart_cutover" not in scope["notes"]
+    # 2026-08-14 b_pit 整层退役: 响应不得再带这两个字段(前端类型本来就没声明它们)。
+    assert "b_pit_mart_cutover_allowed" not in body
+    assert "b_pit_mart_production_read" not in body
+    # 广度按其真实来源判 READY —— 不再有「窗外=EMPTY」这种由窗口派生的状态。
+    assert by_field["adv_dec_ratio"]["status"] == "READY"
+    assert "accepted_canonical" in by_field["adv_dec_ratio"]["reason"]
+    assert "breadth_accepted_canonical_board_prefix" in scope["notes"]
 
 
 def test_flow_board_regime_groups_and_stripe(client):
