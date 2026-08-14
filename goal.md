@@ -85,10 +85,6 @@ owner contract，进度段在此。**不再有第二个说「下一步」的地�
 universe_membership_size == 5205`（无静默填充）→ **tier12_consumer 转 PASS**（ACCEPTED_CUTOVER）·
 org_holding 期轴非缺口已定论。
 
-**D. 待 owner 裁决**
-- **D4 tushare 授权 2026-08-12 15:43 到期（即明日）** —— 到期后全部 Tier0 采集停摆。只能由 owner 续费，
-  agent 无法代劳。（日志此前照抄供应商 `week` 字段显示「remaining_weeks=4」，与真相差 4 周，已改为按 `limitDate` 现算）
-
 **迁移原则**：不追求一步到位，但新增任何文档前先问「这是 L0/L1/L2/L3 哪一层」—— 是 L2 就不许写，是 L3 就写进 commit message。
 
 ## 禁令
