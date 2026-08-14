@@ -101,7 +101,7 @@ staged snapshot，再统一使用 `--repo .`；禁止留在主工作树中用绝
 
 Moth PASS 只有在 verifier 自身能红、没有 warning 被 regex 洗成 PASS 时才是证据。业务门仍由项目脚本/配置/表拥有，不能搬进 Moth 重写第二套规则。
 
-代码提交适格与实时数据就绪是两个状态机。**2026-08-11（P1 门重新分布，§14.1）把这条分离做彻底了**：live continuity 不再在 commit 路径上评估，改由 `daily_update` 的 `system_health` 自检拥有（`chunkyctl gates --run-system-health` 是等价手动入口）。原因是它从来就不是关于「这次 diff 对不对」的判断 —— 之前只是「顺手在 commit 时查一下」，代价是每次 L3 提交都要全库扫描，且制造过「数据坏了所以修复代码也难提交」的张力。
+代码提交适格与实时数据就绪是两个状态机。**2026-08-11（P1 门重新分布，§13.1）把这条分离做彻底了**：live continuity 不再在 commit 路径上评估，改由 `daily_update` 的 `system_health` 自检拥有（`chunkyctl gates --run-system-health` 是等价手动入口）。原因是它从来就不是关于「这次 diff 对不对」的判断 —— 之前只是「顺手在 commit 时查一下」，代价是每次 L3 提交都要全库扫描，且制造过「数据坏了所以修复代码也难提交」的张力。
 
 自检必须校验 live continuity 的 JSON、扫描面、交易日锚、计数和退出码一致性，并原样报告 `READY / DEGRADED / UNVERIFIED / BLOCKED`；空扫描、skipped、库不可达或 WARN 都不得冒充 READY。有效的供应商/数据库数据 FAIL 阻断数据更新、下游消费和发布。任何非 READY 状态下，提交都不等于 Tier0 就绪 —— 现在这句话更硬：**commit 根本不再产生任何 readiness 声明**。continuity 直接检查、故障队列、ALERT、日更管线以及 doctor 对现存 flag 的读面继续保持非绿，直到真实数据修复并单独复验。GitHub CI 只跑离线 contract/unit 门（`requirements-ci.txt` + `check_universe_filter --skip-live-readiness`）；live continuity / DuckDB readiness 仍只在本地评估，不得把缺库 IOException 写成 CI 红灯。
 
@@ -283,7 +283,7 @@ readiness 属于 state 与 reconcile 之上的 orchestration，必须单向依�
 裁决分两层且互不传递（双向）—— 已升为系统语义，见 `MASTER §6.1`。
 
 `daily_update` 的 store 阶段跑 **system_health 运行时自检**（owner =
-`backend/config/governance_gates.yaml` 的 `runtime_checks`，见 §14.1）：continuity、
+`backend/config/governance_gates.yaml` 的 `runtime_checks`，见 §13.1）：continuity、
 residual_hygiene、grain_uniqueness、cutover_effective。FAIL =
 degraded + 续跑 + 写 flag，绝不静默；`--dry` 只跳过声明了 `skip_when_dry` 的重扫描项。
 手动等价入口 `scripts/chunkyctl gates --run-system-health`。
@@ -310,31 +310,7 @@ PYTHONPATH=backend python backend/scripts/check_doc_governance.py
 PYTHONPATH=backend python backend/scripts/check_doc_drift.py --check
 ```
 
-## 13. Agent-OS 双轨政策与仪式影子期（WP6）
-
-Agent-OS 核心面（WP0–WP4）已落地：tiered `safe_commit`、生成板、
-`chunkyctl agent-boot`、AGENTS 瘦身。旧仪式与新表面**影子并行**，切换是真相
-裁决，不是 DX 快捷键。
-
-| 项 | 政策 |
-|---|---|
-| 影子期起点 | WP4 land = `be8efc6f` / 2026-07-20 |
-| 影子期长度 | **10 个工作 session 或 14 天（先到者）** |
-| 新表面（现行） | `agent-boot`；`chunkyctl status`（board+L2 现查，零文件）；L1/L2/L3 tiers；AGENTS ≤100 |
-| 旧路径（影子保留） | 手拼 `git`+`moth snapshot`+`codegraph status` boot；手抄 goal 状态段 |
-| 仪式 cutover 条件 | 门覆盖 parity 机器 diff 为空（每门在其触发面仍可红）**且**影子期无真相回归 |
-| 任一回归 | 影子期重置；必要时回退 L3 全门 |
-| **不在本政策内** | tier12 **数据面** `cutover_allowed`（与仪式切换无关） |
-
-WP5 shared DuckDB memory fixture pack：**Occam 跳过**——无 WP1 基线证明测试建库
-是显著耗时热点；需要时再开，不预建。
-
-轨道关闭（agent-OS track CLOSED）仍要求停机检查单全绿（见 goal 残余），
-含：影子期结束 + 旧仪式真删 + T0 墙钟实测入账 + 一次真实 L2/T2 路径证据。
-A→H 冻结已由 owner 于 2026-07-20 解除（核心 WP0–WP4 闭合即恢复 A→H 刀；
-影子期/仪式 cutover 残余照常，与 A→H 互不阻塞）。
-
-## 14. Rule 10 与交付
+## 13. Rule 10 与交付
 
 **Rule 10 是纪律，不是闸门（2026-08-10 裁决）。** commit-msg 门只阻断显式的
 `Codex-Reviewed: REQUEST_CHANGES`（否定裁决有信息量 —— 没人会「忘记」写它）；
@@ -385,7 +361,7 @@ SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<message>"
 `safe_commit.sh` machine-classifies staged paths into L1/L2/L3
 (`backend/scripts/classify_commit_tier.py` + `backend/config/commit_tiers.yaml`).
 Agents cannot self-downgrade; unknown/deletion/bad policy → L3 full gates.
-L1 = docs/analysis/sandbox light gates; L2 = tests/routers/frontend + Rule 10;
+L1 = docs/ sandbox/ data/board/ light gates; L2 = tests/routers/frontend + Rule 10;
 L3 = writer/PIT/schema/config/deletion = current full gate set.
 
 ### 14.1 门的分布：按「谁受害、何时受害」分组（2026-08-11 P1 落地）
@@ -449,7 +425,7 @@ scripts/chunkyctl scaffold-fix               # 脚手架批量收口
 
 不 `--no-verify` 绕门，不 amend 已 push commit，不在未授权时 push。交付报告必须区分 `FIXED/PARTIAL/BLOCKED`，列 residual、验收命令和 owner。
 
-## 15. 编排与墙钟政策（delivery tax；不触碰真相门）
+## 14. 编排与墙钟政策（delivery tax；不触碰真相门）
 
 T0 基线（2026-07-20 实测，非估算；证据=`chunkyctl history --since 2026-07-20 --full`）：L1 commit 门 1.6s、
 L2 17.0s（moth assert 7.3s + staged-snapshot cold codegraph 3.8s）、L3 27.1s、
@@ -458,7 +434,7 @@ L2 17.0s（moth assert 7.3s + staged-snapshot cold codegraph 3.8s）、L3 27.1s�
 父 agent 串行单 worker）。本节只裁编排节奏，**不放宽任何
 accept/PIT/calendar/fail-closed/cutover/E 门 / Rule 10 / ≤40d 语义**。
 
-### 15.1 刀级合并（binding；防 micro-commit 复辟）
+### 14.1 刀级合并（binding；防 micro-commit 复辟）
 
 **刀** = 一个逻辑单元（例：单域 S7 formal|sunset、单 CLI 面、单 E0 域 land
 路径）。刀内允许多文件、一次 stage、**一次 Rule 10**、**一次
@@ -486,7 +462,7 @@ accept/PIT/calendar/fail-closed/cutover/E 门 / Rule 10 / ≤40d 语义**。
   节；`chunkyctl pre-knife <name>` 固化刀前审计；不新增第二套 commit OS，不软化
   L3/Rule10/PIT/≤40d。
 
-### 15.2 刀前 impact 审计（L3 mandatory）
+### 14.2 刀前 impact 审计（L3 mandatory）
 
 动 `backend/services/`、YAML/SQL 契约、删表/删配置前，**固定一次**：
 
@@ -499,14 +475,13 @@ scripts/chunkyctl pre-knife <name>
 再配最窄 pytest red-first。一次规划、一次绿；禁止「连崩多层 CI / 多 commit
 才绿」。刀后若动 PIT/schema/writer，仍走 `$post-fix-audit`（本清单不替代）。
 
-### 15.3 其它节奏
+### 14.3 其它节奏
 
 - **owner 文档读取**：每任务读一次 `docs/README.md` 指到的 owner 文档；同任务
   内后续刀不重读 MASTER 全文，引用具体条款即可。
 - **显式不做（Occam，有测量背书）**：`agent-boot --fast`（只省 ~7s/session，
   moth 状态是 boot 的价值本体）；L2 门集手术（17s 非痛点，动 `commit_tiers.yaml`
-  = L3+审查+影子期 parity 风险）；CI concurrency/cancel 机械；T0 自动测量 hook
-  （一次实测写进 commit message 即闭合 WP6 该残余，复测按需手跑）。
+  = L3+审查）；CI concurrency/cancel 机械；T0 墙钟基线已一次实测入账（见下方实测行）。
 - CI 对 L1 docs/board-only push 不再起跑：`ci.yml` `paths-ignore` 镜像
   `commit_tiers.yaml` L1 面（policy owner），子集关系由
   `backend/tests/scripts/test_ci_paths_policy.py` 机器守护。

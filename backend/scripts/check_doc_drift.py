@@ -77,11 +77,21 @@ _LEGACY_CLAUDE_SECTION_RE = re.compile(
     re.IGNORECASE,
 )
 
-# 豁免: 历史叙事 (dated changelog / 退役/已删/reset/retired/deprecated 上下文) + 模板占位。
+# 豁免: 历史叙事 (dated changelog) + 模板占位。
+#
+# **2026-08-14 收窄**: 原来还有一支裸关键词豁免 (已删|退役|移除|retired|deprecated|
+# deleted|陈旧|stale)，只要一行里出现任一词，**整行**连同行上的活指针一起被跳过。
+# 实证代价: `docs/README.md` 两处指向已归零的 `analysis/` 的引用被它同时藏住 ——
+# 第 24 行表格含 "kept/deleted"、第 25 行含 "已经退役"，而后者是一句**活的阅读指令**
+# (「跨账号续作时另读 `../analysis/xxx.md`」)，不是历史叙述。两道文档门当时全绿。
+# 这是本仓第三次同款 bug (C7 按 basename 豁免吞掉真悬空 / moth 门 elif 短路):
+# **豁免的作用域比它的意图大**。
+# 收窄依据是实测: 去掉该支后本仓新增 finding = **0**，即它当前不保护任何合法内容;
+# 而带日期的历史叙事仍豁免 —— 这也正是本仓既有约定 (历史叙述带日期, 见
+# doc_runtime_state.yaml 的同款判据)。想提一个已删路径而不被判红, 就给它加个日期。
 _HIST_RE = re.compile(
     r"(^\s*-\s*\*\*20\d\d-\d\d-\d\d"
-    r"|20\d\d-\d\d-\d\d.*(批|log|退役|已删|removed|reset|reclaim|归档|retired|deprecated|deleted)"
-    r"|已删|退役|移除|reset 移除|retired|deprecated|deleted|陈旧|stale)"
+    r"|20\d\d-\d\d-\d\d.*(批|log|退役|已删|removed|reset|reclaim|归档|retired|deprecated|deleted))"
 )
 _TPL_RE = re.compile(r"(your_file|example|示例|<[a-z_]+>|占位|placeholder)")
 # 文档级豁免: 头部 "状态:" 头注声明自身 deprecated/偏离 的整档 = 历史归档 (lifecycle 保留+冻结)。

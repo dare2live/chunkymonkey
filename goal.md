@@ -15,7 +15,6 @@
 
 **当前 blocker**
 - **数据线滞后**：accepted 日线落后若干交易日，滞后数现查 `scripts/chunkyctl status`。
-- **WP6 仪式影子期已过 `engineering_governance.md` §13 上限**，须 owner 裁决 cutover 或重置。
 
 已裁决硬事实（勿回滚）：
 - accepted daily / ST 起点 **`20190102`** / **`20220104`** 是契约常量；**当前 frontier 是运行时状态，
@@ -87,10 +86,6 @@ universe_membership_size == 5205`（无静默填充）→ **tier12_consumer 转 
 org_holding 期轴非缺口已定论。
 
 **D. 待 owner 裁决**
-- D2 Cap C（「页内分 tab，别做长滚动页」）：**丢弃**。理由不是原先写的「无机器判据」——那会让人误以为
-  前端不存在；真实理由是**代码已是它的载体**（`MarketPage.tsx` 等四处均已 tab 化，MASTER §10.1 已在
-  约束 tab 的诚实性），文字副本纯冗余。
-- D3 WP6 仪式影子期已过 eng_gov §13 上限，须裁决 cutover 或重置
 - **D4 tushare 授权 2026-08-12 15:43 到期（即明日）** —— 到期后全部 Tier0 采集停摆。只能由 owner 续费，
   agent 无法代劳。（日志此前照抄供应商 `week` 字段显示「remaining_weeks=4」，与真相差 4 周，已改为按 `limitDate` 现算）
 

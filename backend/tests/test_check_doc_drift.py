@@ -37,12 +37,25 @@ def test_path_re_no_midpath_false_positive():
     assert _refs("vendor/backend/scripts/x.py") == []   # 中间路径不匹配
 
 
-def test_hist_re_exempts_retirement_context():
-    assert _HIST_RE.search("the former audit_x.py was retired in the 2026-06-16 reset")
+def test_hist_re_exempts_dated_retirement_only():
+    """历史叙事豁免**必须带日期** —— 裸关键词豁免会把活指针一起吞掉。
+
+    2026-08-14 实证: 原来只要一行里出现「已删/退役/deleted」等词, **整行**连同行上的
+    活指针一起跳过。`docs/README.md` 两处指向已归零 `analysis/` 的引用就是这样被藏住的,
+    其中一处还是活的阅读指令(「跨账号续作时另读 X」), 而两道文档门当时全绿。
+    收窄后本仓新增 finding = 0, 即那支豁免不保护任何合法内容。
+    """
     assert _HIST_RE.search("- **2026-06-16 reset**: 删 build_x")
-    assert _HIST_RE.search("audit_x.py 已删")
-    assert _HIST_RE.search("deprecated helper")
-    assert not _HIST_RE.search("run backend/scripts/foo.py for the live gate")  # 无退役语境=不豁免
+    assert _HIST_RE.search("2026-06-16 已删 audit_x.py")
+    assert _HIST_RE.search("the former audit_x.py was retired in the 2026-06-16 reset")
+
+    # 无日期的裸关键词**不再**豁免 —— 这正是曾经藏住真悬空的那条路径。
+    assert not _HIST_RE.search("audit_x.py 已删")
+    assert not _HIST_RE.search("deprecated helper")
+    assert not _HIST_RE.search(
+        "旧体系已经退役；跨账号续作时另读 `../analysis/account_switch_handoff.md`"
+    ), "活的阅读指令不得因同行提到「退役」而被整行豁免"
+    assert not _HIST_RE.search("run backend/scripts/foo.py for the live gate")
 
 
 def test_deprecated_doc_only_on_status_headnote():

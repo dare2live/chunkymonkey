@@ -135,14 +135,6 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
     # yaml 的 cutover_allowed 是 owner **意图**；实际读面由 resolver 裁决。投影必须
     # 两者都给，否则窗口走完后看板会继续显示一个已经不生效的 True。
 
-    # 影子期到期由起点 + 上限算出，不写死状态串。eng_gov §13 =「10 个工作 session
-    # 或 14 天，先到者」；session 数无法从代码观测，故只判 14 天这一侧 —— 该侧到期
-    # 即不得再自称 open，须由 owner 裁决 cutover 或重置。
-    _shadow_start_day = dt.date(2026, 7, 20)  # eng_gov §13 起点 be8efc6f
-    _shadow_deadline_day = _shadow_start_day + dt.timedelta(days=14)
-    # 同 window_lapsed：只在跨过 deadline 那天翻一次，之后恒定 —— 不引入每日变动源。
-    _shadow_expired = _today_compact > _shadow_deadline_day.strftime("%Y%m%d")
-
     return {
         # 现查后必须声明**输入是否齐全**: 缺 config 时投影会退化成一份「看起来正常
         # 但全是缺省值」的空板 —— 那正是项目禁的「空扫描冒充 PASS」。消费方据此判 error。
@@ -156,28 +148,7 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
         "track": {
             "name": "transport_strangler_s1_s7",
             "status": "foundation_solidify_85pct_s7_wall_e0_thin",
-            "agent_os": (
-                "shadow_period_EXPIRED_awaiting_owner_verdict"
-                if _shadow_expired
-                else "shadow_period_open_not_closed"
-            ),
             "a_to_h": "post_research_map_only_efgh_appendix",
-            "wp1": "FIXED",
-            "wp2": "FIXED",
-            "wp3": "FIXED",
-            "wp4": "FIXED",
-            "wp5": "SKIPPED_occam",
-            "wp6": (
-                "POLICY_FIXED_shadow_EXPIRED"
-                if _shadow_expired
-                else "POLICY_FIXED_shadow_open"
-            ),
-            "shadow_started": "be8efc6f/2026-07-20",
-            "shadow_deadline": (
-                f"{_shadow_deadline_day.isoformat()} "
-                "(14d cap, or 10 work sessions — whichever first)"
-            ),
-            "shadow_expired": _shadow_expired,
         },
         "cutovers": {
             "tier12_consumer": {
@@ -239,16 +210,6 @@ def render_md(d: dict[str, Any]) -> str:
     t = d["track"]
     add(f"- track: `{t['name']}` status=`{t.get('status', 'unknown')}`")
     add(f"- A→H: `{t['a_to_h']}`")
-    wp_status = " | ".join(
-        f"{key.upper()}: `{t[key]}`" for key in sorted(t) if key.startswith("wp")
-    )
-    add(f"- {wp_status}")
-    if t.get("shadow_started"):
-        add(
-            f"- agent-OS: `{t.get('agent_os')}` shadow start=`{t['shadow_started']}` "
-            f"deadline=`{t.get('shadow_deadline')}` "
-            "(ceremony flip only; tier12 data cutover unrelated)"
-        )
     add("")
     add("## Cutovers (yaml 意图 + resolver 实际裁决)")
     add("")

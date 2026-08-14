@@ -88,26 +88,6 @@ def test_board_stable_across_wall_clock_day_rollover(monkeypatch) -> None:
     j0 = {k: v for k, v in d0.items() if k != "generated_at"}
     j1 = {k: v for k, v in d1.items() if k != "generated_at"}
     assert j0 == j1, "投影对象跨天漂移 → 同一状态被渲染成两种说法"
-
-def test_shadow_deadline_is_computed_not_hardcoded() -> None:
-    """影子期到期必须由起点 + 上限算出，不是写死的状态串。
-
-    回退防线：原实现把 `wp6` 写死为 `POLICY_FIXED_shadow_open`、deadline 写死为
-    `10_sessions_or_14d_first`，于是 eng_gov §13 的 14 天上限（2026-08-03）过后，
-    看板仍自称 open。本测试自行计算期望值，不写死任何日期结论，故不会随时间失效。
-    """
-    import datetime as _dt
-
-    t = board.collect(REPO)["track"]
-    assert isinstance(t.get("shadow_expired"), bool)
-    deadline = (_dt.date(2026, 7, 20) + _dt.timedelta(days=14)).isoformat()
-    assert deadline in t["shadow_deadline"], t["shadow_deadline"]
-    expected = _dt.datetime.now(_dt.timezone.utc).date() > _dt.date.fromisoformat(deadline)
-    assert t["shadow_expired"] is expected
-    assert ("EXPIRED" in t["wp6"]) is expected
-    assert ("EXPIRED" in t["agent_os"]) is expected
-
-
 def test_c_accept_row_parity() -> None:
     acc = board.collect(REPO)["cutovers"]["tier12_consumer"]["accept"]
     assert acc["decision_date"] == "20260717"

@@ -21,9 +21,8 @@
 | `../FEATURE_MAP.md` | 机器生成的入口/数据域/writer 地图；可重建，不手改 |
 | `../goal.md「下一步」执行 backlog` | 数据底座执行 backlog（evidence-only；`goal.md` 指向） |
 | `../goal.md「下一步」执行 backlog + strategy_validation_contract.md §3.2/§3.3` | 后续策略执行 backlog（RX 前 BLOCKED；evidence-only） |
-| `../analysis/DOC_CLEANUP_20260723.md` | 2026-07-23 文档收敛台账（kept/deleted） |
 
-`CLAUDE.md` 是 legacy compatibility pointer，Codex 默认不读。旧 session handoff / workflow checkpoint 体系已经退役；新会话从 git、Moth、CodeGraph 和 live data 重建状态。跨 Cursor 账号续作时另读 owner 明示的 `../analysis/account_switch_handoff_20260720.md`（入 git，非旧 checkpoint 体系）。
+`CLAUDE.md` 是 legacy compatibility pointer，Codex 默认不读。旧 session handoff / workflow checkpoint 体系已经退役；新会话从 git、Moth、CodeGraph 和 live data 重建状态。（`analysis/` 目录已于 2026-08-11 整体归零退役；历史台账与账号交接记录查 `chunkyctl history --grep <关键词>`。）
 
 **执行方案仅两份**（底座 / 策略）；禁止再写平行「主方案 / 支线方案 / 第三 bible」。立法仍只认上表三份 owner contracts。
 
