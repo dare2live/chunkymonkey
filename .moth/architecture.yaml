@@ -1,0 +1,180 @@
+# ChunkyMonkey 架构声明 (2026-08-14 立)
+# 只声明**公开脊柱**, 不是每个 helper。覆盖不全**绝不可**用来证明某个组件不存在
+# —— 与 moth 自身声明同一条诚实条款 (complete: false)。
+# 每条 locator 写入前都已验证文件真实存在; 指不到的东西不许出现在声明里。
+schema_version: moth.architecture-declaration.v1
+evidence:
+- id: master-design
+  kind: architecture_document
+  path: docs/MASTER_TOPLEVEL_DESIGN.md
+- id: engineering-governance
+  kind: architecture_document
+  path: docs/engineering_governance.md
+- id: strategy-validation
+  kind: architecture_document
+  path: docs/strategy_validation_contract.md
+- id: agents-contract
+  kind: architecture_document
+  path: AGENTS.md
+current:
+  complete: false
+  entities:
+  - id: service:data-acquisition
+    kind: service
+    name: Data acquisition runner
+    responsibility: Fetch vendor data under authorization, calendar and writer-lock
+      control; land then accept typed partitions.
+    locator: backend/services/data_sources/sync_runner.py
+    evidence_ids:
+    - master-design
+    - engineering-governance
+  - id: service:availability-resolver
+    kind: service
+    name: Availability resolver
+    responsibility: Own the single eligibility decision (trigger_mode, same_day_at)
+      that every sync path must consume.
+    locator: backend/services/data_sources/availability.py
+    evidence_ids:
+    - master-design
+    - engineering-governance
+  - id: service:serve-read-layer
+    kind: service
+    name: SERVE read layer
+    responsibility: Sole sanctioned read path for consumers; non-member direct queries
+      are gated.
+    locator: backend/services/data_access/resolver.py
+    evidence_ids:
+    - master-design
+    - engineering-governance
+  - id: service:daily-pipeline
+    kind: service
+    name: Daily update pipeline
+    responsibility: Acquire, clean, process and store stages with typed run_outcome
+      and system_health self-checks.
+    locator: backend/services/pipeline/run_outcome.py
+    evidence_ids:
+    - master-design
+    - engineering-governance
+  - id: service:project-status
+    kind: service
+    name: Live status projection
+    responsibility: Single live-query entry for L2 state; zero files, nothing hand-written.
+    locator: backend/services/project_status.py
+    evidence_ids:
+    - master-design
+    - engineering-governance
+  - id: service:governance-gates
+    kind: service
+    name: Commit gate registry
+    responsibility: Own gate grouping by who is harmed and when; three copies of the
+      gate names are machine-reconciled.
+    locator: backend/config/governance_gates.yaml
+    evidence_ids:
+    - master-design
+    - engineering-governance
+  - id: application:api
+    kind: application
+    name: Decision-assist API
+    responsibility: FastAPI application mounting the live routers and the edge frontend
+      build.
+    locator: backend/main.py
+    evidence_ids:
+    - master-design
+    - engineering-governance
+  - id: application:cli
+    kind: application
+    name: chunkyctl control plane
+    responsibility: 'Manual-only operator entry: status, sync, derive, gates, history,
+      doctor.'
+    locator: backend/scripts/chunkyctl.py
+    evidence_ids:
+    - master-design
+    - engineering-governance
+  relations: []
+  flows: []
+  state_machines: []
+desired:
+  complete: false
+  entities:
+  - id: service:data-acquisition
+    kind: service
+    name: Data acquisition runner
+    responsibility: Fetch vendor data under authorization, calendar and writer-lock
+      control; land then accept typed partitions.
+    locator: backend/services/data_sources/sync_runner.py
+    evidence_ids:
+    - master-design
+    - engineering-governance
+    expectation: REQUIRED
+  - id: service:availability-resolver
+    kind: service
+    name: Availability resolver
+    responsibility: Own the single eligibility decision (trigger_mode, same_day_at)
+      that every sync path must consume.
+    locator: backend/services/data_sources/availability.py
+    evidence_ids:
+    - master-design
+    - engineering-governance
+    expectation: REQUIRED
+  - id: service:serve-read-layer
+    kind: service
+    name: SERVE read layer
+    responsibility: Sole sanctioned read path for consumers; non-member direct queries
+      are gated.
+    locator: backend/services/data_access/resolver.py
+    evidence_ids:
+    - master-design
+    - engineering-governance
+    expectation: REQUIRED
+  - id: service:daily-pipeline
+    kind: service
+    name: Daily update pipeline
+    responsibility: Acquire, clean, process and store stages with typed run_outcome
+      and system_health self-checks.
+    locator: backend/services/pipeline/run_outcome.py
+    evidence_ids:
+    - master-design
+    - engineering-governance
+    expectation: REQUIRED
+  - id: service:project-status
+    kind: service
+    name: Live status projection
+    responsibility: Single live-query entry for L2 state; zero files, nothing hand-written.
+    locator: backend/services/project_status.py
+    evidence_ids:
+    - master-design
+    - engineering-governance
+    expectation: REQUIRED
+  - id: service:governance-gates
+    kind: service
+    name: Commit gate registry
+    responsibility: Own gate grouping by who is harmed and when; three copies of the
+      gate names are machine-reconciled.
+    locator: backend/config/governance_gates.yaml
+    evidence_ids:
+    - master-design
+    - engineering-governance
+    expectation: REQUIRED
+  - id: application:api
+    kind: application
+    name: Decision-assist API
+    responsibility: FastAPI application mounting the live routers and the edge frontend
+      build.
+    locator: backend/main.py
+    evidence_ids:
+    - master-design
+    - engineering-governance
+    expectation: REQUIRED
+  - id: application:cli
+    kind: application
+    name: chunkyctl control plane
+    responsibility: 'Manual-only operator entry: status, sync, derive, gates, history,
+      doctor.'
+    locator: backend/scripts/chunkyctl.py
+    evidence_ids:
+    - master-design
+    - engineering-governance
+    expectation: REQUIRED
+  relations: []
+  flows: []
+  state_machines: []
