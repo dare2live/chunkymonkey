@@ -4,6 +4,20 @@ name: chunkymonkey-claims
 # 规则: 文档/commit 里任何带数字的关键声称, 在这里挂一条可执行断言;
 # 声称变化 (新决策) 时同 commit 更新断言 — 弹仓漂移 = 文档腐烂警报。
 # 全部只读; duckdb 连接由 moth 引擎强制 read_only。
+# ── severity (2026-08-14 立) ────────────────────────────────────────────────
+# 背景: 此前 38 条断言**在任何地方都没有阻断力** —— CI 完全不跑 moth, 而 safe_commit 里
+# moth 属 scaffold 组 = warn-only。于是每次提交花 47 秒得到一份拦不住任何东西的清单,
+# 其中却混着真正的数据不变量(calendar-floor 注释写着「回退=静默 clamp 复发」、
+# dc-member-truncation-pin 写着「2026-06-12 发现静默截断」)。实测这两条在 pytest 里覆盖为 0,
+# 即 moth 是它们**唯一**的执法点, 而那个执法点不执法。
+# 根因: moth 是**一道门**, 38 条断言按整体继承了它的分组 —— 粗粒度分组悄悄改了不该改的
+# 东西的强制级别(与 warn-only 短路吞检查同一形态)。
+#
+# 判据(只此一条, 不要扩张): **违反它意味着数据/平台此刻就是错的**, 而不是「登记没跟上」。
+#   blocking  → 数据此刻是错的。例: 主键丢了 / 日历起点回退 / 分页静默截断 / Type A 混入泄漏列
+#   (默认)     → 棘轮与脚手架。例: 表数 >= N(增表要显式过决策) / 文档地图陈旧 / grep 防删除
+# 阈值型棘轮(smartmoney-tables/indexes/constraint-tables/size-band)**刻意不列 blocking**:
+# 它们触发时说明「登记没跟上」, 不是「数据错了」—— 拿它挡提交就是本轮要消灭的那种张力。
 assertions:
   - id: smartmoney-constraint-tables
     claim: "PK/UNIQUE 约束表 >= 18 (2026-06-29 批4刷新: 批3c/3c2 退役机构旧表 inst_holdings/inst_institutions/fact_common_major_holder_stock 后实测20, 阈值留2缓冲防误报; 增表显式过决策)"
@@ -29,30 +43,35 @@ assertions:
     path: data/smartmoney.duckdb
     expect: {op: between, low: 200000000, high: 20000000000}
   - id: smartmoney-bloat-ratio
+    severity: blocking
     claim: "smartmoney 死块占比 < 25% —— 这才是 size-band 真正想抓的东西。绝对体量带是个**棘轮**: 9→12→15GB 三次都是「实测合法增长」后抬带, 每次抬带都是一次橡皮图章的机会, 而且它对「DROP 完没 compact」这件事本身是瞎的(文件不缩, 带内照样过)。按 eng_gov §6, DuckDB 的 DROP/DELETE 不释放文件块, 单独 CHECKPOINT 也不缩文件 —— 死块占比直接测这件事, 且**不随合法增长漂移**。2026-08-12 实测 free 1554/total 63660 = 2.44%, 库 97.6% 是活数据(wal=0), 故当日抬带 15→20GB 是追认真实数据而非放过膨胀。超阈处置: `python backend/scripts/db_compact.py --db smartmoney --execute` 后核 parity。"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT CAST(round(100.0 * free_blocks / nullif(total_blocks, 0), 2) AS DOUBLE) FROM pragma_database_size()"
     expect: {op: "<", value: 25.0}
   - id: calendar-floor
+    severity: blocking
     claim: "交易日历起点 == 2005-01-04 (2026-06-12 扩展+七项验证 PASS; 回退 = 静默 clamp 复发)。2026-06-27 §9 拆库: dim_trading_calendar 迁 reference.duckdb, 断言库改 reference"
     type: duckdb_sql
     database: data/reference.duckdb
     query: "SELECT CAST(min(trade_date) AS VARCHAR) FROM dim_trading_calendar"
     expect: {op: "==", value: "2005-01-04"}
   - id: section9-dims-in-reference
+    severity: blocking
     claim: "§9 reference 拆库: 2 dim (active/trading_calendar) 全在 reference.duckdb (2026-06-27 Stage E 迁移真相源; 缺=迁移丢失/回滚)。原 4 dim 含 all_ever_listed/listing_status 2026-07-07 整表退役物删 (0 存活 writer / 0 业务读者), 断言集从 4 缩至 2, 见 PROJECT_INDEX.md 决策收口"
     type: duckdb_sql
     database: data/reference.duckdb
     query: "SELECT count(*) FROM duckdb_tables() WHERE table_name IN ('dim_active_a_stock','dim_trading_calendar')"
     expect: {op: "==", value: 2}
   - id: reference-dims-have-pk
+    severity: blocking
     claim: "不变量#1 主键: reference 2 dim (active/trading_calendar) 全有 DB 强制 PRIMARY KEY (2026-06-28 修 §9 迁移丢 PK 缺口; <2 = de-facto 唯一退化, 真主键不变量破; 2026-07-07 all_ever_listed/listing_status 退役后集合缩至 2)"
     type: duckdb_sql
     database: data/reference.duckdb
     query: "SELECT count(DISTINCT table_name) FROM duckdb_constraints() WHERE constraint_type='PRIMARY KEY' AND table_name IN ('dim_active_a_stock','dim_trading_calendar')"
     expect: {op: "==", value: 2}
   - id: section9-dims-absent-smartmoney
+    severity: blocking
     claim: "§9 reference 拆库: 2 dim (active/trading_calendar) 已从 smartmoney 物删, 不得重建 (2026-06-27 Stage E; >0 = schema-init DDL 重建路径回潮 undo 物删, 不变量#2 读写边界破; 2026-07-07 all_ever_listed/listing_status 从此断言集移除因表本身已整体退役非仅迁库)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
@@ -61,6 +80,7 @@ assertions:
   # retired-db-retained 断言已移除 (2026-06-13 用户授权提前删 v1 旧库 34G — 新库稳定一日重负载验证通过,
   # 回滚窗提前关; 按断言自身契约"到期人工删除后移除本断言"执行)
   - id: dc-member-truncation-pin
+    severity: blocking
     claim: "dc_member 近 30 日无整 5000 行截断签名 (2026-06-12 发现静默截断; chain9 分页重拉后应转绿)"
     type: duckdb_sql
     database: data/tushare_raw.duckdb
@@ -102,6 +122,7 @@ assertions:
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_dead_references.py >/dev/null 2>&1 && echo DEADREF_OK"]
     expect: {op: regex, pattern: "DEADREF_OK"}
   - id: data-layer-integrity
+    severity: blocking
     claim: "每张活表必在 data_layers.yaml 声明 layer + Type A 列纯度 (2026-06-14 层级声明化 + 2026-06-28 加工分层 A/B: asset_class=A 层[L1_foundation/L1k/display=确定性PIT重排]表禁含 forward/label/score/signal/ic/predicted 等 Type B 列, 防策略派生伪装混入平台; 未声明 or Type A 含泄漏列=FAIL)"
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend .venv/bin/python3 backend/scripts/data_layer_audit.py --check | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)[\"overall\"]==\"PASS\" else 1)' && echo LAYER_OK"]
@@ -178,12 +199,14 @@ assertions:
     command: ["bash", "-c", "grep -c 'def enable_sandbox_guard\\|class SandboxBoundaryError\\|def read_only_main' backend/services/sandbox_guard.py"]
     expect: {op: ">=", value: 3}
   - id: holder-report-date-single-format
+    severity: blocking
     claim: "canonical_top10_float_holders_period report_date 全 YYYYMMDD 单格式 (holders fact DROPPED 2026-07-26; 守 formal SSOT 归一. >0 = ISO 复发=双真相源回潮)"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT count(*) FROM canonical_top10_float_holders_period WHERE CAST(report_date AS VARCHAR) LIKE '%-%'"
     expect: {op: "==", value: 0}
   - id: qfq-serving-tushare-only
+    severity: blocking
     claim: "v_price_kline_qfq 当前 serving view 只含 tushare 派生行；qfq 非 nominal/execution truth；physical lineage=batch_id/ingested_at/factor_as_of on rebuild (latest-factor rebase method typed; pin batch_id for reproducibility)"
     type: duckdb_sql
     database: data/market.duckdb
@@ -217,8 +240,14 @@ assertions:
   - id: foundation-done-f1-f10
     claim: "FND-GATE foundation-done F1–F10 聚合门：真实缺口 FAIL；S7 ssot typed hard-stop (计数现查 check_legacy_raw_plane, 勿写死) / org mass-by-date banned+daily incremental-by-period required / Type-B enrichment defer 为诚实墙 PASS；F8 §15 PASS 需 ≥3 连续 L3 刀 evidence（commits/knife≤1.5 + pre_knife；禁放宽阈值）；PARTIAL 仍 exit0。owner=backend/scripts/check_foundation_done.py + foundation_done.yaml；权威=docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维构成理由) + git log --grep section15_verify"
     type: shell
-    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_foundation_done.py >/dev/null 2>&1 && echo 0 || echo 1"]
+    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_foundation_done.py --skip-live >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
+    # 2026-08-14 加 --skip-live: 实测该脚本全量 39.23s / 带 --skip-live 0.37s ——
+    # **38.9 秒(占 moth 全量 46.9s 的 83%)全花在 F4/F6 两个 live DuckDB 探测上**。
+    # 那两项查的是「数据地基够不够」(accept breadth / qfq 补齐), 不是「这次 diff 对不对」,
+    # 按 governance_gates.yaml 的分组原则(谁受害、何时受害)属 system_health, 受害时刻是跑日更。
+    # 故 live 侧移进 daily_update 的 runtime_checks(foundation_live), 此处只留静态契约面。
+    # 覆盖零损失: F4/F6 仍每天跑, 只是不再让每次提交付 39 秒。
   - id: calendar-usage-clean
     claim: "交易日历静态强制门全绿：导入 calendar 不再豁免整文件，空扫描失败关闭；B1 wall-clock 当最新交易日、B2/B3 SQL wall-clock cutoff 均阻断，显式 evidence 仅豁免具体合法行。owner=backend/scripts/check_calendar_usage.py"
     type: shell

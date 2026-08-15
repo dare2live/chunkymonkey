@@ -84,7 +84,7 @@ done
 echo
 echo "=== Step 1.5: commit tier classification ==="
 COMMIT_TIER="L3"
-COMMIT_TIER_GATES="staged_worktree_parity project_index_sync feature_map moth rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity no_emoji config_refs doc_drift doc_governance doc_runtime_state commit_msg rule10"
+COMMIT_TIER_GATES="staged_worktree_parity project_index_sync feature_map moth moth_invariants rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity no_emoji config_refs doc_drift doc_governance doc_runtime_state commit_msg rule10"
 if [[ -f "backend/scripts/classify_commit_tier.py" && -f "backend/config/commit_tiers.yaml" ]]; then
     if COMMIT_TIER_JSON=$(PYTHONPATH=backend "$PY" backend/scripts/classify_commit_tier.py 2>/tmp/cm_tier_err.out); then
         if parsed=$("$PY" -c '
@@ -228,8 +228,20 @@ if [[ -f "$STAGED_INDEX_DIR/.moth/profile.yaml" ]]; then
         # 就整个终止, 短路无害; 降成 warn-only 后 gate_fail 返回 0, elif 会让 coupling 在
         # assert 一挂时**永远不再执行** —— 耦合检查连同它的发现一起消失且无任何信号。
         # (2026-08-11 B3 实测发现的检测面回退; 由 test_moth_gate_runs_coupling_even_when_assert_fails 锁定)
+        # moth 只跑**一次**, 两个门读同一份 JSON —— 分级不该为它付第二次运行成本(实测 8.2s)。
+        # moth_invariants(diff_correctness, 阻断) = 只判标了 severity: blocking 的数据不变量;
+        # moth(scaffold, warn-only)             = 判全部, 含棘轮与脚手架。
+        # 2026-08-14 立此分流的理由: 此前 38 条断言按整体继承 moth 的 scaffold 分组,
+        # 于是「日历起点回退」「dc_member 静默截断」这类**数据此刻就是错的**的断言
+        # 也变成了 warn-only, 而 CI 完全不跑 moth —— 它们当时在任何地方都没有阻断力。
+        # **先把检测全跑完, 最后统一判** —— 顺序不是风格问题:
+        # 任何一个中途的 gate_fail 只要属阻断组就会 exit, 把它后面的检测一起带走。
+        # 2026-08-14 实测: 第一版把 moth_invariants 判定写在 coupling 之前, 于是
+        # assert 一挂 → invariants 阻断 exit → coupling 永不执行, **原样复刻了 B3 那个
+        # elif 短路 bug**, 被 test_moth_gate_runs_coupling_even_when_assert_fails 当场抓到。
+        MOTH_JSON="$STAGED_INDEX_DIR/.moth_assert.json"
         MOTH_OK=1
-        if ! (cd "$STAGED_INDEX_DIR" && moth assert --repo .); then
+        if ! (cd "$STAGED_INDEX_DIR" && moth assert --repo . --format json > "$MOTH_JSON"); then
             echo "ERROR: staged snapshot Moth assertions 未闭合。"
             MOTH_OK=0
         fi
@@ -237,10 +249,23 @@ if [[ -f "$STAGED_INDEX_DIR/.moth/profile.yaml" ]]; then
             echo "ERROR: staged snapshot Moth coupling 未闭合。"
             MOTH_OK=0
         fi
+        # 检测已全部完成, 现在才判 —— 不变量分流读上面那次 assert 的 JSON, 不重跑 moth。
+        # rc=1 有 blocking 失败 / rc=2 查不了(空扫描或读不到 severity 声明) —— 两者都阻断。
+        MOTH_INV_RC=0
+        if [[ -s "$MOTH_JSON" ]]; then
+            PYTHONPATH="$STAGED_BACKEND" "$PY" \
+                "$STAGED_BACKEND/scripts/check_moth_invariants.py" "$MOTH_JSON" || MOTH_INV_RC=$?
+        else
+            echo "NOTE: moth 未产出 JSON (CLI 版本或 stub 不支持 --format json) —— 不变量分流跳过。"
+        fi
         if [[ "$MOTH_OK" == "1" ]]; then
             echo "[moth] staged snapshot PASS"
         else
             gate_fail moth 2
+        fi
+        if [[ "$MOTH_INV_RC" != "0" ]]; then
+            echo "ERROR: moth 数据不变量未闭合 (或无法判定) —— 这不是脚手架陈旧, 是数据此刻不对。"
+            gate_fail moth_invariants 2
         fi
     fi
 else

@@ -49,6 +49,7 @@ tier_gates:
     - project_index_sync
     - sandbox_isolation
     - no_emoji
+    - moth_invariants
     - staged_worktree_parity
     - doc_drift
     - doc_governance
@@ -70,6 +71,7 @@ tier_gates:
     - dead_references
     - config_refs
     - no_emoji
+    - moth_invariants
     - staged_worktree_parity
     - doc_drift
     - doc_governance

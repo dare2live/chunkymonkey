@@ -10,7 +10,7 @@ scope="只迁 dossier")。dossier.py 已随 2026-06-28 纯数据平台重建永�
 `scan_consumer_bypass()`(原 `--bypass-scan` 参数, 全量扫 backend/services+scripts, 靠
 `data_module_members.yaml` roster 区分 builder[可读raw, 归 build-time PIT 门管] vs 薄消
 费者[必须走 DataAccess.get, 归本门管]) —— 但这道更完整的检查此前只挂在 moth 断言里,
-`moth assert` 从未接入 safe_commit.sh/CI, 没人被强制跑; 真正跑在 commit-time 硬门位置
+`moth assert` 已接入 safe_commit.sh (Step 2 moth 门; 2026-08-14 起其 blocking 子集另走 moth_invariants 硬门); CI 不跑 moth
 的反而是伪绿的 D1/D2。本次收口: 退役 D1/D2, 把 `scan_consumer_bypass()` 提升为默认执法
 的 D1(替代原两道门的职责), 不再需要额外 flag 才生效。
 

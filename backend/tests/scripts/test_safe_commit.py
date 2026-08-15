@@ -12,6 +12,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SAFE_COMMIT = REPO_ROOT / "scripts" / "safe_commit.sh"
 CODEX_REVIEW_GATE = REPO_ROOT / "backend" / "scripts" / "check_codex_review.py"
+MOTH_INVARIANTS_GATE = REPO_ROOT / "backend" / "scripts" / "check_moth_invariants.py"
 
 
 def _run(cmd: list[str], cwd: Path, **kwargs) -> subprocess.CompletedProcess[str]:
@@ -80,13 +81,16 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
     (repo / "backend" / "scripts").mkdir(parents=True)
     (repo / "backend" / "config").mkdir(parents=True)
     shutil.copy2(CODEX_REVIEW_GATE, repo / "backend" / "scripts" / "check_codex_review.py")
+    # 拷**真**脚本而非 stub: 本文件有一例专门验证 blocking 分流真的会阻断,
+    # 用 stub 就变成「测 stub」而不是测分流逻辑 (语料 D 族原样复现)。
+    shutil.copy2(MOTH_INVARIANTS_GATE, repo / "backend" / "scripts" / "check_moth_invariants.py")
     # WP1: fixture without classifier → safe_commit fail-closes to L3 full gates
     # (explicit stub keeps classify import path available for Rule 10 L1 checks).
     _write(
         repo / "backend" / "scripts" / "classify_commit_tier.py",
         "import json\n"
         "print(json.dumps({'tier':'L3','gates':["
-        "'staged_worktree_parity','project_index_sync','feature_map','moth','rule_compliance',"
+        "'staged_worktree_parity','project_index_sync','feature_map','moth','moth_invariants','rule_compliance',"
         "'sandbox_isolation','serve_read_layer','calendar_usage',"
         "'population_contract','lineage_drift','dead_references',"
         "'grain_uniqueness','continuity','no_emoji','config_refs','doc_drift',"
@@ -519,4 +523,44 @@ def test_staged_worktree_parity_passes_when_index_matches(tmp_path: Path) -> Non
     result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: APPROVE")
     assert result.returncode == 0
     assert "[staged-worktree-parity] PASS" in result.stdout
+
+
+def test_moth_blocking_invariant_failure_blocks_commit(tmp_path: Path) -> None:
+    """数据不变量失败必须**阻断**, 哪怕 moth 门本身只是 warn-only。
+
+    2026-08-14 分流的全部意义就在这里: 此前 38 条断言按整体继承 moth 的 scaffold 分组,
+    于是「日历起点回退」这类**数据此刻就是错的**也只是 warn。本例用一个会吐 JSON 的 stub moth
+    模拟 calendar-floor 失败, 断言提交被拦 —— 若哪天分流被抹平, 这条必红。
+    """
+    repo = _make_repo_with_staged_python(tmp_path)
+    (repo / ".moth" / "assertions").mkdir(parents=True, exist_ok=True)
+    _write(repo / ".moth" / "profile.yaml", "version: 1\n")
+    _write(
+        repo / ".moth" / "assertions" / "claims.yaml",
+        "assertions:\n  - id: calendar-floor\n    severity: blocking\n",
+    )
+    bin_dir = repo / "fakebin"
+    bin_dir.mkdir(exist_ok=True)
+    stub = bin_dir / "moth"
+    # assert 自身 exit 0(即 moth 门不报错), 但 JSON 里 calendar-floor 是 fail ——
+    # 这样才能证明**分流**在起作用, 而不是搭了 moth 门的便车。
+    stub.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "assert" ]; then\n'
+        '  echo \'{"packs":[{"results":['
+        '{"id":"calendar-floor","status":"fail","detail":"模拟回退"}]}]}\'\n'
+        "  exit 0\n"
+        "fi\nexit 0\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    assert _run(["git", "add", "-A"], repo).returncode == 0
+
+    result = _run(
+        ["bash", "scripts/safe_commit.sh", "test audit\nCodex-Reviewed: APPROVE"],
+        repo,
+        env={**os.environ, "SAFE_COMMIT_NO_PUSH": "1", "PATH": f"{bin_dir}:{os.environ['PATH']}"},
+    )
+    assert result.returncode != 0, "blocking 不变量失败必须阻断提交"
+    assert "calendar-floor" in result.stdout, "必须点名是哪条不变量"
 

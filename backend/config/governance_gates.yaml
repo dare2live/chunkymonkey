@@ -62,6 +62,17 @@ commit_gates:
     checks: "FEATURE_MAP.md 派生地图与 staged 源快照一致"
     why: "机器可重生的投影；陈旧 = 重新跑一次生成器，不是系统故障。"
 
+  moth_invariants:
+    group: diff_correctness
+    checks: "moth 里标了 severity: blocking 的数据不变量 (读同一次 moth assert 的 JSON)"
+    why: >
+      moth 是**一道门**而它背后有 38 条断言。P1 把 moth 整体归进 scaffold(warn-only)后,
+      38 条按整体继承了「不阻断」—— 其中混着 calendar-floor(「回退=静默 clamp 复发」)、
+      dc-member-truncation-pin(「2026-06-12 发现静默截断」)这类数据不变量, 而它们在 pytest 里
+      覆盖为 0、CI 又完全不跑 moth, 即当时**在任何地方都没有阻断力**。
+      这与 warn-only 短路吞掉 coupling 同形态: 粗粒度分组悄悄改了不该改的东西的强制级别。
+      判据只有一条: 违反它意味着**数据/平台此刻就是错的**, 而不是「登记没跟上」——
+      阈值棘轮(表数/索引数/体量带)刻意不在此列, 拿它挡提交正是 P1 要消灭的张力。
   moth:
     group: scaffold
     checks: "moth assert (仓库自述断言) + moth coupling"
@@ -218,6 +229,18 @@ runtime_checks:
     degraded_msg: >-
       system_health grain_uniqueness FAIL — 某表按声明 grain 有重复组
       (grain 声明不足或 MERGE 幂等破坏; 批内去重会把它升级成静默销毁)
+    skip_when_dry: true
+
+  - id: foundation_live
+    from_gate: null
+    script: backend/scripts/check_foundation_done.py
+    args: []
+    degraded_msg: >
+      system_health foundation_live 非 PASS — FND-GATE 的 live 侧(F4 Type-B enrichment /
+      F6 accept breadth)报出真实数据缺口。2026-08-14 从 commit 路径移来: 实测该脚本全量
+      39.2s 而 --skip-live 仅 0.37s, 即 83% 的 moth 开销花在这两个 DuckDB 探测上, 而它们
+      查的是「数据地基够不够」不是「这次 diff 对不对」—— 受害时刻是跑日更, 门就该装在日更里。
+      commit 路径仍跑静态契约面(moth 的 foundation-done-f1-f10 带 --skip-live)。
     skip_when_dry: true
 
   - id: cutover_effective
