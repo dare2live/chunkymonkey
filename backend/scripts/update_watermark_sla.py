@@ -56,12 +56,37 @@ class ActualFrontierProbe:
     error: str | None = None
 
 # SLA threshold by source_tier (trading days)
+# ── SLA 的**轴** (2026-08-16 立) ────────────────────────────────────────────
+# 本文件长期把两种单位混成一个裸数字比较:
+#   * tier 默认 与 registry 的 `freshness_sla_trading_days` —— 名字就写着**交易日**
+#   * SLA_DAYS_OVERRIDE 的季报值 —— 注释写着「Mar31→Aug31 披露截止 ≈ 153d → 160d」,
+#     即**自然日**
+# 而实现只有一种算法 `_days_since` = (today - d).days, 纯自然日 (全文件对交易日历的
+# 引用数为 0), 再用 `+3` 打「周末缓冲」补丁。
+#
+# 实测后果 (2023-01-01~2026-08-14, 876 个交易日, sla=1 即真实阈值=自然日>4):
+#   漏报 —— 落后 2 个交易日仍静默 **95.0%** 的日子; 落后 3 个 37.6%; 落后 4 个 17.9%
+#   误报 —— 域完全合规(仅落后 1 交易日)却判红 **15 次**, 全在长假后首个交易日
+# 且 `if actual_days > sla:` 里**只**包着 `if actual_days > sla + 3:`(无 else),
+# 于是 registry 里逐域声明的那个值**从不单独触发任何东西**, 真实阈值恒为 sla+3 自然日。
+# 本轮日线断流到第 5 个交易日才被发现, 正是这个机制: 前 2-4 个交易日全程静默。
+#
+# 修法与 MASTER §5.1 对 availability 的要求同源: **量必须带轴**, 不是改算法。
+AXIS_TRADING = "trading_days"
+AXIS_CALENDAR = "calendar_days"
+
 SLA_DAYS = {1: 1, 2: 2, 3: 3}
 
 # Override: 季度数据 (报告期 quarterly) 单独配置 SLA, 不走 tier
 # 季报披露窗: Q1=4/30 / Q2=8/31 / Q3=10/31 / Q4=4/30(年报)
 # QFII 用 report_date 水位: Q1→Q2 最坏跨度 ≈ Mar31→Aug31 披露截止 ≈ 153d → 160d 覆盖
 # holders 仍 100d (notice_date / page 更密)。rule-compliance: ok evidence=a-share-disclosure-window
+# 这两个是**自然日**(季报披露窗, 见各自注释), 故单列轴; 其余一律交易日。
+SLA_AXIS_OVERRIDE = {
+    "holders_top10_float": AXIS_CALENDAR,
+    "qfii_holding_quarterly": AXIS_CALENDAR,
+}
+
 SLA_DAYS_OVERRIDE = {
     # financial_gpcw_8q override 已删 2026-06-28 (fact_financial_derived U4 退役, DATA_SOURCE_QUERIES 条目同删)
     "holders_top10_float": 100,      # top10 股东季报
@@ -406,6 +431,19 @@ def _apply_watermark_reconcile(
     )
 
 
+# 交易日距离的 owner 是 services.calendar (交易日历真相源的既有 owner) ——
+# 它可复用且不该长在脚本里; 就地实现会让本文件越过 800 行 godfile 线,
+# 而那时抬棘轮就是橡皮图章(本仓刚批评过同款)。
+from services.calendar import (  # noqa: E402
+    load_trading_days as _load_trading_days_from,
+    trading_days_since as _trading_days_since,
+)
+
+
+def _load_trading_days(conns):
+    return _load_trading_days_from((conns or {}).get("reference"))
+
+
 def _days_since(date_str: str | None, today: date) -> int | None:
     if not date_str:
         return None
@@ -511,7 +549,21 @@ def main() -> int:
         raw_conn = duck_connect(str(get_database_manifest().path_for("tushare_raw")), read_only=True)
     except Exception as e:  # noqa: BLE001 — 锁竞争是回填期常态, 显式降级不挡 SLA 主流程
         log.warning(f"tushare_raw 不可达 (回填链占锁?): {e}")
-    conns = {"market": market_conn, "smartmoney": smart_conn, "tushare_raw": raw_conn}
+    # reference = 交易日历真相源。连不上不致命: 交易日轴的域会判 UNVERIFIED 而非静默放行。
+    ref_conn = None
+    try:
+        from services.database_manifest import get_database_manifest
+
+        ref_conn = duck_connect(str(get_database_manifest().path_for("reference")), read_only=True)
+    except Exception as e:  # noqa: BLE001
+        log.warning(f"reference 库不可达, 交易日轴 SLA 将判 UNVERIFIED: {e}")
+    conns = {
+        "market": market_conn, "smartmoney": smart_conn,
+        "tushare_raw": raw_conn, "reference": ref_conn,
+    }
+    trading_days = _load_trading_days(conns)
+    if trading_days is None:
+        log.warning("交易日历不可用 —— 交易日轴的域本轮判 UNVERIFIED, 不按自然日代算")
     try:
         tombstone_purges = _purge_retired_watermark_tombs(
             smart_conn, dry_run=args.dry_run
@@ -547,6 +599,14 @@ def main() -> int:
             watermark_days = _days_since(watermark_date, today)
             # SLA 优先序: registry per-domain > 季度 override > tier 默认
             qspec = queries.get(data_domain) or {}
+            # **按轴取度量**: 交易日轴用交易日历现算, 自然日轴(季报披露窗)才用自然日龄。
+            sla_axis = SLA_AXIS_OVERRIDE.get(data_domain, AXIS_TRADING)
+            if sla_axis == AXIS_TRADING:
+                measured_days = _trading_days_since(actual_date, today, trading_days)
+                axis_unverified = measured_days is None and actual_date is not None
+            else:
+                measured_days = actual_days
+                axis_unverified = False
             sla = (qspec.get("sla_days")
                    or SLA_DAYS_OVERRIDE.get(data_domain)
                    or SLA_DAYS.get(source_tier, 3))
@@ -615,25 +675,34 @@ def main() -> int:
                         )
 
             # 2. actual data stale vs SLA
-            if actual_days is not None and actual_days > sla:
-                # 注意: 周末 / 节假日 不 alert. 简单 SLA 不区分.
-                if actual_days > sla + 3:  # 3 day buffer for weekend
-                    if qspec.get("observe_only"):
-                        # Frozen/disabled domain: record lag, do not light sla_warn.
-                        status = "FROZEN_STALE_OBSERVED"
-                        alert = False
-                        log.info(
-                            f"  [OBSERVE] {data_domain}/{source_name}: actual "
-                            f"{actual_date} ({actual_days}d ago) > SLA {sla}d "
-                            f"(observe_only={qspec.get('observe_reason')})"
-                        )
-                    else:
-                        status = "DATA_STALE_VS_SLA"
-                        alert = True
-                        log.warning(
-                            f"  [ALERT] {data_domain}/{source_name}: actual {actual_date} "
-                            f"({actual_days}d ago) > SLA {sla}d (tier {source_tier})"
-                        )
+            # 日历不可达 → 明确 UNVERIFIED, 不当作通过("查不了"不等于"没问题")。
+            if axis_unverified:
+                status = "SLA_UNVERIFIED_NO_CALENDAR"
+                alert = True
+                log.warning(
+                    f"  [UNVERIFIED] {data_domain}/{source_name}: 交易日历不可达, "
+                    f"无法按交易日判定 SLA (actual={actual_date})"
+                )
+            elif measured_days is not None and measured_days > sla:
+                # `+3` 周末缓冲已删: 它存在只是为了拿自然日近似交易日, 而现在是真按交易日算。
+                # 原实现里外层 `> sla` 内还套着 `> sla + 3`(无 else), 等于逐域声明的 SLA
+                # 值从不单独触发 —— 现在这一层就是唯一阈值。
+                if qspec.get("observe_only"):
+                    # Frozen/disabled domain: record lag, do not light sla_warn.
+                    status = "FROZEN_STALE_OBSERVED"
+                    alert = False
+                    log.info(
+                        f"  [OBSERVE] {data_domain}/{source_name}: actual "
+                        f"{actual_date} ({measured_days} {sla_axis} ago) > SLA {sla} {sla_axis} "
+                        f"(observe_only={qspec.get('observe_reason')})"
+                    )
+                else:
+                    status = "DATA_STALE_VS_SLA"
+                    alert = True
+                    log.warning(
+                        f"  [ALERT] {data_domain}/{source_name}: actual {actual_date} "
+                        f"({measured_days} {sla_axis} ago) > SLA {sla} {sla_axis} (tier {source_tier})"
+                    )
 
             if alert:
                 n_alert += 1
@@ -646,6 +715,8 @@ def main() -> int:
                 "actual_days_ago": actual_days,
                 "watermark_days_ago": watermark_days,
                 "sla_days": sla,
+                "sla_axis": sla_axis,
+                "measured_days_on_axis": measured_days,
                 "status": status,
                 "alert": alert,
                 "verified_complete_frontier": verified_frontier is not None,

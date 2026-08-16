@@ -14,7 +14,7 @@ rule-compliance: ok evidence=Codex-a7ffbdb2-HIGH-calendar-gate-unified
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -145,3 +145,51 @@ __all__ = [
     "latest_completed_for_kline_write",
     "latest_closed_or_raise",
 ]
+
+
+def parse_day(value) -> date | None:
+    s = str(value or "")[:10]
+    for fmt in ("%Y-%m-%d", "%Y%m%d"):
+        raw = s.replace("-", "") if fmt == "%Y%m%d" else s
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def load_trading_days(conn) -> list[date] | None:
+    """交易日历真相源 (reference.duckdb / dim_trading_calendar)。
+
+    取不到就返回 None —— 调用方据此判 UNVERIFIED, **绝不退回自然日算术冒充**。
+    「查不了」不等于「没问题」, 这是本仓一贯判据。
+    """
+    if conn is None:
+        return None
+    try:
+        rows = conn.execute(
+            "SELECT CAST(trade_date AS VARCHAR) FROM dim_trading_calendar "
+            "WHERE is_trading = 1 ORDER BY trade_date"
+        ).fetchall()
+    except Exception:  # noqa: BLE001 — 库不可达/表缺失都归 UNVERIFIED
+        return None
+    out = [d for d in (parse_day(r[0]) for r in rows) if d is not None]
+    return out or None
+
+
+def trading_days_since(
+    date_str: str | None, today: date, trading_days: list[date] | None
+) -> int | None:
+    """数据日期与 today 之间**已完成的交易日**个数。日历不可达 → None。
+
+    与自然日算术的区别正是本次要修的东西: 周末/长假不再被算成"陈旧"(消灭 15 次
+    长假后误报), 而两个交易日之间真的空了几天也不再被 `+3` 缓冲吞掉(消灭 95% 的漏报)。
+    """
+    if trading_days is None:
+        return None
+    day = parse_day(date_str)
+    if day is None:
+        return None
+    import bisect
+
+    return max(0, bisect.bisect_right(trading_days, today) - bisect.bisect_right(trading_days, day))

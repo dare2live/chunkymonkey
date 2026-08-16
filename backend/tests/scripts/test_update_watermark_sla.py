@@ -582,3 +582,73 @@ def test_reconcile_updates_only_exact_watermark_primary_key_and_clears_unverifie
     assert str(rows[0][3]).startswith("2026-07-15 11:54:54")
     assert tuple(rows[1][i] for i in range(3)) == (2, "20260709", 2)
     assert rows[1][3] is None
+
+
+# ── SLA 的轴 (2026-08-16) ────────────────────────────────────────────────
+# 本文件此前没有任何一条覆盖 SLA **判定**本身(都在测 registry 契约与探测面),
+# 这正是「声明交易日 / 实现自然日 + `+3` 补丁」能长期存活的原因。
+
+import datetime as _dt
+
+from services.calendar import trading_days_since as _cal_trading_days_since
+
+
+def _cal(*days: str) -> list:
+    return [_dt.date(int(d[:4]), int(d[4:6]), int(d[6:])) for d in days]
+
+
+def test_trading_day_distance_ignores_weekends_and_holidays() -> None:
+    """交易日距离必须只数交易日 —— 周末/长假不算陈旧。
+
+    旧实现用自然日 `(today - d).days` 近似, 再用 `+3` 补周末; 实测 2023-01-01~2026-08-14
+    的 876 个交易日, 该近似让「落后 2 个交易日」在 **95.0%** 的日子里静默。
+    """
+    days = _cal("20260807", "20260810", "20260811")  # 周五, 下周一, 周二
+    # 周五 → 周二 自然日隔 4 天, 但只过了 2 个交易日
+    assert _cal_trading_days_since("20260807", _dt.date(2026, 8, 11), days) == 2
+    assert sla._days_since("20260807", _dt.date(2026, 8, 11)) == 4, "对照: 自然日算术确实是 4"
+
+
+def test_long_holiday_does_not_create_false_alert() -> None:
+    """长假后首个交易日: 域完全合规(落后 1 交易日)不得判红。
+
+    旧实现实测在 2023-01-01 以来制造 **15 次**这类误报, 全部落在长假后首个交易日。
+    """
+    days = _cal("20260130", "20260209")  # 中间隔春节
+    assert _cal_trading_days_since("20260130", _dt.date(2026, 2, 9), days) == 1
+    assert sla._days_since("20260130", _dt.date(2026, 2, 9)) == 10, "对照: 自然日龄 10 会误判"
+
+
+def test_calendar_unavailable_is_unverified_not_pass() -> None:
+    """日历取不到 → None, 由调用方判 UNVERIFIED; **绝不退回自然日冒充**。
+
+    「查不了」不等于「没问题」—— 静默按自然日代算就是把无法判定伪装成通过。
+    """
+    assert _cal_trading_days_since("20260807", _dt.date(2026, 8, 11), None) is None
+
+
+def test_two_axes_are_declared_and_quarterly_stays_calendar() -> None:
+    """同一个裸数字在不同条目里是不同单位, 必须显式带轴。
+
+    季报 override(100/160)按其注释是**自然日**(Mar31→Aug31 披露截止 ≈ 153d),
+    而 tier 默认与 registry 的 `freshness_sla_trading_days` 是**交易日**。
+    """
+    assert sla.SLA_AXIS_OVERRIDE["holders_top10_float"] == sla.AXIS_CALENDAR
+    assert sla.SLA_AXIS_OVERRIDE["qfii_holding_quarterly"] == sla.AXIS_CALENDAR
+    assert sla.SLA_AXIS_OVERRIDE.get("sync:daily", sla.AXIS_TRADING) == sla.AXIS_TRADING
+
+
+def test_weekend_buffer_patch_is_gone() -> None:
+    """`+3` 缓冲必须消失 —— 它存在只是为了拿自然日近似交易日。
+
+    保留它会让逐域声明的 SLA 值继续从不单独触发(原实现外层 `> sla` 里只套着
+    `> sla + 3` 且无 else)。实测此刻就有 12 个域因此被静默放过。
+    """
+    # 只看**活代码**: 注释里会引用旧写法来解释改了什么, 那是说明不是判据。
+    # (同款错我犯过一次 —— 门测试的正则连注释一起扫, 把散文当调用点。)
+    code = "\n".join(
+        ln for ln in SCRIPT_PATH.read_text(encoding="utf-8").splitlines()
+        if not ln.lstrip().startswith("#")
+    )
+    assert "sla + 3" not in code, "周末缓冲补丁不得在活代码里复活"
+
