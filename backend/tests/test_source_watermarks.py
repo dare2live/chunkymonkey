@@ -204,3 +204,45 @@ def test_derive_watermark_applies_where_clause_to_row_count():
         assert item["fallback_active"] is False
     finally:
         conn.close()
+
+
+def test_watermark_day_is_normalized_at_the_single_writer():
+    """last_data_date 的格式契约由唯一写入口强制, 不靠每个读者自己 replace("-","")。
+
+    2026-08-17 实测: 这张表混着三种格式(compact8×41 / dashed10×2 / timestamp×1)。
+    因为 '-'(0x2D) < '0'(0x30):
+      - ORDER BY last_data_date 把全表最新的 industry_dc(2026-08-16 23:33) 排到第 3
+      - 字符串比较 '2026-08-14' < '20260810' 为真 —— 更新的域被判成落后
+    受害的是 source_watermarks 的 fallback/primary 新旧比较与 project_status 的排序。
+    """
+    from services.source_watermarks import normalize_watermark_day
+
+    # 三种实际出现过的格式都归一到 compact8
+    assert normalize_watermark_day("20260813") == "20260813"
+    assert normalize_watermark_day("2026-08-14") == "20260814"
+    assert normalize_watermark_day("2026-08-16 23:33:46.497247+08") == "20260816"
+
+    # 读不懂就返回 None, 不猜 —— 写一个错的日期比留空更危险
+    for unknown in (None, "", "garbage", "2026/08/14", "08-14-2026"):
+        assert normalize_watermark_day(unknown) is None, unknown
+
+    # 归一后字符串比较才与真实时间序一致
+    assert normalize_watermark_day("2026-08-14") > normalize_watermark_day("20260810")
+
+
+def test_stored_watermarks_are_all_compact8():
+    """写进去什么格式, 读出来就必须是 compact8 —— 覆盖真正的写入口而不只是纯函数。"""
+    from services.source_watermarks import ensure_source_watermark_schema, upsert_watermark
+
+    conn = duck_mem()
+    ensure_source_watermark_schema(conn)
+    for i, raw in enumerate(["20260813", "2026-08-14", "2026-08-16 23:33:46.497247+08"]):
+        upsert_watermark(conn, {
+            "data_domain": f"d{i}", "source_name": "s", "source_tier": 1,
+            "last_data_date": raw,
+        })
+    stored = [r[0] for r in conn.execute(
+        "SELECT last_data_date FROM mart_data_source_watermark ORDER BY data_domain"
+    ).fetchall()]
+
+    assert stored == ["20260813", "20260814", "20260816"], stored

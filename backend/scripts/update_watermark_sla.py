@@ -576,6 +576,29 @@ def main() -> int:
         ).fetchall()
         log.info(f"  watermark rows: {len(watermark_rows)}")
 
+        # 格式契约硬门: last_data_date 必须是 compact8。
+        # 2026-08-17 实测这张表曾混着 compact8×41 / dashed10×2 / timestamp×1 ——
+        # 而 '-'(0x2D) < '0'(0x30), 于是 ORDER BY 把全表最新的域排到第 3,
+        # 字符串比较 '2026-08-14' < '20260810' 为真, 更新的域被判成落后。
+        # 归一已落在唯一写入口 (services.source_watermarks.upsert_watermark);
+        # 这道门管的是"有人绕过写入口直接 UPDATE 进来"的情况 —— 那正是它当初怎么混进来的。
+        from services.source_watermarks import normalize_watermark_day
+
+        malformed = [
+            (str(r[0]), str(r[1]), str(r[3]))
+            for r in watermark_rows
+            if r[3] is not None and normalize_watermark_day(r[3]) != str(r[3])
+        ]
+        if malformed:
+            for domain, source, value in malformed:
+                log.error(f"  ✗ watermark 格式违约 {domain}/{source}: {value!r} 不是 compact8")
+            log.error(
+                f"  {len(malformed)} 行 last_data_date 非 compact8 —— 这张表是"
+                "'每个域最新到哪天'的单一真相源, 混格式会让排序与比较给出反向答案。"
+                "修: 经 services.source_watermarks.upsert_watermark 重写, 不要直接 UPDATE。"
+            )
+            return 1
+
         results: list[dict] = []
         n_update = 0
         n_alert = 0

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -503,6 +504,40 @@ def _derive_fallback_active(
     return str(last_data_date) > str(primary_last)
 
 
+_COMPACT_DAY_RE = re.compile(r"^\d{8}$")
+_DASHED_DAY_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
+
+
+def normalize_watermark_day(value: Any) -> str | None:
+    """把 last_data_date 归一成 compact8 (YYYYMMDD)。
+
+    **为什么必须在 writer 侧归一** (2026-08-17 实测): 这张表是"每个域最新到哪天"的
+    单一真相源, 实测 48 行里混着 compact8×41 / dashed10×2 / timestamp×1 / NULL×4。
+    因为 '-'(0x2D) < '0'(0x30), 任何 dashed 值都排在同期 compact 值之前:
+        ORDER BY last_data_date  ->  industry_dc 的 2026-08-16 23:33(全表最新) 排第 3,
+                                     qfii 的 2026-06-30 被排成最旧
+    比较同样翻车: '2026-08-14' < '20260810' 为真, 一个实际更新的域会被判成落后。
+    受害点是 source_watermarks.py 的 fallback/primary 新旧比较(字符串直比)与
+    project_status.py 的 ORDER BY。
+
+    此前的做法是让下游各自 replace("-","") (update_watermark_sla.py 就有一处) ——
+    那是给每个读者打补丁, 漏一个就错一个。格式契约由**唯一写入口**强制才是单一计算点。
+
+    读不懂的值返回 None 而不是猜: 写一个错的日期比留空更危险。
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if _COMPACT_DAY_RE.match(text):
+        return text
+    dashed = _DASHED_DAY_RE.match(text)
+    if dashed:
+        return "".join(dashed.groups())
+    return None
+
+
 def upsert_watermark(conn, item: dict[str, Any]) -> None:
     ensure_source_watermark_schema(conn)
     conn.execute(
@@ -519,7 +554,7 @@ def upsert_watermark(conn, item: dict[str, Any]) -> None:
             item["source_name"],
             int(item["source_tier"]),
             item.get("last_success_at"),
-            item.get("last_data_date"),
+            normalize_watermark_day(item.get("last_data_date")),
             item.get("last_raw_hash"),
             item.get("next_check_at"),
             int(item.get("consecutive_failures") or 0),
