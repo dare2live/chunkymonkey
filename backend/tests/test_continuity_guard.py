@@ -54,3 +54,40 @@ def test_unregistered_domain_raises(monkeypatch):
     with pytest.raises(ContinuityGapError, match="不在 sync_registry"):
         assert_domains_continuous(["ghost_domain"], c)
     c.close()
+
+
+def test_backfill_hint_gives_a_command_that_the_domain_can_actually_run():
+    """补拉提示必须对**这个域**真的能跑通, 而不是一句通用的 --drain。
+
+    2026-08-17 实测: daily / stock_st 是授权短窗域, 结构上拒绝无参数 --drain
+    (SyncWindowError: authorized short window requires explicit --start/--end),
+    但门当时无条件建议 --drain —— 照着提示跑必然失败。一条跑不通的修复建议比不给
+    更糟: 它会让人以为工具坏了, 而真正的缺口还在那里。
+
+    同时提示必须带 env 与解释器: 裸 `python -m ...` 会得到
+    authorization_blocked(missing_token) 或 package_missing, 因为 token 在 .env、
+    依赖在 .venv —— 这两个坑 2026-08-17 都实际踩过。
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from check_continuity_integrity import _backfill_command
+
+    from services.data_sources.sync_runner import AUTHORIZED_SHORT_WINDOW_DOMAINS
+
+    assert AUTHORIZED_SHORT_WINDOW_DOMAINS, "短窗域集合为空, 这个用例就白跑了"
+
+    for domain in sorted(AUTHORIZED_SHORT_WINDOW_DOMAINS):
+        hint = _backfill_command(domain, ["20260812", "20260813"])
+        assert "--drain" not in hint, f"{domain} 是短窗域, --drain 跑不通: {hint}"
+        assert "--start 20260812" in hint and "--end 20260813" in hint, hint
+
+    # 非短窗域仍然用 --drain 扫缺口
+    other = _backfill_command("margin_detail", ["20260724"])
+    assert "--drain" in other, other
+
+    # 两类都要带上 env 与项目解释器
+    for hint in (_backfill_command("daily", ["20260812"]), other):
+        assert "source .env" in hint, hint
+        assert ".venv/bin/python" in hint, hint

@@ -2002,6 +2002,15 @@ def _publish_trade_cal_accepted_generation(spec: dict[str, Any]) -> dict[str, An
 # Cap (~40 trading days) supports claimable-power B0 measurement only.
 AUTHORIZED_SECURITY_DAY_MAX_WINDOW_DAYS = 40
 
+# 走"授权短窗"发布路径的域。这些域**结构上拒绝无参数 --drain**(见
+# _require_authorized_short_trade_date_window), 所以它们没有自动补缺口的路径:
+# 漏掉的交易日会一直留着, 只能由人带 --start/--end 手工补。
+# 提成模块级常量是为了让 check_continuity_integrity 能 import 同一份真相 ——
+# 此前它按 hardcode 假设所有域都能 --drain, 给出的补拉命令对这两个域跑不通
+# (2026-08-17 实测: 照它的提示跑得到 SyncWindowError)。
+# NOTE: 归属仍是代码而非 YAML, 与 CLAUDE.md §3.5 相悖; 搬进 registry 是独立的一步。
+AUTHORIZED_SHORT_WINDOW_DOMAINS = frozenset({"daily", "stock_st"})
+
 
 def _require_authorized_short_trade_date_window(
     domain: str,
@@ -3141,7 +3150,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                 "refuse --backfill/--resume/--start/--end"
             )
         return _publish_trade_cal_accepted_generation(spec)
-    if domain in {"daily", "stock_st"}:
+    if domain in AUTHORIZED_SHORT_WINDOW_DOMAINS:
         trade_dates = _require_authorized_short_trade_date_window(
             domain,
             backfill=backfill,

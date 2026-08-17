@@ -282,6 +282,27 @@ def _sample_days(days: list[str], head: int = 5, tail: int = 3) -> str:
     return ",".join(days[:head]) + f",...({len(days) - head - tail} more)...," + ",".join(days[-tail:])
 
 
+def _backfill_command(domain: str, missing: list[str]) -> str:
+    """给出**这个域真的能跑通**的补拉命令。
+
+    2026-08-17 实测: 此前无条件建议 `--domain X --drain`, 但 daily / stock_st 这类
+    授权短窗域结构上拒绝无参数 --drain(SyncWindowError: requires explicit --start/--end),
+    照提示跑必然失败 —— 一条跑不通的修复建议比不给建议更糟, 它会让人以为工具坏了。
+    同时补上 env 与解释器: 裸 python 会得到 authorization_blocked(missing_token) 或
+    package_missing, 因为 token 在 .env、依赖在 .venv(见 scripts/daily_update.sh)。
+    """
+    from services.data_sources.sync_runner import AUTHORIZED_SHORT_WINDOW_DOMAINS
+
+    prefix = "set -a; source .env; set +a; PYTHONPATH=backend .venv/bin/python -m services.data_sources.sync_runner"
+    if domain in AUTHORIZED_SHORT_WINDOW_DOMAINS:
+        if not missing:
+            return f"{prefix} --domain {domain} --start <YYYYMMDD> --end <YYYYMMDD>"
+        # 短窗域按缺口首尾成窗补; 窗口跨度受 AUTHORIZED_SECURITY_DAY_MAX_WINDOW_DAYS 限制,
+        # 缺口太宽时人需要自己分几段跑 —— 这里不假装能一条命令解决。
+        return f"{prefix} --domain {domain} --start {missing[0]} --end {missing[-1]}"
+    return f"{prefix} --domain {domain} --drain"
+
+
 # ── 检测 1: 日历缺日 ─────────────────────────────────────────────────────
 
 def check_calendar_gaps(
@@ -453,8 +474,8 @@ def check_calendar_gaps(
         )
     elif status.startswith("fail") or status.startswith("warn"):
         hint = (
-            f"补拉: PYTHONPATH=backend python -m services.data_sources.sync_runner "
-            f"--domain {spec['domain']} --drain; 源端真空日 -> known_empty_days 墓碑; "
+            f"补拉: {_backfill_command(spec['domain'], interior or tail)}; "
+            f"源端真空日 -> known_empty_days 墓碑; "
             f"港股假期域 -> hk_northbound_closed_days + gap_tolerance: hk_holidays; "
             f"事件稀疏域 -> gap_tolerance: event_sparse (禁 mute checker)"
         )
