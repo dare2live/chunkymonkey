@@ -152,6 +152,7 @@ blocking_paths:
 - tests/test_decision_intersection.py
 - tests/test_cx3_capability_bricks.py
 - tests/test_stock_screener.py
+- tests/services/test_sync_runner_20260612_fixes.py
 nightly_paths: []
 ci_test_optional:
 - path: tests/data_governance/test_etl_hook.py
@@ -299,11 +300,6 @@ ci_test_optional:
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
     review, one triage slice at a time'
 - path: tests/services/test_sync_preconditions.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/services/test_sync_runner_20260612_fixes.py
   reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
     ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency

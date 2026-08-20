@@ -968,8 +968,18 @@ def _get_rate_limiter(spec: dict[str, Any]) -> "_RateLimiter | None":
     return _RATE_LIMITER
 
 
-def _fetch_with_retry(adapter, spec: dict[str, Any], params: dict[str, Any]) -> list[dict[str, Any]] | None:
+def _fetch_with_retry(
+    adapter,
+    spec: dict[str, Any],
+    params: dict[str, Any],
+    *,
+    empty_is_end: bool = False,
+) -> list[dict[str, Any]] | None:
     """0 行/异常 → 退避重试; 终败返回 None (调用方入 failure_queue).
+
+    ``empty_is_end`` 只由 _fetch_paged 在**后续页**(offset>0)上给 True: 那里的 0 行是
+    "已经翻到末尾"这一合法信号, 不是采集失败。首页的 0 行仍按 allow_empty_batch 判 —— 那才是
+    "源端真空 vs 我们没拉到"要区分的地方。
 
     配额/反刷量墙命中 → 抛 QuotaExhaustedError 立即上抛 (不消耗重试, 不逐日续戳),
     由 run_domain/drain/main 熔断停链。
@@ -992,7 +1002,7 @@ def _fetch_with_retry(adapter, spec: dict[str, Any], params: dict[str, Any]) -> 
             rows = adapter.fetch_raw(spec["api"], **params)
             if rows:
                 return rows
-            if allow_empty:
+            if allow_empty or empty_is_end:
                 return []
             last_err = "zero_rows"
         except TuShareAuthorizationError:
@@ -1036,9 +1046,19 @@ def _fetch_paged(adapter, spec: dict[str, Any], params: dict[str, Any]) -> list[
     offset = 0
     prev_page: list[dict[str, Any]] | None = None
     for _ in range(50):  # 50 页 × page_limit 远超任何单日真实量, 防御性边界
-        page = _fetch_with_retry(adapter, spec, {**params, "limit": limit, "offset": offset})
+        # offset>0 的页返回空 = 翻到末尾, 不是失败。
+        # 2026-08-18 实测反例: dc_member 20250106 的 vendor 全量恰好 40,000 = 8x5000,
+        # 第 8 页满页 -> 继续请求 offset=40000 -> 返回 0 行 -> 被判 zero_rows 终败 ->
+        # 整批放弃。于是**凡总行数恰为 page_limit 整数倍的日子永远补不上**:
+        # 该日库里长期只有 7,919 行 / 35 板块 (vendor 40,000 / 257 板块), 且每次重拉都以失败告终。
+        page = _fetch_with_retry(
+            adapter, spec, {**params, "limit": limit, "offset": offset},
+            empty_is_end=offset > 0,
+        )
         if page is None:
             return None  # 中间页失败不交部分结果
+        if offset > 0 and not page:
+            return all_rows  # 末页空 = 正好整倍数收齐
         if offset == 0 and len(page) > limit:
             # 首页行数 > limit = 网关无视 limit 直接给全量 (top_inst 实测 1231 > 1000),
             # 收下即完整数据, 不烧第二发探页

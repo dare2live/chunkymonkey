@@ -215,3 +215,60 @@ def test_write_batch_widens_null_inferred_string_column(monkeypatch, tmp_path):
         assert v == "09:30-10:00"
     finally:
         conn.close()
+
+
+class _EndsWithEmptyAdapter:
+    """总行数恰为 page_limit 整倍数: 满页若干次后, 下一页返回空 = 已到末尾."""
+
+    def __init__(self, full_pages: int, page_size: int):
+        self.pages = [_rows(page_size, f"p{i}") for i in range(full_pages)]
+        self.calls = 0
+
+    def fetch_raw(self, api_name, **params):
+        idx = self.calls
+        self.calls += 1
+        return self.pages[idx] if idx < len(self.pages) else []
+
+
+def test_fetch_paged_collects_all_when_total_is_exact_multiple_of_limit(monkeypatch):
+    """总行数恰为 page_limit 整倍数时必须正常收齐, 不能把末页的空当成失败。
+
+    2026-08-18 实测反例: dc_member 20250106 的 vendor 全量恰好 40,000 = 8x5000。
+    第 8 页满页 -> 继续请求 offset=40000 -> 返回 0 行 -> allow_empty_batch=false 判 zero_rows
+    -> 重试耗尽返回 None -> 整批放弃。后果是**凡总行数恰为 page_limit 整数倍的日子永远补不上**:
+    该日库里长期停在 7,919 行 / 35 板块(vendor 实为 40,000 行 / 257 板块), 每次重拉都失败。
+    影响所有声明 page_limit 的域。
+    """
+    monkeypatch.setattr(sr.time, "sleep", lambda s: None)
+    ad = _EndsWithEmptyAdapter(full_pages=2, page_size=3)   # 6 行 = 2 x limit3
+
+    out = sr._fetch_paged(ad, _paged_spec(), {"trade_date": "20250106"})
+
+    assert out is not None, "整倍数收齐被误判成失败"
+    assert len(out) == 6, out
+    assert ad.calls == 3, "应当是 2 次满页 + 1 次探到末尾"
+
+
+def test_fetch_paged_first_page_empty_is_still_a_failure(monkeypatch):
+    """修整倍数边界**不能**放松首页那道检查。
+
+    首页 0 行是"源端真空 vs 我们没拉到"必须区分的地方, 由 allow_empty_batch 声明;
+    只有 offset>0 的后续页, 空才等于"翻到末尾"。
+    """
+    monkeypatch.setattr(sr.time, "sleep", lambda s: None)
+    ad = _EndsWithEmptyAdapter(full_pages=0, page_size=3)   # 首页直接空
+
+    out = sr._fetch_paged(ad, _paged_spec(), {"trade_date": "20250106"})
+
+    assert out is None, "首页空必须仍判失败, 不能被当成'末尾'"
+
+
+def test_fetch_paged_first_page_empty_is_allowed_when_domain_declares_it(monkeypatch):
+    """声明了 allow_empty_batch 的域, 首页空仍是合法的源端真空 —— 行为不变。"""
+    monkeypatch.setattr(sr.time, "sleep", lambda s: None)
+    spec = {**_paged_spec(), "allow_empty_batch": True}
+    ad = _EndsWithEmptyAdapter(full_pages=0, page_size=3)
+
+    out = sr._fetch_paged(ad, spec, {"trade_date": "20250106"})
+
+    assert out == [], out
