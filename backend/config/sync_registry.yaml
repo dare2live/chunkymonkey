@@ -620,7 +620,14 @@ domains:
                               # mk.v_price_kline_qfq(daily派生, 2019+边界), 2018年段(122503行)永久不可达,
                               # 物删。与 top_list 同批同理由, 保持同窗对齐。
     freshness_sla_trading_days: 2
-    min_rows_per_batch: 1
+    min_rows_per_batch: 200   # 2026-08-18 补校准 1->200。此前是 8 个同类域里唯一没有校准依据的
+                              # (其余域注释都写明 histmin 出处), 而 min_rows=1 等于这道门只能检出
+                              # "完全零行" —— 拉到 1 行与拉到 670 行一视同仁。
+                              # 校准前先验了基准日健康性(dc_member 的教训: 缺陷日当 histmin 会把缺陷
+                              # 固化成基准): 全史最小 229(20230221), 与邻域中位 374 比值 0.61 = 真实
+                              # 市场低活跃日非采集缺陷(hm_detail 注释对同一天有独立同结论);
+                              # 排除比值<0.5 的日子后健康 histmin 仍为 229。
+                              # 200<=229 保持零幻影缺口方针; 回测全历史 0 天低于该值。
     allow_empty_batch: true   # 个别日仅游资席位无机构明细, 合法空 (走增量 fallback 非 drain)
     cross_check_domain: top_list   # R1 根因2 交叉参照门 (2026-07-03): 本域 0 行但同日 top_list 行数 > 阈值
                                    #   = 可疑空入 failure_queue 非合法空。实测支撑: 8.5 年有数日 min=286 行
