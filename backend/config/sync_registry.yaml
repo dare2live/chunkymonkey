@@ -62,6 +62,17 @@ defaults:
 domains:
   # ── P0-a: 资金流 (套一 L2 + 套二 F1 + 退出组件, 一次回填三用) ──
   moneyflow:
+    # 同日行数对账: 该域每个交易日应覆盖当日 K 线的全部标的。
+    # 这是比 min_rows_per_batch 强得多的完整性判据 —— 底线只能检出"明显残缺"(实测该域底线
+    # 3000 而真值 5197, 丢 42% 才报), 对账则丢 1 行就报。
+    # verified_since 不是拍脑袋: 判据自身经全历史分层核证, 只在**已证明恒成立**的时期强制,
+    # 早于该日期的差额是 vendor 历史覆盖不全, 不是我们的缺口(强制会制造幻影缺口)。
+    completeness_ref:
+      kind: same_day_row_count
+      ref_domain: daily          # K线 = 项目地基真相源 (CLAUDE.md §3.5)
+      tolerance: 0
+      verified_since: "20260101"
+      evidence: "2026-08-18 全历史分层核证: 2026 年 128/128 恒 0; 2025 恒 0 率 89%%, 2020-2024 恒 0 率 0%% 且差额达 -23 (vendor 侧覆盖不全), 故起点取 2026"
     source: tushare
     api: moneyflow
     target_table: raw_tushare_moneyflow
@@ -894,6 +905,17 @@ domains:
     allow_empty_batch: false
 
   daily_basic:
+    # 同日行数对账: 该域每个交易日应覆盖当日 K 线的全部标的。
+    # 这是比 min_rows_per_batch 强得多的完整性判据 —— 底线只能检出"明显残缺"(实测该域底线
+    # 3000 而真值 5197, 丢 42% 才报), 对账则丢 1 行就报。
+    # verified_since 不是拍脑袋: 判据自身经全历史分层核证, 只在**已证明恒成立**的时期强制,
+    # 早于该日期的差额是 vendor 历史覆盖不全, 不是我们的缺口(强制会制造幻影缺口)。
+    completeness_ref:
+      kind: same_day_row_count
+      ref_domain: daily          # K线 = 项目地基真相源 (CLAUDE.md §3.5)
+      tolerance: 0
+      verified_since: "20220101"
+      evidence: "2026-08-18 全历史分层核证: 2022-2026 各年 242/242 恒 0; 2020 有 11 天差 1、2021 有 2 天差 1 (vendor 侧覆盖), 故起点取 2022"
     source: tushare
     api: daily_basic
     target_table: raw_tushare_daily_basic

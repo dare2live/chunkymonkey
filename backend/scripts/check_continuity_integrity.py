@@ -112,7 +112,8 @@ def load_hk_northbound_closed_days(
     return days
 
 CHECK_IDS = ("calendar_gaps", "cross_section", "group_freshness",
-             "declared_vs_actual", "static_staleness", "calendar_horizon")
+             "declared_vs_actual", "static_staleness", "completeness_ref",
+             "calendar_horizon")
 
 
 # ── registry 解析 ─────────────────────────────────────────────────────────
@@ -192,6 +193,10 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
             "known_empty_days": {str(d).replace("-", "") for d in (entry.get("known_empty_days") or [])},
             "gap_tolerance": gap_tolerance,
             "freshness_group_col": entry.get("freshness_group_col"),
+            # 同日行数对账声明 (kind/ref_domain/tolerance/verified_since/evidence)。
+            # spec 是**白名单**构造: 忘了在这里透传, check_completeness_ref 就会拿到 None
+            # 而静默跳过每一个域 —— 门看着在跑、实际一个都没查(本次实测 pass=0 才发现)。
+            "completeness_ref": entry.get("completeness_ref"),
             "dead_groups": [str(g) for g in (entry.get("dead_groups") or [])],
             # 2026-07-05 R4 gap 调查发现: known_empty_days/dead_groups 都不覆盖 cross_section 的
             # fail_missing_groups (前者只喂 calendar_gaps, 后者是永久整组豁免) — margin/ths_hot
@@ -274,6 +279,11 @@ def _lag_trading_days(trading_days: list[str], after: str, upto: str) -> int:
 def _result(check: str, spec: dict, status: str, detail: str, fix_hint: str = "") -> dict:
     return {"check": check, "domain": spec["domain"], "db": spec["db"],
             "table": spec["table"], "status": status, "detail": detail, "fix_hint": fix_hint}
+
+
+# 对账基准域 -> 物理表。只登记**可当基准**的域: 基准必须自身完整性最强,
+# 否则拿一个有缺口的域当尺子, 量出来的都是幻影。daily(K线)是项目地基真相源。
+_REF_TABLES = {"daily": "raw_tushare_daily"}
 
 
 def _sample_days(days: list[str], head: int = 5, tail: int = 3) -> str:
@@ -480,6 +490,80 @@ def check_calendar_gaps(
             f"事件稀疏域 -> gap_tolerance: event_sparse (禁 mute checker)"
         )
     return _result("calendar_gaps", spec, status, detail, hint)
+
+
+# ── 检测 7: 同日行数对账 (比行数下界强得多的完整性判据) ──────────────────
+
+def check_completeness_ref(conn, spec: dict, trading_days: list[str], latest_expected: str) -> dict:
+    """按 registry 的 completeness_ref 声明, 对账该域与基准域的同日行数。
+
+    **为什么需要它** (2026-08-18 实测): min_rows_per_batch 只能检出"明显残缺",
+    逻辑上不可能证明完整 —— 它回答不了"应该有多少行"。而对"每标的每交易日一行"的域,
+    应有量是可推导的: 等于当日 K 线的标的数。实测 daily_basic 底线 3,000 而真值 5,197,
+    用底线丢 42%% 才报警, 用对账丢 1 行就报警。
+
+    **只在判据被证明成立的时期强制** (verified_since): 同一天里我三次差点用未核证的判据
+    落地 —— 近 5 日 moneyflow 与 daily 差额恒 0, 但全历史只有 21.8%% 恒 0(2020-2024 恒 0 率
+    为 0, 差额达 -23), 按"必须为 0"设门会天天报红。判据自身必须先被验证, 这是本检测的前提。
+    """
+    ref = spec.get("completeness_ref") or {}
+    if not ref:
+        return _result("completeness_ref", spec, "skipped_not_declared", "未声明 completeness_ref")
+    ref_domain = str(ref.get("ref_domain") or "")
+    ref_table = _REF_TABLES.get(ref_domain)
+    if not ref_table:
+        return _result("completeness_ref", spec, "fail_bad_declaration",
+                       f"completeness_ref.ref_domain={ref_domain!r} 无法解析为表 —— 声明本身要先对")
+    since = _norm_day(str(ref.get("verified_since") or ""))
+    if not since:
+        return _result("completeness_ref", spec, "fail_bad_declaration",
+                       "completeness_ref 缺 verified_since: 未核证生效区间的对账会把 vendor "
+                       "历史覆盖差异误判成我们的缺口")
+    tolerance = int(ref.get("tolerance") or 0)
+    table = spec["table"]
+    if not _table_exists(conn, table) or not _table_exists(conn, ref_table):
+        return _result("completeness_ref", spec, "skipped_missing_table", "表不存在")
+    col = _resolve_date_col(conn, table, spec)
+    if col is None:
+        return _result("completeness_ref", spec, "skipped_no_date_col", "无可解析日期列")
+
+    window = [d for d in trading_days if since <= d <= latest_expected]
+    if not window:
+        return _result("completeness_ref", spec, "skipped_empty_window",
+                       f"verified_since={since} 之后无交易日")
+    lo, hi = window[0], window[-1]
+    try:
+        rows = conn.execute(
+            f'''
+            with mine as (select {col} d, count(*) n from {table}
+                          where {col} between ? and ? group by 1),
+                 ref as (select trade_date d, count(*) n from {ref_table}
+                         where trade_date between ? and ? group by 1)
+            select ref.d, ref.n, coalesce(mine.n, 0)
+              from ref left join mine on ref.d = mine.d
+             where abs(coalesce(mine.n, 0) - ref.n) > ?
+             order by ref.d
+            ''',
+            [lo, hi, lo, hi, tolerance],
+        ).fetchall()
+    except Exception as exc:  # noqa: BLE001 — 审计边界 fail closed
+        return _result("completeness_ref", spec, "fail_query", f"对账查询失败: {exc}")
+
+    if not rows:
+        return _result("completeness_ref", spec, "pass",
+                       f"{len(window)} 交易日与 {ref_domain} 同日行数一致 "
+                       f"(tolerance={tolerance}, since={since})")
+    worst = max(rows, key=lambda r: abs(int(r[2]) - int(r[1])))
+    sample = ", ".join(f"{r[0]}({int(r[2]):,}vs{int(r[1]):,})" for r in rows[:4])
+    return _result(
+        "completeness_ref", spec, "fail_row_count_mismatch",
+        f"{len(rows)} 个交易日与 {ref_domain} 行数不符 (tolerance={tolerance}); "
+        f"最大偏差 {worst[0]}: 本域 {int(worst[2]):,} vs {ref_domain} {int(worst[1]):,}; "
+        f"样本 {sample}",
+        f"补拉: {_backfill_command(spec['domain'], [str(r[0]) for r in rows])}; "
+        f"若确认是 vendor 侧覆盖差异 -> 调 completeness_ref.verified_since 并附核证证据, "
+        f"不要直接放大 tolerance 掩盖",
+    )
 
 
 # ── 检测 2: 横截面行数异常 (部分覆盖) ────────────────────────────────────
@@ -974,6 +1058,11 @@ def run_checks(
                     else check_group_freshness(
                         conn, spec, trading_days, domain_latest_expected
                     )
+                )
+            if spec.get("completeness_ref") and (only in (None, "completeness_ref")):
+                # 对账门: 只在 verified_since 之后强制, 且基准域自身必须完整(见 _REF_TABLES 注释)
+                results.append(
+                    check_completeness_ref(conn, spec, trading_days, domain_latest_expected)
                 )
             if spec["batch_mode"] != "full_refresh" and (only in (None, "declared_vs_actual")):
                 # full_refresh 域 data_start 是占位 (注册日), 无回填语义, 不对账
