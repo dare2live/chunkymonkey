@@ -68,3 +68,29 @@ def test_ratio_threshold_is_a_coarse_filter_not_a_verdict():
     assert lenient["basis_is_suspect"] is False
     assert strict["basis_is_suspect"] is True
     assert strict["healthy_hist_min"] == 100
+
+
+def test_era_segmented_domains_are_measured_within_the_current_era_only():
+    """声明了 min_rows_since 的域, 只在当前时代内求 histmin。
+
+    2026-08-21 实测教训(本工具初版的真 bug): 没读 min_rows_since 就拿全历史 histmin
+    去比今日底线, 把 margin_detail(since=20220104 / before=800) 与
+    moneyflow_ind_dc(since=20260101 / before=80) 双双误报成"底线偏紧" ——
+    而这两个域早在 2026-07-09 就用时代分段根治过, registry 注释里连
+    "594 个 2019-2021 真实完整日成幻影缺口"都写着。
+    工具自己的 docstring 警告"基准必须先被验证", 第一版却栽在同一件事上。
+    """
+    conn = duckdb.connect(":memory:")
+    days = {}
+    days.update({f"20190{m}{d:02d}": 900 for m in (1,) for d in range(1, 16)})   # 旧时代: 低行数
+    days.update({f"20260{m}{d:02d}": 3500 for m in (1,) for d in range(1, 16)})  # 当前时代: 高行数
+    _table(conn, "t_era", days)
+
+    whole = analyse(conn, "t_era", "trade_date", healthy_ratio=0.5)
+    current = analyse(conn, "t_era", "trade_date", healthy_ratio=0.5, since="20220104")
+
+    # 不分段: histmin 落在 2019 的低行数时代
+    assert whole["healthy_hist_min"] == 900, whole
+    # 分段后: 只看当前时代, 旧时代交给 min_rows_before 负责
+    assert current["healthy_hist_min"] == 3500, current
+    assert current["hist_min_day"].startswith("2026"), current

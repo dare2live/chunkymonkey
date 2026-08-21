@@ -52,8 +52,21 @@ def _conn():
     )
 
 
-def analyse(conn, table: str, date_col: str, healthy_ratio: float) -> dict | None:
-    """返回该域的 histmin / 健康 histmin / 被判不健康的基准日。"""
+def analyse(conn, table: str, date_col: str, healthy_ratio: float,
+            *, since: str = "") -> dict | None:
+    """返回该域的 histmin / 健康 histmin / 被判不健康的基准日。
+
+    ``since`` = registry 的 ``min_rows_since``。声明了它的域是**时代分段**的:
+    该日期起用 min_rows_per_batch, 之前用 min_rows_before。
+    此时必须只在 since 之后的那段里求 histmin —— 拿全历史 histmin 去比今日底线,
+    会把一个已被正确处理的历史低行数时代误报成"底线偏紧"。
+
+    2026-08-21 实测教训: 本工具初版没读 min_rows_since, 于是把 margin_detail
+    (since=20220104 / before=800) 与 moneyflow_ind_dc (since=20260101 / before=80)
+    双双误报为偏紧 —— 而这两个域早在 2026-07-09 就用时代分段根治过, 注释里连
+    "594 个 2019-2021 真实完整日成幻影缺口"都写着。工具自己的 docstring 警告过
+    "基准要先被验证", 结果第一版就栽在同一件事上。
+    """
     try:
         rows = conn.execute(
             f'''
@@ -64,6 +77,9 @@ def analyse(conn, table: str, date_col: str, healthy_ratio: float) -> dict | Non
             select d, n, med from w where med > 0 order by n
             '''
         ).fetchall()
+        if since:
+            # 只看当前时代: 更早的低行数由 min_rows_before 负责, 不归今日底线管
+            rows = [r for r in rows if str(r[0]) >= since]
     except Exception:
         return None
     if not rows:
@@ -105,13 +121,15 @@ def main(argv: list[str] | None = None) -> int:
         table = spec.get("target_table")
         if table not in tables:
             continue
+        since = str(spec.get("min_rows_since") or "").replace("-", "")
         got = analyse(conn, table, spec.get("freshness_date_column") or "trade_date",
-                      args.healthy_ratio)
+                      args.healthy_ratio, since=since)
         if not got:
             continue
         current = int(spec.get("min_rows_per_batch") or 0)
         got.update(
-            domain=name, current=current,
+            domain=name, current=current, min_rows_since=since or None,
+            min_rows_before=spec.get("min_rows_before"),
             loose=current < got["healthy_hist_min"] * LOOSE_RATIO,
             # 偏紧同样是缺陷, 而且更隐蔽: 底线高于历史最小值意味着**历史上真实出现过的低值日**
             # 一旦重拉就会被拒绝写入 —— 那是自己造出来的"幻影缺口", 正是零幻影缺口方针要防的反面。
