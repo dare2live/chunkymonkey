@@ -2081,6 +2081,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_acquire_bounded_gap_heal.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_database_manifest.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -5009,6 +5015,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_acquire_bounded_gap_heal.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_database_manifest.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -7901,9 +7913,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1269,
-    "generated_at": "2026-08-21T11:37:16.829447+00:00",
-    "node_count": 448,
+    "edge_count": 1271,
+    "generated_at": "2026-08-21T13:18:22.448328+00:00",
+    "node_count": 449,
     "version": 2
   },
   "nodes": [
@@ -9433,6 +9445,14 @@
         "path": "backend/tests/services/test_accepted_schema.py"
       },
       "id": "consumer:backend/tests/services/test_accepted_schema.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_acquire_bounded_gap_heal.py"
+      },
+      "id": "consumer:backend/tests/services/test_acquire_bounded_gap_heal.py",
       "kind": "consumer"
     },
     {

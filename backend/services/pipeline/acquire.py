@@ -10,6 +10,7 @@ skip_sync=1 跳整个阶段; dry=1 只跑只读不写。
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta
 
 from .context import PipelineContext
 from .frozen_domain_observe import margin_hard_gate_required
@@ -323,6 +324,50 @@ def _accepted_partition_exists(conn, dataset_id: str, partition_value: str) -> b
     return row is not None
 
 
+# on_demand 短窗域的**有界**缺口自愈窗口(交易日)。
+#
+# 为什么需要: 这类域(daily/stock_st)结构上只做 single_day_incremental —— 每次只补
+# eligible_end 那一天。2026-08-21 实证代价: 链停跑几天后再跑一次 daily_update,
+# 跑完 daily 与 stock_st 各自仍缺 20260817-20260820 四个交易日, 因为它们不回头看,
+# 而这两个域又拒绝无参数 --drain(授权短窗), 于是洞只能靠人看连续性门再手工
+# --start/--end 补。连续性门当时 fail=25。
+#
+# 为什么是"有界"而不是"填所有洞": 原设计明写 log-not-fill / explicit backfill knife,
+# 那是防 mass backfill 的正确意图, 不推翻。这里只覆盖"漏跑几天"这一运维场景:
+# 窗口远小于 AUTHORIZED_SECURITY_DAY_MAX_WINDOW_DAYS(40) 的授权上限, 更早的洞
+# 仍然要显式 backfill, 且会照常被连续性门报出来。
+FORMAL_ON_DEMAND_HEAL_WINDOW_DAYS = 10
+
+
+def _recent_unaccepted_days(
+    conn, dataset_id: str, *, eligible_end: str, window: int,
+    known_empty: set[str] | None = None,
+) -> list[str]:
+    """返回 eligible_end 往前 window 个交易日内、尚未进 accepted_partition 的日子。
+
+    真相源 = 交易日历 + accepted_partition 本身, 不依赖任何中间记录 ——
+    漏跑/调度没触发/历史空洞在 failure_queue 里都是看不见的。
+
+    ``known_empty`` = registry 的 known_empty_days(实测源端真空的交易日)。必须排除:
+    否则自愈会对"源端本来就没有"的日子每天重拉一次, 永不收敛并制造告警疲劳 ——
+    drain_domain 的注释早就为同一件事写过这条警告(cyq_perf 20260615 / ths_hot 20240312)。
+    """
+    from services.data_sources import sync_runner
+
+    if window <= 0:
+        return []
+    # 往前多取一些自然日再按交易日切片, 避免长假导致窗口不足
+    span_start = (
+        datetime.strptime(eligible_end, "%Y%m%d") - timedelta(days=window * 3 + 30)
+    ).strftime("%Y%m%d")
+    days = sync_runner.trading_days(span_start, eligible_end)[-window:]
+    empty = known_empty or set()
+    return [
+        d for d in days
+        if d not in empty and not _accepted_partition_exists(conn, dataset_id, d)
+    ]
+
+
 def _sync_formal_on_demand_security_days(ctx: PipelineContext) -> list[dict]:
     """Pull latest eligible formal daily/ST via modular land_then_accept.
 
@@ -342,7 +387,8 @@ def _sync_formal_on_demand_security_days(ctx: PipelineContext) -> list[dict]:
     from services.duck_adapter import connect
 
     registry = sync_runner.load_registry()
-    planned: list[tuple[str, str, str, str]] = []  # domain, eligible_end, reason, dataset_id
+    # domain, trade_date, reason, dataset_id, window_label
+    planned: list[tuple[str, str, str, str, str]] = []
     outcomes: list[dict] = []
     conn = connect(ctx.db("tushare_raw"), read_only=True)
     try:
@@ -382,7 +428,8 @@ def _sync_formal_on_demand_security_days(ctx: PipelineContext) -> list[dict]:
                 outcomes.append(outcome)
                 continue
             dataset_id = _formal_security_day_dataset_id(domain)
-            if _accepted_partition_exists(conn, dataset_id, eligible_end):
+            latest_done = _accepted_partition_exists(conn, dataset_id, eligible_end)
+            if latest_done:
                 outcome = {
                     "domain": domain,
                     "action": "skip",
@@ -393,14 +440,43 @@ def _sync_formal_on_demand_security_days(ctx: PipelineContext) -> list[dict]:
                 }
                 print(json.dumps(outcome, ensure_ascii=False))
                 outcomes.append(outcome)
-                continue
-            planned.append(
-                (domain, eligible_end, str(eligibility.reason), dataset_id)
+            else:
+                planned.append(
+                    (domain, eligible_end, str(eligibility.reason), dataset_id,
+                     "single_day_incremental")
+                )
+            # 最新日之外, 再补最近窗口内的洞。**最新日已就绪也要查** ——
+            # 2026-08-21 实证: 链停跑几天后, 最新日当天拉到了, 而前几天的洞原封不动
+            # 留在那里(daily/stock_st 各缺 4 个交易日), 因为旧逻辑补完最新日就 continue。
+            window = int(
+                spec.get("on_demand_heal_window_days")
+                or FORMAL_ON_DEMAND_HEAL_WINDOW_DAYS
             )
+            holes = [
+                d
+                for d in _recent_unaccepted_days(
+                    conn, dataset_id, eligible_end=eligible_end, window=window,
+                    known_empty={
+                        str(x).replace("-", "")
+                        for x in (spec.get("known_empty_days") or [])
+                    },
+                )
+                if d != eligible_end
+            ]
+            for hole in holes:
+                planned.append(
+                    (domain, hole, "recent_gap_heal", dataset_id, "bounded_gap_heal")
+                )
+            if holes:
+                ctx.log(
+                    f"formal {domain}: 最近 {window} 交易日内发现 {len(holes)} 个缺口, "
+                    f"自愈补拉 {holes[0]}..{holes[-1]} "
+                    f"(更早的洞仍需显式 backfill, 见连续性门)"
+                )
     finally:
         conn.close()
 
-    for domain, eligible_end, eligibility_reason, dataset_id in planned:
+    for domain, eligible_end, eligibility_reason, dataset_id, window_label in planned:
         print(
             json.dumps(
                 {
@@ -409,7 +485,7 @@ def _sync_formal_on_demand_security_days(ctx: PipelineContext) -> list[dict]:
                     "eligible_end": eligible_end,
                     "eligibility_reason": eligibility_reason,
                     "dataset_id": dataset_id,
-                    "window": "single_day_incremental",
+                    "window": window_label,
                 },
                 ensure_ascii=False,
             )
