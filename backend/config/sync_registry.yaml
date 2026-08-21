@@ -69,7 +69,7 @@ domains:
     # 早于该日期的差额是 vendor 历史覆盖不全, 不是我们的缺口(强制会制造幻影缺口)。
     completeness_ref:
       kind: same_day_row_count
-      ref_domain: daily          # K线 = 项目地基真相源 (CLAUDE.md §3.5)
+      ref_domain: daily          # K线 = 项目地基真相源 (owner: AGENTS.md §4 Tier 0 truth)
       tolerance: 0
       verified_since: "20260101"
       evidence: "2026-08-18 全历史分层核证: 2026 年 128/128 恒 0; 2025 恒 0 率 89%%, 2020-2024 恒 0 率 0%% 且差额达 -23 (vendor 侧覆盖不全), 故起点取 2026"
@@ -912,7 +912,7 @@ domains:
     # 早于该日期的差额是 vendor 历史覆盖不全, 不是我们的缺口(强制会制造幻影缺口)。
     completeness_ref:
       kind: same_day_row_count
-      ref_domain: daily          # K线 = 项目地基真相源 (CLAUDE.md §3.5)
+      ref_domain: daily          # K线 = 项目地基真相源 (owner: AGENTS.md §4 Tier 0 truth)
       tolerance: 0
       verified_since: "20220101"
       evidence: "2026-08-18 全历史分层核证: 2022-2026 各年 242/242 恒 0; 2020 有 11 天差 1、2021 有 2 天差 1 (vendor 侧覆盖), 故起点取 2022"

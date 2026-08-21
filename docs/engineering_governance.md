@@ -485,3 +485,63 @@ scripts/chunkyctl pre-knife <name>
 - CI 对 L1 docs/board-only push 不再起跑：`ci.yml` `paths-ignore` 镜像
   `commit_tiers.yaml` L1 面（policy owner），子集关系由
   `backend/tests/scripts/test_ci_paths_policy.py` 机器守护。
+
+## 15. 判据与真相源的自我验证（2026-08-21 一天六次实证）
+
+**这一节的每条都来自同一天里真实犯下并被实测拦下的错误。** 形态只有两类：
+**(A) 拿一个没被验证过的东西当判断基准**；**(B) 拿一个不是真相的东西当真相源**。
+两类都不会报错——它们产出的是**看起来合理的错结论**，所以只能靠事前的机械检查挡。
+
+### 15.1 A 类：基准/参照自身必须先被验证
+
+| 实证 | 错在哪 | 代价 |
+|---|---|---|
+| `dc_member` 底线照 `histmin=7,919` 校准 | 那天本身是一次分页截断（库 7,919 行/35 板块 vs vendor 40,000 行/257 板块） | **事故被固化成基准**，门从此拦不住同类缺陷 |
+| 据「`dc_member` 板块数应等于 `dc_index`」判某日缺 342 个板块 | vendor 自己三个接口历史覆盖就不同（`dc_index` 559 / `dc_daily` 983 / `dc_member` 217） | 差点把**供应商固有差异**当成我们的缺陷 |
+| 看近 5 日 `moneyflow` 与 `daily` 差额恒 0，就想设「必须为 0」的门 | 全历史只有 21.8% 恒 0（2020-2024 恒 0 率为 **0**，差额达 -23） | 该门会**天天报红** |
+| `audit_min_rows_baseline.py` 只读 `min_rows_per_batch` | 漏了 `min_rows_since`/`min_rows_before` 时代分段 | 把两个**已根治**的域误报成缺陷（还写进了给用户的报告） |
+
+**执行检查（做判据之前，逐条过）：**
+
+1. **基准日健康性**：拿某天/某段当基准前，先验它本身正常——`该日值 / 邻域中位 ≥ ratio`。
+   工具：`backend/scripts/audit_min_rows_baseline.py`。低比值**只是粗筛不是判决**，
+   最终必须向 vendor 核证（反例：`dc_member 2025-10-29` 比值 0.32，但 vendor 全量就是 20,748 行）。
+2. **跨源对账前先证明该源本就该一致**：两个接口/两个域历史上是否恒等，要**分层核证**后才能设门。
+   落地形式 = `completeness_ref.verified_since` + `evidence`，缺 `verified_since` 直接判违规。
+3. **禁止从近期样本推全历史**：任何「差额恒定 / 比例稳定 / 一直如此」的结论，先按年/月分层跑一遍。
+4. **判据要读全配置**：写审计工具时，把该域**所有**相关声明字段读全（时代分段、墓碑、
+   豁免、容差）。漏一个维度 = 制造假阳性，而假阳性会淹没真信号。
+
+### 15.2 B 类：先确认你查的是不是真相面
+
+**同一天内这一条害了三次**（查 K 线缺口两次、比 universe 口径一次），且波及一个调查 agent。
+
+```
+raw_tushare_daily        role=fill / write=forbidden   ← 停更遗留表, 其 max(trade_date) 只反映它何时停更
+canonical_nominal_ohlcv_daily / accepted_partition     ← 实际真相面
+```
+
+当时实测两者相差一个多月; 北交所更是「遗留表 0 只 vs 真相面数百只」——
+拿遗留表比 universe 口径会得出**完全相反**的结论。当前各面实际水位查
+`scripts/chunkyctl status`，不要从本文读数字。
+
+**执行检查：**
+
+1. **查任何 `raw_*` 表之前，先看 `backend/config/legacy_raw_plane.yaml`**：
+   `role=fill/compatibility/retired` 或 `write: forbidden` 的表**不是真相源**，
+   它的 `max(trade_date)` 只反映它何时停更。
+2. **门/脚本的输出必须指向真正被审计的对象**：`_result(..., audited=...)`
+   （`check_continuity_integrity.py`）。指错表 = 把每一个照着输出去排查的人送进沟里。
+3. **判「接口/路由不存在」前穷尽路径形态**：实测反例——扶摇 Parquet 批量下载被我判成
+   「未上线」，实际是少了子路径（`/api/dump/market-dumps/daily-k/download-url` 才对）。
+   一次 404 只证明**那一个路径**不通。
+
+### 15.3 为什么这些必须成文
+
+六次里没有一次是「粗心」——每次都有看似充分的理由，且**结论自洽**。
+拦下它们的全是**实测**，不是复查思路。所以这一节不是提醒「要小心」，
+而是把「必须先跑哪一步」写成清单：基准要先验、跨源要先证、样本要先分层、
+配置要读全、真相面要先查登记、路径要穷尽。
+
+配套的机器执法已落地：`completeness_ref.verified_since`（缺则违规）、
+`audit_min_rows_baseline.py`（基准健康性）、`_result(audited=)`（输出指向）。
