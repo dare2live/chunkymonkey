@@ -276,9 +276,19 @@ def _lag_trading_days(trading_days: list[str], after: str, upto: str) -> int:
     return max(0, bisect_right(trading_days, upto) - bisect_right(trading_days, after))
 
 
-def _result(check: str, spec: dict, status: str, detail: str, fix_hint: str = "") -> dict:
+def _result(check: str, spec: dict, status: str, detail: str, fix_hint: str = "",
+            audited: str | None = None) -> dict:
+    """audited: **实际被审计的对象**, 与 registry 的 target_table 不同时必须传。
+
+    2026-08-21 实测代价: formal security-day 域(daily/stock_st)审计的是
+    accepted_partition, 而这里默认打印 registry 的 target_table(raw_tushare_daily)。
+    那张表在 legacy_raw_plane.yaml 里是 role=fill / write=forbidden, 早已停更 ——
+    照着输出去查它, 看到的 max(trade_date) 是一个月前的假象。同一天里这个坑
+    把我和一个调查 agent 各送进沟里两次以上。输出必须指向真正被查的东西。
+    """
     return {"check": check, "domain": spec["domain"], "db": spec["db"],
-            "table": spec["table"], "status": status, "detail": detail, "fix_hint": fix_hint}
+            "table": audited or spec["table"], "status": status,
+            "detail": detail, "fix_hint": fix_hint}
 
 
 # 对账基准域 -> 物理表。只登记**可当基准**的域: 基准必须自身完整性最强,
@@ -337,6 +347,10 @@ def check_calendar_gaps(
       event_sparse — interior empty expected for event grain → typed pass;
                      tail SLA still FAIL when exceeded
     """
+    # 输出里显示的"被审计对象"。formal 域审计 accepted_partition 而非 registry
+    # target_table —— 后者(如 raw_tushare_daily)在 legacy_raw_plane.yaml 是
+    # write=forbidden 的停更表, 指向它会把查问题的人送去看一个月前的假象。
+    audited: str | None = None
     table = spec["table"]
     if spec.get("accepted_margin"):
         from services.data_sources.margin_state import (
@@ -384,6 +398,9 @@ def check_calendar_gaps(
             if r[0] is not None
         }
         col = "accepted_partition.partition_value"
+        # 真实审计对象 = accepted_partition 里这个 dataset_id 的分区, 不是 registry 的
+        # target_table(那张 raw 表 write=forbidden 早已停更, 见 legacy_raw_plane.yaml)。
+        audited = f"accepted_partition[{dataset_id}]"
     elif not _table_exists(conn, table):
         return _result("calendar_gaps", spec, "skipped_missing_table", "表不存在 (域注册未拉/重建期)")
     else:
@@ -489,7 +506,7 @@ def check_calendar_gaps(
             f"港股假期域 -> hk_northbound_closed_days + gap_tolerance: hk_holidays; "
             f"事件稀疏域 -> gap_tolerance: event_sparse (禁 mute checker)"
         )
-    return _result("calendar_gaps", spec, status, detail, hint)
+    return _result("calendar_gaps", spec, status, detail, hint, audited=audited)
 
 
 # ── 检测 7: 同日行数对账 (比行数下界强得多的完整性判据) ──────────────────

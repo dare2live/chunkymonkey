@@ -75,8 +75,16 @@ def test_worktree_includes_untracked_source_and_omits_deleted_file(tmp_path: Pat
         assert detail.get("observation_date")
         assert any("accepted_calendar_kline_st" in reason for reason in detail["reasons"])
     else:
-        assert any("nominal_ohlcv" in reason for reason in detail["reasons"])
-        assert any("stock_st" in reason for reason in detail["reasons"])
+        # 只要求 reasons 点名**它实际检查到的那个**数据集, 不要求两个都出现:
+        # readiness 在第一个缺失的数据集处短路返回是正确行为(缺 K 线时不必再查 ST),
+        # 于是 reasons 可能只有一条。2026-08-21 实测: 补齐 stock_st 到 20260821 后
+        # 该域已就绪、K 线因 available_after=18:00 尚未发布, reasons 只剩 nominal_ohlcv
+        # 一条 —— 原断言要求两条同时出现, 等于断言宿主数据处于某个特定残缺状态。
+        assert any(
+            ds in reason
+            for reason in detail["reasons"]
+            for ds in ("nominal_ohlcv", "stock_st", "trading_calendar")
+        ), detail["reasons"]
 
 
 def test_index_mode_uses_staged_inventory_not_clean_worktree(tmp_path: Path) -> None:

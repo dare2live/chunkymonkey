@@ -91,3 +91,31 @@ def test_backfill_hint_gives_a_command_that_the_domain_can_actually_run():
     for hint in (_backfill_command("daily", ["20260812"]), other):
         assert "source .env" in hint, hint
         assert ".venv/bin/python" in hint, hint
+
+
+def test_report_points_at_the_object_actually_audited_not_the_legacy_raw_table():
+    """输出的表名必须是**真正被查的对象**, 不是 registry 的 target_table。
+
+    2026-08-21 实测代价: formal security-day 域(daily/stock_st)审计的是
+    accepted_partition, 而输出默认打印 registry target_table = raw_tushare_daily。
+    那张表在 legacy_raw_plane.yaml 里是 role=fill / write=forbidden 的停更表,
+    照着它去查 max(trade_date) 得到的是一个月前的假象 —— 同一天内这个坑
+    把我和一个调查 agent 各送进沟里多次。
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from check_continuity_integrity import _result
+
+    spec = {"domain": "daily", "db": "tushare_raw", "table": "raw_tushare_daily"}
+
+    plain = _result("calendar_gaps", spec, "pass", "ok")
+    assert plain["table"] == "raw_tushare_daily", plain
+
+    redirected = _result(
+        "calendar_gaps", spec, "pass", "ok",
+        audited="accepted_partition[tier0.market_data.nominal_ohlcv_daily]",
+    )
+    assert redirected["table"].startswith("accepted_partition["), redirected
+    assert "raw_tushare_daily" not in redirected["table"], redirected
