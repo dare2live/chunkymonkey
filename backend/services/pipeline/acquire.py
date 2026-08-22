@@ -342,6 +342,7 @@ FORMAL_ON_DEMAND_HEAL_WINDOW_DAYS = 10
 def _recent_unaccepted_days(
     conn, dataset_id: str, *, eligible_end: str, window: int,
     known_empty: set[str] | None = None,
+    trading_days_fn=None,
 ) -> list[str]:
     """返回 eligible_end 往前 window 个交易日内、尚未进 accepted_partition 的日子。
 
@@ -352,15 +353,23 @@ def _recent_unaccepted_days(
     否则自愈会对"源端本来就没有"的日子每天重拉一次, 永不收敛并制造告警疲劳 ——
     drain_domain 的注释早就为同一件事写过这条警告(cyq_perf 20260615 / ths_hot 20240312)。
     """
-    from services.data_sources import sync_runner
-
     if window <= 0:
         return []
+    # 交易日历取数**可注入**: 单测必须能在没有任何 DuckDB 的机器上跑。
+    # 2026-08-22 CI 实证 —— 原本靠 monkeypatch 替换 sys.modules 来隔离, 但被测代码写的是
+    # `from services.data_sources import sync_runner`(从**包取属性**, 不查 sys.modules),
+    # patch 根本没生效; 本地因为有真实 reference.duckdb 且真实日历恰好与 fixture 日期吻合
+    # 而"碰巧绿", 到 CI(无 data/*.duckdb)立刻 4 条全红。
+    # 依赖注入比 monkeypatch 可靠: 它不依赖被测代码用哪种 import 写法。
+    if trading_days_fn is None:
+        from services.data_sources import sync_runner
+
+        trading_days_fn = sync_runner.trading_days
     # 往前多取一些自然日再按交易日切片, 避免长假导致窗口不足
     span_start = (
         datetime.strptime(eligible_end, "%Y%m%d") - timedelta(days=window * 3 + 30)
     ).strftime("%Y%m%d")
-    days = sync_runner.trading_days(span_start, eligible_end)[-window:]
+    days = trading_days_fn(span_start, eligible_end)[-window:]
     empty = known_empty or set()
     return [
         d for d in days

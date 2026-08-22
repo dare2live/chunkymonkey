@@ -32,14 +32,12 @@ def conn(monkeypatch):
         ).fetchone() is not None,
     )
 
-    class _SR:
-        @staticmethod
-        def trading_days(start, end):
-            return [d for d in TRADING if start <= d <= end]
-
-    import sys
-    monkeypatch.setitem(sys.modules, "services.data_sources.sync_runner", _SR)
     return c
+
+
+def _days(start, end):
+    """假交易日历 —— 注入用, 不碰任何数据库。"""
+    return [d for d in TRADING if start <= d <= end]
 
 
 def _accept(conn, days):
@@ -52,7 +50,8 @@ def test_finds_the_days_that_were_never_accepted(conn):
     _accept(conn, [d for d in TRADING if d not in ("20260817", "20260818", "20260819", "20260820")])
 
     holes = acquire._recent_unaccepted_days(
-        conn, DATASET, eligible_end="20260820", window=10
+        conn, DATASET, eligible_end="20260820", window=10,
+        trading_days_fn=_days,
     )
 
     assert holes == ["20260817", "20260818", "20260819", "20260820"], holes
@@ -62,7 +61,8 @@ def test_no_holes_when_everything_is_accepted(conn):
     _accept(conn, TRADING)
 
     holes = acquire._recent_unaccepted_days(
-        conn, DATASET, eligible_end="20260820", window=10
+        conn, DATASET, eligible_end="20260820", window=10,
+        trading_days_fn=_days,
     )
 
     assert holes == [], holes
@@ -77,10 +77,12 @@ def test_window_bounds_the_heal_so_history_still_needs_an_explicit_backfill(conn
     _accept(conn, TRADING[-3:])
 
     narrow = acquire._recent_unaccepted_days(
-        conn, DATASET, eligible_end="20260820", window=3
+        conn, DATASET, eligible_end="20260820", window=3,
+        trading_days_fn=_days,
     )
     wide = acquire._recent_unaccepted_days(
-        conn, DATASET, eligible_end="20260820", window=len(TRADING)
+        conn, DATASET, eligible_end="20260820", window=len(TRADING),
+        trading_days_fn=_days,
     )
 
     assert narrow == [], narrow                      # 窗口内全已接受
@@ -93,7 +95,8 @@ def test_zero_window_disables_healing(conn):
     _accept(conn, [])
 
     assert acquire._recent_unaccepted_days(
-        conn, DATASET, eligible_end="20260820", window=0
+        conn, DATASET, eligible_end="20260820", window=0,
+        trading_days_fn=_days,
     ) == []
 
 
@@ -106,11 +109,12 @@ def test_known_empty_days_are_not_healed_forever(conn):
     _accept(conn, [d for d in TRADING if d not in ("20260818", "20260819")])
 
     without = acquire._recent_unaccepted_days(
-        conn, DATASET, eligible_end="20260820", window=10
+        conn, DATASET, eligible_end="20260820", window=10,
+        trading_days_fn=_days,
     )
     with_tomb = acquire._recent_unaccepted_days(
         conn, DATASET, eligible_end="20260820", window=10,
-        known_empty={"20260818"},
+        known_empty={"20260818"}, trading_days_fn=_days,
     )
 
     assert without == ["20260818", "20260819"], without
