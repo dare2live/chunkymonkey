@@ -193,6 +193,10 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
             "freshness_date_column": entry.get("freshness_date_column"),
             "date_param": entry.get("date_param"),
             "known_empty_days": {str(d).replace("-", "") for d in (entry.get("known_empty_days") or [])},
+            "verified_low_days": {
+                str(d).replace("-", "")
+                for d in (entry.get("verified_low_days") or {})
+            },
             "gap_tolerance": gap_tolerance,
             "freshness_group_col": entry.get("freshness_group_col"),
             # 同日行数对账声明 (kind/ref_domain/tolerance/verified_since/evidence)。
@@ -764,7 +768,7 @@ def check_cross_section_full(conn, spec: dict, *, window: int = 10) -> dict:
         spec.get("accepted_security_day") or dataset_id) else None
 
     dips = scan_full_history(conn, table, col,
-                             known_empty=spec.get("known_empty_days") or set(),
+                             known_empty=(spec.get("known_empty_days") or set()) | (spec.get("verified_low_days") or set()),
                              window=window)
 
     cv_row = conn.execute(

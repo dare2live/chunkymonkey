@@ -142,6 +142,7 @@ blocking_paths:
 - tests/scripts/test_dip_severity.py
 - tests/scripts/test_dip_scan.py
 - tests/scripts/test_cross_section_full.py
+- tests/scripts/test_verified_low_days.py
 - tests/services/test_tier12_publish_contract.py
 - tests/services/test_tier12_publish_accept.py
 - tests/services/test_tier12_publish_writer.py
