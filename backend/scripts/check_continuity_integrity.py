@@ -310,6 +310,61 @@ def _result(check: str, spec: dict, status: str, detail: str, fix_hint: str = ""
 # 先 CAST 再 replace 能同时吃 DATE 型(真相面)与 VARCHAR 型(legacy/测试 fixture)两种基准表。
 _REF_TABLES = {"daily": "canonical_nominal_ohlcv_daily"}
 
+# 血缘图 (data/lineage/graph.json, 449 节点/1271 边) 惰性加载 + 模块级缓存,
+# 一个进程只读一次盘 (2026-08-22 FAIL 附下游消费方接线)。哨兵用独立 bool 标记
+# "是否已尝试过", 而非拿 None 兼当"未加载"和"加载失败", 否则两种状态混淆。
+_LINEAGE_GRAPH_LOAD_ATTEMPTED = False
+_LINEAGE_GRAPH_CACHE: Any = None
+
+
+def _load_lineage_graph_cached() -> Any | None:
+    """读 data/lineage/graph.json 一次并缓存; 读不到/格式变了都吞成 None。
+
+    调用方 (_downstream_impact) 外层还有一层 try/except 兜底, 这里的 try/except
+    只是为了让"没查到"和"缓存到坏结果" 不混在一起 —— 加载失败不缓存异常对象,
+    缓存 None, 下次直接短路不重试 (图不会在同一进程内变好)。
+    """
+    global _LINEAGE_GRAPH_LOAD_ATTEMPTED, _LINEAGE_GRAPH_CACHE
+    if _LINEAGE_GRAPH_LOAD_ATTEMPTED:
+        return _LINEAGE_GRAPH_CACHE
+    _LINEAGE_GRAPH_LOAD_ATTEMPTED = True
+    try:
+        from services.lineage.model import LineageGraph
+
+        graph_path = REPO / "data" / "lineage" / "graph.json"
+        _LINEAGE_GRAPH_CACHE = LineageGraph.from_dict(
+            json.loads(graph_path.read_text(encoding="utf-8"))
+        )
+    except Exception:  # noqa: BLE001 — 图缺失/格式变化都不该拖垮本门
+        _LINEAGE_GRAPH_CACHE = None
+    return _LINEAGE_GRAPH_CACHE
+
+
+def _downstream_impact(table: str) -> dict[str, Any] | None:
+    """FAIL 项的下游数据消费方 (血缘 fan-in 查询, 2026-08-22 接线)。
+
+    数据质量门 FAIL 时以前从不查下游 —— 人只知道"某域坏了", 不知道这条坏数据
+    已经流到哪些产物里。只算 service/script 两类**真实数据消费方**: config 只是
+    声明、test 不是产物, 混进"污染面"会稀释信号。
+
+    任何异常都返回 None (图缺失 / 格式变化 / import 失败一律吞掉) —— 血缘查询
+    绝不能把审计门本身的判定弄崩, 查不到下游 ≠ 门本身有问题。
+    """
+    try:
+        from services.lineage.query import impact as _impact
+
+        graph = _load_lineage_graph_cached()
+        if graph is None:
+            return None
+        result = _impact(graph, table)
+        by_type = result.get("consumers_by_type", {}) or {}
+        consumers = sorted(
+            {path for ctype in ("service", "script") for path in by_type.get(ctype, [])}
+        )
+        return {"consumer_count": len(consumers), "consumers": consumers[:8]}
+    except Exception:  # noqa: BLE001 — 审计门判定优先, 血缘查询失败绝不上溯
+        return None
+
 
 def _sample_days(days: list[str], head: int = 5, tail: int = 3) -> str:
     if len(days) <= head + tail:
@@ -1252,6 +1307,23 @@ def run_checks(
                 raw_today_is_open if isinstance(raw_today_is_open, int) else None,
             ))
         results.append(check_calendar_horizon(trading_days, today_iso))
+    # FAIL 项附下游数据消费方 (2026-08-22 接线) —— 只查 fail, pass/skipped/observe
+    # 省这个开销 (且它们本来就没有"坏数据流到哪"这个问题)。统一在这里遍历一遍,
+    # 不散进每个 check_* 函数, 只改这一处。
+    for r in results:
+        if not r["status"].startswith("fail"):
+            continue
+        impact_info = _downstream_impact(r["table"])
+        if not impact_info or not impact_info.get("consumer_count"):
+            r["downstream"] = {"consumer_count": 0, "consumers": []}
+            r["detail"] = r["detail"] + "；无下游数据消费方"
+        else:
+            r["downstream"] = impact_info
+            preview = ", ".join(impact_info["consumers"][:3])
+            r["detail"] = (
+                r["detail"]
+                + f"；下游数据消费方 {impact_info['consumer_count']} 个: {preview}"
+            )
     failures = [r for r in results if r["status"].startswith("fail")
                 or (strict and r["status"] == "db_unreachable")]
     return results, failures

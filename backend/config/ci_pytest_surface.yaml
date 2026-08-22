@@ -160,6 +160,7 @@ blocking_paths:
 - tests/scripts/test_audit_min_rows_baseline.py
 - tests/scripts/test_completeness_ref.py
 - tests/services/test_acquire_bounded_gap_heal.py
+- tests/scripts/test_downstream_impact.py
 nightly_paths: []
 ci_test_optional:
 - path: tests/data_governance/test_etl_hook.py

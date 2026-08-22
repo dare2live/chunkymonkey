@@ -6875,6 +6875,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_downstream_impact.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin_detail"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_safe_commit.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin_detail"
@@ -6948,6 +6954,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/type_b_fact_publish_catchup.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_moneyflow"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_downstream_impact.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow"
     },
@@ -7925,9 +7937,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1273,
-    "generated_at": "2026-08-22T03:23:27.020573+00:00",
-    "node_count": 449,
+    "edge_count": 1275,
+    "generated_at": "2026-08-22T13:19:47.587411+00:00",
+    "node_count": 450,
     "version": 2
   },
   "nodes": [
@@ -9425,6 +9437,14 @@
         "path": "backend/tests/scripts/test_completeness_ref.py"
       },
       "id": "consumer:backend/tests/scripts/test_completeness_ref.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/scripts/test_downstream_impact.py"
+      },
+      "id": "consumer:backend/tests/scripts/test_downstream_impact.py",
       "kind": "consumer"
     },
     {
