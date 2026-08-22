@@ -71,8 +71,8 @@ domains:
       kind: same_day_row_count
       ref_domain: daily          # K线 = 项目地基真相源 (owner: AGENTS.md §4 Tier 0 truth)
       tolerance: 0
-      verified_since: "20260101"
-      evidence: "2026-08-18 全历史分层核证: 2026 年 128/128 恒 0; 2025 恒 0 率 89%%, 2020-2024 恒 0 率 0%% 且差额达 -23 (vendor 侧覆盖不全), 故起点取 2026"
+      verified_since: "20260805"
+      evidence: "2026-08-22 重新核证并**收窄**(原 20260101 同样基于停更的 raw_tushare_daily)。基准改真相面后实测: moneyflow 的北交所首现 2026-08-03(canonical 早在 2026-01-16), 此前每日少约 333 只; 2026-08-03/04 两天仍差 6~7 只(停牌/新股口径), 自 2026-08-05 起 12/12 天与真相面 100% 一致, 故起点取该日"
     source: tushare
     api: moneyflow
     target_table: raw_tushare_moneyflow
@@ -921,8 +921,8 @@ domains:
       kind: same_day_row_count
       ref_domain: daily          # K线 = 项目地基真相源 (owner: AGENTS.md §4 Tier 0 truth)
       tolerance: 0
-      verified_since: "20220101"
-      evidence: "2026-08-18 全历史分层核证: 2022-2026 各年 242/242 恒 0; 2020 有 11 天差 1、2021 有 2 天差 1 (vendor 侧覆盖), 故起点取 2022"
+      verified_since: "20260717"
+      evidence: "2026-08-22 重新核证并**收窄**(原 20220101 基于停更的 raw_tushare_daily —— 那张表从无北交所, 掩盖了真实口径差)。基准改真相面 canonical_nominal_ohlcv_daily 后实测: 北交所进入 canonical 是 2026-01-16、进入 daily_basic 是 2026-07-17, 中间半年 daily_basic 每日少 288~331 只(真实覆盖缺口, 非我方采集失败); 2026-07-17 起 25/25 天与真相面 100% 一致, 故起点取该日。历史段不强制不代表无问题, 只代表两边口径本就不同、不可用等式判"
     source: tushare
     api: daily_basic
     target_table: raw_tushare_daily_basic

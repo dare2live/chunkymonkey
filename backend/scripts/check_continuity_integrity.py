@@ -299,7 +299,16 @@ def _result(check: str, spec: dict, status: str, detail: str, fix_hint: str = ""
 
 # 对账基准域 -> 物理表。只登记**可当基准**的域: 基准必须自身完整性最强,
 # 否则拿一个有缺口的域当尺子, 量出来的都是幻影。daily(K线)是项目地基真相源。
-_REF_TABLES = {"daily": "raw_tushare_daily"}
+#
+# **必须指向真相面, 不能指向 legacy raw 表** (2026-08-22 实测代价):
+# 本门初版把基准写成 raw_tushare_daily, 而那张表在 legacy_raw_plane.yaml 里是
+# role=fill / write=forbidden 的**停更表**(实测数据止于 2026-07-16, 真相面已到 2026-08-20)。
+# 后果不是报错而是**静默失效**: 基准表没有那 25 天, LEFT JOIN 后一行都比不出来,
+# 于是这 25 天照样计入"对账通过"的天数 —— 门显示绿, 实际什么都没查。
+# 真相面 canonical_nominal_ohlcv_daily 用 dashed 日期(2026-08-20), 与本仓 compact 口径不同,
+# 故 SQL 里对基准侧统一 replace(CAST(trade_date AS VARCHAR),'-','') 归一 ——
+# 先 CAST 再 replace 能同时吃 DATE 型(真相面)与 VARCHAR 型(legacy/测试 fixture)两种基准表。
+_REF_TABLES = {"daily": "canonical_nominal_ohlcv_daily"}
 
 
 def _sample_days(days: list[str], head: int = 5, tail: int = 3) -> str:
@@ -518,7 +527,7 @@ def check_calendar_gaps(
 # ── 检测 7: 同日行数对账 (比行数下界强得多的完整性判据) ──────────────────
 
 def check_completeness_ref(conn, spec: dict, trading_days: list[str], latest_expected: str) -> dict:
-    """按 registry 的 completeness_ref 声明, 对账该域与基准域的同日行数。
+    """按 registry 的 completeness_ref 声明, 对账该域与基准域的同日行数 + 标的集合。
 
     **为什么需要它** (2026-08-18 实测): min_rows_per_batch 只能检出"明显残缺",
     逻辑上不可能证明完整 —— 它回答不了"应该有多少行"。而对"每标的每交易日一行"的域,
@@ -528,6 +537,11 @@ def check_completeness_ref(conn, spec: dict, trading_days: list[str], latest_exp
     **只在判据被证明成立的时期强制** (verified_since): 同一天里我三次差点用未核证的判据
     落地 —— 近 5 日 moneyflow 与 daily 差额恒 0, 但全历史只有 21.8%% 恒 0(2020-2024 恒 0 率
     为 0, 差额达 -23), 按"必须为 0"设门会天天报红。判据自身必须先被验证, 这是本检测的前提。
+
+    **行数不是终点, 是集合的投影** (2026-08-22 实锤): 只比 count(*) 会被"少一只+多一只"互相
+    抵消——基准 {A,B,C}、本域 {A,B,X}, 两边都是 3 行, 行数判定 pass, 但标的其实不同。行数相符
+    后必须再验标的集合是否相符。标的列从 registry 的 grain 里取("除日期列外唯一一列"), 取不出
+    (grain 未声明该域, 或除日期列外不止一列) 就明确跳过、不猜列名, 回落成纯行数比对。
     """
     ref = spec.get("completeness_ref") or {}
     if not ref:
@@ -560,8 +574,8 @@ def check_completeness_ref(conn, spec: dict, trading_days: list[str], latest_exp
             f'''
             with mine as (select {col} d, count(*) n from {table}
                           where {col} between ? and ? group by 1),
-                 ref as (select trade_date d, count(*) n from {ref_table}
-                         where trade_date between ? and ? group by 1)
+                 ref as (select replace(CAST(trade_date AS VARCHAR), '-', '') d, count(*) n from {ref_table}
+                         where replace(CAST(trade_date AS VARCHAR), '-', '') between ? and ? group by 1)
             select ref.d, ref.n, coalesce(mine.n, 0)
               from ref left join mine on ref.d = mine.d
              where abs(coalesce(mine.n, 0) - ref.n) > ?
@@ -572,20 +586,83 @@ def check_completeness_ref(conn, spec: dict, trading_days: list[str], latest_exp
     except Exception as exc:  # noqa: BLE001 — 审计边界 fail closed
         return _result("completeness_ref", spec, "fail_query", f"对账查询失败: {exc}")
 
-    if not rows:
+    if rows:
+        worst = max(rows, key=lambda r: abs(int(r[2]) - int(r[1])))
+        sample = ", ".join(f"{r[0]}({int(r[2]):,}vs{int(r[1]):,})" for r in rows[:4])
+        return _result(
+            "completeness_ref", spec, "fail_row_count_mismatch",
+            f"{len(rows)} 个交易日与 {ref_domain} 行数不符 (tolerance={tolerance}); "
+            f"最大偏差 {worst[0]}: 本域 {int(worst[2]):,} vs {ref_domain} {int(worst[1]):,}; "
+            f"样本 {sample}",
+            f"补拉: {_backfill_command(spec['domain'], [str(r[0]) for r in rows])}; "
+            f"若确认是 vendor 侧覆盖差异 -> 调 completeness_ref.verified_since 并附核证证据, "
+            f"不要直接放大 tolerance 掩盖",
+        )
+
+    pass_detail = (f"{len(window)} 交易日与 {ref_domain} 同日行数一致 "
+                   f"(tolerance={tolerance}, since={since})")
+
+    # 行数相符不代表标的相符。标的列从 grain 取: 除日期列(col)外剩下的唯一一列。
+    # grain 未声明该域(测试 fixture 常见)、或剩下的不是恰好一列 -> 不猜, 明确跳过集合差。
+    grain = spec.get("grain") or []
+    code_candidates = [g for g in grain if g != col]
+    code_col = code_candidates[0] if len(code_candidates) == 1 else None
+    if code_col is not None:
+        mine_cols = _columns(conn, table)
+        ref_cols = _columns(conn, ref_table)
+        if code_col not in mine_cols or "ts_code" not in ref_cols:
+            code_col = None
+    if code_col is None:
         return _result("completeness_ref", spec, "pass",
-                       f"{len(window)} 交易日与 {ref_domain} 同日行数一致 "
-                       f"(tolerance={tolerance}, since={since})")
-    worst = max(rows, key=lambda r: abs(int(r[2]) - int(r[1])))
-    sample = ", ".join(f"{r[0]}({int(r[2]):,}vs{int(r[1]):,})" for r in rows[:4])
+                       pass_detail + "（未做集合差：grain 不支持）")
+
+    try:
+        diff_rows = conn.execute(
+            f'''
+            with mine_codes as (
+                select {col} d, "{code_col}" c from {table} where {col} between ? and ?
+            ), ref_codes as (
+                select replace(CAST(trade_date AS VARCHAR), '-', '') d, ts_code c from {ref_table}
+                where replace(CAST(trade_date AS VARCHAR), '-', '') between ? and ?
+            ), ref_days as (   -- 基准表当日至少 1 行时, 那天才具备当基准的资格
+                select distinct d from ref_codes
+            ), missing as (   -- ref 有, mine 没有 (天然只覆盖 ref_days, ref_codes 就是这么来的)
+                select d, c from ref_codes except select d, c from mine_codes
+            ), extra as (     -- mine 有, ref 没有 —— 但只在 ref 当天真有数据时才算数;
+                              -- ref 当天 0 行 (基准表停更/断流) 不能把 mine 的全部标的都判成"多出"
+                              -- (2026-08-22 实测: raw_tushare_daily 20260716 后停更 [legacy/停更表,
+                              -- 已被 accepted_partition 取代], 之后每个交易日 daily_basic/moneyflow
+                              -- 会被误判"多 5541 个" —— 那是基准断流不是本域多出)
+                select mc.d, mc.c from mine_codes mc
+                where mc.d in (select d from ref_days)
+                except
+                select d, c from ref_codes
+            )
+            select d, 'missing' as kind, c from missing
+            union all
+            select d, 'extra' as kind, c from extra
+            order by d, kind, c
+            ''',
+            [lo, hi, lo, hi],
+        ).fetchall()
+    except Exception as exc:  # noqa: BLE001 — 审计边界 fail closed
+        return _result("completeness_ref", spec, "fail_query", f"标的集合差查询失败: {exc}")
+
+    if not diff_rows:
+        return _result("completeness_ref", spec, "pass", pass_detail)
+
+    by_day: dict[str, dict[str, list[str]]] = {}
+    for d, kind, c in diff_rows:
+        by_day.setdefault(str(d), {"missing": [], "extra": []})[kind].append(str(c))
+    worst_day = max(by_day, key=lambda d: len(by_day[d]["missing"]) + len(by_day[d]["extra"]))
+    missing_codes, extra_codes = by_day[worst_day]["missing"], by_day[worst_day]["extra"]
     return _result(
-        "completeness_ref", spec, "fail_row_count_mismatch",
-        f"{len(rows)} 个交易日与 {ref_domain} 行数不符 (tolerance={tolerance}); "
-        f"最大偏差 {worst[0]}: 本域 {int(worst[2]):,} vs {ref_domain} {int(worst[1]):,}; "
-        f"样本 {sample}",
-        f"补拉: {_backfill_command(spec['domain'], [str(r[0]) for r in rows])}; "
-        f"若确认是 vendor 侧覆盖差异 -> 调 completeness_ref.verified_since 并附核证证据, "
-        f"不要直接放大 tolerance 掩盖",
+        "completeness_ref", spec, "fail_code_set_mismatch",
+        f"{len(by_day)} 个交易日与 {ref_domain} 行数相符但标的集合不符 (tolerance={tolerance}); "
+        f"最严重 {worst_day}: 缺 {len(missing_codes)} 个(样本 {', '.join(missing_codes[:3])}), "
+        f"多 {len(extra_codes)} 个(样本 {', '.join(extra_codes[:3])})",
+        f"补拉缺失标的: {_backfill_command(spec['domain'], [worst_day])}; "
+        f"多出标的需人工核实来源(可能是 universe 变更/重复注入), 不要盲目 delete 掩盖",
     )
 
 
