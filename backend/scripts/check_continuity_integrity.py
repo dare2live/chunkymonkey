@@ -65,6 +65,8 @@ from typing import Any, Callable
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import yaml  # noqa: E402
+from scripts._dip_scan import scan_full_history  # noqa: E402
+from scripts._dip_severity import dip_signal_level  # noqa: E402
 from services.data_sources.batch_integrity import complete_batch_dates  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
@@ -112,8 +114,8 @@ def load_hk_northbound_closed_days(
     return days
 
 CHECK_IDS = ("calendar_gaps", "cross_section", "group_freshness",
-             "declared_vs_actual", "static_staleness", "completeness_ref",
-             "calendar_horizon")
+             "declared_vs_actual", "static_staleness", "cross_section_full",
+             "completeness_ref", "calendar_horizon")
 
 
 # ── registry 解析 ─────────────────────────────────────────────────────────
@@ -734,6 +736,68 @@ def check_cross_section(
                    f"{len(seq)} 观测日无骤降" + (f", 分组基线完整 (col={gcols[0]})" if gcols else ""))
 
 
+# ── 检测 2.5: 全历史横截面 dip 扫描 (观测性质, 不参与 overall 判定) ──────────
+# check_cross_section 只看近 60 交易日, 历史异常一旦滑出窗口就永久失查
+# (owner: _dip_scan.py / _dip_severity.py 已验收纯函数, 2026-08-21)。本检测把
+# 两者接进日常审查, 但只在 --full-history 显式要求时跑, 且状态一律 observe_*/
+# skipped_* 前缀, 不产出 fail/warn —— 历史噪音不该让日常门变红, 这是一条独立的
+# "该不该去人工核实全历史" 信号, 不是可执行的日常 gate。
+def check_cross_section_full(conn, spec: dict, *, window: int = 10) -> dict:
+    """全历史行数塌陷扫描 + CV 分层 (稳定域掉一半=high, 高方差域掉一半=low)。
+
+    row_dip_tolerance 域已被逐域核证过高方差 (2026-07-08 gap_root_cause 教训:
+    row_dip 容忍必须逐域单独声明, 不从 gap_tolerance 继承), 本检测复用同一声明
+    直接跳过——不是不查, 是那件事已经查过一次不必全历史重查。
+    """
+    if spec.get("row_dip_tolerance"):
+        return _result("cross_section_full", spec, "skipped_row_dip_tolerance",
+                       "该域已声明 row_dip_tolerance（高方差已逐行核证）")
+    table = spec["table"]
+    if not _table_exists(conn, table):
+        return _result("cross_section_full", spec, "skipped_missing_table", "表不存在")
+    col = _resolve_date_col(conn, table, spec)
+    if col is None:
+        return _result("cross_section_full", spec, "skipped_no_date_col", "无可解析日期列")
+
+    dataset_id = spec.get("dataset_id")
+    audited = f"accepted_partition[{dataset_id}]" if (
+        spec.get("accepted_security_day") or dataset_id) else None
+
+    dips = scan_full_history(conn, table, col,
+                             known_empty=spec.get("known_empty_days") or set(),
+                             window=window)
+
+    cv_row = conn.execute(
+        f'with per as (select "{col}" d, count(*) n from "{table}" group by 1) '
+        f'select stddev_samp(n), avg(n) from per'
+    ).fetchone()
+    avg_n = cv_row[1] if cv_row else None
+    if not avg_n:
+        cv = 1.0  # 保守当高方差, 宁可判 low 不误报 high
+    else:
+        cv = float(cv_row[0] or 0.0) / float(avg_n)
+
+    high_days: list[str] = []
+    low_days: list[str] = []
+    for d in dips:
+        level = dip_signal_level(d["rows"], d["neighbor_median"], cv)
+        if level == "high":
+            high_days.append(d["date"])
+        elif level == "low":
+            low_days.append(d["date"])
+
+    if not high_days and not low_days:
+        return _result("cross_section_full", spec, "observe_clean",
+                       f"全历史无显著 dip（cv={cv:.3f}）", audited=audited)
+    if high_days:
+        detail = f"高信号 dip {len(high_days)} 个: {_sample_days(high_days[:6])}"
+        if low_days:
+            detail += f"; 另有 {len(low_days)} 个低信号 dip（高方差域正常波动）"
+        return _result("cross_section_full", spec, "observe_high_signal", detail, audited=audited)
+    return _result("cross_section_full", spec, "observe_low_signal",
+                   f"{len(low_days)} 个 dip 均属高方差域正常波动", audited=audited)
+
+
 # ── 检测 3: 分组新鲜度 (子榜断流) ────────────────────────────────────────
 
 def check_group_freshness(conn, spec: dict, trading_days: list[str], latest_expected: str) -> dict:
@@ -955,6 +1019,7 @@ def run_checks(
     strict: bool = False,
     raw_today_is_open: int | None | object = _RAW_STATUS_UNCHECKED,
     now: Any = None,
+    full_history: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """全域五类检测: 返回 (results, failures)。conn_for(db_alias) 可注入 (单测内存库)。
 
@@ -1063,6 +1128,8 @@ def run_checks(
                         accepted_state=accepted_state,
                     )
                 )
+            if full_history and (only in (None, "cross_section_full")):
+                results.append(check_cross_section_full(conn, spec))
             if spec["freshness_group_col"] and (only in (None, "group_freshness")):
                 results.append(
                     _result(
@@ -1207,6 +1274,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="FAIL 时写告警 flag 文件, 非 FAIL 自愈删除 (告警链模式)")
     ap.add_argument("--strict", action="store_true",
                     help="库不可达 (写锁占用等) 也算 FAIL (默认跳过并标 db_unreachable)")
+    ap.add_argument("--full-history", action="store_true",
+                    help="扫全历史 dip（默认只看近 60 交易日）；结果为观测性质，不参与 overall 判定")
     args = ap.parse_args(argv)
 
     specs = load_domain_specs()
@@ -1217,7 +1286,7 @@ def main(argv: list[str] | None = None) -> int:
     results, failures = run_checks(
         specs, _default_conn_for, trading_days, latest_expected,
         only=args.only, domain=args.domain, row_dip_ratio=args.row_dip_ratio, strict=args.strict,
-        raw_today_is_open=raw_today_is_open)
+        raw_today_is_open=raw_today_is_open, full_history=args.full_history)
     overall = overall_status(results, strict=args.strict)
     payload = {"overall": overall, "latest_expected": latest_expected,
                "checks": results, "summary": summarize(results)}
