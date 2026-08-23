@@ -2033,6 +2033,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/pipeline/store.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/project_status.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -4962,6 +4968,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/pipeline/state_sensors.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/pipeline/store.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -7937,8 +7949,8 @@
     }
   ],
   "meta": {
-    "edge_count": 1275,
-    "generated_at": "2026-08-22T13:19:47.587411+00:00",
+    "edge_count": 1277,
+    "generated_at": "2026-08-23T00:28:45.558584+00:00",
     "node_count": 450,
     "version": 2
   },

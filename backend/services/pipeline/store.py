@@ -31,6 +31,17 @@ def run_store(ctx: PipelineContext) -> None:
         ctx.run_script("backend/scripts/refresh_source_watermarks.py",
                        degraded_msg="watermark refresh 失败 — SLA 体系将持续误报 stale")
 
+    # Step 2.975: 因子族前沿投影重生。**必须在链里**, 不能靠人记得手动跑 ——
+    # 2026-08-22 实证: 该投影过期 18 天(age 1,551,630s vs 上限 86,400s)且 inventory_sha256 漂移,
+    # 导致 check_factor_family_frontier_live 长期 BLOCKED, 而那正是 goal.md 里策略轨 S0
+    # "两份 live 输入不合格"之一。根因不是结构缺陷, 是**它从来不在任何自动链路里**
+    # (实测当日跑批日志中该脚本出现 0 次), 只能靠人手工重生 —— 那不是自愈, 是修补。
+    # 它读 accepted_partition, 故必须排在数据步之后、system_health 之前:
+    # 排在前面才能让同一次跑批里的 frontier_live 门看到新鲜投影。
+    if not ctx.skip_sync and not ctx.dry:
+        ctx.run_script("backend/scripts/project_factor_family_frontiers.py",
+                       degraded_msg="因子族前沿投影重生失败 — frontier_live 门将因投影过期持续 BLOCKED")
+
     # Step 2.98: system_health 组运行时自检 (goal.md「治理体系重构」P1.2)。
     #   continuity / residual_hygiene 原本就在这里；grain_uniqueness / cutover_effective
     #   是从 commit 路径归位过来的 —— 它们查的是库里现有数据与 config 声明的生效性，
