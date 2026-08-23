@@ -6,13 +6,13 @@
       "inventory_defer_reason": "type_b_fact_publish_may_lag_raw",
       "live_detail": {
         "defer_policy": "type_b_fact_publish_may_lag_raw",
-        "fact_tip": "20260724",
+        "fact_tip": "20260820",
         "margin_external_aggregate": {
-          "accepted_partition_count": 1828,
-          "accepted_tip": "20260723",
+          "accepted_partition_count": 1848,
+          "accepted_tip": "20260820",
           "defer_policy": "external_aggregate_product_trust_gated"
         },
-        "raw_tip": "20260724"
+        "raw_tip": "20260820"
       },
       "live_status": "PROJECTED",
       "stack_eligibility": "defer"
@@ -42,13 +42,13 @@
     }
   ],
   "inventory_path": "/Users/dp/Documents/M/stock/chunkymonkey/backend/config/factor_family_inventory.yaml",
-  "inventory_sha256": "ab64b3bffb7cec1ebd1ecdd3ba457664727ccc83c7bb65433c1140fee55f3a64",
+  "inventory_sha256": "7a62c4bbe5236fc9cb382f4d126090f4caab75075bff9043b5358bbb3ef619f8",
   "notes": [
     "k3_frontier_projection",
     "does_not_mutate_inventory_yaml",
     "rx_still_requires_owner_schedule"
   ],
-  "projected_at": "2026-08-05T00:58:56.606960+00:00",
+  "projected_at": "2026-08-22T23:59:49.958625+00:00",
   "verdict": "PASS",
   "violations": []
 }
