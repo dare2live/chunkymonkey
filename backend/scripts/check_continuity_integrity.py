@@ -17,24 +17,52 @@ block_trade 20250917 中间空洞) + 根因4 (SLA 只测"最近动过"不测"该
                     (例: 非港股假期的 hsgt 空洞; 「日历外」= 豁免日历外的真缺).
   不停牌股无成交、非交易日无 K 线 ≠ Continuity FAIL — 那些本就不在 expected。
 
-六类检测 (--only 单跑):
+九类检测 (--only 单跑; calendar_today_consistency 不在 --only 枚举内, 只在 run_checks 里对 SSE
+today 记录单跑一次, 结果并入 calendar_horizon 桶):
   calendar_gaps      日历缺日 (by_trade_date/by_date_range 域): data_start→最新应有交易日逐日对
                      dim_trading_calendar。中间空洞 = FAIL (间歇空响应指纹); 尾部缺日超 SLA = FAIL,
                      未超 = OK。known_empty_days 墓碑排除; gap_tolerance: annotate 降 WARN。
-  cross_section      横截面异常 (同域范围): 单日行数 < 近 20 观测日滚动中位 x row_dip_ratio = WARN
-                     (row_dip_tolerance: true 域降 pass, 需逐域单独审查声明, 不从 gap_tolerance
+  cross_section      横截面异常 (同域近 60 交易日, 因果窗口): 单日行数 < 近 20 观测日滚动中位 x
+                     row_dip_ratio = WARN (known_empty_days ∪ verified_low_days 墓碑排除;
+                     row_dip_tolerance: true 域降 pass, 需逐域单独审查声明, 不从 gap_tolerance
                      继承——2026-07-08 教训: stk_surv 曾因 gap_tolerance 掩盖真实 page_limit 截断
                      bug, 见 git log --grep gap_root_cause); grain 含 exchange_id/data_type
-                     类分组列的域, 基线组当日缺失 = FAIL (known_group_gaps 精确墓碑)。
+                     类分组列的域, 基线组当日缺失 = FAIL (known_group_gaps 精确墓碑)。这是唯一
+                     会 WARN/FAIL 的日常生产门 (对比 cross_section_full, 见下)。
   group_freshness    分组新鲜度 (声明 freshness_group_col 的域): 各组 MAX(date) 落后 > SLA x 3
                      交易日 = FAIL (ths_hot 子榜断流型); dead_groups 墓碑排除。
   declared_vs_actual data_start 声明 vs 实测 MIN(date) 偏差 > 90 自然日 = WARN (带建议修正值);
                      按年行数 / 参照完整年 < 0.3 的年份 = WARN (coverage_note 建议)。
   static_staleness   无日频语义域 (by_ts_code/by_period/by_ann_date/by_code_list/full_refresh):
                      MAX(built_at) 距最新交易日 > SLA x 5 交易日 = WARN (手动刷新域, 只警不 FAIL)。
+  cross_section_full 全历史横截面塌陷扫描 (全历史, 前后各 10 日居中窗口, **非因果**——需要未来
+                     数据, 故只能 --full-history 显式触发的事后巡检, 状态一律 observe_*/skipped_*,
+                     不产出 fail/warn, 不参与 overall 判定)。CV 分层区分高/低信号 dip
+                     (稳定域掉一半=high, 高方差域掉一半=low); known_empty_days ∪ verified_low_days
+                     排除已核证日; row_dip_tolerance 域整体跳过 (该判据已逐域核证过高方差, 不必
+                     全历史重查)。与 cross_section 看似重复, 实为因果窗口 vs 居中窗口的本质差别
+                     ——不要合并 (见下方选型指引)。
+  completeness_ref   同日行数 + 标的集合双向对账 (声明 completeness_ref 的域): 与 ref_domain 真相
+                     域逐日行数比对, 偏差 > tolerance = FAIL; 行数相符再验标的集合是否相符 (防
+                     "少一只+多一只"互相抵消掩盖真实缺口)。只在 verified_since 之后强制 (判据
+                     自身需先被证明恒成立, 早于该日期的差额可能是 vendor 历史覆盖差异非我方缺口)。
   calendar_horizon   dim_trading_calendar 全局单跑 (非按域): today 之后已登记交易日 < 60 = FAIL
                      (2026-07-06 从孤儿 data_quality.py 迁入真正接进日常跑批, 语义与 static_staleness
                      互补——那个测"多久没刷新"往回看, 这个测"还能撑多远"往前看)。
+  calendar_today_consistency  raw_tushare_trade_cal 必须登记 today 的唯一 SSE 开闭市记录, 且
+                     raw 的开闭市状态须与 dim_trading_calendar"只存交易日"的语义一致 (raw→dim
+                     传导断链探针); 结果并入 calendar_horizon 结果桶, 非独立 --only 类目。
+
+判据强度阶梯 (有真相源就用最强的, 没有再退; 44 个域的作者选判据时看这段, 不必读完全文猜):
+  completeness_ref   — 与真相域逐日行数 + 标的集合双向对账。最强, 但需要同粒度真相源, 目前仅
+                       daily_basic/moneyflow 有资格
+  min_rows_per_batch — 绝对行数底线, 校准自历史健康 histmin; 决定一天算不算 present (喂给
+                       calendar_gaps)
+  cross_section      — 近 60 交易日、相对近 20 日滚动中位 (因果窗口, 可当日常门)
+  cross_section_full — 全历史、相对前后各 10 日的居中中位 + CV 分层 (**非因果窗口**, 需要未来
+                       数据, 故只能 observe 事后巡检)
+  cross_section 与 cross_section_full 看似重复, 实际是因果窗口 vs 居中窗口的本质差别——前者只看
+  过去所以能当生产门, 后者需要未来数据所以只能事后巡检。不要合并它们。
 
 任何 FAIL = exit 1。库不可达默认跳过 (写锁期 read_only attach 同样被拒, CLAUDE §4.5 2026-07-02),
 --strict 才 FAIL。
@@ -156,6 +184,23 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
             raise ValueError(
                 f"sync_registry 域 {domain}: gap_tolerance={gap_tolerance!r} 非法 "
                 f"(允许 {sorted(GAP_TOLERANCE_VALUES)}); 配置错必须修, 不静默按默认跑")
+        # 2026-08-23 修(实测发现): verified_low_days 当初设计成 map(日期 -> 核证理由)而非
+        # list, 就是为了强制留下"凭什么豁免"的证据 —— 但加载时从不校验, 传 dict 也好、传
+        # list 也好都能跑通(反正只取 key), 等于没强制。这里补上校验: 类型必须是 dict,
+        # 每条理由必须是有内容的字符串, 否则直接报错, 不静默降级。
+        verified_low_raw = entry.get("verified_low_days")
+        if verified_low_raw is not None and not isinstance(verified_low_raw, dict):
+            raise ValueError(
+                f"sync_registry 域 {domain}: verified_low_days 必须是「日期 -> 核证理由」的映射 "
+                f"(dict), 收到 {type(verified_low_raw).__name__}; 该字段存在的意义就是强制留下"
+                f"「凭什么豁免」的核证证据 —— 传 list 等于放弃这份证据, 等于没核证")
+        for low_day, low_reason in (verified_low_raw or {}).items():
+            if not isinstance(low_reason, str) or len(low_reason.strip()) < 10:
+                raise ValueError(
+                    f"sync_registry 域 {domain}: verified_low_days[{low_day!r}] 的核证理由"
+                    f"{'缺失' if not isinstance(low_reason, str) or not low_reason.strip() else '过短'} "
+                    f"({low_reason!r}); 必须是长度 >= 10 的非空字符串, 写清凭什么核证豁免这一天 "
+                    f"—— 没有理由的豁免等于没核证, 光有 dict 结构不校验内容等于没强制")
         exec_pol = entry.get("execution_policy") or {}
         if not isinstance(exec_pol, dict):
             exec_pol = {}
@@ -195,11 +240,11 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
             "known_empty_days": {str(d).replace("-", "") for d in (entry.get("known_empty_days") or [])},
             "verified_low_days": {
                 str(d).replace("-", "")
-                for d in (entry.get("verified_low_days") or {})
+                for d in (verified_low_raw or {})
             },
             "gap_tolerance": gap_tolerance,
             "freshness_group_col": entry.get("freshness_group_col"),
-            # 同日行数对账声明 (kind/ref_domain/tolerance/verified_since/evidence)。
+            # 同日行数对账声明 (ref_domain/tolerance/verified_since/evidence)。
             # spec 是**白名单**构造: 忘了在这里透传, check_completeness_ref 就会拿到 None
             # 而静默跳过每一个域 —— 门看着在跑、实际一个都没查(本次实测 pass=0 才发现)。
             "completeness_ref": entry.get("completeness_ref"),
@@ -797,11 +842,16 @@ def check_cross_section(
     if len(seq) < ROW_DIP_MIN_OBS + 1:
         return _result("cross_section", spec, "skipped_insufficient_history",
                        f"窗口内仅 {len(seq)} 观测日 (< {ROW_DIP_MIN_OBS + 1}), 不判骤降")
-    known_empty = spec["known_empty_days"]
+    # 2026-08-23 修(实测发现): 豁免必须施加在会报警的门上。verified_low_days 此前只在
+    # observe-only 的 check_cross_section_full 里被排除, 这个真正会 WARN 的日常门却只排
+    # known_empty_days —— 豁免精确地施加在不需要豁免的地方, 缺失在需要豁免的地方。此前看不
+    # 出来只因为 dc_member 那两天 (2025-10-29 / 2026-04-09) 早已滑出 60 日窗口; 与
+    # check_cross_section_full 保持一致, 两处都排除 known_empty_days ∪ verified_low_days。
+    known_empty = (spec.get("known_empty_days") or set()) | (spec.get("verified_low_days") or set())
     dips: list[str] = []
     for i, (d, n) in enumerate(seq):
         if d in known_empty:
-            continue   # 已墓碑的源端单日真异常(如 cyq_perf 20260615), 不再重报同一件事
+            continue   # 已墓碑的源端单日真异常(如 cyq_perf 20260615)或已核证低值日, 不再重报同一件事
         prior = [c for _, c in seq[max(0, i - ROW_DIP_MEDIAN_WINDOW):i]]
         if len(prior) >= ROW_DIP_MIN_OBS:
             med = statistics.median(prior)

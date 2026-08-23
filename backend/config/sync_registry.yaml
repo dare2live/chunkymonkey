@@ -68,7 +68,6 @@ domains:
     # verified_since 不是拍脑袋: 判据自身经全历史分层核证, 只在**已证明恒成立**的时期强制,
     # 早于该日期的差额是 vendor 历史覆盖不全, 不是我们的缺口(强制会制造幻影缺口)。
     completeness_ref:
-      kind: same_day_row_count
       ref_domain: daily          # K线 = 项目地基真相源 (owner: AGENTS.md §4 Tier 0 truth)
       tolerance: 0
       verified_since: "20260805"
@@ -918,7 +917,6 @@ domains:
     # verified_since 不是拍脑袋: 判据自身经全历史分层核证, 只在**已证明恒成立**的时期强制,
     # 早于该日期的差额是 vendor 历史覆盖不全, 不是我们的缺口(强制会制造幻影缺口)。
     completeness_ref:
-      kind: same_day_row_count
       ref_domain: daily          # K线 = 项目地基真相源 (owner: AGENTS.md §4 Tier 0 truth)
       tolerance: 0
       verified_since: "20260717"

@@ -159,6 +159,7 @@ blocking_paths:
 - tests/services/test_sync_runner_20260612_fixes.py
 - tests/scripts/test_audit_min_rows_baseline.py
 - tests/scripts/test_completeness_ref.py
+- tests/scripts/test_exemption_integrity.py
 - tests/services/test_acquire_bounded_gap_heal.py
 - tests/scripts/test_downstream_impact.py
 nightly_paths: []
