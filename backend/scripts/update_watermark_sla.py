@@ -103,7 +103,14 @@ RETIRED_WATERMARK_TOMBSTONES = frozenset(
         ("sync:stk_factor_pro", "tushare"),
         ("sync:express", "tushare"),
         ("sync:fina_mainbz", "tushare"),
-        ("sync:stk_holdernumber", "tushare"),
+        # ("sync:stk_holdernumber", "tushare") —— 2026-08-23 移除该墓碑(实测与现实矛盾):
+        #   墓碑注释称 "Owner sunset 2026-07-23: registry tombstoned", 但 registry 里
+        #   execution_policy 为 None、运行时裁定 mode=enabled/reason=active, 无任何退役标记;
+        #   当日实跑 2789 批次 / 344,453 行 / ok=True, 数据新鲜。且它有活的消费链:
+        #   services/holdernumber_assist.py -> routers/stock_dossier.py(前端股票档案页)。
+        #   内容是股东户数(筹码集中度慢变量), owner 确认为策略研究的候选因子之一。
+        #   后果: sync_runner 正确写入的 watermark 每次被这行墓碑删掉, 使它成为 44 个域里
+        #   唯一没有新鲜度监控的域(goal.md backlog A2 记录的正是此事)。
     }
 )
 

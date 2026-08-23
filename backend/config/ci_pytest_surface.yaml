@@ -162,6 +162,7 @@ blocking_paths:
 - tests/scripts/test_exemption_integrity.py
 - tests/services/test_acquire_bounded_gap_heal.py
 - tests/scripts/test_downstream_impact.py
+- tests/scripts/test_audit_exemptions.py
 nightly_paths: []
 ci_test_optional:
 - path: tests/data_governance/test_etl_hook.py

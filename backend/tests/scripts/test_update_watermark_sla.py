@@ -286,7 +286,15 @@ def test_cx4_margin_enabled_catchup_is_alertable_not_observe_only():
 
 
 def test_cx4_retired_sync_orphan_watermark_tombs_purge():
-    """Sunset sync:* orphans (stk_factor_pro/express/…) purge NO_QUERY_MAPPING residue."""
+    """Sunset sync:* orphans purge NO_QUERY_MAPPING residue — 但活域必须幸存.
+
+    2026-08-23: sync:stk_holdernumber 从「应被清」挪到「应幸存」侧。它此前被列入
+    RETIRED_WATERMARK_TOMBSTONES, 而 registry 里 execution_policy=None、运行时
+    mode=enabled/reason=active, 每日实跑 2789 批次 / 344,453 行且数据新鲜, 并有活的
+    消费链 (holdernumber_assist -> stock_dossier router)。后果是 sync_runner 正确写入的
+    watermark 每轮被清, 使它成为 44 个域里唯一无新鲜度监控的域 (goal.md A2)。
+    此处保留它的写入 + 断言它幸存, 正是为了锁住该修复不被回退。
+    """
     smart = duck_mem()
     ensure_source_watermark_schema(smart)
     for domain in (
@@ -321,7 +329,6 @@ def test_cx4_retired_sync_orphan_watermark_tombs_purge():
         "sync:stk_factor_pro",
         "sync:express",
         "sync:fina_mainbz",
-        "sync:stk_holdernumber",
     }
     left = {
         str(row[0])
@@ -329,7 +336,8 @@ def test_cx4_retired_sync_orphan_watermark_tombs_purge():
             "SELECT data_domain FROM mart_data_source_watermark"
         ).fetchall()
     }
-    assert left == {"sync:moneyflow"}
+    # 活域 (moneyflow + stk_holdernumber) 都不许被墓碑清理波及。
+    assert left == {"sync:moneyflow", "sync:stk_holdernumber"}
 
 
 def test_cx4_retired_lhb_tombstone_purge_allowlist_only():

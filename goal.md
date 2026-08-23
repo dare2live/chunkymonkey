@@ -31,7 +31,14 @@
 owner contract，进度段在此。**不再有第二个说「下一步」的地方**）。
 
 *底座*（exit 已 MET；「100% usable」= 无 class-A，判据 eng_gov §9.1）
-- **A2** `stk_holdernumber` `MAX(ann_date)` tip vs eligible —— 超 SLA 由 F9 residual_hygiene 判红
+- **A2** `stk_holdernumber` tip vs eligible —— **CLOSED 2026-08-23**：滞后本身不存在
+  （实测 tip 与 eligible 齐平，`available_after: t+1` 下最近交易日次日才可用；现查
+  `scripts/chunkyctl status`）；真问题是
+  **判红机制对它根本不生效** —— 该域被误列入 `update_watermark_sla.py` 的退役墓碑（注释称
+  "Owner sunset 2026-07-23: registry tombstoned"，而 registry 里 `execution_policy: None`、
+  运行时 `mode=enabled`，每日实跑数千批次/数十万行（当日实测）且有活消费链 `holdernumber_assist`
+  → `stock_dossier` router），sync_runner 正确写入的 watermark 每轮被清，使它成为 44 个域里
+  唯一无新鲜度监控者。移除该墓碑后覆盖率 43/44 → **44/44**，测试把它从「应被清」挪到「应幸存」侧锁死。
 - **A3** Type-B fact publish 短滞后（moneyflow / limit / index / dc）—— 同跑 catchup
 - **A4** org 中间历史季洞 —— **DEFER**：仅显式 backfill 刀，日常增量路径不变
 - **A5** cyq 消费口径（历史段 FAIL）—— **DEFER**：消费前换算或弃用，非采集轴问题
