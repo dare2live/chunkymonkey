@@ -825,7 +825,12 @@ domains:
                               # 原 annotate WARN 会永久刷绿疲劳; 禁 mute checker / 禁 READY cosmetics。
                               # 2026-07-05 R4: 空洞高度集中港股公众假期, tinyshare 逐日探测源端 0 行。
     # Knife4 + F1 2026-07-23: 近端开市日 vendor-0 → 墓碑兼日历; 20260708/10 vendor 有数已补拉
-    known_empty_days: ["20260403", "20260407", "20260525", "20260701"]
+    known_empty_days: ["20260403", "20260407", "20260525", "20260701"]   # 2026-08-23 补理由指向(此前字段处裸奔, 豁免审计判「无理由」):
+      # 这 4 天经核对全部落在 backend/config/hk_northbound_closed_days.yaml 的港股通休市清单内。
+      # 为何与同域 gap_tolerance: hk_holidays 并存而非冗余 —— 两者作用面不同:
+      #   gap_tolerance 只在 continuity_guard.py 的缺口检查里并入休市日(tombstones |= hk_closed);
+      #   known_empty_days 还被**采集侧**读(acquire.py / sync_runner.py), 据它跳过重探。
+      # 故删任一侧都会改变行为: 删本字段 -> 每日重探这 4 天; 删 gap_tolerance -> 缺口检查判红。
 
   dividend:
     source: tushare
