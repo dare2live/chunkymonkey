@@ -705,12 +705,27 @@ def main() -> int:
                         )
 
             # 2. actual data stale vs SLA
-            # 日历不可达 → 明确 UNVERIFIED, 不当作通过("查不了"不等于"没问题")。
+            # 判不出交易日距离 → 明确 UNVERIFIED, 不当作通过("查不了"不等于"没问题")。
+            # 2026-08-23 起 measured_days is None 有三种成因, 日志需分辨(见 calendar.py
+            # trading_days_since 的实测记录), 后两种都是**真问题伪装成"零延迟"**:
+            #   a. 日历表本身取不到
+            #   b. today 超出日历覆盖 —— 跨年而交易日历没续订, 此时全部域同时失去 SLA 判定
+            #   c. actual_date 晚于 today —— 数据里混进了未来日期(vendor 年份错位等)
             if axis_unverified:
                 status = "SLA_UNVERIFIED_NO_CALENDAR"
                 alert = True
+                if actual_date and trading_days:
+                    _probe = _parse_day_for_log(actual_date)
+                    if _probe is not None and _probe > today:
+                        _why = f"数据日期 {actual_date} 晚于今天 {today} — 疑源端日期错位"
+                    elif today > trading_days[-1]:
+                        _why = f"交易日历只覆盖到 {trading_days[-1]}, 未续订到今天 {today}"
+                    else:
+                        _why = "交易日历不可达"
+                else:
+                    _why = "交易日历不可达"
                 log.warning(
-                    f"  [UNVERIFIED] {data_domain}/{source_name}: 交易日历不可达, "
+                    f"  [UNVERIFIED] {data_domain}/{source_name}: {_why}, "
                     f"无法按交易日判定 SLA (actual={actual_date})"
                 )
             elif measured_days is not None and measured_days > sla:

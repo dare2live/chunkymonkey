@@ -635,6 +635,40 @@ def test_calendar_unavailable_is_unverified_not_pass() -> None:
     assert _cal_trading_days_since("20260807", _dt.date(2026, 8, 11), None) is None
 
 
+def test_future_data_date_is_unverified_not_zero_lag() -> None:
+    """数据日期晚于 today → None(不可判定), **不是 0(零延迟)**.
+
+    2026-08-23: 原实现是 `max(0, bisect差)`, 把"不可能"钳成了"完美"。实测(真实日历,
+    today=2026-08-23): trading_days_since('20340430') 与 ('28240531') 都返 **0** ——
+    下游据 `measured_days > sla` 判告警, 于是一个未来日期进了 watermark, 该域的停更
+    监控就永久静默, 而且 0 读起来还是"最新鲜"(project_status 按 last_data_date 升序
+    取最旧 12 个域巡检, 未来值会排到末尾, 从人工核查里一并消失)。
+    返回 None 后走调用侧既有的 axis_unverified 通路 → SLA_UNVERIFIED + alert。
+    """
+    days = _cal("20260807", "20260810", "20260811")
+    assert _cal_trading_days_since("20260812", _dt.date(2026, 8, 11), days) is None
+    assert _cal_trading_days_since("28240531", _dt.date(2026, 8, 11), days) is None
+    # 正常路径不受影响 —— 钳位本来就只在 day > today 时才生效
+    assert _cal_trading_days_since("20260807", _dt.date(2026, 8, 11), days) == 2
+    assert _cal_trading_days_since("20260811", _dt.date(2026, 8, 11), days) == 0
+
+
+def test_calendar_not_covering_today_is_unverified() -> None:
+    """today 超出日历覆盖(跨年没续订) → None; 否则真停更会被报成"落后 0 天".
+
+    这条比未来日期那条更要紧: 它**不需要任何脏数据**。当 today 落在日历末端之后,
+    它与任何近端日期的 bisect 位置都是同一个末端, 差恒为 0。实测(日历止于
+    2026-12-31, today=2027-03-01): 数据停在 20261231 已真停更两个月, 却报"落后 0 个
+    交易日"。而且一旦发生是**全部域同时**失效 —— 交易日历续订是人工定期任务。
+    """
+    days = _cal("20261229", "20261230", "20261231")  # 日历只到年底
+    # 跨年后日历未续订: 数据其实停在去年最后一个交易日
+    assert _cal_trading_days_since("20261231", _dt.date(2027, 3, 1), days) is None
+    assert _cal_trading_days_since("20261229", _dt.date(2027, 1, 5), days) is None
+    # today 仍在日历覆盖内时照常工作
+    assert _cal_trading_days_since("20261229", _dt.date(2026, 12, 31), days) == 2
+
+
 def test_two_axes_are_declared_and_quarterly_stays_calendar() -> None:
     """同一个裸数字在不同条目里是不同单位, 必须显式带轴。
 

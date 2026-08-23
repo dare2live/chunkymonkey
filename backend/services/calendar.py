@@ -180,16 +180,52 @@ def load_trading_days(conn) -> list[date] | None:
 def trading_days_since(
     date_str: str | None, today: date, trading_days: list[date] | None
 ) -> int | None:
-    """数据日期与 today 之间**已完成的交易日**个数。日历不可达 → None。
+    """数据日期与 today 之间**已完成的交易日**个数。**无法判定 → None**(不是 0)。
 
-    与自然日算术的区别正是本次要修的东西: 周末/长假不再被算成"陈旧"(消灭 15 次
+    与自然日算术的区别正是当初要修的东西: 周末/长假不再被算成"陈旧"(消灭 15 次
     长假后误报), 而两个交易日之间真的空了几天也不再被 `+3` 缓冲吞掉(消灭 95% 的漏报)。
+
+    **2026-08-23: 去掉 `max(0, ...)` 钳位** —— 它把"不可能"钳成了"完美"。
+    实测(日历 2005-01-04~2026-12-31, today=2026-08-23):
+        trading_days_since('20260820') = 1     正常
+        trading_days_since('20340430') = 0  ←  8 年后的日期, 报"零延迟"
+        trading_days_since('28240531') = 0  ←  800 年后, 同样报"零延迟"
+    下游 `update_watermark_sla.py` 据此判 `measured_days > sla` 才告警, 于是一个未来
+    日期进了 watermark, 该域的停更监控就**永久静默**——0 不只是不告警, 它读起来
+    还是"最新鲜"。
+
+    更要紧的是它**不需要脏数据也会触发**: today 一旦超出日历覆盖(跨年而日历没续订),
+    `bisect_right(days, today)` 与 `bisect_right(days, 最后一个交易日)` 相等 → 差为 0。
+    实测假设日历只到 2026-12-31 而 today=2027-03-01: 数据停在 20261231 报"落后 0 个
+    交易日", 实际已停更两个月。即**日历续订滞后 = 全部域的停更监控同时失效**。
+
+    改为返回 None 而非 0, 是因为调用侧已有现成的"测不出"通路:
+    update_watermark_sla.py:636 `axis_unverified = measured_days is None and ...`
+    → status=SLA_UNVERIFIED_* + alert=True。零新增管道, 且因 `max(0,...)` 只在
+    day > today 时才生效, 本改动**只在不可能的情形下改变行为**。
+
+    同形态钳位另有两处未修(各自门的语义不同, 需分别判断, 见 goal.md):
+    check_continuity_integrity.py `_lag_trading_days` 与 residual_hygiene.py
+    `trading_lag_days` 的 `if newer <= older: return 0`。
     """
     if trading_days is None:
         return None
     day = parse_day(date_str)
     if day is None:
         return None
+    if not trading_days or today > trading_days[-1]:
+        # 日历覆盖不到 today(典型: 跨年而日历没续订)。此时 today 与任何近端日期的
+        # bisect 位置都落在同一个末端, 差恒为 0 —— 读起来是"零延迟", 实际是量不出来。
+        # 实测: 日历止于 2026-12-31 而 today=2027-03-01 时, 数据停在 20261231
+        # (真停更两个月) 会报"落后 0 个交易日"。这是**不需要任何脏数据**就会发生的
+        # 结构性静默, 且一旦发生是全部域同时失效, 比单域脏数据严重得多。
+        return None
+    if day > today:
+        # 数据日期晚于 today: 不是"零延迟", 是这个量根本没有意义。
+        # 判据必须是**直接比日期**, 不能靠 bisect 差为负 —— 一个不在交易日历里的未来
+        # 日期(如 20260812 这种非交易日, 或 28240531)其 bisect 位置会与 today 落在同一处,
+        # 差为 0 而非负数, 于是照样被读成"零延迟"。
+        return None
     import bisect
 
-    return max(0, bisect.bisect_right(trading_days, today) - bisect.bisect_right(trading_days, day))
+    return bisect.bisect_right(trading_days, today) - bisect.bisect_right(trading_days, day)
