@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工作台 · ChunkyMonkey</title>
+<link rel="stylesheet" href="/app/css/site.css">
+</head>
+<body data-space="foundation" data-tab="ops">
+<header id="site-header"></header>
+<div class="tabbar" id="tabbar"></div>
+<main id="main">
+<section class="panel on" data-space="foundation" data-tab="ops">
+<div class="hero compact">
+    <div class="kicker">Ops / Workbench · manual_only · writer 单写锁串行</div>
+    <h1 class="sm">工作台</h1>
+    <p class="sub">数据底座链的手动驾驶舱。触发只有人手，没有 cron。<b>界面只渲染报告 / 日志 / 锁的事实，禁止从退出码反推成败。</b></p>
+  </div>
+
+  <div class="ops-actions">
+    <button class="btn" data-ops="run:daily_update">▶ 数据更新 · 一键日更</button>
+    <button class="btn ghost" data-ops="refresh">↻ 刷新状态</button>
+    <span class="ops-note" id="ops-note">…正在连接后端 · 失败则展示 2026-08-21 真实运行快照</span>
+  </div>
+
+  <div id="ops-body">
+    <div class="outcome-banner soft" style="margin-top:40px">
+      <div>
+        <div class="ob-state"><span class="lamp hole" style="font-size:15px"><i></i></span>&nbsp;integrity_observe</div>
+        <div class="ob-sub">最近一次 <b>2026-08-21</b> 已结束 · 完整性观测（非时钟）—— 发现 4 项完整性 + 1 项软态 + 1 项待归类。当前无运行、writer 锁空闲；<b>2 面 ALERT flag 在挂</b>，软态不发失败横幅。</div>
+      </div>
+      <div class="ob-meta">
+        report_date = 20260821 · exit = 1<br>
+        reason = integrity_observe_with_soft_clock<br>
+        log = /tmp/chunkymonkey_daily_update.log
+      </div>
+    </div>
+
+    <div class="ops-progress">
+      <div class="ops-bar"><div class="ops-fill" style="width:100%"></div></div>
+      <span class="mono" style="font-size:10.5px; color:var(--ink-3)">已结束 · 非运行中 · 进度不假装</span>
+    </div>
+
+    <div class="stepper">
+      <div class="step"><span class="sdot"></span>
+        <div class="s-name">① PREFLIGHT 预检</div><div class="s-dur">内嵌</div>
+        <div class="s-note">日历 / sync policy / 授权 — 嵌在 acquire 内</div>
+        <span class="budget-chip pass">OK</span>
+      </div>
+      <div class="step warn"><span class="sdot"></span>
+        <div class="s-name">② ACQUIRE 获取</div><div class="s-dur">3h 46m</div>
+        <div class="s-note">13,579.8s · drain 残余缺口 + formal latest-eligible</div>
+        <span class="budget-chip fail">超出时延预算</span>
+      </div>
+      <div class="step"><span class="sdot"></span>
+        <div class="s-name">③ CLEAN 清洗</div><div class="s-dur">8.2s</div>
+        <div class="s-note">qfq 派生面 + post-sync data_audit（1 项 FAIL）</div>
+        <span class="budget-chip pass">PASS</span>
+      </div>
+      <div class="step"><span class="sdot"></span>
+        <div class="s-name">④ PROCESS 加工</div><div class="s-dur">2m 04s</div>
+        <div class="s-note">123.7s · DC / pulse 等下游加工</div>
+        <span class="budget-chip pass">PASS</span>
+      </div>
+      <div class="step warn"><span class="sdot"></span>
+        <div class="s-name">⑤ STORE 存储/治理</div><div class="s-dur">—</div>
+        <div class="s-note">耗时未记录（unknown ≠ 0）· continuity / cutover 自检 FAIL</div>
+        <span class="budget-chip fail">CHECK_FAIL</span>
+      </div>
+    </div>
+
+    <div class="sec-title" style="margin-top:64px">跑前预览 · DUE PLAN —— SLA 快照：这次会追哪些域（as-of 2026-08-23T06:12Z）</div>
+    <div class="dtable">
+      <div class="lvrow head" style="grid-template-columns:150px 100px 70px 60px 1fr 90px"><span>域</span><span>水位</span><span>滞后天</span><span>SLA</span><span>判定</span><span>会抓吗</span></div>
+      <div class="lvrow" style="grid-template-columns:150px 100px 70px 60px 1fr 90px; cursor:default"><span class="lv-name">org_holding</span><span class="lv-num">2026-03-31</span><span class="lv-num">0</span><span class="lv-num">—</span><span class="lv-note">期次增量 · skip_current · 下一期 2026-06-30 未解锁</span><span class="lv-note">否 · 披露钟</span></div>
+      <div class="lvrow" style="grid-template-columns:150px 100px 70px 60px 1fr 90px; cursor:default"><span class="lv-name">daily</span><span class="lv-num">20260814</span><span class="lv-num dn">9</span><span class="lv-num">1</span><span class="lv-note" style="color:var(--hole)">STALE_WATERMARK · 超 SLA</span><span class="lv-note">否</span></div>
+      <div class="lvrow" style="grid-template-columns:150px 100px 70px 60px 1fr 90px; cursor:default"><span class="lv-name">balancesheet</span><span class="lv-num">20260820</span><span class="lv-num">3</span><span class="lv-num">2</span><span class="lv-note">NO_PROBE_RULE</span><span class="lv-note">会</span></div>
+      <div class="lvrow" style="grid-template-columns:150px 100px 70px 60px 1fr 90px; cursor:default"><span class="lv-name">block_trade</span><span class="lv-num">20260820</span><span class="lv-num">3</span><span class="lv-num">5</span><span class="lv-note">OK</span><span class="lv-note">会</span></div>
+      <div class="lvrow" style="grid-template-columns:150px 100px 70px 60px 1fr 90px; cursor:default"><span class="lv-name">cyq_perf</span><span class="lv-num">20260820</span><span class="lv-num">3</span><span class="lv-num">1</span><span class="lv-note">OK</span><span class="lv-note">会</span></div>
+      <div class="lvrow" style="grid-template-columns:150px 100px 70px 60px 1fr 90px; cursor:default"><span class="lv-name">daily_basic</span><span class="lv-num">20260820</span><span class="lv-num">3</span><span class="lv-num">1</span><span class="lv-note">OK</span><span class="lv-note">会</span></div>
+      <div class="lvrow" style="grid-template-columns:150px 100px 70px 60px 1fr 90px; cursor:default"><span class="lv-name">daily_info</span><span class="lv-num">20260820</span><span class="lv-num">3</span><span class="lv-num">2</span><span class="lv-note">OK</span><span class="lv-note">会</span></div>
+      <div class="lvrow" style="grid-template-columns:150px 100px 70px 60px 1fr 90px; cursor:default"><span class="lv-name">dc_daily</span><span class="lv-num">20260820</span><span class="lv-num">3</span><span class="lv-num">2</span><span class="lv-note">OK</span><span class="lv-note">会</span></div>
+      <div class="lvrow" style="grid-template-columns:150px 100px 70px 60px 1fr 90px; cursor:default"><span class="lv-name">dc_index</span><span class="lv-num">20260820</span><span class="lv-num">3</span><span class="lv-num">2</span><span class="lv-note">OK</span><span class="lv-note">会</span></div>
+      <div class="lvrow" style="grid-template-columns:150px 100px 70px 60px 1fr 90px; cursor:default"><span class="lv-name">dc_member</span><span class="lv-num">20260820</span><span class="lv-num">3</span><span class="lv-num">2</span><span class="lv-note">OK</span><span class="lv-note">会</span></div>
+      <div class="lvrow" style="grid-template-columns:150px 100px 70px 60px 1fr 90px; cursor:default"><span class="lv-name">dividend</span><span class="lv-num">20260820</span><span class="lv-num">3</span><span class="lv-num">2</span><span class="lv-note">NO_PROBE_RULE</span><span class="lv-note">会</span></div>
+      <div class="lvrow" style="grid-template-columns:150px 100px 70px 60px 1fr 90px; cursor:default"><span class="lv-name">fina_indicator</span><span class="lv-num">20260820</span><span class="lv-num">3</span><span class="lv-num">2</span><span class="lv-note">NO_PROBE_RULE</span><span class="lv-note">会</span></div>
+      <div class="lvrow" style="grid-template-columns:150px 100px 70px 60px 1fr 90px; cursor:default"><span class="lv-name">forecast</span><span class="lv-num">20260820</span><span class="lv-num">3</span><span class="lv-num">2</span><span class="lv-note">NO_PROBE_RULE</span><span class="lv-note">会</span></div>
+    </div>
+
+    <div class="sec-title" style="margin-top:64px">分步流水线 · NODES —— 各段独立触发 · preflight 不可独立跑</div>
+    <div class="nodes">
+      <div class="nodecard disabled">
+        <div class="nc-name">preflight <span class="lamp unk"><i></i>内嵌</span></div>
+        <div class="nc-desc">无独立 safe job；跑「数据更新」或「获取 acquire」时内嵌执行</div>
+        <div class="nc-foot"><span class="ops-note">不可单独触发</span></div>
+      </div>
+      <div class="nodecard">
+        <div class="nc-name">acquire <span class="lamp ok"><i></i>就绪</span></div>
+        <div class="nc-desc">获取 · pipeline_acquire — drain 残余缺口 + formal latest-eligible</div>
+        <div class="nc-foot"><span class="ops-note">job=pipeline_acquire</span><button class="nc-run" data-ops="run:pipeline_acquire">▶ 运行</button></div>
+      </div>
+      <div class="nodecard">
+        <div class="nc-name">land_accept <span class="lamp ok"><i></i>参数化</span></div>
+        <div class="nc-desc">S1 land / S2 accept · sync_land_accept · ≤40d 白名单窗口</div>
+        <div class="nc-foot"><span class="ops-note">需参数 → 下方表单</span></div>
+        <div class="la-form" id="la-form">
+          <div><label>DOMAIN</label><select id="la-domain"><option value="daily">daily</option><option value="stock_st">stock_st</option></select></div>
+          <div><label>MODE</label><select id="la-mode"><option value="land_then_accept">land_then_accept</option><option value="land_only">land_only</option><option value="accept_from_landing">accept_from_landing</option></select></div>
+          <div><label>BATCH_ID（accept 模式必填）</label><input id="la-batch" placeholder="YYYYMMDD_…"></div>
+          <div><label>START</label><input id="la-start" placeholder="YYYYMMDD"></div>
+          <div><label>END</label><input id="la-end" placeholder="YYYYMMDD"></div>
+          <div class="la-check"><input type="checkbox" id="la-local"><span>from_local_raw 用本地原料</span></div>
+          <div class="la-result"><button class="nc-run" data-ops="land-accept">▶ 运行 S1/S2</button> <span id="la-msg"></span></div>
+        </div>
+      </div>
+      <div class="nodecard">
+        <div class="nc-name">clean <span class="lamp ok"><i></i>就绪</span></div>
+        <div class="nc-desc">清洗 · pipeline_clean — landing → validate → accepted</div>
+        <div class="nc-foot"><span class="ops-note">job=pipeline_clean</span><button class="nc-run" data-ops="run:pipeline_clean">▶ 运行</button></div>
+      </div>
+      <div class="nodecard">
+        <div class="nc-name">derive <span class="lamp ok"><i></i>就绪</span></div>
+        <div class="nc-desc">派生 · derive_qfq — qfq 派生面重建</div>
+        <div class="nc-foot"><span class="ops-note">job=derive_qfq</span><button class="nc-run" data-ops="run:derive_qfq">▶ 运行</button></div>
+      </div>
+      <div class="nodecard">
+        <div class="nc-name">process <span class="lamp ok"><i></i>就绪</span></div>
+        <div class="nc-desc">加工 · pipeline_process — DC / pulse 等下游</div>
+        <div class="nc-foot"><span class="ops-note">job=pipeline_process</span><button class="nc-run" data-ops="run:pipeline_process">▶ 运行</button></div>
+      </div>
+      <div class="nodecard">
+        <div class="nc-name">store <span class="lamp ok"><i></i>就绪</span></div>
+        <div class="nc-desc">存储 · pipeline_store — continuity / cutover 自检</div>
+        <div class="nc-foot"><span class="ops-note">job=pipeline_store</span><button class="nc-run" data-ops="run:pipeline_store">▶ 运行</button></div>
+      </div>
+    </div>
+
+    <div class="term-head" style="margin-top:64px"><span>链日志尾部 · LOG TAIL</span><span>/tmp/chunkymonkey_daily_update.log · 真实行</span></div>
+    <div class="term">
+<div><span class="t-dim">[11:47:47]</span> Report written: daily_20260821.json <span class="tl-soft">run_outcome=integrity_observe</span></div>
+<div><span class="t-dim">[11:47:47]</span> <span class="tl-stage">[stage_status]</span> store → <span class="tl-fail">check_fail</span></div>
+<div><span class="t-dim">[11:47:47]</span> === daily_update DONE <span class="tl-soft">integrity_observe</span> (5 项; exit 1) ===</div>
+<div><span class="t-dim">[2026-08-21 07:40:24 -&gt; 11:47:48]</span> run_outcome=<span class="tl-soft">soft_waiting_clock</span> rc=1 job=daily_update (alert flag 在挂)</div>
+<div><span class="t-dim">[11:47:48]</span> <span class="tl-soft">soft_waiting_clock: skip FAIL notification</span> (outcome-keyed; observation banner owns macOS)</div>
+    </div>
+
+  </div>
+</section>
+</main>
+<script src="/app/js/core.js"></script>
+<script src="/app/js/live.js"></script>
+</body>
+</html>

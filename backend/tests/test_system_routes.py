@@ -31,7 +31,7 @@ def test_inst_health_summary_alias_matches_health_contract(client):
 
 
 def test_root_redirects_to_edge_app(client):
-    """2026-07-07 更新: 根路径重定向到现行唯一前端 /app/ (edge React), 旧 v3 设计稿已退役。"""
+    """根路径重定向到现行观察前端 /app/ (frontend/app 多页静态站)。"""
     response = client.get("/", follow_redirects=False)
     assert response.status_code in (307, 308)
     assert "/app" in response.headers.get("location", "").lower()

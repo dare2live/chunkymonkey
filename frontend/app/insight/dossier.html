@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>个股档案 · ChunkyMonkey</title>
+<link rel="stylesheet" href="/app/css/site.css">
+</head>
+<body data-space="insight" data-tab="dossier">
+<header id="site-header"></header>
+<div class="tabbar" id="tabbar"></div>
+<main id="main">
+<section class="panel on" data-space="insight" data-tab="dossier">
+<div class="hero compact" style="margin-bottom:0">
+    <div class="kicker">Insight / Stock Dossier · 个股档案</div>
+    <div style="margin-top:18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+      <input id="dossier-input" placeholder="6 位代码进档案 · 名称/代码片段筛列表" style="font-family:var(--mono); font-size:12px; padding:7px 12px; border:1px solid var(--line-2); border-radius:8px; background:var(--paper); color:var(--ink); width:280px; outline:none">
+      <button class="nc-run" id="dossier-go">确定 →</button>
+    </div>
+  </div>
+
+  <div id="dossier-list"><div id="dossier-list-body"></div></div>
+
+  <div id="dossier-detail" style="display:none">
+    <button class="backlink" id="dossier-back">← 返回股票列表</button>
+    <div class="dossier-head" style="margin-top:10px" id="dossier-head"></div>
+
+    <div class="mini-tabs" id="dossier-tabs">
+      <button class="on" data-mini="form">形态<span class="st" style="color:var(--unk)">▨</span></button>
+      <button data-mini="fund">资金<span class="st" style="color:var(--unk)">▨</span></button>
+      <button data-mini="holder">股东<span class="st" style="color:var(--unk)">▨</span></button>
+      <button data-mini="inst">机构<span class="st" style="color:var(--unk)">▨</span></button>
+      <button data-mini="cross">交集<span class="st" style="color:var(--unk)">▨</span></button>
+      <button data-mini="lhb">龙虎榜<span class="st" style="color:var(--unk)">▨</span></button>
+    </div>
+
+    <div class="mini-panel on" data-mini="form">
+      <div id="dossier-kline"></div>
+      <div id="dossier-form"></div>
+    </div>
+    <div class="mini-panel" data-mini="fund"><div id="dossier-fund"></div></div>
+    <div class="mini-panel" data-mini="holder"><div id="dossier-holder"></div></div>
+    <div class="mini-panel" data-mini="inst"><div id="dossier-inst"></div></div>
+    <div class="mini-panel" data-mini="cross"><div id="dossier-cross"></div></div>
+    <div class="mini-panel" data-mini="lhb"><div id="dossier-lhb"></div></div>
+  </div>
+</section>
+</main>
+<script src="/app/js/core.js"></script>
+<script src="/app/js/live.js"></script>
+</body>
+</html>

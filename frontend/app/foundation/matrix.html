@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据底座 · ChunkyMonkey</title>
+<link rel="stylesheet" href="/app/css/site.css">
+</head>
+<body data-space="foundation" data-tab="matrix">
+<header id="site-header"></header>
+<div class="tabbar" id="tabbar"></div>
+<main id="main">
+<section class="panel on" data-space="foundation" data-tab="matrix">
+<div class="hero compact">
+    <div class="kicker">Foundation / Data Base · 管理向 · 44 域</div>
+    <h1 class="sm">数据底座</h1>
+    <p class="sub">前沿、滞后、运行结果与水位现查。这一屏回答：<b>今天的数据，哪些能用，哪些不能，为什么。</b></p>
+  </div>
+
+  <div class="anchor">
+    <span class="cell"><span class="lamp ok"><i></i></span>交易日锚 <b>20260824</b></span>
+    <span class="cell">源水位 <b>49 源 · 0 连续失败</b></span>
+    <span class="cell"><span class="lamp hole"><i></i></span>告警 <b>3</b>&nbsp;<span style="color:var(--ink-3)">continuity / daily_update / degraded</span></span>
+    <span class="spacer"></span>
+    <button class="btn ghost" data-nav="foundation/gates">门与裁决</button>
+    <button class="btn" data-nav="foundation/run">一键日更 →</button>
+  </div>
+
+  <div class="matrix">
+    <div class="matrix-head">
+      <span>域 / DOMAIN</span><span>前沿</span><span>滞后</span><span>SLA</span><span>今日 RUN_OUTCOME</span><span>行数 ROWS</span><span>模式</span><span>备注</span>
+    </div>
+
+    <div class="mgroup"><span>日历与身份</span><span class="n">CALENDAR / IDENTITY · 5</span></div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">trade_cal<span class="cn">交易日历</span></span><span class="frontier">20261231</span><span class="lag axis">generation</span><span class="sla">30</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">13,162</span><span class="mode">full_refresh</span>
+      <span class="note">SSE 全量代际 · 19901219 起</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">stock_basic<span class="cn">证券身份</span></span><span class="frontier">20260821</span><span class="lag">-1</span><span class="sla">30</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">全量</span><span class="mode">full_refresh</span><span class="note"></span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">stock_st<span class="cn">ST 成员证据</span></span><span class="frontier">20260821</span><span class="lag">-1</span><span class="sla">1</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">166,840</span><span class="mode">by_trade_date</span>
+      <span class="note">membership 证据非 denylist · legacy raw 停 0716 系预期</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">suspend_d<span class="cn">停牌</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">3</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">15,963</span><span class="mode">by_trade_date</span><span class="note"></span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">stk_limit<span class="cn">涨跌停价</span></span><span class="frontier">20260821</span><span class="lag">-1</span><span class="sla">1</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">8,615,928</span><span class="mode">by_trade_date</span><span class="note"></span>
+    </div>
+
+    <div class="mgroup"><span>行情与量价</span><span class="n">PRICE / VOLUME · 6</span></div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">daily<span class="cn">名义日 K</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">1</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">8,556,478</span><span class="mode">by_trade_date</span>
+      <span class="note">accepted 起点 20190102 · 1,852 分区 · legacy raw 停 0716 系预期</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">daily_basic<span class="cn">每日指标</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">1</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">8,530,160</span><span class="mode">by_trade_date</span><span class="note"></span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">adj_factor<span class="cn">复权因子</span></span><span class="frontier">20260821</span><span class="lag">-1</span><span class="sla">1</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">8,584,195</span><span class="mode">by_trade_date</span><span class="note">独立可追溯事实 ≠ 成交价</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">cyq_perf<span class="cn">筹码分布</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">1</span>
+      <span class="lamp hole"><i></i>integrity</span><span class="rows">8,361,085</span><span class="mode">by_trade_date</span>
+      <span class="note">A5 · 历史段消费口径 FAIL, DEFER 待 repair 刀</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">block_trade<span class="cn">大宗交易</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">5</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">109,452</span><span class="mode">by_trade_date</span><span class="note"></span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">daily_info<span class="cn">每日概况</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">2</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">31,235</span><span class="mode">by_trade_date</span><span class="note"></span>
+    </div>
+
+    <div class="mgroup"><span>资金与情绪</span><span class="n">FLOW / SENTIMENT · 14</span></div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">moneyflow<span class="cn">资金流向</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">1</span>
+      <span class="lamp hole"><i></i>integrity</span><span class="rows">7,639,092</span><span class="mode">by_trade_date</span>
+      <span class="note">20260821 源端仍缺 · vendor 不平衡代理</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">moneyflow_dc<span class="cn">东财资金流</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">1</span>
+      <span class="lamp hole"><i></i>integrity</span><span class="rows">3,869,093</span><span class="mode">by_trade_date</span><span class="note">20260821 源端仍缺</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">moneyflow_mkt_dc<span class="cn">东财大盘资金流</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">1</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">812</span><span class="mode">by_date_range</span><span class="note">external_aggregate</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">moneyflow_hsgt<span class="cn">沪深港通</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">2</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">2,770</span><span class="mode">by_trade_date</span><span class="note"></span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">moneyflow_ind_dc<span class="cn">东财行业资金流</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">2</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">328,975</span><span class="mode">by_trade_date</span><span class="note"></span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">margin<span class="cn">两融汇总</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">2</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">4,523</span><span class="mode">on_demand</span>
+      <span class="note">accepted · SSE+SZSE · legacy v2 冻结</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">margin_detail<span class="cn">两融明细</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">2</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">4,789,385</span><span class="mode">by_trade_date</span><span class="note"></span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">limit_list_d<span class="cn">涨跌停榜单</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">1</span>
+      <span class="lamp hole"><i></i>integrity</span><span class="rows">87,788</span><span class="mode">by_trade_date</span><span class="note">20260821 源端仍缺</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">limit_cpt_list<span class="cn">连板榜单</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">2</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">12,794</span><span class="mode">by_trade_date</span><span class="note"></span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">kpl_list<span class="cn">开盘啦</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">2</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">134,124</span><span class="mode">by_trade_date</span><span class="note"></span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">hm_detail<span class="cn">游资明细</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">2</span>
+      <span class="lamp unk"><i></i>unverified</span><span class="rows">211,694</span><span class="mode">by_trade_date</span>
+      <span class="note">本轮未采样连续性 · 不渲染绿灯</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">hm_list<span class="cn">游资名录</span></span><span class="frontier">—</span><span class="lag axis">全量</span><span class="sla">30</span>
+      <span class="lamp unk"><i></i>unverified</span><span class="rows">—</span><span class="mode">full_refresh</span><span class="note">维表 · 无日期轴</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">ths_hot<span class="cn">同花顺热榜</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">2</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">658,114</span><span class="mode">by_trade_date</span><span class="note"></span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">top_list / top_inst<span class="cn">龙虎榜</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">2</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">1,174,438</span><span class="mode">by_trade_date</span><span class="note">两域合并展示</span>
+    </div>
+
+    <div class="mgroup"><span>指数与分类</span><span class="n">INDEX / TAXONOMY · 8</span></div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">index_daily<span class="cn">指数日线</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">1</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">35,429</span><span class="mode">by_code_list</span><span class="note"></span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">index_dailybasic<span class="cn">指数指标</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">1</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">11,112</span><span class="mode">by_code_list</span><span class="note"></span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">sw_daily<span class="cn">申万日线</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">1</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">918,849</span><span class="mode">by_trade_date</span><span class="note">namespace 分离 · 不可跨层求和</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">dc_daily / dc_index<span class="cn">东财板块</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">2</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">1,702,827</span><span class="mode">by_trade_date</span><span class="note"></span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">dc_member<span class="cn">东财成员</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">2</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">26,747,607</span><span class="mode">by_trade_date</span><span class="note">observation-date PIT</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">index_member_all<span class="cn">指数成员</span></span><span class="frontier">—</span><span class="lag axis">全量</span><span class="sla">30</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">—</span><span class="mode">full_refresh</span><span class="note">含历史变更加载</span>
+    </div>
+
+    <div class="mgroup"><span>财报与披露</span><span class="n">FIN / DISCLOSURE · 11</span></div>
+    <div class="mrow dimmed" data-nav="foundation/domain">
+      <span class="name">org_holding<span class="cn">机构持仓明细</span></span><span class="frontier">Q1 法定</span><span class="lag axis">期轴</span><span class="sla">—</span>
+      <span class="lamp soft"><i></i>waiting_clock</span><span class="rows">9,573,207</span><span class="mode">期轴增量</span>
+      <span class="note">当前期 2026-03-31 · 下一期 06-30 截止 08-31, 此前不构成缺口 · 22 期分区</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">holders_top10<span class="cn">十大流通股东</span></span><span class="frontier">20260821</span><span class="lag axis">期轴</span><span class="sla">—</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">516,656</span><span class="mode">by_ann_date</span><span class="note">UPDATE_DATE 水龙头 · 1,980 分区</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">stk_holdernumber<span class="cn">股东人数</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">90</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">333,664</span><span class="mode">by_ann_date</span><span class="note">A2 CLOSED · 新鲜度监控 44/44</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">stk_holdertrade<span class="cn">股东增减持</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">30</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">73,189</span><span class="mode">by_ann_date</span><span class="note">accepted 公告轴</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">income / balancesheet / fina<span class="cn">财报三表</span></span><span class="frontier">20260810</span><span class="lag axis">期轴</span><span class="sla">5</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">465,398</span><span class="mode">by_ts_code</span><span class="note">逐码 · 报告期轴</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">forecast<span class="cn">业绩预告</span></span><span class="frontier">20260819</span><span class="lag">-3</span><span class="sla">5</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">48,953</span><span class="mode">by_ann_date</span><span class="note"></span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">dividend<span class="cn">分红</span></span><span class="frontier">20260811</span><span class="lag">-9</span><span class="sla">5</span>
+      <span class="lamp hole"><i></i>integrity</span><span class="rows">51,046</span><span class="mode">by_trade_date</span><span class="note">超 SLA · 待查</span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">share_float<span class="cn">限售解禁</span></span><span class="frontier">20260820</span><span class="lag">-2</span><span class="sla">3</span>
+      <span class="lamp ok"><i></i>success</span><span class="rows">16,580,320</span><span class="mode">by_ann_date</span><span class="note"></span>
+    </div>
+    <div class="mrow" data-nav="foundation/domain">
+      <span class="name">report_rc / stk_surv<span class="cn">研报/调研</span></span><span class="frontier">—</span><span class="lag axis">—</span><span class="sla">3/5</span>
+      <span class="lamp unk"><i></i>unverified</span><span class="rows">—</span><span class="mode">by_ann_date</span><span class="note">无日期列可探测 · 待补探针</span>
+    </div>
+  </div>
+</section>
+</main>
+<script src="/app/js/core.js"></script>
+<script src="/app/js/live.js"></script>
+</body>
+</html>

@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from services.data_access import resolver
 from services.duck_adapter import connect as duck_connect
 from services.holdernumber_assist import load_holdernumber_assist
+from services.research_identity import annotate_holder, annotate_seat
 from services.universe import classify_exclusion
 
 router = APIRouter()
@@ -356,6 +357,10 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
             "report_date": None,
             "source": None,
             "rows": [],
+            "exited": [],
+            "change_counts": {
+                "新进": 0, "增持": 0, "减持": 0, "不变": 0, "退出": 0,
+            },
             "prev_report_date": None,
             "gaps": ["holders_empty"],
         }
@@ -372,6 +377,27 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
         """,
         [code, report_date],
     ).fetchall()
+    # 本期退出行 (2026-08-25): period-diff 推导 — 上期在榜/本期不在榜 = 退出
+    # (holders_aif10._derive_exits); hold_ratio_float = 上期在榜占比 (最后已知),
+    # notice_date = 本期披露日。展示层独立成区, 不与在榜行混排。
+    exited_rows = [
+        dict(zip(["holder_rank", "holder_name", "holder_type",
+                  "hold_ratio_float", "hold_change_num", "notice_date"], r))
+        for r in conn.execute(
+            """
+            SELECT holder_rank, holder_name, holder_type,
+                   hold_ratio_float, hold_change_num, notice_date
+            FROM canonical_top10_float_holders_period
+            WHERE stock_code = ? AND report_date = ?
+              AND coalesce(is_exit_row, FALSE) = TRUE
+            ORDER BY holder_rank NULLS LAST, holder_name
+            """,
+            [code, report_date],
+        ).fetchall()
+    ]
+    for row in exited_rows:
+        hn = row.get("holder_name")
+        row["research_identity"] = annotate_holder(str(hn)) if hn else None
     cols = [
         "holder_rank",
         "holder_name",
@@ -432,6 +458,7 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
         d["return_pct"] = None
         d["holding_cycle_days"] = None
         d["holding_cycle_basis"] = None
+        d["research_identity"] = annotate_holder(str(hn)) if hn else None
         out_rows.append(d)
 
     # 机构档案 honesty: deep-link only when a profile row truly exists.
@@ -495,11 +522,20 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
     if n_episode_only:
         gaps.append("institution_episode_without_profile_mart_row")
     prev = periods[1] if len(periods) >= 2 else None
+    # 变动分布计数 (加工层下移: 前端只展示不统计) — 退出数来自 exit 推导行。
+    change_counts: dict[str, int] = {}
+    for d in out_rows:
+        cs = str(d.get("change_status") or "未知")
+        change_counts[cs] = change_counts.get(cs, 0) + 1
+    if exited_rows:
+        change_counts["退出"] = len(exited_rows)
     return {
         "report_date": report_date,
         "prev_report_date": prev,
         "source": source,
         "rows": out_rows,
+        "exited": exited_rows,
+        "change_counts": change_counts,
         "institution_profile": {
             "holders_total": n_holders,
             "holders_with_profile": n_with_profile,
@@ -528,16 +564,86 @@ def _load_holders(conn, code: str) -> dict[str, Any]:
     }
 
 
+def _plain_to_ts(code: str) -> str:
+    if code.startswith(("60", "68")):
+        return f"{code}.SH"
+    return f"{code}.SZ"
+
+
+def _load_lhb_seats(conn, code: str) -> dict[str, Any]:
+    grain = "trade_date x ts_code x exalter x side"
+    if not _table_exists(conn, "fact_top_inst_seat_daily"):
+        return {
+            "trade_date": None,
+            "ts_code": None,
+            "rows": [],
+            "grain": grain,
+            "gaps": ["lhb_seat_table_absent"],
+        }
+    ts_code = _plain_to_ts(code)
+    latest = conn.execute(
+        "SELECT max(trade_date) FROM fact_top_inst_seat_daily WHERE ts_code = ?",
+        [ts_code],
+    ).fetchone()
+    trade_date = latest[0] if latest else None
+    if not trade_date:
+        return {
+            "trade_date": None,
+            "ts_code": ts_code,
+            "rows": [],
+            "grain": grain,
+            "gaps": ["lhb_seats_empty"],
+        }
+    raw = conn.execute(
+        """
+        SELECT exalter, side, net_buy
+        FROM fact_top_inst_seat_daily
+        WHERE ts_code = ? AND trade_date = ?
+        ORDER BY abs(COALESCE(net_buy, 0)) DESC, exalter
+        """,
+        [ts_code, trade_date],
+    ).fetchall()
+    rows = []
+    for exalter, side, net_buy in raw:
+        name = str(exalter)
+        overlay = annotate_seat(name)
+        seat = overlay["seat_research_class"]
+        rows.append(
+            {
+                "exalter": name,
+                "side": str(side) if side is not None else None,
+                "net_buy": float(net_buy) if net_buy is not None else None,
+                "display_name": seat.get("alias") or name,
+                "alias_kind": seat.get("alias_kind"),
+                "seat_research_class": seat,
+            }
+        )
+    return {
+        "trade_date": str(trade_date),
+        "ts_code": ts_code,
+        "rows": rows,
+        "grain": grain,
+        "gaps": [],
+        "note": (
+            "LHB seats are not top-10 holders; folk aliases are market "
+            "convention, not legal names"
+        ),
+    }
+
+
 def _tab_usability(
     *,
     basic: dict[str, Any],
     form: dict[str, Any] | None,
     holders: dict[str, Any],
+    lhb_seats: dict[str, Any],
     holder_number: dict[str, Any],
     observation: dict[str, Any],
 ) -> dict[str, Any]:
     """Per-tab usable|empty|typed — Cap F 100% = no half-dead silent empties."""
     holder_rows = holders.get("rows") or []
+    lhb_rows = lhb_seats.get("rows") or []
+    lhb_gaps = lhb_seats.get("gaps") or []
     hn_ok = holder_number.get("status") == "ok"
     form_status = "ok" if form else "empty"
     form_reason = None
@@ -546,6 +652,12 @@ def _tab_usability(
         note = str(form.get("resolver_note") or "")
         if residuals or "BLOCKED" in note or "legacy/fact" in note:
             form_reason = "form_read_fact_brick_typed_hybrid"
+    if lhb_rows:
+        lhb_status, lhb_reason = "ok", None
+    elif "lhb_seat_table_absent" in lhb_gaps:
+        lhb_status, lhb_reason = "empty", "lhb_seat_table_absent"
+    else:
+        lhb_status, lhb_reason = "empty", "lhb_seats_empty"
     return {
         "status": "usable",
         "cap": "F",
@@ -563,6 +675,7 @@ def _tab_usability(
                 "status": "ok" if holder_rows else "empty",
                 "reason": None if holder_rows else "holders_empty",
             },
+            "lhb_seats": {"status": lhb_status, "reason": lhb_reason},
             "holder_number": {
                 "status": "ok" if hn_ok else "empty",
                 "reason": None if hn_ok else (
@@ -583,6 +696,162 @@ def _tab_usability(
     }
 
 
+def get_list_conn():
+    """股票列表读连接: smartmoney (form 快照) + reference (active A 身份 dim)。
+
+    attach 失败必须 503（能力空态），禁止吞掉异常后再查 `ref.dim_active_a_stock` 变 500。
+    """
+    con = duck_connect(resolver.db_path("smartmoney"), read_only=True)
+    try:
+        ref_path = resolver.db_path("reference")
+        con.execute(f"ATTACH IF NOT EXISTS '{ref_path}' AS ref (READ_ONLY)")
+        con.execute("SELECT 1 FROM ref.dim_active_a_stock LIMIT 0")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        con.close()
+        raise HTTPException(
+            status_code=503,
+            detail="reference_dim_unavailable",
+        ) from exc
+    try:
+        yield con
+    finally:
+        con.close()
+
+
+def get_kline_conn():
+    """市场库只读连接（qfq 分析视图）。"""
+    con = duck_connect(resolver.db_path("market"), read_only=True)
+    try:
+        yield con
+    finally:
+        con.close()
+
+
+@router.get("/list")
+def stock_list(
+    tag: str | None = Query(default=None, description="形态标签 exact / 突破事件"),
+    q: str | None = Query(default=None, description="代码或名称子串"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    conn=Depends(get_list_conn),
+):
+    """股票列表 + 形态标签 facets (个股档案默认列表数据契约)。
+
+    加工层下移: 筛选/计数/facets 全在 SQL; 前端只展示。身份 = ref.dim_active_a_stock
+    (身份缓存, 不是观察日 traded_on 宇宙); 形态标签 = fact_stock_form_daily 最新快照日
+    LEFT JOIN — 未覆盖或快照滞后时标签列照实为 NULL, 不回填。facets 是该日全市场普查,
+    不随 q/tag 缩放。新鲜度归 FOUNDATION 探针, 本端点只给 as_of_form 真值。
+    """
+    form_day_row = conn.execute("SELECT max(trade_date) FROM fact_stock_form_daily").fetchone()
+    form_day = form_day_row[0] if form_day_row else None
+
+    where, params = ["1=1"], []
+    if tag:
+        if tag == "突破事件":
+            where.append("f.is_breakout_event = TRUE")
+        else:
+            where.append("f.form_name = ?")
+            params.append(tag)
+    if q:
+        where.append("(d.stock_code LIKE ? OR d.stock_name LIKE ?)")
+        like = f"%{q}%"
+        params += [like, like]
+    where_sql = " AND ".join(where)
+
+    join_sql = (
+        "FROM ref.dim_active_a_stock d "
+        "LEFT JOIN fact_stock_form_daily f ON f.stock_code = d.stock_code "
+        "AND f.trade_date = ?"
+    )
+    base_params = [form_day]
+    total = conn.execute(
+        f"SELECT COUNT(*) {join_sql} WHERE {where_sql}",
+        base_params + params,
+    ).fetchone()[0]
+    rows = conn.execute(
+        f"""SELECT d.stock_code, d.stock_name, f.form_name, f.axis_pos, f.axis_trend,
+                   f.is_breakout_event
+            {join_sql} WHERE {where_sql}
+            ORDER BY d.stock_code LIMIT ? OFFSET ?""",
+        base_params + params + [int(limit), int(offset)],
+    ).fetchall()
+
+    facets: dict[str, Any] = {"form_name": [], "breakout": 0}
+    if form_day:
+        facets["form_name"] = [
+            {"value": r[0], "count": r[1]}
+            for r in conn.execute(
+                "SELECT form_name, COUNT(*) FROM fact_stock_form_daily "
+                "WHERE trade_date = ? AND form_name IS NOT NULL "
+                "GROUP BY form_name ORDER BY 2 DESC",
+                [form_day],
+            ).fetchall()
+        ]
+        facets["breakout"] = conn.execute(
+            "SELECT COUNT(*) FROM fact_stock_form_daily "
+            "WHERE trade_date = ? AND is_breakout_event = TRUE",
+            [form_day],
+        ).fetchone()[0]
+
+    return {
+        "status": "ok",
+        "total": total,
+        "limit": int(limit),
+        "offset": int(offset),
+        "as_of_form": form_day,
+        "universe": "dim_active_a_stock",
+        "universe_note": (
+            "identity cache, not traded_on observation-date universe; "
+            "form facets are as-of-form census, not filtered by q/tag"
+        ),
+        "facets": facets,
+        "rows": [
+            dict(zip(["stock_code", "stock_name", "form_name", "axis_pos",
+                      "axis_trend", "is_breakout_event"], r))
+            for r in rows
+        ],
+    }
+
+
+@router.get("/{code}/kline")
+def stock_kline(
+    code: str,
+    days: int = Query(default=250, ge=20, le=1200),
+    conn=Depends(get_kline_conn),
+):
+    """qfq 日 K + 成交量 (形态页量价走势图数据契约)。
+
+    加工层下移: 前端只画不算 — 行 = v_price_kline_qfq 原样投影 (OHLCV+amount)。
+    空结果 typed empty（200 + rows=[]），不 404 成空白图。as_of = 窗口最后一根；
+    新鲜度归 FOUNDATION 探针。qfq 是分析视图，不是名义成交价。
+    """
+    code = _norm_code(code)
+    _require_hs_a(code)
+    rows = conn.execute(
+        "SELECT date, open, high, low, close, volume, amount "
+        "FROM v_price_kline_qfq WHERE code = ? "
+        "ORDER BY date DESC LIMIT ?",
+        [code, int(days)],
+    ).fetchall()
+    rows = list(reversed(rows))
+    payload = {
+        "stock_code": code,
+        "adjust": "qfq",
+        "as_of": rows[-1][0] if rows else None,
+        "days": len(rows),
+        "status": "ok" if rows else "empty",
+        "reason": None if rows else "no_qfq_kline",
+        "note": "qfq analysis view, not nominal execution price",
+        "rows": [
+            dict(zip(["date", "open", "high", "low", "close", "volume", "amount"], r))
+            for r in rows
+        ],
+    }
+    return payload
+
+
 @router.get("/{code}/dossier")
 def dossier(
     code: str,
@@ -600,6 +869,7 @@ def dossier(
     basic = _load_basic(conn, code)
     form = _load_form(conn, code, as_of)
     holders = _load_holders(conn, code)
+    lhb_seats = _load_lhb_seats(conn, code)
     holder_number = load_holdernumber_assist(code, as_of)
     observation = _compose_observation(form)
 
@@ -625,6 +895,7 @@ def dossier(
         basic=basic,
         form=form,
         holders=holders,
+        lhb_seats=lhb_seats,
         holder_number=holder_number,
         observation=observation,
     )
@@ -652,6 +923,7 @@ def dossier(
         "form_stage": form,
         "observation": observation,
         "holders": holders,
+        "lhb_seats": lhb_seats,
         "holder_number": holder_number,
         "lineage": {
             "status": "attested_usable",

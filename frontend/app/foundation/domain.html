@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>域详情 · ChunkyMonkey</title>
+<link rel="stylesheet" href="/app/css/site.css">
+</head>
+<body data-space="foundation" data-tab="domain">
+<header id="site-header"></header>
+<div class="tabbar" id="tabbar"></div>
+<main id="main">
+<section class="panel on" data-space="foundation" data-tab="domain">
+<button class="backlink" data-nav="foundation/matrix">← 返回矩阵</button>
+
+  <div class="crumbs" id="d-crumbs" style="margin-top:18px"></div>
+
+  <div class="hero compact" style="margin-top:22px">
+    <div class="kicker" id="d-kicker"></div>
+    <h1 class="sm" id="d-title"></h1>
+    <p class="sub" id="d-sub"></p>
+  </div>
+
+  <div class="kpi-strip" id="d-kpis" style="margin-top:40px"></div>
+
+  <div class="sec-title" style="margin-top:64px" id="d-heat-title">分区日历 · PARTITION MAP</div>
+  <div class="heat" id="d-heat"></div>
+  <div class="heat-legend" id="d-legend"></div>
+
+  <div class="sec-title" style="margin-top:64px">质量 · CHECKS —— 实测与审计分开标注</div>
+  <div class="qtable" id="d-checks"></div>
+
+  <div class="sec-title" style="margin-top:64px">契约与血缘 · CONTRACT / LINEAGE</div>
+  <div class="evidence" style="margin-top:0" id="d-contract"></div>
+</section>
+</main>
+<script src="/app/js/core.js"></script>
+<script src="/app/js/live.js"></script>
+</body>
+</html>

@@ -1367,6 +1367,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/routers/stock_dossier.py",
+      "kind": "consume",
+      "src": "table:market.v_price_kline_qfq"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/audit_data_completeness.py",
       "kind": "consume",
       "src": "table:market.v_price_kline_qfq"
@@ -1439,6 +1445,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_stock_dossier_api.py",
+      "kind": "consume",
+      "src": "table:market.v_price_kline_qfq"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_universe.py",
       "kind": "consume",
       "src": "table:market.v_price_kline_qfq"
@@ -1488,6 +1500,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_audit.py",
+      "kind": "consume",
+      "src": "table:reference.dim_active_a_stock"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/institution_profile.py",
       "kind": "consume",
       "src": "table:reference.dim_active_a_stock"
     },
@@ -3839,6 +3857,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/routers/stock_dossier.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_top_inst_seat_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/check_grain_uniqueness.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_top_inst_seat_daily"
@@ -3912,6 +3936,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_market_pulse_api.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_top_inst_seat_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_stock_dossier_api.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_top_inst_seat_daily"
     },
@@ -7961,8 +7991,8 @@
     }
   ],
   "meta": {
-    "edge_count": 1279,
-    "generated_at": "2026-08-25T10:55:45.939755+00:00",
+    "edge_count": 1284,
+    "generated_at": "2026-08-25T23:45:30.842715+00:00",
     "node_count": 451,
     "version": 2
   },

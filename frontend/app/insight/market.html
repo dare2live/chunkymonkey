@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>市场快照 · ChunkyMonkey</title>
+<link rel="stylesheet" href="/app/css/site.css">
+</head>
+<body data-space="insight" data-tab="market">
+<header id="site-header"></header>
+<div class="tabbar" id="tabbar"></div>
+<main id="main">
+<section class="panel on" data-space="insight" data-tab="market">
+<div class="hero compact">
+    <div class="kicker">Insight / Market Pulse · 消费向 · mart 投影</div>
+    <h1 class="sm">市场快照</h1>
+    <p class="sub">底座的只读投影。这一屏回答：<b>市场现在什么样 —— 以及这份"现在"有多旧。</b></p>
+  </div>
+
+  <div class="stale-banner soft">
+    <span class="lamp soft"><i></i><b>STALE</b></span>
+    <span style="font-size:12.5px; color:var(--ink-2); line-height:1.7">
+      本页读 <b>两张 mart</b>，新鲜度各自标注、互不借用：<br>
+      情绪快照 <span class="mono">mart_market_pulse_daily</span> 停在 <span class="mono">20260814</span>（下方 KPI 与梯队属它）；
+      板块资金 <span class="mono">mart_sector_pulse_daily</span> 已到 <span class="mono">20260820</span>（下方热力与流向属它）。
+      滞后是发布链状态，不是数据洞 —— 底座页可见各域前沿均为绿。
+    </span>
+    <span class="mono" style="margin-left:auto; white-space:nowrap">KPI as-of 20260814<br>FLOW as-of 20260820</span>
+  </div>
+
+  <div class="kpi-strip" style="margin-top:40px">
+    <div class="kpi"><div class="k-label">涨停 LIMIT UP</div><div class="k-val">63</div><div class="k-sub">跌停 9 · 炸板率 23.2%</div></div>
+    <div class="kpi"><div class="k-label">涨跌比 ADV/DEC</div><div class="k-val">0.85</div><div class="k-sub">跌多涨少 · 偏弱</div></div>
+    <div class="kpi"><div class="k-label">连板高度 STREAK</div><div class="k-val">5</div><div class="k-sub">晋级率 18.6%</div></div>
+    <div class="kpi"><div class="k-label">主力净流入 NET</div><div class="k-val dn">-129.9<span style="font-size:14px">亿</span></div><div class="k-sub">vendor imbalance 代理, 非守恒资金</div></div>
+    <div class="kpi"><div class="k-label">两融余额 MARGIN</div><div class="k-val">2.67<span style="font-size:14px;color:var(--ink-3)">万亿</span></div><div class="k-sub">日变动 <span class="dn">-18.4 亿</span></div></div>
+    <div class="kpi"><div class="k-label">PE(TTM) / 换手</div><div class="k-val">14.36</div><div class="k-sub">换手率 1.77%</div></div>
+    <div class="kpi"><div class="k-label">龙虎榜 DRAGON</div><div class="k-val">67<span style="font-size:14px;color:var(--ink-3)">家</span></div><div class="k-sub">机构净买 <span class="up">+21.3 亿</span></div></div>
+  </div>
+
+  <div class="sec-title" style="margin-top:64px">行业资金流 · SW 一级 31 板块 —— 当日净流 · 点击板块逐层下钻</div>
+  <div class="flowgrid" id="flowgrid"></div>
+  <div class="flow-legend">
+    <span>净流入</span>
+    <span class="sw" style="background:var(--in-1)"></span><span class="sw" style="background:var(--in-2)"></span><span class="sw" style="background:var(--in-3)"></span><span class="sw" style="background:var(--in-4)"></span>
+    <span style="margin:0 10px">&lt;5 / 5–20 / 20–50 / ≥50 亿 · 申万=tushare 全单口径</span>
+    <span class="sw" style="background:var(--out-1)"></span><span class="sw" style="background:var(--out-2)"></span><span class="sw" style="background:var(--out-3)"></span><span class="sw" style="background:var(--out-4)"></span>
+    <span>净流出</span>
+    <span style="margin-left:auto">as-of 20260820 · 点击任意板块 → 下钻 L2/L3/成分股 · 窗口视角见「资金流向」标签 →</span>
+  </div>
+
+  <div class="sec-title" style="margin-top:64px">连板梯队 · LIMIT LADDER —— 高度在哪一层 · 色阶=名次深浅</div>
+  <div class="ladder" id="ladder">
+    <div class="lrow">
+      <span class="rank">1</span>
+      <span class="l-name">芯片概念</span>
+      <span class="l-stat">5 天 5 板 · 连板 4 家 · 板块内涨停 20 家 · <span class="up">+1.52%</span></span>
+      <span class="lblocks"><i style="background:var(--in-4)"></i><i style="background:var(--in-4)"></i><i style="background:var(--in-4)"></i><i style="background:var(--in-4)"></i><i style="background:var(--in-4)"></i></span>
+    </div>
+    <div class="lrow">
+      <span class="rank">2</span>
+      <span class="l-name">机器人概念</span>
+      <span class="l-stat">2 天 2 板 · 连板 1 家 · 板块内涨停 15 家 · <span class="up">+0.48%</span></span>
+      <span class="lblocks"><i style="background:var(--in-3)"></i><i style="background:var(--in-3)"></i><i class="off"></i><i class="off"></i><i class="off"></i></span>
+    </div>
+  </div>
+
+  <div class="sec-title" style="margin-top:64px">潜伏象限 · QUIET INFLOW —— 横盘累积流入：价稳，钱在连续进来</div>
+  <div id="quietwrap">
+    <div class="typed-empty">
+      <span class="lamp unk"><i></i><b>0 rows</b></span>
+      <p>
+        当前两链均无 <span class="mono" style="display:inline">flow_regime = accum_in_silent</span> 的板块。<br>
+        这是<b>条件型空态</b>：不是没数据，是没有板块满足。空态本身即信息，UI 不用 filler 填满它。
+        <span class="mono">query: flow_board inflow · regime=accum_in_silent · typed_empty</span>
+      </p>
+    </div>
+  </div>
+</section>
+</main>
+<script src="/app/js/core.js"></script>
+<script src="/app/js/live.js"></script>
+</body>
+</html>

@@ -86,7 +86,7 @@ export CM_PORT="$PORT"
 
 echo "========================================"
 echo "  ChunkyMonkey 启动中..."
-echo "  地址: http://localhost:$PORT  (/ → /app edge 前端)"
+echo "  地址: http://localhost:$PORT  (/ → /app 观察前端)"
 echo "  API:  http://localhost:$PORT/docs"
 echo "  Python: $($PYTHON_BIN --version 2>&1)"
 if [[ "$RELOAD_MODE" == "1" ]]; then
@@ -97,7 +97,7 @@ fi
 echo "  按 Ctrl+C 停止"
 echo "========================================"
 
-# ---- 后端就绪后自动打开 v3 前端 ----
+# ---- 后端就绪后自动打开观察前端 ----
 # 设置 CM_OPEN_BROWSER=0 可禁用 (headless 跑批场景)
 open_frontend_when_ready() {
   # 60 次 × 0.5s = 30s 总等待

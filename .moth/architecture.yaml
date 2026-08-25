@@ -75,8 +75,7 @@ current:
   - id: application:api
     kind: application
     name: Decision-assist API
-    responsibility: FastAPI application mounting the live routers and the edge frontend
-      build.
+    responsibility: FastAPI application mounting the live routers and the observation frontend site.
     locator: backend/main.py
     evidence_ids:
     - master-design
@@ -158,8 +157,7 @@ desired:
   - id: application:api
     kind: application
     name: Decision-assist API
-    responsibility: FastAPI application mounting the live routers and the edge frontend
-      build.
+    responsibility: FastAPI application mounting the live routers and the observation frontend site.
     locator: backend/main.py
     evidence_ids:
     - master-design

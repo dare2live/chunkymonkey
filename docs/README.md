@@ -18,6 +18,7 @@
 | 文件 | 角色 |
 |---|---|
 | `../PROJECT_INDEX.md` | 短项目导航与当前资产判断，不是规则 owner |
+| `../frontend/DESIGN.md` | 界面信息架构、视觉系统、页面↔端点、展示诚实性；不是架构 owner |
 | `../FEATURE_MAP.md` | 机器生成的入口/数据域/writer 地图；可重建，不手改 |
 | `../goal.md「下一步」执行 backlog` | 数据底座执行 backlog（evidence-only；`goal.md` 指向） |
 | `../goal.md「下一步」执行 backlog + strategy_validation_contract.md §3.2/§3.3` | 后续策略执行 backlog（RX 前 BLOCKED；evidence-only） |

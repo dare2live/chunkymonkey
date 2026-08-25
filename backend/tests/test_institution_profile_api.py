@@ -143,6 +143,7 @@ def test_list_profiles_order_by_whitelist(mem):
 def test_get_profile_full_contract(mem):
     p = ip.get_profile("牛散A")
     assert p["n_closed"] == 50 and len(p["dims"]) == 1 and len(p["episodes"]) == 1
+    assert p["research_identity"]["trend_layers"]["national_team_stabilizer"] is False
     assert ip.get_profile("不存在") is None
 
 

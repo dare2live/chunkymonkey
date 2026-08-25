@@ -2,7 +2,7 @@
 
 > 由 `scripts/chunkyctl map` (backend/scripts/build_feature_map.py) 重生成, **勿手改**。
 > 只列机器可枚举事实 (入口/数据域/产表 writer/依赖热点/计数); 人工判断层 (坑/权重/状态) 在 `PROJECT_INDEX.md`。机器版: `data/reports/feature_map.json` (本地, 不入 git)。
-> Snapshot: 2026-08-16 21:06
+> Snapshot: 2026-08-26 07:35
 
 ## 1. 入口面
 
@@ -37,7 +37,7 @@
 | market_pulse | `/api/v3/pulse` | 9 |
 | ops_manual_run | `/api/v3/ops` | 5 |
 | paper_portfolio | `/api/v3/paper` | 5 |
-| stock_dossier | `/api/v3/stock` | 1 |
+| stock_dossier | `/api/v3/stock` | 3 |
 | stock_screener | `/api/v3/screener` | 2 |
 
 端点全列表在 json (`routes` 键)。
@@ -171,7 +171,7 @@
 
 ## 4. 依赖热点 (codegraph 派生)
 
-> Codegraph: 节点 10,726 | calls 边 12,454 | imports 边 3,531 (每次 codegraph sync 波动, 不参与漂移判定)
+> Codegraph: 节点 10,809 | calls 边 12,912 | imports 边 3,299 (每次 codegraph sync 波动, 不参与漂移判定)
 
 ### 被 import 最多的模块 (top 15)
 
@@ -208,26 +208,26 @@
 | backend/services/tier12_publish_writer.py | 9 |
 | backend/services/pipeline/context.py | 8 |
 | backend/services/snapshot_nominal_bind.py | 8 |
-| frontend/src/components/Card.tsx | 8 |
+| backend/services/data_sources/accepted_schema.py | 7 |
 
 ### LOC top 10 (God module 候选)
 
 | 文件 | 行数 |
 |---|---|
-| backend/services/data_sources/sync_runner.py | 4422 |
+| backend/services/data_sources/sync_runner.py | 4452 |
 | backend/services/market_pulse.py | 1597 |
-| backend/scripts/check_continuity_integrity.py | 1124 |
+| backend/scripts/check_continuity_integrity.py | 1523 |
+| backend/routers/stock_dossier.py | 958 |
+| backend/services/pipeline/acquire.py | 882 |
+| backend/scripts/update_watermark_sla.py | 819 |
 | backend/scripts/check_foundation_done.py | 800 |
 | backend/services/data_sources/holders_top10_acceptance.py | 800 |
 | backend/services/org_holding_aif10.py | 797 |
-| backend/services/pipeline/acquire.py | 797 |
 | backend/services/institution_follow_b0.py | 781 |
-| backend/services/data_sources/disclosure_event_partition.py | 779 |
-| backend/services/data_sources/security_day_partition.py | 779 |
 
 ## 5. 概览
 
-- chunkyctl 子命令 12 | launchd 任务 0 | router 7 (端点 32)
+- chunkyctl 子命令 12 | launchd 任务 0 | router 7 (端点 34)
 - sync_registry 数据域 44
 - 产表 33 (多 writer 11)
 

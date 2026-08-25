@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>快照封存 · ChunkyMonkey</title>
+<link rel="stylesheet" href="/app/css/site.css">
+</head>
+<body data-space="lab" data-tab="snapshots">
+<header id="site-header"></header>
+<div class="tabbar" id="tabbar"></div>
+<main id="main">
+<section class="panel on" data-space="lab" data-tab="snapshots">
+<div class="hero compact">
+    <div class="kicker">Lab / Snapshots &amp; Seals · immutable</div>
+    <h1 class="sm">快照与封存</h1>
+    <p class="sub">实验可比性的根基：换快照 = 新研究。这里的一切<b>只增不改</b>。</p>
+  </div>
+
+  <div class="snap-grid">
+    <div class="snap">
+      <span class="sn-kind">Eval Snapshot</span>
+      <h4>main_rally_bounded_20241115_20250530_n130_gtv2_20260702</h4>
+      <div class="sn-meta">
+        hash <b>779c1ae2d4c41cce…</b><br>
+        window <b>20241115 – 20250530</b> · n=130<br>
+        frozen <b>2026-08-24</b> · immutable
+      </div>
+    </div>
+    <div class="snap">
+      <span class="sn-kind">Disclosure Snapshot</span>
+      <h4>disclosure_bounded_holders_top10:20250331,…</h4>
+      <div class="sn-meta">
+        frozen <b>2026-08-24</b><br>
+        shadow 对账 <b>MATCH</b><br>
+        供 institution_follow B4 使用
+      </div>
+    </div>
+    <div class="snap">
+      <span class="sn-kind">Holdout Seal</span>
+      <h4>sealed ≥ 20250601</h4>
+      <div class="sn-meta">
+        opaque · hash <b>8382de60…</b><br>
+        单触原则 · 未开封<br>
+        任何「再看一眼」都会留下记录
+      </div>
+    </div>
+    <div class="snap" style="background:var(--paper-2)">
+      <span class="sn-kind">Pre-registration · 预注册</span>
+      <h4 style="font-family:inherit; font-size:13.5px; line-height:1.8; font-weight:500">换快照、换 universe、换折、换成本，任一变更都开启一份新研究，旧判决不失效也不迁移。</h4>
+      <div class="sn-meta">strategy_validation_contract.md · 冻结条款</div>
+    </div>
+  </div>
+</section>
+</main>
+<script src="/app/js/core.js"></script>
+<script src="/app/js/live.js"></script>
+</body>
+</html>

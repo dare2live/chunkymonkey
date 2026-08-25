@@ -1,0 +1,56 @@
+# Holder capital-role facet. Same grain as holder_name; not vendor holder_type.
+# foreign_own_funds is derived: own_funds_account minus domestic_insurer_own.
+# Partnerships named *自有资金投资合伙企业* do not match the suffix regex.
+
+version: 1
+definition_id: holder_capital_role.v1
+namespace: holder_capital_role
+
+tags:
+  - id: own_funds_account
+    label: 自有资金账户
+    aggregatable: false
+  - id: client_funds_account
+    label: 客户资金账户
+    aggregatable: false
+  - id: domestic_insurer_own
+    label: 境内保险自有资金
+    aggregatable: false
+  - id: foreign_own_funds
+    label: 外资自有资金
+    aggregatable: true
+
+presets:
+  - id: foreign_discretionary
+    tags: [foreign_own_funds]
+
+entities:
+  - match: regex
+    pattern: '^.+-自有资金(\([^)]+\))?$'
+    tag: own_funds_account
+    evidence:
+      - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm
+    exclude: []
+  - match: exact
+    pattern: 法国巴黎银行自有资金
+    tag: own_funds_account
+    evidence:
+      - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm
+  - match: regex
+    pattern: '^.+-客户资金.*$'
+    tag: client_funds_account
+    evidence:
+      - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm
+    exclude: []
+  - match: regex
+    pattern: '^(?!.*(南山人寿|台湾人寿|国泰人寿|富邦人寿)).*保险.*-自有资金(\([^)]+\))?$'
+    tag: domestic_insurer_own
+    evidence:
+      - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm
+    exclude: []
+  - match: regex
+    pattern: '^.*集团自有资金.*$'
+    tag: domestic_insurer_own
+    evidence:
+      - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm
+    exclude: []

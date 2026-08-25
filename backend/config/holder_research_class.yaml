@@ -1,0 +1,150 @@
+# Research-side holder facets. Not vendor holder_type, not taxonomy.yaml.
+# Closed policy roster + a few bounded regexes. Do not dump market-wide members.
+#
+# Default display preset national_team_stabilizer excludes nssf/pension.
+# Opt-in national_team_wind is the media/Wind-wide mix; callers must name it.
+# soe_operator is tagged for research but never auto-joins either 国家队 preset.
+
+version: 1
+definition_id: holder_research_class.v1
+namespace: holder_research_class
+include_nssf_in_default: false
+default_preset: national_team_stabilizer
+
+tags:
+  - id: huijin
+    label: 中央汇金
+    aggregatable: true
+  - id: csfc
+    label: 中国证券金融
+    aggregatable: true
+  - id: csfc_plan
+    label: 中证金融资产管理计划
+    aggregatable: true
+  - id: safe_platform
+    label: 外管局投资平台
+    aggregatable: true
+  - id: nssf
+    label: 全国社会保障基金
+    aggregatable: true
+  - id: pension
+    label: 基本养老保险基金
+    aggregatable: true
+  - id: soe_operator
+    label: 国资运营平台
+    aggregatable: false
+
+presets:
+  - id: national_team_stabilizer
+    tags: [huijin, csfc, csfc_plan, safe_platform]
+  - id: national_team_wind
+    tags: [huijin, csfc, csfc_plan, safe_platform, nssf, pension]
+
+entities:
+  - match: exact
+    pattern: 中央汇金投资有限责任公司
+    tag: huijin
+    evidence:
+      - https://www.cs.com.cn/xwzx/hg/202504/t20250409_6484169.html
+  - match: exact
+    pattern: 中央汇金资产管理有限责任公司
+    tag: huijin
+    evidence:
+      - https://www.cs.com.cn/xwzx/hg/202504/t20250409_6484169.html
+  - match: exact
+    pattern: 中央汇金资产管理有限公司
+    tag: huijin
+    evidence:
+      - https://www.cs.com.cn/xwzx/hg/202504/t20250409_6484169.html
+
+  - match: exact
+    pattern: 中国证券金融股份有限公司
+    tag: csfc
+    evidence:
+      - https://www.csf.com.cn/
+
+  - match: regex
+    pattern: '^.+-农业银行-.+中证金融资产管理计划$'
+    tag: csfc_plan
+    evidence:
+      - https://www.csf.com.cn/
+    exclude: []
+  - match: regex
+    pattern: '^(华夏|易方达|南方|嘉实|博时|广发|大成|中欧|银华|工银瑞信)中证金融资产管理计划$'
+    tag: csfc_plan
+    evidence:
+      - https://www.csf.com.cn/
+    exclude: []
+
+  - match: exact
+    pattern: 梧桐树投资平台有限责任公司
+    tag: safe_platform
+    evidence:
+      - https://www.safe.gov.cn/
+  - match: exact
+    pattern: 北京凤山投资有限责任公司
+    tag: safe_platform
+    evidence:
+      - https://www.safe.gov.cn/
+  - match: exact
+    pattern: 北京坤藤投资有限责任公司
+    tag: safe_platform
+    evidence:
+      - https://www.safe.gov.cn/
+
+  - match: exact
+    pattern: 全国社会保障基金理事会
+    tag: nssf
+    evidence:
+      - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm
+      - https://www.ssf.gov.cn/portal/zcfg/nbgzzd/webinfo/2021/12/1640743447258463.htm
+  - match: exact
+    pattern: 全国社会保障基金理事会(社保基金会)
+    tag: nssf
+    evidence:
+      - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm
+  - match: exact
+    pattern: 全国社会保障基金理事会转持一户
+    tag: nssf
+    evidence:
+      - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm
+  - match: exact
+    pattern: 全国社会保障基金理事会转持二户
+    tag: nssf
+    evidence:
+      - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm
+  - match: exact
+    pattern: 社会保障基金理事会
+    tag: nssf
+    evidence:
+      - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm
+  - match: regex
+    pattern: '^全国社保基金.+组合$'
+    tag: nssf
+    evidence:
+      - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm
+    exclude: []
+
+  - match: regex
+    pattern: '^基本养老保险基金.+组合$'
+    tag: pension
+    evidence:
+      - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm
+    exclude: []
+  - match: regex
+    pattern: '^基本养老保险基金[0-9]{6}$'
+    tag: pension
+    evidence:
+      - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm
+    exclude: []
+
+  - match: exact
+    pattern: 中国诚通控股集团有限公司
+    tag: soe_operator
+    evidence:
+      - https://www.cctgroup.com.cn/
+  - match: exact
+    pattern: 国新投资有限公司
+    tag: soe_operator
+    evidence:
+      - https://www.crhc.cn/

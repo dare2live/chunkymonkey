@@ -249,7 +249,7 @@ typed `run_outcome` 承载，它是系统语义（运行时必须成立），不
 消费面（改任一处都要回看本节）：`backend/services/pipeline/run.py`、
 `backend/services/pipeline/store.py`、`backend/services/notification/dispatcher.py`、
 `backend/routers/ops_manual_run.py`、`scripts/manual_job_wrapper.py`、
-`frontend/src/api/ops.ts` + `frontend/src/pages/WorkbenchPage.tsx`。
+`frontend/app/foundation/ops.html` + `frontend/app/js/live.js`。
 本节与代码 enum 的一致性由 moth 断言 `run-outcome-four-states-law` 机械锁定。
 
 ### 5.5 变量积木分层（L0–L4）
@@ -411,6 +411,9 @@ projection / failure 证据裁决；full pipeline、消费者切换与发布另�
 | `dc_industry` | 东财行业 L1/L2/L3 | 只在东财链内使用 |
 | `dc_concept` | 东财概念/题材 | 多对多、不可加总 |
 | `region/style/event` | 地域、风格、事件标签 | 正交 facet |
+| `holder_research_class` | 研究侧股东身份 facet（稳市队/社保/国资运营等）；与供应商 `holder_type` 分立，一名多 tag；国家队只经命名预设 `national_team_stabilizer`（默认，不含社保）或 `national_team_wind`（显式含社保与基本养老）加总。龙虎榜席位、北向流量不进本 namespace | 多对多；禁止把不同预设静默加总 |
+| `holder_capital_role` | 股东户名上的资金角色（外资自有资金 / 客户资金 / 境内保险自有）；与 `holder_research_class` 同粒、分立预设。禁止把「自有资金」字面当成外资 | 多对多；禁止与国家队静默加总 |
+| `seat_research_class` | 龙虎榜 `exalter` 营业部政策名单（机构专用 / 沪深股通专用 / 游资白名单）；民间名是 `alias_kind=folk`，不是法人名 | 按席位日，不可与股东持仓加总 |
 
 “板块”只可作为 UI 总称。跨体系映射必须声明 `equivalent/broader/narrower/overlap` 和证据；名称相同只能产生待审候选。东财概念没有官方层级时保持平面标签。
 

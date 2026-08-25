@@ -32,6 +32,7 @@ from services.data_sources.disclosure_enrichment_projection import (
     holders_episode_events_sql,
     holders_period_keys_sql,
 )
+from services.research_identity import annotate_holder
 from services.data_sources.holders_top10_schema import (
     CANONICAL_TABLE as HOLDERS_CANONICAL,
 )
@@ -441,7 +442,10 @@ def list_profiles(*, holder_type: str | None = None, min_episodes: int = MIN_EPI
         cols = ["holder", "holder_type", "n_closed", "median_alpha", "avg_alpha",
                 "win_rate_alpha", "median_ret", "avg_hold_days", "low_sample",
                 "n_episodes", "n_holding", "is_passive_holder", "metrics_status"]
-        return [dict(zip(cols, r)) for r in rows]
+        out = [dict(zip(cols, r)) for r in rows]
+        for row in out:
+            row["research_identity"] = annotate_holder(str(row["holder"]))
+        return out
     finally:
         con.close()
 
@@ -462,6 +466,7 @@ def get_profile(holder: str) -> dict[str, Any] | None:
                 "win_rate_alpha", "median_ret", "avg_hold_days", "low_sample",
                 "n_episodes", "n_holding", "is_passive_holder", "metrics_status"]
         out: dict[str, Any] = dict(zip(cols, head))
+        out["research_identity"] = annotate_holder(str(out["holder"]))
         out["dims"] = [dict(zip(["dim_type", "dim_value", "n_closed", "median_alpha",
                                  "win_rate_alpha", "low_sample"], r)) for r in con.execute(
             "SELECT dim_type, dim_value, n_closed, median_alpha, win_rate_alpha, low_sample "
@@ -473,6 +478,17 @@ def get_profile(holder: str) -> dict[str, Any] | None:
             "SELECT stock, open_date, close_date, status, ret_c1, alpha_c1, n_adds, n_trims, "
             "sw_l1_at_open, seeded FROM fact_inst_episode WHERE holder = ? "
             "ORDER BY open_date DESC LIMIT 200", [holder]).fetchall()]
+        # 名称投影 (2026-08-25, 加工层下移: 前端只展示不 lookup): dim_active_a_stock 是
+        # 身份真相源 (同 stock_dossier 读路); fail-open — dim 未覆盖时 name=None,
+        # 前端照实空态, 绝不虚构名称。
+        try:
+            from services.security_master import active_stock_name_map
+            codes = list({ep["stock"] for ep in out["episodes"]})
+            names = active_stock_name_map(codes) if codes else {}
+        except Exception:  # noqa: BLE001 — identity dim optional; fail-open unknown name
+            names = {}
+        for ep in out["episodes"]:
+            ep["name"] = names.get(ep["stock"])
         return out
     finally:
         con.close()
@@ -488,10 +504,10 @@ def recent_signals(*, days: int = 30, min_holder_episodes: int = MIN_EPISODES,
 
     **非跟随回测口径声明**: 本函数只是"最近新开episode"展示流, 返回的 holder_median_alpha/
     holder_win_rate 是该机构自身历史战绩(自身整窗VWAP成本口径, 见 build_profiles), 不是
-    "跟随该signal的预期收益"。真正 execution-aware 的跟随策略回测(信号日次交易日open入场+
-    涨跌停顺延+成本+PIT expanding-window机构评级)是设计文档
-    docs/strategy_validation_contract.md §8.2 定义的独立功能, 尚未实现
-    (E3-E5 探索弧未走), 消费方/前端展示本函数结果时不应暗示"跟随可获得同等收益"。
+    "跟随该signal的预期收益"。真正 execution-aware 的跟随策略是
+    docs/strategy_validation_contract.md §8.1 的 `institution_follow_v1` StrategySpec
+    （画像 ≠ 跟随 spec ≠ E B0/B4 隔夜动量消融）。本函数属于画像展示层, 消费方/前端
+    展示结果时不应暗示"跟随可获得同等收益"。
     """
     con = _ro_conn()
     try:
@@ -509,6 +525,9 @@ def recent_signals(*, days: int = 30, min_holder_episodes: int = MIN_EPISODES,
             [int(min_holder_episodes), int(days), int(limit)]).fetchall()
         cols = ["holder", "stock", "open_date", "open_notice", "holder_type", "sw_l1_at_open",
                 "n_adds", "holder_n_closed", "holder_median_alpha", "holder_win_rate"]
-        return [dict(zip(cols, r)) for r in rows]
+        out = [dict(zip(cols, r)) for r in rows]
+        for row in out:
+            row["research_identity"] = annotate_holder(str(row["holder"]))
+        return out
     finally:
         con.close()

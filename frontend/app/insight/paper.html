@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>观察账本 · ChunkyMonkey</title>
+<link rel="stylesheet" href="/app/css/site.css">
+</head>
+<body data-space="insight" data-tab="paper">
+<header id="site-header"></header>
+<div class="tabbar" id="tabbar"></div>
+<main id="main">
+<section class="panel on" data-space="insight" data-tab="paper">
+<div class="hero compact">
+    <div class="kicker">Insight / Paper Ledger · 观察账本 · paper/portfolio + paper/nav</div>
+    <h1 class="sm">观察账本</h1>
+    <p class="sub">模拟持仓的诚实账本。<b>空仓也是账本的一种状态。</b></p>
+  </div>
+
+  <div id="paperbody">
+  <div class="typed-empty" style="margin-top:40px">
+    <span class="lamp unk"><i></i><b>0 positions</b></span>
+    <p>
+      当前无任何观察持仓。<b>条件型空态</b>：账本域健康，只是没有任何策略够格产生持仓 —— 见 LAB 发布门第 8 门。
+      <span class="mono">paper_ledger · typed_empty · 与 LAB verdict 联动而非独立展示</span>
+    </p>
+  </div>
+
+  <div class="sec-title" style="margin-top:56px">历史留档 · LEGACY —— 只读，不参与统计</div>
+  <div class="typed-empty" style="border-style:solid; border-color:var(--line-2)">
+    <span class="lamp hard"><i></i><b>NONCONFORMING</b></span>
+    <p>
+      存在历史账本记录，但不符合现行协议 (无冻结快照 / 无 PIT 截断 / 无成本假设)。<br>
+      标记 <b>NONCONFORMING</b>，只读留档：不许计入胜率，不许画收益曲线，不许「仅供参考」。
+      <span class="mono">legacy ledger · sealed read-only · excluded from all metrics</span>
+    </p>
+  </div>
+  </div>
+</section>
+</main>
+<script src="/app/js/core.js"></script>
+<script src="/app/js/live.js"></script>
+</body>
+</html>

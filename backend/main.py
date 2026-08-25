@@ -210,24 +210,20 @@ async def favicon():
 # 静态文件
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# 前端沿革: 旧 vanilla JS 前端(index.html+assets/js/*, 挂/assets)2026-07-07 全库死代码普查
-# 簇1+2 整体退役物删(render_index_html/build_index_asset_version 无任何路由调用, 确认孤儿);
-# 旧 v3 React 设计稿已归档 .archive/; dossier 视图 2026-06-28 退役 (根路由曾指它 → 307→404
-# = 用户"双击 start.command 无法启动"的真相, 2026-07-03 修)。
-# 现行唯一前端 = edge React (frontend/, 2026-07-02): 生产 build 产物挂 /app (vite base=/app/,
-# 避开旧 dossier /assets 挂载); 改前端后 cd frontend && npm run build 刷新产物。
-_EDGE_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-if _EDGE_DIST.exists():
-    app.mount("/app", StaticFiles(directory=str(_EDGE_DIST), html=True), name="edge_app")
+# 现行唯一前端 = frontend/app/ 多页静态站（DESIGN.md owner；无构建）。
+# 只挂 app/，不把 DESIGN.md / README 暴露成静态目录。
+_FRONTEND_APP = PROJECT_ROOT / "frontend" / "app"
+if _FRONTEND_APP.is_dir():
+    app.mount("/app", StaticFiles(directory=str(_FRONTEND_APP), html=True), name="app")
 
 
 @app.get("/")
 async def index():
     """根路径进现有观察前端；research/legacy 页面不等于 Tier4 决策产品。"""
     from fastapi.responses import RedirectResponse
-    if _EDGE_DIST.exists():
+    if (_FRONTEND_APP / "index.html").is_file():
         return RedirectResponse(url="/app/")
-    return {"error": "edge 前端产物缺失", "fix": "cd frontend && npm install && npm run build"}
+    return {"error": "frontend_missing", "fix": "restore frontend/app/"}
 
 
 @app.get("/v3", status_code=410)
@@ -236,6 +232,6 @@ async def index():
 @app.get("/legacy/", status_code=410)
 async def retired_frontends():
     """旧前端退役收口；历史设计稿只保留在 git 历史中。
-    当前唯一前端 = /app/ (edge React)。2026-07-07 修: 此前误指向已随2026-06-28重建物删的
+    当前唯一前端 = /app/ (`frontend/app/` 多页静态站)。2026-07-07 修: 此前误指向已随2026-06-28重建物删的
     /api/dossier/view (307→404 断链), 改 410 Gone + redirect 字段指现行前端。"""
     return {"error": "legacy_retired", "redirect": "/app/"}

@@ -152,6 +152,9 @@ blocking_paths:
 - tests/scripts/test_run_ci_pytest.py
 - tests/scripts/test_check_foundation_done.py
 - tests/test_stock_dossier_api.py
+- tests/test_frontend_site.py
+- tests/services/test_holder_research_class.py
+- tests/services/test_research_identity_overlays.py
 - tests/test_moneyflow_assist.py
 - tests/test_decision_intersection.py
 - tests/test_cx3_capability_bricks.py

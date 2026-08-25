@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>发布门 · ChunkyMonkey</title>
+<link rel="stylesheet" href="/app/css/site.css">
+</head>
+<body data-space="lab" data-tab="release">
+<header id="site-header"></header>
+<div class="tabbar" id="tabbar"></div>
+<main id="main">
+<section class="panel on" data-space="lab" data-tab="release">
+<div class="hero compact">
+    <div class="kicker">Lab / Release Gates · 契约 §9 · 九项</div>
+    <h1 class="sm">发布门</h1>
+    <p class="sub">从「实验」到「生产策略」的九道门。当前进度：<b>八过其一，唯独最要紧的那道没过。</b></p>
+  </div>
+
+  <div class="qtable" style="margin-top:40px">
+    <div class="gaterow"><span class="g-sym" style="color:var(--ok)">✓</span><span class="g-name">1 · 冻结快照</span><span class="g-detail">main_rally_bounded_20241115_20250530_n130_gtv2_20260702 · immutable</span></div>
+    <div class="gaterow"><span class="g-sym" style="color:var(--ok)">✓</span><span class="g-name">2 · PIT 截断</span><span class="g-detail">特征 available_at ≤ 决策时 · purged WF · embargo</span></div>
+    <div class="gaterow"><span class="g-sym" style="color:var(--ok)">✓</span><span class="g-name">3 · holdout 单触</span><span class="g-detail">sealed start 20250601 · opaque · hash 8382de60… · 未开封复用</span></div>
+    <div class="gaterow"><span class="g-sym" style="color:var(--soft)">◐</span><span class="g-name">4 · 纸面执行</span><span class="g-detail">协议要素齐 (T+1 / nominal / 涨跌停停牌 / 成本) · 离线 measured —— 尚未纸面运行</span></div>
+    <div class="gaterow"><span class="g-sym" style="color:var(--ok)">✓</span><span class="g-name">5 · 逐层消融</span><span class="g-detail">B0 / B1 / B2 同快照同折同成本，边际可归因</span></div>
+    <div class="gaterow"><span class="g-sym" style="color:var(--ok)">✓</span><span class="g-name">6 · 泄漏反证</span><span class="g-detail">pit-audit 通过 · 无 latest-snapshot / 全期 fit / inclusive 边界</span></div>
+    <div class="gaterow"><span class="g-sym" style="color:var(--ok)">✓</span><span class="g-name">7 · artifact 存档</span><span class="g-detail">eval protocol + manifest + 判决 reason 全留痕</span></div>
+    <div class="gaterow" style="background:var(--paper-2)"><span class="g-sym" style="color:var(--hard)">✗</span><span class="g-name">8 · accept verdict</span><span class="g-detail"><b style="color:var(--ink)">7 实验 0 accept</b> · 全部 blocked · claimable=false</span></div>
+    <div class="gaterow"><span class="g-sym" style="color:var(--ink-3)">—</span><span class="g-name" style="color:var(--ink-3)">9 · 监控冻结</span><span class="g-detail">未进入 · 依赖第 8 门</span></div>
+  </div>
+
+  <div style="margin-top:72px; border-top:1px solid var(--ink); padding-top:28px; display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:16px">
+    <span style="font-size:clamp(28px,4vw,44px); font-weight:680; letter-spacing:-0.02em">STRATEGY RELEASE — 未发布</span>
+    <span class="mono" style="font-size:11px; color:var(--ink-3)">gate 8/9 · blocking</span>
+  </div>
+</section>
+</main>
+<script src="/app/js/core.js"></script>
+<script src="/app/js/live.js"></script>
+</body>
+</html>
