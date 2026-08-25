@@ -452,3 +452,74 @@ def test_parameterized_job_rejects_bare_run(monkeypatch):
         ops_manual_run.run_job("sync_land_accept")
     assert exc.value.status_code == 400
     assert "land-accept" in str(exc.value.detail)
+
+
+def test_derive_current_activity_progress_pct_and_phase_index():
+    """展示变量下移: progress_pct / phase_index 由后端产出, 前端不推断。"""
+    # 活跃 run 命中 ② 段 (acquire): phase_index=1, pct=round((1+0.45)/5*100)=29
+    act = ops_manual_run._derive_current_activity(
+        tail=["[20:41:18] === ① 获取 ACQUIRE (纯采集 →L0, 不计算) ==="],
+        mtime=None,
+        writer_busy=True,
+        process_hint=True,
+        owner="pipeline.run",
+        owner_pid=99,
+        alert_summary=None,
+    )
+    assert act["phase"] == "acquire"
+    assert act["phase_index"] == 1
+    assert act["progress_pct"] == 29
+    # 活跃但日志未命中任何段 → running: phase_index=None, pct=8
+    act2 = ops_manual_run._derive_current_activity(
+        tail=["[20:41:18] some unstructured line"],
+        mtime=None,
+        writer_busy=False,
+        process_hint=True,
+        owner=None,
+        owner_pid=None,
+        alert_summary=None,
+    )
+    assert act2["phase"] == "running"
+    assert act2["phase_index"] is None
+    assert act2["progress_pct"] == 8
+    # 已结束收尾态 → 100 (不再显示半满)
+    for outcome in ("success", "soft_waiting_clock", "integrity_observe"):
+        done = ops_manual_run._derive_current_activity(
+            tail=[],
+            mtime=None,
+            writer_busy=False,
+            process_hint=False,
+            owner=None,
+            owner_pid=None,
+            alert_summary=None,
+            run_outcome=outcome,
+            run_outcome_label=outcome,
+        )
+        assert done["progress_pct"] == 100, outcome
+    # 硬失败 → 35 (卡在何处看 phase/label)
+    failed = ops_manual_run._derive_current_activity(
+        tail=[],
+        mtime=None,
+        writer_busy=False,
+        process_hint=False,
+        owner=None,
+        owner_pid=None,
+        alert_summary="TIER0 BLOCK",
+        run_outcome="hard_fail",
+        run_outcome_label="硬失败",
+    )
+    assert failed["phase"] == "fail"
+    assert failed["progress_pct"] == 35
+    # 空闲无 outcome → 0
+    idle = ops_manual_run._derive_current_activity(
+        tail=[],
+        mtime=None,
+        writer_busy=False,
+        process_hint=False,
+        owner=None,
+        owner_pid=None,
+        alert_summary=None,
+    )
+    assert idle["phase"] == "idle"
+    assert idle["phase_index"] is None
+    assert idle["progress_pct"] == 0

@@ -110,7 +110,7 @@ def compute_bounds(data_start: Any, today: Optional[datetime.date] = None) -> tu
     """
     del data_start  # 刻意忽略: 采集轴起点不是报告期/解禁日的合法下界
     lower = DEFAULT_LOWER_BOUND
-    today = today or datetime.date.today()
+    today = today or datetime.date.today()  # rule-compliance: ok evidence=审计报告 horizon 用日历天上界(+SLACK), 非交易日锚; 墙钟即语义本身
     upper = (today + datetime.timedelta(days=UPPER_BOUND_SLACK_DAYS)).strftime("%Y%m%d")
     return lower, upper
 

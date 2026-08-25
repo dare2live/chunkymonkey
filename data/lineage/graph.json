@@ -6473,6 +6473,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/audit_date_bounds.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_index_member_all"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/build_sw_industry_view.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_index_member_all"
@@ -7253,6 +7259,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/audit_date_bounds.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stk_holdernumber"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/holdernumber_assist.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stk_holdernumber"
@@ -7949,9 +7961,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1277,
-    "generated_at": "2026-08-23T05:17:08.300843+00:00",
-    "node_count": 450,
+    "edge_count": 1279,
+    "generated_at": "2026-08-25T10:55:45.939755+00:00",
+    "node_count": 451,
     "version": 2
   },
   "nodes": [
@@ -8209,6 +8221,14 @@
         "path": "backend/scripts/audit_data_completeness.py"
       },
       "id": "consumer:backend/scripts/audit_data_completeness.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
+        "path": "backend/scripts/audit_date_bounds.py"
+      },
+      "id": "consumer:backend/scripts/audit_date_bounds.py",
       "kind": "consumer"
     },
     {

@@ -199,6 +199,26 @@ _PHASE_PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
     )),
 )
 
+# 五段链顺序 (progress_pct 的分母; 展示变量下移 — 前端只渲染不推断)
+_PHASE_ORDER = ("preflight", "acquire", "clean", "process", "store")
+
+
+def _phase_progress(*, phase_id: str, phase_index: int | None, active: bool,
+                    run_outcome: str | None) -> int:
+    """五段链进度百分比。active: 段内进行中按 (idx+0.45)/5 估算 (段内细粒度仍看
+    progress_line / 日志); 非 active: success / soft_waiting_clock / integrity_observe
+    = 100 (已结束的 run 不该显示半满), hard_fail = 35 (卡在何处看 phase/phase_label),
+    其余 (空闲/无日志) = 0。"""
+    if active:
+        if phase_index is None:
+            return 8
+        return min(96, round((phase_index + 0.45) / len(_PHASE_ORDER) * 100))
+    if run_outcome in {"success", "soft_waiting_clock", "integrity_observe"}:
+        return 100
+    if run_outcome == "hard_fail":
+        return 35
+    return 0
+
 
 def _job_or_404(job: str) -> dict[str, Any]:
     spec = MANUAL_JOBS.get(job)
@@ -431,9 +451,13 @@ def _derive_current_activity(
     else:
         summary = "空闲 · 尚无日志"
 
+    phase_index = _PHASE_ORDER.index(phase_id) if phase_id in _PHASE_ORDER else None
     return {
         "phase": phase_id,
         "phase_label": phase_label,
+        "phase_index": phase_index,
+        "progress_pct": _phase_progress(phase_id=phase_id, phase_index=phase_index,
+                                        active=active, run_outcome=run_outcome),
         "summary": summary,
         "progress_line": progress[:320] if progress else None,
         "log_age_s": round(age_s, 1) if age_s is not None else None,

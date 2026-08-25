@@ -145,6 +145,12 @@ def test_heatmap_matrix_topn_and_days(client):
     assert top["total_net_amount"] == pytest.approx(100.0)
     assert len(top["values"]) == len(body["dates"])
     assert top["values"] == [pytest.approx(20.0)] * 5
+    # 展示变量下移: 板块窗口内逐日累计 + 截面 total_series (全量合计, 不受 top 截断)
+    assert top["cum_values"] == [pytest.approx(v) for v in (20.0, 40.0, 60.0, 80.0, 100.0)]
+    ts = body["total_series"]
+    assert ts["values"] == [pytest.approx(v) for v in (30.0, 25.0, 27.0, 21.0, 17.0)]
+    assert ts["cum_values"] == [pytest.approx(v) for v in (30.0, 55.0, 82.0, 103.0, 120.0)]
+    assert body["total_series_note"] is None
     # top 截断
     r2 = client.get("/api/v3/pulse/heatmap?top=1")
     assert [s["sector_code"] for s in r2.json()["sectors"]] == ["BK0004.DC"]
@@ -178,6 +184,10 @@ def test_heatmap_concept_namespace(client):
     assert body["chain"] == mp.CHAIN_DC_CONCEPT
     assert [s["sector_code"] for s in body["sectors"]] == ["BK0002.DC", "BK0003.DC"]
     assert body["sectors"][0]["total_net_amount"] == pytest.approx(500.0)
+    # 概念成分重叠 → 截面合计无意义: total_series=None + note; 板块行 cum_values 仍有
+    assert body["total_series"] is None
+    assert "重叠" in body["total_series_note"]
+    assert body["sectors"][0]["cum_values"][-1] == pytest.approx(500.0)
 
 
 def test_heatmap_unknown_chain_400(client):
@@ -344,9 +354,11 @@ def test_flow_board_regime_groups_and_stripe(client):
     out = {x["sector_code"]: x for x in body["outflow"]}
     assert out["BK0001.DC"]["flow_regime"] == "surge_out"
     assert out["BK0001.DC"]["cum_ratio_20d"] == pytest.approx(5.0 / 2e6 * 100)  # (7+1-3)/总市值
-    # stripe: 与 stripe_dates 对齐的逐日净流序列
+    # stripe: 与 stripe_dates 对齐的逐日净流序列 + 后端下移的累计序列
     assert body["stripe_dates"] == D
     assert out["BK0001.DC"]["stripe"] == [pytest.approx(v) for v in (10.0, 5.0, 7.0, 1.0, -3.0)]
+    assert out["BK0001.DC"]["stripe_cum"] == [
+        pytest.approx(v) for v in (10.0, 15.0, 22.0, 23.0, 20.0)]
     concept = client.get(f"/api/v3/pulse/flow_board?chain={mp.CHAIN_DC_CONCEPT}").json()
     assert [x["sector_code"] for x in concept["inflow"]] == ["BK0002.DC"]
     assert concept["inflow"][0]["flow_regime"] == "accum_in_driving"
@@ -354,9 +366,10 @@ def test_flow_board_regime_groups_and_stripe(client):
     assert [x["sector_code"] for x in concept["outflow"]] == ["BK0003.DC"]
     assert concept["outflow"][0]["flow_regime"] == "accum_out_silent"
     assert concept["outflow"][0]["cum_ratio_20d"] == pytest.approx(-0.003)
-    # stripe_days=0 关闭条纹
+    # stripe_days=0 关闭条纹 (cum 同步为空)
     r2 = client.get("/api/v3/pulse/flow_board?stripe_days=0")
     assert r2.json()["stripe_dates"] == [] and r2.json()["inflow"][0]["stripe"] == []
+    assert r2.json()["inflow"][0]["stripe_cum"] == []
 
 
 def test_flow_board_sw_chain_level(client):
@@ -369,6 +382,8 @@ def test_flow_board_sw_chain_level(client):
     row = body["inflow"][0]
     assert row["flow_regime"] == "accum_in_driving" and row["level"] == "L1"
     assert row["cum_net"] == pytest.approx(130000.0)  # cw=3: 5e4+5e4+3e4
+    # stripe_cum: 窗口全序列累计 (5e4×4+3e4), 缺日 None 不补零
+    assert row["stripe_cum"][-1] == pytest.approx(230000.0)
     assert body["outflow"] == []
     # L2: 801011 最新日 (D4) 成员无流数据 → net/regime NULL → 不进榜 (不知道≠0, 不伪造)
     r2 = client.get(f"/api/v3/pulse/flow_board?chain={mp.CHAIN_SW}&level=L2")
@@ -385,6 +400,7 @@ def test_flow_stripe_series(client):
     assert body["sector_code"] == "BK0001.DC" and body["sector_name"] == "煤炭行业"
     assert body["dates"] == D[2:]
     assert body["values"] == [pytest.approx(v) for v in (7.0, 1.0, -3.0)]
+    assert body["cum_values"] == [pytest.approx(v) for v in (7.0, 8.0, 5.0)]
     # 未知码 → 200 空 (不猜); 未知 chain → 400
     r2 = client.get("/api/v3/pulse/flow_stripe?code=BK9999.DC")
     assert r2.status_code == 200 and r2.json()["dates"] == []
@@ -421,6 +437,12 @@ def test_rotation_heatmap_level_param(client):
     codes3 = [s["sector_code"] for s in body3["sectors"]]
     assert len(codes3) == 5 and codes3[0] == "801010.SI" and "801011.SI" not in codes3
     assert body3["sectors"][0]["total_net_amount"] == pytest.approx(230000.0)
+    # sw L1 是划分截面 → total_series 产出 (无流板块 SUM 忽 NULL 不污染)
+    assert body3["sectors"][0]["cum_values"] == [
+        pytest.approx(v) for v in (5e4, 1e5, 1.5e5, 2e5, 2.3e5)]
+    assert body3["total_series"]["values"] == [
+        pytest.approx(v) for v in (5e4, 5e4, 5e4, 5e4, 3e4)]
+    assert body3["total_series"]["cum_values"][-1] == pytest.approx(230000.0)
     r4 = client.get(f"/api/v3/pulse/heatmap?chain={mp.CHAIN_SW}&level=L2")
     assert [s["sector_code"] for s in r4.json()["sectors"]] == ["801011.SI"]
     assert client.get(f"/api/v3/pulse/heatmap?chain={mp.CHAIN_SW}&level=LX").status_code == 400
@@ -522,12 +544,21 @@ def test_warnings_dropout_and_quiet_outflow(client):
     assert drop["prev_date"] == D[3] and drop["latest_date"] == D[4]
     # BK0003 streak 5 >= 3 进预警; BK0001 streak 1 不进
     assert [x["sector_code"] for x in body["quiet_outflows"]] == ["BK0003.DC"]
-    assert body["quiet_outflows"][0]["quiet_outflow_days"] == 5
+    w = body["quiet_outflows"][0]
+    assert w["quiet_outflow_days"] == 5
+    # 行内 stripe/stripe_cum (按行自身 chain 取日期; 前端免 N+1 调 flow_stripe)
+    assert w["stripe_dates"] == D
+    assert w["stripe"] == [pytest.approx(-10.0)] * 5
+    assert w["stripe_cum"] == [pytest.approx(v) for v in (-10.0, -20.0, -30.0, -40.0, -50.0)]
+    # stripe_days=0 关闭
+    w0 = client.get("/api/v3/pulse/warnings?stripe_days=0").json()["quiet_outflows"][0]
+    assert w0["stripe_dates"] == [] and w0["stripe"] == [] and w0["stripe_cum"] == []
 
 
 def test_empty_tables_all_endpoints_200(empty_client):
     for path, empty_shape in [
-        ("/api/v3/pulse/heatmap", {"dates": [], "sectors": []}),
+        ("/api/v3/pulse/heatmap", {"dates": [], "sectors": [],
+                                   "total_series": None, "total_series_note": None}),
         ("/api/v3/pulse/rotation", {"latest_date": None, "prev_date": None, "sectors": []}),
         (f"/api/v3/pulse/rotation?chain={mp.CHAIN_DC_INDUSTRY}",
          {"latest_date": None, "prev_date": None, "sectors": []}),
@@ -536,7 +567,8 @@ def test_empty_tables_all_endpoints_200(empty_client):
         ("/api/v3/pulse/flow_board", {"trade_date": None, "stripe_dates": [],
                                       "inflow": [], "outflow": []}),
         (f"/api/v3/pulse/flow_board?chain={mp.CHAIN_SW}", {"inflow": [], "outflow": []}),
-        ("/api/v3/pulse/flow_stripe?code=BK0001.DC", {"dates": [], "values": []}),
+        ("/api/v3/pulse/flow_stripe?code=BK0001.DC", {"dates": [], "values": [],
+                                                      "cum_values": []}),
         ("/api/v3/pulse/drill", {"date": None, "breadcrumb": [], "rows": []}),
         (f"/api/v3/pulse/drill?chain={mp.CHAIN_DC_INDUSTRY}", {"date": None, "rows": []}),
         (f"/api/v3/pulse/drill?chain={mp.CHAIN_DC_CONCEPT}", {"date": None, "rows": []}),

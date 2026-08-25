@@ -212,6 +212,20 @@ def _recent_dates(conn, chain: str, n: int) -> list[str]:
     return sorted(r[0] for r in rows)
 
 
+def _cum_skip_null(vals: list[Any]) -> list[Any]:
+    """逐日累计净额序列 (后端加工层下移: 前端只展示不计算)。
+    None 该位保持 None (缺日不补零), 后续非 None 值在其前累计基础上续算。"""
+    out: list[Any] = []
+    acc = 0.0
+    for v in vals:
+        if v is None:
+            out.append(None)
+        else:
+            acc += v
+            out.append(acc)
+    return out
+
+
 @router.get("/heatmap")
 def heatmap(chain: str = mp.CHAIN_DC_INDUSTRY,
             level: str = "L1",
@@ -222,7 +236,10 @@ def heatmap(chain: str = mp.CHAIN_DC_INDUSTRY,
     (dc 链 1000+ 板块)。v3: sw 链 net_amount 不再恒 NULL (成分个股全单净流聚合, 与 dc 主力
     口径并列不可比); level 参数默认 L1 (仅 sw 链生效 — 不滤则 L2/L3 行混入破坏 v2 契约;
     dc namespace 无申万层级, 该参数忽略)。东财行业/概念直接由 chain 选择，禁止再用
-    content_type 在同一 chain 内二次分流；SW 链按 level 输出申万L1/L2/L3。"""
+    content_type 在同一 chain 内二次分流；SW 链按 level 输出申万L1/L2/L3。
+    展示变量下移 (加工层原则): 每板块带 cum_values (窗口内逐日累计), 且对划分截面
+    (sw 按 level / dc_industry 整链) 输出 total_series — 截面全量合计, 不受 top 截断;
+    dc_concept 成分重叠, 合计无意义 → total_series=None 并附 note。"""
     _require_chain(chain)
     ct_filter = ""
     ct_params: list[Any] = []
@@ -230,9 +247,12 @@ def heatmap(chain: str = mp.CHAIN_DC_INDUSTRY,
         _require_level(level)
         ct_filter = "AND level = ?"
         ct_params = [level]
+    total_note = ("概念板块成分互相重叠, 跨板块合计无意义"
+                  if chain == mp.CHAIN_DC_CONCEPT else None)
     dates = _recent_dates(conn, chain, days)
     if not dates:
-        return {"status": "ok", "chain": chain, "dates": [], "sectors": []}
+        return {"status": "ok", "chain": chain, "dates": [], "sectors": [],
+                "total_series": None, "total_series_note": total_note}
     ph = ",".join("?" * len(dates))
     rows = conn.execute(f"""
         WITH win AS (
@@ -259,7 +279,18 @@ def heatmap(chain: str = mp.CHAIN_DC_INDUSTRY,
             by_code[code] = sec
             sectors.append(sec)
         sec["values"][idx[td]] = net
-    return {"status": "ok", "chain": chain, "dates": dates, "sectors": sectors}
+    for sec in sectors:
+        sec["cum_values"] = _cum_skip_null(sec["values"])
+    total_series = None
+    if chain != mp.CHAIN_DC_CONCEPT:
+        tot = {r[0]: r[1] for r in conn.execute(
+            f"SELECT trade_date, SUM(net_amount) FROM {mp.SECTOR_TABLE} "
+            f"WHERE chain = ? AND trade_date IN ({ph}) {ct_filter} GROUP BY trade_date",
+            [chain, *dates, *ct_params]).fetchall()}
+        tvals = [tot.get(d) for d in dates]
+        total_series = {"values": tvals, "cum_values": _cum_skip_null(tvals)}
+    return {"status": "ok", "chain": chain, "dates": dates, "sectors": sectors,
+            "total_series": total_series, "total_series_note": total_note}
 
 
 _ROTATION_COLS = ["sector_code", "sector_name", "trade_date", "rs_4w", "rs_12w", "rs_rank_4w"]
@@ -412,9 +443,11 @@ def flow_board(chain: str = mp.CHAIN_DC_INDUSTRY,
             stripes[code][idx[td]] = net
         for r in inflow + outflow:
             r["stripe"] = stripes[r["sector_code"]]
+            r["stripe_cum"] = _cum_skip_null(r["stripe"])
     else:
         for r in inflow + outflow:
             r["stripe"] = []
+            r["stripe_cum"] = []
     return {"status": "ok", "chain": chain, "trade_date": latest,
             "stripe_dates": stripe_dates, "inflow": inflow, "outflow": outflow}
 
@@ -432,9 +465,11 @@ def flow_stripe(code: str,
             SELECT trade_date, net_amount, sector_name FROM {mp.SECTOR_TABLE}
             WHERE chain = ? AND sector_code = ? ORDER BY trade_date DESC LIMIT ?)
         ORDER BY trade_date ASC""", [chain, code, days]).fetchall()
+    values = [r[1] for r in rows]
     return {"status": "ok", "chain": chain, "sector_code": code,
             "sector_name": rows[-1][2] if rows else None,
-            "dates": [r[0] for r in rows], "values": [r[1] for r in rows]}
+            "dates": [r[0] for r in rows], "values": values,
+            "cum_values": _cum_skip_null(values)}
 
 
 # ── v3 统一层级下钻 ─────────────────────────────────────────────────────────
@@ -663,12 +698,15 @@ def members(sector_code: str,
 
 
 @router.get("/warnings")
-def warnings(conn=Depends(get_pulse_conn)):
+def warnings(stripe_days: int = Query(default=60, ge=0, le=250),
+             conn=Depends(get_pulse_conn)):
     """退潮预警 (描述性, 非操作建议):
     1) rank_dropouts: 前一入库日 rs_rank_4w <= top_n_sectors 而最新日 > top_n_sectors 的
        sw L1 板块 (跌出 RS top-N; v3 锁 level='L1' — rank 已按同级分区, 不锁则 L2/L3 混入);
     2) quiet_outflows: 两个 DC namespace 各自最新日 quiet_outflow_days 达阈值的板块
-       (价稳连续净流出 = 静默派发嫌疑, 引擎 quiet_* 列语义不变)。"""
+       (价稳连续净流出 = 静默派发嫌疑, 引擎 quiet_* 列语义不变)。
+    quiet_outflows 行内带 stripe/stripe_cum (近 stripe_days 日逐日净流及累计, 按行自身
+    chain 取日期 — 行级序列因响应混合两链; stripe_days=0 关闭, 前端免 N+1 调用)。"""
     cfg = _load_cfg()
     rank_top = int(cfg["top_n_sectors"])                       # from yaml: top_n_sectors
     outflow_min = int(cfg["warning_quiet_outflow_days"])       # from yaml: warning_quiet_outflow_days
@@ -698,6 +736,27 @@ def warnings(conn=Depends(get_pulse_conn)):
               SELECT MAX(trade_date) FROM {mp.SECTOR_TABLE} WHERE chain = p.chain)
           AND quiet_outflow_days >= ?
         ORDER BY chain, quiet_outflow_days DESC, net_amount ASC""", [outflow_min]).fetchall()]
+    if stripe_days > 0:
+        per_chain_dates = {c: _recent_dates(conn, c, stripe_days) for c in mp.DC_CHAINS}
+        for r in outflows:
+            dts = per_chain_dates.get(r["chain"]) or []
+            if not dts:
+                r["stripe_dates"], r["stripe"], r["stripe_cum"] = [], [], []
+                continue
+            ph = ",".join("?" * len(dts))
+            idx = {d: i for i, d in enumerate(dts)}
+            stripe: list[Any] = [None] * len(dts)
+            for td, net in conn.execute(f"""
+                SELECT trade_date, net_amount FROM {mp.SECTOR_TABLE}
+                WHERE chain = ? AND sector_code = ? AND trade_date IN ({ph})""",
+                    [r["chain"], r["sector_code"], *dts]).fetchall():
+                stripe[idx[td]] = net
+            r["stripe_dates"] = dts
+            r["stripe"] = stripe
+            r["stripe_cum"] = _cum_skip_null(stripe)
+    else:
+        for r in outflows:
+            r["stripe_dates"], r["stripe"], r["stripe_cum"] = [], [], []
     return {"status": "ok",
             "thresholds": {"rank_top": rank_top, "quiet_outflow_days": outflow_min},
             "rank_dropouts": dropouts, "quiet_outflows": outflows}
