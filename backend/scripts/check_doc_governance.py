@@ -188,10 +188,14 @@ def run(root: Path) -> tuple[list[str], list[str]]:
 
     bestchoice_dir = root / "bestchoice"
     if bestchoice_dir.exists():
+        # Bytecode next to frozen sources is residue, not a second control plane.
         actual_bestchoice = {
             path.relative_to(bestchoice_dir).as_posix()
             for path in bestchoice_dir.rglob("*")
             if path.is_file()
+            and "__pycache__" not in path.parts
+            and path.suffix not in {".pyc", ".pyo"}
+            and path.name != ".DS_Store"
         }
         extra_bestchoice = sorted(actual_bestchoice - BESTCHOICE_ALLOWLIST)
         missing_bestchoice = sorted(BESTCHOICE_ALLOWLIST - actual_bestchoice)

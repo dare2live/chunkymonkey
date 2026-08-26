@@ -38,6 +38,8 @@ global_constants:
     reason: "accepted nominal OHLCV 契约起点 (goal.md 已裁决的常量)"
   - value: "20220104"
     reason: "accepted stock_st 契约起点 (asymmetric ST raw floor)"
+  - value: "20250601"
+    reason: "holdout_start 契约常量 (holdout_policy.yaml; 不随日更前移)"
   - value: "20261231"
     reason: "交易日历生成 horizon 上界 (日历契约, 非数据前沿)"
 

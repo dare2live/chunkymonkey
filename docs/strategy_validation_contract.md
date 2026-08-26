@@ -180,7 +180,15 @@ PIT 截断测试是硬门：在 cutoff 后增加未来数据，cutoff 前的特�
 
 ### 8.1 机构跟随（第一条正式闭环）
 
-机构画像、episode 和历史表现是研究输入，不是“机构身份即买入”的证书。第一条正式闭环为 `institution_follow_v1`，且硬依赖 goal **E0**（披露域已进 landing→accept→canonical；miaoxiang/aif10 直写路径不得充当冻结 snapshot）：
+机构画像、episode 和历史表现是研究输入，不是“机构身份即买入”的证书。第一条正式闭环为 `institution_follow_v1`，且硬依赖 goal **E0**（披露域已进 landing→accept→canonical；miaoxiang/aif10 直写路径不得充当冻结 snapshot）。
+
+三层不得混称（混称会把展示战绩、隔夜动量消融和跟随纸面当成同一策略）：
+
+1. **机构画像**：`institution_profile` / episode / `median_alpha`（机构自身 VWAP 持有期口径）。这是研究输入与展示，不是买入证书，也不是跟随者可实现 PnL。`recent_signals` 属于这一层。
+2. **跟随 `StrategySpec`（`institution_follow_v1`）**：在真实 `notice_date` / `available_at` 之后的下一可交易 open 入场；在减持披露后的下一可交易 open，或 `max_hold_calendar_days`（当前烟测 90；180 只命名不跑）退出。跟随者纸面 PnL 必须独立计入披露延迟、追价、未成交与退出约束，**不得**复用 `alpha_c1` / `holder_median_alpha` / 机构 VWAP。
+3. **E 阶梯 B0/B4 隔夜动量消融**：同一披露快照上的裸 K / 事件门控 overnight paper，是诊断消融，不是跟随 spec。不得把 B4「事件日」当成季报日，也不得把 OHLCV 全窗交易日数当成披露覆盖分母；覆盖分母是披露冻结分区日。
+
+闭环步骤（与上面三层正交；完成纸面后才谈 Release，当前无 Release）：
 
 1. 冻结披露类 `DatasetSnapshot`（含 notice/available 语义与沪深 PIT universe）；
 2. 跑 B0 裸 K 基线；
@@ -189,19 +197,21 @@ PIT 截断测试是硬门：在 cutoff 后增加未来数据，cutoff 前的特�
 5. 区分机构自身历史表现与跟随者可实现收益；
 6. 通过纸面执行后才产生 `StrategyRelease(institution_follow_v1)`。
 
+当前跟随 spec 纸面已从冻结 snapshot 的 `stk_holdertrade` 公告行（`in_de`→increase/decrease，`ann_date`=`available_at`）接到下一 open 持有纸面；E/F `ExperimentVerdict` JSON 仍只是消融，不是该 spec。
+
 硬约束：
 
 - 一个持仓/调研事实最早只能在真实 `notice_date/available_at` 之后使用；**`notice_date` 为 NULL 的行契约级排除**（不得仅在某一查询面过滤后从别的读面漏进）；默认信号成交锚为披露后下一交易日 open，禁止回填 report/effective date；
 - 下一交易日若停牌、涨停买不到或数据 unknown，只能顺延到下一个真实可交易 open，并受版本化 `max_chase_days` 限制；过期记为未成交，不用未来价格选择“最佳”入场；
 - 机构评级、白名单和历史胜率只能用 decision time 之前已披露 episode 做 expanding-window 计算；禁止用全期结果筛选机构后回测早期信号；
-- 跟随者收益必须独立计入披露延迟、追价、未成交、容量和退出约束，不能复用机构自身持有期收益；
+- 跟随者收益必须独立计入披露延迟、追价、未成交、容量和退出约束，不能复用机构自身持有期收益；覆盖与功效分母用披露冻结 `available`/`partition` 日，不用名义 K 的全历史交易日数；
 - **t 日 project universe 的可证明语义默认是 EOD**：须在 t 日名义 K/ST accepted 且 `usable_at ≤ decision_time` 之后才能证明成员；`DecisionBatch.decision_time` 不得早于该证明点却声称已解析当日池（盘中决策需另立契约，禁止 silently 复用 EOD 成员）。
 
 大单/超大单、龙虎榜席位或 vendor “主力”字段不得自动映射成机构身份。
 
 ### 8.2 主升浪猎手
 
-现有 rally ground truth、negative、strata、embargo 和 continuity 资产可以保留，在机构首包之后接入同一研究运行时：
+现有 rally ground truth、negative、strata、embargo 和 continuity 资产可以保留，在机构首包之后接入同一研究运行时。当前可加载的 setup 信号是 `rally_setup_pivot_confirmed_base_days`；另有 setup 纸面：`bottom_date`（仅 entry_anchor）之后下一可交易 open 入场、命名短窗出场。**这不是 `StrategyRelease(main_rally_v1)`，也不是 full-episode 猎手**；禁止读 `peak_date` / `gain_to_peak_*`。full-episode 猎手尚未实现，不得把 setup 烟测写成主升浪策略。
 
 1. 冻结并复核 ground truth 定义和数据快照；
 2. 跑 B0 裸 K；
@@ -223,6 +233,8 @@ BestChoice 保持冻结 challenger：
 - 先验证 daily trigger、纸面组合和互补性；
 - 只有正式 `ExperimentVerdict` 支持时才吸收公式代码；
 - 单股历史最优参数或旧 Optuna 报告不等于组合级可交易 edge。
+
+当前第一刀（goal **S3**）只做合成 daily trigger + 信号日后下一可交易 open 烟测，`claimable=false`。纸面是一名一仓顺序开平，卖出不得早于买入次日（T+1）。旧 Optuna adoption CSV 与 `execution_model.vwap_tradable_v1` **不是**本项目纸面。单名重放必须是 typed offline fixture 或 live pointer 预检后的 **单 `ts_code` canonical 子集**；bar 日必须落在 snapshot 名义日集合并早于 holdout。live pointer 不是全日 `content_hash` bind，也不是全宇宙重放；holdout 日在 pointer 查询之前拒绝，并有单名测试。全宇宙 B5 / purged WF / holdout consume / `ExperimentVerdict` accept / 吸收公式代码均未实现。
 
 ## 9. 发布门
 

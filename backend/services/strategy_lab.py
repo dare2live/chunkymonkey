@@ -12,7 +12,9 @@ from typing import Any, Literal, Mapping
 
 import yaml
 
+from services.formal_rx_evidence import validate_formal_rx_evidence
 from services.research_runtime import DatasetSnapshot, SnapshotInputRef
+from services.strategy_spec import StrategySpecError, load_strategy_spec
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -317,6 +319,7 @@ def build_ingress_plan(
 class ComputeRequest:
     stage: Stage
     executor: Executor
+    spec_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -341,7 +344,7 @@ def assess_compute(
     bundle: ResearchInputBundle,
     request: ComputeRequest,
 ) -> ComputeAdmission:
-    """Admit only the implemented local-smoke surface."""
+    """Admit local-smoke (optional loaded spec) and gated formal_rx; never claimable."""
 
     active_policy = load_policy()
     reasons: list[str] = []
@@ -356,7 +359,7 @@ def assess_compute(
     if formal:
         if not active_policy.formal_rx_authorization:
             reasons.append("formal_rx_not_authorized")
-        reasons.append("formal_evidence_validators_not_implemented")
+        reasons.extend(validate_formal_rx_evidence(bundle))
 
     if request.stage == "optuna":
         if not active_policy.phase_n_authorization:
@@ -367,6 +370,12 @@ def assess_compute(
         if not active_policy.remote_compute_authorization:
             reasons.append("remote_compute_not_authorized")
         reasons.append("modal_adapter_not_implemented")
+
+    if request.spec_id:
+        try:
+            load_strategy_spec(request.spec_id)
+        except StrategySpecError:
+            reasons.append("strategy_spec_not_loadable")
 
     return ComputeAdmission(
         allowed=not reasons,

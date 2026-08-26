@@ -86,10 +86,10 @@ section_15:
         pre_knife: true
         subject: "feat(foundation): §15-VERIFY — F8 PASS knife-merge evidence (this knife)"
 
-# Strategy track pause (F9) — substrings that must remain in goal.md
+# Strategy ladder (F9) — RX may be scheduled; Optuna/Release stay banned.
 strategy_pause:
   goal_must_contain:
-    - "E/F remeasure paused"
+    - "RX_AUTH="
     - "Optuna"
     - "StrategyRelease"
 

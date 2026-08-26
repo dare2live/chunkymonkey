@@ -148,6 +148,20 @@ def test_bestchoice_second_control_plane_is_rejected(tmp_path):
     )
 
 
+def test_bestchoice_bytecode_residue_is_not_c9(tmp_path):
+    _seed_authority_docs(tmp_path)
+    for rel in BESTCHOICE_ALLOWLIST:
+        _write(tmp_path / "bestchoice" / rel, "fixture\n")
+    pyc = tmp_path / "bestchoice" / "__pycache__" / "formula_engine.cpython-313.pyc"
+    pyc.parent.mkdir(parents=True)
+    pyc.write_bytes(b"\0")
+
+    fails, warns = run(tmp_path)
+
+    assert warns == []
+    assert not any("C9" in finding for finding in fails)
+
+
 def test_analysis_dir_must_stay_at_zero(tmp_path):
     """2026-08-11 P3.4 归零后必须**保持**为零 —— 留空目录不设门，下一次「先放这儿」就会长回来。"""
     _seed_authority_docs(tmp_path)

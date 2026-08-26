@@ -1,0 +1,22 @@
+version: 1
+package_id: formulas
+# Must match bestchoice/FROZEN.md and evidence_manifest.json formula_engine.py.
+frozen_formula_engine_sha256: "5096d4778a2b8f34afd1c1f5dfcf7b1033294fa5e421b76ec46d340202a82379"
+formula_ids:
+  - gs_pullback_confirm
+  - gs_raw_buy
+  - ma_base_breakout
+  - activity_breakout
+  - volume_base_breakout
+ranking: frozen_challenger
+sizing: one_name_one_position
+entry_kind: next_tradable_open
+entry_after: formula_entry_signal
+max_chase_days: 3
+exit_kind: formula_exit_or_max_hold
+exit_event: formula_exit_signal
+max_hold_calendar_days: 90
+named_not_run_max_hold_calendar_days: []
+pnl_source: challenger_next_open_to_exit_open
+paper_status: synthetic_smoke_ready
+applicable_states: []

@@ -3,7 +3,7 @@
 > 状态：live controller board
 > 手写：objective / 已裁决 / 禁令 / 下一步。**运行时状态现查 `scripts/chunkyctl status`**（零文件；非执法输入）。
 > 完成证据：`scripts/chunkyctl history --grep <关键词>`（git log 即原件）；时期导航 `--eras`。交接：`chunkyctl history --grep "account-switch"`。
-> **执行方案（仅两份；abolished 主方案/支线）**：底座 `goal.md「下一步」执行 backlog` · 策略 `goal.md「下一步」执行 backlog + strategy_validation_contract.md §3.2/§3.3`（RX 前 BLOCKED）。
+> **执行方案（仅两份；abolished 主方案/支线）**：底座 `goal.md「下一步」执行 backlog` · 策略 `goal.md「下一步」执行 backlog + strategy_validation_contract.md §3.2/§3.3`（**已排期** S1 RX-E/RX-F；`RX_AUTH=RX-20260824-EF`。S5 Optuna **已排期** `PHASE_N_AUTH=OP-20260824-S5`，yaml `phase_n_optuna` 在 S1/S2 交付前保持空；StrategyRelease 仍禁）。
 > **清理台账**：`chunkyctl history --grep "文档收敛"`。Owner 立法仍只认 `docs/README.md` 三份 contracts。
 > **活契约引用（非第二 backlog）**：`docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维)` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.6 (物理分层裁决)` · `docs/engineering_governance.md §3.1 (何时不该开刀)` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)` · `docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (披露域增量策略)` · `chunkyctl history --grep "ST 白名单"`。
 
@@ -21,7 +21,7 @@
   现查 `chunkyctl status`，禁止在本文件写死**（2026-08-10 两份手写文档互相矛盾且同时落后两周）
 - Phase F ladder measured **reject** / `claimable=false`（可 checkpoint；**≠** Release）
 - Delivery-OS：eng_gov §15（一刀 = Rule10 + safe_commit；异步 CI；L3 pre-knife；不放宽 PIT / ≤40d）
-- A→H = 后置研究地图；**E/F remeasure paused**（须 owner 显式 schedule 才开；`foundation_done.yaml` 的 `strategy_pause.goal_must_contain` 按字面匹配本短语，改写措辞会让 F9 变红）
+- A→H = 后置研究地图；**E/F remeasure scheduled**（`RX_AUTH=RX-20260824-EF` 与 `backend/config/strategy_lab.yaml` `authorizations.formal_rx` 对锁）。**S5 Optuna 已排期** `PHASE_N_AUTH=OP-20260824-S5`（执行前提 = S1/S2 同 protocol ExperimentVerdict；yaml 第二钥未开、runner 未实现）。StrategyRelease 仍禁；F9 按字面锁 `RX_AUTH=` + `Optuna` + `StrategyRelease`
 
 启动：`scripts/chunkyctl agent-boot`；运行时状态：`scripts/chunkyctl status`（现查，零文件）。
 
@@ -43,11 +43,12 @@ owner contract，进度段在此。**不再有第二个说「下一步」的地�
 - **A4** org 中间历史季洞 —— **DEFER**：仅显式 backfill 刀，日常增量路径不变
 - **A5** cyq 消费口径（历史段 FAIL）—— **DEFER**：消费前换算或弃用，非采集轴问题
 
-*策略*（**仍 BLOCKED**；开门条件见 `strategy_validation_contract.md` §3.2 —— exit MET **不等于**
-自动开 RX，须本文件显式排期）
-- **S0** Strategy Lab 本地框架 —— **PARTIAL**，两份 live 输入不合格前只能 `claimable=false` smoke
-- **S1→S2** RX-E / RX-F 同 protocol remeasure（诚实 reject 也算交付，**≠** Release）
-- **S3** 公式挑战（仅 RX 后）· **S4** Release + 纸面执行 · **S5** Optuna（**另需**显式开 phase，双签字）
+*策略*（**已排期** S1；开门条件见 `strategy_validation_contract.md` §3.2；`RX_AUTH=RX-20260824-EF`）
+- **S0** Strategy Lab 本地框架 —— 重冻两份 development snapshot（分区严格早于 holdout `20250601`）后才 `framework_ready`
+- **S1→S2** RX-E / RX-F 同 protocol remeasure **已跑**：E/F 均为诚实 reject/inconclusive、`claimable=false`（**≠** Release）；opaque holdout seal + snapshot hash validators 已落地；Optuna runner / StrategyRelease 仍禁
+- **S-spec** 三包 `StrategySpec` 骨架（画像 ≠ `institution_follow_v1` 跟随纸面 ≠ E B0/B4 动量消融；rally = setup 纸面、full-episode 未实现；公式 = 五条 frozen hash）。跟随 spec 纸面已接 `stk_holdertrade` 公告事件；E/F JSON 仍是消融。`local_smoke` 可加载 spec；`claimable=false`；非 Release
+- **S3** 公式挑战 **合成烟测 + 单名 live pointer（已测）**（下一 open + 一名一仓/T+1；`claimable=false`）。全宇宙 B5 / 吸收 BestChoice / Optuna runner / StrategyRelease **未做**
+- **S4** Release + 纸面执行 · **S5** Optuna（**已排期** `PHASE_N_AUTH=OP-20260824-S5`；须 S1/S2 交付后才写入 yaml `phase_n_optuna` 并实现 runner；现禁开 runner）
 - 默认序 S1→S2→S3→S4，S5 最后
 
 **护栏**（长期有效，非进度）：formal frontier 与 drain soft 窗分立叙述 · PIT + ≤40d ·

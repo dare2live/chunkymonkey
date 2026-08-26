@@ -2141,6 +2141,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_formula_challenge.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_institution_follow_b1.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -2424,6 +2430,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/source_watermarks.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/strategy_spec.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
     },
@@ -5093,6 +5105,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_formula_challenge.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_institution_follow_b1.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -5345,6 +5363,18 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_formula_challenge.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_institution_follow_spec_paper.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
@@ -5394,6 +5424,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/stk_holdertrade_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_stk_holdertrade_announcement"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_institution_follow_spec_paper.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_stk_holdertrade_announcement"
     },
@@ -7991,9 +8027,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1284,
-    "generated_at": "2026-08-25T23:45:30.842715+00:00",
-    "node_count": 451,
+    "edge_count": 1290,
+    "generated_at": "2026-08-26T01:09:10.548247+00:00",
+    "node_count": 454,
     "version": 2
   },
   "nodes": [
@@ -9360,6 +9396,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/strategy_spec.py"
+      },
+      "id": "consumer:backend/services/strategy_spec.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/technical_states/__init__.py"
       },
       "id": "consumer:backend/services/technical_states/__init__.py",
@@ -9664,6 +9708,14 @@
     {
       "attrs": {
         "ctype": "test",
+        "path": "backend/tests/services/test_formula_challenge.py"
+      },
+      "id": "consumer:backend/tests/services/test_formula_challenge.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
         "path": "backend/tests/services/test_holdernumber_assist.py"
       },
       "id": "consumer:backend/tests/services/test_holdernumber_assist.py",
@@ -9707,6 +9759,14 @@
         "path": "backend/tests/services/test_institution_follow_b4.py"
       },
       "id": "consumer:backend/tests/services/test_institution_follow_b4.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_institution_follow_spec_paper.py"
+      },
+      "id": "consumer:backend/tests/services/test_institution_follow_spec_paper.py",
       "kind": "consumer"
     },
     {

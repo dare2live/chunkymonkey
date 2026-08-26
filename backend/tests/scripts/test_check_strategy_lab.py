@@ -16,7 +16,7 @@ REPO = Path(__file__).resolve().parents[3]
 SCRIPT = REPO / "backend" / "scripts" / "check_strategy_lab.py"
 
 
-def test_framework_check_fails_closed_while_live_inputs_are_blocked() -> None:
+def test_framework_check_reports_live_inputs_when_ready() -> None:
     result = subprocess.run(
         [sys.executable, str(SCRIPT), "--framework", "--json"],
         cwd=REPO,
@@ -25,17 +25,56 @@ def test_framework_check_fails_closed_while_live_inputs_are_blocked() -> None:
         text=True,
         check=False,
     )
-    assert result.returncode == 2, result.stderr
+    assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["framework_installed"] is True
-    assert payload["framework_ready"] is False
+    assert payload["framework_ready"] is True
     assert payload["execution_mode"] == "manual_only"
-    assert payload["formal_rx_authorized"] is False
+    assert payload["formal_rx_authorized"] is True
     assert payload["optuna_authorized"] is False
     assert payload["modal_authorized"] is False
-    assert payload["live_inputs"]["ready"] is False
-    assert payload["live_inputs"]["snapshots"]["main_rally"]["status"] == "BLOCKED"
-    assert payload["live_inputs"]["snapshots"]["disclosure"]["status"] == "BLOCKED"
+    assert payload["live_inputs"]["ready"] is True
+    assert payload["live_inputs"]["snapshots"]["main_rally"]["status"] == "READY"
+    assert payload["live_inputs"]["snapshots"]["disclosure"]["status"] == "READY"
+    assert payload["claimable"] is False
+    assert payload["formal_rx_compute"]["allowed"] is True
+    assert payload["formal_rx_compute"]["claimable"] is False
+    assert payload["formal_rx_compute"]["reasons"] == []
+    packages = payload["strategy_packages"]
+    assert packages["loaded"] is True
+    assert packages["claimable"] is False
+    assert "institution_follow_v1" in packages["packages"]
+    assert "institution_follow_v1" in packages["spec_ids"]
+    coverage = payload["disclosure_coverage"]
+    assert coverage["denominator"] == "disclosure_freeze_partitions"
+    assert coverage["excluded_domains"] == ["nominal_ohlcv"]
+    assert coverage["union_day_count"] != 1553
+    assert len(coverage["by_domain"]["holders_top10"]) == 8
+    ablation = payload["ablation_verdicts"]
+    assert ablation["role"] == "ablation_only"
+    assert ablation["claimable"] is False
+    assert ablation["not_strategy_spec"] is True
+    assert ablation["manifests"]["phase_e"]["present"] is True
+    assert ablation["manifests"]["phase_f"]["present"] is True
+    challenge = payload["formula_challenge"]
+    assert challenge["status"] == "synthetic_smoke_ready"
+    assert challenge["one_name_replay"] == "offline_day_membership_ready"
+    assert challenge["live_pointer_bind"] == "one_name_ready"
+    assert challenge["live_replay"] == "not_implemented"
+    assert challenge["b5_ablation"] == "not_implemented"
+    assert challenge["purged_wf"] == "not_implemented"
+    assert challenge["holdout"] == "not_implemented"
+    assert challenge["experiment_verdict"] == "not_implemented"
+    assert challenge["absorb"] == "not_implemented"
+    assert challenge["claimable"] is False
+    follow_paper = payload["follow_spec_paper"]
+    assert follow_paper["status"] == "snapshot_events_ready"
+    assert follow_paper["ablation_json"] == "not_this_spec"
+    assert follow_paper["claimable"] is False
+    rally_paper = payload["rally_setup_paper"]
+    assert rally_paper["status"] == "ready"
+    assert rally_paper["full_episode"] == "not_implemented"
+    assert rally_paper["claimable"] is False
 
 
 def test_live_input_ready_path_uses_typed_validation_window(

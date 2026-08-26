@@ -530,10 +530,10 @@ scheduled 研究/策略阶段之间有一道机器可判的出口门（`backend/
 + `backend/config/foundation_done.yaml`），十维分别覆盖 strangler transport 的每一根支柱：
 F1 传输模块化 · F2 legacy 面诚实分型（无假 COMPAT）· F3 无假 publication · F4 brick registry
 与血缘门 · F5 披露域传输三模式 · F6 披露域 accept 广度门槛 · F7 禁 mass/by-date invent ·
-F8 刀级合并行为门 · F9 策略轨未开且前沿诚实 · F10 双轨残差为零。
+F8 刀级合并行为门 · F9 策略阶梯未越级（RX 可排期；Optuna/Release 仍禁）且前沿诚实 · F10 双轨残差为零。
 
 十维不是凑数：F1–F2 管传输、F3 管反假绿、F4 管血缘、F5–F7 管披露域闭合、F8 管流程纪律、
-F9 管策略暂停、F10 管双轨清洁。**要增删或合并其中任一项，必须先论证「覆盖仍然完整」** ——
+F9 管策略阶梯（禁越级到 Optuna/Release）、F10 管双轨清洁。**要增删或合并其中任一项，必须先论证「覆盖仍然完整」** ——
 否则就是在不知不觉中把某根支柱移出验收面。具体阈值与实时裁决以脚本实跑为准，不在本文写死。
 
 ## 12. 明确不做

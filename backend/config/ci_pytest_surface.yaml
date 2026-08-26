@@ -72,6 +72,12 @@ blocking_paths:
 - tests/services/test_phase_e_smoke.py
 - tests/services/test_research_runtime.py
 - tests/services/test_strategy_lab.py
+- tests/services/test_strategy_spec.py
+- tests/services/test_strategy_paper.py
+- tests/services/test_formal_rx_evidence.py
+- tests/services/test_formula_challenge.py
+- tests/services/test_institution_follow_spec_paper.py
+- tests/services/test_main_rally_setup_paper.py
 - tests/services/test_margin_acceptance.py
 - tests/services/test_margin_population_scope.py
 - tests/services/test_margin_catchup.py

@@ -23,47 +23,43 @@ from services.data_sources.disclosure_shadow_compare import (  # noqa: E402
 )
 from services.db import get_conn  # noqa: E402
 
-# Serving canary partitions that already MATCH (cutover gate).
-_SERVING = {
-    "holders_top10": "20260717",
-    "org_holding": "20190430",
-    "stk_holdertrade": "20260706",
+# Shadow gate for this development freeze: one MATCH partition per domain,
+# all strictly before holdout_start=20250601. Serving-window canaries
+# (holders 20260717 / org 20190430 / stk 20260706) are not the freeze set;
+# org 20190430 currently MISMATCHES and must not block a pre-holdout freeze.
+_FREEZE_SHADOW = {
+    "holders_top10": "20250531",
+    "org_holding": "20250430",
+    "stk_holdertrade": "20250530",
 }
 
-# Bounded broaden — recent/small accepts (+ canaries). Org 20260430 is a
-# documented stock subset (600519,000001), not full-universe.
-# 2026-07-21 chunk: +holders 20260711/20260715; +stk 20260714/20260715
-# via land-then-accept --from-local-raw (DUPLICATE_GRAIN dates fail-closed).
+# Development freeze: accepted partitions strictly before holdout_start=20250601.
 _BOUNDED_SETS = {
     "holders_top10": [
-        "20260508",
-        "20260616",
-        "20260618",
-        "20260619",
-        "20260623",
-        "20260703",
-        "20260709",
-        "20260710",
-        "20260711",
-        "20260713",
-        "20260714",
-        "20260715",
-        "20260717",
+        "20250331",
+        "20250430",
+        "20250508",
+        "20250512",
+        "20250521",
+        "20250528",
+        "20250530",
+        "20250531",
     ],
-    "org_holding": ["20190430", "20260430"],
+    "org_holding": ["20240831", "20250430"],
     "stk_holdertrade": [
-        "20260518",
-        "20260608",
-        "20260706",
-        "20260713",
-        "20260714",
-        "20260715",
+        "20250418",
+        "20250506",
+        "20250508",
+        "20250513",
+        "20250523",
+        "20250528",
+        "20250530",
     ],
 }
 
 _BOUNDED_NOTES = (
-    "org_20260430_stock_subset_600519_000001",
-    "holders_stk_full_legacy_accept_small_recent",
+    "development_before_holdout_20250601",
+    "org_shadow_match_20240831_20250430",
 )
 
 
@@ -84,10 +80,10 @@ def main() -> int:
     sm = get_conn()
     raw = connect_ro("tushare_raw")
     try:
-        # Shadow cutover gate stays on serving MATCH canaries.
+        # Shadow gate uses pre-holdout MATCH canaries, not the 2026 serving window.
         shadow = compare_disclosure_research_shadow(
             sm,
-            partitions=_SERVING,
+            partitions=_FREEZE_SHADOW,
             domain_conns={"stk_holdertrade": raw},
         )
         if not shadow.cutover_allowed:

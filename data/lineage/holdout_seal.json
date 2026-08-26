@@ -1,0 +1,8 @@
+{
+  "holdout_start": "20250601",
+  "opaque": true,
+  "partitions_omitted": true,
+  "policy_hash": "8ed842840289a64109ba21cf894bd243312f8bba71d7611c60a943153e578445",
+  "policy_relpath": "backend/config/holdout_policy.yaml",
+  "seal_hash": "8382de60c6f6c3726c10a40996ab3774084e9ae873780911106f9dad26b86aa5"
+}

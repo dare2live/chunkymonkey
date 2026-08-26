@@ -9,7 +9,7 @@ development_split:
 # when goal.md contains the exact RX_AUTH=..., PHASE_N_AUTH=..., or
 # REMOTE_COMPUTE_AUTH=... token. Runtime evidence gates must also pass.
 authorizations:
-  formal_rx: ""
+  formal_rx: "RX-20260824-EF"
   phase_n_optuna: ""
   remote_compute: ""
 

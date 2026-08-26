@@ -632,7 +632,7 @@ def check_f8_section15(cfg: dict[str, Any]) -> dict[str, Any]:
 
 
 def check_f9_strategy_paused(cfg: dict[str, Any]) -> dict[str, Any]:
-    """F9: E/F/G/H not opened; frontier honest (goal pause markers)."""
+    """F9: RX may be scheduled; Optuna/Release stay banned; frontier honest."""
     if not GOAL_MD.is_file():
         return _crit("F9", "FAIL", detail="goal.md missing")
     text = _read_text(GOAL_MD)
@@ -657,12 +657,12 @@ def check_f9_strategy_paused(cfg: dict[str, Any]) -> dict[str, Any]:
             return _crit(
                 "F9",
                 "FAIL",
-                detail=f"{rel} appears enabled while strategy track paused",
+                detail=f"{rel} appears enabled while Optuna/Release remain banned",
             )
     return _crit(
         "F9",
         "PASS",
-        detail="E/F remeasure paused; Optuna/StrategyRelease bans intact in goal",
+        detail="RX_AUTH bound in goal; Optuna/StrategyRelease bans intact",
     )
 
 

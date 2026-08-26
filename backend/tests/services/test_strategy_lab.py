@@ -249,7 +249,83 @@ def test_local_smoke_is_allowed_but_never_claimable() -> None:
     assert admission.reasons == ()
 
 
-def test_formal_rx_is_blocked_until_real_validators_exist() -> None:
+def test_local_smoke_admits_loaded_follow_spec_but_stays_unclaimable() -> None:
+    admission = assess_compute(
+        build_ingress_plan(
+            _development_snapshot(),
+            train_end="20250529",
+            holdout_start="20250601",
+        ),
+        ComputeRequest(
+            stage="local_smoke",
+            executor="local",
+            spec_id="institution_follow_v1",
+        ),
+    )
+
+    assert admission.allowed is True
+    assert admission.claimable is False
+    assert admission.reasons == ()
+
+
+def test_local_smoke_admits_rally_setup_spec_but_stays_unclaimable() -> None:
+    admission = assess_compute(
+        build_ingress_plan(
+            _development_snapshot(),
+            train_end="20250529",
+            holdout_start="20250601",
+        ),
+        ComputeRequest(
+            stage="local_smoke",
+            executor="local",
+            spec_id="main_rally_v1",
+        ),
+    )
+
+    assert admission.allowed is True
+    assert admission.claimable is False
+    assert admission.reasons == ()
+
+
+def test_local_smoke_admits_formula_spec_but_stays_unclaimable() -> None:
+    admission = assess_compute(
+        build_ingress_plan(
+            _development_snapshot(),
+            train_end="20250529",
+            holdout_start="20250601",
+        ),
+        ComputeRequest(
+            stage="local_smoke",
+            executor="local",
+            spec_id="formulas:gs_raw_buy",
+        ),
+    )
+
+    assert admission.allowed is True
+    assert admission.claimable is False
+    assert admission.reasons == ()
+
+
+def test_local_smoke_rejects_unknown_spec() -> None:
+    admission = assess_compute(
+        build_ingress_plan(
+            _development_snapshot(),
+            train_end="20250529",
+            holdout_start="20250601",
+        ),
+        ComputeRequest(
+            stage="local_smoke",
+            executor="local",
+            spec_id="not_a_package",
+        ),
+    )
+
+    assert admission.allowed is False
+    assert admission.claimable is False
+    assert "strategy_spec_not_loadable" in admission.reasons
+
+
+def test_formal_rx_is_allowed_when_evidence_checks_pass() -> None:
     ingress = build_ingress_plan(
         _development_snapshot(),
         train_end="20250529",
@@ -260,12 +336,30 @@ def test_formal_rx_is_blocked_until_real_validators_exist() -> None:
         ComputeRequest(stage="formal_rx", executor="local"),
     )
 
+    assert admission.allowed is True
+    assert admission.claimable is False
+    assert admission.reasons == ()
+    assert "formal_evidence_validators_not_implemented" not in admission.reasons
+    assert "formal_rx_not_authorized" not in admission.reasons
+
+
+def test_formal_rx_rejects_holdout_start_mismatch_vs_policy() -> None:
+    ingress = build_ingress_plan(
+        _development_snapshot(),
+        train_end="20250529",
+        holdout_start="20250701",
+    )
+    admission = assess_compute(
+        ingress,
+        ComputeRequest(stage="formal_rx", executor="local"),
+    )
+
     assert admission.allowed is False
-    assert "formal_rx_not_authorized" in admission.reasons
-    assert "formal_evidence_validators_not_implemented" in admission.reasons
+    assert admission.claimable is False
+    assert "holdout_start_mismatch_vs_policy" in admission.reasons
 
 
-def test_optuna_is_blocked_until_real_runner_and_validators_exist() -> None:
+def test_optuna_is_blocked_until_real_runner_exists() -> None:
     ingress = build_ingress_plan(
         _development_snapshot(),
         train_end="20250529",
@@ -277,8 +371,10 @@ def test_optuna_is_blocked_until_real_runner_and_validators_exist() -> None:
     )
 
     assert admission.allowed is False
-    assert "formal_evidence_validators_not_implemented" in admission.reasons
+    assert admission.claimable is False
+    assert "formal_evidence_validators_not_implemented" not in admission.reasons
     assert "optuna_runner_not_implemented" in admission.reasons
+    assert "phase_n_optuna_not_authorized" in admission.reasons
 
 
 def test_modal_is_blocked_until_real_adapter_exists() -> None:
@@ -301,7 +397,7 @@ def test_live_policy_is_framework_only() -> None:
     policy = load_policy()
     assert policy.status == "framework_only"
     assert policy.execution_mode == "manual_only"
-    assert not policy.formal_rx_authorization
+    assert policy.formal_rx_authorization == "RX-20260824-EF"
     assert not policy.phase_n_authorization
     assert not policy.remote_compute_authorization
 

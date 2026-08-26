@@ -393,15 +393,15 @@ def test_frozen_snapshot_file_adapts_when_present() -> None:
     assert snap.snapshot_id
     assert payload.get("strategy_package") == STRATEGY_PACKAGE
     assert payload.get("cutover_allowed") is True
-    # Live freeze currently spills past holdout — B0 must fail closed on actual_data_end.
-    from services.holdout_guard import HoldoutBoundaryViolation
-
-    with pytest.raises(HoldoutBoundaryViolation, match="actual_data_end"):
-        run_b0_scaffold(
-            snapshot=payload,
-            measure_coverage=True,
-            measure_paper=False,
-        )
+    dates = [
+        "".join(ch for ch in str(d) if ch.isdigit())[:8]
+        for d in (payload.get("domains") or {}).get("nominal_ohlcv", {}).get("date_set")
+        or ()
+    ]
+    dates = [d for d in dates if len(d) == 8]
+    assert dates
+    assert max(dates) < "20250601"
+    assert all(not item.dataset_id.startswith("tier3.") for item in snap.inputs)
 
 
 def test_snapshot_date_set_past_holdout_fails_closed() -> None:

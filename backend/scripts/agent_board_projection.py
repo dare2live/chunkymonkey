@@ -51,7 +51,7 @@ def _next_knives(*, c_on: bool) -> list[str]:
         "foundation phase_closure_ready — F1–F10 PASS (docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维))",
         "FND-GATE / §15-VERIFY FIXED; org incremental-check-every-run (mass banned)",
         "S7 typed hard-stop wall — no fake COMPAT; Type-B enrichment FIXED",
-        "E/F remeasure paused until owner schedules (Optuna/Release banned)",
+        "E/F RX scheduled RX_AUTH=RX-20260824-EF (Optuna/Release banned)",
     ]
     if not c_on:
         knives.insert(

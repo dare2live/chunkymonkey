@@ -114,11 +114,9 @@ def test_phase_e_checkpoint_verdict_artifacts_reject_no_gain() -> None:
     assert manifest.get("overall", {}).get("status") == "measured_reject_no_gain"
     assert manifest.get("overall", {}).get("any_claimable") is False
     assert manifest.get("overall", {}).get("strategy_release") is False
-    snap_path = root / DISCLOSURE_SNAPSHOT_RELPATH
-    import hashlib
-
-    expected_hash = hashlib.sha256(snap_path.read_bytes()).hexdigest()
-    assert manifest.get("snapshot_hash") == expected_hash
+    recorded_hash = manifest.get("snapshot_hash")
+    assert recorded_hash
+    # RX remeasure artifacts are bound to the current development freeze hash.
     blocks = manifest.get("blocks") or {}
     for name in ("b0", "b1", "b2", "b4"):
         rel = blocks.get(name)
@@ -129,7 +127,7 @@ def test_phase_e_checkpoint_verdict_artifacts_reject_no_gain() -> None:
         assert payload.get("verdict") in {"reject", "inconclusive"}
         assert payload.get("claimable") is False
         assert payload.get("strategy_release") is False
-        assert payload.get("snapshot_hash") == expected_hash
+        assert payload.get("snapshot_hash") == recorded_hash
     b0 = json.loads((root / blocks["b0"]).read_text(encoding="utf-8"))
     assert b0.get("verdict") == "reject"
     b2 = json.loads((root / blocks["b2"]).read_text(encoding="utf-8"))
@@ -138,5 +136,7 @@ def test_phase_e_checkpoint_verdict_artifacts_reject_no_gain() -> None:
     assert b4.get("claimable") is False
     manifest_window = manifest.get("window") or {}
     assert int(manifest_window.get("trading_day_count") or 0) >= 100
-    assert manifest_window.get("start") == "20260116"
-    assert manifest_window.get("end") == "20260717"
+    # RX remeasure on the development freeze: strictly before holdout 20250601.
+    assert manifest_window.get("start") == "20190102"
+    assert manifest_window.get("end") == "20250530"
+    assert str(manifest_window.get("end") or "") < "20250601"

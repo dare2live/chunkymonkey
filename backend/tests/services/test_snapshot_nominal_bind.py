@@ -195,13 +195,18 @@ def test_b0_binding_rejects_same_id_with_different_main_rally_content() -> None:
             },
         },
     }
-    boundary = dataset_snapshot_from_main_rally(snapshot).boundary_dict()
+    adapted = dataset_snapshot_from_main_rally(snapshot)
+    assert all(not item.dataset_id.startswith("tier3.") for item in adapted.inputs)
+    assert "gt_evidence_omitted_from_development_inputs" in adapted.notes
+    boundary = adapted.boundary_dict()
     run = SimpleNamespace(
         snapshot_id="same-rally-id",
         artifact_manifest={"research_runtime_snapshot": boundary},
     )
     assert_b0_run_matches_snapshot(run, snapshot)
-    drifted = {
+    # GT stays freeze evidence, not a development input: label-hash drift must
+    # not look like a snapshot bind break.
+    gt_drifted = {
         **snapshot,
         "domains": {
             **snapshot["domains"],
@@ -216,8 +221,19 @@ def test_b0_binding_rejects_same_id_with_different_main_rally_content() -> None:
             },
         },
     }
+    assert_b0_run_matches_snapshot(run, gt_drifted)
+    nominal_drifted = {
+        **snapshot,
+        "domains": {
+            **snapshot["domains"],
+            "nominal_ohlcv": {
+                **snapshot["domains"]["nominal_ohlcv"],
+                "content_hash": "different-nominal-content",
+            },
+        },
+    }
     with pytest.raises(SnapshotNominalBindError, match="binding violated"):
-        assert_b0_run_matches_snapshot(run, drifted)
+        assert_b0_run_matches_snapshot(run, nominal_drifted)
 
 
 def test_bind_fails_on_content_hash_drift() -> None:

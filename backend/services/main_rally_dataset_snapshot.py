@@ -17,11 +17,16 @@ import yaml
 
 from services.data_sources.accepted_schema import ACCEPTED_TABLE
 from services.data_sources.nominal_ohlcv_schema import DATASET_ID as NOMINAL_OHLCV_DATASET
+from services.holdout_guard import training_cutoff_before_holdout
 from services.research_runtime import (
     DatasetSnapshot,
     ResearchRuntimeError,
     SnapshotInputRef,
 )
+
+# Keep the on-disk freeze bounded (mirrors the prior ~121-day serving window)
+# but always strictly before holdout.
+_MAX_DEVELOPMENT_NOMINAL_DAYS = 130
 
 MAIN_RALLY_SNAPSHOT_RELPATH = "data/lineage/main_rally_dataset_snapshot/snapshot.json"
 SCOPE_CANARY = "canary_accepted_partitions"
@@ -217,8 +222,13 @@ def freeze_main_rally_dataset_snapshot(
     feature_store_conn=None,
     path: Path | str | None = None,
     extra_notes: Sequence[str] = (),
+    through: str | None = None,
 ) -> MainRallyDatasetSnapshot:
-    """Live-query accepted nominal + GT hashes; write frozen JSON."""
+    """Live-query accepted nominal + GT hashes; write frozen JSON.
+
+    ``through`` defaults to the day before holdout. Serving-window dates at or
+    after holdout_start must not enter a development freeze.
+    """
 
     from services.data_access.resolver import connect_ro
 
@@ -231,8 +241,15 @@ def freeze_main_rally_dataset_snapshot(
             conn = connect_ro("tushare_raw")
             owned_nominal = True
         accepted = _list_accepted_nominal(conn)
+        cutoff = _compact_day(through or training_cutoff_before_holdout())
+        accepted = [row for row in accepted if row["partition"] <= cutoff]
+        if len(accepted) > _MAX_DEVELOPMENT_NOMINAL_DAYS:
+            accepted = accepted[-_MAX_DEVELOPMENT_NOMINAL_DAYS:]
         if not accepted:
-            raise MainRallySnapshotError("no accepted nominal_ohlcv partitions")
+            raise MainRallySnapshotError(
+                "no accepted nominal_ohlcv partitions before holdout cutoff "
+                f"{cutoff}"
+            )
 
         if fs is None:
             fs = connect_ro("feature_store")
@@ -255,7 +272,11 @@ def freeze_main_rally_dataset_snapshot(
             taxonomy = str(cfg.get("taxonomy_version") or "")
 
         artifact_rel = "data/lineage/tier12_publish_batches"
-        tier12_parts = _tier12_accepted_partitions(_repo_root() / artifact_rel)
+        tier12_parts = [
+            part
+            for part in _tier12_accepted_partitions(_repo_root() / artifact_rel)
+            if part <= cutoff
+        ]
         cutover = _load_cutover_allowed()
 
         date_set = [a["partition"] for a in accepted]
@@ -298,6 +319,8 @@ def freeze_main_rally_dataset_snapshot(
             "phase_f_f0_dataset_snapshot",
             "setup_entry_short_horizon_not_full_episode",
             "gt_labels_frozen_not_for_candidate_generator",
+            "development_before_holdout",
+            f"holdout_through={cutoff}",
             "no_optuna",
             "no_strategy_release",
             f"accepted_nominal_day_count={len(date_set)}",
@@ -386,27 +409,13 @@ def dataset_snapshot_from_main_rally(
             )
         )
 
+    # Labels remain on disk as freeze evidence. Development ingress forbids
+    # tier3.* inputs, so GT is not adapted into DatasetSnapshot.inputs.
     rally_gt = domains.get("rally_gt") or {}
-    if isinstance(rally_gt, Mapping):
-        tables = rally_gt.get("tables") or {}
-        cfg = str(rally_gt.get("config_hash") or "")
-        content = _stable_hash(
-            {
-                "taxonomy_version": rally_gt.get("taxonomy_version"),
-                "tables": tables,
-                "config_hash": cfg,
-            }
-        )
-        config_parts.append(cfg or content)
-        content_parts.append(content)
-        inputs.append(
-            SnapshotInputRef(
-                dataset_id="tier3.main_rally.gt_freeze",
-                partitions=("gt_freeze",),
-                content_hash=content,
-                config_hash=cfg or content,
-            )
-        )
+    if isinstance(rally_gt, Mapping) and rally_gt:
+        notes_extra_gt = True
+    else:
+        notes_extra_gt = False
 
     tier12 = domains.get("tier12_accepted") or {}
     if isinstance(tier12, Mapping):
@@ -449,6 +458,7 @@ def dataset_snapshot_from_main_rally(
     notes = tuple(str(n) for n in (payload.get("notes") or ())) + (
         "adapted_from_main_rally_freeze",
         f"domains={','.join(sorted(domains))}",
+        *(("gt_evidence_omitted_from_development_inputs",) if notes_extra_gt else ()),
     )
     frozen_at = str(
         payload.get("frozen_at") or datetime.now(timezone.utc).isoformat()

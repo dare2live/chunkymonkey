@@ -21,6 +21,7 @@ from services.institution_follow_b0 import (
     REASON_MEASURED_SHORT_WINDOW,
     REASON_OFFLINE_FIXTURE_NOT_FORMAL,
     REASON_PROTOCOL_READY_EDGE_UNMET,
+    REASON_SCAFFOLD_NO_MEASURED_EDGE,
     REQUIRED_SURFACE_STATUS,
     STRATEGY_PACKAGE,
     build_b0_run,
@@ -177,8 +178,22 @@ def test_b0_scaffold_consumes_frozen_snapshot_and_surface_status() -> None:
     frozen = load_frozen_disclosure_snapshot()
     # Live freeze may be canary or bounded; both are honest non-accept scopes.
     assert frozen.get("cutover_allowed") is True
+    dates = [
+        "".join(ch for ch in str(d) if ch.isdigit())[:8]
+        for d in (frozen.get("domains") or {}).get("nominal_ohlcv", {}).get("date_set")
+        or ()
+    ]
+    dates = [d for d in dates if len(d) == 8]
+    assert dates
+    assert max(dates) < str(load_policy()["holdout_start"])
 
-    run, verdict = run_b0_scaffold(snapshot=frozen)
+    # Formal RX already spent the live single-touch scope. Re-running measured
+    # paper on this freeze (1553 nominal days) is the E artifact, not a unit
+    # test. Coverage + surface still bind here; paper stays on fixtures.
+    run, verdict = run_b0_scaffold(
+        snapshot=frozen,
+        measure_paper=False,
+    )
     assert run.strategy_package == STRATEGY_PACKAGE
     assert run.block == BLOCK_ID
     assert run.snapshot_id == frozen["snapshot_id"]
@@ -200,30 +215,15 @@ def test_b0_scaffold_consumes_frozen_snapshot_and_surface_status() -> None:
     else:
         assert is_bounded_scope(frozen)
         assert run.bare_k_coverage is not None
+        assert run.measured_b0 is None
+        assert run.artifact_manifest["paper_fills"] == "not_run"
         if run.bare_k_coverage.sufficient_for_measured_b0:
-            assert run.measured_b0 is not None
-            assert run.artifact_manifest["paper_fills"] == "measured"
-            assert verdict.blocked is True
-            assert verdict.claimable is False
-            if run.measured_b0.claimable:
-                # Protocol power ok but edge gates fail on live short window.
-                assert verdict.verdict == "reject"
-                assert verdict.reason == REASON_PROTOCOL_READY_EDGE_UNMET
-                assert verdict.details["accept_edge_gates"]["passed"] is False
-            else:
-                assert verdict.verdict == "inconclusive"
-                assert verdict.reason == REASON_MEASURED_SHORT_WINDOW
             assert run.bare_k_coverage.accepted_nominal_day_count >= (
                 MIN_ACCEPTED_NOMINAL_DAYS_FOR_MEASURED_B0
             )
-            metrics = verdict.details["metrics"]
-            assert "total_return" in metrics
-            assert "max_drawdown" in metrics
-            assert "win_rate" in metrics
-            assert "payoff_ratio" in metrics
-            assert "turnover" in metrics
-            assert metrics["capacity"] == UNKNOWN
-            assert metrics["annualized_return"] == UNKNOWN
+            assert verdict.verdict == "inconclusive"
+            assert verdict.claimable is False
+            assert verdict.reason == REASON_SCAFFOLD_NO_MEASURED_EDGE
         else:
             assert verdict.verdict == "inconclusive"
             assert verdict.blocked is True

@@ -1,0 +1,16 @@
+version: 1
+package_id: main_rally_v1
+spec_id: main_rally_v1
+candidate_generation: rally_setup_pivot_confirmed_base_days
+ranking: none_setup_only
+sizing: not_implemented
+entry_kind: setup_signal
+entry_after: decision_date
+max_chase_days: 0
+exit_kind: not_implemented_full_episode
+exit_event: ""
+max_hold_calendar_days: null
+named_not_run_max_hold_calendar_days: []
+pnl_source: not_applicable
+paper_status: setup_signal_only
+applicable_states: []

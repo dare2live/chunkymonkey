@@ -1,5 +1,7 @@
-"""institution_follow B0 bare-K research (Phase E).
+"""institution_follow B0 bare-K research (Phase E ablation).
 
+This module is the overnight momentum ladder (t1 open → t2 open), not the
+follow StrategySpec in strategy_packages/institution_follow_v1.yaml.
 Frozen disclosure DatasetSnapshot + surface_status → coverage → paper WF.
 Canary never accepts; edge gates reject when protocol-ready but unmet.
 """

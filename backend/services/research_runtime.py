@@ -533,6 +533,16 @@ _MEASURE_EXPORTS = frozenset(
         "run_offline_measured_loop",
     }
 )
+_SPEC_EXPORTS = frozenset(
+    {
+        "StrategySpec",
+        "StrategySpecError",
+        "load_all_strategy_packages",
+        "load_strategy_package",
+        "load_strategy_spec",
+        "verify_frozen_challenger",
+    }
+)
 
 
 def __getattr__(name: str) -> Any:
@@ -544,6 +554,10 @@ def __getattr__(name: str) -> Any:
         from services import research_runtime_measure as _measure  # noqa: PLC0415
 
         return getattr(_measure, name)
+    if name in _SPEC_EXPORTS:
+        from services import strategy_spec as _spec  # noqa: PLC0415
+
+        return getattr(_spec, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

@@ -1,0 +1,18 @@
+version: 1
+package_id: institution_follow_v1
+spec_id: institution_follow_v1
+# Profile / episode alpha is research input, not this spec.
+candidate_generation: holders_increase_notice
+ranking: none_one_name_smoke
+sizing: one_name_one_position
+entry_kind: next_tradable_open
+entry_after: notice_available_at
+max_chase_days: 3
+exit_kind: event_or_max_hold
+exit_event: holders_decrease_notice
+max_hold_calendar_days: 90
+named_not_run_max_hold_calendar_days:
+  - 180
+pnl_source: follower_next_open_to_exit_open
+paper_status: smoke_ready
+applicable_states: []
