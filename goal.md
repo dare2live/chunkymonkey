@@ -65,7 +65,7 @@ owner contract，进度段在此。**不再有第二个说「下一步」的地�
 - **刀4** 财务与两融：已对账未切。两融尺子=accepted 沪深交易所汇总，个股明细加总不是身份（含北交所更对不齐）。利润表抽样营收/归母与妙想 GINCOME 近全额对齐仍 `identity=false`；银行 GBALANCE 该报表 0 行；禁 gpcw 复活。**未切** primary
 - **刀5** 名义 K 自建筹码 vs `cyq_perf`：已对账未切。方法=`turnover_overlay_v1`（未复权收盘 + `turnover_rate_f` 衰减直方图，不是持仓观测）；`cyq_perf` 仍是 DataAccess L0 声明、C0 已 FAIL。`identity=false`；不进公式 `winner_rate`。**未切** primary / 不注册新 TuShare 域
 - **刀6** 盘中资金流两层：已对账未切。三名分列（日终 eastmoney/tushare vendor 代理、盘中分钟代理无 publication、通达信分笔主动差额抽样）；禁跨源加总；分笔截断诚实、与日终 `net_amount` 不是身份。**未切** primary / 不注册新 TuShare 域
-- **刀7** 形态×五式下一开盘；主升浪 B0/B1；跟随仍公告日
+- **刀7** 形态×五式下一开盘；主升浪 B0/B1；跟随仍公告日：已对账未切。公式=`next_tradable_open`；主升浪=`setup_signal_only`（全段未实现，B3+ 非必经）；跟随 PIT=`notice_available_at`。`claimable=false`；非 Release / 不开 Optuna。**未切** primary
 - 参考 easy_tdx（学习不抄 OS）：标准 HQ 与 MAC 协议主机隔离、握手/非空载荷后才 failover、复权必须显式 `--adjust`；不抄缠论/回测 UI，qfq 仍禁成交 SSOT
 
 **护栏**（长期有效，非进度）：formal frontier 与 drain soft 窗分立叙述 · PIT + ≤40d ·
