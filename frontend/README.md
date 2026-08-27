@@ -8,4 +8,5 @@
 站点：`frontend/app/`（多页静态站，无构建、无 npm）。
 `start.command` 起后端后根路径重定向到 `/app/`。
 
-改界面：先改 `DESIGN.md`，再改对应 `frontend/app/<space>/<tab>.html` 与共享 CSS/JS。
+改界面：先改 `DESIGN.md`，再改对应 `frontend/app/<space>/<tab>.html` 与共享
+`css/site.css`、`js/core.js`、`js/live.js`、`js/lab.js`（实验室现查）。

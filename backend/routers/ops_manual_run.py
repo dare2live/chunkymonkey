@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException
+from services import foundation_obs_serve
 from services.writer_lock import writer_lock_status
 
 router = APIRouter()
@@ -757,3 +758,20 @@ def run_job(job: str):
     # probe and child startup, in which case one child exits with writer_busy and its wrapper
     # persists the failure.  Never claim "started" before that lock handshake exists.
     return {"job": job, "accepted": True, "pid": pid}
+
+
+@router.get("/matrix")
+def observation_matrix():
+    """File-based SLA matrix — readable while daily_update holds the writer lock."""
+    return foundation_obs_serve.matrix_payload()
+
+
+@router.get("/matrix/{domain}")
+def observation_domain(domain: str):
+    return foundation_obs_serve.domain_payload(domain)
+
+
+@router.get("/health")
+def observation_health():
+    """Runtime alert flags + last daily report. Not the commit-gate encyclopedia."""
+    return foundation_obs_serve.health_payload()

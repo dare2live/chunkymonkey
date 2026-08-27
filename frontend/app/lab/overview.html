@@ -12,169 +12,20 @@
 <main id="main">
 <section class="panel on" data-space="lab" data-tab="overview">
 <div class="hero compact">
-    <div class="kicker">Lab / Strategy Validation · 应用向 · 2 族 7 实验</div>
+    <div class="kicker">Lab / Strategy Validation · 现查投影 · claimable=false</div>
     <h1 class="sm">实验室</h1>
-    <p class="sub">在底座之上验证策略。这一屏回答：<b>有没有可上线的策略？—— 没有。以及，为什么没有。</b></p>
+    <p class="sub">在底座之上验证策略。这一屏回答：<b>有没有可上线的策略？—— 没有。以及，现查判决为什么没有。</b></p>
   </div>
-
-  <div class="epigraph">
-    “截至当前快照，不存在任何已发布生产策略；所有实验族均被阻断，不可申报。”
-    <span class="src">—— docs/strategy_validation_contract.md §10 · CURRENT STATE (frozen 2026-08-24)</span>
-  </div>
-
-  <div class="sec-title" style="margin-top:64px">算力阶梯 · COMPUTE LADDER —— 谁能跑，谁被锁</div>
-  <div class="compute-ladder">
-    <div class="rung on">
-      <span class="dot"></span>
-      <span class="r-name">LOCAL SMOKE</span>
-      <div class="r-note">本地冒烟 · 可用<br>小样本快检，不产 verdict</div>
-      <span class="r-tag">manual_only</span>
+  <div id="lab-body">
+    <div class="typed-empty" style="margin-top:40px">
+      <span class="lamp unk"><i></i><b>LOADING</b></span>
+      <p>正在读取 <span class="mono">/api/v3/lab</span>。后端不可达时不回落过期判决数字。</p>
     </div>
-    <div class="rung sched">
-      <span class="dot"></span>
-      <span class="r-name">RX BATCH</span>
-      <div class="r-note">批量实验 · <b>已授权</b><br>待 owner 手动触发，非自动</div>
-      <span class="r-tag">RX-20260824-EF</span>
-    </div>
-    <div class="rung lock">
-      <span class="dot"></span>
-      <span class="r-name">OPTUNA</span>
-      <div class="r-note">超参搜索 · <b>未授权</b><br>解锁需声明 objective / 预算 / 停止条件</div>
-      <span class="r-tag">未授权</span>
-    </div>
-    <div class="rung lock">
-      <span class="dot"></span>
-      <span class="r-name">REMOTE</span>
-      <div class="r-note">远程算力 · <b>未授权</b><br>协议与预算先行</div>
-      <span class="r-tag">未授权</span>
-    </div>
-  </div>
-
-  <div class="sec-title" style="margin-top:72px">策略族 · FAMILIES —— 同快照 · 同折 · 同成本下的判决</div>
-  <div class="strategies">
-    <div class="scard" data-nav="lab/experiments">
-      <span class="idx">S-01</span>
-      <h3>主升跟随</h3>
-      <div class="en">MAIN_RALLY · v1</div>
-      <div class="blocks">
-        <span class="done">B0 基准</span><span class="done">B1 全特征</span><span class="done">B2 剥离</span>
-      </div>
-      <div class="blocks" style="margin-top:8px">
-        <span class="vchip reject">B0 reject</span>
-        <span class="vchip reject">B1 reject</span>
-        <span class="vchip reject">B2 reject</span>
-      </div>
-      <div class="verdict-zone">
-        <div class="verdict-label">Family Verdict</div>
-        <div class="verdict">REJECT</div>
-        <div class="meta">
-          快照 <b>n130_gtv2_20260702</b> · frozen 2026-08-24<br>
-          claimable=<b>false</b> · edge gates 未过
-        </div>
-      </div>
-    </div>
-    <div class="scard" data-nav="lab/experiments">
-      <span class="idx">S-02</span>
-      <h3>机构跟随</h3>
-      <div class="en">INSTITUTION_FOLLOW · v1</div>
-      <div class="blocks">
-        <span class="done">B0 基准</span><span class="done">B1 状态增强</span><span class="done">B2 剥离</span><span class="done">B4 披露事件</span>
-      </div>
-      <div class="blocks" style="margin-top:8px">
-        <span class="vchip reject">B0 reject</span>
-        <span class="vchip inconclusive">B1 inc.</span>
-        <span class="vchip reject">B2 reject</span>
-        <span class="vchip inconclusive">B4 inc.</span>
-      </div>
-      <div class="verdict-zone">
-        <div class="verdict-label">Family Verdict</div>
-        <div class="verdict">REJECT</div>
-        <div class="meta">
-          两处 inconclusive = <b>覆盖率不足判不出</b>，非否决、更非通过<br>
-          claimable=<b>false</b>
-        </div>
-      </div>
-    </div>
-    <div class="scard">
-      <span class="idx">S-00</span>
-      <h3>BestChoice</h3>
-      <div class="en">BESTCHOICE · LEGACY</div>
-      <div class="blocks">
-        <span>历史族</span><span>不再迭代</span>
-      </div>
-      <div class="verdict-zone">
-        <div class="verdict-label">Status</div>
-        <div class="verdict frozen">FROZEN</div>
-        <div class="meta">
-          bestchoice/FROZEN.md · 只读留档<br>
-          不构成任何可申报证据
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="sec-title" style="margin-top:72px">分层判决 · E1/E2 —— 信号在分层里，不在聚合里</div>
-  <div class="vcard">
-    <div class="vc-head">
-      <span class="mono">inst_follow_e1e2_20260702</span>
-      <span class="vchip signal">SIGNAL_IN_LAYERS_NOT_AGGREGATE</span>
-      <span class="lamp soft" style="margin-left:auto"><i></i>confirmed_by_owner = 0 · 待主理确认</span>
-    </div>
-    <p class="vc-finding">全体机构<b>无 alpha</b>：中位超额 <b>-0.28%</b> · 胜率 49.5% · n=28.2 万 closed episode（2018–2026）。但按机构类型切开，梯度稳定存在——<b>聚合层否决的东西，在分层里活着</b>。</p>
-    <div class="vbars">
-      <div class="vbar-row"><span class="vb-name">员工持股</span><div class="vb-track"><div class="vb-fill" style="width:100%; background:var(--in-4)"></div></div><span class="vb-val"><b style="color:var(--in-tx)">+6.09%</b> · 胜率 58.0%</span></div>
-      <div class="vbar-row"><span class="vb-name">集合理财</span><div class="vb-track"><div class="vb-fill" style="width:49.1%; background:var(--in-3)"></div></div><span class="vb-val"><b style="color:var(--in-tx)">+2.99%</b></span></div>
-      <div class="vbar-row"><span class="vb-name">企业年金</span><div class="vb-track"><div class="vb-fill" style="width:25.5%; background:var(--in-3)"></div></div><span class="vb-val"><b style="color:var(--in-tx)">+1.55%</b></span></div>
-      <div class="vbar-row"><span class="vb-name">信托</span><div class="vb-track"><div class="vb-fill" style="width:23.5%; background:var(--in-3)"></div></div><span class="vb-val"><b style="color:var(--in-tx)">+1.43%</b></span></div>
-      <div class="vbar-row"><span class="vb-name">QFII</span><div class="vb-track"><div class="vb-fill" style="width:18.4%; background:var(--in-2)"></div></div><span class="vb-val"><b style="color:var(--in-tx)">+1.12%</b> · 52.1% · n=1.8万</span></div>
-      <div class="vbar-row"><span class="vb-name">投资公司 / 私募</span><div class="vb-track"><div class="vb-fill" style="width:16.4%; background:var(--in-2)"></div></div><span class="vb-val"><b style="color:var(--in-tx)">≈ +1.0%</b></span></div>
-      <div class="vbar-row"><span class="vb-name">公募</span><div class="vb-track"><div class="vb-fill" style="width:1.5%; background:var(--unk)"></div></div><span class="vb-val">≈ 0</span></div>
-      <div class="vbar-row"><span class="vb-name">个人</span><div class="vb-track"><div class="vb-fill" style="width:9.5%; background:var(--out-3)"></div></div><span class="vb-val"><b style="color:var(--out-tx)">-0.58%</b></span></div>
-      <div class="vbar-row"><span class="vb-name">券商</span><div class="vb-track"><div class="vb-fill" style="width:46.1%; background:var(--out-4)"></div></div><span class="vb-val"><b style="color:var(--out-tx)">-2.81%</b> · 43.4% · 显著负</span></div>
-    </div>
-    <div class="vc-cols">
-      <div>
-        <h5>明星持有人 · 剔被动 · n≥30</h5>
-        <p>徐刚 <b>+23.28%</b> / 84.2% · 徐开东 <b>+15.69%</b> / 68.9%<br>国新 2 号 <b>+19.53%</b> · 养老 1006 组合 <b>+13.26%</b></p>
-      </div>
-      <div>
-        <h5>稳健性 · 成本三档同向</h5>
-        <p>C1 / C2 / C3 平均 <b>5.05 / 5.62 / 5.83%</b>，方向一致 —— 成本假设扰动下梯度不翻。</p>
-      </div>
-      <div>
-        <h5>β 警示 · caveat</h5>
-        <p>2023 年 <b>-7.14%</b>；2020 年超额口径仍 <b>-9.68%</b> —— 暴露可能主要是 β，不是 α。判决保留此注脚。</p>
-      </div>
-    </div>
-    <div class="vc-src">data/experiment_store.duckdb · fact_experiment_verdict (1 行) · 判决日 2026-07-02 · 数值为判决快照原值，未重算</div>
-  </div>
-
-  <div class="release-strip" style="margin-top:56px">
-    <span class="rs-title">Research Gates · 研究侧门禁</span>
-    <span class="rgate done"><i></i>预注册 2,204 份</span>
-    <span class="rgate part"><i></i>holdout 已消耗 14</span>
-    <span class="rgate done"><i></i>封印 20250601 · opaque</span>
-    <span class="rgate done"><i></i>两族 verdict 冻结 08-24</span>
-    <span class="rgate"><i></i>form / qfq 前沿仍 blocked</span>
-    <span class="rs-end" data-nav="lab/snapshots" style="cursor:pointer">封存清单 →</span>
-  </div>
-
-  <div class="release-strip">
-    <span class="rs-title">Release Gates §9</span>
-    <span class="rgate done"><i></i>快照</span>
-    <span class="rgate done"><i></i>PIT 截断</span>
-    <span class="rgate done"><i></i>holdout 单触</span>
-    <span class="rgate part"><i></i>纸面执行</span>
-    <span class="rgate done"><i></i>消融</span>
-    <span class="rgate done"><i></i>泄漏反证</span>
-    <span class="rgate done"><i></i>artifact</span>
-    <span class="rgate"><i></i>accept verdict</span>
-    <span class="rgate"><i></i>监控冻结</span>
-    <span class="rs-end" data-nav="lab/release" style="cursor:pointer">九门详表 →</span>
   </div>
 </section>
 </main>
 <script src="/app/js/core.js"></script>
 <script src="/app/js/live.js"></script>
+<script src="/app/js/lab.js"></script>
 </body>
 </html>

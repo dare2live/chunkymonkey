@@ -13,71 +13,9 @@
 <section class="panel on" data-space="insight" data-tab="sector">
 <button class="backlink" data-nav="insight/market" style="margin-top:0">← MARKET · 市场快照</button>
   <div class="hero compact" style="margin-top:20px">
-    <div class="kicker">Insight / Sector Drill · 统一下钻面板</div>
+    <div class="kicker">Insight / Sector Drill</div>
     <h1 class="sm">板块下钻</h1>
     <p class="sub">热力图 / 轮动表 / 流向榜三处共用同一面板：<b>面包屑回退，逐层深入，叶子落到个股。</b></p>
-  </div>
-
-  <div class="crumbs">
-    <button class="crumb">申万行业<span class="lv">ROOT</span></button>
-    <span class="crumb-sep">›</span>
-    <button class="crumb">医药生物<span class="lv">L1</span></button>
-    <span class="crumb-sep">›</span>
-    <button class="crumb">医疗服务<span class="lv">L2</span></button>
-    <span class="crumb-sep">›</span>
-    <button class="crumb cur">医疗研发外包<span class="lv">L3</span></button>
-    <span class="crumb-sep">›</span>
-    <span class="crumb" style="cursor:default; border-style:dashed">成分股 30</span>
-    <span style="margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--ink-3)">as-of 20260820 · 成分 PIT: in_date ≤ as_of &lt; out_date</span>
-  </div>
-
-  <div class="curvebox">
-    <div class="cv-head"><span>医疗研发外包 851563.SI · 资金流曲线 —— 柱=当日净流 / 线=窗口累计</span>
-      <span>窗口: <b style="color:var(--ink)">60</b> / 120 / 250 日</span></div>
-    <svg id="crocurve" viewBox="0 0 720 180" preserveAspectRatio="none"></svg>
-    <div class="cv-axis"><span>20260528</span><span>单位: 亿元 · 缺日=null 断柱不补零</span><span>20260820</span></div>
-  </div>
-
-  <div class="sec-title" style="margin-top:56px">L2 · 医药生物的子级 —— 同层可比, 排名即资金</div>
-  <div class="dtable" style="margin-top:0">
-    <div class="lvrow head"><span></span><span>板块</span><span style="text-align:right">涨幅</span><span style="text-align:right">净流</span><span style="text-align:right">RS 排名</span><span>形态</span><span></span></div>
-    <div class="lvrow"><span class="lv-step">›</span><span class="lv-name">医疗服务<span class="cc">801156.SI</span></span><span class="lv-num up">+4.24%</span><span class="lv-num up">+24.5 亿</span><span class="lv-num">#1</span><span><span class="regime">无显著形态</span></span><span class="lv-note">当前路径</span></div>
-    <div class="lvrow"><span class="lv-step"></span><span class="lv-name">医疗器械<span class="cc">801153.SI</span></span><span class="lv-num up">+4.27%</span><span class="lv-num up">+14.1 亿</span><span class="lv-num">#32</span><span><span class="regime">无显著形态</span></span><span class="lv-note"></span></div>
-    <div class="lvrow"><span class="lv-step"></span><span class="lv-name">中药Ⅱ<span class="cc">801155.SI</span></span><span class="lv-num up">+2.11%</span><span class="lv-num up">+9.2 亿</span><span class="lv-num">#88</span><span><span class="regime">无显著形态</span></span><span class="lv-note"></span></div>
-    <div class="lvrow"><span class="lv-step"></span><span class="lv-name">化学制药<span class="cc">801151.SI</span></span><span class="lv-num up">+2.55%</span><span class="lv-num up">+1.8 亿</span><span class="lv-num">#68</span><span><span class="regime">无显著形态</span></span><span class="lv-note"></span></div>
-    <div class="lvrow"><span class="lv-step"></span><span class="lv-name">医药商业<span class="cc">801154.SI</span></span><span class="lv-num up">+1.93%</span><span class="lv-num dn">-0.1 亿</span><span class="lv-num">#27</span><span><span class="regime out">横盘累积流出</span></span><span class="lv-note">streak -5</span></div>
-    <div class="lvrow"><span class="lv-step"></span><span class="lv-name">生物制品<span class="cc">801152.SI</span></span><span class="lv-num up">+7.85%</span><span class="lv-num dn">-13.1 亿</span><span class="lv-num">#8</span><span><span class="regime">无显著形态</span></span><span class="lv-note">streak -5 · 大涨却流出</span></div>
-  </div>
-
-  <div class="sec-title" style="margin-top:56px">L3 · 医疗服务的子级 —— 钱实际落在哪一层</div>
-  <div class="dtable" style="margin-top:0">
-    <div class="lvrow head"><span></span><span>板块</span><span style="text-align:right">涨幅</span><span style="text-align:right">净流</span><span style="text-align:right">RS 排名</span><span>形态</span><span></span></div>
-    <div class="lvrow"><span class="lv-step">›</span><span class="lv-name">医疗研发外包<span class="cc">851563.SI</span></span><span class="lv-num up">+4.12%</span><span class="lv-num up">+23.8 亿</span><span class="lv-num">#1</span><span><span class="regime in">脉冲流入</span></span><span class="lv-note">当前节点 · 吃下 L2 几乎全部净流入</span></div>
-    <div class="lvrow"><span class="lv-step"></span><span class="lv-name">医院<span class="cc">851564.SI</span></span><span class="lv-num up">+2.76%</span><span class="lv-num up">+1.9 亿</span><span class="lv-num">#143</span><span><span class="regime">无显著形态</span></span><span class="lv-note"></span></div>
-    <div class="lvrow nullrow"><span class="lv-step"></span><span class="lv-name">诊断服务<span class="cc">851562.SI</span></span><span class="lv-num">—</span><span class="lv-num">—</span><span class="lv-num">—</span><span>—</span><span class="lv-note">成分在册 · sw_daily 无行情行, 指标 NULL 不隐藏</span></div>
-    <div class="lvrow nullrow"><span class="lv-step"></span><span class="lv-name">其他医疗服务<span class="cc">851565.SI</span></span><span class="lv-num">—</span><span class="lv-num">—</span><span class="lv-num">—</span><span>—</span><span class="lv-note">同上</span></div>
-  </div>
-
-  <div class="sec-title" style="margin-top:56px">成分股 · 医疗研发外包 30 只 —— 按近 20 日累计净流降序 (top 8)</div>
-  <div class="dtable" style="margin-top:0">
-    <div class="lvrow head" style="grid-template-columns:1.2fr 100px 110px 110px 90px 60px"><span>股票</span><span style="text-align:right">当日净流</span><span style="text-align:right">20 日累计</span><span>形态 FORM</span><span></span><span></span></div>
-    <div class="lvrow" style="grid-template-columns:1.2fr 100px 110px 110px 90px 60px" data-nav="insight/dossier" data-code="300759"><span class="lv-name">康龙化成<span class="cc">300759.SZ</span></span><span class="lv-num up">+1.09 亿</span><span class="lv-num up">+20.4 亿</span><span><span class="regime in">上升通道</span></span><span class="lv-note"></span><span class="lv-note">→</span></div>
-    <div class="lvrow" style="grid-template-columns:1.2fr 100px 110px 110px 90px 60px" data-nav="insight/dossier" data-code="603259"><span class="lv-name">药明康德<span class="cc">603259.SH</span></span><span class="lv-num up">+4.53 亿</span><span class="lv-num up">+19.2 亿</span><span><span class="regime in">上升通道</span></span><span class="lv-note"></span><span class="lv-note">→</span></div>
-    <div class="lvrow" style="grid-template-columns:1.2fr 100px 110px 110px 90px 60px" data-nav="insight/dossier" data-code="300725"><span class="lv-name">药石科技<span class="cc">300725.SZ</span></span><span class="lv-num up">+1.82 亿</span><span class="lv-num up">+9.0 亿</span><span><span class="regime in">上升通道</span></span><span class="lv-note"></span><span class="lv-note">→</span></div>
-    <div class="lvrow" style="grid-template-columns:1.2fr 100px 110px 110px 90px 60px" data-nav="insight/dossier" data-code="688131"><span class="lv-name">皓元医药<span class="cc">688131.SH</span></span><span class="lv-num up">+0.47 亿</span><span class="lv-num up">+5.9 亿</span><span><span class="regime out">震荡下行</span></span><span class="lv-note"></span><span class="lv-note">→</span></div>
-    <div class="lvrow" style="grid-template-columns:1.2fr 100px 110px 110px 90px 60px" data-nav="insight/dossier" data-code="300347"><span class="lv-name">泰格医药<span class="cc">300347.SZ</span></span><span class="lv-num up">+5.64 亿</span><span class="lv-num up">+4.9 亿</span><span><span class="regime in">震荡上行</span></span><span class="lv-note">当日净流板块第一</span><span class="lv-note">→</span></div>
-    <div class="lvrow" style="grid-template-columns:1.2fr 100px 110px 110px 90px 60px" data-nav="insight/dossier" data-code="688202"><span class="lv-name">美迪西<span class="cc">688202.SH</span></span><span class="lv-num up">+1.67 亿</span><span class="lv-num up">+4.0 亿</span><span><span class="regime in">上升通道</span></span><span class="lv-note"></span><span class="lv-note">→</span></div>
-    <div class="lvrow" style="grid-template-columns:1.2fr 100px 110px 110px 90px 60px" data-nav="insight/dossier" data-code="688222"><span class="lv-name">成都先导<span class="cc">688222.SH</span></span><span class="lv-num up">+0.94 亿</span><span class="lv-num up">+3.7 亿</span><span><span class="regime out">震荡下行</span></span><span class="lv-note"></span><span class="lv-note">→</span></div>
-    <div class="lvrow" style="grid-template-columns:1.2fr 100px 110px 110px 90px 60px" data-nav="insight/dossier" data-code="300363"><span class="lv-name">博腾股份<span class="cc">300363.SZ</span></span><span class="lv-num up">+0.91 亿</span><span class="lv-num up">+2.5 亿</span><span><span class="regime in">震荡上行</span></span><span class="lv-note"></span><span class="lv-note">→</span></div>
-  </div>
-
-  <div class="evidence" style="margin-top:40px">
-    <h4>VENDOR 红线 · 口径与 NULL 规则</h4>
-    <div class="ev-line"><span>sw 叶资金流</span> ···· moneyflow (tushare 全单口径) · 板块层 = sw_daily 聚合</div>
-    <div class="ev-line"><span>dc 叶资金流</span> ···· moneyflow_dc (东财主力口径) · 两链禁跨、禁同榜</div>
-    <div class="ev-line"><span>成分来源</span> ······ index_member_all as-of PIT + 沪深A 含 ST 活跃过滤</div>
-    <div class="ev-line"><span>NULL 规则</span> ······ 未知码 → 200 空行不猜 · 无行情行子节点列出且指标 NULL · 缺日断柱</div>
-    <div class="ev-line"><span>形态/连板</span> ······ 个股市场事实两链共用 (form production-read + limit_list_d)</div>
   </div>
 </section>
 </main>

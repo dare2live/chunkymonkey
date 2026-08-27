@@ -80,6 +80,7 @@ member_service_files:
   - margin_pulse_promote_gate.py  # F4 2026-07-23: promote gate + load margin_pulse_promote.yaml; serve→accepted SSE+SZSE; READY as external_aggregate only when criteria pass
   - stock_limit_publish.py   # B2 2026-07-21: fact_stock_limit_daily stock-day limit publication (raw_tushare_limit_list_d → smartmoney; serve/pulse leaf)
   - stock_moneyflow_publish.py  # B2 2026-07-21: fact_stock_moneyflow(_dc)_daily stock-day flow publication (raw moneyflow/moneyflow_dc → smartmoney; serve/pulse leaf)
+  - northbound_market_flow.py  # market-day overlay of moneyflow_hsgt; not a named holder; typed API not stock-asof DataAccess
   - index_daily_publish.py      # B2 2026-07-21: fact_index_daily index×trade_date close publication (raw index_daily → smartmoney; paper/RS/tech/inst)
   - top_inst_seat_publish.py    # B2 2026-07-21: fact_top_inst_seat_daily LHB seat grain (raw top_inst → smartmoney; pulse/inst)
   - dc_member_publish.py        # B1 2026-07-21: fact_dc_member_daily observation-date DC membership PIT (raw dc_member → smartmoney; pulse/serve)

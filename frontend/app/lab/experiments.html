@@ -12,72 +12,20 @@
 <main id="main">
 <section class="panel on" data-space="lab" data-tab="experiments">
 <div class="hero compact">
-    <div class="kicker">Lab / Experiments · 7 条 · 点击进消融明细</div>
+    <div class="kicker">Lab / Experiments · E/F 消融 · 点击进详情</div>
     <h1 class="sm">实验明细</h1>
-    <p class="sub">每条实验 = 一个 block × 一份冻结快照。verdict 由协议产出，UI 只负责<b>不掩饰</b>。</p>
+    <p class="sub">每条 = 一个 block × 一份冻结快照。这些 JSON 是消融梯子，<b>不是</b>跟随 spec / 不是主升浪猎手。</p>
   </div>
-
-  <div class="dtable" style="border-top-color:var(--ink)">
-    <div class="exprow" style="cursor:default; border-bottom-color:var(--ink)">
-      <span class="xp-fam" style="letter-spacing:.16em">EXPERIMENT</span>
-      <span class="xp-fam" style="letter-spacing:.16em">BLOCK</span>
-      <span class="xp-fam" style="letter-spacing:.16em">VERDICT</span>
-      <span class="xp-fam" style="letter-spacing:.16em">MEASURED · 实测</span>
-      <span class="xp-fam" style="letter-spacing:.16em">FAMILY</span>
-    </div>
-    <div class="exprow" data-nav="lab/expdetail">
-      <span class="xp-id">main_rally_v1:B0</span>
-      <span class="xp-block">B0 基准</span>
-      <span><span class="vchip reject">reject</span></span>
-      <span class="xp-note">eval <b>-11.65%</b> · holdout +0.09% · maxDD 21.9%</span>
-      <span class="xp-fam">main_rally</span>
-    </div>
-    <div class="exprow" data-nav="lab/expdetail">
-      <span class="xp-id">main_rally_v1:B1</span>
-      <span class="xp-block">B1 全特征</span>
-      <span><span class="vchip reject">reject</span></span>
-      <span class="xp-note">eval <b>-21.24%</b> · holdout -0.81% · maxDD 22.6% —— 加特征反而更差</span>
-      <span class="xp-fam">main_rally</span>
-    </div>
-    <div class="exprow" data-nav="lab/expdetail">
-      <span class="xp-id">main_rally_v1:B2</span>
-      <span class="xp-block">B2 剥离</span>
-      <span><span class="vchip reject">reject</span></span>
-      <span class="xp-note">eval <b>-0.71%</b> · holdout <span style="color:var(--ink-3)">n/a</span> · maxDD 10.3%</span>
-      <span class="xp-fam">main_rally</span>
-    </div>
-    <div class="exprow">
-      <span class="xp-id">institution_follow_v1:B0</span>
-      <span class="xp-block">B0 基准</span>
-      <span><span class="vchip reject">reject</span></span>
-      <span class="xp-note">基准跟随规则未过 eval 门</span>
-      <span class="xp-fam">institution_follow</span>
-    </div>
-    <div class="exprow">
-      <span class="xp-id">institution_follow_v1:B1</span>
-      <span class="xp-block">B1 状态增强</span>
-      <span><span class="vchip inconclusive">inconclusive</span></span>
-      <span class="xp-note">stock_state_coverage_insufficient —— 状态域覆盖不足，判不出</span>
-      <span class="xp-fam">institution_follow</span>
-    </div>
-    <div class="exprow">
-      <span class="xp-id">institution_follow_v1:B2</span>
-      <span class="xp-block">B2 剥离</span>
-      <span><span class="vchip reject">reject</span></span>
-      <span class="xp-note">剥离后仍 reject</span>
-      <span class="xp-fam">institution_follow</span>
-    </div>
-    <div class="exprow">
-      <span class="xp-id">institution_follow_v1:B4</span>
-      <span class="xp-block">B4 披露事件</span>
-      <span><span class="vchip inconclusive">inconclusive</span></span>
-      <span class="xp-note">disclosure_event_coverage_insufficient —— 披露事件覆盖不足</span>
-      <span class="xp-fam">institution_follow</span>
+  <div id="lab-body">
+    <div class="typed-empty" style="margin-top:40px">
+      <span class="lamp unk"><i></i><b>LOADING</b></span>
+      <p>正在读取 <span class="mono">/api/v3/lab/experiments</span>。</p>
     </div>
   </div>
 </section>
 </main>
 <script src="/app/js/core.js"></script>
 <script src="/app/js/live.js"></script>
+<script src="/app/js/lab.js"></script>
 </body>
 </html>

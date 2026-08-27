@@ -12,36 +12,16 @@
 <main id="main">
 <section class="panel on" data-space="insight" data-tab="briefing">
 <div class="hero compact">
-    <div class="kicker">Insight / Briefing · trust-gated narrative</div>
+    <div class="kicker">Insight / Briefing</div>
     <h1 class="sm">盘中简报</h1>
     <p class="sub">叙事是有门槛的：能力灯不全绿，系统<b>拒绝生成观点</b>。</p>
   </div>
 
   <div id="briefbody">
-  <div class="sec-title" style="margin-top:40px">信任门 · TRUST GATE —— 三盏能力灯</div>
-  <div class="trust-row">
-    <span class="lamp soft"><i></i>Cap A · 实时行情 <b>stale</b></span>
-    <span class="lamp soft"><i></i>Cap B · 资金流 <b>stale</b></span>
-    <span class="lamp soft"><i></i>Cap D · 龙虎榜 <b>stale</b></span>
-    <span style="margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--ink-3)">gate: all_green → 可叙事</span>
-  </div>
-
-  <div class="narrative-null">
-    <h4>NARRATIVE = NULL</h4>
-    <p>
-      trust gate 未通过：三盏能力灯均为 stale，系统拒绝生成叙事。<br>
-      不是没话可说 —— 是不拿旧数据装新观点。下面只列带 as-of 的事实，不列观点。
-    </p>
-  </div>
-
-  <div class="sec-title" style="margin-top:56px">后备事实 · FACTS ONLY —— as-of 20260814</div>
-  <div style="border-top:1px solid var(--ink); margin-top:20px">
-    <div class="fact-line"><span class="mono">LIMIT 涨跌停</span>涨停 63 家 · 跌停 9 家 · 炸板率 23.2%</div>
-    <div class="fact-line"><span class="mono">NET 净流入</span>主力净流入 -129.9 亿元 (vendor imbalance 代理)</div>
-    <div class="fact-line"><span class="mono">MARGIN 两融</span>余额 2.67 万亿 · 日变动 -18.4 亿</div>
-    <div class="fact-line"><span class="mono">VALUATION 估值</span>PE(TTM) 14.36 · 换手率 1.77%</div>
-    <div class="fact-line"><span class="mono">DRAGON 龙虎榜</span>上榜 67 家 · 机构净买 +21.3 亿</div>
-  </div>
+    <div class="typed-empty" style="margin-top:40px">
+      <span class="lamp unk"><i></i><b>LOADING</b></span>
+      <p>正在读取 <span class="mono">decision/briefing/daily</span>。后端不可达时不回落打样事实。</p>
+    </div>
   </div>
 </section>
 </main>

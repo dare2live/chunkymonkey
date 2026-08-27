@@ -12,39 +12,29 @@
 <main id="main">
 <section class="panel on" data-space="insight" data-tab="warnings">
 <div class="hero compact">
-    <div class="kicker">Insight / Warnings · 描述性观察, 非操作建议</div>
+    <div class="kicker">Insight / Warnings</div>
     <h1 class="sm">退潮预警</h1>
     <p class="sub">两类机械规则，阈值在 <span class="mono">market_pulse.yaml</span>：排名跌出 + 静默流出。<b>规则命中是观察，不是利空断言。</b></p>
   </div>
 
-  <div class="sec-title" style="margin-top:48px">排名跌出 · RANK DROPOUT —— 申万 L1 RS(4w) 跌出 top 3</div>
-  <div class="dtable">
+  <div class="sec-title" style="margin-top:48px">排名跌出 · RANK DROPOUT —— 申万 L1 RS(4w) 跌出 top N</div>
+  <div class="dtable" id="warn-rank">
     <div class="lvrow head" style="grid-template-columns:1.2fr 100px 100px 110px 1fr"><span>板块</span><span>前一日排名</span><span>最新排名</span><span>RS(4w) 百分点</span><span>备注</span></div>
-    <div class="lvrow" style="grid-template-columns:1.2fr 100px 100px 110px 1fr; cursor:default">
-      <span class="lv-name">纺织服饰<span class="cc">SW L1</span></span>
-      <span class="lv-num">2 <span style="color:var(--ink-3)">(0819)</span></span>
-      <span class="lv-num">4 <span style="color:var(--ink-3)">(0820)</span></span>
-      <span class="lv-num">11.05</span>
-      <span class="lv-note">阈值 top_n_sectors=3 · 跌出 1 名即命中</span>
-    </div>
+    <div class="typed-empty" style="margin:16px"><span class="lamp unk"><i></i><b>LOADING</b></span><p>正在读取 <span class="mono">pulse/warnings</span>。</p></div>
   </div>
 
-  <div class="sec-title" style="margin-top:56px">静默流出 · QUIET OUTFLOW —— 价格没动，钱连续走 ≥ 3 日 · 曲线=近 60 日累计净流</div>
-  <div class="dtable">
-    <div class="lvrow head" style="grid-template-columns:1.1fr 80px 100px 100px 200px 90px"><span>板块</span><span>连续流出</span><span>当日净流</span><span>当日涨幅</span><span>近 60 日累计曲线</span><span>namespace</span></div>
-    <div class="lvrow" style="grid-template-columns:1.1fr 80px 100px 100px 200px 90px" data-nav="insight/sector"><span class="lv-name">高速公路</span><span class="lv-num dn">6 日</span><span class="lv-num dn">-0.1 亿</span><span class="lv-num up">+0.50%</span><svg class="spark" data-spark-warn="高速公路" data-side="out" viewBox="0 0 200 24" preserveAspectRatio="none"></svg><span class="lv-note">dc_industry</span></div>
-    <div class="lvrow" style="grid-template-columns:1.1fr 80px 100px 100px 200px 90px" data-nav="insight/sector"><span class="lv-name">中特估</span><span class="lv-num dn">3 日</span><span class="lv-num dn">-14.3 亿</span><span class="lv-num up">+0.13%</span><svg class="spark" data-spark-warn="中特估" data-side="out" viewBox="0 0 200 24" preserveAspectRatio="none"></svg><span class="lv-note">dc_concept</span></div>
-    <div class="lvrow" style="grid-template-columns:1.1fr 80px 100px 100px 200px 90px" data-nav="insight/sector"><span class="lv-name">大盘价值</span><span class="lv-num dn">3 日</span><span class="lv-num dn">-8.7 亿</span><span class="lv-num up">+0.26%</span><svg class="spark" data-spark-warn="大盘价值" data-side="out" viewBox="0 0 200 24" preserveAspectRatio="none"></svg><span class="lv-note">dc_concept</span></div>
-    <div class="lvrow" style="grid-template-columns:1.1fr 80px 100px 100px 200px 90px" data-nav="insight/sector"><span class="lv-name">价值股</span><span class="lv-num dn">3 日</span><span class="lv-num dn">-6.7 亿</span><span class="lv-num up">+0.58%</span><svg class="spark" data-spark-warn="价值股" data-side="out" viewBox="0 0 200 24" preserveAspectRatio="none"></svg><span class="lv-note">dc_concept</span></div>
-    <div class="lvrow" style="grid-template-columns:1.1fr 80px 100px 100px 200px 90px" data-nav="insight/sector"><span class="lv-name">B股</span><span class="lv-num dn">3 日</span><span class="lv-num dn">-0.0 亿</span><span class="lv-num up">+0.59%</span><svg class="spark" data-spark-warn="B股" data-side="out" viewBox="0 0 200 24" preserveAspectRatio="none"></svg><span class="lv-note">dc_concept</span></div>
+  <div class="sec-title" style="margin-top:56px">静默流出 · QUIET OUTFLOW —— 价格没动，钱连续走 · 曲线=近窗累计净流</div>
+  <div class="dtable" id="warn-quiet">
+    <div class="lvrow head" style="grid-template-columns:1.1fr 80px 100px 100px 200px 90px"><span>板块</span><span>连续流出</span><span>当日净流</span><span>当日涨幅</span><span>近窗累计曲线</span><span>namespace</span></div>
+    <div class="typed-empty" style="margin:16px"><span class="lamp unk"><i></i><b>LOADING</b></span><p>正在读取静默流出。</p></div>
   </div>
 
   <div class="evidence" style="margin-top:40px">
     <h4>THRESHOLDS · market_pulse.yaml</h4>
-    <div class="ev-line"><span>warning_quiet_outflow_days</span> ···· 3 <span>(dc 链连续悄悄流出天数 ≥ 该值进卡)</span></div>
-    <div class="ev-line"><span>quiet_px_band_pct</span> ·········· 1.0 <span>(|pct_change| &lt; 1% 视作"价格没动")</span></div>
-    <div class="ev-line"><span>top_n_sectors</span> ·············· 3 <span>(排名跌出参照位)</span></div>
-    <div class="ev-line"><span>as-of</span> ···················· 20260820 · 预警为描述性观察，永不写成操作建议</div>
+    <div class="ev-line"><span>warning_quiet_outflow_days</span> ···· 现查阈值 <span>（dc 链连续悄悄流出天数）</span></div>
+    <div class="ev-line"><span>quiet_px_band_pct</span> ·········· 现查阈值 <span>（|pct_change| 视作价格没动）</span></div>
+    <div class="ev-line"><span>top_n_sectors</span> ·············· 现查阈值 <span>（排名跌出参照位）</span></div>
+    <div class="ev-line"><span>as-of</span> ···················· <span id="warn-asof">— · 预警为描述性观察，永不写成操作建议</span></div>
   </div>
 </section>
 </main>

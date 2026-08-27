@@ -12,60 +12,16 @@
 <main id="main">
 <section class="panel on" data-space="lab" data-tab="expdetail">
 <button class="backlink" data-nav="lab/experiments">← EXPERIMENTS · 实验明细</button>
-  <div class="hero compact" style="margin-top:20px">
-    <div class="kicker">Lab / Experiment Detail · MAIN_RALLY_V1</div>
-    <h1 class="sm">逐层消融 <span style="color:var(--ink-3); font-weight:400">/ B0 → B1 → B2</span></h1>
-    <p class="sub">同一份冻结快照、同一组折、同一套成本。唯一变量是特征。结论：<b>特征没有贡献边际，反而放大了亏损。</b></p>
-  </div>
-
-  <div class="ablation">
-    <div class="abrow">
-      <span class="ab-name">B0<span class="cn">基准规则</span></span>
-      <div class="ab-track">
-        <span class="ab-zero"></span>
-        <span class="ab-bar neg" style="width:27.4%">-11.65%</span>
-      </div>
-      <div class="ab-meta">holdout +0.09% · maxDD 21.9%<br>eval 未过 → reject</div>
+  <div id="lab-body">
+    <div class="typed-empty" style="margin-top:40px">
+      <span class="lamp unk"><i></i><b>LOADING</b></span>
+      <p>需要 <span class="mono">?family=&amp;block=</span>。后端不可达时不展示过期数字。</p>
     </div>
-    <div class="abrow">
-      <span class="ab-name">B1<span class="cn">全特征</span></span>
-      <div class="ab-track">
-        <span class="ab-zero"></span>
-        <span class="ab-bar neg" style="width:50%">-21.24%</span>
-      </div>
-      <div class="ab-meta">holdout -0.81% · maxDD 22.6%<br>三层中最差 → reject</div>
-    </div>
-    <div class="abrow">
-      <span class="ab-name">B2<span class="cn">剥离</span></span>
-      <div class="ab-track">
-        <span class="ab-zero"></span>
-        <span class="ab-bar neg" style="width:6px; min-width:6px; padding-left:0"></span>
-        <span style="position:absolute; left:calc(50% + 12px); top:10px; font-family:var(--mono); font-size:10.5px; color:var(--out-3)">-0.71%</span>
-      </div>
-      <div class="ab-meta">holdout n/a · maxDD 10.3%<br>仍未过 0 轴 → reject</div>
-    </div>
-  </div>
-
-  <div class="sec-title" style="margin-top:64px">判决清单 · EDGE GATES —— B1 为什么 reject</div>
-  <div class="qtable">
-    <div class="gaterow"><span class="g-sym" style="color:var(--ok)">✓</span><span class="g-name">drawdown_ok</span><span class="g-detail">maxDD 22.6% ≤ 25% 阈值 —— 回撤门通过</span></div>
-    <div class="gaterow"><span class="g-sym" style="color:var(--hard)">✗</span><span class="g-name">eval_return</span><span class="g-detail">-21.24% &lt; 0 —— 评估窗收益为负，不过</span></div>
-    <div class="gaterow"><span class="g-sym" style="color:var(--hard)">✗</span><span class="g-name">holdout_return</span><span class="g-detail">-0.81% &lt; 0 —— 封存窗同样为负，不过</span></div>
-    <div class="gaterow"><span class="g-sym" style="color:var(--hard)">✗</span><span class="g-name">claimable</span><span class="g-detail">blocked=true · reason=measured_protocol_ready_edge_gates_unmet</span></div>
-  </div>
-
-  <div class="evidence">
-    <h4>EVIDENCE · 这条判决落在哪些不可变证据上</h4>
-    <div class="ev-line"><span>experiment_id</span> ···· main_rally_v1:B1:…:5e7859e8ad25</div>
-    <div class="ev-line"><span>snapshot</span> ········ main_rally_bounded_20241115_20250530_n130_gtv2_20260702</div>
-    <div class="ev-line"><span>snapshot_hash</span> ·· 779c1ae2d4c41cce…</div>
-    <div class="ev-line"><span>frozen</span> ·········· 2026-08-24 · immutable</div>
-    <div class="ev-line"><span>holdout</span> ········· sealed ≥ 20250601 · opaque · hash 8382de60…</div>
-    <div class="ev-line"><span>protocol</span> ········ 同快照 / 同 universe / 同折 / 同成本 / T+1 / 涨跌停停牌</div>
   </div>
 </section>
 </main>
 <script src="/app/js/core.js"></script>
 <script src="/app/js/live.js"></script>
+<script src="/app/js/lab.js"></script>
 </body>
 </html>

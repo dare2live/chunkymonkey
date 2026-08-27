@@ -21,14 +21,16 @@
 
 每个标签是**独立 HTML 页**，URL 为 `/app/<space>/<tab>.html`。页头空间钮 + 标签栏是共享铬
 （`js/core.js`），不是把整站塞进一个 hash 路由。跨页跳转靠 `data-nav` + 可选
-`data-code` / `data-holder` / `data-chain` / `data-domain`，落到真实 query：
+`data-code` / `data-holder` / `data-chain` / `data-domain` / `data-family` /
+`data-block`，落到真实 query：
 
 | 深链 | URL |
 |---|---|
 | 个股档案 | `/app/insight/dossier.html?code=600519` |
 | 机构席位展开 | `/app/insight/inst.html?holder=<name>` |
-| 板块下钻 | `/app/insight/sector.html?chain=sw_industry&code=...` |
+| 板块下钻 | `/app/insight/sector.html?chain=sw_industry&code=801230.SI` |
 | 域详情 | `/app/foundation/domain.html?domain=moneyflow` |
+| 消融详情 | `/app/lab/expdetail.html?family=main_rally_v1&block=b0` |
 
 ## 2. 视觉系统
 
@@ -59,8 +61,11 @@
 4. **缺失传播为缺失**：`unknown` 不猜、不补零、不拿旧值冒充；缺日断柱断线。
 5. **信任门**：叙事类输出（盘中简报）在能力灯不全绿时输出 `NARRATIVE = NULL` —— NULL 是系统输出，不是加载失败。
 6. **披露/研究面常驻合规横幅**：如机构席位 `tier3_research_evidence_only` + conformity 状态 + `cutover_allowed`。
-7. **离线烘焙兜底**：后端不可达时，**台账/实验室/市场总览**可展示标注了日期的真实快照，并在页脚说明；
-   烘焙内容必须是真值快照，不得编造。个股档案 / 股票列表 / K 线 **不**用烘焙旧股顶上 —— 离线即 typed empty。
+7. **离线不回落打样**：后端不可达时，**台账也不展示标注了日期的样本快照**。
+   个股档案 / 股票列表 / K 线 / **机构席位** / **底座矩阵与日更** / **洞察观察页**
+   **不**用烘焙样本顶上 —— 后端不可达即 typed empty。实验室离线同样 typed empty
+   （不回落过期判决数字）。后台约束口吻（cron / 退出码 / 假百分比 / 写锁说教）不进观察面；
+   运行态事实（RUNNING、阶段、as-of、`claimable=false`）可以展示。
 8. **量纲**：后端小数（`0.15` = 15%）在本页用「已是百分数」的 `fmtPct` 时必须先 ×100；不要把这套函数抄到会自己 ×100 的运行时。
 9. **K 线是 qfq 分析视图**，不是名义成交价；图注必须写 `qfq`，不暗示可按图成交。
 10. **研究标签是命名层**：`research_identity` / `seat_research_class` 只展示 tags，禁止把国家队、外资自有、席位净买加总成一个「热钱」。
@@ -70,39 +75,51 @@
 文件路径 = `/app/<space>/<tab>.html`。下列「标签」与文件名一致。
 
 ### FOUNDATION
+日更只有一处驾驶舱。矩阵上的「一键日更」先 `POST /api/v3/ops/jobs/daily_update/run`，再进入日更页；写锁已占用（409）也进日更页看进度，不进已删除的运行回放。
+
 | 页 | 文件 | 数据源 |
 |---|---|---|
-| 全量矩阵 | `foundation/matrix.html` | 现查快照（烘焙）→ 域详情 |
-| 工作台 | `foundation/ops.html` | `GET /api/v3/ops/jobs/daily_update` · `GET /api/v3/ops/pipeline/nodes` · POST 触发 |
-| 运行回放 | `foundation/run.html` | 烘焙 |
-| 门与健康 | `foundation/gates.html` | 烘焙 |
-| 域详情 | `foundation/domain.html` | 烘焙 + 下钻参数 `?domain=` |
+| 全量矩阵 | `foundation/matrix.html` | `GET /api/v3/ops/matrix`（最新 watermark SLA JSON + 告警旗；不碰 DuckDB） |
+| 日更 | `foundation/ops.html` | `GET /api/v3/ops/jobs/daily_update` · `GET /api/v3/ops/pipeline/nodes` · `GET /api/v3/ops/health` · POST 触发 |
+| 域详情 | `foundation/domain.html` | `GET /api/v3/ops/matrix/{domain}` · query `?domain=` · 无 DuckDB 分区位图时该块 typed empty |
+
+已删除：`foundation/run.html`（运行回放）、`foundation/gates.html`（门与健康百科）。运行时告警并进日更页；commit-gate 百科不进观察面。
 
 ### LAB
-| 页 | 文件 |
-|---|---|
-| 实验总览 | `lab/overview.html` |
-| 实验明细 | `lab/experiments.html` |
-| 消融详情 | `lab/expdetail.html` |
-| 发布门 | `lab/release.html` |
-| 快照封存 | `lab/snapshots.html` |
+| 页 | 文件 | 端点 |
+|---|---|---|
+| 实验总览 | `lab/overview.html` | `GET /api/v3/lab/status` · `GET /api/v3/lab/packages` · `GET /api/v3/lab/experiments` |
+| 策略包 | `lab/packages.html` | `GET /api/v3/lab/packages` · `GET /api/v3/lab/status` |
+| 实验明细 | `lab/experiments.html` | `GET /api/v3/lab/experiments` |
+| 消融详情 | `lab/expdetail.html` | `GET /api/v3/lab/experiments/{family}/{block}` · query `?family=&block=` |
+| 发布门 | `lab/release.html` | `GET /api/v3/lab/release` |
+| 快照封存 | `lab/snapshots.html` | `GET /api/v3/lab/snapshots` |
 
-读研究工件与冻结清单；判决永不被 UI 美化。
+读研究工件与冻结清单的**压缩投影**（lineage JSON 里的分区清单不下发）。
+判决永不被 UI 美化。`claimable` 恒为 false；没有 `StrategyRelease`。
+
+**三层不许混称**（契约 §8）：画像 / episode α ≠ 跟随 spec 纸面 ≠ E/F 消融梯子。
+主升浪页只展示 setup 纸面 + F 消融；full-episode 是能力空态。
+公式页只展示 frozen hash + 合成烟测/单名 pointer；全宇宙 B5 / 吸收是能力空态。
+§9 发布门：观察面**不重放** pit-audit / 泄漏反证；核不到的门标 unknown，禁止把打样稿的绿灯写成现查通过。
+后端不可达时实验室**不**回落到过期判决数字 —— typed empty，写明能力空态。
 
 ### INSIGHT
 | 页 | 文件 | 端点 |
 |---|---|---|
-| 市场快照 | `insight/market.html` | `pulse/sentiment` · `pulse/drill` · `pulse/heatmap` · `pulse/strongest` · `pulse/flow_board` |
+| 市场快照 | `insight/market.html` | `pulse/sentiment` · `pulse/drill` · `pulse/heatmap` · `pulse/strongest` · `pulse/flow_board` · `pulse/rotation` |
 | 资金流向 | `insight/flows.html` | `pulse/heatmap` · `pulse/flow_board` |
 | 退潮预警 | `insight/warnings.html` | `pulse/warnings` |
 | 板块下钻 | `insight/sector.html` | `pulse/drill` · `pulse/flow_stripe` |
 | 盘中简报 | `insight/briefing.html` | `decision/briefing/daily` |
 | 形态选股 | `insight/screener.html` | `screener/options` · `screener/form_stage` |
 | 个股档案 | `insight/dossier.html` | 列表 `stock/list`；详情 `stock/{code}/dossier` · `stock/{code}/kline` · `decision/moneyflow/stock/{code}` · `decision/intersection/stock/{code}` |
-| 机构席位 | `insight/inst.html` | `inst/profiles` · `inst/profiles/{holder}` |
+| 机构席位 | `insight/inst.html` | `inst/profiles` · `inst/profiles/{holder}` · `inst/signals` |
 | 观察账本 | `insight/paper.html` | `paper/portfolio` · `paper/nav` |
 
-**跳转闭环**：板块下钻叶子 → 个股档案；个股档案机构面 → 机构席位 `?holder=` 自动展开（即使该户不在本页前 500 排名表）；机构 episode 行 → 个股档案。任何一面都不许是死路。
+**跳转闭环**：板块下钻叶子 → 个股档案；个股档案机构面 → 机构席位 `?holder=` 自动展开（即使该户不在本页前 500 排名表）；机构 episode 行 / 披露事件流行 → 个股档案或席位展开；消融行 → `lab/expdetail.html?family=&block=`。任何一面都不许是死路。
+个股 `code` 截 6 位数字；板块 `code` 保留供应商后缀（申万 `801230.SI`、东财 `BKxxxx.DC`），不得按股票规则截前 6 位。
+`inst/signals` 是近窗新开 episode 展示流（画像层）；禁止写成跟随可赚同等收益。`pulse/rotation` 是排名迁移描述，零买卖暗示。
 点行（含代码/名称格）进档案；雪球是行末独立小链 `.xq`，不得把代码/名称整格包成外链 —— `core.js` 对 `a.xq` 放行，包住名称等于抢走档案入口。
 
 **股票列表契约**：
@@ -135,7 +152,8 @@
 ## 6. 维护规则
 
 1. 改页面结构/端点映射/色彩语义，**先改本文**，再改 `frontend/app/<space>/<tab>.html` 与共享
-   `css/site.css`、`js/core.js`、`js/live.js`。无 `dist/`、无 npm、无 React/Vite。
+   `css/site.css`、`js/core.js`、`js/live.js`、`js/lab.js`（实验室现查，不进 insight 页）。
+   无 `dist/`、无 npm、无 React/Vite。
 2. 本文不写任何随运行变化的值（前沿、as-of、行数）——运行时状态现查 `scripts/chunkyctl status` 或页面本身。
 3. 新增消费面：先在本文登记 **文件路径 + 端点 + 诚实性约定**，再实现成独立网页，不要把新面塞进已有页的 display:none 堆里。
 4. 共享铬只通过 `core.js` 绘制。页面之间用真实 URL，不用 hash 伪装成单页应用。

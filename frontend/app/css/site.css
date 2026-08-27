@@ -161,7 +161,7 @@
   .matrix { margin-top: 40px; }
   .matrix-head, .mrow {
     display: grid;
-    grid-template-columns: 216px 108px 84px 80px 140px 110px 110px 1fr;
+    grid-template-columns: 216px 108px 84px 80px 140px 110px 1fr;
     align-items: baseline;
   }
   .matrix-head {

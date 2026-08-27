@@ -4,12 +4,11 @@
   const TABS = {
     foundation: [
       { id: "matrix", label: "全量矩阵", en: "MATRIX" },
-      { id: "ops",    label: "工作台",   en: "OPS · LIVE" },
-      { id: "run",    label: "运行回放", en: "RUN" },
-      { id: "gates",  label: "门与健康", en: "GATES" },
+      { id: "ops",    label: "日更",     en: "OPS" },
     ],
     lab: [
       { id: "overview",    label: "实验总览", en: "OVERVIEW" },
+      { id: "packages",    label: "策略包",   en: "PACKAGES" },
       { id: "experiments", label: "实验明细", en: "EXPERIMENTS" },
       { id: "release",     label: "发布门",   en: "RELEASE" },
       { id: "snapshots",   label: "快照封存", en: "SNAPSHOTS" },
@@ -56,6 +55,8 @@
     if (extra.holder) url.searchParams.set("holder", extra.holder);
     if (extra.chain) url.searchParams.set("chain", extra.chain);
     if (extra.domain) url.searchParams.set("domain", extra.domain);
+    if (extra.family) url.searchParams.set("family", extra.family);
+    if (extra.block) url.searchParams.set("block", extra.block);
     const next = url.pathname + url.search;
     if (location.pathname + location.search === next) {
       if (typeof window.CM_boot === "function") window.CM_boot();
@@ -102,10 +103,17 @@
     e.preventDefault();
     const nav = t.dataset.nav;
     const extra = {};
-    if (t.dataset.code) extra.code = String(t.dataset.code).slice(0, 6);
+    if (t.dataset.code) {
+      extra.code = nav === "insight/dossier"
+        ? String(t.dataset.code).replace(/\D/g, "").slice(0, 6)
+        : String(t.dataset.code);
+    }
     if (t.dataset.holder) extra.holder = t.dataset.holder;
     if (t.dataset.chain) extra.chain = t.dataset.chain;
-    if (nav === "foundation/domain") {
+    if (t.dataset.domain) extra.domain = t.dataset.domain;
+    if (t.dataset.family) extra.family = t.dataset.family;
+    if (t.dataset.block) extra.block = t.dataset.block;
+    if (nav === "foundation/domain" && !extra.domain) {
       const nm = t.querySelector(".name");
       if (nm && nm.firstChild) extra.domain = nm.firstChild.textContent.trim();
     }

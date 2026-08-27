@@ -150,6 +150,10 @@ app.include_router(decision_assist_router, prefix="/api/v3/decision", tags=["dec
 from routers.stock_screener import router as stock_screener_router
 app.include_router(stock_screener_router, prefix="/api/v3/screener", tags=["stock_screener"])
 
+# Tier3 实验室观察面：只投影 lineage / StrategySpec / check_strategy_lab，不跑实验、不 claim。
+from routers.strategy_lab import router as strategy_lab_router
+app.include_router(strategy_lab_router, prefix="/api/v3/lab", tags=["strategy_lab"])
+
 # (退役 routers: market_perception/bestchoice/perception_legacy/signals_v2 等 2026-06-14~28 删, 详 ledger + git史)
 
 # 设置选项相关的API (比如开启/关闭功能模块)
