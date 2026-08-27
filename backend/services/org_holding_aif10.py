@@ -9,10 +9,10 @@
   ② 清洗 clean   : _normalize_rows     — 字段映射 + 报告期/可用日锚 + grain
   ③ 存储 store   : _upsert_rows        — 幂等 upsert raw_org_holding_aif10
 
-PIT 锚 (关键, 真金白银): MAIN_ORGHOLDDETAIL 只有 REPORT_DATE (报告期), 无 NOTICE_DATE.
-机构持仓是季报派生 → 可用日 = 该报告期的法定披露截止日 (保守上界, 数据不晚于此可得):
-  Q1(03-31)→04-30 同年 / H1(06-30)→08-31 同年 / Q3(09-30)→10-31 同年 / 年报(12-31)→次年04-30.
-这是监管硬上界 (非估计), event_engine/特征层 JOIN 必用 available_date 防穿越 (报告期 != 可用日).
+PIT 锚: MAIN_ORGHOLDDETAIL 只有 REPORT_DATE, 无 NOTICE_DATE. 回测已知日 =
+同股同期定期报告首次公告 (income.f_ann_date, 不足则 holders notice_date),
+不是报告期末, 也不是法定披露截止. 截止日只量 completeness.
+available_date 落公告日 (已公开) 或 first-seen (尚无公告 JOIN); 禁未来分区.
 
 历史范围: 跟 K 线周期一致 (price_kline_qfq_tushare 2019-01-02 起) → 回到覆盖它的年报 20181231,
 更早无 K 线无法回测 (用户 2026-06-24, 同 holders_aif10)。
@@ -21,15 +21,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 from datetime import date, datetime, timezone
-from pathlib import Path
 from typing import Any, Optional
 
-# aif10_scraper (东财妙想) 在姊妹项目 ../miaoxiang
-_MIAOXIANG = Path(__file__).resolve().parents[2] / "miaoxiang"
-if str(_MIAOXIANG) not in sys.path:
-    sys.path.insert(0, str(_MIAOXIANG))
+from services.data_sources.sibling_repos import ensure_import_path
+
+ensure_import_path("miaoxiang")
 
 logger = logging.getLogger("cm-api")
 
@@ -41,11 +38,13 @@ from services.org_holding_fetch import (  # noqa: E402
     EASTMONEY_MAX_PAGES,
     PAGE_SIZE,
     fetch_period as _fetch_period,
+    probe_period_count as _probe_period_count,
 )
 # K线对齐: price_kline_qfq_tushare 2019-01-02 起 → 机构持仓回到覆盖它的年报 20181231
 DEFAULT_START_PERIOD = "2018-12-31"         # evidence: K线起点 2019-01-02 (用户 2026-06-24)
 QUARTER_ENDS = ("03-31", "06-30", "09-30", "12-31")
-# PLANNABLE_LAG_DAYS 已删 2026-06-28: latest_plannable 改用 disclosure_deadline (监管硬约束) 取代固定130天滞后
+# PLANNABLE_LAG_DAYS 已删 2026-06-28. 采集闸 = 报告期已结束; accepted / PIT =
+# 公司公告日 (JOIN), 不是法定截止.
 
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -89,31 +88,20 @@ def _normalize_stock_code(value) -> Optional[str]:
 
 
 def disclosure_deadline(report_date: str) -> Optional[str]:
-    """报告期 → 法定披露截止日 (PIT 保守可用日上界, 监管硬约束非估计).
+    """报告期 → 法定披露截止日 (completeness 钟, 不是 PIT 已知日).
 
-    A股: Q1(03-31)→04-30 同年 / H1(06-30)→08-31 同年 / Q3(09-30)→10-31 同年 / 年报(12-31)→次年04-30.
-    数据在该日之前必已可得 → 用它当 available_date 是 PIT-conservative (绝不超前可见).
+    单一计算点: ``periodic_report_calendar`` (证监会令第226号第十三条 + 沪深上市规则季报条款).
     """
-    nd = _normalize_date(report_date)
-    if not nd:
-        return None
-    y, md = nd[:4], nd[5:]
-    deadline = {
-        "03-31": f"{y}-04-30",
-        "06-30": f"{y}-08-31",
-        "09-30": f"{y}-10-31",
-        "12-31": f"{int(y) + 1}-04-30",
-    }.get(md)
-    return deadline
+    from services.data_sources.periodic_report_calendar import disclosure_deadline_iso
+
+    return disclosure_deadline_iso(report_date)
 
 
 def next_period_unlock(report_date: str) -> tuple[Optional[str], Optional[str]]:
-    """给定已 plannable 的季度末, 返回 *下一个* 季度末及其法定披露截止日。
+    """给定已结束的季度末, 返回 *下一个* 季度末及其法定披露截止日。
 
-    org_holding 是季报派生 (by-period ~830k)。日常增量当最新 plannable 期已在库时
-    正确 skip; 但「skip」易被误读为「永久冻结在某期」。本函数暴露「下一期何时解锁」,
-    让日志/审计能证明 planner 是随披露日历自进 (2026-03-31 已在库 → 下一期
-    2026-06-30 于其披露截止 2026-08-31 解锁), 而非 hard-frozen。纯日期算, 无 I/O。
+    下一期采集窗口 = 那个季度末当天 (源端随公告增长); 返回的截止日是
+    completeness 钟, 不是 PIT 已知日。纯日期算, 无 I/O。
     """
     iso = _normalize_date(report_date)
     if not iso:
@@ -143,21 +131,33 @@ def enumerate_quarter_ends(start_date: str, end_date: str) -> list[str]:
 
 
 def latest_plannable_report_date(today: Optional[date] = None) -> Optional[str]:
-    """相对 today 最近"法定披露截止已过"的季度末 (= 数据应已可得)。
+    """相对 today 最近已经结束的季度末 (= 采集窗口打开).
 
-    2026-06-28 修: 改用 disclosure_deadline (监管硬约束) 取代旧 PLANNABLE_LAG_DAYS=130 固定滞后 —
-    130 天把 Q1(截止 04-30) 卡到 8 月才进窗口, 源端早有 Q1 却不抓 (实测 today=06-28 旧逻辑返 Q4 2025,
-    新逻辑返 Q1 2026-03-31)。取截止日 <= today 的最新季度末。
+    东财机构持仓明细随公司公告更新。采集闸 = 报告期末; accepted = 已公开的
+    公告日分区 (JOIN income/holders, 否则 first-seen ≤ today)。
     """
     today = today or datetime.now(timezone.utc).date()  # rule-compliance: ok evidence=季报增量默认now
     latest = None
     for year in (today.year, today.year - 1):
         for md in QUARTER_ENDS:
             d = date.fromisoformat(f"{year}-{md}")
-            dl = disclosure_deadline(d.strftime("%Y-%m-%d"))
-            if dl and date.fromisoformat(dl) <= today and (latest is None or d > latest):
+            if d <= today and (latest is None or d > latest):
                 latest = d
     return latest.strftime("%Y-%m-%d") if latest else None
+
+
+def latest_accept_unlocked_report_date(today: Optional[date] = None) -> Optional[str]:
+    """Ended report period can be accepted (PIT axis = announcement, not deadline)."""
+    return latest_plannable_report_date(today=today)
+
+
+def accept_unlocked(report_date: str, today: Optional[date] = None) -> bool:
+    """True when the report period has ended (announcement-dated accept is safe)."""
+    iso = _normalize_date(report_date)
+    if not iso:
+        return False
+    today = today or datetime.now(timezone.utc).date()  # rule-compliance: ok evidence=报告期末采集闸用日历日, 非 trade_date
+    return date.fromisoformat(iso) <= today
 
 
 # ── ④ 存储 store: schema ─────────────────────────────────────────────
@@ -165,7 +165,7 @@ _DDL = (
     """
     CREATE TABLE IF NOT EXISTS raw_org_holding_aif10 (
         report_date          TEXT NOT NULL,   -- 报告期 YYYY-MM-DD
-        available_date       TEXT,            -- PIT 可用日 (法定披露截止, 防穿越锚)
+        available_date       TEXT,            -- PIT 可用日 (公告日; 无 JOIN 时 first-seen)
         stock_code           TEXT NOT NULL,
         stock_name           TEXT,
         org_type_code        TEXT,            -- ORG_TYPE (00合计/07法人/...)
@@ -202,14 +202,102 @@ def ensure_tables(conn: Any) -> None:
     # 逐句 execute (兼容裸 duckdb 连接, 不依赖 executescript 包装)
     for stmt in _DDL:
         conn.execute(stmt)
+    from services.org_holding_population import ensure_probe_table
+
+    ensure_probe_table(conn)
     conn.commit()
 
 
+def _grain_key(row: dict[str, Any]) -> tuple[str, str, str, str]:
+    rd = _normalize_date(row.get("report_date")) or ""
+    return (
+        rd,
+        str(row.get("stock_code") or ""),
+        str(row.get("holder_code") or ""),
+        str(row.get("fund_derivecode") or ""),
+    )
+
+
+def _existing_raw_grains(conn: Any, report_date_iso: str) -> set[tuple[str, str, str, str]]:
+    compact = report_date_iso.replace("-", "")
+    try:
+        rows = conn.execute(
+            """
+            SELECT report_date, stock_code, holder_code, COALESCE(fund_derivecode, '')
+              FROM raw_org_holding_aif10
+             WHERE report_date IN (?, ?)
+            """,
+            [report_date_iso, compact],
+        ).fetchall()
+    except Exception:  # noqa: BLE001
+        return set()
+    out: set[tuple[str, str, str, str]] = set()
+    for report_date, stock, holder, fund in rows:
+        iso = _normalize_date(report_date) or ""
+        out.add((iso, str(stock or ""), str(holder or ""), str(fund or "")))
+    return out
+
+
+def _existing_canonical_grains(
+    conn: Any, report_date_iso: str
+) -> set[tuple[str, str, str, str]]:
+    from services.data_sources.org_holding_schema import CANONICAL_TABLE
+
+    compact = report_date_iso.replace("-", "")
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT report_date, stock_code, holder_code, COALESCE(fund_derivecode, '')
+              FROM {CANONICAL_TABLE}
+             WHERE report_date IN (?, ?)
+            """,
+            [report_date_iso, compact],
+        ).fetchall()
+    except Exception:  # noqa: BLE001
+        return set()
+    out: set[tuple[str, str, str, str]] = set()
+    for report_date, stock, holder, fund in rows:
+        iso = _normalize_date(report_date) or ""
+        out.add((iso, str(stock or ""), str(holder or ""), str(fund or "")))
+    return out
+
+
+def _new_grains_only(
+    conn: Any, report_date_iso: str, rows: list[dict]
+) -> list[dict]:
+    existing = _existing_raw_grains(conn, report_date_iso)
+    existing |= _existing_canonical_grains(conn, report_date_iso)
+    return [row for row in rows if _grain_key(row) not in existing]
+
+
 # ── ② 清洗 clean ─────────────────────────────────────────────────────
-def _normalize_rows(raw: list[dict] | None) -> list[dict]:
-    """字段映射 + 报告期/可用日锚 + grain (剔除缺主键行)."""
+def _period_announcement_map(report_date: str) -> dict[str, str]:
+    """Join income/holders first-announcement day. Empty map → first-seen stamps."""
+    from services.data_sources.org_holding_announcement import load_period_announcement_map
+
+    try:
+        return load_period_announcement_map(report_date)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _normalize_rows(
+    raw: list[dict] | None,
+    *,
+    announcement_by_stock: dict[str, str] | None = None,
+    land_date: str | None = None,
+    today: str | None = None,
+) -> list[dict]:
+    """字段映射 + 报告期/公告日锚 + grain (剔除缺主键行)."""
     if not raw:
         return []
+    from services.data_sources.org_holding_announcement import (
+        land_calendar_date,
+        resolve_available_iso,
+    )
+
+    land = land_date or land_calendar_date()
+    asof = today or land
     deduped: dict[tuple[str, str, str, str], dict] = {}
     # 注意: DuckDB 对带 offset 的字符串→TIMESTAMP 是"剥 offset 不换算" (实测 '+08:00' 串
     # 落墙钟值非 UTC 换算值) — 此处恒 '+00:00' (UTC) 才安全, 换写法前先实测落库值。
@@ -223,7 +311,13 @@ def _normalize_rows(raw: list[dict] | None) -> list[dict]:
         fund_derive = (str(r.get("FUND_DERIVECODE")).strip() if r.get("FUND_DERIVECODE") not in (None, "") else "")
         row = {
             "report_date": report_date,
-            "available_date": disclosure_deadline(report_date),
+            "available_date": resolve_available_iso(
+                stock_code=stock_code,
+                report_date=report_date,
+                announcement_by_stock=announcement_by_stock,
+                land_date=land,
+                today=asof,
+            ),
             "stock_code": stock_code,
             "stock_name": (str(r.get("SECURITY_NAME_ABBR")).strip() or None) if r.get("SECURITY_NAME_ABBR") else None,
             "org_type_code": (str(r.get("ORG_TYPE")).strip() or None) if r.get("ORG_TYPE") else None,
@@ -362,9 +456,8 @@ def accept_org_holding_partition_from_legacy(
 class OrgHoldingMassRefreshForbidden(RuntimeError):
     """Fail-closed: refuse full-period ~830k re-pull when local already has the period.
 
-    Owner 2026-07-21 hard constraint: manual update / incremental path is
-    check-plannable-vs-local then fetch-only-if-missing. Never "refresh" an
-    already-landed period (unbounded page crawl / mass dump).
+    Daily path: missing period → fetch; present + source count ahead → MERGE
+    new grains; present + count unchanged → skip. Never DELETE+re-insert.
     """
 
 
@@ -402,15 +495,19 @@ def sync_period(
     report_date: str,
     *,
     allow_existing_refresh: bool = False,
+    merge_grains: bool = False,
+    raw_only: bool = False,
 ) -> dict:
     """同步单报告期 (获取→清洗→存储). report_date 形如 '2026-03-31'.
 
     Default ``allow_existing_refresh=False`` is fail-closed: if the period
     already has local rows, refuse before any provider I/O (no ~830k re-pull).
-    Explicit opt-in ``allow_existing_refresh=True`` only for:
-    - intentional historical backfill CLI, or
-    - ``repair_fetch_period`` on the *single* latest plannable period when
-      local raw is under-populated (closed-loop; still not full-history mass).
+    ``merge_grains=True`` is the daily exception: page-1 count must be ahead
+    of local (+ last reconciled probe), then fetch once and INSERT new grains
+    only (no DELETE of the report_date). ``raw_only=True`` lands legacy raw
+    without formal accept (explicit ops hatch; daily path accepts announcement
+    partitions as companies file). Explicit ``allow_existing_refresh=True`` remains
+    ops/truncation-CLI replace — never wired into daily_update.
     """
     ensure_tables(conn)
     iso = _normalize_date(report_date)
@@ -422,19 +519,49 @@ def sync_period(
             "error": "unparseable report_date",
         }
     existing = _period_row_count(conn, iso)
-    if existing > 0 and not allow_existing_refresh:
-        raise OrgHoldingMassRefreshForbidden(
-            f"org_holding refuse mass refresh: period {iso} already has "
-            f"{existing} local rows; incremental-only (fetch if missing)"
-        )
     # Report-period scoped: shared available_date partitions (e.g. 2018-12-31 +
     # 2019-03-31 → 20190430) must not block fetch of the missing quarter.
     canonical_rows = _canonical_report_period_row_count(conn, iso)
-    if canonical_rows > 0 and not allow_existing_refresh:
+    present = existing > 0 or canonical_rows > 0
+    if present and not allow_existing_refresh and not merge_grains:
         raise OrgHoldingMassRefreshForbidden(
             f"org_holding refuse mass refresh: period {iso} already has "
-            f"{canonical_rows} canonical rows; incremental-only (fetch if missing)"
+            f"{existing} local / {canonical_rows} canonical rows; "
+            "incremental-only (fetch if missing or MERGE when source count ahead)"
         )
+    from services.org_holding_population import (
+        read_reconciled_source_count,
+        source_count_ahead,
+        write_source_probe,
+    )
+
+    source_count: int | None = None
+    if merge_grains and present and not allow_existing_refresh:
+        try:
+            source_count = int(_probe_period_count(iso))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[org-holding-aif10] count probe failed period=%s: %s", iso, exc)
+            return {
+                "report_date": iso,
+                "status": "probe_failed",
+                "written_rows": 0,
+                "error": str(exc)[:300],
+                "local_rows": existing,
+            }
+        last = read_reconciled_source_count(conn, iso)
+        if not source_count_ahead(
+            local_rows=existing,
+            source_count=source_count,
+            last_reconciled_count=last,
+        ):
+            return {
+                "report_date": iso,
+                "status": "skipped_probe_current",
+                "written_rows": 0,
+                "source_count": source_count,
+                "local_rows": existing,
+                "last_reconciled_count": last,
+            }
     try:
         fetched = _fetch_period(iso)
     except Exception as exc:  # noqa: BLE001
@@ -459,7 +586,53 @@ def sync_period(
             "land_reasons": fetched.get("land_reasons"),
         }
     raw = fetched.get("rows") or []
-    rows = _normalize_rows(raw)
+    rows = _normalize_rows(
+        raw,
+        announcement_by_stock=_period_announcement_map(iso),
+    )
+    merge_now = bool(merge_grains and present and not allow_existing_refresh)
+    new_rows = _new_grains_only(conn, iso, rows) if merge_now else rows
+    if merge_now and not new_rows:
+        write_source_probe(
+            conn,
+            iso,
+            source_count=int(source_count or fetched.get("provider_count") or 0),
+            local_rows=existing,
+            new_grains=0,
+        )
+        return {
+            "report_date": iso,
+            "status": "skipped_no_new_grains",
+            "written_rows": 0,
+            "source_count": source_count or fetched.get("provider_count"),
+            "local_rows": existing,
+            "fetched_rows": fetched.get("fetched_rows"),
+            "provider_count": fetched.get("provider_count"),
+        }
+    if raw_only:
+        written = _upsert_rows_legacy_direct(conn, new_rows, as_mirror=True)
+        if merge_now or existing == 0:
+            write_source_probe(
+                conn,
+                iso,
+                source_count=int(source_count or fetched.get("provider_count") or 0),
+                local_rows=existing + len(new_rows),
+                new_grains=len(new_rows),
+            )
+        return {
+            "report_date": iso,
+            "status": "merged_raw" if merge_now else ("ok_raw" if written else "empty"),
+            "written_rows": written,
+            "raw_rows": len(raw),
+            "merged_rows": len(new_rows) if merge_now else len(rows),
+            "provider_count": fetched.get("provider_count"),
+            "source_count": source_count,
+            "fetched_rows": fetched.get("fetched_rows"),
+            "truncated": False,
+            "shard_count": fetched.get("shard_count"),
+            "accepted_partitions": [],
+            "legacy_rows_written": written,
+        }
     # Incremental land: formal accept + legacy raw mirror so gap checks / research
     # table stay aligned (formal_only-without-mirror left raw empty → false re-fetch).
     from services.data_sources.disclosure_dual_write import (
@@ -467,15 +640,28 @@ def sync_period(
     )
 
     outcome = write_org_holding_formal_then_mirror(
-        conn, rows, enable_legacy_mirror=True
+        conn,
+        new_rows,
+        enable_legacy_mirror=True,
+        merge_grains=merge_now,
     )
     written = int(outcome.canonical_rows or 0)
+    if merge_now:
+        write_source_probe(
+            conn,
+            iso,
+            source_count=int(source_count or fetched.get("provider_count") or 0),
+            local_rows=existing + len(new_rows),
+            new_grains=len(new_rows),
+        )
     return {
         "report_date": iso,
-        "status": "ok" if written else "empty",
+        "status": "merged" if merge_now else ("ok" if written else "empty"),
         "written_rows": written,
         "raw_rows": len(raw),
+        "merged_rows": len(new_rows) if merge_now else len(rows),
         "provider_count": fetched.get("provider_count"),
+        "source_count": source_count,
         "fetched_rows": fetched.get("fetched_rows"),
         "truncated": False,
         "shard_count": fetched.get("shard_count"),
@@ -520,33 +706,15 @@ def backfill(conn: Any, *, start_period: str = DEFAULT_START_PERIOD,
 
 
 def _plannable_available_yyyymmdd(report_date: str) -> Optional[str]:
-    """Report period → available_date partition (disclosure deadline, YYYYMMDD)."""
+    """Deprecated completeness compact date; not the PIT partition."""
     from services.data_sources.org_holding_schema import disclosure_deadline_yyyymmdd
 
     return disclosure_deadline_yyyymmdd(report_date)
 
 
 def accepted_has_org_holding_partition(conn: Any, report_date: str) -> bool:
-    """True when accepted_partition already has the plannable period's available_date."""
-    from services.data_sources.org_holding_schema import DATASET_ID
-
-    partition = _plannable_available_yyyymmdd(report_date)
-    if not partition:
-        return False
-    try:
-        row = conn.execute(
-            """
-            SELECT 1
-              FROM accepted_partition
-             WHERE dataset_id = ?
-               AND partition_value = ?
-             LIMIT 1
-            """,
-            [DATASET_ID, partition],
-        ).fetchone()
-    except Exception:  # noqa: BLE001 — schema may be absent in unit :memory:
-        return False
-    return row is not None
+    """True when canonical already has grains for this report_date."""
+    return _canonical_report_period_row_count(conn, report_date) > 0
 
 
 def org_holding_period_gap_report(
@@ -588,11 +756,13 @@ def org_holding_period_gap_report(
     local_has = target in local_norm
     # Accepted is independent of raw — formal land may publish without mirror.
     accepted_has = accepted_has_org_holding_partition(conn, target)
-    available = _plannable_available_yyyymmdd(target)
+    available = None
     next_period, next_unlock = next_period_unlock(target)
+    unlocked = accept_unlocked(target, today)
     from services.org_holding_population import (
         decide_org_gap_action,
         population_for_period,
+        read_reconciled_source_count,
     )
 
     population = population_for_period(
@@ -601,11 +771,44 @@ def org_holding_period_gap_report(
         local_has=local_has,
         accepted_has=accepted_has,
     )
+    source_count: int | None = None
+    probe_error: str | None = None
+    try:
+        source_count = int(_probe_period_count(target))
+    except Exception as exc:  # noqa: BLE001 — probe fail-closed: never mass-fetch
+        probe_error = str(exc)[:300]
+        logger.warning("[org-holding-aif10] gap count probe failed period=%s: %s", target, exc)
+    last_reconciled = read_reconciled_source_count(conn, target)
+    from services.data_sources.periodic_report_calendar import (
+        is_past_completeness_deadline,
+    )
+
+    today_d = today or datetime.now(timezone.utc).date()  # rule-compliance: ok evidence=completeness deadline vs calendar day, not trade_date
+    today_s = today_d.isoformat()
+    completeness_due = is_past_completeness_deadline(target, today_s)
+    completeness_miss_periods = [
+        q for q in missing if is_past_completeness_deadline(q, today_s)
+    ]
     action, status = decide_org_gap_action(
         accepted_has=accepted_has,
         local_has=local_has,
         population=population,
+        accept_unlocked=unlocked,
+        source_count=source_count,
+        last_reconciled_count=last_reconciled,
     )
+    if status == "plannable_missing" and completeness_due:
+        status = "completeness_miss"
+        if probe_error:
+            completeness_class = "unverified"
+        elif source_count and int(source_count) > 0:
+            completeness_class = "we_behind_source"
+        else:
+            completeness_class = "due_local_empty"
+    elif completeness_due:
+        completeness_class = "due_landed" if local_has else "due"
+    else:
+        completeness_class = "in_season"
     # Optional typed frontier hook for future repair tooling only.
     # Period equal → skip_behind remap (existence), never by-date population invent.
     from services.data_sources.frontier_decision import org_holding_period_frontier_hook
@@ -627,9 +830,16 @@ def org_holding_period_gap_report(
         "missing_count": len(missing),
         "next_period": next_period,
         "next_period_unlock": next_unlock,
+        "accept_unlocked": unlocked,
         "action": action,
         "status": status,
         "population": population,
+        "source_count": source_count,
+        "last_reconciled_count": last_reconciled,
+        "probe_error": probe_error,
+        "completeness_due": completeness_due,
+        "completeness_class": completeness_class,
+        "completeness_miss_periods": completeness_miss_periods,
         "frontier_outcome": frontier.outcome,
         "frontier_reason": frontier.reason,
     }
@@ -651,29 +861,73 @@ def org_holding_period_gap_report(
 
 
 def _accept_plannable_from_local_raw(conn: Any, report_date: str) -> dict:
-    """Land→accept the plannable period from raw (by-period incremental, not mass history)."""
-    available = _plannable_available_yyyymmdd(report_date)
-    if not available:
+    """Land→accept one ended period from raw, partitioned by announcement/first-seen."""
+    from services.data_sources.disclosure_dual_write import (
+        write_org_holding_formal_then_mirror,
+    )
+    from services.data_sources.org_holding_announcement import (
+        land_calendar_date,
+        stamp_available_dates,
+    )
+
+    iso = _normalize_date(report_date)
+    if not iso:
         return {
             "status": "accept_skipped",
-            "error": "no_available_date",
+            "error": "unparseable report_date",
             "report_date": report_date,
         }
+    compact = iso.replace("-", "")
+    cols = ", ".join(_INSERT_KEYS)
     try:
-        outcome = accept_org_holding_partition_from_legacy(conn, available)
+        raw = conn.execute(
+            f"""
+            SELECT {cols}
+              FROM raw_org_holding_aif10
+             WHERE replace(CAST(report_date AS VARCHAR), '-', '') = ?
+            """,
+            [compact],
+        ).fetchall()
     except Exception as exc:  # noqa: BLE001
         return {
             "status": "accept_failed",
             "error": str(exc)[:300],
             "report_date": report_date,
-            "available_date": available,
         }
+    material = [dict(zip(_INSERT_KEYS, row, strict=True)) for row in raw]
+    if not material:
+        return {
+            "status": "accept_skipped",
+            "error": "no_local_raw",
+            "report_date": report_date,
+        }
+    land = land_calendar_date()
+    rows = stamp_available_dates(
+        material,
+        announcement_by_stock=_period_announcement_map(iso),
+        land_date=land,
+        today=land,
+    )
+    try:
+        outcome = write_org_holding_formal_then_mirror(
+            conn,
+            rows,
+            enable_legacy_mirror=True,
+            merge_grains=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "status": "accept_failed",
+            "error": str(exc)[:300],
+            "report_date": report_date,
+        }
+    partitions = list(getattr(outcome, "partitions", None) or [])
     return {
         "status": "accepted",
         "report_date": report_date,
-        "available_date": available,
+        "available_date": partitions[0] if len(partitions) == 1 else None,
         "canonical_rows": getattr(outcome, "canonical_rows", None),
-        "partitions": list(getattr(outcome, "partitions", None) or []),
+        "partitions": partitions,
         "batch_ids": list(getattr(outcome, "batch_ids", None) or []),
     }
 
@@ -684,10 +938,12 @@ async def sync_org_holding_incremental(conn: Any) -> dict:
     Policy (owner 2026-07-21/23 + 2026-07-24 bounded fill):
       - Mass full-history / already-landed period ~830k refresh = BANNED
       - By-date provider land invent = BANNED (no NOTICE_DATE)
-      - Every daily_update: check latest plannable; missing raw → fetch one
-        period; raw present but unaccepted → accept from local-raw; both ok →
-        skip OR fill oldest missing quarter (N=1/run) when holes remain
-      - NEVER backfill() in pipeline; allow_existing_refresh=False on older fill
+      - Every daily_update: check latest plannable; missing raw → fetch then
+        accept by announcement/first-seen; raw present but unaccepted → accept
+        from local-raw; both ok → page-1 count probe, MERGE new grains when
+        source is ahead; else skip OR fill oldest missing quarter (N=1/run)
+      - NEVER backfill() in pipeline; never allow_existing_refresh=True here
+      - NEVER backfill() in pipeline; never allow_existing_refresh=True here
     """
     ensure_tables(conn)
     gap = org_holding_period_gap_report(conn)
@@ -709,12 +965,18 @@ async def sync_org_holding_incremental(conn: Any) -> dict:
         if fill_result is not None:
             return fill_result
         missing_older = int(gap.get("missing_older_count") or 0)
-        msg = (
-            f"check: plannable={target} raw=present accepted=present; skip "
-            f"(older_missing={missing_older}; bounded fill idle; "
-            f"next period {gap.get('next_period')} unlocks "
-            f"{gap.get('next_period_unlock')})"
-        )
+        status = str(gap.get("status") or "ok")
+        if status == "pending_accept_clock":
+            msg = (
+                f"check: plannable={target} raw=present; accept deferred "
+                f"(period not ended)"
+            )
+        else:
+            msg = (
+                f"check: plannable={target} raw=present accepted=present; skip "
+                f"(older_missing={missing_older}; bounded fill idle; "
+                f"next period {gap.get('next_period')} acquire opens at period end)"
+            )
         return {
             "domain": "org_holding",
             "count": 0,
@@ -729,14 +991,26 @@ async def sync_org_holding_incremental(conn: Any) -> dict:
         }
 
     loop = asyncio.get_running_loop()
-    if action in {"fetch_then_accept", "repair_fetch_period"}:
-        # One-period provider path. repair_fetch_period may refresh thin local raw
-        # for the *plannable* period only — never full-history mass.
-        allow_refresh = action == "repair_fetch_period"
+    raw_only_actions = {"fetch_raw", "merge_raw"}
+    provider_actions = {
+        "fetch_then_accept",
+        "merge_period",
+        "repair_fetch_period",
+        *raw_only_actions,
+    }
+    if action in provider_actions:
+        # One-period provider path. merge_* INSERT new grains only.
+        # fetch_raw/merge_raw: explicit raw-only hatch (period not ended).
+        merge = action in {"merge_period", "repair_fetch_period", "merge_raw"}
+        raw_only = action in raw_only_actions
         result = await loop.run_in_executor(
             None,
             lambda: sync_period(
-                conn, target, allow_existing_refresh=allow_refresh
+                conn,
+                target,
+                allow_existing_refresh=False,
+                merge_grains=merge,
+                raw_only=raw_only,
             ),
         )
         if result.get("status") == "source_unavailable":
@@ -749,6 +1023,27 @@ async def sync_org_holding_incremental(conn: Any) -> dict:
                 f"reasons={result.get('land_reasons')}"
             )
         written = int(result.get("written_rows") or 0)
+        if raw_only:
+            return {
+                "domain": "org_holding",
+                "count": written,
+                "status": "completed" if written else "partial",
+                "action": action,
+                "report_date": target,
+                "available_date": gap.get("available_date"),
+                "written": written,
+                "fetch_status": result.get("status"),
+                "accept": {
+                    "status": "deferred_accept_clock",
+                    "partitions": [],
+                    "legacy_rows_written": result.get("legacy_rows_written"),
+                },
+                "gap": gap,
+                "message": (
+                    f"check: plannable={target} action={action} "
+                    f"raw_wrote={written} accept=deferred (raw_only hatch)"
+                ),
+            }
         accept_ok = bool(result.get("accepted_partitions")) or written > 0
         return {
             "domain": "org_holding",

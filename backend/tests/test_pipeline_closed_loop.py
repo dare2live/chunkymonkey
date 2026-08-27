@@ -142,8 +142,40 @@ def test_decide_org_gap_repair_fetch_when_raw_thin():
             "accepted_stocks": 2,
         },
     )
-    assert action == "repair_fetch_period"
+    assert action == "merge_period"
     assert status == "under_populated_raw_thin"
+
+
+def test_decide_org_gap_fetches_raw_before_accept_clock():
+    from services.org_holding_population import decide_org_gap_action
+
+    action, status = decide_org_gap_action(
+        accepted_has=False,
+        local_has=False,
+        population={},
+        accept_unlocked=False,
+    )
+    assert action == "fetch_raw"
+    assert status == "acquire_before_accept"
+
+
+def test_decide_org_gap_merge_raw_when_source_ahead_before_accept():
+    from services.org_holding_population import decide_org_gap_action
+
+    action, status = decide_org_gap_action(
+        accepted_has=False,
+        local_has=True,
+        population={
+            "under_populated": False,
+            "raw_stocks": 4000,
+            "raw_rows": 111_000,
+            "provider_truncated": False,
+        },
+        accept_unlocked=False,
+        source_count=200_000,
+    )
+    assert action == "merge_raw"
+    assert status == "source_ahead_before_accept"
 
 
 def test_seed_institution_as_of(tmp_path, monkeypatch):

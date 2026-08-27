@@ -83,6 +83,30 @@ databases:
       - pipeline_artifact_lineage*
       - experiment_pit_audit_log*
 
+  org_holding:
+    path: data/org_holding.duckdb
+    domain: tier0_disclosure
+    owner: disclosure_org_holding
+    role: >-
+      Low-cadence event/detail store: org_holding landing/canonical/raw plus
+      that dataset's ingest_batch and accepted_partition. Split = write-lock
+      vs daily facts (MASTER §5.6 cadence), not a strategy-owned database.
+      Land→accept stays atomic inside this file.
+    default_open_mode: read_write
+    default_attach_mode: read_only
+    online: true
+    status: active
+    retention_class: canonical_source_store
+    table_patterns:
+      - landing_miaoxiang_org_holding
+      - canonical_org_holding_detail_period
+      - raw_org_holding_aif10
+      - ingest_batch
+      - accepted_partition
+    notes:
+      - Formal org_holding land/accept writer is services.data_sources.org_holding_acceptance
+      - raw_org_holding_aif10 remains NONCONFORMING strangler until DatasetSnapshot cutover
+
   tushare_raw:
     path: data/tushare_raw.duckdb
     domain: tier0_market_data

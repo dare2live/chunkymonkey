@@ -453,6 +453,7 @@ def accept_disclosure_from_landing(
     batch_id: str,
     *,
     bootstrap: bool = False,
+    merge_grains: bool = False,
 ) -> Any:
     """S2: accept one LANDED disclosure batch. Zero provider fetch."""
 
@@ -499,7 +500,9 @@ def accept_disclosure_from_landing(
         handed = propagate_disclosure_execution_contract("org_holding", contract)
         if bootstrap:
             ensure_org_holding_acceptance_schema(conn)
-        return accept_org_holding_batch(conn, resolved, handed, handoff=handed)
+        return accept_org_holding_batch(
+            conn, resolved, handed, handoff=handed, merge_grains=merge_grains
+        )
 
     from services.data_sources.stk_holdertrade_acceptance import (
         accept_stk_holdertrade_batch,
@@ -528,6 +531,7 @@ def land_then_accept_disclosure_partition(
     batch_id: str | None = None,
     request: Mapping[str, Any] | None = None,
     bootstrap: bool = True,
+    merge_grains: bool = False,
 ) -> Any:
     """Caller-only S1→S2 composition (production dual_write path)."""
 
@@ -543,7 +547,7 @@ def land_then_accept_disclosure_partition(
         bootstrap=bootstrap,
     )
     return accept_disclosure_from_landing(
-        domain, conn, str(batch.batch_id), bootstrap=False
+        domain, conn, str(batch.batch_id), bootstrap=False, merge_grains=merge_grains
     )
 
 

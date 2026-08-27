@@ -46,7 +46,11 @@ def plan_older_org_period_fill(
     today: Optional[date] = None,
 ) -> dict[str, Any]:
     """Due-set for one oldest missing quarter at or below plannable."""
-    from services.org_holding_aif10 import DEFAULT_START_PERIOD, enumerate_quarter_ends
+    from services.org_holding_aif10 import (
+        DEFAULT_START_PERIOD,
+        accept_unlocked,
+        enumerate_quarter_ends,
+    )
 
     start = _normalize_period(start_period) or DEFAULT_START_PERIOD
     target = _normalize_period(plannable)
@@ -59,7 +63,19 @@ def plan_older_org_period_fill(
             "catchup_reason": "no_plannable",
         }
 
-    calendar = enumerate_quarter_ends(start, target)
+    calendar = [
+        q
+        for q in enumerate_quarter_ends(start, target)
+        if accept_unlocked(q, today)
+    ]
+    if not calendar:
+        return {
+            "fill_target_period": None,
+            "older_remaining": 0,
+            "missing_older_count": 0,
+            "catchup_law": "plan_partition_catchup",
+            "catchup_reason": "no_accept_unlocked_quarters",
+        }
     local = _distinct_local_periods(conn)
     plan_one = plan_partition_catchup(
         axis="report_period",
@@ -151,7 +167,6 @@ async def sync_older_org_period_if_due(conn: Any, gap: dict) -> dict | None:
 
     from services.org_holding_aif10 import (
         DEFAULT_START_PERIOD,
-        _plannable_available_yyyymmdd,
     )
 
     loop = asyncio.get_running_loop()
@@ -170,9 +185,7 @@ async def sync_older_org_period_if_due(conn: Any, gap: dict) -> dict | None:
         "status": fill_out.get("status"),
         "action": fill_out.get("action"),
         "report_date": fill_out.get("report_date"),
-        "available_date": _plannable_available_yyyymmdd(
-            str(fill_out.get("report_date") or "")
-        ),
+        "available_date": fill_out.get("available_date"),
         "written": written,
         "fetch_status": fill_out.get("fetch_status"),
         "accept": fill_out.get("accept"),
@@ -192,6 +205,13 @@ def org_due_row_from_gap(gap: dict[str, Any], *, source: str) -> dict[str, Any]:
         action = "fill_older_period"
     details = {
         "fetch_then_accept": f"plannable={plannable} raw=missing → fetch+accept one period",
+        "fetch_raw": (
+            f"plannable={plannable} period not ended; fetch raw only"
+        ),
+        "merge_raw": (
+            f"plannable={plannable} source ahead; MERGE raw (period not ended)"
+        ),
+        "merge_period": f"plannable={plannable} source ahead → grain MERGE",
         "accept_from_local_raw": f"plannable={plannable} raw=present accepted=missing → accept",
         "fill_older_period": (
             f"plannable={plannable} complete; fill oldest missing={fill_target} "
@@ -199,7 +219,13 @@ def org_due_row_from_gap(gap: dict[str, Any], *, source: str) -> dict[str, Any]:
         ),
         "skip_current": (
             f"plannable={plannable} current; next {gap.get('next_period')} "
-            f"unlocks {gap.get('next_period_unlock')} (not forever blocked)"
+            f"acquire opens at period end"
+        ),
+        "pending_acquire": (
+            f"plannable={plannable} retired status; acquire follows source"
+        ),
+        "pending_accept_clock": (
+            f"plannable={plannable} raw present; period not ended"
         ),
     }
     return {
@@ -208,7 +234,14 @@ def org_due_row_from_gap(gap: dict[str, Any], *, source: str) -> dict[str, Any]:
         "days_ago": 0 if action == "skip_current" else 1,
         "status": gap.get("status"),
         "will_fetch": action
-        in {"fetch_then_accept", "accept_from_local_raw", "fill_older_period"},
+        in {
+            "fetch_then_accept",
+            "fetch_raw",
+            "merge_raw",
+            "merge_period",
+            "accept_from_local_raw",
+            "fill_older_period",
+        },
         "kind": "period_incremental",
         "action": action,
         "detail": details.get(action, f"action={action} plannable={plannable}"),
@@ -224,12 +257,12 @@ def org_holding_due_item(*, repo: Path) -> dict[str, Any] | None:
     """Period-domain due row for ops manual-run preview."""
     import json
 
-    from services.database_manifest import get_database_manifest
     from services.duck_adapter import connect as duck_connect
     from services.org_holding_aif10 import org_holding_period_gap_report
+    from services.org_holding_db import org_holding_db_path
 
     try:
-        path = get_database_manifest().path_for("smartmoney")
+        path = org_holding_db_path()
         if path.is_file():
             conn = duck_connect(str(path), read_only=True)
             try:

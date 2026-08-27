@@ -158,7 +158,7 @@ _DISCLOSURE_BOUNDARIES: dict[str, DisclosureDomainBoundary] = {
         adapter="miaoxiang",
         target_table="raw_org_holding_aif10",
         availability_axis="available_date",
-        availability_rule="disclosure_deadline_upper_bound",
+        availability_rule="report_announcement_date",
         runtime_state="formal_only",
         landing_writer=(
             "services.data_sources.org_holding_acceptance.land_org_holding_batch"

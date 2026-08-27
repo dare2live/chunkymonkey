@@ -13,7 +13,7 @@
 
 口径：
   report_date   报告期（YYYY-MM-DD，对齐季度末）
-  notice_date   公告日（披露日, 用于防穿越; 季报法定披露截止锚）
+  notice_date   公告日（实际披露日, PIT 锚; 不是法定截止日）
   hold_shares   期末持股数量
   change_type   新进 / 增加 / 减少 / 不变
 """
@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any, Optional
 
 logger = logging.getLogger("cm-api")
@@ -30,7 +30,6 @@ logger = logging.getLogger("cm-api")
 QFII_SOURCE = "aif10_RPT_DMSK_HOLDERS"  # 2026-06-29 批2c: akshare 兜底退役 §4.3 无热备, aif10 唯一源
 QFII_SYMBOLS = ("新进", "增加", "减少", "不变")
 QFII_QUARTER_ENDS = ("03-31", "06-30", "09-30", "12-31")
-QFII_NOTICE_LAG_DAYS = 30  # 报告期末 +30 天后才大概率有足量披露
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -142,20 +141,12 @@ def enumerate_quarter_ends(start_date: str, end_date: str) -> list[str]:
 
 
 def latest_plannable_report_date(today: Optional[date] = None) -> Optional[str]:
-    """返回相对 today 最近可能已披露的季度末 (YYYY-MM-DD)。
+    """最近已结束的季度末 (YYYY-MM-DD)。采集跟报告期末, 不另加 30 天猜测, 不等法定截止."""
+    from services.data_sources.periodic_report_calendar import latest_ended_report_period
 
-    规则：今天距离季度末至少 QFII_NOTICE_LAG_DAYS 天才认为足量披露。
-    """
     today = today or date.today()  # rule-compliance: ok evidence=qfii季报抓取默认now(季度数据获取)
-    cutoff = today - timedelta(days=QFII_NOTICE_LAG_DAYS)
-    latest = None
-    for year in (cutoff.year, cutoff.year - 1):
-        for md in QFII_QUARTER_ENDS:
-            d = date.fromisoformat(f"{year}-{md}")
-            if d <= cutoff:
-                if latest is None or d > latest:
-                    latest = d
-    return latest.strftime("%Y-%m-%d") if latest else None
+    compact = latest_ended_report_period(today.strftime("%Y%m%d"))
+    return f"{compact[:4]}-{compact[4:6]}-{compact[6:]}"
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -164,6 +155,9 @@ def latest_plannable_report_date(today: Optional[date] = None) -> Optional[str]:
 
 def _fetch_qfii_aif10(report_date_yyyymmdd: str, symbol: str):
     """主源: 妙想 RPT_DMSK_HOLDERS (P6.3 已迁)."""
+    from services.data_sources.sibling_repos import ensure_import_path
+
+    ensure_import_path("miaoxiang")
     from aif10_scraper import fetch_all_pages
     end_iso = f"{report_date_yyyymmdd[:4]}-{report_date_yyyymmdd[4:6]}-{report_date_yyyymmdd[6:]}"
     return fetch_all_pages(
@@ -417,24 +411,30 @@ def list_missing_qfii_report_dates(
 
 
 async def sync_qfii_incremental(conn: Any) -> dict:
-    """QFII 季度持股增量同步 (2026-06-24 从 routers.updater_sync._step_sync_qfii 搬迁, 解耦 pipeline 对旧 updater 依赖).
+    """QFII 季度持股增量: 最近已结束报告期, 源端随公告增长则再拉一期 upsert.
 
-    只同步"最近一个已披露季度末"(距今>=30天 且 DB 无该季数据)。逻辑零改 faithful port。
+    人口 ~2k 行/季, 允许对当前期 refresh (与 org ~83 万行 mass refresh 禁令不是同一量级).
     """
     ensure_tables(conn)
     target = latest_plannable_report_date()
     if not target:
-        return {"count": 0, "status": "skipped", "message": "尚无可同步季度末 (距今 < 30 天)"}
+        return {"count": 0, "status": "skipped", "message": "尚无已结束季度末"}
     row = conn.execute(
         "SELECT COUNT(*) FROM raw_qfii_holding_quarterly WHERE report_date = ?", (target,)
     ).fetchone()
     existing = int(row[0] or 0) if row else 0
-    if existing > 0:
-        return {"count": 0, "status": "skipped", "existing": existing, "report_date": target,
-                "message": f"季度 {target} 已有 {existing} 条, 跳过"}
     result = await sync_qfii_quarter(conn, target)
     if result.get("status") == "source_unavailable":
         raise RuntimeError(f"qfii_source_failed:{result.get('error')}")
     written = int(result.get("written_rows") or 0)
-    return {"count": written, "status": "completed", "report_date": target, "written": written,
-            "message": f"季度 {target} 写入 {written} 条"}
+    return {
+        "count": written,
+        "status": "completed",
+        "report_date": target,
+        "written": written,
+        "existing_before": existing,
+        "message": (
+            f"季度 {target} upsert {written} 条 (had {existing}; follow source, "
+            "not +30d / not statutory freeze)"
+        ),
+    }

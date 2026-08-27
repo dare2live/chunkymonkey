@@ -70,7 +70,7 @@ def load_org_holding_contract() -> OrgHoldingContract:
         "partition_by": PARTITION_FIELD,
         "availability": {
             "axis": "available_date",
-            "rule": "disclosure_deadline_upper_bound",
+            "rule": "report_announcement_date",
         },
         "population_scope": {
             "kind": "raw_evidence",
@@ -97,7 +97,7 @@ def load_org_holding_contract() -> OrgHoldingContract:
         grain=GRAIN,
         partition_by=PARTITION_FIELD,
         availability_axis="available_date",
-        availability_rule="disclosure_deadline_upper_bound",
+        availability_rule="report_announcement_date",
         population_kind="raw_evidence",
         config_hash=_hash(config_payload),
         contract_hash=_hash(contract_payload),

@@ -14,6 +14,11 @@ from services.org_holding_period_catchup import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _no_live_org_count_probe(monkeypatch):
+    monkeypatch.setattr(m, "_probe_period_count", lambda *_a, **_k: 0)
+
+
 def _seed_plannable_complete(con, *, plannable: str = "2026-03-31") -> None:
     m.ensure_tables(con)
     con.execute(
@@ -167,4 +172,55 @@ def test_fill_older_period_source_unavailable_raises(monkeypatch):
         fill_oldest_missing_org_period(
             con, plannable="2026-03-31", start_period="2019-03-31"
         )
+    con.close()
+
+
+def test_gap_report_completeness_miss_after_deadline_still_fetches():
+    from datetime import date
+
+    con = duckdb.connect(":memory:")
+    m.ensure_tables(con)
+    gap = m.org_holding_period_gap_report(
+        con, today=date(2026, 8, 31), start_period="2026-06-30"
+    )
+    assert gap["plannable"] == "2026-06-30"
+    assert gap["completeness_due"] is True
+    assert gap["status"] == "completeness_miss"
+    assert gap["action"] == "fetch_then_accept"
+    assert "2026-06-30" in gap["completeness_miss_periods"]
+    con.close()
+
+
+def test_gap_report_h1_before_deadline_is_in_season_not_miss():
+    from datetime import date
+
+    con = duckdb.connect(":memory:")
+    m.ensure_tables(con)
+    gap = m.org_holding_period_gap_report(
+        con, today=date(2026, 8, 30), start_period="2026-06-30"
+    )
+    assert gap["completeness_due"] is False
+    assert gap["status"] == "plannable_missing"
+    assert gap["action"] == "fetch_then_accept"
+    con.close()
+
+
+def test_count_accepted_org_stocks_follows_report_date_not_deadline():
+    from services.org_holding_population import count_accepted_org_stocks
+
+    con = duckdb.connect(":memory:")
+    con.execute(
+        """
+        CREATE TABLE canonical_org_holding_detail_period (
+            report_date VARCHAR,
+            available_date VARCHAR,
+            stock_code VARCHAR
+        )
+        """
+    )
+    con.execute(
+        "INSERT INTO canonical_org_holding_detail_period VALUES "
+        "('2026-06-30', '2026-07-20', '600519')"
+    )
+    assert count_accepted_org_stocks(con, "2026-06-30") == 1
     con.close()

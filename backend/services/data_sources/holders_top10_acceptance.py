@@ -384,9 +384,9 @@ def land_holders_top10_batch(
     accepted_same = find_accepted_batch_with_same_payload(
         conn,
         partition=partition,
-        payload_hash=payload_hash,
         contract_hash=contract.contract_hash,
         config_hash=contract.config_hash,
+        row_signatures=signatures,
     )
     if accepted_same is not None:
         _call(after_step, "skip_accepted_same_payload")

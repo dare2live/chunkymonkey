@@ -219,8 +219,13 @@ def write_org_holding_formal_then_mirror(
     available_at: datetime | str | None = None,
     mirror: Callable[[Any, list[dict[str, Any]]], int] | None = None,
     enable_legacy_mirror: bool = False,
+    merge_grains: bool = False,
 ) -> DisclosureDualWriteOutcome:
-    """Publish by available_date; legacy mirror only if enabled (ISO dates)."""
+    """Publish by available_date; legacy mirror only if enabled (ISO dates).
+
+    ``merge_grains=True`` inserts new grains into canonical without deleting
+    the report_date (late-filing growth). Default remains replace-in-batch.
+    """
 
     from services.data_sources.disclosure_transport import (
         land_then_accept_disclosure_partition,
@@ -270,6 +275,7 @@ def write_org_holding_formal_then_mirror(
             available_at=event_at,
             batch_id=batch_id,
             request={"api": API, "available_date": partition, "source": SOURCE},
+            merge_grains=merge_grains,
         )
         _require_accepted("org_holding", outcome)
         batch_ids.append(batch_id)

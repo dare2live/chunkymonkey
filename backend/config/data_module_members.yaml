@@ -92,6 +92,7 @@ member_service_files:
   # 采集层 source clients — sync 路读自身 raw watermark/count = acquire 行为, 非消费者绕过
   # (vendor 迁移[akshare→tushare/aif10]属 task#56 正交, 不改"它们是采集成员"的事实)
   # lhb_client.py 已退役物删 2026-06-29 (批2b: LHB 切 tushare top_list/top_inst, raw_lhb_daily 物删)
+  - org_holding_db.py        # org_holding.duckdb routing (write-lock split from smartmoney)
   - org_holding_aif10.py     # 机构持仓采集 (aif10 sanctioned 源 §4.3; 读 raw_org_holding_aif10 期次存在)
   - org_holding_population.py  # org 存在性/人口探测 (读 raw + canonical 计数; closed-loop gate)
   - org_holding_pointer_integrity.py  # 2026-07-27: accepted pointer vs full canonical COUNT (class-A merge guard)

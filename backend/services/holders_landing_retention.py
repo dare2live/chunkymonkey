@@ -1,11 +1,12 @@
-"""Holders landing retention helpers (archive non-latest ACCEPTED landing).
+"""Holders/org landing retention helpers (archive non-current ACCEPTED landing).
 
 Keep:
-  - latest ACCEPTED batch landing per partition_value
+  - ``accepted_partition.batch_id`` landing (the published pointer)
+  - latest ACCEPTED landing per partition only when no pointer exists
   - all non-ACCEPTED batch landing (LANDED/REJECTED in-flight)
 
 Archive+DELETE:
-  - older ACCEPTED batch landing rows only
+  - other ACCEPTED batch landing rows that still have payload
 
 Canonical / accepted_partition / ingest_batch metadata stay; landing payload for
 archived batches moves to parquet cold fuse.
@@ -30,6 +31,8 @@ class RetentionPlan:
     archive_landing_rows: int
     keep_batch_ids: tuple[str, ...]
     archive_batch_ids: tuple[str, ...]
+    dataset_id: str = DATASET_ID
+    landing_table: str = LANDING_TABLE
 
 
 @dataclass(frozen=True)
@@ -62,12 +65,17 @@ def ensure_deletion_record_table(conn) -> None:
     )
 
 
-def build_retention_plan(conn) -> RetentionPlan:
+def build_retention_plan(
+    conn,
+    *,
+    dataset_id: str = DATASET_ID,
+    landing_table: str = LANDING_TABLE,
+) -> RetentionPlan:
     """Compute keep vs archive batch sets from ingest_batch + landing counts."""
     keep_rows = conn.execute(
         f"""
         WITH ranked AS (
-          SELECT batch_id, partition_value, status,
+          SELECT batch_id, partition_value,
                  ROW_NUMBER() OVER (
                    PARTITION BY partition_value
                    ORDER BY COALESCE(accepted_at, landed_at) DESC, batch_id DESC
@@ -76,40 +84,62 @@ def build_retention_plan(conn) -> RetentionPlan:
           WHERE dataset_id = ?
             AND status = 'ACCEPTED'
         ),
-        keep_accepted AS (
-          SELECT batch_id FROM ranked WHERE rn = 1
+        keep_pointer AS (
+          SELECT batch_id FROM accepted_partition WHERE dataset_id = ?
+        ),
+        keep_latest_without_pointer AS (
+          SELECT r.batch_id
+            FROM ranked r
+           WHERE r.rn = 1
+             AND NOT EXISTS (
+               SELECT 1 FROM accepted_partition a
+                WHERE a.dataset_id = ?
+                  AND a.partition_value = r.partition_value
+             )
         ),
         keep_inflight AS (
           SELECT batch_id FROM ingest_batch
           WHERE dataset_id = ?
             AND status <> 'ACCEPTED'
         )
-        SELECT batch_id FROM keep_accepted
+        SELECT batch_id FROM keep_pointer
+        UNION
+        SELECT batch_id FROM keep_latest_without_pointer
         UNION
         SELECT batch_id FROM keep_inflight
         ORDER BY 1
         """,
-        [DATASET_ID, DATASET_ID],
+        [dataset_id, dataset_id, dataset_id, dataset_id],
     ).fetchall()
     keep_ids = tuple(str(r[0]) for r in keep_rows)
+    keep_list = list(keep_ids)
 
-    archive_rows = conn.execute(
-        f"""
-        WITH ranked AS (
-          SELECT batch_id,
-                 ROW_NUMBER() OVER (
-                   PARTITION BY partition_value
-                   ORDER BY COALESCE(accepted_at, landed_at) DESC, batch_id DESC
-                 ) AS rn
-          FROM ingest_batch
-          WHERE dataset_id = ?
-            AND status = 'ACCEPTED'
-        )
-        SELECT batch_id FROM ranked WHERE rn > 1
-        ORDER BY 1
-        """,
-        [DATASET_ID],
-    ).fetchall()
+    if keep_list:
+        keep_ph = ",".join("?" * len(keep_list))
+        archive_rows = conn.execute(
+            f"""
+            SELECT DISTINCT ib.batch_id
+              FROM ingest_batch ib
+             WHERE ib.dataset_id = ?
+               AND ib.status = 'ACCEPTED'
+               AND ib.batch_id NOT IN ({keep_ph})
+               AND ib.batch_id IN (SELECT batch_id FROM "{landing_table}")
+             ORDER BY 1
+            """,
+            [dataset_id, *keep_list],
+        ).fetchall()
+    else:
+        archive_rows = conn.execute(
+            f"""
+            SELECT DISTINCT ib.batch_id
+              FROM ingest_batch ib
+             WHERE ib.dataset_id = ?
+               AND ib.status = 'ACCEPTED'
+               AND ib.batch_id IN (SELECT batch_id FROM "{landing_table}")
+             ORDER BY 1
+            """,
+            [dataset_id],
+        ).fetchall()
     archive_ids = tuple(str(r[0]) for r in archive_rows)
 
     parts = conn.execute(
@@ -118,28 +148,27 @@ def build_retention_plan(conn) -> RetentionPlan:
         FROM ingest_batch
         WHERE dataset_id = ? AND status = 'ACCEPTED'
         """,
-        [DATASET_ID],
+        [dataset_id],
     ).fetchone()[0]
 
-    total = int(conn.execute(f'SELECT COUNT(*) FROM "{LANDING_TABLE}"').fetchone()[0])
+    total = int(conn.execute(f'SELECT COUNT(*) FROM "{landing_table}"').fetchone()[0])
     if keep_ids:
         placeholders = ",".join("?" * len(keep_ids))
         keep_n = int(
             conn.execute(
-                f'SELECT COUNT(*) FROM "{LANDING_TABLE}" '
+                f'SELECT COUNT(*) FROM "{landing_table}" '
                 f"WHERE batch_id IN ({placeholders})",
                 list(keep_ids),
             ).fetchone()[0]
         )
     else:
         keep_n = 0
-    archive_n = total - keep_n
-    # Prefer counting archive ids directly when present (orphan landing safety).
+    archive_n = 0
     if archive_ids:
         placeholders = ",".join("?" * len(archive_ids))
         archive_n = int(
             conn.execute(
-                f'SELECT COUNT(*) FROM "{LANDING_TABLE}" '
+                f'SELECT COUNT(*) FROM "{landing_table}" '
                 f"WHERE batch_id IN ({placeholders})",
                 list(archive_ids),
             ).fetchone()[0]
@@ -154,6 +183,55 @@ def build_retention_plan(conn) -> RetentionPlan:
         archive_landing_rows=archive_n,
         keep_batch_ids=keep_ids,
         archive_batch_ids=archive_ids,
+        dataset_id=dataset_id,
+        landing_table=landing_table,
+    )
+
+
+def slice_archive_plan(
+    conn,
+    plan: RetentionPlan,
+    max_archive_batches: int,
+) -> RetentionPlan:
+    """Keep the same keep-set; archive only the first N superseded batch_ids."""
+    if max_archive_batches <= 0:
+        raise ValueError("max_archive_batches must be >= 1")
+    ids = plan.archive_batch_ids[:max_archive_batches]
+    if ids == plan.archive_batch_ids:
+        return plan
+    landing_table = plan.landing_table
+    if not ids:
+        return RetentionPlan(
+            partition_count=plan.partition_count,
+            keep_batch_count=plan.keep_batch_count,
+            archive_batch_count=0,
+            total_landing_rows=plan.total_landing_rows,
+            keep_landing_rows=plan.keep_landing_rows,
+            archive_landing_rows=0,
+            keep_batch_ids=plan.keep_batch_ids,
+            archive_batch_ids=(),
+            dataset_id=plan.dataset_id,
+            landing_table=landing_table,
+        )
+    placeholders = ",".join("?" * len(ids))
+    archive_n = int(
+        conn.execute(
+            f'SELECT COUNT(*) FROM "{landing_table}" '
+            f"WHERE batch_id IN ({placeholders})",
+            list(ids),
+        ).fetchone()[0]
+    )
+    return RetentionPlan(
+        partition_count=plan.partition_count,
+        keep_batch_count=plan.keep_batch_count,
+        archive_batch_count=len(ids),
+        total_landing_rows=plan.total_landing_rows,
+        keep_landing_rows=plan.keep_landing_rows,
+        archive_landing_rows=archive_n,
+        keep_batch_ids=plan.keep_batch_ids,
+        archive_batch_ids=ids,
+        dataset_id=plan.dataset_id,
+        landing_table=landing_table,
     )
 
 
@@ -165,6 +243,7 @@ def apply_retention(
     run_id: str,
 ) -> RetentionResult:
     """Archive archive_batch landing to parquet, DELETE those rows, record deletion."""
+    landing_table = plan.landing_table
     if not plan.archive_batch_ids:
         return RetentionResult(
             archive_path="",
@@ -183,24 +262,21 @@ def apply_retention(
     placeholders = ",".join("?" * len(plan.archive_batch_ids))
     ids = list(plan.archive_batch_ids)
 
-    # COPY archive rows first (verify count), then DELETE same set.
     conn.execute(
         f"""
         COPY (
-          SELECT * FROM "{LANDING_TABLE}"
+          SELECT * FROM "{landing_table}"
           WHERE batch_id IN ({placeholders})
-          ORDER BY batch_id, row_ordinal
         ) TO '{archive_path.as_posix()}' (FORMAT PARQUET, COMPRESSION ZSTD)
         """,
         ids,
     )
     archived = int(
         conn.execute(
-            f'SELECT COUNT(*) FROM "{LANDING_TABLE}" WHERE batch_id IN ({placeholders})',
+            f'SELECT COUNT(*) FROM "{landing_table}" WHERE batch_id IN ({placeholders})',
             ids,
         ).fetchone()[0]
     )
-    # Round-trip count from parquet
     pq_n = int(
         conn.execute(
             f"SELECT COUNT(*) FROM read_parquet('{archive_path.as_posix()}')"
@@ -214,13 +290,13 @@ def apply_retention(
     conn.execute("BEGIN TRANSACTION")
     try:
         conn.execute(
-            f'DELETE FROM "{LANDING_TABLE}" WHERE batch_id IN ({placeholders})',
+            f'DELETE FROM "{landing_table}" WHERE batch_id IN ({placeholders})',
             ids,
         )
         deleted = archived
         remaining = int(
             conn.execute(
-                f'SELECT COUNT(*) FROM "{LANDING_TABLE}" WHERE batch_id IN ({placeholders})',
+                f'SELECT COUNT(*) FROM "{landing_table}" WHERE batch_id IN ({placeholders})',
                 ids,
             ).fetchone()[0]
         )
@@ -236,7 +312,7 @@ def apply_retention(
             [
                 f"{run_id}:landing",
                 run_id,
-                LANDING_TABLE,
+                landing_table,
                 "non_latest_accepted_batches",
                 "batch_id",
                 f"n={len(plan.archive_batch_ids)}",
@@ -244,9 +320,9 @@ def apply_retention(
                 1,
                 int(archive_path.stat().st_size),
                 (
-                    "F3 holders landing retention: archive non-latest ACCEPTED "
-                    "landing; keep latest ACCEPTED + inflight; skip-land prevents "
-                    "recurrence"
+                    "F3 landing retention: archive ACCEPTED landing that is not "
+                    "the accepted_partition pointer (or latest if no pointer) "
+                    "and not inflight; skip-land prevents recurrence"
                 ),
                 json_dumps(
                     {
@@ -254,6 +330,7 @@ def apply_retention(
                         "archive_batch_count": plan.archive_batch_count,
                         "archive_path": str(archive_path),
                         "parquet_rows": pq_n,
+                        "dataset_id": plan.dataset_id,
                     }
                 ),
                 now,
@@ -286,4 +363,5 @@ __all__ = [
     "apply_retention",
     "build_retention_plan",
     "ensure_deletion_record_table",
+    "slice_archive_plan",
 ]

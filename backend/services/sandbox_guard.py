@@ -6,7 +6,7 @@
 
 用法 (沙盒探索脚本首行):
     from services.sandbox_guard import enable_sandbox_guard, read_only_main, sandbox_scratch
-    enable_sandbox_guard()                # 此后 read_write 打开主 6 库 = raise SandboxBoundaryError
+    enable_sandbox_guard()                # 此后 read_write 打开主库 = raise SandboxBoundaryError
     con = read_only_main("market")        # 读主库唯一正路 (强制 read_only=True)
     scr = sandbox_scratch("my_exp")       # 写探索数据 (sandbox/my_exp/scratch.duckdb, gitignored)
 
@@ -22,7 +22,14 @@ from services.database_manifest import get_database_manifest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 # Current manifest databases that exploration must never open read-write.
-_MAIN_ALIASES = ("smartmoney", "market", "tushare_raw", "feature_store", "experiment_store")
+_MAIN_ALIASES = (
+    "smartmoney",
+    "market",
+    "tushare_raw",
+    "feature_store",
+    "experiment_store",
+    "org_holding",
+)
 
 _ORIG_CONNECT = duckdb.connect
 _GUARD_ON = False
@@ -44,7 +51,7 @@ def _main_db_paths() -> dict[str, str]:
 
 
 def enable_sandbox_guard() -> None:
-    """monkeypatch duckdb.connect: 此后 read_write 打开主 6 库 raise; read_only + scratch 放行。"""
+    """monkeypatch duckdb.connect: 此后 read_write 打开主库 raise; read_only + scratch 放行。"""
     global _GUARD_ON
     if _GUARD_ON:
         return

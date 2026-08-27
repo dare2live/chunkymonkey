@@ -1457,6 +1457,678 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_module_members.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/database_manifest.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_continuity_integrity.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_foundation_done.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/db_holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/db_split_org_holding.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/repair_org_holding_accepted_pointers.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/update_watermark_sla.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/accepted_schema.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/disclosure_boundaries.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/disclosure_dataset_snapshot.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/disclosure_event_partition.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/disclosure_transport.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/holders_top10_acceptance.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_schema.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/nominal_ohlcv_runtime.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/security_day_partition.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/stock_st_runtime.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/factor_family_frontier_projection.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/form_production_read.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/institution_follow_b0.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/institution_follow_b1_measure.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/institution_follow_nominal_bars.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/main_rally_b1_measure.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_pulse_tier12_read.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/org_holding_pointer_integrity.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/pipeline/acquire.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/pipeline/margin_catchup_acquire.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/pipeline/state_sensors.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/pipeline/store.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/project_status.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/snapshot_nominal_bind.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/tier12_consumer_cutover.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/tier12_nominal_canary.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/tier12_publish_writer.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_continuity_integrity.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_db_split_org_holding.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_update_watermark_sla.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_accepted_schema.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_acquire_bounded_gap_heal.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_database_manifest.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_dataset_contracts.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_disclosure_boundaries.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_disclosure_dataset_snapshot.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_disclosure_transport_e0.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_formula_challenge.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_institution_follow_b1.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_institution_follow_b2.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_institution_follow_b4.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_acceptance.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_reconcile.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_state.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_market_pulse_tier12_read.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_nominal_ohlcv_acceptance.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_db.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_security_day_transport_modularity.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_snapshot_nominal_bind.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_tier12_consumer_cutover.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_continuity_guard.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_pipeline_state_sensors.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_stock_dossier_api.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.canonical_org_holding_detail_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/database_manifest.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.canonical_org_holding_detail_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/org_holding_schema.py",
+      "kind": "consume",
+      "src": "table:org_holding.canonical_org_holding_detail_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_db.py",
+      "kind": "consume",
+      "src": "table:org_holding.canonical_org_holding_detail_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_period_catchup.py",
+      "kind": "consume",
+      "src": "table:org_holding.canonical_org_holding_detail_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_org_holding_aif10.py",
+      "kind": "consume",
+      "src": "table:org_holding.canonical_org_holding_detail_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/database_manifest.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/db_split_org_holding.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/accepted_schema.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/calendar_schema.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_reconcile_snapshot.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_schema.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sync_runner.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_db_split_org_holding.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_accepted_schema.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_database_manifest.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_dataset_contracts.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_disclosure_transport_e0.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_acceptance.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_projections.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_reconcile.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_margin_state.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_nominal_ohlcv_acceptance.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_db.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_security_day_transport_modularity.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.landing_miaoxiang_org_holding"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/database_manifest.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.landing_miaoxiang_org_holding"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/org_holding_schema.py",
+      "kind": "consume",
+      "src": "table:org_holding.landing_miaoxiang_org_holding"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_db.py",
+      "kind": "consume",
+      "src": "table:org_holding.landing_miaoxiang_org_holding"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/org_holding_population.py",
+      "kind": "consume",
+      "src": "table:org_holding.org_holding_source_probe"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_module_members.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/database_manifest.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/disclosure_boundaries.py",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/org_holding_acceptance.py",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/org_holding_schema.py",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/org_holding_aif10.py",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/org_holding_population.py",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/schema_core.py",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/schema_migrations.py",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_disclosure_boundaries.py",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_db.py",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_period_catchup.py",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_truncation_audit.py",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_org_holding_aif10.py",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/data_audit_rules.yaml",
       "kind": "consume",
       "src": "table:reference.dim_active_a_stock"
@@ -1901,6 +2573,18 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/db_holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/db_split_org_holding.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/repair_org_holding_accepted_pointers.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -2021,12 +2705,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/org_holding_aif10.py",
-      "kind": "consume",
-      "src": "table:smartmoney.accepted_partition"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/org_holding_pointer_integrity.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -2093,6 +2771,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_db_split_org_holding.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_update_watermark_sla.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -2147,6 +2831,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_institution_follow_b1.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -2190,6 +2880,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_nominal_ohlcv_acceptance.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_db.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
     },
@@ -2291,6 +2987,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/db_holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/freeze_disclosure_dataset_snapshot.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
@@ -2363,6 +3065,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/org_holding_announcement.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/holders_aif10.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
@@ -2430,6 +3138,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_dual_plane_faucet.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_announcement.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
     },
@@ -3953,6 +4667,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/db_split_org_holding.py",
+      "kind": "consume",
+      "src": "table:smartmoney.ingest_batch"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/accepted_schema.py",
       "kind": "consume",
       "src": "table:smartmoney.ingest_batch"
@@ -3984,6 +4704,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:smartmoney.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_db_split_org_holding.py",
       "kind": "consume",
       "src": "table:smartmoney.ingest_batch"
     },
@@ -4049,6 +4775,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_db.py",
+      "kind": "consume",
+      "src": "table:smartmoney.ingest_batch"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_security_day_transport_modularity.py",
       "kind": "consume",
       "src": "table:smartmoney.ingest_batch"
@@ -4056,12 +4788,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:smartmoney.landing_miaoxiang_holders_top10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/scripts/db_holders_landing_retention.py",
       "kind": "consume",
       "src": "table:smartmoney.landing_miaoxiang_holders_top10"
     },
@@ -4757,6 +5483,18 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/db_holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/db_split_org_holding.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/repair_org_holding_accepted_pointers.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -4877,12 +5615,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/org_holding_aif10.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.accepted_partition"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/org_holding_pointer_integrity.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -4949,6 +5681,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_db_split_org_holding.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_update_watermark_sla.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -5003,6 +5741,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_institution_follow_b1.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -5046,6 +5790,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_nominal_ohlcv_acceptance.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_db.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -5363,6 +6113,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/db_split_org_holding.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/accepted_schema.py",
       "kind": "consume",
       "src": "table:tushare_raw.ingest_batch"
@@ -5394,6 +6150,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_db_split_org_holding.py",
       "kind": "consume",
       "src": "table:tushare_raw.ingest_batch"
     },
@@ -5454,6 +6216,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_nominal_ohlcv_acceptance.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_db.py",
       "kind": "consume",
       "src": "table:tushare_raw.ingest_batch"
     },
@@ -6335,7 +7103,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/org_holding_announcement.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_income"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_income"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_org_holding_announcement.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_income"
     },
@@ -7973,9 +8753,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1281,
-    "generated_at": "2026-08-27T10:37:12.285543+00:00",
-    "node_count": 448,
+    "edge_count": 1411,
+    "generated_at": "2026-08-27T11:07:05.621586+00:00",
+    "node_count": 465,
     "version": 2
   },
   "nodes": [
@@ -8329,6 +9109,14 @@
         "path": "backend/scripts/db_lifecycle_delete.py"
       },
       "id": "consumer:backend/scripts/db_lifecycle_delete.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
+        "path": "backend/scripts/db_split_org_holding.py"
+      },
+      "id": "consumer:backend/scripts/db_split_org_holding.py",
       "kind": "consumer"
     },
     {
@@ -8726,6 +9514,30 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/data_sources/org_holding_acceptance.py"
+      },
+      "id": "consumer:backend/services/data_sources/org_holding_acceptance.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/org_holding_announcement.py"
+      },
+      "id": "consumer:backend/services/data_sources/org_holding_announcement.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/org_holding_schema.py"
+      },
+      "id": "consumer:backend/services/data_sources/org_holding_schema.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/data_sources/security_day_acquire.py"
       },
       "id": "consumer:backend/services/data_sources/security_day_acquire.py",
@@ -9073,6 +9885,14 @@
         "path": "backend/services/org_holding_pointer_integrity.py"
       },
       "id": "consumer:backend/services/org_holding_pointer_integrity.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/org_holding_population.py"
+      },
+      "id": "consumer:backend/services/org_holding_population.py",
       "kind": "consumer"
     },
     {
@@ -9486,6 +10306,14 @@
     {
       "attrs": {
         "ctype": "test",
+        "path": "backend/tests/scripts/test_db_split_org_holding.py"
+      },
+      "id": "consumer:backend/tests/scripts/test_db_split_org_holding.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
         "path": "backend/tests/scripts/test_downstream_impact.py"
       },
       "id": "consumer:backend/tests/scripts/test_downstream_impact.py",
@@ -9830,6 +10658,38 @@
     {
       "attrs": {
         "ctype": "test",
+        "path": "backend/tests/services/test_org_holding_announcement.py"
+      },
+      "id": "consumer:backend/tests/services/test_org_holding_announcement.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_org_holding_db.py"
+      },
+      "id": "consumer:backend/tests/services/test_org_holding_db.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_org_holding_period_catchup.py"
+      },
+      "id": "consumer:backend/tests/services/test_org_holding_period_catchup.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_org_holding_truncation_audit.py"
+      },
+      "id": "consumer:backend/tests/services/test_org_holding_truncation_audit.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
         "path": "backend/tests/services/test_population_scope.py"
       },
       "id": "consumer:backend/tests/services/test_population_scope.py",
@@ -10113,6 +10973,14 @@
         "path": "backend/tests/test_moneyflow_assist.py"
       },
       "id": "consumer:backend/tests/test_moneyflow_assist.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/test_org_holding_aif10.py"
+      },
+      "id": "consumer:backend/tests/test_org_holding_aif10.py",
       "kind": "consumer"
     },
     {
@@ -10798,6 +11666,66 @@
         "table": "v_price_kline_qfq"
       },
       "id": "table:market.v_price_kline_qfq",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "org_holding",
+        "layer": "infra",
+        "status": "active",
+        "table": "accepted_partition"
+      },
+      "id": "table:org_holding.accepted_partition",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "org_holding",
+        "layer": "L1_foundation",
+        "status": "active",
+        "table": "canonical_org_holding_detail_period"
+      },
+      "id": "table:org_holding.canonical_org_holding_detail_period",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "org_holding",
+        "layer": "infra",
+        "status": "active",
+        "table": "ingest_batch"
+      },
+      "id": "table:org_holding.ingest_batch",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "org_holding",
+        "layer": "L0_source",
+        "status": "active",
+        "table": "landing_miaoxiang_org_holding"
+      },
+      "id": "table:org_holding.landing_miaoxiang_org_holding",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "org_holding",
+        "layer": "untagged",
+        "status": "active",
+        "table": "org_holding_source_probe"
+      },
+      "id": "table:org_holding.org_holding_source_probe",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "org_holding",
+        "layer": "L0_source",
+        "status": "active",
+        "table": "raw_org_holding_aif10"
+      },
+      "id": "table:org_holding.raw_org_holding_aif10",
       "kind": "table"
     },
     {

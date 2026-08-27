@@ -285,6 +285,54 @@ def test_accepted_same_payload_hash_skips_reland(conn) -> None:
     )
 
 
+def test_accepted_same_rows_skip_when_fetch_clock_differs(conn) -> None:
+    """Skip-land identity is row content, not wall-clock on the fetch envelope."""
+
+    from datetime import timedelta
+
+    contract = load_holders_top10_contract()
+    handed = propagate_disclosure_execution_contract("holders_top10", contract)
+    rows = [
+        _row(holder_rank=1, holder_name="香港中央结算有限公司"),
+        _row(holder_rank=2, holder_name="中国证券金融股份有限公司"),
+    ]
+    request = {"api": "RPT_F10_EH_FREEHOLDERS", "notice_date": PARTITION}
+    first_id = f"holders_top10:{PARTITION}:clock-first"
+    land_holders_top10_batch(
+        conn,
+        HoldersTop10LandingBatch(
+            batch_id=first_id,
+            partition_value=PARTITION,
+            observed_at=OBSERVED,
+            available_at=OBSERVED,
+            rows=rows,
+            request=request,
+        ),
+        handed,
+        handoff=handed,
+    )
+    accept_holders_top10_batch(conn, first_id, handed, handoff=handed)
+    later = OBSERVED + timedelta(hours=1)
+    landing_before = conn.execute(f"SELECT COUNT(*) FROM {LANDING_TABLE}").fetchone()[0]
+    skipped = land_holders_top10_batch(
+        conn,
+        HoldersTop10LandingBatch(
+            batch_id=f"holders_top10:{PARTITION}:clock-later",
+            partition_value=PARTITION,
+            observed_at=later,
+            available_at=later,
+            rows=rows,
+            request=request,
+        ),
+        handed,
+        handoff=handed,
+    )
+    assert skipped == first_id
+    assert conn.execute(f"SELECT COUNT(*) FROM {LANDING_TABLE}").fetchone()[0] == (
+        landing_before
+    )
+
+
 def test_new_payload_still_appends_landing(conn) -> None:
     """Different content must keep append-only landing (no silent overwrite)."""
 

@@ -41,7 +41,7 @@ e0_breadth:
   holders_db: smartmoney
   stk_db: tushare_raw
   daily_db: tushare_raw
-  org_db: smartmoney
+  org_db: org_holding
   min_holders_daily_overlap: 120
   # org: mass by-date invent banned; population floor blocks canary false-green
   min_org_accepted_stocks: 500

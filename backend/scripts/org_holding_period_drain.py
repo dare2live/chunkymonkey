@@ -27,11 +27,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from services.db import get_conn  # noqa: E402
 from services.org_holding_aif10 import (  # noqa: E402
     DEFAULT_START_PERIOD,
     org_holding_period_gap_report,
 )
+from services.org_holding_db import connect_org_holding  # noqa: E402
 from services.org_holding_period_catchup import (  # noqa: E402
     fill_oldest_missing_org_period,
     plan_older_org_period_fill,
@@ -228,7 +228,7 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="Plan only; no provider I/O")
     args = ap.parse_args()
 
-    conn = get_conn()
+    conn = connect_org_holding()
     try:
         gap_before = org_holding_period_gap_report(conn, start_period=args.start_period)
         before = int(

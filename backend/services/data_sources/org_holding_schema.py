@@ -3,7 +3,7 @@
 Compatibility research table remains ``raw_org_holding_aif10`` (NONCONFORMING
 direct-write strangler) until DatasetSnapshot cutover.  Accepted truth for this
 tracer is the landing/canonical pair below.  Partition axis = available_date
-(disclosure deadline upper bound).
+(company periodic-report announcement; first-seen only when the join is empty).
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ CANONICAL_TABLE = "canonical_org_holding_detail_period"
 SCHEMA_ID = "tier0.disclosure.org_holding_detail_period.canonical"
 SCHEMA_VERSION = "1"
 WRITER_ID = "services.data_sources.org_holding_acceptance"
-CONTRACT_VERSION = "1"
+CONTRACT_VERSION = "2"
 SOURCE = "miaoxiang"
 API = "RPT_MAIN_ORGHOLDDETAIL"
 COMPATIBILITY_TABLE = "raw_org_holding_aif10"
@@ -44,19 +44,10 @@ PROVIDER_FIELDS = (
 
 
 def disclosure_deadline_yyyymmdd(report_date: str) -> str | None:
-    """Report period → statutory disclosure deadline (PIT conservative upper bound)."""
+    """Report period → statutory completeness date (not PIT known-at)."""
+    from services.data_sources.periodic_report_calendar import disclosure_deadline_compact
 
-    compact = str(report_date or "").replace("-", "")
-    if len(compact) != 8 or not compact.isdigit():
-        return None
-    y, md = compact[:4], compact[4:]
-    deadline = {
-        "0331": f"{y}0430",
-        "0630": f"{y}0831",
-        "0930": f"{y}1031",
-        "1231": f"{int(y) + 1}0430",
-    }.get(md)
-    return deadline
+    return disclosure_deadline_compact(report_date)
 
 
 _SCHEMA_PAYLOAD: dict[str, Any] = {

@@ -107,7 +107,7 @@ owner contract，进度段在此。**不再有第二个说「下一步」的地�
 **C 已闭合**（数据线）：daily 与 stock_st 两个 `on_demand` 域的尾部断流已补齐（两域前沿现已追平交易日锚，
 滞后 0；行数单调无截断，现查 `chunkyctl status`）· qfq/form 已跟进 · tier12 补发 5 期，`stock_row_count ==
 universe_membership_size == 5205`（无静默填充）→ **tier12_consumer 转 PASS**（ACCEPTED_CUTOVER）·
-org_holding 期轴非缺口已定论。
+org_holding 采集窗=报告期末（东财随公告更新），PIT/accept=同股同期定期报告公告日（禁用法定截止冒充已知日）；法定截止后本地缺 = completeness_miss（年报/中报/一季报/三季报各自截止日）。
 
 **迁移原则**：不追求一步到位，但新增任何文档前先问「这是 L0/L1/L2/L3 哪一层」—— 是 L2 就不许写，是 L3 就写进 commit message。
 
@@ -115,7 +115,7 @@ org_holding 期轴非缺口已定论。
 
 - 静默 cutover / 无证据回翻 `cutover_allowed=false`；Optuna；E 松门；StrategyRelease
 - margin thaw；mass backfill；plugin bus；第二 DB；agent 自降 commit tier
-- **org_holding（及同类 by-period 域）在每次 manual/`daily_update` 上做全市场单期 ~830k mass re-pull / 无界翻页 refresh** — 只允许 check latest plannable vs local，**缺则拉一期，有则 skip**
+- **org_holding（及同类 by-period 域）在每次 manual/`daily_update` 上做全市场单期 ~830k mass re-pull / 无界翻页 refresh** — 只允许 check latest plannable vs local：**缺 raw 则拉一期并按公告日/first-seen accept**（禁止写未来分区；法定截止不是 known-at）；**已有 raw 则 page-1 count probe，源端领先才 grain MERGE**（禁止 DELETE+全期重拉）
 - 随手重写 accepted canonical / 日历契约 / PIT-availability / `stage→validate→publish` / cutover 证据链；dual-write 迁移窗口；把「残破感」当 greenfield 重写许可证
 - 后台 subagent 若再出现「仅 2 行 transcript、tool 无 result」：改用本会话直接做或 `shell` 子代理（见交接文档）
 - S7 14 sync_orphan **blanket pre-accept as standby**；假 S7 COMPAT
@@ -135,7 +135,7 @@ org_holding 期轴非缺口已定论。
 
 架构硬决定摘要：积木=`module+data+config+contract+evidence`；landing 保留供应商响应；日历与 universe 同级硬门；名义 OHLCV=成交真相；一数据集一 writer；`manual_only`；静态 PASS≠`live_readiness`。完整条文见 `docs/MASTER_TOPLEVEL_DESIGN.md`。
 
-**Formal daily/ST acquire · 手动 sync 时钟 · 披露域增量** 三条裁决的正文已归位 `docs/MASTER_TOPLEVEL_DESIGN.md` §5.1/§5.7 —— 本文件不再留副本（副本必然与 owner 漂移）。要点仍成立：全市场按 `trade_date` 拉、禁 exclude-then-fetch、沪深A 含 ST/*ST、`stock_st` 是 membership 证据不是 denylist、org 按可披露期缺则拉一期有则 skip、禁 mass 与 by-date invent。
+**Formal daily/ST acquire · 手动 sync 时钟 · 披露域增量** 三条裁决的正文已归位 `docs/MASTER_TOPLEVEL_DESIGN.md` §5.1/§5.7 —— 本文件不再留副本（副本必然与 owner 漂移）。要点仍成立：全市场按 `trade_date` 拉、禁 exclude-then-fetch、沪深A 含 ST/*ST、`stock_st` 是 membership 证据不是 denylist、org 采集按已结束报告期缺则拉一期（PIT=公告日 JOIN，禁用法定截止冒充已知日）、禁 mass 与 by-date invent。
 
 **Gate pytest 分层**：owner = `backend/config/ci_pytest_surface.yaml`（`blocking` / `nightly` / optional 三面 + 每条 optional 带 reason），L2/L3 与 CI 同跑 `--tier blocking`。分层理由与当初的取舍查 `chunkyctl history --grep "gate redesign"`。
 

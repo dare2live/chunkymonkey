@@ -19,11 +19,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from services.db import get_conn  # noqa: E402
 from services.org_holding_aif10 import (  # noqa: E402
     DEFAULT_START_PERIOD,
     sync_period,
 )
+from services.org_holding_db import connect_org_holding  # noqa: E402
 from services.org_holding_population import (  # noqa: E402
     count_raw_org_rows,
     count_raw_org_stocks,
@@ -119,7 +119,7 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    conn = get_conn()
+    conn = connect_org_holding()
     try:
         before = list_truncated_org_periods(conn, start_period=args.start_period)
         print(

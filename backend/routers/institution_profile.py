@@ -39,12 +39,13 @@ SURFACE_STATUS = "tier3_research_evidence_only"
 def _disclosure_shadow_sidecar() -> dict[str, Any]:
     """Read-only bounded shadow; fail closed.
 
-    holders_top10 / org_holding live on smartmoney; stk_holdertrade on
-    tushare_raw (sync_registry target_db). Route domain_conns accordingly.
+    holders_top10 live on smartmoney; org_holding on alias org_holding;
+    stk_holdertrade on tushare_raw. Route domain_conns accordingly.
     """
 
     sm = None
     tr = None
+    org = None
     try:
         manifest = get_database_manifest()
         sm = duck_connect(str(manifest.path_for("smartmoney")), read_only=True)
@@ -57,16 +58,29 @@ def _disclosure_shadow_sidecar() -> dict[str, Any]:
             )
         except Exception:  # noqa: BLE001 — stk domain becomes UNAVAILABLE
             tr = None
-        domain_conns = {"stk_holdertrade": tr} if tr is not None else None
+        try:
+            org_path = manifest.path_for("org_holding")
+            org = (
+                duck_connect(str(org_path), read_only=True)
+                if org_path.is_file()
+                else None
+            )
+        except Exception:  # noqa: BLE001 — org domain becomes UNAVAILABLE
+            org = None
+        domain_conns: dict[str, Any] = {}
+        if tr is not None:
+            domain_conns["stk_holdertrade"] = tr
+        if org is not None:
+            domain_conns["org_holding"] = org
         return compare_disclosure_research_shadow(
             sm,
             max_rows_per_domain=50,
-            domain_conns=domain_conns,
+            domain_conns=domain_conns or None,
         ).as_dict()
     except Exception:  # noqa: BLE001 — shadow is observational only
         return empty_disclosure_shadow(reason="disclosure_shadow_probe_failed").as_dict()
     finally:
-        for handle in (tr, sm):
+        for handle in (org, tr, sm):
             if handle is None:
                 continue
             try:

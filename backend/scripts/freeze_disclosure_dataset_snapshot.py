@@ -22,6 +22,7 @@ from services.data_sources.disclosure_shadow_compare import (  # noqa: E402
     compare_disclosure_research_shadow,
 )
 from services.db import get_conn  # noqa: E402
+from services.org_holding_db import connect_org_holding  # noqa: E402
 
 # Shadow gate for this development freeze: one MATCH partition per domain,
 # all strictly before holdout_start=20250601. Serving-window canaries
@@ -79,12 +80,13 @@ def main() -> int:
 
     sm = get_conn()
     raw = connect_ro("tushare_raw")
+    org = connect_org_holding(read_only=True)
     try:
         # Shadow gate uses pre-holdout MATCH canaries, not the 2026 serving window.
         shadow = compare_disclosure_research_shadow(
             sm,
             partitions=_FREEZE_SHADOW,
-            domain_conns={"stk_holdertrade": raw},
+            domain_conns={"stk_holdertrade": raw, "org_holding": org},
         )
         if not shadow.cutover_allowed:
             print(
@@ -97,7 +99,7 @@ def main() -> int:
         snap = freeze_disclosure_dataset_snapshot(
             {
                 "holders_top10": sm,
-                "org_holding": sm,
+                "org_holding": org,
                 "stk_holdertrade": raw,
             },
             shadow=shadow,
@@ -112,6 +114,7 @@ def main() -> int:
     finally:
         sm.close()
         raw.close()
+        org.close()
     return 0
 
 

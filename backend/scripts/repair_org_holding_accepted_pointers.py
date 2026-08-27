@@ -32,7 +32,7 @@ from services.data_sources.org_holding_schema import (  # noqa: E402
     DATASET_ID,
     PARTITION_FIELD,
 )
-from services.database_manifest import get_database_manifest  # noqa: E402
+from services.org_holding_db import org_holding_db_path  # noqa: E402
 from services.duck_adapter import connect as duck_connect  # noqa: E402
 
 
@@ -154,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--json-out", default=None)
     args = ap.parse_args(argv)
 
-    path = get_database_manifest().path_for("smartmoney")
+    path = org_holding_db_path()
     con = duck_connect(str(path), read_only=bool(args.dry_run))
     try:
         result = repair_connection(con, dry_run=bool(args.dry_run))

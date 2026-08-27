@@ -208,57 +208,57 @@ def test_fetch_holders_top10_by_notice_date_maps_provider_shape(monkeypatch):
     assert rows[0]["is_exit_row"] is False
 
 
-def test_incremental_skips_when_provider_strictly_behind_wm(monkeypatch):
-    """Re-click must not rewrite when provider max is strictly behind formal wm."""
+def _patch_aif10_probe(monkeypatch, update_date: str) -> None:
+    """Newest-date probe only. Daily incremental must not page UPDATE_DATE>=."""
     import types
 
     class _Client:
         def get_v1(self, *_a, **kwargs):
-            # Empty filter must not be used (vendor returns 0); accept bounded probe.
-            assert "UPDATE_DATE>=" in str(kwargs.get("filter_expr") or "")
-            return {"data": [{"UPDATE_DATE": "2026-07-21 00:00:00"}], "pages": 1}
+            filt = str(kwargs.get("filter_expr") or "")
+            assert "UPDATE_DATE>=" in filt
+            assert kwargs.get("page_size") == 1
+            return {"data": [{"UPDATE_DATE": f"{update_date} 00:00:00"}], "pages": 1}
 
     fake_mod = types.ModuleType("aif10_scraper")
     fake_mod.default_client = _Client()
-    fake_mod.fetch_all_pages = lambda *_a, **_k: []
+    fake_mod.fetch_all_pages = lambda *_a, **_k: (_ for _ in ()).throw(
+        AssertionError("daily incremental must not fetch_all_pages by ts_code")
+    )
     monkeypatch.setitem(sys.modules, "aif10_scraper", fake_mod)
+
+
+def test_incremental_skips_when_provider_strictly_behind_wm(monkeypatch):
+    """Re-click must not rewrite when provider max is strictly behind formal wm."""
+    _patch_aif10_probe(monkeypatch, "2026-07-21")
     monkeypatch.setattr(
         "services.holders_aif10.formal_holders_watermark",
         lambda _conn: ("20260722", "test_wm"),
     )
     monkeypatch.setattr(
-        "services.holders_aif10._affected_stocks_since",
-        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must skip before scan")),
+        "services.holders_aif10.sync_holders_aif10",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must not per-stock")),
     )
     out = sync_holders_aif10_incremental(object())
     assert out["skipped"] is True
     assert out["skip_reason"] == "watermark_unchanged"
     assert out["rows_written"] == 0
+    assert out["rewrite_amplification_rows"] == 0
     assert out["provider_max_update_date"] == "20260721"
 
 
 def test_incremental_same_day_skips_when_local_coverage_complete(monkeypatch):
-    """Equal wm: probe same-day codes; skip only when none missing locally."""
-    import types
-
-    class _Client:
-        def get_v1(self, *_a, **kwargs):
-            assert "UPDATE_DATE>=" in str(kwargs.get("filter_expr") or "")
-            return {"data": [{"UPDATE_DATE": "2026-07-22 00:00:00"}], "pages": 1}
-
-    fake_mod = types.ModuleType("aif10_scraper")
-    fake_mod.default_client = _Client()
-    fake_mod.fetch_all_pages = lambda *_a, **_k: []
-    monkeypatch.setitem(sys.modules, "aif10_scraper", fake_mod)
+    """Equal wm: exact-day by_notice codes; skip when none missing locally."""
+    _patch_aif10_probe(monkeypatch, "2026-07-22")
     monkeypatch.setattr(
         "services.holders_aif10.formal_holders_watermark",
         lambda _conn: ("20260722", "test_wm"),
     )
     monkeypatch.setattr(
-        "services.holders_aif10._affected_stocks_since",
-        lambda _client, since: ["600346", "688116"]
-        if since == "2026-07-22"
-        else (_ for _ in ()).throw(AssertionError(f"unexpected since={since}")),
+        "services.holders_aif10.fetch_holders_top10_by_notice_date",
+        lambda nd: [
+            {"stock_code": "600346", "notice_date": nd},
+            {"stock_code": "688116", "notice_date": nd},
+        ],
     )
     monkeypatch.setattr(
         "services.holders_aif10._local_stock_codes_for_notice_date",
@@ -268,7 +268,11 @@ def test_incremental_same_day_skips_when_local_coverage_complete(monkeypatch):
     )
     monkeypatch.setattr(
         "services.holders_aif10.sync_holders_aif10",
-        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must not sync")),
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must not per-stock")),
+    )
+    monkeypatch.setattr(
+        "services.holders_aif10._write",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must not land")),
     )
     out = sync_holders_aif10_incremental(object())
     assert out["skipped"] is True
@@ -278,28 +282,21 @@ def test_incremental_same_day_skips_when_local_coverage_complete(monkeypatch):
     assert out["rows_written"] == 0
 
 
-def test_incremental_same_day_sparse_syncs_missing_codes_only(monkeypatch):
-    """Equal wm late filers: sync only codes missing that notice locally (sparse)."""
-    import types
-
-    class _Client:
-        def get_v1(self, *_a, **kwargs):
-            assert "UPDATE_DATE>=" in str(kwargs.get("filter_expr") or "")
-            return {"data": [{"UPDATE_DATE": "2026-07-23 00:00:00"}], "pages": 1}
-
-    fake_mod = types.ModuleType("aif10_scraper")
-    fake_mod.default_client = _Client()
-    fake_mod.fetch_all_pages = lambda *_a, **_k: []
-    monkeypatch.setitem(sys.modules, "aif10_scraper", fake_mod)
+def test_incremental_same_day_sparse_relends_notice_day_once(monkeypatch):
+    """Equal wm late filers: re-land that notice_date once; never per-stock full history."""
+    _patch_aif10_probe(monkeypatch, "2026-07-23")
     monkeypatch.setattr(
         "services.holders_aif10.formal_holders_watermark",
         lambda _conn: ("20260723", "test_wm"),
     )
+    day_rows = [
+        {"stock_code": "600346", "notice_date": "20260723"},
+        {"stock_code": "603659", "notice_date": "20260723"},
+        {"stock_code": "688116", "notice_date": "20260723"},
+    ]
     monkeypatch.setattr(
-        "services.holders_aif10._affected_stocks_since",
-        lambda _client, since: ["600346", "603659", "688116"]
-        if since == "2026-07-23"
-        else (_ for _ in ()).throw(AssertionError(f"unexpected since={since}")),
+        "services.holders_aif10.fetch_holders_top10_by_notice_date",
+        lambda nd: day_rows if nd == "20260723" else [],
     )
     monkeypatch.setattr(
         "services.holders_aif10._local_stock_codes_for_notice_date",
@@ -307,31 +304,74 @@ def test_incremental_same_day_sparse_syncs_missing_codes_only(monkeypatch):
         if notice == "20260723"
         else set(),
     )
-    captured: dict = {}
+    written: list[list] = []
 
-    def fake_sync(_conn, *, symbols=None, **_k):
-        captured["symbols"] = list(symbols or [])
-        return {
-            "ok": 1,
-            "fail": 0,
-            "rows_written": 12,
-            "exit_rows": 0,
-            "errors": [],
-        }
+    def fake_write(_conn, rows):
+        written.append(list(rows))
+        return len(rows)
 
-    monkeypatch.setattr("services.holders_aif10.sync_holders_aif10", fake_sync)
+    monkeypatch.setattr("services.holders_aif10._write", fake_write)
+    monkeypatch.setattr(
+        "services.holders_aif10.sync_holders_aif10",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must not per-stock")),
+    )
     monkeypatch.setattr(
         "services.holders_aif10._net_new_notice_since",
-        lambda _conn, _wm: (0, 0),
+        lambda _conn, _wm: (3, 1),
     )
     out = sync_holders_aif10_incremental(object())
     assert out.get("skipped") is not True
     assert out["same_day_sparse"] is True
     assert out["same_day_missing_codes"] == 1
-    assert out["affected_stocks"] == 1
-    assert captured["symbols"] == ["603659"]
-    assert out["rows_written"] == 12
+    assert out["same_day_provider_codes"] == 3
+    assert out["affected_stocks"] == 0
+    assert out["rewrite_amplification_rows"] == 0
+    assert out["rows_written"] == 3
+    assert written == [day_rows]
     assert out["provider_max_update_date"] == "20260723"
+
+
+def test_incremental_advance_window_is_by_notice_only(monkeypatch):
+    """Provider ahead: forward by_notice partitions; never UPDATE_DATE>= per-stock rewrite."""
+    _patch_aif10_probe(monkeypatch, "2026-07-26")
+    monkeypatch.setattr(
+        "services.holders_aif10.formal_holders_watermark",
+        lambda _conn: ("20260721", "test_wm"),
+    )
+    captured: dict = {}
+
+    def fake_forward(_conn, *, from_exclusive, to_inclusive, **_k):
+        captured["from_exclusive"] = from_exclusive
+        captured["to_inclusive"] = to_inclusive
+        return {
+            "landed_partitions": ["20260722", "20260724"],
+            "empty_partitions": ["20260723"],
+            "errors": [],
+        }
+
+    monkeypatch.setattr(
+        "services.holders_aif10.land_holders_notice_partitions_forward",
+        fake_forward,
+    )
+    monkeypatch.setattr(
+        "services.holders_aif10.sync_holders_aif10",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must not per-stock")),
+    )
+    monkeypatch.setattr(
+        "services.holders_aif10._net_new_notice_since",
+        lambda _conn, _wm: (18, 2),
+    )
+    out = sync_holders_aif10_incremental(object())
+    assert out.get("skipped") is not True
+    assert captured == {"from_exclusive": "20260721", "to_inclusive": "20260726"}
+    assert out["notice_partition_forward"]["landed_partitions"] == [
+        "20260722",
+        "20260724",
+    ]
+    assert out["affected_stocks"] == 0
+    assert out["rewrite_amplification_rows"] == 0
+    assert out["net_new_notice_rows"] == 18
+    assert out["notice_partitions_touched"] == 2
 
 
 def test_local_stock_codes_for_notice_date_reads_canonical():
@@ -418,23 +458,14 @@ def test_forward_by_notice_lands_absent_days_only(monkeypatch):
 
 def test_incremental_skip_does_not_run_retired_fact_catchup(monkeypatch):
     """watermark_unchanged skips; from-fact catchup no longer attached."""
-    import types
-
-    class _Client:
-        def get_v1(self, *_a, **kwargs):
-            return {"data": [{"UPDATE_DATE": "2026-07-21 00:00:00"}], "pages": 1}
-
-    fake_mod = types.ModuleType("aif10_scraper")
-    fake_mod.default_client = _Client()
-    fake_mod.fetch_all_pages = lambda *_a, **_k: []
-    monkeypatch.setitem(sys.modules, "aif10_scraper", fake_mod)
+    _patch_aif10_probe(monkeypatch, "2026-07-21")
     monkeypatch.setattr(
         "services.holders_aif10.formal_holders_watermark",
         lambda _conn: ("20260722", "test_wm"),
     )
     monkeypatch.setattr(
-        "services.holders_aif10._affected_stocks_since",
-        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must skip before scan")),
+        "services.holders_aif10.sync_holders_aif10",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("must not per-stock")),
     )
     out = sync_holders_aif10_incremental(object())
     assert out["skipped"] is True

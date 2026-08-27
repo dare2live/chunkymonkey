@@ -242,7 +242,7 @@ def test_org_due_row_from_gap_surfaces_skip_not_forever_blocked():
     assert row["domain"] == "org_holding"
     assert row["will_fetch"] is False
     assert row["kind"] == "period_incremental"
-    assert "not forever blocked" in row["detail"]
+    assert "acquire opens at period end" in row["detail"]
     assert row["next_period"] == "2026-06-30"
 
 

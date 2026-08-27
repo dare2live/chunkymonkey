@@ -1,7 +1,7 @@
 """L2 运行时状态的单一现查入口 (goal.md「治理体系重构」P2.2)。
 
 **为什么需要它** (2026-08-11 实测): 项目此前**没有任何一条命令**能回答「数据前沿在哪」。
-真相散在两个库的 `accepted_partition` 里 (tushare_raw + smartmoney), 而
+真相散在各库的 `accepted_partition` 里 (tushare_raw / smartmoney / org_holding), 而
 `docs/README.md` 让人「查真相源或生成投影 (BOARD.md)」—— BOARD.md 第 6 行却明说
 「本文件幂等…数据前沿请查 accepted 分区表，勿据此判断」。**指针指向了一个声明自己
 没有这个数的文件**, 于是每个人只好手写一份, 然后各自烂掉 (同日实测: PROJECT_INDEX
@@ -29,7 +29,13 @@ ALERT_FLAG_GLOB = "chunkymonkey_ALERT_*.flag"
 ALERT_FLAG_DIR = Path("/tmp")
 # accepted_partition 分布在哪些库 = database_manifest 的别名；逐库探测而不是写死一份
 # 名单，因为「哪个库有 accepted_partition」本身会随分层迁移变化。
-_CANDIDATE_DB_ALIASES = ("tushare_raw", "smartmoney", "market", "reference")
+_CANDIDATE_DB_ALIASES = (
+    "tushare_raw",
+    "smartmoney",
+    "org_holding",
+    "market",
+    "reference",
+)
 
 
 def _now_iso() -> str:
@@ -171,12 +177,12 @@ def accepted_frontier(anchor: str | None) -> dict[str, Any]:
 
 
 def _period_axis_note(dataset_id: str, frontier: Any) -> str | None:
-    """期轴数据集: 把「落后 N 交易日」这个无意义的大数字换成「下一期什么时候才该有」。
+    """期轴数据集: 把「落后 N 交易日」这个无意义的大数字换成三套钟。
 
-    `org_holding_detail_period` 前沿停在 20260430 会显示「落后 69 交易日」, 看着像断流,
-    实际 20260430 正是 Q1 的**法定披露截止日** —— H1 要到 08-31 才依法必须存在。日轴的
-    滞后算术套在期轴上只会制造假警报, 而每次都要有人重新论证一遍「这是正常节奏」。
-    真相源 = `org_holding_aif10.disclosure_deadline()` 里的监管硬约束, 不在这里重写一份。
+    `org_holding_detail_period` 前沿若仍是 20260430, 那是 Q1 的**法定披露截止**
+    (completeness), 不是 known-at, 也不是「H1 源端没数」。采集从报告期末打开;
+    PIT = 公告日; 截止后本地仍缺 = 漏抓。日轴滞后算术套在期轴上会制造假警报。
+    截止日真相源 = `org_holding_aif10.disclosure_deadline()`, 这里不重写一份。
     """
     if "_period" not in dataset_id:
         return None
@@ -195,8 +201,12 @@ def _period_axis_note(dataset_id: str, frontier: Any) -> str | None:
                 nxt = {"03-31": ("06-30", year), "06-30": ("09-30", year),
                        "09-30": ("12-31", year), "12-31": ("03-31", year + 1)}[period_md]
                 nxt_deadline = disclosure_deadline(f"{nxt[1]}-{nxt[0]}")
-                return (f"期轴: 前沿={label}({period}) 的法定披露截止; "
-                        f"下一期 {nxt[1]}-{nxt[0]} 截止 {nxt_deadline} —— 之前不构成缺口")
+                return (
+                    f"期轴: 前沿={label}({period}) 的法定披露截止 "
+                    f"(completeness, 不是 PIT known-at); "
+                    f"下一期 {nxt[1]}-{nxt[0]} 报告期末即可采集 "
+                    f"(东财随公告更新, 不是等到截止 {nxt_deadline} 才有数)"
+                )
     return "期轴数据集: 滞后交易日数不构成 SLA 判定"
 
 

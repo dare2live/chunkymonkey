@@ -11,6 +11,7 @@ def test_database_manifest_resolves_repo_relative_paths():
 
     assert manifest.path_for("smartmoney") == repo_root / "data" / "smartmoney.duckdb"
     assert manifest.path_for("market") == repo_root / "data" / "market.duckdb"
+    assert manifest.path_for("org_holding") == repo_root / "data" / "org_holding.duckdb"
     assert manifest.require("market").default_attach_read_only is True
 
 

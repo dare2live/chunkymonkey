@@ -1,13 +1,11 @@
 """Org holding aif10 provider fetch (sharded pagination). Split from org_holding_aif10 ratchet."""
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from typing import Any
 
-_MIAOXIANG = Path(__file__).resolve().parents[2] / "miaoxiang"
-if str(_MIAOXIANG) not in sys.path:
-    sys.path.insert(0, str(_MIAOXIANG))
+from services.data_sources.sibling_repos import ensure_import_path
+
+ensure_import_path("miaoxiang")
 
 REPORT_NAME = "RPT_MAIN_ORGHOLDDETAIL"
 PAGE_SIZE = 2000
@@ -25,6 +23,28 @@ def _robust_client():
 
         _CLIENT = AIF10Client(retry=FETCH_RETRY, timeout=FETCH_TIMEOUT)
     return _CLIENT
+
+
+def probe_period_count(report_date_iso: str) -> int:
+    """Page-1 Eastmoney ``count`` for one REPORT_DATE. No shard crawl.
+
+    This is the cheap faucet org holding actually has: the datacenter envelope
+    count, not a by-notice axis. Callers must not treat a count as a license
+    to re-pull an already-landed period. Uses a short-lived client so a DNS
+    failure cannot burn the full fetch retry budget.
+    """
+    from aif10_scraper.client import AIF10Client
+
+    client = AIF10Client(retry=1, timeout=15)
+    head = client.get_v1(
+        REPORT_NAME,
+        page=1,
+        page_size=1,
+        sort_columns="REPORT_DATE,SECURITY_CODE",
+        sort_types="-1,1",
+        extra_filters=[f"(REPORT_DATE='{report_date_iso}')"],
+    )
+    return int(head.get("count") or 0)
 
 
 def fetch_period(report_date_iso: str) -> dict[str, Any]:

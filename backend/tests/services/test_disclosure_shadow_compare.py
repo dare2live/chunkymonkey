@@ -229,7 +229,7 @@ def test_shadow_match_allows_cutover_for_three_domains(conn) -> None:
 
 
 def test_shadow_domain_conns_routes_stk_to_secondary_db(conn) -> None:
-    """API sidecar pattern: holders/org on smartmoney, stk on tushare_raw."""
+    """API sidecar pattern: holders on default conn, stk on tushare_raw."""
 
     write_holders_top10_formal_then_mirror(
         conn,

@@ -129,21 +129,26 @@ def run_acquire(ctx: PipelineContext) -> None:
 
 
 def _sync_holders_aif10(ctx) -> None:
-    """十大流通股东 aif10 增量 (主源). 水位驱动: 扫存量 MAX(披露日) 之后有新披露的股, 无 wall-clock."""
+    """十大流通股东 aif10 增量: canonical notice 水位 + by_notice 按日横切. 无 wall-clock."""
     from services.db import get_conn
     from services.holders_aif10 import sync_holders_aif10_incremental
     conn = get_conn()
     try:
         result = sync_holders_aif10_incremental(conn)
-        print(f"holders_aif10: watermark={result.get('watermark')} "
-              f"affected={result.get('affected_stocks', 0)} rows={result.get('rows_written', 0)} "
-              f"exits={result.get('exit_rows', 0)} errors={result.get('errors', [])[:3]}")
+        print(
+            f"holders_aif10: watermark={result.get('watermark')} "
+            f"net_new={result.get('net_new_notice_rows', 0)} "
+            f"parts={result.get('notice_partitions_touched', 0)} "
+            f"rewrite_amp={result.get('rewrite_amplification_rows', 0)} "
+            f"forward={result.get('notice_partition_forward', {}).get('landed_partitions', [])} "
+            f"errors={result.get('errors', [])[:3]}"
+        )
     finally:
         conn.close()
 
 
 def _sync_qfii() -> None:
-    """QFII 季度持股增量 (外资维度). 水位=最近已披露季度末, 已有则跳过."""
+    """QFII 季度持股增量 (外资维度). 水位=最近已结束季度末, 当前期随公告 upsert."""
     import asyncio
     from services.duck_adapter import connect as duck_connect
     from services.qfii_client import sync_qfii_incremental
@@ -164,15 +169,14 @@ def _sync_org_holding(ctx: PipelineContext) -> None:
     import asyncio
     from pathlib import Path
 
-    from services.duck_adapter import connect as duck_connect
     from services.org_holding_aif10 import (
         org_holding_period_gap_report,
         sync_org_holding_incremental,
     )
-    from .context import db_path
+    from services.org_holding_db import connect_org_holding
     from .delta_manifest import empty_manifest
 
-    conn = duck_connect(db_path("smartmoney"))
+    conn = connect_org_holding()
     try:
         gap = org_holding_period_gap_report(conn)
         print("org_holding_gap_check: " + json.dumps(gap, ensure_ascii=False, default=str))
@@ -202,7 +206,8 @@ def _sync_org_holding(ctx: PipelineContext) -> None:
                 for k in (
                     "plannable", "local_has_plannable", "accepted_has_plannable",
                     "missing_count", "fill_target_period", "older_remaining",
-                    "missing_older_count",
+                    "missing_older_count", "completeness_due",
+                    "completeness_class", "completeness_miss_periods",
                 )
             },
         }

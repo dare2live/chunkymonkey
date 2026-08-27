@@ -47,7 +47,8 @@ MANAGED_DBS = ("smartmoney", "feature_store", "reference")  # rule-compliance: o
 # stale 检查(声明了但不在live)扫当前 manifest 中承载受管表的库；退役 ETF 文件只留删除证据，
 # 不再冒充 active alias。untagged 检查仍只 MANAGED_DBS。
 # (不要求声明 market/etf 的 raw 镜像表)。2026-06-27 §9: reference 加入 (4 dim live 在此)。
-STALE_SCAN_DBS = ("smartmoney", "feature_store", "market", "reference")
+# 2026-08-26: org_holding 加入 stale 扫描 (landing/canonical/raw 迁出 smartmoney 后须仍算 live)。
+STALE_SCAN_DBS = ("smartmoney", "feature_store", "market", "reference", "org_holding")
 
 
 def _db_path(key: str) -> Path:

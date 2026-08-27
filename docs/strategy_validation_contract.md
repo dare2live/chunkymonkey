@@ -201,7 +201,7 @@ PIT 截断测试是硬门：在 cutoff 后增加未来数据，cutoff 前的特�
 
 硬约束：
 
-- 一个持仓/调研事实最早只能在真实 `notice_date/available_at` 之后使用；**`notice_date` 为 NULL 的行契约级排除**（不得仅在某一查询面过滤后从别的读面漏进）；默认信号成交锚为披露后下一交易日 open，禁止回填 report/effective date；
+- 一个持仓/调研事实最早只能在真实 `notice_date/available_at` 之后使用；**`notice_date` 为 NULL 的行契约级排除**（不得仅在某一查询面过滤后从别的读面漏进）；默认信号成交锚为披露后下一交易日 open，禁止回填 report/effective date。机构持仓明细供应商没有 NOTICE_DATE：PIT 轴 = 同股同期定期报告首次 `f_ann_date`（不足则十大股东 `notice_date`）；**禁止**用法定披露截止日或报告期末冒充已知日。历史 `canonical.available_date` 若仍是截止日，回测 asof 必须走公告 JOIN（`org_holding_announcement`），不得信那一列；
 - 下一交易日若停牌、涨停买不到或数据 unknown，只能顺延到下一个真实可交易 open，并受版本化 `max_chase_days` 限制；过期记为未成交，不用未来价格选择“最佳”入场；
 - 机构评级、白名单和历史胜率只能用 decision time 之前已披露 episode 做 expanding-window 计算；禁止用全期结果筛选机构后回测早期信号；
 - 跟随者收益必须独立计入披露延迟、追价、未成交、容量和退出约束，不能复用机构自身持有期收益；覆盖与功效分母用披露冻结 `available`/`partition` 日，不用名义 K 的全历史交易日数；

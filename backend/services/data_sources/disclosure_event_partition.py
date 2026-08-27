@@ -511,6 +511,34 @@ def partition_accepted_pointer_stats(
     return n, digest.hexdigest()
 
 
+def _existing_canonical_keys(
+    conn,
+    domain: DisclosureEventDomain,
+    rows: Sequence[Mapping[str, Any]],
+) -> set[tuple[Any, ...]]:
+    """PK tuples already in canonical for the grains in ``rows``."""
+    if not rows:
+        return set()
+    grain = domain.grain
+    select_cols = ", ".join(grain)
+    if "report_date" in grain:
+        dates = sorted({str(row["report_date"]) for row in rows})
+        placeholders = ", ".join("?" for _ in dates)
+        fetched = conn.execute(
+            f"""
+            SELECT {select_cols}
+              FROM {domain.canonical_table}
+             WHERE report_date IN ({placeholders})
+            """,
+            dates,
+        ).fetchall()
+    else:
+        fetched = conn.execute(
+            f"SELECT {select_cols} FROM {domain.canonical_table}"
+        ).fetchall()
+    return {tuple(row) for row in fetched}
+
+
 def _candidate_rows(
     conn,
     domain: DisclosureEventDomain,
@@ -579,8 +607,13 @@ def accept_disclosure_event_batch(
     config_hash: str,
     after_step: Callable[[str], None] | None = None,
     error_type: type[Exception] = DisclosureEventError,
+    merge_grains: bool = False,
 ) -> DisclosureEventAcceptanceOutcome:
-    """Tx-B: validate landing, then atomically replace canonical + pointer."""
+    """Tx-B: validate landing, then atomically replace canonical + pointer.
+
+    ``merge_grains=True`` inserts new grains only (org late-filing growth).
+    Default still replaces the configured delete scope — first fill / ops replace.
+    """
 
     ensure_disclosure_event_schema(conn, domain, error_type=error_type)
     batch = _load_batch(conn, domain, batch_id, error_type=error_type)
@@ -644,6 +677,15 @@ def accept_disclosure_event_batch(
     except DisclosureEventValidationError as exc:
         return _reject(conn, domain, batch_id, code=exc.code, detail=exc.detail)
 
+    if merge_grains:
+        existing_keys = _existing_canonical_keys(conn, domain, canonical)
+        grain = domain.grain
+        canonical = tuple(
+            row
+            for row in canonical
+            if tuple(row[name] for name in grain) not in existing_keys
+        )
+
     content_hash = _canonical_content_hash(domain, canonical)
     row_count = len(canonical)
     observed_at = aware_instant(
@@ -660,32 +702,34 @@ def accept_disclosure_event_batch(
 
     conn.execute("BEGIN TRANSACTION")
     try:
-        if domain.canonical_delete_scope == "report_dates_in_batch":
-            report_dates = sorted({str(row["report_date"]) for row in canonical})
-            delete_placeholders = ", ".join("?" for _ in report_dates)
-            conn.execute(
-                f"""
-                DELETE FROM {domain.canonical_table}
-                 WHERE {partition_col} = ?
-                   AND report_date IN ({delete_placeholders})
-                """,
-                [partition, *report_dates],
-            )
-        else:
-            conn.execute(
-                f"DELETE FROM {domain.canonical_table} WHERE {partition_col} = ?",
-                [partition],
-            )
+        if not merge_grains:
+            if domain.canonical_delete_scope == "report_dates_in_batch":
+                report_dates = sorted({str(row["report_date"]) for row in canonical})
+                delete_placeholders = ", ".join("?" for _ in report_dates)
+                conn.execute(
+                    f"""
+                    DELETE FROM {domain.canonical_table}
+                     WHERE {partition_col} = ?
+                       AND report_date IN ({delete_placeholders})
+                    """,
+                    [partition, *report_dates],
+                )
+            else:
+                conn.execute(
+                    f"DELETE FROM {domain.canonical_table} WHERE {partition_col} = ?",
+                    [partition],
+                )
         _call(after_step, "after_canonical_delete")
-        conn.executemany(
-            f"INSERT INTO {domain.canonical_table} ({insert_cols}) VALUES ({insert_placeholders})",
-            values,
-        )
+        if values:
+            conn.executemany(
+                f"INSERT INTO {domain.canonical_table} ({insert_cols}) VALUES ({insert_placeholders})",
+                values,
+            )
         _call(after_step, "after_canonical_insert")
         # Batch evidence stays batch-scoped; accepted pointer is partition-scoped.
         # org_holding merges multiple report_date into one available_date partition —
         # pointer row_count/content_hash must cover the full merged canonical set.
-        if domain.canonical_delete_scope == "report_dates_in_batch":
+        if merge_grains or domain.canonical_delete_scope == "report_dates_in_batch":
             pointer_row_count, pointer_content_hash = partition_accepted_pointer_stats(
                 conn, domain, partition
             )

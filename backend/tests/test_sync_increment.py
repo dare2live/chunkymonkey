@@ -1,7 +1,9 @@
-"""by_report_period 增量单测 (2026-06-23 修谄媚死: 十大股东/财报日常流按季报期扫增量)。
-锁: (1) _latest_expected_report_period 季报截止日逻辑; (2) _by_ts_code_batches 增量跳已最新股;
-(3) end_date 动态注入 (2026-07-04 stk_factor_pro 实弹踩出: 只传 start_date 无 end_date 被
-API 拒绝 "权限不足", 整域每股必败空转数小时零净进展)。
+"""by_report_period 增量单测.
+
+锁: (1) 采集钟 = 已结束报告期, 不是法定截止;
+(2) 法定截止钟仍可查 (completeness, 不驱动 increment);
+(3) _by_ts_code_batches 增量跳已最新股;
+(4) end_date 动态注入.
 """
 import sys
 from pathlib import Path
@@ -14,38 +16,54 @@ from services.data_sources import sync_runner as sr
 
 
 @pytest.mark.parametrize("today,expected", [
-    ("20260115", "20250930"),  # 1月: 去年Q3 (去年年报4/30才到)
-    ("20260429", "20250930"),  # 4/29: 还是去年Q3
-    ("20260430", "20260331"),  # 4/30当天: 今年Q1 (截止)
-    ("20260501", "20260331"),  # 5月: Q1
-    ("20260624", "20260331"),  # 半年报8/31前: Q1
-    ("20260831", "20260630"),  # 8/31: 半年
-    ("20260901", "20260630"),  # 9月: 半年
-    ("20261031", "20260930"),  # 10/31: Q3
-    ("20261231", "20260930"),  # 年底: 仍Q3 (年报次年4/30)
+    ("20260115", "20251231"),  # 年报期已结束, 不等 4/30
+    ("20260429", "20260331"),  # Q1 已结束, 不等 4/30
+    ("20260430", "20260331"),
+    ("20260624", "20260331"),  # H1 尚未结束
+    ("20260630", "20260630"),
+    ("20260827", "20260630"),  # 披露季中跟源, 不等 8/31
+    ("20260831", "20260630"),
+    ("20261031", "20260930"),
+    ("20261231", "20261231"),
 ])
-def test_latest_expected_report_period(today, expected):
+def test_latest_ended_report_period(today, expected):
+    assert sr._latest_ended_report_period(today) == expected
+
+
+@pytest.mark.parametrize("today,expected", [
+    ("20260115", "20250930"),  # 1月: 去年年报截止未到
+    ("20260429", "20250930"),
+    ("20260430", "20260331"),
+    ("20260624", "20260331"),
+    ("20260831", "20260630"),
+    ("20260901", "20260630"),
+    ("20261031", "20260930"),
+    ("20261231", "20260930"),
+])
+def test_latest_statutory_complete_report_period(today, expected):
     assert sr._latest_expected_report_period(today) == expected
 
 
+def test_ended_ahead_of_statutory_during_h1_filing_window():
+    assert sr._latest_ended_report_period("20260827") == "20260630"
+    assert sr._latest_expected_report_period("20260827") == "20260331"
+
+
 def test_by_ts_code_increment_skips_up_to_date(monkeypatch):
-    """increment_mode=by_report_period: 跳过 MAX(end_date)>=目标期的股, 只留缺新期的。"""
-    # mock universe = 3 股; 2 已最新(skip), 1 缺新期(留)
+    """increment_mode=by_report_period: 跳过 MAX(end_date)>=已结束期的股, 只留缺新期的。"""
     monkeypatch.setattr(sr, "get_active_universe", lambda conn, include_st=False: ["000001", "000002", "600000"],
                         raising=False)
     monkeypatch.setattr("services.universe.get_active_universe",
                         lambda conn, include_st=False: ["000001", "000002", "600000"])
     monkeypatch.setattr(sr, "_smartmoney_conn", lambda: _DummyConn())
-    monkeypatch.setattr(sr, "_latest_expected_report_period", lambda today: "20260331")
-    # 000001/600000 已有 20260331; 000002 缺 (最新只到 20251231)
+    monkeypatch.setattr(sr, "_latest_ended_report_period", lambda today: "20260630")
     monkeypatch.setattr(sr, "_stocks_up_to_date", lambda spec, tp, period_col="end_date": {"000001.SZ", "600000.SH"})
 
     spec = {"domain": "top10_floatholders", "increment_mode": "by_report_period", "target_table": "x"}
     batch = sr._by_ts_code_batches(spec, backfill=False)
     codes = {b["ts_code"] for b in batch}
-    assert codes == {"000002.SZ"}  # 只剩缺新期的
+    assert codes == {"000002.SZ"}
 
-    # backfill=True → 全量 (不增量)
     monkeypatch.setattr(sr, "_existing_ts_codes", lambda spec: set())
     full = sr._by_ts_code_batches(spec, backfill=True)
     assert len({b["ts_code"] for b in full}) == 3

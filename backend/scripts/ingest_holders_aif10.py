@@ -1,7 +1,8 @@
 """十大流通股东 aif10 ingest — 薄 CLI (手动 backfill / 调试).
 
 核心逻辑在 services.holders_aif10 (获取/清洗/加工/存储 分层)。
-日常采集由 pipeline acquire stage 的 _sync_holders_aif10 step 驱动 (非本脚本)。
+日常采集由 pipeline acquire 的 by_notice 增量驱动（非本脚本、非逐码全史）。
+本 CLI 是显式 repair/backfill 刀：`--symbols` / `--backfill` 才允许 per-stock 全期。
 
 用法:
     python backend/scripts/ingest_holders_aif10.py --symbols 600388,000001        # 指定股

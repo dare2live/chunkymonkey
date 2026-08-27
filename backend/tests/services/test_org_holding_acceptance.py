@@ -129,16 +129,42 @@ def test_forged_available_at_before_available_date_fails_closed(conn) -> None:
     assert outcome.rejection_code == "FORGED_AVAILABLE_AT"
 
 
-def test_forged_available_date_vs_disclosure_deadline_fails_closed(conn) -> None:
+def test_available_date_before_report_period_fails_closed(conn) -> None:
     contract = load_org_holding_contract()
     handed = propagate_disclosure_execution_contract("org_holding", contract)
-    # Land under partition 20260430 but row claims mismatched deadline.
-    bad = _row(available_date=PARTITION, report_date="20260630")  # deadline would be 0831
-    batch = _batch("org_holding:bad-deadline", [bad])
+    bad = _row(available_date=PARTITION, report_date="20260630")
+    batch = _batch("org_holding:before-report", [bad])
     land_org_holding_batch(conn, batch, handed, handoff=handed)
     outcome = accept_org_holding_batch(conn, batch.batch_id, handed, handoff=handed)
     assert outcome.status == "REJECTED"
-    assert outcome.rejection_code == "FORGED_AVAILABLE_DATE"
+    assert outcome.rejection_code == "AVAILABLE_BEFORE_REPORT"
+
+
+def test_announcement_before_statutory_deadline_accepts(conn) -> None:
+    """Q1 filed 4/15: known-at is 20260415, not 20260430."""
+    contract = load_org_holding_contract()
+    handed = propagate_disclosure_execution_contract("org_holding", contract)
+    early = "20260415"
+    observed = datetime(2026, 4, 15, 18, 0, tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(
+        timezone.utc
+    )
+    batch = OrgHoldingLandingBatch(
+        batch_id="org_holding:early",
+        partition_value=early,
+        observed_at=observed,
+        available_at=observed,
+        rows=[_row(available_date=early)],
+        request={"api": "RPT_MAIN_ORGHOLDDETAIL", "available_date": early},
+        source=SOURCE,
+        contract_version=CONTRACT_VERSION,
+    )
+    outcome = publish_accepted_org_holding_partition(conn, batch, handed)
+    assert outcome.status == "ACCEPTED"
+    assert outcome.row_count == 1
+    stored = conn.execute(
+        f"SELECT available_date FROM {CANONICAL_TABLE}"
+    ).fetchone()[0]
+    assert str(stored).replace("-", "")[:8] == early
 
 
 def test_publish_land_accept_roundtrip_fixture(conn) -> None:

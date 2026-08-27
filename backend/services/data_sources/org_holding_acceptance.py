@@ -37,7 +37,6 @@ from services.data_sources.org_holding_schema import (
     SCHEMA_CONTRACT,
     SOURCE,
     WRITER_ID,
-    disclosure_deadline_yyyymmdd,
 )
 
 OrgHoldingLandingBatch = DisclosureEventLandingBatch
@@ -73,11 +72,10 @@ def _validate_provider_row(row: Mapping[str, Any], partition: str) -> dict[str, 
             f"row available_date={available_compact} partition={partition}",
         )
     report = partition_yyyymmdd(row.get("report_date"), field="report_date")
-    expected = disclosure_deadline_yyyymmdd(report)
-    if expected is None or expected != available_compact:
+    if available_compact < report:
         raise OrgHoldingValidationError(
-            "FORGED_AVAILABLE_DATE",
-            f"available_date={available_compact} != disclosure_deadline({report})={expected}",
+            "AVAILABLE_BEFORE_REPORT",
+            f"available_date={available_compact} < report_date={report}",
         )
     stock = str(row.get("stock_code") or "").strip()
     if not stock:
@@ -179,6 +177,7 @@ def accept_org_holding_batch(
     *,
     handoff: OrgHoldingContract | None = None,
     after_step: Callable[[str], None] | None = None,
+    merge_grains: bool = False,
 ) -> OrgHoldingAcceptanceOutcome:
     contract = require_disclosure_handoff(
         domain="org_holding",
@@ -196,6 +195,7 @@ def accept_org_holding_batch(
         config_hash=contract.config_hash,
         after_step=after_step,
         error_type=OrgHoldingAcceptanceError,
+        merge_grains=merge_grains,
     )
 
 

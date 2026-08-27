@@ -133,7 +133,7 @@ tables:
   # E0 holders_top10 formal land→accept (smartmoney; 2026-07-19 canary notice_date=20260717)
   landing_miaoxiang_holders_top10: L0_source
   canonical_top10_float_holders_period: L1_foundation
-  # E0 org_holding formal land→accept (smartmoney; canary available_date=20190430)
+  # E0 org_holding formal land→accept (org_holding.duckdb; canary available_date=20190430)
   landing_miaoxiang_org_holding: L0_source
   canonical_org_holding_detail_period: L1_foundation
   accepted_partition: infra                 # formal accept pointer (shared control table)

@@ -57,11 +57,10 @@ def test_enumerate_quarter_ends_basic():
     ]
 
 
-def test_latest_plannable_lag_honored():
-    # 2026-04-22 时：距 Q4 已有 4 个月，Q4 可同步
-    assert qfii_client.latest_plannable_report_date(today=date(2026, 4, 22)) == "2025-12-31"
-    # 2026-01-10 时：距 Q4 仅 10 天 < 30，Q4 还不可同步，回退到 Q3
-    assert qfii_client.latest_plannable_report_date(today=date(2026, 1, 10)) == "2025-09-30"
+def test_latest_plannable_is_ended_period():
+    assert qfii_client.latest_plannable_report_date(today=date(2026, 4, 22)) == "2026-03-31"
+    assert qfii_client.latest_plannable_report_date(today=date(2026, 1, 10)) == "2025-12-31"
+    assert qfii_client.latest_plannable_report_date(today=date(2026, 8, 27)) == "2026-06-30"
 
 
 def test_normalize_rows_parses_required_columns():
@@ -169,6 +168,31 @@ def test_backfill_iterates_quarters(monkeypatch):
     assert [r["report_date"] for r in quarters] == [
         "2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31",
     ]
+
+
+def test_sync_qfii_incremental_refreshes_existing_period(monkeypatch):
+    conn = duck_mem()
+    qfii_client.ensure_tables(conn)
+    monkeypatch.setattr(
+        qfii_client, "latest_plannable_report_date", lambda today=None: "2026-06-30"
+    )
+    calls = []
+
+    async def _fake_quarter(_conn, report_date):
+        calls.append(report_date)
+        return {"status": "ok", "written_rows": 12}
+
+    monkeypatch.setattr(qfii_client, "sync_qfii_quarter", _fake_quarter)
+    conn.execute(
+        "INSERT INTO raw_qfii_holding_quarterly "
+        "(report_date, stock_code, holder_name) VALUES ('2026-06-30', '600000', 'UBS')"
+    )
+    conn.commit()
+    out = asyncio.run(qfii_client.sync_qfii_incremental(conn))
+    assert calls == ["2026-06-30"]
+    assert out["status"] == "completed"
+    assert out["existing_before"] == 1
+    assert out["written"] == 12
 
 
 def test_qfii_sync_wired_in_pipeline_acquire():

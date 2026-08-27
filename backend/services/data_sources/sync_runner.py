@@ -721,23 +721,20 @@ def _existing_ts_codes(spec: dict[str, Any]) -> set[str]:
         con.close()
 
 
+def _latest_ended_report_period(today: str) -> str:
+    """Acquire clock: latest quarter-end that has already occurred (YYYYMMDD)."""
+    from services.data_sources.periodic_report_calendar import latest_ended_report_period
+
+    return latest_ended_report_period(today)
+
+
 def _latest_expected_report_period(today: str) -> str:
-    """A股最新**应已披露**的季报期 (YYYYMMDD), 交易日历级真相: 取截止日<=today的最新报告期。
-    截止: Q1(0331)→4/30 · 半年(0630)→8/31 · Q3(0930)→10/31 · 年报(1231)→次年4/30 (与Q1同日, Q1期更新)。
-    (today=YYYYMMDD; 用于 by_report_period 增量: 存量股 MAX(end_date) < 此期 = 该补新期)。
-    """
-    y = int(today[:4])
-    # (截止日YYYYMMDD, 报告期YYYYMMDD) 按报告期新→旧; 命中首个 today>=截止 即最新应披露期
-    for deadline, period in (
-        (f"{y}1031", f"{y}0930"),     # 今年Q3
-        (f"{y}0831", f"{y}0630"),     # 今年半年
-        (f"{y}0430", f"{y}0331"),     # 今年Q1 (4/30截止, 同日去年年报但Q1期更新)
-        (f"{y}0430", f"{y-1}1231"),   # 去年年报
-        (f"{y-1}1031", f"{y-1}0930"), # 去年Q3 (今年Q1披露前的最新)
-    ):
-        if today >= deadline:
-            return period
-    return f"{y-1}0930"  # 兜底 (理论不达, today<去年10/31 = 跨年极早期)
+    """Statutory completeness clock (deadline <= today). Not an acquire gate."""
+    from services.data_sources.periodic_report_calendar import (
+        latest_statutory_complete_report_period,
+    )
+
+    return latest_statutory_complete_report_period(today)
 
 
 def _stocks_up_to_date(spec: dict[str, Any], target_period: str, period_col: str = "end_date") -> set[str]:
@@ -816,13 +813,12 @@ def _by_ts_code_batches(
 
     batch = [{"ts_code": t, **fixed} for c in sorted(codes) if (t := _ts(c))]
 
-    # by_report_period 增量 (2026-06-23, 修谄媚死: 旧 by_ts_code 全量重拉或resume跳整股=存量股新季永不补):
-    # 季报类事件域 (十大股东/财报) 用交易日历算"最新应披露报告期", 跳过已有该期的股, 只抓缺新期的股。
-    # = 用户"十大股东从上一公告日到获取日扫增量"。backfill 时全拉 (不增量)。
+    # by_report_period 增量: 目标 = 已结束报告期 (采集跟公告), 不是法定截止日。
+    # 跳过 MAX(end_date) 已达该期的股; backfill 时全拉。
     if spec.get("increment_mode") == "by_report_period" and not backfill:
         import datetime as _dt
         today = _dt.datetime.now().strftime("%Y%m%d")  # Phase ψ.5 allowlist: 报告期增量参照日(算最新应披露季报期, 非trade-date end-date)
-        target_period = _latest_expected_report_period(today)
+        target_period = _latest_ended_report_period(today)
         period_col = spec.get("period_col", "end_date")
         up_to_date = _stocks_up_to_date(spec, target_period, period_col)
         n0 = len(batch)

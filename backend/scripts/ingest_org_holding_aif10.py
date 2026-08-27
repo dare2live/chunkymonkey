@@ -20,13 +20,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from services.db import get_conn  # noqa: E402
 from services.org_holding_aif10 import (  # noqa: E402
     DEFAULT_START_PERIOD,
     accept_org_holding_partition_from_legacy,
     backfill,
     sync_period,
 )
+from services.org_holding_db import connect_org_holding  # noqa: E402
 
 
 def main() -> int:
@@ -58,7 +58,7 @@ def main() -> int:
         )
         return 2
 
-    conn = get_conn()
+    conn = connect_org_holding()
     try:
         if args.accept_legacy_partition:
             codes = [

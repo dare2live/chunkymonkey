@@ -445,6 +445,30 @@ def test_org_holding_dual_write_formal_legacy_parity_with_escape(conn) -> None:
     assert canon == legacy
 
 
+def test_org_holding_merge_grains_keeps_existing_rows(conn) -> None:
+    """Late-filing MERGE must not DELETE the already-accepted report_date."""
+    first = [_org_row(holder_code="10010626")]
+    write_org_holding_formal_then_mirror(
+        conn, first, observed_at=OBSERVED_ORG, available_at=OBSERVED_ORG
+    )
+    second = [_org_row(holder_code="10020001", holder_name="某公募基金")]
+    outcome = write_org_holding_formal_then_mirror(
+        conn,
+        second,
+        observed_at=OBSERVED_ORG,
+        available_at=OBSERVED_ORG,
+        merge_grains=True,
+    )
+    assert outcome.status == "ACCEPTED"
+    holders = [
+        row[0]
+        for row in conn.execute(
+            f"SELECT holder_code FROM {ORG_CANONICAL} ORDER BY holder_code"
+        ).fetchall()
+    ]
+    assert holders == ["10010626", "10020001"]
+
+
 def test_stk_holdertrade_formal_only_skips_legacy_by_default(conn) -> None:
     rows = [
         _stk_row(holder_name="窦昕", in_de="IN"),

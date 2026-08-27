@@ -41,6 +41,7 @@ blocking_paths:
 - tests/test_db.py
 - tests/test_source_watermarks.py
 - tests/scripts/test_db_compact.py
+- tests/scripts/test_db_split_org_holding.py
 - tests/test_primitives.py
 - tests/test_universe.py
 - tests/test_calendar_gate.py
@@ -57,10 +58,13 @@ blocking_paths:
 - tests/services/test_formal_execution.py
 - tests/services/test_holders_top10_acceptance.py
 - tests/services/test_holders_landing_retention.py
+- tests/services/test_org_holding_db.py
 - tests/services/test_sibling_repos.py
 - tests/services/test_fuyao_kline_recon.py
 - tests/services/test_tdxhub_kline_recon.py
 - tests/services/test_org_holding_acceptance.py
+- tests/services/test_org_holding_announcement.py
+- tests/services/test_periodic_report_calendar.py
 - tests/services/test_org_holding_period_catchup.py
 - tests/services/test_org_holding_pointer_integrity.py
 - tests/services/test_org_holding_truncation_audit.py

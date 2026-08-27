@@ -292,8 +292,19 @@ ATTACH 链变长；并且给「dual-write 同步两库」制造了理由 —— 
 
 **裁决：物理布局由 `database_manifest.yaml` 路由 + 语义契约约束，不由加工阶段决定。**
 
-**唯一合法的拆库理由是写锁 / retention / owner 冲突**，不是「看起来更有层次」。既有先例：
-`tushare_raw` 从 `smartmoney` 拆出，因为二者的写锁窗口与 retention 策略真的冲突。
+**唯一合法的拆库理由是数据自身特征导致的写锁 / retention / owner 冲突**，不是「看起来更有层次」，
+也不是绑死策略包或供应商。落到 DuckDB 单写下，特征就是：
+
+- **更新频率 / 时钟**：日频全市场 vs 季报/公告事件 vs 几乎静态；
+- **生命周期**：永久证据 vs 可擦除重建 vs 研究产物；
+- **粒度 + 日历 + 总体**：沪深 A 股×交易日 vs 另一套宏观日历 vs 缓变关系边。
+
+数值 vs 文字是列/表问题，一般不单独成库。`landing→canonical` 仍须同文件原子完成。
+换策略或换 adapter 不搬家；同频率族可同库（例如低频事件明细）。
+
+既有先例：`tushare_raw` 与 `smartmoney` 写锁窗口冲突；`org_holding.duckdb` 是低频大块写入
+与日频事实隔离（不是「机构策略专用库」）；`market.duckdb` 是可重建 qfq 分析序列。
+宏观/产业链等另一套日历或缓变图，有真实落地再开文件，不预建空库。
 
 ### 5.7 数据前沿判定与分区补洞
 
@@ -333,15 +344,16 @@ due = (source_partitions \ accepted_partitions)              -- A: 源有而未�
 
 | 域 | 供应商轴 | 可行策略 | 为什么 |
 |---|---|---|---|
-| 十大流通股东 | 有 `UPDATE_DATE` 可筛 | 水位 + 1 行探针 + `UPDATE_DATE ≥ 水位−7d` 取受影响股，逐码幂等覆盖 | 供应商提供了**便宜的增量水龙头** |
-| 机构持仓明细 | 只有 `REPORT_DATE`（按期全市场约 83 万行），**无** `NOTICE_DATE`/`UPDATE_DATE` | 每次比对「最新可披露期 vs 本地 raw+accepted」：缺则**只拉一期**，有则 skip 并记录下一期解锁点 | 没有同形水龙头，逐码扫描代价与全量相同 |
+| 十大流通股东 | 有 `UPDATE_DATE` 可筛 | 水位 + 1 行探针 + 按日 `UPDATE_DATE='YYYY-MM-DD'` 横切 land（≤40d）；同日人口缺口再 land **该日一次**。**日更禁** `UPDATE_DATE≥` 选股后逐码全史覆盖（E0 写粒是 notice 分区整包，逐码覆盖 = 重刷历史全日快照进 landing） | 供应商提供了**按日横切**水龙头；逐码全史只走显式 ingest `--symbols/--backfill` |
+| 机构持仓明细 | 只有 `REPORT_DATE`（按期全市场约 83 万行），**无** `NOTICE_DATE`/`UPDATE_DATE`；源端随公司公告更新，报告期末之后人口持续增长 | 采集闸 = 最近已结束报告期；**源端 count 增长就 fetch/MERGE 进 raw**。PIT / accept 轴 = **同股同期定期报告首次公告日**（`income.f_ann_date`，不足则十大股东 `notice_date`）；尚无 JOIN 才用 first-seen 当日。法定截止只量 completeness，**不是** known-at，也不是采集闸。已落地 accepted 则 page-1 count probe，超本地+500/0.1% 才 grain MERGE | 没有同形按日水龙头；count 未变时重拉 ≈ 每天付一次全量代价。回测 asof 必须 JOIN 公告日历；历史 `available_date` 若仍是截止日，不得当已知日 |
+
+法定截止日历只有一个计算点：`services.data_sources.periodic_report_calendar`。年报/中报时限来自证监会《上市公司信息披露管理办法》令第226号第十三条；季报时限来自沪深交易所上市规则（226号第十二条现行定期报告只列年报、中报）。那是 completeness 钟，**不是采集闸，也不是 PIT 已知日**。四种定期报告各自有截止日（一季报 04-30、中报 08-31、三季报 10-31、年报次年 04-30）；过该期截止且本地缺 raw = `completeness_miss`（漏抓），截止前缺 = 跟披露。源端空 vs 我方空分开记。机构持仓明细的 known-at 是同股同期定期报告首次公告日（见上表）。`by_report_period` 增量（income / balancesheet / fina_indicator）用已结束报告期。
 
 由此三条硬禁（每条都对应一次真实的代价）：
 
-- **禁**对已落地期做全市场重拉（约 83 万行/期）——「顺手刷新一下」等于每天付一次全量代价。
+- **禁**对已落地且 page-1 count 未变的期做全市场重拉（约 83 万行/期）——「顺手刷新一下」等于每天付一次全量代价。源 count 增长走 **grain MERGE**，不是 DELETE+全期重写。
 - **禁**在只有报告期轴的域上凭空发明按日期抓取（by-date invent）——那是把不存在的轴假装成存在。
-- **禁**在日更里逐个公司扫公告找更新——它与全量扫描等价，只是慢。期内晚披露、行数偏少
-  走**显式 repair 刀**，不进日更；中间历史洞同理。
+- **禁**在日更里逐个公司扫公告找更新——它与全量扫描等价，只是慢。中间历史洞走 bounded catchup（N=1/run），不进全史 backfill。
 
 判据一句话：**先看供应商给了什么轴，再决定增量怎么做**；轴不支持的增量形态，不能靠多花
 算力硬凑出来。
@@ -359,7 +371,7 @@ due = (source_partitions \ accepted_partitions)              -- A: 源有而未�
 | L2 | 存在 ≠ 人口 | 只有 population gate PASS 才可 `skip_current`；否则 `under_populated_accepted` |
 | L3 | 时钟 ≠ 完整 | `run_outcome` 四态判定见 §5.4（完整性观测不是「等时钟」） |
 | L4 | 未接线不许自称 fresh | inventory `status` ∈ `wired*` / `population_gated` / `blocked_manual`，没有第四种 |
-| L5 | 禁 mass 仍须诚实 | 人口有洞 → 走 repair 刀或如实观测；**不**在日更里做全市场重拉 |
+| L5 | 禁 mass 仍须诚实 | 人口有洞 → count probe + grain MERGE 或如实观测；**不**在日更里对 count 未变的期全市场重拉 |
 
 **三种死法**（每条都真实发生过，写在这里是为了让下一个人认得出）：
 
