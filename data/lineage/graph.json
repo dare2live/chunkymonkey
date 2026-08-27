@@ -6101,6 +6101,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/calendar_identity_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_sse_trading_calendar_generation"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/calendar_schema.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_sse_trading_calendar_generation"
@@ -6122,6 +6128,12 @@
       "dst": "consumer:backend/tests/services/test_institution_follow_spec_paper.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_stk_holdertrade_announcement"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/calendar_identity_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_stock_st_daily"
     },
     {
       "attrs": {},
@@ -8375,6 +8387,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/calendar_identity_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stock_st"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/stock_st_runtime.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stock_st"
@@ -8399,6 +8417,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_calendar_identity_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stock_st"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stock_st"
@@ -8418,6 +8442,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_suspend_d"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/calendar_identity_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_suspend_d"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_calendar_identity_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_suspend_d"
     },
@@ -8669,6 +8705,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/calendar_identity_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/calendar_runtime.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_trade_cal"
@@ -8694,6 +8736,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_calendar_contract.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_calendar_identity_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_trade_cal"
     },
@@ -8891,9 +8939,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1434,
-    "generated_at": "2026-08-27T11:29:55.378763+00:00",
-    "node_count": 468,
+    "edge_count": 1442,
+    "generated_at": "2026-08-27T11:41:31.300978+00:00",
+    "node_count": 470,
     "version": 2
   },
   "nodes": [
@@ -9415,6 +9463,14 @@
         "path": "backend/services/data_sources/calendar_contract.py"
       },
       "id": "consumer:backend/services/data_sources/calendar_contract.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/calendar_identity_recon.py"
+      },
+      "id": "consumer:backend/services/data_sources/calendar_identity_recon.py",
       "kind": "consumer"
     },
     {
@@ -10535,6 +10591,14 @@
         "path": "backend/tests/services/test_calendar_contract.py"
       },
       "id": "consumer:backend/tests/services/test_calendar_contract.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_calendar_identity_recon.py"
+      },
+      "id": "consumer:backend/tests/services/test_calendar_identity_recon.py",
       "kind": "consumer"
     },
     {
