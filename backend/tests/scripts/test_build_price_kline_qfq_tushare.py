@@ -116,7 +116,7 @@ def test_build_writes_physical_lineage_columns(tmp_path: Path, monkeypatch) -> N
 
 def test_main_compacts_market_after_successful_full_rebuild(monkeypatch) -> None:
     """Post-CTAS compact is default for full; --no-compact / env escape skips it.
-    Incremental skips compact (no DROP free-block).
+    Incremental compacts only when free_blocks% is at/above COMPACT_FREE_PCT.
     """
 
     mod = _load_module()
@@ -162,6 +162,7 @@ def test_main_compacts_market_after_successful_full_rebuild(monkeypatch) -> None
     monkeypatch.setattr(mod, "build_detail", _fake_detail)
     monkeypatch.setattr(mod, "cross_check", _fake_cross_check)
     monkeypatch.setattr(mod, "compact_market_after_ctas", _fake_compact)
+    monkeypatch.setattr(mod, "market_free_block_pct", lambda: 0.03)
     monkeypatch.delenv("CHUNKY_QFQ_SKIP_COMPACT", raising=False)
 
     assert mod.main(["--from-accepted", "--full"]) == 0
@@ -188,8 +189,13 @@ def test_main_compacts_market_after_successful_full_rebuild(monkeypatch) -> None
         }
 
     monkeypatch.setattr(mod, "build_detail", _fake_incr)
+    monkeypatch.setattr(mod, "market_free_block_pct", lambda: 0.03)
     assert mod.main(["--from-accepted", "--incremental"]) == 0
-    assert calls == []  # incremental skips compact
+    assert calls == []  # incremental below compact band
+
+    monkeypatch.setattr(mod, "market_free_block_pct", lambda: 25.0)
+    assert mod.main(["--from-accepted", "--incremental"]) == 0
+    assert calls == [{"remove_bak": True}]  # incremental above compact band
 
 
 def test_incremental_rewrites_when_latest_factor_changes(tmp_path: Path, monkeypatch) -> None:
@@ -344,11 +350,11 @@ def test_incremental_appends_without_touching_history(tmp_path: Path, monkeypatc
             batch_id="qfq:a1",
             ingested_at="2026-07-21T10:00:00Z",
         )
-        c_before = float(
-            market.execute(
-                f"SELECT close FROM {mod.TARGET} WHERE date='2026-05-04'"
-            ).fetchone()[0]
-        )
+        hist = market.execute(
+            f"SELECT close, batch_id FROM {mod.TARGET} WHERE date='2026-05-04'"
+        ).fetchone()
+        c_before = float(hist[0])
+        batch_before = str(hist[1])
     finally:
         market.close()
 
@@ -377,12 +383,11 @@ def test_incremental_appends_without_touching_history(tmp_path: Path, monkeypatc
         assert d["mode"] == "incremental"
         assert int(d["rewritten_codes"] or 0) == 0
         assert int(d["appended_rows"] or 0) == 1
-        c_after = float(
-            market.execute(
-                f"SELECT close FROM {mod.TARGET} WHERE date='2026-05-04'"
-            ).fetchone()[0]
-        )
-        assert abs(c_after - c_before) < 1e-12
+        hist2 = market.execute(
+            f"SELECT close, batch_id FROM {mod.TARGET} WHERE date='2026-05-04'"
+        ).fetchone()
+        assert abs(float(hist2[0]) - c_before) < 1e-12
+        assert str(hist2[1]) == batch_before == "qfq:a1"
         n = market.execute(f"SELECT count(*) FROM {mod.TARGET}").fetchone()[0]
         assert int(n) == 2
     finally:

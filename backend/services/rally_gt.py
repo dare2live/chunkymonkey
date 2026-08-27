@@ -522,9 +522,13 @@ def rebuild(conn=None, data_end=None, raw_conn=None) -> dict:
                      n_stocks_scanned=n_stocks, by_year=by_year,
                      data_end=data_end_iso, last_data_date=last_data_date, taxonomy_version=taxonomy)
         logger.info("[rally_gt] rebuild: %s", stats)
-        return stats
     finally:
         if own_raw:
             raw_conn.close()
         if own_conn:
             conn.close()
+    if own_conn:
+        from services.duckdb_compact import maybe_compact_alias
+
+        maybe_compact_alias("feature_store", always=True)
+    return stats

@@ -194,6 +194,7 @@ def project_family_frontiers(
     *,
     smartmoney_conn=None,
     raw_conn=None,
+    org_holding_conn=None,
     inventory_path: Path | None = None,
 ) -> dict[str, Any]:
     """Project defer/blocked family frontiers; missing DB → UNVERIFIED rows."""
@@ -217,10 +218,15 @@ def project_family_frontiers(
 
         try:
             if family_id == "org_disclosure_period":
-                if smartmoney_conn is None:
-                    live_detail = {"error": "smartmoney_conn_missing"}
+                org_conn = (
+                    org_holding_conn
+                    if org_holding_conn is not None
+                    else smartmoney_conn
+                )
+                if org_conn is None:
+                    live_detail = {"error": "org_holding_conn_missing"}
                 else:
-                    live_detail = _query_org_frontier(smartmoney_conn)
+                    live_detail = _query_org_frontier(org_conn)
                     live_status = "PROJECTED"
             elif family_id == "vendor_flow_proxy":
                 if smartmoney_conn is None or raw_conn is None:
@@ -296,10 +302,13 @@ def write_frontier_projection(
     path: Path | str | None = None,
     smartmoney_conn=None,
     raw_conn=None,
+    org_holding_conn=None,
 ) -> Path:
     target = Path(path) if path is not None else DEFAULT_PROJECTION_PATH
     body = payload or project_family_frontiers(
-        smartmoney_conn=smartmoney_conn, raw_conn=raw_conn
+        smartmoney_conn=smartmoney_conn,
+        raw_conn=raw_conn,
+        org_holding_conn=org_holding_conn,
     )
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(

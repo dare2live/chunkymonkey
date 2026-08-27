@@ -48,7 +48,7 @@ class _Conn:
             assert self.kind == "raw"
             return _Result((1828, "20260724"))
         if "dataset_id = ?" in sql:
-            assert self.kind == "smartmoney"
+            assert self.kind == "org_holding"
             return _Result((22, "20260430"))
         raise AssertionError(sql)
 
@@ -57,6 +57,7 @@ def test_projection_uses_correct_db_owners_and_passes_live_contract() -> None:
     payload = project_family_frontiers(
         smartmoney_conn=_Conn("smartmoney"),
         raw_conn=_Conn("raw"),
+        org_holding_conn=_Conn("org_holding"),
     )
     assert payload["verdict"] == "PASS"
     assert projection_violations(payload) == []
@@ -71,6 +72,7 @@ def test_projection_validation_rejects_stale_error_and_missing_family() -> None:
     payload = project_family_frontiers(
         smartmoney_conn=_Conn("smartmoney"),
         raw_conn=_Conn("raw"),
+        org_holding_conn=_Conn("org_holding"),
     )
     payload["projected_at"] = (
         datetime.now(timezone.utc) - timedelta(days=2)

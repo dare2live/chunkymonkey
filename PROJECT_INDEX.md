@@ -43,7 +43,7 @@ AGENTS.md
 | `data/market.duckdb` | K 线 serving/派生数据；qfq 分析面 max `2026-07-20`（derive+pipeline clean 默认 accepted-only）；≠名义成交价真相 |
 | `data/reference.duckdb` | 交易日历、身份/reference 数据 |
 | `data/smartmoney.duckdb` | 当前 mart、profiles、ops/control evidence；B2 `fact_stock_limit_daily` |
-| `data/feature_store.duckdb` | 特征面（institution_profile / rally_gt DROP 重建）；重建后 in-module compact；死块 moth `feature-store-bloat-ratio` |
+| `data/feature_store.duckdb` | 特征面（institution_profile / rally_gt DROP 重建）；重建后 `duckdb_compact.maybe_compact_alias`；死块 moth `feature-store-bloat-ratio` <10% |
 | `data/experiment_store.duckdb` | 实验 verdict/control；当前不代表完整 research runtime |
 | `backend/config/` | 目标只保留 active policy；过渡期 legacy registry 必须显式标 `NONCONFORMING` 并列入 Phase 迁移债务 |
 | `data/reports/tooling/` | 可重建工具证据，不是业务真相 |

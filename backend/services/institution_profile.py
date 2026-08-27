@@ -403,9 +403,12 @@ def rebuild_all() -> dict[str, Any]:
         con.execute("CHECKPOINT")
         out = {"period_windows": n_win, **ep_stats, **prof}
         logger.info("[institution_profile] rebuild_all: %s", out)
-        return out
     finally:
         con.close()
+    from services.duckdb_compact import maybe_compact_alias
+
+    maybe_compact_alias("feature_store", always=True)
+    return out
 
 
 # ── 读侧 API (档案 serving, router 经此访问 — 本模块是数据模块成员 owns 这些表;

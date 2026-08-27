@@ -41,7 +41,7 @@ def _rel(p: Path) -> Path:
         return p
 
 
-def run(alias: str, execute: bool) -> int:
+def run(alias: str, execute: bool, drop_bak: bool = False) -> int:
     src = _db_path(alias)
     # 派生兄弟文件名 (非 hardcode DB 路径; src 来自 database_manifest)
     new = src.with_name(src.stem + "_compact.duckdb")  # rule-compliance: ok evidence=derived from manifest src
@@ -72,8 +72,11 @@ def run(alias: str, execute: bool) -> int:
     print(f"  磁盘余量: {free:.0f}G (peak≈old+new≈{sz*2:.0f}G)")
 
     if not execute:
-        print("  DRY-RUN: --execute 重写紧缩 + 验证 + 换名 (旧库留 bak)。")
+        print("  DRY-RUN: --execute 重写紧缩 + 验证 + 换名 (旧库留 bak；--drop-bak 换名后删 bak)。")
         return 0
+    if free < 10:
+        print(f"FAIL: 磁盘余量 {free:.0f}G < 10G, 拒绝紧缩", file=sys.stderr)
+        return 6
     if new.exists():
         print(f"FAIL: {new.name} 已存在, 先删", file=sys.stderr)
         return 4
@@ -134,7 +137,12 @@ def run(alias: str, execute: bool) -> int:
     src.rename(bak)
     new.rename(src)
     new_sz = src.stat().st_size / 1e9
-    print(f"\n  紧缩完成: {sz:.1f}G → {new_sz:.1f}G (省 {sz-new_sz:.1f}G). 旧库留 {bak.name} (验证 doctor 后可删)。")
+    saved = sz - new_sz
+    if drop_bak:
+        bak.unlink()
+        print(f"\n  紧缩完成: {sz:.1f}G → {new_sz:.1f}G (省 {saved:.1f}G). 已按 --drop-bak 删除 {bak.name}。")
+    else:
+        print(f"\n  紧缩完成: {sz:.1f}G → {new_sz:.1f}G (省 {saved:.1f}G). 旧库留 {bak.name} (验证 doctor 后可删)。")
     return 0
 
 
@@ -142,8 +150,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--db", default="smartmoney")
     ap.add_argument("--execute", action="store_true", help="真重写 (默认 dry-run)")
+    ap.add_argument(
+        "--drop-bak",
+        action="store_true",
+        help="换名并对账通过后删除 _precompact_bak（不可回滚）",
+    )
     args = ap.parse_args()
-    sys.exit(run(args.db, args.execute))
+    sys.exit(run(args.db, args.execute, drop_bak=args.drop_bak))
 
 
 if __name__ == "__main__":

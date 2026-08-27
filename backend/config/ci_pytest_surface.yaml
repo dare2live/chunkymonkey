@@ -41,6 +41,7 @@ blocking_paths:
 - tests/test_db.py
 - tests/test_source_watermarks.py
 - tests/scripts/test_db_compact.py
+- tests/services/test_duckdb_compact.py
 - tests/scripts/test_db_split_org_holding.py
 - tests/test_primitives.py
 - tests/test_universe.py

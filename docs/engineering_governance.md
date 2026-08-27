@@ -147,13 +147,18 @@ Phase 出口或提交前再放大到相关联合回归 / 全量 backend / `moth 
 - 0 行、空响应、权限页、字段缺失、超时、连接失败分别分类；不得用 0 行冒充成功；
 - historical decision 的 as-of / 禁 0-fallback 已升为系统语义，见 `MASTER §6.1`；
 - 修 writer/schema/PIT 后必须检查旧表、cache、JSON、watermark、报告、前端和后台进程残留；
-- **DuckDB 的 `DROP`/`DELETE` 不释放文件块，单独 `CHECKPOINT` 也不缩小文件** —— 它只刷 WAL/catalog。
-  批量 DROP（lifecycle/purge）之后必须显式跑
+- **DuckDB 的 `DROP`/`DELETE`/`UPDATE` 不释放文件块，单独 `CHECKPOINT` 也不缩小文件** —— 它只刷 WAL/catalog。
+  批量 DROP（lifecycle/purge）以及增量路径上的整表 DELETE/UPDATE 之后必须显式跑
   `python backend/scripts/db_compact.py --db <alias> --execute`（ATTACH-copy 重写 + row/constraint/index
   parity 校验），核对 parity 通过再删 `*_precompact_bak.duckdb`。**「我 CHECKPOINT 过了」不等于空间已回收**
-  —— 这个误解会让库只增不减。`build_price_kline_qfq_tushare` 已自带重建后 compact（逃生
-  `--no-compact`）；其余批次仍需手动补跑。`tushare_raw` 是 Tier0 写面，随时可能被写入，
-  compact 前需显式 owner 判断，不进日常回收流程。
+  —— 这个误解会让库只增不减。`file_size` 棘轮（9→12→15GB）看不见死块；要测
+  `pragma_database_size` 的 `free_blocks/total_blocks`。  `build_price_kline_qfq_tushare`
+  全量重建后必 compact，增量在死块占比 ≥10% 时也 compact（逃生 `--no-compact`）；
+  禁止假设「增量不是 DROP+CTAS 所以没有死块」—— 实测一次全表 UPDATE 就把 market
+  从 0.03% 打回 ~25%。`feature_store` 的 `institution_profile.rebuild_all` /
+  `rally_gt.rebuild` 是 DROP+CREATE+CHECKPOINT 同型，重建后必须 compact
+  （`services.duckdb_compact.maybe_compact_alias`）；其余批次仍需手动补跑。`tushare_raw` 是 Tier0 写面，随时可能被写入，
+  compact 前需显式 owner 判断，不进日常回收流程，但 moth 仍应告警死块占比。
 
 ## 7. 配置与 hardcoding
 

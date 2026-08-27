@@ -6,13 +6,13 @@
       "inventory_defer_reason": "type_b_fact_publish_may_lag_raw",
       "live_detail": {
         "defer_policy": "type_b_fact_publish_may_lag_raw",
-        "fact_tip": "20260820",
+        "fact_tip": "20260825",
         "margin_external_aggregate": {
-          "accepted_partition_count": 1848,
-          "accepted_tip": "20260820",
+          "accepted_partition_count": 1851,
+          "accepted_tip": "20260825",
           "defer_policy": "external_aggregate_product_trust_gated"
         },
-        "raw_tip": "20260820"
+        "raw_tip": "20260825"
       },
       "live_status": "PROJECTED",
       "stack_eligibility": "defer"
@@ -48,7 +48,7 @@
     "does_not_mutate_inventory_yaml",
     "rx_still_requires_owner_schedule"
   ],
-  "projected_at": "2026-08-23T00:23:56.578305+00:00",
+  "projected_at": "2026-08-26T05:36:44.378198+00:00",
   "verdict": "PASS",
   "violations": []
 }

@@ -33,18 +33,25 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {v}", file=sys.stderr)
         return 2
 
-    sm = raw = None
+    sm = raw = org = None
     try:
         from services.db import get_conn
         from services.data_access.resolver import connect_ro
+        from services.org_holding_db import connect_org_holding
 
         sm = get_conn()
         raw = connect_ro("tushare_raw")
+        try:
+            org = connect_org_holding(read_only=True)
+        except Exception as exc:  # noqa: BLE001 — org file missing until split copy
+            print(f"[project] org_holding db unavailable: {exc}", file=sys.stderr)
     except Exception as exc:  # noqa: BLE001
         print(f"[project] live DB unavailable: {exc}", file=sys.stderr)
 
     try:
-        payload = project_family_frontiers(smartmoney_conn=sm, raw_conn=raw)
+        payload = project_family_frontiers(
+            smartmoney_conn=sm, raw_conn=raw, org_holding_conn=org
+        )
         out = write_frontier_projection(
             payload, path=Path(args.path) if args.path else None
         )
@@ -53,6 +60,8 @@ def main(argv: list[str] | None = None) -> int:
             sm.close()
         if raw is not None:
             raw.close()
+        if org is not None:
+            org.close()
 
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))

@@ -38,6 +38,7 @@ member_script_prefixes:
 # 具体 service 文件成员 (infra/写侧/真相源/审计)
 member_service_files:
   - duck_adapter.py          # DB adapter (SERVE 建其上)
+  - duckdb_compact.py        # ATTACH-copy compact after DROP/UPDATE; production alias via manifest
   - db_connection.py
   - database_manifest.py     # 库路由
   - market_db.py             # 写侧

@@ -38,17 +38,44 @@ assertions:
     query: "SELECT count(*) FROM duckdb_tables()"
     expect: {op: ">=", value: 29}
   - id: smartmoney-size-band
-    claim: "smartmoney 当前 control/serving 库体量 0.2-15GB 带内 (…2026-07-24 ~8.72GB→9GB; 2026-07-25 org trunc sharded repair 实测 ~11.16GB → 抬 9GB→12GB; 2026-08-05 日更 drain 合法增长实测 13.69GB (dc_member +644k 回填 + holders/org 增量, 无 wal, 单文件派生自 accepted partition) → 抬 12GB→15GB, 仍单文件派生自 accepted partition 非 bloat; 2026-08-12 日更后实测 16.69GB, `pragma_database_size` 显示 free 1554/total 63660 = 2.44%(wal=0) 即 97.6% 活数据 → 抬 15GB→20GB; 2026-08-16 日更后实测 20.04GB, free 1566/total 76432 = 2.05%(wal=0) 即 97.95% 活数据 → 抬 20GB→26GB)；越界提示错库或 retention 漂移。**膨胀本身改由 [[smartmoney-bloat-ratio]] 断言直接测**, 本条只管绝对量级 —— 因为绝对带对「DROP 完没 compact」是瞎的"
+    claim: "smartmoney 当前 control/serving 库体量 0.2-15GB 带内 (…2026-07-24 ~8.72GB→9GB; 2026-07-25 org trunc sharded repair 实测 ~11.16GB → 抬 9GB→12GB; 2026-08-05 日更 drain 合法增长实测 13.69GB (dc_member +644k 回填 + holders/org 增量, 无 wal, 单文件派生自 accepted partition) → 抬 12GB→15GB, 仍单文件派生自 accepted partition 非 bloat; 2026-08-12 日更后实测 16.69GB, `pragma_database_size` 显示 free 1554/total 63660 = 2.44%(wal=0) 即 97.6% 活数据 → 抬 15GB→20GB; 2026-08-16 日更后实测 20.04GB, free 1566/total 76432 = 2.05%(wal=0) 即 97.95% 活数据 → 抬 20GB→26GB)；越界提示错库或 retention 漂移。**膨胀本身改由 [[smartmoney-bloat-ratio]] 断言直接测**, 本条只管绝对量级 —— 因为绝对带对「DROP/UPDATE 完没 compact」是瞎的"
     type: file_size
     path: data/smartmoney.duckdb
     expect: {op: between, low: 200000000, high: 26000000000}
   - id: smartmoney-bloat-ratio
     severity: blocking
-    claim: "smartmoney 死块占比 < 25% —— 这才是 size-band 真正想抓的东西。绝对体量带是个**棘轮**: 9→12→15GB 三次都是「实测合法增长」后抬带, 每次抬带都是一次橡皮图章的机会, 而且它对「DROP 完没 compact」这件事本身是瞎的(文件不缩, 带内照样过)。按 eng_gov §6, DuckDB 的 DROP/DELETE 不释放文件块, 单独 CHECKPOINT 也不缩文件 —— 死块占比直接测这件事, 且**不随合法增长漂移**。2026-08-12 实测 free 1554/total 63660 = 2.44%, 库 97.6% 是活数据(wal=0), 故当日抬带 15→20GB 是追认真实数据而非放过膨胀。超阈处置: `python backend/scripts/db_compact.py --db smartmoney --execute` 后核 parity。"
+    claim: "smartmoney 死块占比 < 10%。绝对体量带是棘轮 (9→12→15→20→26GB), 对「DELETE/UPDATE 完没 compact」瞎。2026-08-26: qfq 增量一次全表 UPDATE 把 market 从 0.03% 打回 ~25%, 25% 阈值会放过这次事故, 故各库死块带降到 10%。超阈: `python backend/scripts/db_compact.py --db smartmoney --execute`。"
     type: duckdb_sql
     database: data/smartmoney.duckdb
     query: "SELECT CAST(round(100.0 * free_blocks / nullif(total_blocks, 0), 2) AS DOUBLE) FROM pragma_database_size()"
+    expect: {op: "<", value: 10.0}
+  - id: market-bloat-ratio
+    severity: blocking
+    claim: "market.duckdb 死块占比 < 10%。2026-08-26 qfq 增量在跳过 compact 的假设下把 free_blocks 从 0.03% 打到 ~25% (全表 stamp factor_as_of); size-band 看不到这件事。超阈: `python backend/scripts/db_compact.py --db market --execute`。"
+    type: duckdb_sql
+    database: data/market.duckdb
+    query: "SELECT CAST(round(100.0 * free_blocks / nullif(total_blocks, 0), 2) AS DOUBLE) FROM pragma_database_size()"
+    expect: {op: "<", value: 10.0}
+  - id: org-holding-bloat-ratio
+    severity: blocking
+    claim: "org_holding.duckdb 死块占比 < 10%。拆库后若断言仍只盯 smartmoney, 新文件膨胀不会被发现。超阈: `python backend/scripts/db_compact.py --db org_holding --execute`。"
+    type: duckdb_sql
+    database: data/org_holding.duckdb
+    query: "SELECT CAST(round(100.0 * free_blocks / nullif(total_blocks, 0), 2) AS DOUBLE) FROM pragma_database_size()"
+    expect: {op: "<", value: 10.0}
+  - id: tushare-raw-bloat-ratio
+    claim: "tushare_raw.duckdb 死块占比 < 25% (写面, compact 不进日常回收, 但仍要看见膨胀)。超阈先 owner 判断再 `db_compact.py --db tushare_raw --execute`。"
+    type: duckdb_sql
+    database: data/tushare_raw.duckdb
+    query: "SELECT CAST(round(100.0 * free_blocks / nullif(total_blocks, 0), 2) AS DOUBLE) FROM pragma_database_size()"
     expect: {op: "<", value: 25.0}
+  - id: feature-store-bloat-ratio
+    severity: blocking
+    claim: "feature_store.duckdb 死块占比 < 10%。institution_profile / rally_gt 是 DROP+CREATE+CHECKPOINT，CHECKPOINT 不回收块。超阈: `python backend/scripts/db_compact.py --db feature_store --execute`。"
+    type: duckdb_sql
+    database: data/feature_store.duckdb
+    query: "SELECT CAST(round(100.0 * free_blocks / nullif(total_blocks, 0), 2) AS DOUBLE) FROM pragma_database_size()"
+    expect: {op: "<", value: 10.0}
   - id: calendar-floor
     severity: blocking
     claim: "交易日历起点 == 2005-01-04 (2026-06-12 扩展+七项验证 PASS; 回退 = 静默 clamp 复发)。2026-06-27 §9 拆库: dim_trading_calendar 迁 reference.duckdb, 断言库改 reference"

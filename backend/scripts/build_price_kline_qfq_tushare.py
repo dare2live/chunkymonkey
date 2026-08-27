@@ -7,12 +7,16 @@ latest adj_factor changes — typed method, not missing lineage).
 
 daily_update Step 2.96 rebuilds price_kline_qfq_tushare in the market DuckDB.
 Default mode = incremental when the table exists:
-  - stocks whose latest adj_factor (factor_as_of) changed → rewrite full history
-  - unchanged stocks → append only new trade_dates
+  - stocks whose latest adj_factor *value* changed → rewrite full history
+  - unchanged f_latest → append only new trade_dates (do not UPDATE historical
+    rows just because adj *date* moved — that rewrites ~8.5M rows/day and
+    leaves ~25% free blocks; factor_as_of on old rows stays the write-time stamp)
   - never leave stale pre-rebase levels (silent wrong history banned)
 Full DROP+CTAS remains available via --full (and is used when the table is missing).
-Post-full-CTAS compact reclaim stays in-module (escape: --no-compact /
-CHUNKY_QFQ_SKIP_COMPACT=1). Incremental path skips compact (no DROP free-block storm).
+Post-rebuild compact: always after full CTAS; after incremental when
+pragma_database_size free_blocks% >= COMPACT_FREE_PCT (escape: --no-compact /
+CHUNKY_QFQ_SKIP_COMPACT=1). DELETE/UPDATE still fragment; skipping compact
+because "incremental isn't DROP+CTAS" is how the market alias quietly grew.
 
 前复权 (qfq rebased to latest): qfq = nominal × adj_factor / adj_factor_latest_per_stock。
   nominal (S7 default): accepted canonical_nominal_ohlcv_daily only.
@@ -39,9 +43,10 @@ MARKET_DB = "data/market.duckdb"  # rule-compliance: ok evidence=回测K线库 (
 TUSHARE_DB = str(REPO / "data" / "tushare_raw.duckdb")  # rule-compliance: ok evidence=tushare raw 源库 (ATTACH read-only, 一次性 build 脚本)
 TARGET = "price_kline_qfq_tushare"
 START = "20190101"  # rule-compliance: ok evidence=raw_tushare_daily 实测起点 2019-01-02 (全量回测窗起点)
-# DROP+CTAS leaves ~half the file as free blocks; CHECKPOINT does not shrink.
-# Default post-full-build compact reclaim (escape: --no-compact / CHUNKY_QFQ_SKIP_COMPACT=1).
+# DROP+CTAS / bulk DELETE / whole-table UPDATE leave free blocks; CHECKPOINT does not shrink.
+# Compact after full rebuild always; after incremental when free_blocks% >= this band.
 _COMPACT_SCRIPT = REPO / "backend" / "scripts" / "db_compact.py"
+COMPACT_FREE_PCT = 10.0
 
 BuildMode = Literal["full", "incremental", "auto"]
 
@@ -345,8 +350,7 @@ def build_incremental(
         """
         CREATE TEMP TABLE _qfq_stable AS
         SELECT e.code, e.max_date,
-               replace(e.max_date, '-', '') AS max_ymd,
-               l.factor_as_of AS new_factor_as_of
+               replace(e.max_date, '-', '') AS max_ymd
           FROM _qfq_existing e
           JOIN _qfq_latest_factor l ON l.code = e.code
          WHERE e.code NOT IN (SELECT code FROM _qfq_rewrite_codes)
@@ -354,18 +358,8 @@ def build_incremental(
     )
     stable_n = int(conn.execute("SELECT count(*) FROM _qfq_stable").fetchone()[0])
     if stable_n:
-        # Lineage: advance factor_as_of when latest date moved but f_latest value same.
-        conn.execute(
-            f"""
-            UPDATE {TARGET} t
-               SET factor_as_of = s.new_factor_as_of,
-                   batch_id = '{bid_sql}',
-                   ingested_at = CAST('{built_sql}' AS TIMESTAMP)
-              FROM _qfq_stable s
-             WHERE t.code = s.code
-               AND t.factor_as_of IS DISTINCT FROM s.new_factor_as_of
-            """
-        )
+        # Append only. Do not stamp a new factor_as_of/batch_id onto unchanged
+        # history — f_latest value is the rewrite trigger, not the adj date.
         nominal_cte = nominal_source_cte(from_accepted=from_accepted)
         conn.execute(
             f"""
@@ -533,13 +527,61 @@ def compact_market_after_ctas(*, remove_bak: bool = True) -> int:
     return 0
 
 
+def market_free_block_pct(db_path: str | Path | None = None) -> float | None:
+    """Live free_blocks / total_blocks percent, or None if unreadable."""
+    path = Path(db_path or MARKET_DB)
+    if not path.is_absolute():
+        path = (REPO / path).resolve()
+    if not path.exists():
+        return None
+    conn = connect(str(path), read_only=True)
+    try:
+        row = conn.execute(
+            "SELECT 100.0 * free_blocks / nullif(total_blocks, 0) "
+            "FROM pragma_database_size()"
+        ).fetchone()
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        conn.close()
+    if not row or row[0] is None:
+        return None
+    return float(row[0])
+
+
+def maybe_compact_market(*, used_mode: str, skip: bool, rebuilt: bool) -> int:
+    """Reclaim free blocks after a successful rebuild. Caller must close writers."""
+    if not rebuilt:
+        return 0
+    if skip:
+        print("[compact] skipped (--no-compact or CHUNKY_QFQ_SKIP_COMPACT)", flush=True)
+        return 0
+    if used_mode == "full":
+        return compact_market_after_ctas(remove_bak=True)
+    pct = market_free_block_pct()
+    if pct is None:
+        print("[compact] skip — pragma_database_size unreadable", flush=True)
+        return 0
+    if pct + 1e-9 >= COMPACT_FREE_PCT:
+        print(
+            f"[compact] incremental free_blocks={pct:.2f}% ≥ {COMPACT_FREE_PCT:g}%",
+            flush=True,
+        )
+        return compact_market_after_ctas(remove_bak=True)
+    print(
+        f"[compact] skipped (incremental free_blocks={pct:.2f}% < {COMPACT_FREE_PCT:g}%)",
+        flush=True,
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check-only", action="store_true")  # rule-compliance: ok evidence=只对账不重建
     ap.add_argument(
         "--no-compact",
         action="store_true",
-        help="Skip post-CTAS market db_compact (default: compact after successful full rebuild)",
+        help="Skip market db_compact (default: compact after full rebuild, and after incremental when free_blocks% is high)",
     )
     ap.add_argument(
         "--full",
@@ -623,19 +665,15 @@ def main(argv: list[str] | None = None) -> int:
     skip_compact = bool(args.no_compact) or os.environ.get(
         "CHUNKY_QFQ_SKIP_COMPACT", ""
     ).strip() in {"1", "true", "TRUE", "yes", "YES"}
-    # Compact only after full DROP+CTAS (free-block reclaim). Incremental skips.
-    if rebuilt and used_mode == "full" and not skip_compact:
-        crc = compact_market_after_ctas(remove_bak=True)
-        if crc != 0:
-            print(
-                f"[compact] FAIL rc={crc} — qfq rows OK but free-block residual remains",
-                flush=True,
-            )
-            return 3
-    elif rebuilt and used_mode == "full" and skip_compact:
-        print("[compact] skipped (--no-compact or CHUNKY_QFQ_SKIP_COMPACT)", flush=True)
-    elif rebuilt and used_mode == "incremental":
-        print("[compact] skipped (incremental — no DROP+CTAS free-block)", flush=True)
+    crc = maybe_compact_market(
+        used_mode=used_mode, skip=skip_compact, rebuilt=rebuilt
+    )
+    if crc != 0:
+        print(
+            f"[compact] FAIL rc={crc} — qfq rows OK but free-block residual remains",
+            flush=True,
+        )
+        return 3
     return 0
 
 
