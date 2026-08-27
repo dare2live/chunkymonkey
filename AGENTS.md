@@ -63,7 +63,9 @@ BestChoice frozen (`bestchoice/FROZEN.md`).
 ## 6. Compute
 `manual_only`. No cron/launchd/hidden restart. Script-on-disk ≠ active
 automation. Entrypoints (eng_gov §11): `chunkyctl agent-boot|doctor|sync`,
-`daily_update.sh`. No revived retired provider/`chunkyctl` commands. Long/paid
+`daily_update.sh`. Ban revived retired clients, tables, and `chunkyctl` commands;
+same-vendor **new** adapters through `landing→accepted→canonical` are allowed.
+Do not treat tdxhub daily qfq as execution SSOT. Long/paid
 work states objective/consumer/snapshot/runtime/gates/artifact/stop/rollback;
 completion = verified checkpoints, never a log line.
 

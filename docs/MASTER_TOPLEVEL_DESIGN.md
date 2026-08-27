@@ -414,6 +414,10 @@ projection / failure 证据裁决；full pipeline、消费者切换与发布另�
 | `holder_research_class` | 研究侧股东身份 facet（稳市队/社保/国资运营等）；与供应商 `holder_type` 分立，一名多 tag；国家队只经命名预设 `national_team_stabilizer`（默认，不含社保）或 `national_team_wind`（显式含社保与基本养老）加总。龙虎榜席位、北向流量不进本 namespace | 多对多；禁止把不同预设静默加总 |
 | `holder_capital_role` | 股东户名上的资金角色（外资自有资金 / 客户资金 / 境内保险自有）；与 `holder_research_class` 同粒、分立预设。禁止把「自有资金」字面当成外资 | 多对多；禁止与国家队静默加总 |
 | `seat_research_class` | 龙虎榜 `exalter` 营业部政策名单（机构专用 / 沪深股通专用 / 游资白名单）；民间名是 `alias_kind=folk`，不是法人名 | 按席位日，不可与股东持仓加总 |
+| `ths_industry` | 同花顺行业；**观察日快照**，不是区间 PIT | 同级互斥只在该观察日成立；`in_date` 未证则禁止假装有效期 |
+| `ths_concept` | 同花顺概念/题材；观察日快照、多标签 | 不可加总；不是申万或东财的别名 |
+
+四条分类链禁止改名合并：申万行业（区间 PIT，三源无等价则留 TuShare `v_sw_industry_pit`）、东财行业（日快照）、东财概念（多标签）、同花顺行业/概念（观察日快照）。镜头开关；交集是产品不是第五套分类。通达信 `block` 不进这四链。
 
 “板块”只可作为 UI 总称。跨体系映射必须声明 `equivalent/broader/narrower/overlap` 和证据；名称相同只能产生待审候选。东财概念没有官方层级时保持平面标签。
 
@@ -437,7 +441,7 @@ projection / failure 证据裁决；full pipeline、消费者切换与发布另�
 3. `Participation`：上涨/下跌、流入覆盖、涨跌停、集中度；
 4. `PriceResponse`：收益、相对强弱、波动、突破和持续性。
 
-概念重叠，不能把概念净额相加解释为全市场资金；行业 L1/L2/L3 也不能跨层重复求和。所有 rolling/rank/regime 必须按 namespace、node type、level 和 method 分区。
+概念重叠，不能把概念净额相加解释为全市场资金；行业 L1/L2/L3 也不能跨层重复求和。资金流三名分列、禁止跨源加总：日终 vendor 不平衡代理、盘中 vendor 分钟代理、分笔主动买卖差额。所有 rolling/rank/regime 必须按 namespace、node type、level 和 method 分区。
 
 `SectorObservation` 保存可审计观测；`MarketContextSnapshot(decision_time)` 负责 availability 与
 eligible universe 对齐。外部交易所汇总与项目 universe 派生指标必须分名、分 method、分 lineage，
@@ -461,7 +465,7 @@ B5 + 单一公式或公式组合
 
 第一条正式策略闭环是 `institution_follow_v1`：在 Tier0 硬门、Tier1/2 发布契约与研究运行时最小闭环之后，以披露 `available_at` 约束跑 B0→B1→B2→B4；跟随者可实现收益必须独立于机构自身持有收益。`main_rally` 与公式包随后接入同一 runtime。BestChoice 只作为冻结 challenger 资产，经 lineage、PIT 和本项目纸面执行验证后才能讨论吸收，禁止直接并入主策略。
 
-Provider 是可替换 adapter：业务真相在 accepted/canonical，不绑定单一供应商。契约可换（第二源只加 adapter + landing 映射、不改 Tier1–4 读契约）是**目标态**，不是“仓库里只有一个供应商”的现状声明。任何 provider——TuShare 与东财妙想 aif10/`miaoxiang` 同等——都必须走同一 transport（`landing→accepted→canonical`），禁止 silent merge、legacy 直写或假装单源。各域当前的 live adapter 与 formal 化进度是**运行时事实**，真相源为 `backend/config/sync_registry.yaml` + `legacy_raw_plane.yaml` + accepted 分区，**不在本文件固定**（写死即 stale）。不做通用插件框架。
+Provider 是可替换 adapter：业务真相在 accepted/canonical，不绑定单一供应商。契约可换（第二源只加 adapter + landing 映射、不改 Tier1–4 读契约）是**目标态**，不是“仓库里只有一个供应商”的现状声明。任何 provider——TuShare、东财妙想 aif10/`miaoxiang`、同花顺扶摇 dump/REST、通达信 hub——都必须走同一 transport（`landing→accepted→canonical`），禁止 silent merge、legacy 直写或假装单源。新输入优先三源 adapter；**不再为换源注册新 TuShare 域**。申万区间 PIT 三源没有等价物则明确留 TuShare。通达信允许**新** adapter 做分笔/盘中与 gpcw **对账**；禁止把已证伪的日线 qfq 当成交 SSOT；禁止复活已物删的旧表/旧 client。各域当前的 live adapter 与 formal 化进度是**运行时事实**，真相源为 `backend/config/sync_registry.yaml` + `legacy_raw_plane.yaml` + accepted 分区，**不在本文件固定**（写死即 stale）。不做通用插件框架。当前 accepted 是对账尺子不是预选赢家；一域对完能上场的源再切该域 live adapter。TuShare 日更在该域 cutover 前不停。
 
 ### 9.1 因子族登记的边界
 
@@ -490,7 +494,7 @@ ExperimentVerdict
 
 ### 10.1 产品能力边界
 
-产品面的每个能力都有一条**不能越过的边界**；越过时症状都一样——展示层看起来更强了，
+产品面只服务三问（市场在哪、谁在买、价量结构成不成立），不把供应商目录当因子库。每个能力都有一条**不能越过的边界**；越过时症状都一样——展示层看起来更强了，
 而证据链断了：
 
 - **资金流决策辅助**：多窗口/相对比率/方向标签是 L2–L3 组合列，必须带 `available_at`、
@@ -544,7 +548,9 @@ F9 管策略阶梯（禁越级到 Optuna/Release）、F10 管双轨清洁。**�
 - 不按模块数建表，不为版本复制表；
 - 不恢复自动跑批；数据更新保持人工触发、机械守门；
 - 不在 Tier0 未闭合时跑大规模寻优、付费计算或生产选股；
-- 不用更多治理文件掩盖治理文件本身失真。
+- 不用更多治理文件掩盖治理文件本身失真；
+- 不把已证伪的通达信日线 qfq 当成交真相，不复活已物删的 tdx F10 / gpcw client 或旧表名；
+- 不把供应商目录（含 74 张 F10 表）登记成因子族。
 
 ## 13. 架构验收
 

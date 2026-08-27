@@ -57,6 +57,9 @@ blocking_paths:
 - tests/services/test_formal_execution.py
 - tests/services/test_holders_top10_acceptance.py
 - tests/services/test_holders_landing_retention.py
+- tests/services/test_sibling_repos.py
+- tests/services/test_fuyao_kline_recon.py
+- tests/services/test_tdxhub_kline_recon.py
 - tests/services/test_org_holding_acceptance.py
 - tests/services/test_org_holding_period_catchup.py
 - tests/services/test_org_holding_pointer_integrity.py

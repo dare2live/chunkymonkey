@@ -2261,24 +2261,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:smartmoney.canonical_org_holding_detail_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/org_holding_schema.py",
-      "kind": "consume",
-      "src": "table:smartmoney.canonical_org_holding_detail_period"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_org_holding_aif10.py",
-      "kind": "consume",
-      "src": "table:smartmoney.canonical_org_holding_detail_period"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/brick_registry.yaml",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
@@ -4093,18 +4075,6 @@
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
-      "src": "table:smartmoney.landing_miaoxiang_org_holding"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/org_holding_schema.py",
-      "kind": "consume",
-      "src": "table:smartmoney.landing_miaoxiang_org_holding"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
       "src": "table:smartmoney.mart_data_deletion_record"
     },
     {
@@ -4658,84 +4628,6 @@
       "dst": "consumer:backend/services/paper_portfolio.py",
       "kind": "consume",
       "src": "table:smartmoney.paper_position"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_layers.yaml",
-      "kind": "consume",
-      "src": "table:smartmoney.raw_org_holding_aif10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_module_members.yaml",
-      "kind": "consume",
-      "src": "table:smartmoney.raw_org_holding_aif10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/disclosure_boundaries.py",
-      "kind": "consume",
-      "src": "table:smartmoney.raw_org_holding_aif10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/org_holding_acceptance.py",
-      "kind": "consume",
-      "src": "table:smartmoney.raw_org_holding_aif10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/org_holding_schema.py",
-      "kind": "consume",
-      "src": "table:smartmoney.raw_org_holding_aif10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/org_holding_aif10.py",
-      "kind": "consume",
-      "src": "table:smartmoney.raw_org_holding_aif10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/org_holding_population.py",
-      "kind": "consume",
-      "src": "table:smartmoney.raw_org_holding_aif10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_core.py",
-      "kind": "consume",
-      "src": "table:smartmoney.raw_org_holding_aif10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/schema_migrations.py",
-      "kind": "consume",
-      "src": "table:smartmoney.raw_org_holding_aif10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/services/test_disclosure_boundaries.py",
-      "kind": "consume",
-      "src": "table:smartmoney.raw_org_holding_aif10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/services/test_org_holding_period_catchup.py",
-      "kind": "consume",
-      "src": "table:smartmoney.raw_org_holding_aif10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/services/test_org_holding_truncation_audit.py",
-      "kind": "consume",
-      "src": "table:smartmoney.raw_org_holding_aif10"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/tests/test_org_holding_aif10.py",
-      "kind": "consume",
-      "src": "table:smartmoney.raw_org_holding_aif10"
     },
     {
       "attrs": {},
@@ -5315,6 +5207,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/fuyao_kline_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/nominal_ohlcv_schema.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
@@ -5741,7 +5639,25 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/recon_fuyao_kline.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_adj_factor"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/fuyao_kline_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_adj_factor"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_build_price_kline_qfq_tushare.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_adj_factor"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_fuyao_kline_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_adj_factor"
     },
@@ -5891,6 +5807,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/fuyao_kline_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/nominal_ohlcv_contract.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
@@ -6018,6 +5940,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_derive_runtime_s5.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_fuyao_kline_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
     },
@@ -6306,6 +6234,24 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_dividend"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/recon_fuyao_kline.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_dividend"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/fuyao_kline_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_dividend"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_fuyao_kline_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_dividend"
     },
@@ -8027,9 +7973,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1290,
-    "generated_at": "2026-08-26T01:09:10.548247+00:00",
-    "node_count": 454,
+    "edge_count": 1281,
+    "generated_at": "2026-08-27T10:37:12.285543+00:00",
+    "node_count": 448,
     "version": 2
   },
   "nodes": [
@@ -8452,6 +8398,14 @@
     {
       "attrs": {
         "ctype": "script",
+        "path": "backend/scripts/recon_fuyao_kline.py"
+      },
+      "id": "consumer:backend/scripts/recon_fuyao_kline.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
         "path": "backend/scripts/refresh_source_watermarks.py"
       },
       "id": "consumer:backend/scripts/refresh_source_watermarks.py",
@@ -8636,6 +8590,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/data_sources/fuyao_kline_recon.py"
+      },
+      "id": "consumer:backend/services/data_sources/fuyao_kline_recon.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/data_sources/holders_top10_acceptance.py"
       },
       "id": "consumer:backend/services/data_sources/holders_top10_acceptance.py",
@@ -8759,22 +8721,6 @@
         "path": "backend/services/data_sources/nominal_ohlcv_schema.py"
       },
       "id": "consumer:backend/services/data_sources/nominal_ohlcv_schema.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/data_sources/org_holding_acceptance.py"
-      },
-      "id": "consumer:backend/services/data_sources/org_holding_acceptance.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/data_sources/org_holding_schema.py"
-      },
-      "id": "consumer:backend/services/data_sources/org_holding_schema.py",
       "kind": "consumer"
     },
     {
@@ -9127,14 +9073,6 @@
         "path": "backend/services/org_holding_pointer_integrity.py"
       },
       "id": "consumer:backend/services/org_holding_pointer_integrity.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "service",
-        "path": "backend/services/org_holding_population.py"
-      },
-      "id": "consumer:backend/services/org_holding_population.py",
       "kind": "consumer"
     },
     {
@@ -9716,6 +9654,14 @@
     {
       "attrs": {
         "ctype": "test",
+        "path": "backend/tests/services/test_fuyao_kline_recon.py"
+      },
+      "id": "consumer:backend/tests/services/test_fuyao_kline_recon.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
         "path": "backend/tests/services/test_holdernumber_assist.py"
       },
       "id": "consumer:backend/tests/services/test_holdernumber_assist.py",
@@ -9879,22 +9825,6 @@
         "path": "backend/tests/services/test_observation_population.py"
       },
       "id": "consumer:backend/tests/services/test_observation_population.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/services/test_org_holding_period_catchup.py"
-      },
-      "id": "consumer:backend/tests/services/test_org_holding_period_catchup.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/services/test_org_holding_truncation_audit.py"
-      },
-      "id": "consumer:backend/tests/services/test_org_holding_truncation_audit.py",
       "kind": "consumer"
     },
     {
@@ -10183,14 +10113,6 @@
         "path": "backend/tests/test_moneyflow_assist.py"
       },
       "id": "consumer:backend/tests/test_moneyflow_assist.py",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "test",
-        "path": "backend/tests/test_org_holding_aif10.py"
-      },
-      "id": "consumer:backend/tests/test_org_holding_aif10.py",
       "kind": "consumer"
     },
     {
@@ -10932,16 +10854,6 @@
       "attrs": {
         "db": "smartmoney",
         "layer": "L1_foundation",
-        "status": "active",
-        "table": "canonical_org_holding_detail_period"
-      },
-      "id": "table:smartmoney.canonical_org_holding_detail_period",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L1_foundation",
         "serve_entities": [
           "holders_top10"
         ],
@@ -11203,16 +11115,6 @@
     {
       "attrs": {
         "db": "smartmoney",
-        "layer": "L0_source",
-        "status": "active",
-        "table": "landing_miaoxiang_org_holding"
-      },
-      "id": "table:smartmoney.landing_miaoxiang_org_holding",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
         "layer": "infra",
         "status": "active",
         "table": "mart_data_deletion_record"
@@ -11348,16 +11250,6 @@
         "table": "paper_position"
       },
       "id": "table:smartmoney.paper_position",
-      "kind": "table"
-    },
-    {
-      "attrs": {
-        "db": "smartmoney",
-        "layer": "L0_source",
-        "status": "active",
-        "table": "raw_org_holding_aif10"
-      },
-      "id": "table:smartmoney.raw_org_holding_aif10",
       "kind": "table"
     },
     {

@@ -13,6 +13,13 @@
 逐项完成史查 `chunkyctl history --grep <关键词>`；FND-GATE 十维实时裁决跑
 `check_foundation_done.py` —— **本节不再复述已闭合项**（复述必然滞后，本轮实证过）。
 
+**换源 strangler（立法；对账未切日更）**
+产品只回答三问：市场在哪、谁在买、价量结构成不成立。研究默认不做因子堆叠、不开 Optuna
+runner、不把 B3+ 当主升浪必经（S5 仍禁）。新输入优先扶摇 / 妙想 F10 / 通达信 hub adapter，
+进同一 `landing→accept→canonical`。当前 accepted 是对账尺子，**不是预选赢家**；一域对完能上场
+的源再切该域 `primary`。TuShare 日更在该域 cutover 前不停；不再注册新 TuShare 域。申万区间
+PIT 三源无等价则**明确留 TuShare**。禁 tdxhub 日线 qfq 当成交 SSOT，禁复活已物删 client / 表名。
+
 **当前 blocker**
 - **数据线滞后**：accepted 日线落后若干交易日，滞后数现查 `scripts/chunkyctl status`。
 
@@ -50,6 +57,15 @@ owner contract，进度段在此。**不再有第二个说「下一步」的地�
 - **S3** 公式挑战 **合成烟测 + 单名 live pointer（已测）**（下一 open + 一名一仓/T+1；`claimable=false`）。全宇宙 B5 / 吸收 BestChoice / Optuna runner / StrategyRelease **未做**
 - **S4** Release + 纸面执行 · **S5** Optuna（**已排期** `PHASE_N_AUTH=OP-20260824-S5`；须 S1/S2 交付后才写入 yaml `phase_n_optuna` 并实现 runner；现禁开 runner）
 - 默认序 S1→S2→S3→S4，S5 最后
+
+*三源换源*（按域选最佳再切 `primary`；停更 `raw_tushare_daily` 不当尺子）
+- **刀1** 名义 K：扶摇未复权 10d dump **与** 通达信未复权协议日 K 均已对 accepted（同窗 OHLC 全匹配；禁参赛的 qfq 未用）。**未切** `kline_daily.primary`（样本是 10 个交易日不是 10 年；日历/ST/停牌未对）
+- **刀2** 日历 / ST / 停牌
+- **刀3** 分类四链：申万区间 PIT · 东财行业日快照 · 东财概念多标签 · 同花顺观察日快照（无区间则禁假装 PIT）
+- **刀4** 财务与两融（个股加总 ≠ 交易所汇总）
+- **刀5** 名义 K 自建筹码 vs `cyq_perf`（先档案，不进公式胜率）
+- **刀6** 盘中资金流两层：vendor 分钟代理 vs 通达信分笔主动差额（禁跨源加总）
+- **刀7** 形态×五式下一开盘；主升浪 B0/B1；跟随仍公告日
 
 **护栏**（长期有效，非进度）：formal frontier 与 drain soft 窗分立叙述 · PIT + ≤40d ·
 §15 不放宽 · serve = 沪深A 含 ST · 禁为清单洗绿（class-B 诚实状态**留着就是做对了**）。

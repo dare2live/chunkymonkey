@@ -1,0 +1,41 @@
+version: 1
+# Vendor/protocol checkouts live next to chunkymonkey under Documents/M/stock/.
+# This file is the only path registry. Do not copy those trees into this repo
+# and do not scatter sys.path inserts in acquire clients.
+#
+# Override root: CHUNKY_STOCK_ROOT (tests). Default = parent of this git root.
+
+repos:
+  miaoxiang:
+    dirname: miaoxiang
+    role: eastmoney_aif10_http_client
+    required: true
+    pythonpath:
+      - .
+    required_marker: aif10_scraper/client.py
+  tdxhub:
+    dirname: tdxhub
+    role: tdx_protocol_hub
+    required: true
+    pythonpath:
+      - .
+    required_marker: tdxhub/quotes.py
+  fuyao:
+    dirname: fuyao
+    role: hithink_finance_official
+    upstream: https://github.com/HiThink-Tech/Financial-API.git
+    required: true
+    pythonpath:
+      - python
+    required_marker: python/marketdb/providers/dump.py
+    notes:
+      - Official dump downloader is marketdb.providers.dump.DumpDownloader
+      - Do not vendor their marketdb DuckDB into chunkymonkey
+  tushare:
+    dirname: tushare
+    role: tushare_account_workspace
+    required: false
+    pythonpath: []
+    required_marker: ""
+    notes:
+      - Chunkymonkey talks to TuShare via tinyshare, not this checkout
