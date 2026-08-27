@@ -131,7 +131,7 @@ def test_official_connect_cfg_is_read_without_bestip(tmp_path, monkeypatch):
     )
     monkeypatch.delenv("TDXHUB_HQ", raising=False)
     monkeypatch.setenv("TDXHUB_CONNECT_CFG", str(cfg))
-    got = iter_hq_candidates([("community", "1.1.1.1", 7709)])
+    got = iter_hq_candidates([("frozen_snapshot", "1.1.1.1", 7709)])
     assert got[:3] == [
         ("180.153.18.170", 7709),
         ("202.108.253.130", 7709),
@@ -145,6 +145,17 @@ def test_official_connect_cfg_is_read_without_bestip(tmp_path, monkeypatch):
     text = src.read_text(encoding="utf-8")
     assert "bestip(" not in text
     assert "configure_hosts_from_connect_cfg" not in text
+
+
+def test_hq_hosts_is_frozen_official_snapshot_not_live_catalog():
+    from services.data_sources.sources.tdxhub import HQ_HOSTS_PROVENANCE
+
+    text = HQ_HOSTS_PROVENANCE.lower()
+    assert "connect.cfg" in text
+    assert "2026-04-11" in HQ_HOSTS_PROVENANCE
+    assert "2026-04-13" in HQ_HOSTS_PROVENANCE
+    assert "community merge" not in text
+    assert "not a live official http catalog" in text
 
 
 def test_records_to_rows_filters_window():

@@ -3,8 +3,8 @@
 Do not call ``adjust=qfq/hfq``. That path is banned as execution SSOT.
 
 Official HQ catalog is the TDX client's ``connect.cfg`` ``[HQHOST]`` list
-(``TDXHUB_CONNECT_CFG``). ``HQ_HOSTS`` in tdxhub.consts is a community merge,
-not a live official download.
+(``TDXHUB_CONNECT_CFG``). ``HQ_HOSTS`` is a frozen snapshot of those official
+client/broker names, not a live HTTP catalog and not random community IPs.
 
 TCP-open is not enough: several HQ hosts accept TCP then return an empty
 TDX header (``head_buf is not 0x10``). ``quotes_client`` walks hosts until
@@ -19,6 +19,16 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from services.data_sources.sibling_repos import ensure_import_path
+
+HQ_HOSTS_PROVENANCE = (
+    "Frozen snapshot of official TDX client/broker HQ names "
+    "(tdxpy transcribed dumped connect.cfg names + mootdx 双线主站 extras). "
+    "tdxhub 292e761 2026-04-11 liveness-filtered (14/38 alive, dead commented); "
+    "8ba706d 2026-04-13 merged tdxpy+mootdx to 117 and claimed all alive. "
+    "Not a live official HTTP catalog (tdx.com.cn/connect.cfg 404). "
+    "Live official list = local TDX client connect.cfg [HQHOST] via TDXHUB_CONNECT_CFG. "
+    "TCP ping is not a TDX handshake."
+)
 
 ALIAS = "tdxhub"
 _SMOKE_MARKET = 0
@@ -66,7 +76,7 @@ def is_hq_transport_error(exc: BaseException) -> bool:
 
 
 def _hq_host_table() -> list[tuple[str, str, int]]:
-    """Community fallback (tdxpy+mootdx merge in tdxhub.consts). Not the TDX client catalog."""
+    """Frozen official-name snapshot in tdxhub.consts. Not the live client catalog."""
     ensure_import_path(ALIAS, strict=True)
     from tdxhub.consts import HQ_HOSTS  # noqa: E402
 
