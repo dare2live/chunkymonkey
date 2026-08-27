@@ -5921,6 +5921,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/fina_margin_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/margin_schema.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_margin_exchange_daily"
@@ -5970,6 +5976,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_dataset_contracts.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_fina_margin_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_margin_exchange_daily"
     },
@@ -6534,6 +6546,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_balancesheet"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/fina_margin_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_balancesheet"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_fina_margin_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_balancesheet"
     },
@@ -7181,7 +7205,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/fina_margin_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_fina_indicator"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/lineage/query.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_fina_indicator"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_fina_margin_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_fina_indicator"
     },
@@ -7247,7 +7283,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/fina_margin_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_income"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/org_holding_announcement.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_income"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_fina_margin_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_income"
     },
@@ -7667,6 +7715,18 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/recon_fina_margin.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/fina_margin_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/formal_boundaries.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin"
@@ -7787,6 +7847,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_fina_margin_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin"
@@ -7859,6 +7925,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/fina_margin_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin_detail"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_downstream_impact.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin_detail"
@@ -7866,6 +7938,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_safe_commit.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin_detail"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_fina_margin_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin_detail"
     },
@@ -9053,9 +9131,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1461,
-    "generated_at": "2026-08-27T13:13:19.238734+00:00",
-    "node_count": 474,
+    "edge_count": 1474,
+    "generated_at": "2026-08-27T13:51:16.526110+00:00",
+    "node_count": 477,
     "version": 2
   },
   "nodes": [
@@ -9486,6 +9564,14 @@
     {
       "attrs": {
         "ctype": "script",
+        "path": "backend/scripts/recon_fina_margin.py"
+      },
+      "id": "consumer:backend/scripts/recon_fina_margin.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
         "path": "backend/scripts/recon_fuyao_kline.py"
       },
       "id": "consumer:backend/scripts/recon_fuyao_kline.py",
@@ -9673,6 +9759,14 @@
         "path": "backend/services/data_sources/disclosure_transport.py"
       },
       "id": "consumer:backend/services/data_sources/disclosure_transport.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/fina_margin_recon.py"
+      },
+      "id": "consumer:backend/services/data_sources/fina_margin_recon.py",
       "kind": "consumer"
     },
     {
@@ -10825,6 +10919,14 @@
         "path": "backend/tests/services/test_factor_family_frontier_projection.py"
       },
       "id": "consumer:backend/tests/services/test_factor_family_frontier_projection.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_fina_margin_recon.py"
+      },
+      "id": "consumer:backend/tests/services/test_fina_margin_recon.py",
       "kind": "consumer"
     },
     {

@@ -62,7 +62,7 @@ owner contract，进度段在此。**不再有第二个说「下一步」的地�
 - **刀1** 名义 K：扶摇未复权 10d dump **与** 通达信未复权协议日 K 均已对 accepted（同窗 OHLC 全匹配；禁参赛的 qfq 未用）。通达信官方主机表 = 客户端 `connect.cfg` `[HQHOST]`（`TDXHUB_CONNECT_CFG`，只读、不跑 `bestip`）；`HQ_HOSTS` 是社区合并不是官方下载。**未切** `kline_daily.primary`（样本是 10 个交易日不是 10 年）
 - **刀2** 日历 / ST / 停牌：已对 accepted（停牌无 publication）。**未切** primary
 - **刀3** 分类四链：taxonomy 立法补 ths 观察日（禁假装区间 PIT）；DC/SW 同名成员集合对账；扶摇 THS 当前成分抽样；妙想无全市场 DC dump。**未切** primary / 未进 pulse 镜头
-- **刀4** 财务与两融（个股加总 ≠ 交易所汇总）
+- **刀4** 财务与两融：已对账未切。两融尺子=accepted 沪深交易所汇总，个股明细加总不是身份（含北交所更对不齐）。利润表抽样营收/归母与妙想 GINCOME 近全额对齐仍 `identity=false`；银行 GBALANCE 该报表 0 行；禁 gpcw 复活。**未切** primary
 - **刀5** 名义 K 自建筹码 vs `cyq_perf`（先档案，不进公式胜率）
 - **刀6** 盘中资金流两层：vendor 分钟代理 vs 通达信分笔主动差额（禁跨源加总）
 - **刀7** 形态×五式下一开盘；主升浪 B0/B1；跟随仍公告日
