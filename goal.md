@@ -59,7 +59,7 @@ owner contract，进度段在此。**不再有第二个说「下一步」的地�
 - 默认序 S1→S2→S3→S4，S5 最后
 
 *三源换源*（按域选最佳再切 `primary`；停更 `raw_tushare_daily` 不当尺子）
-- **刀1** 名义 K：扶摇未复权 10d dump **与** 通达信未复权协议日 K 均已对 accepted（同窗 OHLC 全匹配；禁参赛的 qfq 未用）。**未切** `kline_daily.primary`（样本是 10 个交易日不是 10 年）
+- **刀1** 名义 K：扶摇未复权 10d dump **与** 通达信未复权协议日 K 均已对 accepted（同窗 OHLC 全匹配；禁参赛的 qfq 未用）。通达信官方主机表 = 客户端 `connect.cfg` `[HQHOST]`（`TDXHUB_CONNECT_CFG`，只读、不跑 `bestip`）；`HQ_HOSTS` 是社区合并不是官方下载。**未切** `kline_daily.primary`（样本是 10 个交易日不是 10 年）
 - **刀2** 日历 / ST / 停牌：已对 accepted（停牌无 publication）。**未切** primary
 - **刀3** 分类四链：taxonomy 立法补 ths 观察日（禁假装区间 PIT）；DC/SW 同名成员集合对账；扶摇 THS 当前成分抽样；妙想无全市场 DC dump。**未切** primary / 未进 pulse 镜头
 - **刀4** 财务与两融（个股加总 ≠ 交易所汇总）

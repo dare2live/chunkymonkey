@@ -2,10 +2,14 @@
 
 Do not call ``adjust=qfq/hfq``. That path is banned as execution SSOT.
 
+Official HQ catalog is the TDX client's ``connect.cfg`` ``[HQHOST]`` list
+(``TDXHUB_CONNECT_CFG``). ``HQ_HOSTS`` in tdxhub.consts is a community merge,
+not a live official download.
+
 TCP-open is not enough: several HQ hosts accept TCP then return an empty
 TDX header (``head_buf is not 0x10``). ``quotes_client`` walks hosts until
-handshake + one daily bar for ``000001`` succeeds. Does not run tdxhub
-``bestip`` (that writes ``~/.tdxhub/config.json``).
+handshake + one daily bar for ``000001`` succeeds. Never runs tdxhub
+``bestip`` (that writes the tdxhub runtime config file).
 """
 from __future__ import annotations
 
@@ -62,10 +66,27 @@ def is_hq_transport_error(exc: BaseException) -> bool:
 
 
 def _hq_host_table() -> list[tuple[str, str, int]]:
+    """Community fallback (tdxpy+mootdx merge in tdxhub.consts). Not the TDX client catalog."""
     ensure_import_path(ALIAS, strict=True)
     from tdxhub.consts import HQ_HOSTS  # noqa: E402
 
     return [(str(name), str(ip), int(port)) for name, ip, port in HQ_HOSTS]
+
+
+def load_connect_cfg_hq(path: str | Path) -> list[tuple[str, int]]:
+    """Read official TDX client ``connect.cfg`` ``[HQHOST]`` entries.
+
+    Uses tdxhub's parser only. Does not run ``bestip`` and does not write
+    the tdxhub runtime config file.
+    """
+    cfg = Path(path)
+    if not cfg.is_file():
+        raise FileNotFoundError(f"TDX connect.cfg not found: {cfg}")
+    ensure_import_path(ALIAS, strict=True)
+    from tdxhub.server import parse_connect_cfg  # noqa: E402
+
+    groups = parse_connect_cfg(cfg)
+    return [(str(ip), int(port)) for _name, ip, port in groups.get("HQ") or []]
 
 
 def iter_hq_candidates(
@@ -88,6 +109,10 @@ def iter_hq_candidates(
     env = os.environ.get("TDXHUB_HQ", "").strip()
     if env:
         _add(*parse_hq_server(env))
+    cfg_path = os.environ.get("TDXHUB_CONNECT_CFG", "").strip()
+    if cfg_path:
+        for ip, port in load_connect_cfg_hq(cfg_path):
+            _add(ip, port)
     for _name, ip, port in hosts if hosts is not None else _hq_host_table():
         _add(ip, port)
     return ordered
@@ -192,6 +217,7 @@ __all__ = [
     "ALIAS",
     "is_hq_transport_error",
     "iter_hq_candidates",
+    "load_connect_cfg_hq",
     "open_quotes",
     "parse_hq_server",
     "quotes_client",

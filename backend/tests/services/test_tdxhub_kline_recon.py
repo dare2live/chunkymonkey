@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -86,6 +87,7 @@ def test_hq_transport_error_and_env_candidate_order(monkeypatch):
     assert parse_hq_server("180.153.18.170:7709") == ("180.153.18.170", 7709)
     assert is_hq_transport_error(RuntimeError("head_buf is not 0x10 : b''"))
     assert not is_hq_transport_error(ValueError("banned tdx adjust='qfq'"))
+    monkeypatch.delenv("TDXHUB_CONNECT_CFG", raising=False)
     monkeypatch.setenv("TDXHUB_HQ", "9.9.9.9:7709")
     got = iter_hq_candidates([("a", "1.1.1.1", 7709), ("b", "9.9.9.9", 7709)])
     assert got[0] == ("9.9.9.9", 7709)
@@ -109,6 +111,40 @@ def test_hq_transport_error_and_env_candidate_order(monkeypatch):
     client = quotes_client()
     assert client.server == ("3.3.3.3", 7709)
     assert calls == [("2.2.2.2", 7709), ("3.3.3.3", 7709)]
+
+
+def test_official_connect_cfg_is_read_without_bestip(tmp_path, monkeypatch):
+    from services.data_sources.sources.tdxhub import iter_hq_candidates, load_connect_cfg_hq
+
+    cfg = tmp_path / "connect.cfg"
+    cfg.write_bytes(
+        (
+            "[HQHOST]\n"
+            "HostNum=2\n"
+            "HostName01=上海电信主站Z1\n"
+            "IPAddress01=180.153.18.170\n"
+            "Port01=7709\n"
+            "HostName02=北京联通主站Z1\n"
+            "IPAddress02=202.108.253.130\n"
+            "Port02=7709\n"
+        ).encode("gbk")
+    )
+    monkeypatch.delenv("TDXHUB_HQ", raising=False)
+    monkeypatch.setenv("TDXHUB_CONNECT_CFG", str(cfg))
+    got = iter_hq_candidates([("community", "1.1.1.1", 7709)])
+    assert got[:3] == [
+        ("180.153.18.170", 7709),
+        ("202.108.253.130", 7709),
+        ("1.1.1.1", 7709),
+    ]
+    assert load_connect_cfg_hq(cfg) == [
+        ("180.153.18.170", 7709),
+        ("202.108.253.130", 7709),
+    ]
+    src = Path(__file__).resolve().parents[2] / "services" / "data_sources" / "sources" / "tdxhub.py"
+    text = src.read_text(encoding="utf-8")
+    assert "bestip(" not in text
+    assert "configure_hosts_from_connect_cfg" not in text
 
 
 def test_records_to_rows_filters_window():
