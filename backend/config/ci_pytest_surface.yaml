@@ -67,6 +67,7 @@ blocking_paths:
 - tests/services/test_taxonomy_recon.py
 - tests/services/test_fina_margin_recon.py
 - tests/services/test_cyq_recon.py
+- tests/services/test_moneyflow_recon.py
 - tests/services/test_org_holding_acceptance.py
 - tests/services/test_org_holding_announcement.py
 - tests/services/test_periodic_report_calendar.py

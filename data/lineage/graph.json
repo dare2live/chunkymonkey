@@ -1445,6 +1445,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_moneyflow_recon.py",
+      "kind": "consume",
+      "src": "table:market.v_price_kline_qfq"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_sync_runner_20260612_fixes.py",
       "kind": "consume",
       "src": "table:market.v_price_kline_qfq"
@@ -4397,6 +4403,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/moneyflow_recon.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/factor_family_frontier_projection.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_daily"
@@ -4452,6 +4464,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_market_pulse_serve_read_s6.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_moneyflow_recon.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_daily"
     },
@@ -4541,6 +4559,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/moneyflow_recon.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/foundation_obs_serve.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
@@ -4590,6 +4614,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_market_pulse_serve_read_s6.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_moneyflow_recon.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
     },
@@ -9203,9 +9233,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1486,
-    "generated_at": "2026-08-27T14:32:41.574084+00:00",
-    "node_count": 479,
+    "edge_count": 1491,
+    "generated_at": "2026-08-27T15:25:37.831432+00:00",
+    "node_count": 481,
     "version": 2
   },
   "nodes": [
@@ -9975,6 +10005,14 @@
         "path": "backend/services/data_sources/margin_validation.py"
       },
       "id": "consumer:backend/services/data_sources/margin_validation.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/moneyflow_recon.py"
+      },
+      "id": "consumer:backend/services/data_sources/moneyflow_recon.py",
       "kind": "consumer"
     },
     {
@@ -11183,6 +11221,14 @@
         "path": "backend/tests/services/test_market_pulse_tier12_read.py"
       },
       "id": "consumer:backend/tests/services/test_market_pulse_tier12_read.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_moneyflow_recon.py"
+      },
+      "id": "consumer:backend/tests/services/test_moneyflow_recon.py",
       "kind": "consumer"
     },
     {
