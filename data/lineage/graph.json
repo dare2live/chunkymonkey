@@ -1223,6 +1223,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/cyq_recon.py",
+      "kind": "consume",
+      "src": "table:market.price_kline_qfq_tushare"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/holdernumber_assist.py",
       "kind": "consume",
       "src": "table:market.price_kline_qfq_tushare"
@@ -1278,6 +1284,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_brick_registry_b5.py",
+      "kind": "consume",
+      "src": "table:market.price_kline_qfq_tushare"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_cyq_recon.py",
       "kind": "consume",
       "src": "table:market.price_kline_qfq_tushare"
     },
@@ -1391,6 +1403,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/cyq_recon.py",
+      "kind": "consume",
+      "src": "table:market.v_price_kline_qfq"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/institution_profile.py",
       "kind": "consume",
       "src": "table:market.v_price_kline_qfq"
@@ -1416,6 +1434,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/realdb/test_real_data_consistency.py",
+      "kind": "consume",
+      "src": "table:market.v_price_kline_qfq"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_cyq_recon.py",
       "kind": "consume",
       "src": "table:market.v_price_kline_qfq"
     },
@@ -6041,6 +6065,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/cyq_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/fuyao_kline_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
@@ -6084,6 +6114,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_completeness_ref.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_cyq_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
     },
@@ -6605,6 +6641,18 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/cyq_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_cyq_perf"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_cyq_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_cyq_perf"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
@@ -6678,6 +6726,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_audit.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/cyq_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
     },
@@ -6827,6 +6881,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_cyq_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_derive_runtime_s5.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
@@ -6917,7 +6977,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/cyq_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily_basic"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/segments.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily_basic"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_cyq_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily_basic"
     },
@@ -9131,9 +9203,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1474,
-    "generated_at": "2026-08-27T13:51:16.526110+00:00",
-    "node_count": 477,
+    "edge_count": 1486,
+    "generated_at": "2026-08-27T14:32:41.574084+00:00",
+    "node_count": 479,
     "version": 2
   },
   "nodes": [
@@ -9703,6 +9775,14 @@
         "path": "backend/services/data_sources/clients_registry.py"
       },
       "id": "consumer:backend/services/data_sources/clients_registry.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/cyq_recon.py"
+      },
+      "id": "consumer:backend/services/data_sources/cyq_recon.py",
       "kind": "consumer"
     },
     {
@@ -10847,6 +10927,14 @@
         "path": "backend/tests/services/test_calendar_runtime.py"
       },
       "id": "consumer:backend/tests/services/test_calendar_runtime.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_cyq_recon.py"
+      },
+      "id": "consumer:backend/tests/services/test_cyq_recon.py",
       "kind": "consumer"
     },
     {
