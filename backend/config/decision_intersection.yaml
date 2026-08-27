@@ -7,7 +7,7 @@
 # (mirrors /pulse/strongest honesty).
 version: 1
 surface_version: decision_intersection_strongest_v1
-disclaimer: "东财行业∩概念∩申万行业三条强势链的会员交集，非买卖指令；未经 B0→B5 策略验证；沿用 moneyflow_assist 行为标签。"
+disclaimer: "东财行业∩概念∩申万行业三条强势链的会员交集，非买卖指令；未经 B0→B5 策略验证；沿用 moneyflow_assist 行为标签。同花顺是第四条分类链的观察日镜头，不进本交集（交集是产品不是第五套分类）。"
 
 # Behaviors counted as inflow "strength" evidence when selecting sectors for
 # intersection (see moneyflow_assist.yaml regime_to_behavior for the map).

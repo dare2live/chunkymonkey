@@ -59,9 +59,9 @@ owner contract，进度段在此。**不再有第二个说「下一步」的地�
 - 默认序 S1→S2→S3→S4，S5 最后
 
 *三源换源*（按域选最佳再切 `primary`；停更 `raw_tushare_daily` 不当尺子）
-- **刀1** 名义 K：扶摇未复权 10d dump **与** 通达信未复权协议日 K 均已对 accepted（同窗 OHLC 全匹配；禁参赛的 qfq 未用）。**未切** `kline_daily.primary`（样本是 10 个交易日不是 10 年；日历/ST/停牌未对）
-- **刀2** 日历 / ST / 停牌
-- **刀3** 分类四链：申万区间 PIT · 东财行业日快照 · 东财概念多标签 · 同花顺观察日快照（无区间则禁假装 PIT）
+- **刀1** 名义 K：扶摇未复权 10d dump **与** 通达信未复权协议日 K 均已对 accepted（同窗 OHLC 全匹配；禁参赛的 qfq 未用）。**未切** `kline_daily.primary`（样本是 10 个交易日不是 10 年）
+- **刀2** 日历 / ST / 停牌：已对 accepted（停牌无 publication）。**未切** primary
+- **刀3** 分类四链：taxonomy 立法补 ths 观察日（禁假装区间 PIT）；DC/SW 同名成员集合对账；扶摇 THS 当前成分抽样；妙想无全市场 DC dump。**未切** primary / 未进 pulse 镜头
 - **刀4** 财务与两融（个股加总 ≠ 交易所汇总）
 - **刀5** 名义 K 自建筹码 vs `cyq_perf`（先档案，不进公式胜率）
 - **刀6** 盘中资金流两层：vendor 分钟代理 vs 通达信分笔主动差额（禁跨源加总）

@@ -3,6 +3,9 @@ version: 2
 # Namespace is part of identity. No namespace may silently backfill or replace another.
 cross_namespace_fallback: forbidden
 
+# Four classification chains (MASTER §6.2). Namespaces are identity.
+# Equal Chinese names are review candidates, not equivalent/broader/narrower.
+# Intersection is a product surface, not a fifth taxonomy. TDX block is not here.
 namespaces:
   sw_industry:
     kind: hierarchy
@@ -39,3 +42,15 @@ namespaces:
       min_memberships: 60000
       min_stocks: 5000
       min_nodes: 450
+  ths_industry:
+    kind: hierarchy
+    membership: observation_snapshot
+    canonical: false
+    pit_interval: forbidden
+    # Fuyao /api/a-share-index catalog+constituents is current members only.
+    # in_date is unproven — do not invent range PIT from this snapshot.
+  ths_concept:
+    kind: multi_label
+    membership: observation_snapshot
+    canonical: false
+    pit_interval: forbidden

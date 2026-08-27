@@ -9,6 +9,38 @@ import yaml
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "taxonomy.yaml"
 
+# MASTER §6.2 four chains = five namespaces (同花顺行业/概念 share one chain).
+FOUR_CHAIN_NAMESPACES = frozenset(
+    {
+        "sw_industry",
+        "dc_industry",
+        "dc_concept",
+        "ths_industry",
+        "ths_concept",
+    }
+)
+_BLOCKED_NAMESPACES = frozenset({"tdx_block", "block", "tdx_industry"})
+_THS_NAMESPACES = frozenset({"ths_industry", "ths_concept"})
+
+
+def _validate_four_chains(namespaces: dict[str, Any]) -> None:
+    missing = FOUR_CHAIN_NAMESPACES - set(namespaces)
+    if missing:
+        raise ValueError(f"taxonomy missing four-chain namespaces: {sorted(missing)}")
+    blocked = _BLOCKED_NAMESPACES & set(namespaces)
+    if blocked:
+        raise ValueError(f"tdx block is not a four-chain namespace: {sorted(blocked)}")
+    for ns in _THS_NAMESPACES:
+        entry = namespaces.get(ns)
+        if not isinstance(entry, dict):
+            raise ValueError(f"taxonomy namespace must be a mapping: {ns}")
+        if entry.get("membership") != "observation_snapshot":
+            raise ValueError(f"{ns} membership must be observation_snapshot")
+        if entry.get("pit_interval") != "forbidden":
+            raise ValueError(f"{ns} pit_interval must be forbidden")
+        if entry.get("canonical") is not False:
+            raise ValueError(f"{ns} canonical must be false")
+
 
 def load_taxonomy_config(path: str | Path | None = None) -> dict[str, Any]:
     cfg = yaml.safe_load(Path(path or CONFIG_PATH).read_text(encoding="utf-8")) or {}
@@ -17,6 +49,7 @@ def load_taxonomy_config(path: str | Path | None = None) -> dict[str, Any]:
     namespaces = cfg.get("namespaces")
     if not isinstance(namespaces, dict) or not namespaces:
         raise ValueError("taxonomy namespaces must be a non-empty mapping")
+    _validate_four_chains(namespaces)
     return cfg
 
 
@@ -93,6 +126,7 @@ def current_snapshot_quality_floor(
 
 __all__ = [
     "CONFIG_PATH",
+    "FOUR_CHAIN_NAMESPACES",
     "current_snapshot_quality_floor",
     "load_taxonomy_config",
     "source_content_type",

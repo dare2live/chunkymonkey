@@ -7,6 +7,8 @@ version: 1
 surface_version: decision_sector_membership_v0
 disclaimer: "板块成分宇宙为展示/导航用 membership serve；东财链按快照日；申万链为当前成分快照（非 PIT）。非买卖指令。"
 chains: [dc_industry, dc_concept, sw_industry]
+# ths_industry / ths_concept are taxonomy namespaces (observation snapshot) but
+# are not served on this facet until a THS membership publication exists.
 # DC membership as_of lag vs latest completed trade date.
 sla_max_lag_calendar_days: 1
 # SW is never claimed PIT on this surface.

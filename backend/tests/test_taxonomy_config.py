@@ -1,4 +1,5 @@
 from services.taxonomy_config import (
+    FOUR_CHAIN_NAMESPACES,
     current_snapshot_quality_floor,
     load_taxonomy_config,
     source_content_type,
@@ -11,7 +12,9 @@ def test_taxonomy_namespaces_are_distinct_and_cross_fallback_is_forbidden():
     cfg = load_taxonomy_config()
     assert cfg["version"] == 2
     assert cfg["cross_namespace_fallback"] == "forbidden"
-    assert set(cfg["namespaces"]) == {"sw_industry", "dc_industry", "dc_concept"}
+    assert set(cfg["namespaces"]) == FOUR_CHAIN_NAMESPACES
+    assert cfg["namespaces"]["ths_industry"]["pit_interval"] == "forbidden"
+    assert cfg["namespaces"]["ths_concept"]["membership"] == "observation_snapshot"
     assert cfg["namespaces"]["dc_concept"]["kind"] == "multi_label"
     assert source_content_type("dc_concept") == "概念"
     assert source_content_type("dc_industry") == "行业"
