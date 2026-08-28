@@ -717,7 +717,7 @@ def test_drain_main_fallback_incremental_domain_not_double_called(monkeypatch):
 
 
 def test_pre_publish_same_day_zero_is_typed_pending_not_tombstone():
-    """ths_hot-style: manual may hit today before HH:MM; 0 rows → pending_publish.
+    """pre-publish window: manual may hit today before HH:MM; 0 rows → pending_publish.
 
     Must NOT count as failed_batches and must NOT require known_empty_days.
     After the window, same 0 rows remains fail-closed.

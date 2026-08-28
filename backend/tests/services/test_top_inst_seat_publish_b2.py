@@ -198,9 +198,9 @@ def test_legacy_plane_top_inst_is_compatibility() -> None:
     assert meta["publication_surface"] == "fact_top_inst_seat_daily"
     assert mod.collect_violations() == []
     counts = mod.role_counts()
-    assert counts["ssot"] == 20
+    assert counts["ssot"] == 14
     assert counts["compatibility"] == 22
-    assert counts.get("retired", 0) == 3
+    assert counts.get("retired", 0) == 9
 
 
 def test_consumers_resolve_top_inst_off_raw_leaf(monkeypatch) -> None:

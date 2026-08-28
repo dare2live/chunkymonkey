@@ -271,13 +271,6 @@ def product_mismatches() -> list[dict[str, Any]]:
             "reason": "DumpKind 只有 daily-k / daily-k-10d / adjustment-factors",
         },
         {
-            "domain": "kpl_list",
-            "challenger": "miaoxiang registry",
-            "left_grain": "open_limit_reason_board",
-            "right_grain": None,
-            "reason": "妙想 registry 无开盘啦产品",
-        },
-        {
             "domain": "report_rc",
             "challenger": "RPT_HSF10_RES_ORGRATING",
             "left_grain": "report_date_x_ts_code_x_rating_tp",

@@ -215,7 +215,7 @@ def test_undated_full_refresh_updates_success_without_fabricating_data_date(monk
     spec = {
         "domain": "hm_list_probe",
         "source": "tushare",
-        "api": "hm_list",
+        "api": "static_name_list",
         "target_table": "raw_hm_list_probe",
         "grain": ["name"],
         "batch_mode": "full_refresh",

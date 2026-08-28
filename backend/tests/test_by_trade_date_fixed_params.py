@@ -1,11 +1,10 @@
 """by_trade_date + fixed_params 合并回归门 (2026-07-04 根因修复).
 
 背景: run_domain by_trade_date 分支曾只拼 {date_param: d}, 完全丢弃 fixed_params ——
-任何声明 fixed_params 的 by_trade_date 域静默失效。此 bug 是在排查"ths_hot 热基子榜"
-时发现的 (曾误以为注册独立域 synthetic_fixed_domain + data_type="热基" 能救回热基数据; 后续
-逐值实测证实 tushare ths_hot 接口对 data_type 参数已彻底忽略, 该域最终撤销 — 见
-sync_registry.yaml ths_hot.dead_groups 注释与 git log --grep r4_completion #1)。
-本 bug 修复本身独立成立 (fixed_params 合并是通用架构缺陷), 与"热基"业务判断的
+任何声明 fixed_params 的 by_trade_date 域静默失效。此 bug 是在排查同花顺热榜子榜
+时发现的 (曾误以为注册独立域 + 过滤参数能救回子榜数据; 后续逐值实测证实该接口对
+该参数已忽略, 该域已于 K3 退役 — 见 git log --grep r4_completion / K3)。
+本 bug 修复本身独立成立 (fixed_params 合并是通用架构缺陷), 与子榜业务判断的
 对错无关, 故此处保留合成测试域 (非真实生产域) 验证合并机制。
 本门锁定: 批次实际传给 adapter 的 params 必须含 fixed_params 全部键值 + date_param。
 """
@@ -32,8 +31,8 @@ REG = {
     },
     "domains": {
         "synthetic_fixed_domain": {
-            "source": "tushare", "api": "ths_hot",
-            "target_table": "raw_tushare_ths_hot_test",
+            "source": "tushare", "api": "synthetic_hot_board",
+            "target_table": "raw_tushare_synthetic_hot_board_test",
             "grain": ["trade_date", "data_type", "ts_code"],
             "batch_mode": "by_trade_date",
             "data_start": D,

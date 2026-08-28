@@ -4,7 +4,7 @@ consumer/continuity frontier for PIT safety and (b) classifies an empty pull as
 typed ``pending_publish`` (before window) vs fail-closed (after window).
 
 Owner 2026-07-22: reject "clock < 18:00 ⇒ never ask". This test proves the code
-already validates reality on click — daily/ths_hot/moneyflow do not dead-wait.
+already validates reality on click — daily/moneyflow do not dead-wait.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ _SH = ZoneInfo("Asia/Shanghai")
 
 
 def _hhmm_spec(available_after: str = "18:00") -> dict:
-    # Legacy HH:MM domain (no typed availability_policy) — e.g. moneyflow/ths_hot.
+    # Legacy HH:MM domain (no typed availability_policy) — e.g. moneyflow.
     return {
         "domain": "probe_demo",
         "batch_mode": "by_trade_date",

@@ -76,7 +76,7 @@ def _reason_for_field(lines: list[str], field_line_idx: int) -> str:
           # 第四轮节): 2026-07-09 那次"实测vendor现返5075行"的撤销测错域 ...
 
     向上找会同时造成两种错: (a) 假警报——上面这类写全了理由的被判"无理由"
-    (实测 moneyflow_dc / cyq_perf / ths_hot / block_trade 全中); (b) 假绿——把上一个
+    (实测 moneyflow_dc / cyq_perf / block_trade 全中); (b) 假绿——把上一个
     字段的注释块尾部"借"给下一个字段 (agent 自陈 stk_surv row_dip_tolerance 一例)。
     续行以**缩进深于字段名**判定, 因此下一字段的独立头注释 (缩进与字段齐平) 不会被并入。
     """

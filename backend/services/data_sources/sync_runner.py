@@ -3328,7 +3328,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         # date_param: API 日期参数名 (默认 trade_date; dividend 用 ex_date / report_rc 用
         # report_date — 锚定列同名, raw 表镜像后 drain 也按它扫 gap)
         date_param = spec.get("date_param", "trade_date")
-        # fixed_params 合并 (2026-07-04 根因修复, ths_hot_fund 实弹踩出的死配置):
+        # fixed_params 合并 (2026-07-04 根因修复, 热榜子榜排查实弹踩出的死配置):
         # 此分支此前只拼 {date_param: d}, 完全丢弃 fixed_params — 任何 by_trade_date+fixed_params
         # 组合域静默失效 (声明 data_type="热基" 却始终请求不到, 只拿到与 date_param 无关的默认返回)。
         # 与 by_code_list 分支 (L790) 同款合并语义, 批参数优先于 fixed (date_param 不应被 fixed 覆盖)。
@@ -3436,7 +3436,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
                 quota_halt = True
                 break
             if rows is None:
-                # Pre-window same-day vacuum (e.g. ths_hot before 22:30) → typed
+                # Pre-window same-day vacuum (e.g. HH:MM domain before available_after) → typed
                 # pending_publish, not failed_batches / not known_empty tombstone.
                 if _is_pre_publish_same_day_zero(spec, params):
                     pending_publish.append(params)
@@ -3806,7 +3806,7 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     # drain paths.  Formal typed policy is exact; legacy domains deliberately
     # retain their old token semantics until migrated with provider evidence.
     # 源端空洞墓碑 (2026-06-28): known_empty_days = 实测探过源端真没数据的交易日 (cyq_perf 06-15 仅1股/
-    #   ths_hot 20240312 源空/moneyflow_dc 起点前)。排出 expected → 不当 gap → 不每天重探 + 不永久 partial 告警疲劳
+    #   moneyflow_dc 起点前)。排出 expected → 不当 gap → 不每天重探 + 不永久 partial 告警疲劳
     #   (区别于真缺口)。新增前必实测源端确认空 (探测返0/不足且非throttle), 不可拿它掩盖真失败。
     known_empty = {str(d).replace("-", "") for d in (spec.get("known_empty_days") or [])}
     expected = [d for d in expected if d not in known_empty]
@@ -3885,7 +3885,7 @@ def drain_domain(domain: str, *, registry: dict[str, Any] | None = None,
     )
     _refilled_days = len(successful_todo)
     # 空补告警 (2026-06-28 谄媚死根治, 防 top_list 式静默丢光): 抓到 gap 天却 0 行落库 = 可疑
-    #   (universe_filter 漏配/写入静默丢)。源端真空洞 (cyq_perf/ths_hot 单日 0 行) 也会触发, 故 WARN 不硬降级,
+    #   (universe_filter 漏配/写入静默丢)。源端真空洞 (cyq_perf 单日 0 行) 也会触发, 故 WARN 不硬降级,
     #   但可见 → 不再"drained 成功"假象不留痕。(真 filter-drops-all 已被 _write_batch universe_filter raise 拦成 still_failed。)
     if _refilled_days > 0 and refilled_rows == 0:
         log.warning("[empty-drain] %s 抓到 %d 个 gap 天却 0 行落库 — 查 universe_filter 漏配 or 源端真空洞 (status=%s)",

@@ -78,7 +78,7 @@ def test_status_exposes_writer_lock_as_authority_and_pgrep_as_hint(tmp_path, mon
             "label": "跑前预检快照",
             "items": [
                 {
-                    "domain": "ths_hot",
+                    "domain": "moneyflow",
                     "watermark": "20260720",
                     "days_ago": 2,
                     "will_fetch": True,
@@ -96,7 +96,7 @@ def test_status_exposes_writer_lock_as_authority_and_pgrep_as_hint(tmp_path, mon
     assert payload["process_hint_running"] is True
     assert "current_activity" in payload
     assert payload["current_activity"]["phase"] in {"running", "idle"}
-    assert payload["due_plan"]["items"][0]["domain"] == "ths_hot"
+    assert payload["due_plan"]["items"][0]["domain"] == "moneyflow"
     assert payload["due_plan"]["items"][0]["will_fetch"] is True
 
 
@@ -178,7 +178,7 @@ def test_due_plan_preview_marks_lagged_all_due_domains(tmp_path, monkeypatch):
                 "run_at": "2026-07-22T01:00:00Z",
                 "sources": [
                     {
-                        "data_domain": "sync:ths_hot",
+                        "data_domain": "sync:moneyflow",
                         "watermark_date": "20260720",
                         "watermark_days_ago": 2,
                         "sla_days": 2,
@@ -220,9 +220,9 @@ def test_due_plan_preview_marks_lagged_all_due_domains(tmp_path, monkeypatch):
     domains = {row["domain"]: row for row in plan["items"]}
     assert "org_holding" in domains
     assert domains["org_holding"]["kind"] == "period_incremental"
-    assert "ths_hot" in domains
-    assert domains["ths_hot"]["will_fetch"] is True
-    assert domains["ths_hot"]["watermark"] == "20260720"
+    assert "moneyflow" in domains
+    assert domains["moneyflow"]["will_fetch"] is True
+    assert domains["moneyflow"]["watermark"] == "20260720"
     assert domains["daily"]["will_fetch"] is False
     assert "moneyflow_dc" not in domains
     assert plan["snapshot_kind"] == "preflight"
@@ -292,7 +292,7 @@ def test_due_plan_prefers_newer_post_acquire_over_before(tmp_path, monkeypatch):
                 "run_at": "2026-07-22T12:48:00+00:00",
                 "sources": [
                     {
-                        "data_domain": "sync:ths_hot",
+                        "data_domain": "sync:moneyflow",
                         "watermark_date": "20260721",
                         "watermark_days_ago": 1,
                         "status": "OK",
@@ -313,7 +313,7 @@ def test_due_plan_prefers_newer_post_acquire_over_before(tmp_path, monkeypatch):
     plan = ops_manual_run._due_plan_preview()
     assert plan["snapshot_kind"] == "post_acquire"
     assert plan["as_of"] == "2026-07-22T12:48:00+00:00"
-    assert plan["items"][0]["domain"] == "ths_hot"
+    assert plan["items"][0]["domain"] == "moneyflow"
 
 def test_current_activity_prefers_latest_phase_over_prior_fail(tmp_path, monkeypatch):
     log = tmp_path / "daily.log"

@@ -42,7 +42,7 @@ def _write_sla(repo: Path, *, today: str = "20260824") -> Path:
                         "sla_axis": "trade_date",
                     },
                     {
-                        "data_domain": "sync:ths_hot",
+                        "data_domain": "sync:top_list",
                         "watermark_date": "20260820",
                         "watermark_days_ago": 3,
                         "sla_days": 2,
@@ -75,7 +75,7 @@ def test_matrix_reads_all_sla_sources_and_maps_lamps(tmp_path: Path):
     assert by_name["daily"]["lamp"] == "hole"
     assert by_name["daily"]["cn"] == "名义日K"
     assert by_name["moneyflow"]["lamp"] == "ok"
-    assert by_name["ths_hot"]["lamp"] == "unk"
+    assert by_name["top_list"]["lamp"] == "unk"
     assert "rows" not in by_name["daily"]
 
 

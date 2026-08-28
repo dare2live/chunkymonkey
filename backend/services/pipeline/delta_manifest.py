@@ -30,10 +30,8 @@ _DEFAULT_DC_PROVENANCE = frozenset(
     {
         "dc_index",
         "dc_member",
-        "dc_daily",
         "sync:dc_index",
         "sync:dc_member",
-        "sync:dc_daily",
     }
 )
 

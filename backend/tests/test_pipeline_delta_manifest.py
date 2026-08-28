@@ -79,7 +79,7 @@ def test_build_advanced_partitions_from_formal_and_drain():
             },
         ],
         drain=[
-            {"domain": "ths_hot", "status": "clean", "refilled_rows": 0},
+            {"domain": "block_trade", "status": "clean", "refilled_rows": 0},
             {"domain": "moneyflow_dc", "status": "drained", "refilled_rows": 12},
         ],
     )
@@ -229,3 +229,13 @@ def test_run_and_record_captures_stage_timing(tmp_path, monkeypatch):
     )
     assert ctx.stage_timing_s["total"] == expected
     assert ctx.stage_timing_s["total"] < float(ctx.stage_timing_s["acquire"]) * 3
+
+
+def test_dc_provenance_keeps_live_dc_chain_without_retired_dc_daily():
+    from services.pipeline.delta_manifest import load_latency_budgets
+
+    cfg = load_latency_budgets()
+    domains = cfg["dc_provenance_domains"]
+    assert "dc_index" in domains and "dc_member" in domains
+    assert "sync:dc_index" in domains and "sync:dc_member" in domains
+    assert "dc_daily" not in domains and "sync:dc_daily" not in domains

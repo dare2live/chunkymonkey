@@ -2,7 +2,7 @@
 
 五类检测各 >=2 测 + red-green: (1) 日历缺日 (中间空洞 FAIL / 尾部 SLA 内外 / 墓碑 / annotate);
 (2) 横截面骤降 WARN + 分组缺失 FAIL (margin SSE-only 型); (3) 分组新鲜度断流 FAIL + dead_groups
-墓碑 (ths_hot 子榜型); (4) 声明-实测错位 WARN + 深史稀疏年份 (income 型); (5) by_ts_code 断流
+墓碑 (分组子榜型); (4) 声明-实测错位 WARN + 深史稀疏年份 (income 型); (5) by_ts_code 断流
 只 WARN 不 FAIL (stk_factor_pro 型)。另: registry 解析 (新键 + gap_tolerance 非法值报错) /
 run_checks 编排 (only 过滤 / 库不可达 strict) / 告警 flag 写-自愈。全内存 DuckDB, 不碰真库。
 """
@@ -519,7 +519,7 @@ def test_cross_section_missing_group_fail_margin_sse_only():
 
 
 def test_cross_section_known_group_gaps_tombstone_precise_date():
-    """known_group_gaps (2026-07-05 R4 修复): margin/ths_hot 型域某日源端确认只回部分组,
+    """known_group_gaps (2026-07-05 R4 修复): margin 型域某日源端确认只回部分组,
     需按(日期,组)精确墓碑 — 不能用 dead_groups(永久整组豁免, 会致盲该组未来真断流) 或
     known_empty_days(只喂 calendar_gaps, 对 cross_section 的 fail_missing_groups 无效,
     2026-07-05 workflow 实测 patch known_empty_days 后 FAIL 原样复现)。"""
@@ -564,7 +564,7 @@ def test_cross_section_insufficient_history_skipped():
 # ── 检测 3: group_freshness ──────────────────────────────────────────────
 
 def test_group_freshness_stalled_subboard_fail_and_dead_tombstone():
-    """ths_hot 子榜断流型: 组 B 落后 > SLA x 3 = FAIL; dead_groups 墓碑后 = pass (red-green)。"""
+    """分组子榜断流型: 组 B 落后 > SLA x 3 = FAIL; dead_groups 墓碑后 = pass (red-green)。"""
     tds = _weekdays("20260401", 40)
     c = duck_mem()
     try:
@@ -779,12 +779,18 @@ def test_load_domain_specs_new_keys_and_bad_gap_tolerance(tmp_path):
         cci.load_domain_specs(p2)
 
 
-def test_real_registry_parses_with_ths_hot_group_col():
-    """生产 sync_registry.yaml 真解析非空; ths_hot 示例键 freshness_group_col=data_type 在录。"""
+def test_real_registry_excludes_retired_k3_domains():
+    """生产 sync_registry 真解析非空; K3 退役域不得再登记; 无 data_type 分组列。"""
     specs = cci.load_domain_specs()
     assert len(specs) >= 30
-    th = next(s for s in specs if s["domain"] == "ths_hot")
-    assert th["freshness_group_col"] == "data_type"
+    names = {s["domain"] for s in specs}
+    retired = {"daily_info", "dc_daily", "hm_detail", "hm_list", "kpl_list", "ths_hot"}
+    assert names.isdisjoint(retired), names & retired
+    assert "dc_index" in names and "dc_member" in names
+    assert "moneyflow_ind_dc" in names and "moneyflow_mkt_dc" in names
+    assert "moneyflow_dc" in names and "top_list" in names
+    assert not any(s.get("freshness_group_col") == "data_type" for s in specs)
+    assert cci.CROSS_SECTION_GROUP_COLS == ("exchange_id",)
     margin = next(s for s in specs if s["domain"] == "margin")
     assert margin["accepted_margin"] is True
     assert margin["table"] == "canonical_margin_exchange_daily"

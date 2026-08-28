@@ -6,7 +6,7 @@
 #
 # Semantics:
 #   - Real gaps → FAIL (fail-closed)
-#   - Typed walls (S7 20 ssot hard-stop + 3 retired / org mass by-date provider land banned +
+#   - Typed walls (S7 14 ssot hard-stop + 9 retired / org mass by-date provider land banned +
 #     daily incremental-by-period required)
 #     are PASS when the wall is honestly maintained — they must NOT block
 #     foundation-phase closure incorrectly
@@ -22,14 +22,16 @@ authority: docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维)
 
 # S7 typed hard-stop wall (F2) — counts are the wall, not residual debt
 s7_ssot_wall:
-  ssot: 20
+  ssot: 14
   fill: 1
   compatibility: 22
   kinds:
-    sync_orphan: 10
+    sync_orphan: 4
     serve_l0_declared: 8
     blocked_no_publication: 2
-  # retired (not ssot): stk_factor_pro + express/fina_mainbz (2026-07-23/24);
+  # retired (not ssot): stk_factor_pro + express/fina_mainbz (2026-07-23/24)
+  # + K3 2026-08-28 daily_info/dc_daily/hm_detail/hm_list/kpl_list/ths_hot
+  # (stop collection; raw tables left in duckdb)
   # stk_holdernumber restored 2026-07-24 → ssot/serve_l0_declared
 
 # E0 accept breadth (F6)

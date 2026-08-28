@@ -199,10 +199,10 @@ def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
 
     mod = _load_check_mod()
     counts = mod.role_counts()
-    assert counts["ssot"] == 20, counts
+    assert counts["ssot"] == 14, counts
     assert counts["fill"] == 1, counts
     assert counts["compatibility"] == 22, counts
-    assert counts.get("retired", 0) == 3, counts
+    assert counts.get("retired", 0) == 9, counts
     assert sum(counts.values()) == 46, counts
 
 
@@ -238,19 +238,13 @@ def test_s7_residual_ssot_map_is_typed_hard_stops_only() -> None:
         },
         "sync_orphan": {
             "balancesheet",
-            "daily_info",
-            "dc_daily",
             "dividend",
-            "hm_detail",
-            "hm_list",
             "income",
-            "kpl_list",
             "moneyflow_hsgt",
-            "ths_hot",
         },
     }
     assert by_kind == expected, by_kind
-    assert sum(len(v) for v in by_kind.values()) == 20
+    assert sum(len(v) for v in by_kind.values()) == 14
     retired = {
         table.removeprefix("raw_tushare_")
         for table, meta in inv["tables"].items()
@@ -260,6 +254,12 @@ def test_s7_residual_ssot_map_is_typed_hard_stops_only() -> None:
         "stk_factor_pro",
         "express",
         "fina_mainbz",
+        "daily_info",
+        "dc_daily",
+        "hm_detail",
+        "hm_list",
+        "kpl_list",
+        "ths_hot",
     }, retired
 
 

@@ -489,12 +489,12 @@ def test_run_domain_ok_strict_any_failure_is_not_ok(monkeypatch):
 
 
 def test_write_batch_merge_null_safe_on_nullable_grain_column():
-    """MERGE-on-grain DELETE 必须 NULL-safe (2026-07-05 grain 门实锤: ths_hot 美股子榜
+    """MERGE-on-grain DELETE 必须 NULL-safe (2026-07-05 grain 门实锤: 热榜美股子榜
     ts_code 恒为 NULL, 普通 `=` 对 NULL 永远算 UNKNOWN → 旧行从未被删, 每次重跑都新插一份
     "重复", 实测 430 组 863 行历史累积)。用 IS NOT DISTINCT FROM 后, 同 grain(含 NULL 列)
     重跑必须覆盖旧行, 不能累积。"""
     conn = connect(":memory:")
-    spec = {"domain": "ths_hot_like", "target_table": "t_null_grain",
+    spec = {"domain": "nullable_grain_like", "target_table": "t_null_grain",
             "grain": ["trade_date", "data_type", "ts_code", "rank_time"]}
     row = {"trade_date": "20250623", "data_type": "美股", "ts_code": None,
            "ts_name": "Circle", "rank_time": "2025-06-23 21:25:43"}

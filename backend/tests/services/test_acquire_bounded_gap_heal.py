@@ -103,7 +103,7 @@ def test_zero_window_disables_healing(conn):
 def test_known_empty_days_are_not_healed_forever(conn):
     """源端实测真空的日子不参与自愈, 否则每天重拉一次永不收敛。
 
-    drain_domain 早就为同一件事写过警告(cyq_perf 20260615 仅 1 股 / ths_hot 20240312 源空):
+    drain_domain 早就为同一件事写过警告(cyq_perf 20260615 仅 1 股):
     墓碑日排出 expected, 既不当缺口也不制造永久 partial 告警。自愈路径必须守同一条线。
     """
     _accept(conn, [d for d in TRADING if d not in ("20260818", "20260819")])

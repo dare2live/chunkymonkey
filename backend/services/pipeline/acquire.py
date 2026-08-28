@@ -356,7 +356,7 @@ def _recent_unaccepted_days(
 
     ``known_empty`` = registry 的 known_empty_days(实测源端真空的交易日)。必须排除:
     否则自愈会对"源端本来就没有"的日子每天重拉一次, 永不收敛并制造告警疲劳 ——
-    drain_domain 的注释早就为同一件事写过这条警告(cyq_perf 20260615 / ths_hot 20240312)。
+    drain_domain 的注释早就为同一件事写过这条警告(cyq_perf 20260615)。
     """
     if window <= 0:
         return []

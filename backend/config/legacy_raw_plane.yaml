@@ -94,14 +94,12 @@ tables:
     note: "S7: dim_stock_segment_daily owns circ_mv/segment publication; pulse SW MV reads dim; raw = segments rebuild input"
 
   raw_tushare_daily_info:
-    role: ssot
-    kind: sync_orphan
-    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
+    role: retired
+    note: "K3 2026-08-28: zero-consumer sunset; stop collection; raw table left in duckdb (no DROP). See git log --grep K3."
 
   raw_tushare_dc_daily:
-    role: ssot
-    kind: sync_orphan
-    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
+    role: retired
+    note: "K3 2026-08-28: zero-consumer sunset; stop collection; raw table left in duckdb (no DROP). Live dc_index/dc_member untouched. See git log --grep K3."
 
   raw_tushare_dc_index:
     role: compatibility
@@ -139,14 +137,12 @@ tables:
     note: "S7 hard-stop: DataAccess L0 declared; historical load_forecast retired; no formal plane"
 
   raw_tushare_hm_detail:
-    role: ssot
-    kind: sync_orphan
-    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
+    role: retired
+    note: "K3 2026-08-28: zero-consumer sunset; 游资 rebuild stays on roadmap via 妙想席位 (RPT_OPERATEDEPT_TRADE + top_inst), not hm_* tables. Raw left in duckdb (no DROP)."
 
   raw_tushare_hm_list:
-    role: ssot
-    kind: sync_orphan
-    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
+    role: retired
+    note: "K3 2026-08-28: zero-consumer sunset; do not keep hm_* as 游资 identity. Raw left in duckdb (no DROP)."
 
   raw_tushare_income:
     role: ssot
@@ -172,9 +168,8 @@ tables:
     note: "S7: DataAccess index_member_all → v_sw_industry_pit (L1); raw sync residual; no mass delete"
 
   raw_tushare_kpl_list:
-    role: ssot
-    kind: sync_orphan
-    note: "S7 hard-stop: sync residual; no DataAccess/serve consumer; no formal publication → stay ssot"
+    role: retired
+    note: "K3 2026-08-28: zero-consumer sunset; replacement is K5 扶摇涨停池 (not wired here). Raw left in duckdb (no DROP)."
 
   raw_tushare_limit_cpt_list:
     role: compatibility
@@ -286,9 +281,8 @@ tables:
     note: "S7: pulse builder SW RS/px via DataAccess; sector mart owns display publication"
 
   raw_tushare_ths_hot:
-    role: ssot
-    kind: sync_orphan
-    note: "S7 hard-stop: sync residual; dead_groups partial; no DataAccess/serve consumer; no formal publication → stay ssot"
+    role: retired
+    note: "K3 2026-08-28: zero-consumer sunset; stop collection; CROSS_SECTION_GROUP_COLS dropped data_type with this domain. Raw left in duckdb (no DROP)."
 
   raw_tushare_top_inst:
     role: compatibility

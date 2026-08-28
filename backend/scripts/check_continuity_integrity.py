@@ -1,7 +1,7 @@
 """check_continuity_integrity — 数据连续性/完整性常驻审查器 (R1 根因 2/4/6 机械门, 2026-07-03).
 
 owner=git log --grep data_foundation_root_causes 根因2 (allow_empty 吞故障空: top_inst 16 缺日 /
-block_trade 20250917 中间空洞) + 根因4 (SLA 只测"最近动过"不测"该到的到了没": ths_hot 热基子榜断流
+block_trade 20250917 中间空洞) + 根因4 (SLA 只测"最近动过"不测"该到的到了没": 分组子榜断流
 4 个月 / stk_factor_pro 停 11 天零痕迹) + 根因6 (声明-实测漂移: data_start 错位 5 域 / income 深史
 2008-2021 仅 5-15% 覆盖)。把一次性审计 (data_foundation_audit_20260703.json continuity 部分)
 固化为 sync_registry 全域驱动的常驻机械门。
@@ -26,11 +26,11 @@ today 记录单跑一次, 结果并入 calendar_horizon 桶):
                      row_dip_ratio = WARN (known_empty_days ∪ verified_low_days 墓碑排除;
                      row_dip_tolerance: true 域降 pass, 需逐域单独审查声明, 不从 gap_tolerance
                      继承——2026-07-08 教训: stk_surv 曾因 gap_tolerance 掩盖真实 page_limit 截断
-                     bug, 见 git log --grep gap_root_cause); grain 含 exchange_id/data_type
+                     bug, 见 git log --grep gap_root_cause); grain 含 exchange_id
                      类分组列的域, 基线组当日缺失 = FAIL (known_group_gaps 精确墓碑)。这是唯一
                      会 WARN/FAIL 的日常生产门 (对比 cross_section_full, 见下)。
   group_freshness    分组新鲜度 (声明 freshness_group_col 的域): 各组 MAX(date) 落后 > SLA x 3
-                     交易日 = FAIL (ths_hot 子榜断流型); dead_groups 墓碑排除。
+                     交易日 = FAIL (分组子榜断流型); dead_groups 墓碑排除。
   declared_vs_actual data_start 声明 vs 实测 MIN(date) 偏差 > 90 自然日 = WARN (带建议修正值);
                      按年行数 / 参照完整年 < 0.3 的年份 = WARN (coverage_note 建议)。
   static_staleness   无日频语义域 (by_ts_code/by_period/by_ann_date/by_code_list/full_refresh):
@@ -112,7 +112,7 @@ GROUP_FRESHNESS_SLA_MULT = 3   # evidence: 任务规格 "任何组落后 > 域 S
 STALENESS_SLA_MULT = 5         # evidence: 任务规格 "MAX(built_at) 距今 > SLA x 5 = WARN"
 DECLARED_DRIFT_CAL_DAYS = 90   # evidence: 任务规格 "data_start 声明 vs 实测偏差 > 90 自然日 = WARN"
 SPARSE_YEAR_RATIO = 0.3        # evidence: 任务规格 "按年行数 / 最近完整年行数 < 0.3 的年份列 coverage_note"
-CROSS_SECTION_GROUP_COLS = ("exchange_id", "data_type")  # grain 含此类列 = 按组检测缺组 (margin/ths_hot 型)
+CROSS_SECTION_GROUP_COLS = ("exchange_id",)  # grain 含此类列 = 按组检测缺组 (margin exchange_id)
 GAP_TOLERANCE_VALUES = {
     "none",
     "annotate",
@@ -250,7 +250,7 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
             "completeness_ref": entry.get("completeness_ref"),
             "dead_groups": [str(g) for g in (entry.get("dead_groups") or [])],
             # 2026-07-05 R4 gap 调查发现: known_empty_days/dead_groups 都不覆盖 cross_section 的
-            # fail_missing_groups (前者只喂 calendar_gaps, 后者是永久整组豁免) — margin/ths_hot
+            # fail_missing_groups (前者只喂 calendar_gaps, 后者是永久整组豁免) — margin
             # 需要"某日某组"级精确墓碑 (源端当日确实只回部分组, 不代表该组永久死或整表当日全空)。
             "known_group_gaps": {
                 str(d).replace("-", ""): {str(g) for g in (groups or [])}
@@ -778,7 +778,7 @@ def check_cross_section(
     accepted_state=None,
 ) -> dict:
     """近 60 交易日: 单日行数 < 近 20 观测日滚动中位 x ratio = WARN;
-    grain 含 exchange_id/data_type 类分组列: 基线组当日缺失 = FAIL (margin SSE-only 型)。"""
+    grain 含 exchange_id 类分组列: 基线组当日缺失 = FAIL (margin SSE-only 型)。"""
     table = spec["table"]
     accepted_batches: dict[str, str] | None = None
     if spec.get("accepted_security_day"):
@@ -988,7 +988,7 @@ def check_cross_section_full(conn, spec: dict, *, window: int = 10) -> dict:
 
 def check_group_freshness(conn, spec: dict, trading_days: list[str], latest_expected: str) -> dict:
     """声明 freshness_group_col 的域: 各组 MAX(date) 落后 > SLA x 3 交易日 = FAIL;
-    dead_groups 墓碑组只标注不告警 (ths_hot 热基子榜断流 4 个月表级 SLA 探不到的根治)。"""
+    dead_groups 墓碑组只标注不告警 (分组子榜断流、表级 SLA 探不到的根治)。"""
     table = spec["table"]
     gcol = spec["freshness_group_col"]
     if not _table_exists(conn, table):
