@@ -1,0 +1,29 @@
+{
+  "ts_code": "000001.SZ",
+  "market": 0,
+  "code": "000001",
+  "events": [
+    {
+      "year": 2024,
+      "month": 6,
+      "day": 13,
+      "category": 1,
+      "name": "除权除息",
+      "fenhong": 3.06,
+      "peigujia": 0.0,
+      "songzhuangu": 0.0,
+      "peigu": 0.0
+    },
+    {
+      "year": 2023,
+      "month": 5,
+      "day": 16,
+      "category": 5,
+      "name": "股本变化",
+      "panqianliutong": 19405920198.0,
+      "panhouliutong": 19405920198.0,
+      "qianzongguben": 19405920198.0,
+      "houzongguben": 19405920198.0
+    }
+  ]
+}

@@ -10,8 +10,7 @@ BJ listing APIs in tdxhub warn unsupported; BJ bars still go through
 from __future__ import annotations
 
 from datetime import date, datetime
-from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from services.data_sources.fuyao_kline_recon import (
     ACCEPTED_K_TABLE,
@@ -27,6 +26,9 @@ TDX_AMOUNT_CONFIRM = (800.0, 1200.0)
 BANNED_ADJUST = frozenset({"qfq", "hfq", "01", "02", "before", "after"})
 # Both labeled daily in tdxhub.consts; live HQ may answer only one.
 DAILY_BAR_CATEGORIES = (9, 4)
+# Protocol max (tdxhub.consts.MAX_KLINE_COUNT). Page size, not a history estimate.
+MAX_BARS_PER_PAGE = 800
+MAX_KLINE_PAGES = 50  # 50*800 >> A-share listed daily history; fail closed on runaway HQ
 _CLIENT_CATEGORY_ATTR = "_cm_daily_category"
 
 
@@ -88,6 +90,30 @@ def _as_date(value: Any) -> date | None:
     return date.fromisoformat(text[:10])
 
 
+def bar_trade_date(item: Mapping[str, Any] | None) -> date | None:
+    payload = item or {}
+    got = _as_date(payload.get("datetime") or payload.get("date"))
+    if got is not None:
+        return got
+    year, month, day = payload.get("year"), payload.get("month"), payload.get("day")
+    if year in (None, "") or month in (None, "") or day in (None, ""):
+        return None
+    try:
+        return date(int(year), int(month), int(day))
+    except (TypeError, ValueError):
+        return None
+
+
+def bars_page_size(offset: int | None = None) -> int:
+    """Protocol ``count`` per ``get_security_bars`` call. Cap 800; never a holiday guess."""
+    if offset is None:
+        return MAX_BARS_PER_PAGE
+    n = int(offset)
+    if n <= 0:
+        return MAX_BARS_PER_PAGE
+    return min(n, MAX_BARS_PER_PAGE)
+
+
 def bars_as_records(raw: Any) -> list[dict[str, Any]]:
     """Normalize protocol / pandas payloads without ``if dataframe`` truthiness."""
     if raw is None:
@@ -119,7 +145,7 @@ def records_to_rows(
 ) -> list[tuple]:
     rows = []
     for item in records or []:
-        trade_date = _as_date(item.get("datetime") or item.get("date"))
+        trade_date = bar_trade_date(item)
         if trade_date is None or trade_date < start or trade_date > end:
             continue
         rows.append(
@@ -185,17 +211,100 @@ def compare_tdx_kline(
     return report
 
 
+def _page_oldest(records: Iterable[dict[str, Any]]) -> date | None:
+    dates = [d for d in (bar_trade_date(item) for item in records) if d is not None]
+    return min(dates) if dates else None
+
+
+def dedup_kline_rows(rows: Iterable[tuple]) -> list[tuple]:
+    seen: dict[tuple[Any, Any], tuple] = {}
+    for row in rows:
+        key = (row[0], row[1])
+        if key not in seen:
+            seen[key] = row
+    return sorted(seen.values(), key=lambda r: (r[0], r[1]))
+
+
+def live_hq_env_set() -> bool:
+    import os
+
+    return bool(
+        os.environ.get("TDXHUB_CONNECT_CFG", "").strip()
+        or os.environ.get("TDXHUB_HQ", "").strip()
+    )
+
+
+def live_history_probe(*, ts_code: str = "000001.SZ") -> dict[str, Any]:
+    """Optional live HQ probe. Unset env is ``live_unprobed``, not a skip of fake tests."""
+    if not live_hq_env_set():
+        return {
+            "status": "live_unprobed",
+            "bars": "live_unprobed",
+            "xdxr": "live_unprobed",
+            "block": "live_unprobed",
+            "reason": "TDXHUB_CONNECT_CFG and TDXHUB_HQ unset",
+        }
+    from services.calendar import latest_closed_or_raise, parse_day
+    from services.data_sources.sources.tdxhub import block, quotes_client, xdxr
+
+    client = None
+    try:
+        client = quotes_client()
+        end = parse_day(latest_closed_or_raise())
+        if end is None:
+            raise RuntimeError("calendar latest closed day unparseable")
+        try:
+            start = date(end.year - 10, end.month, end.day)
+        except ValueError:
+            start = date(end.year - 10, 2, 28)
+        rows = fetch_unadjusted_bars(client, ts_code, start=start, end=end)
+        xdxr_payload = xdxr(client, ts_code)
+        block_payload = block(client, tofile="block_gn.dat")
+        bar_status = "ok" if len(rows) > MAX_BARS_PER_PAGE else "shallow_or_empty"
+        return {
+            "status": bar_status,
+            "bars": bar_status,
+            "bar_rows": len(rows),
+            "xdxr": xdxr_payload.get("status"),
+            "xdxr_events": len(xdxr_payload.get("events") or []),
+            "block": block_payload.get("status"),
+            "block_n": len(block_payload.get("blocks") or []),
+            "reason": None,
+        }
+    except Exception as exc:  # noqa: BLE001 — probe must not pretend success
+        return {
+            "status": "live_failed",
+            "bars": "live_failed",
+            "xdxr": "live_failed",
+            "block": "live_failed",
+            "reason": f"{type(exc).__name__}: {exc}",
+        }
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except Exception:  # rule-compliance: ok evidence=tdx-socket-close-best-effort
+                pass
+
+
 def fetch_unadjusted_bars(
     client: Any,
     ts_code: str,
     *,
     start: date,
     end: date,
-    offset: int = 30,
+    offset: int | None = None,
     adjust: str | None = None,
 ) -> list[tuple]:
+    """Full-history unadjusted daily bars via paginated ``get_security_bars``.
+
+    ``start``/``count`` are protocol offsets (0 = newest page), not calendar
+    arithmetic. Stop on empty page, short page, or a page whose oldest bar is
+    before the requested start date. Do not estimate trading-day span.
+    """
     reject_tdx_adjust(adjust)
     market, code = protocol_market(ts_code)
+    page_size = bars_page_size(offset)
     preferred = getattr(client, _CLIENT_CATEGORY_ATTR, None)
     categories: list[int] = []
     if preferred is not None:
@@ -203,11 +312,48 @@ def fetch_unadjusted_bars(
     for cat in DAILY_BAR_CATEGORIES:
         if cat not in categories:
             categories.append(int(cat))
-    records: list[dict[str, Any]] = []
+    api = client.client
+    chosen: int | None = None
+    collected: list[dict[str, Any]] = []
     for cat in categories:
-        raw = client.client.get_security_bars(int(cat), market, code, 0, int(offset))
-        records = bars_as_records(raw)
-        if records:
-            setattr(client, _CLIENT_CATEGORY_ATTR, int(cat))
+        page = bars_as_records(api.get_security_bars(int(cat), market, code, 0, page_size))
+        if not page:
+            continue
+        chosen = int(cat)
+        setattr(client, _CLIENT_CATEGORY_ATTR, chosen)
+        collected.extend(page)
+        break
+    if chosen is None:
+        return []
+
+    def _stop(page: list[dict[str, Any]]) -> bool:
+        if len(page) < page_size:
+            return True
+        oldest = _page_oldest(page)
+        return oldest is not None and oldest < start
+
+    seen_dates = {d for d in (bar_trade_date(item) for item in collected) if d is not None}
+    if _stop(collected):
+        return dedup_kline_rows(records_to_rows(collected, ts_code, start=start, end=end))
+
+    page_start = page_size
+    while True:
+        page = bars_as_records(
+            api.get_security_bars(chosen, market, code, page_start, page_size)
+        )
+        if not page:
             break
-    return records_to_rows(records, ts_code, start=start, end=end)
+        new_dates = {d for d in (bar_trade_date(item) for item in page) if d is not None}
+        collected.extend(page)
+        if not (new_dates - seen_dates):
+            break
+        seen_dates |= new_dates
+        if _stop(page):
+            break
+        page_start += page_size
+        if page_start >= page_size * MAX_KLINE_PAGES:
+            raise RuntimeError(
+                f"tdx get_security_bars exceeded {MAX_KLINE_PAGES} pages "
+                f"without reaching start={start}"
+            )
+    return dedup_kline_rows(records_to_rows(collected, ts_code, start=start, end=end))

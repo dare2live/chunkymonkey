@@ -13,6 +13,10 @@ same catalog on a *separate* raw socket until handshake + nonempty
 ``capital_flow`` for ``000001`` succeeds. Never runs tdxhub ``bestip`` (that
 writes the tdxhub runtime config file). Never reuse the StdQuotes socket for
 MAC frames.
+
+``xdxr`` is corporate-action events (not qfq / not a daily factor).
+``block`` is namespace ``tdx_block``, parallel to SW / DC / THS — names are
+labels, not crosswalk keys. Both ride ``quotes_client``, never MAC.
 """
 from __future__ import annotations
 
@@ -240,8 +244,23 @@ def capital_flow(conn: Any, market: int, code: str, **kwargs: Any) -> dict[str, 
     return _capital_flow(conn, market, code, **kwargs)
 
 
+def xdxr(client: Any, ts_code: str, **kwargs: Any) -> dict[str, Any]:
+    """Corporate-action events via Quotes ``get_xdxr_info``. Not qfq."""
+    from services.data_sources.tdxhub_xdxr import fetch_xdxr
+
+    return fetch_xdxr(client, ts_code, **kwargs)
+
+
+def block(client: Any, **kwargs: Any) -> dict[str, Any]:
+    """Vendor ``tdx_block`` membership. Not SW / DC / THS; no name crosswalk."""
+    from services.data_sources.tdxhub_block import fetch_block
+
+    return fetch_block(client, **kwargs)
+
+
 __all__ = [
     "ALIAS",
+    "block",
     "capital_flow",
     "is_hq_transport_error",
     "iter_hq_candidates",
@@ -253,4 +272,5 @@ __all__ = [
     "reader_client",
     "tcp_open",
     "tdxhub_root",
+    "xdxr",
 ]

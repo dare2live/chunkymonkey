@@ -49,7 +49,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--start", default=DEFAULT_START.isoformat())
     parser.add_argument("--end", default=DEFAULT_END.isoformat())
-    parser.add_argument("--offset", type=int, default=30)
+    parser.add_argument(
+        "--offset",
+        type=int,
+        default=800,
+        help="get_security_bars page size (protocol count, cap 800); not a calendar window",
+    )
     parser.add_argument("--limit", type=int, default=0, help="0 = all accepted codes in window")
     parser.add_argument("--sleep-ms", type=int, default=20)
     parser.add_argument(

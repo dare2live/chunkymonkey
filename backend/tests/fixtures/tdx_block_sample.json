@@ -1,0 +1,15 @@
+{
+  "source_file": "block_gn.dat",
+  "blocks": [
+    {
+      "name": "银行",
+      "vendor_block_type": 101,
+      "members": ["000001", "600000"]
+    },
+    {
+      "name": "白酒",
+      "vendor_block_type": 202,
+      "members": ["600519"]
+    }
+  ]
+}
