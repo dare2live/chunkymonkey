@@ -2,7 +2,7 @@
 
 Baseline is ``canonical_nominal_ohlcv_daily`` (plus dividend / adj_factor
 sampling). ``raw_tushare_daily`` is a stopped fill table and is rejected as
-baseline. This module does not change ``kline_daily.primary`` or write
+baseline. ``price_kline_qfq_tushare`` is derived qfq and is not SSOT. This module does not change ``kline_daily.primary`` or write
 accepted partitions.
 
 Dump kinds are probed independently: one HTTP 404 is not "API offline".
@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
 ACCEPTED_K_TABLE = "canonical_nominal_ohlcv_daily"
-BANNED_BASELINE_TABLES = frozenset({"raw_tushare_daily"})
+BANNED_BASELINE_TABLES = frozenset({"raw_tushare_daily", "price_kline_qfq_tushare"})
 DUMP_KIND_VALUES = ("daily-k", "daily-k-10d", "adjustment-factors")
 PRICE_ABS_TOL = 0.011
 DOCUMENTED_VOL_SCALE = 100.0  # Fuyao share / TuShare lot
@@ -483,6 +483,7 @@ def compare_kline(
         "ohlc_mismatch_samples": ohlc_samples,
         "only_fuyao_samples": only_fuyao_samples,
         "only_accepted_samples": only_acc_samples,
+        "primary_cut": False,
     }
 
 

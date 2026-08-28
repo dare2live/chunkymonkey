@@ -1175,6 +1175,90 @@ domains:
     freshness_sla_trading_days: 30   # 增减持较频, 30 交易日 SLA
     min_rows_per_batch: 1
 
+  # Live probe 2026-08-28: limit-up-pool history from 20200623 (page/size);
+  # limit-down-pool / limit-break-pool vendor window from 20250818 (earlier
+  # dates return code=1002, not empty-set); auction short-term-benchmark
+  # first non-empty sample 20230925 (2022 dates return empty item, not 404).
+  # sync_policy=on_demand: explicit --start/--end only; 禁 mass backfill.
+  # page_limit 禁止: 那会走 TuShare limit/offset; 本源分页是 page/size。
+  fuyao_limit_up_pool:
+    source: fuyao
+    api: limit-up-pool
+    target_table: raw_fuyao_limit_up_pool
+    grain: [ts_code, trade_date]
+    batch_mode: by_trade_date
+    date_param: trade_date
+    sync_policy: on_demand
+    allow_empty_batch: true
+    row_dip_tolerance: true
+    fixed_params:
+      size: 200
+    pit_anchor: "trade_date from request date_ms (Asia/Shanghai midnight); envelope timestamp is ready time not event date"
+    available_after: "18:00"
+    data_start: "20200623"
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 0
+    freshness_no_probe: "on_demand_explicit_window_not_daily_sla"
+    universe_filter: false
+
+  fuyao_limit_down_pool:
+    source: fuyao
+    api: limit-down-pool
+    target_table: raw_fuyao_limit_down_pool
+    grain: [ts_code, trade_date]
+    batch_mode: by_trade_date
+    date_param: trade_date
+    sync_policy: on_demand
+    allow_empty_batch: true
+    row_dip_tolerance: true
+    fixed_params:
+      size: 200
+    pit_anchor: "trade_date from request date_ms; vendor fields first_limit_time/last_limit_time (no is_st on this endpoint)"
+    available_after: "18:00"
+    data_start: "20250818"
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 0
+    freshness_no_probe: "on_demand_explicit_window_not_daily_sla"
+    universe_filter: false
+
+  fuyao_limit_break_pool:
+    source: fuyao
+    api: limit-break-pool
+    target_table: raw_fuyao_limit_break_pool
+    grain: [ts_code, trade_date]
+    batch_mode: by_trade_date
+    date_param: trade_date
+    sync_policy: on_demand
+    allow_empty_batch: true
+    row_dip_tolerance: true
+    fixed_params:
+      size: 200
+    pit_anchor: "trade_date from request date_ms; open_times is 开板次数 not 连板数"
+    available_after: "18:00"
+    data_start: "20250818"
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 0
+    freshness_no_probe: "on_demand_explicit_window_not_daily_sla"
+    universe_filter: false
+
+  fuyao_auction_benchmark:
+    source: fuyao
+    api: auction-short-term-benchmark
+    target_table: raw_fuyao_auction_benchmark
+    grain: [ts_code, trade_date]
+    batch_mode: by_trade_date
+    date_param: trade_date
+    sync_policy: on_demand
+    allow_empty_batch: true
+    row_dip_tolerance: true
+    pit_anchor: "payload.date / date_ms is the auction query day; payload.timestamp is response assembly time and is not the event"
+    available_after: "09:30"
+    data_start: "20230925"
+    freshness_sla_trading_days: 1
+    min_rows_per_batch: 0
+    freshness_no_probe: "on_demand_explicit_window_not_daily_sla"
+    universe_filter: false
+
   # top10_floatholders (tushare 十大流通股东) 域 2026-06-29 批3b 退役删除:
   #   holder 主源已切东财妙想 aif10 (services/holders_aif10.py, source='miaoxiang' → fact_top10_holder_period;
   #   datacenter JSON API 直连, 不走 tushare 网关故不在本 registry)。tushare top10 财报季驱动滞后~4个月

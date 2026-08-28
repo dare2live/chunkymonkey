@@ -631,23 +631,34 @@ def domain_spec(registry: dict[str, Any], domain: str) -> dict[str, Any]:
 
 
 _TUSHARE_SOURCE: Any = None
+_FUYAO_SOURCE: Any = None
 
 
 def _adapter(source_name: str):
-    """2026-07-07 精简: 原经 get_registry().get_source() 间接查找已删 (registry.py/base.py
-    多源 fallback 机制 0 消费方物删, 见 git log --grep data_sources_registry_retirement)。
-    sync_registry.yaml 47 域全声明 source: tushare, 单例直连即可。A5: formal 边界只许 tushare。"""
-    global _TUSHARE_SOURCE
+    """Dispatch a registry ``source`` to a fetch_raw adapter.
+
+    Formal domains still freeze on tushare via ``require_live_adapter``.
+    Non-formal ``source: fuyao`` uses FuyaoSource and does not pass that
+    freeze. Unknown sources fail closed. Do not revive base.py/registry.py.
+    """
+    global _TUSHARE_SOURCE, _FUYAO_SOURCE
+    name = str(source_name or "").strip()
+    if name == "fuyao":
+        if _FUYAO_SOURCE is None:
+            from services.data_sources.sources.fuyao import FuyaoSource
+
+            _FUYAO_SOURCE = FuyaoSource()
+        return _FUYAO_SOURCE
     from services.data_sources.formal_boundaries import (
         FormalBoundaryError,
         require_live_adapter,
     )
 
     try:
-        require_live_adapter(source_name, domain="*")
+        require_live_adapter(name, domain="*")
     except FormalBoundaryError as exc:
         raise KeyError(
-            f"data_sources: 未知 source '{source_name}' (精简后只剩 tushare)"
+            f"data_sources: 未知 source '{name}' (live adapters: tushare, fuyao)"
         ) from exc
     if _TUSHARE_SOURCE is None:
         from services.data_sources.sources.tushare import TuShareSource

@@ -1,0 +1,25 @@
+{
+  "domain": "fuyao_limit_up_pool",
+  "api": "limit-up-pool",
+  "grain": ["ts_code", "trade_date"],
+  "note": "Live 2020-07-01 page1 sample (fields is_st/seal_money/limit_up_time/continue_day_cnt)",
+  "rows": [
+    {
+      "thscode": "300841.SZ",
+      "ticker": "300841",
+      "name": "康华生物",
+      "is_st": false,
+      "is_new": false,
+      "last_price": 104.029,
+      "price_change_ratio_pct": 10.2282,
+      "limit_up_time": "09:30",
+      "limit_up_reason": "新股",
+      "continue_day_text": "10连板",
+      "continue_day_cnt": 10,
+      "seal_money": 617238170.9,
+      "max_seal_money": 617238170.9,
+      "ts_code": "300841.SZ",
+      "trade_date": "20200701"
+    }
+  ]
+}

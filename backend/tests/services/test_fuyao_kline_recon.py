@@ -226,3 +226,32 @@ def test_events_match_implemented_dividend_and_adj_jump(tmp_path: Path):
     assert report["cash_div_tax_mismatch"] == 0
     assert report["jumps_with_fuyao_event"] == 1
     assert report["fuyao_events_without_jump"] == 1
+
+
+def test_qfq_adjusted_dump_rows_are_dropped_and_qfq_table_banned(tmp_path: Path):
+    parquet = tmp_path / "mix.parquet"
+    con = duck_mem()
+    con.execute(
+        """
+        CREATE TABLE src (
+            thscode VARCHAR, currency VARCHAR, interval VARCHAR, adjusted VARCHAR,
+            date_ms BIGINT, open_price DOUBLE, high_price DOUBLE, low_price DOUBLE,
+            close_price DOUBLE, volume DOUBLE, turnover DOUBLE
+        )
+        """
+    )
+    ms = _day_ms(DAY)
+    con.execute(
+        "INSERT INTO src VALUES ('000001.SZ','CNY','1d','none', ?, 10,10,10,10,1,1)",
+        [ms],
+    )
+    con.execute(
+        "INSERT INTO src VALUES ('000001.SZ','CNY','1d','qfq', ?, 11,11,11,11,1,1)",
+        [ms],
+    )
+    con.execute(f"COPY src TO '{parquet}' (FORMAT PARQUET)")
+    load_fuyao_kline(con, parquet)
+    rows = con.execute("SELECT close FROM fuyao_k").fetchall()
+    assert [r[0] for r in rows] == [10.0]
+    with pytest.raises(ValueError, match="banned"):
+        reject_banned_baseline("price_kline_qfq_tushare")

@@ -6,6 +6,54 @@
           "trade_date",
           "ts_code"
         ],
+        "pit_anchor": "payload.date / date_ms is the auction query day; payload.timestamp is response assembly time and is not the event"
+      },
+      "dst": "table:tushare_raw.raw_fuyao_auction_benchmark",
+      "kind": "acquire",
+      "src": "source:fuyao.auction-short-term-benchmark"
+    },
+    {
+      "attrs": {
+        "grain": [
+          "trade_date",
+          "ts_code"
+        ],
+        "pit_anchor": "trade_date from request date_ms; open_times is 开板次数 not 连板数"
+      },
+      "dst": "table:tushare_raw.raw_fuyao_limit_break_pool",
+      "kind": "acquire",
+      "src": "source:fuyao.limit-break-pool"
+    },
+    {
+      "attrs": {
+        "grain": [
+          "trade_date",
+          "ts_code"
+        ],
+        "pit_anchor": "trade_date from request date_ms; vendor fields first_limit_time/last_limit_time (no is_st on this endpoint)"
+      },
+      "dst": "table:tushare_raw.raw_fuyao_limit_down_pool",
+      "kind": "acquire",
+      "src": "source:fuyao.limit-down-pool"
+    },
+    {
+      "attrs": {
+        "grain": [
+          "trade_date",
+          "ts_code"
+        ],
+        "pit_anchor": "trade_date from request date_ms (Asia/Shanghai midnight); envelope timestamp is ready time not event date"
+      },
+      "dst": "table:tushare_raw.raw_fuyao_limit_up_pool",
+      "kind": "acquire",
+      "src": "source:fuyao.limit-up-pool"
+    },
+    {
+      "attrs": {
+        "grain": [
+          "trade_date",
+          "ts_code"
+        ],
         "pit_anchor": "trade_date; 盘前 9:15-20 当日复权因子入库 -> 当日可用 (盘前可用域之一, 另: stk_limit 08:40/stock_st 09:20 — 2026-07-09 全审计更正原'唯一'措辞)"
       },
       "dst": "table:tushare_raw.raw_tushare_adj_factor",
@@ -1153,6 +1201,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/fuyao_kline_recon.py",
+      "kind": "consume",
+      "src": "table:market.price_kline_qfq_tushare"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/holdernumber_assist.py",
       "kind": "consume",
       "src": "table:market.price_kline_qfq_tushare"
@@ -1214,6 +1268,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_cyq_recon.py",
+      "kind": "consume",
+      "src": "table:market.price_kline_qfq_tushare"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_fuyao_k5_adapter.py",
+      "kind": "consume",
+      "src": "table:market.price_kline_qfq_tushare"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_fuyao_kline_recon.py",
       "kind": "consume",
       "src": "table:market.price_kline_qfq_tushare"
     },
@@ -6553,6 +6619,36 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_fuyao_auction_benchmark"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_fuyao_limit_break_pool"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_fuyao_limit_down_pool"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_fuyao_limit_up_pool"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_fuyao_k5_adapter.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_fuyao_limit_up_pool"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/brick_registry.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_adj_factor"
@@ -9931,9 +10027,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1614,
-    "generated_at": "2026-08-28T10:50:39.173564+00:00",
-    "node_count": 499,
+    "edge_count": 1626,
+    "generated_at": "2026-08-28T11:03:55.436940+00:00",
+    "node_count": 508,
     "version": 2
   },
   "nodes": [
@@ -11812,6 +11908,14 @@
     {
       "attrs": {
         "ctype": "test",
+        "path": "backend/tests/services/test_fuyao_k5_adapter.py"
+      },
+      "id": "consumer:backend/tests/services/test_fuyao_k5_adapter.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
         "path": "backend/tests/services/test_fuyao_kline_recon.py"
       },
       "id": "consumer:backend/tests/services/test_fuyao_kline_recon.py",
@@ -12488,6 +12592,42 @@
       },
       "id": "consumer:scripts/safe_commit.sh",
       "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "api": "auction-short-term-benchmark",
+        "domain": "fuyao_auction_benchmark",
+        "source": "fuyao"
+      },
+      "id": "source:fuyao.auction-short-term-benchmark",
+      "kind": "source_interface"
+    },
+    {
+      "attrs": {
+        "api": "limit-break-pool",
+        "domain": "fuyao_limit_break_pool",
+        "source": "fuyao"
+      },
+      "id": "source:fuyao.limit-break-pool",
+      "kind": "source_interface"
+    },
+    {
+      "attrs": {
+        "api": "limit-down-pool",
+        "domain": "fuyao_limit_down_pool",
+        "source": "fuyao"
+      },
+      "id": "source:fuyao.limit-down-pool",
+      "kind": "source_interface"
+    },
+    {
+      "attrs": {
+        "api": "limit-up-pool",
+        "domain": "fuyao_limit_up_pool",
+        "source": "fuyao"
+      },
+      "id": "source:fuyao.limit-up-pool",
+      "kind": "source_interface"
     },
     {
       "attrs": {
@@ -13666,6 +13806,46 @@
         "table": "mart_data_deletion_record"
       },
       "id": "table:tushare_raw.mart_data_deletion_record",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "status": "declared_not_live",
+        "table": "raw_fuyao_auction_benchmark"
+      },
+      "id": "table:tushare_raw.raw_fuyao_auction_benchmark",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "status": "declared_not_live",
+        "table": "raw_fuyao_limit_break_pool"
+      },
+      "id": "table:tushare_raw.raw_fuyao_limit_break_pool",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "status": "declared_not_live",
+        "table": "raw_fuyao_limit_down_pool"
+      },
+      "id": "table:tushare_raw.raw_fuyao_limit_down_pool",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "status": "declared_not_live",
+        "table": "raw_fuyao_limit_up_pool"
+      },
+      "id": "table:tushare_raw.raw_fuyao_limit_up_pool",
       "kind": "table"
     },
     {

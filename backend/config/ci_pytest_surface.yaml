@@ -62,6 +62,7 @@ blocking_paths:
 - tests/services/test_org_holding_db.py
 - tests/services/test_sibling_repos.py
 - tests/services/test_fuyao_kline_recon.py
+- tests/services/test_fuyao_k5_adapter.py
 - tests/services/test_tdxhub_kline_recon.py
 - tests/services/test_tdxhub_mac_capital_flow.py
 - tests/services/test_calendar_identity_recon.py
