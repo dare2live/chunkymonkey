@@ -2201,7 +2201,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/recon_assignment_gaps.py",
+      "kind": "consume",
+      "src": "table:reference.dim_active_a_stock"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_audit.py",
+      "kind": "consume",
+      "src": "table:reference.dim_active_a_stock"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
       "kind": "consume",
       "src": "table:reference.dim_active_a_stock"
     },
@@ -2256,6 +2268,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/universe.py",
+      "kind": "consume",
+      "src": "table:reference.dim_active_a_stock"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_assignment_gap_recon.py",
       "kind": "consume",
       "src": "table:reference.dim_active_a_stock"
     },
@@ -3947,6 +3965,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_index_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/foundation_obs_serve.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_index_daily"
@@ -4289,6 +4313,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/foundation_obs_serve.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_limit_daily"
@@ -4314,6 +4344,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/type_b_fact_publish_catchup.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_limit_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_assignment_gap_recon.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_limit_daily"
     },
@@ -4559,6 +4595,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/moneyflow_recon.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_stock_moneyflow_dc_daily"
@@ -4704,6 +4746,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/publish_fact_top_inst_seat_daily.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_top_inst_seat_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/recon_assignment_gaps.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_top_inst_seat_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_top_inst_seat_daily"
     },
@@ -6569,6 +6623,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/recon_assignment_gaps.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_adj_factor"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/recon_fuyao_kline.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_adj_factor"
@@ -6642,6 +6702,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_block_trade"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/recon_assignment_gaps.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_block_trade"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_block_trade"
     },
@@ -6756,6 +6828,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_audit.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
     },
@@ -6905,6 +6983,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_assignment_gap_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_brick_registry_b5.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
@@ -7002,6 +7086,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily_basic"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily_basic"
     },
@@ -7271,6 +7361,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/recon_assignment_gaps.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_dividend"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/recon_fuyao_kline.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_dividend"
@@ -7338,6 +7434,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_forecast"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_forecast"
     },
@@ -8375,6 +8477,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_report_rc"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/foundation_obs_serve.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_report_rc"
@@ -8394,6 +8502,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_share_float"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/recon_assignment_gaps.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_share_float"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_share_float"
     },
@@ -8442,6 +8562,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/audit_date_bounds.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stk_holdernumber"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stk_holdernumber"
     },
@@ -8568,6 +8694,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stk_surv"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/recon_assignment_gaps.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stk_surv"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stk_surv"
     },
@@ -8891,6 +9029,18 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/recon_assignment_gaps.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_top_list"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_top_list"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/foundation_obs_serve.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_top_list"
@@ -8898,6 +9048,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_top_list"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_assignment_gap_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_top_list"
     },
@@ -9233,9 +9389,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1491,
-    "generated_at": "2026-08-27T15:29:51.906893+00:00",
-    "node_count": 481,
+    "edge_count": 1517,
+    "generated_at": "2026-08-28T07:57:04.911267+00:00",
+    "node_count": 484,
     "version": 2
   },
   "nodes": [
@@ -9666,6 +9822,14 @@
     {
       "attrs": {
         "ctype": "script",
+        "path": "backend/scripts/recon_assignment_gaps.py"
+      },
+      "id": "consumer:backend/scripts/recon_assignment_gaps.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
         "path": "backend/scripts/recon_fina_margin.py"
       },
       "id": "consumer:backend/scripts/recon_fina_margin.py",
@@ -9765,6 +9929,14 @@
         "path": "backend/services/data_sources/accepted_schema.py"
       },
       "id": "consumer:backend/services/data_sources/accepted_schema.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/assignment_gap_recon.py"
+      },
+      "id": "consumer:backend/services/data_sources/assignment_gap_recon.py",
       "kind": "consumer"
     },
     {
@@ -10917,6 +11089,14 @@
         "path": "backend/tests/services/test_acquire_bounded_gap_heal.py"
       },
       "id": "consumer:backend/tests/services/test_acquire_bounded_gap_heal.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_assignment_gap_recon.py"
+      },
+      "id": "consumer:backend/tests/services/test_assignment_gap_recon.py",
       "kind": "consumer"
     },
     {
