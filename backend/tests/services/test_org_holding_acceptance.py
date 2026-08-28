@@ -293,3 +293,389 @@ def test_disclosure_handoff_rejects_wrong_contract_type() -> None:
         FormalExecutionHandoffError, match="OrgHoldingContract|mismatched"
     ):
         propagate_disclosure_execution_contract("org_holding", contract)
+
+
+def _provider_row(**overrides):
+    base = {
+        "report_date": REPORT,
+        "available_date": PARTITION,
+        "stock_code": "600519",
+        "holder_code": "10010626",
+        "fund_derivecode": "",
+        "holder_name": "香港中央结算有限公司",
+        "org_type_name": "QFII",
+        "total_shares": 1.2e8,
+        "free_shares_ratio": 7.12,
+    }
+    base.update(overrides)
+    return base
+
+
+def _insert_raw(conn, **overrides) -> None:
+    from services.org_holding_aif10 import ensure_tables
+
+    ensure_tables(conn)
+    row = {
+        "report_date": "2026-03-31",
+        "available_date": "2026-04-30",
+        "stock_code": "600519",
+        "holder_code": "10010626",
+        "fund_derivecode": "",
+        "holder_name": "香港中央结算有限公司",
+        "org_type_name": "QFII",
+        "total_shares": 1.2e8,
+        "free_shares_ratio": 7.12,
+    }
+    row.update(overrides)
+    conn.execute(
+        """
+        INSERT INTO raw_org_holding_aif10
+            (report_date, available_date, stock_code, holder_code, fund_derivecode,
+             holder_name, org_type_name, total_shares, free_shares_ratio)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            row["report_date"],
+            row["available_date"],
+            row["stock_code"],
+            row["holder_code"],
+            row["fund_derivecode"],
+            row["holder_name"],
+            row["org_type_name"],
+            row["total_shares"],
+            row["free_shares_ratio"],
+        ],
+    )
+    try:
+        conn.commit()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def test_announcement_reaccept_moves_canonical_off_statutory_deadline(
+    conn, monkeypatch
+) -> None:
+    """RED: statutory 20260430 + announcement 20260422 → canonical is 20260422."""
+    from services.data_sources.disclosure_dual_write import (
+        write_org_holding_formal_then_mirror,
+    )
+    from services.org_holding_aif10 import reaccept_org_holding_period_announced
+
+    def _boom_land(*_a, **_k):
+        raise AssertionError("historical reaccept must not use land_date=today")
+
+    def _boom_resolve(*_a, **_k):
+        raise AssertionError("historical reaccept must not call resolve_available_iso")
+
+    monkeypatch.setattr(
+        "services.data_sources.org_holding_announcement.land_calendar_date",
+        _boom_land,
+    )
+    monkeypatch.setattr(
+        "services.data_sources.org_holding_announcement.resolve_available_iso",
+        _boom_resolve,
+    )
+
+    _insert_raw(conn)
+    _insert_raw(
+        conn,
+        report_date="2025-12-31",
+        available_date="2026-04-30",
+        stock_code="600519",
+        holder_code="10010626",
+        holder_name="年报同grain另一期",
+    )
+    write_org_holding_formal_then_mirror(
+        conn,
+        [
+            _provider_row(),
+            _provider_row(report_date="20251231", available_date=PARTITION),
+        ],
+        observed_at=OBSERVED,
+        available_at=OBSERVED,
+    )
+    before = conn.execute(
+        f"""
+        SELECT available_date FROM {CANONICAL_TABLE}
+         WHERE stock_code = '600519'
+           AND replace(CAST(report_date AS VARCHAR), '-', '') = '{REPORT}'
+        """
+    ).fetchone()[0]
+    assert str(before).replace("-", "")[:8] == PARTITION
+
+    out = reaccept_org_holding_period_announced(
+        conn,
+        "20260331",
+        announcement_by_stock={"600519": "20260422"},
+        dry_run=False,
+    )
+    assert out["status"] == "accepted"
+    assert out["with_announcement"] == 1
+    assert out["skipped_no_announcement"] == 0
+    stored = conn.execute(
+        f"""
+        SELECT available_date FROM {CANONICAL_TABLE}
+         WHERE stock_code = '600519' AND holder_code = '10010626'
+           AND replace(CAST(report_date AS VARCHAR), '-', '') = '{REPORT}'
+        """
+    ).fetchone()
+    assert stored is not None
+    assert str(stored[0]).replace("-", "")[:8] == "20260422"
+    leftover = conn.execute(
+        f"""
+        SELECT COUNT(*) FROM {CANONICAL_TABLE}
+         WHERE replace(CAST(available_date AS VARCHAR), '-', '') = ?
+           AND replace(CAST(report_date AS VARCHAR), '-', '') = ?
+        """,
+        [PARTITION, REPORT],
+    ).fetchone()[0]
+    assert leftover == 0
+    sibling = conn.execute(
+        f"""
+        SELECT available_date FROM {CANONICAL_TABLE}
+         WHERE replace(CAST(report_date AS VARCHAR), '-', '') = '20251231'
+        """
+    ).fetchone()
+    assert sibling is not None
+    assert str(sibling[0]).replace("-", "")[:8] == PARTITION
+    raw_avail = conn.execute(
+        """
+        SELECT available_date FROM raw_org_holding_aif10
+         WHERE stock_code = '600519'
+           AND replace(CAST(report_date AS VARCHAR), '-', '') = '20260331'
+        """
+    ).fetchone()[0]
+    assert str(raw_avail).replace("-", "")[:8] == "20260422"
+
+
+def test_announcement_reaccept_drops_stock_without_announcement(conn) -> None:
+    from services.data_sources.disclosure_dual_write import (
+        write_org_holding_formal_then_mirror,
+    )
+    from services.org_holding_aif10 import reaccept_org_holding_period_announced
+
+    _insert_raw(conn)
+    _insert_raw(
+        conn,
+        stock_code="000001",
+        holder_code="20000001",
+        holder_name="无公告机构",
+    )
+    write_org_holding_formal_then_mirror(
+        conn,
+        [
+            _provider_row(),
+            _provider_row(stock_code="000001", holder_code="20000001"),
+        ],
+        observed_at=OBSERVED,
+        available_at=OBSERVED,
+    )
+    out = reaccept_org_holding_period_announced(
+        conn,
+        "20260331",
+        announcement_by_stock={"600519": "20260422"},
+        dry_run=False,
+    )
+    assert out["skipped_no_announcement"] == 1
+    codes = {
+        str(row[0])
+        for row in conn.execute(
+            f"SELECT stock_code FROM {CANONICAL_TABLE}"
+        ).fetchall()
+    }
+    assert codes == {"600519"}
+
+
+def test_announcement_reaccept_missing_period_from_raw_only(conn) -> None:
+    """Raw has 20260630, canonical does not → execute accepts announced grains only."""
+    from services.org_holding_aif10 import reaccept_org_holding_period_announced
+
+    _insert_raw(
+        conn,
+        report_date="2026-06-30",
+        available_date="2026-08-31",
+        stock_code="600519",
+    )
+    _insert_raw(
+        conn,
+        report_date="2026-06-30",
+        available_date="2026-08-31",
+        stock_code="000001",
+        holder_code="20000001",
+        holder_name="无公告机构",
+    )
+    try:
+        n = conn.execute(
+            f"""
+            SELECT COUNT(*) FROM {CANONICAL_TABLE}
+             WHERE replace(CAST(report_date AS VARCHAR), '-', '') = '20260630'
+            """
+        ).fetchone()[0]
+    except Exception:  # noqa: BLE001 — table may not exist yet
+        n = 0
+    assert int(n or 0) == 0
+
+    out = reaccept_org_holding_period_announced(
+        conn,
+        "20260630",
+        announcement_by_stock={"600519": "20260820"},
+        dry_run=False,
+    )
+    assert out["status"] == "accepted"
+    assert out["with_announcement"] == 1
+    assert out["skipped_no_announcement"] == 1
+    rows = conn.execute(
+        f"""
+        SELECT stock_code, available_date FROM {CANONICAL_TABLE}
+         WHERE replace(CAST(report_date AS VARCHAR), '-', '') = '20260630'
+        """
+    ).fetchall()
+    assert len(rows) == 1
+    assert str(rows[0][0]) == "600519"
+    assert str(rows[0][1]).replace("-", "")[:8] == "20260820"
+
+
+def test_announcement_reaccept_empty_map_does_not_wipe_or_stamp_today(conn) -> None:
+    from services.data_sources.disclosure_dual_write import (
+        write_org_holding_formal_then_mirror,
+    )
+    from services.org_holding_aif10 import reaccept_org_holding_period_announced
+
+    _insert_raw(conn)
+    write_org_holding_formal_then_mirror(
+        conn, [_provider_row()], observed_at=OBSERVED, available_at=OBSERVED
+    )
+    out = reaccept_org_holding_period_announced(
+        conn, "20260331", announcement_by_stock={}, dry_run=False
+    )
+    assert out["status"] == "blocked_empty_announcement_map"
+    stored = conn.execute(
+        f"SELECT available_date FROM {CANONICAL_TABLE} WHERE stock_code = '600519'"
+    ).fetchone()[0]
+    assert str(stored).replace("-", "")[:8] == PARTITION
+
+
+def test_announcement_reaccept_unmatched_map_does_not_wipe_canonical(conn) -> None:
+    """Non-empty map with no matching stock must not DELETE the period."""
+    from services.data_sources.disclosure_dual_write import (
+        write_org_holding_formal_then_mirror,
+    )
+    from services.org_holding_aif10 import reaccept_org_holding_period_announced
+
+    _insert_raw(conn)
+    write_org_holding_formal_then_mirror(
+        conn, [_provider_row()], observed_at=OBSERVED, available_at=OBSERVED
+    )
+    out = reaccept_org_holding_period_announced(
+        conn,
+        "20260331",
+        announcement_by_stock={"999999": "20260422"},
+        dry_run=False,
+    )
+    assert out["status"] == "skipped_no_announced_grains"
+    assert out["with_announcement"] == 0
+    stored = conn.execute(
+        f"""
+        SELECT available_date FROM {CANONICAL_TABLE}
+         WHERE stock_code = '600519'
+           AND replace(CAST(report_date AS VARCHAR), '-', '') = '{REPORT}'
+        """
+    ).fetchone()
+    assert stored is not None
+    assert str(stored[0]).replace("-", "")[:8] == PARTITION
+
+
+def test_announcement_reaccept_restores_canonical_if_write_fails(
+    conn, monkeypatch
+) -> None:
+    from services.data_sources.disclosure_dual_write import (
+        write_org_holding_formal_then_mirror,
+    )
+    from services.org_holding_aif10 import reaccept_org_holding_period_announced
+
+    _insert_raw(conn)
+    write_org_holding_formal_then_mirror(
+        conn, [_provider_row()], observed_at=OBSERVED, available_at=OBSERVED
+    )
+    before = conn.execute(
+        f"""
+        SELECT COUNT(*) FROM {CANONICAL_TABLE}
+         WHERE replace(CAST(report_date AS VARCHAR), '-', '') = '{REPORT}'
+        """
+    ).fetchone()[0]
+    assert int(before) == 1
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("forced write failure after delete would have run")
+
+    monkeypatch.setattr(
+        "services.data_sources.disclosure_dual_write.write_org_holding_formal_then_mirror",
+        _boom,
+    )
+    out = reaccept_org_holding_period_announced(
+        conn,
+        "20260331",
+        announcement_by_stock={"600519": "20260422"},
+        dry_run=False,
+    )
+    assert out["status"] == "accept_failed"
+    after = conn.execute(
+        f"""
+        SELECT COUNT(*) FROM {CANONICAL_TABLE}
+         WHERE replace(CAST(report_date AS VARCHAR), '-', '') = '{REPORT}'
+        """
+    ).fetchone()[0]
+    assert int(after) == int(before)
+    stored = conn.execute(
+        f"""
+        SELECT available_date FROM {CANONICAL_TABLE}
+         WHERE stock_code = '600519'
+           AND replace(CAST(report_date AS VARCHAR), '-', '') = '{REPORT}'
+        """
+    ).fetchone()[0]
+    assert str(stored).replace("-", "")[:8] == PARTITION
+
+
+def test_institution_profile_attach_sources_does_not_attach_org_holding() -> None:
+    """Deferral stays honest: _attach_sources still does not ATTACH org_holding."""
+    import ast
+    import inspect
+
+    from services import institution_profile as ip
+
+    src = inspect.getsource(ip._attach_sources)
+    tree = ast.parse(src)
+    aliases: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id == "_db":
+            if node.args and isinstance(node.args[0], ast.Constant):
+                aliases.append(str(node.args[0].value))
+    assert "org_holding" not in aliases
+    assert set(aliases) == {"smartmoney", "market", "tushare_raw"}
+
+
+def test_repair_script_refuses_execute_combined_with_dry_run() -> None:
+    import importlib.util
+    from pathlib import Path
+
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "scripts"
+        / "repair_org_holding_announcement_reaccept.py"
+    )
+    spec = importlib.util.spec_from_file_location("repair_org_reaccept", path)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    assert mod.main(["--execute", "--dry-run"]) == 2
+    with pytest.raises(FileNotFoundError, match="--db"):
+        mod._resolve_db_file(
+            "org_holding",
+            override="/tmp/chunkymonkey-missing-org-holding.duckdb",
+        )
+    source = path.read_text(encoding="utf-8")
+    assert "/Users/dp/Documents/M/stock/chunkymonkey/data" not in source
+    assert "_LIVE_DATA" not in source

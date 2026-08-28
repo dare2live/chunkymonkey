@@ -860,22 +860,16 @@ def org_holding_period_gap_report(
     return out
 
 
-def _accept_plannable_from_local_raw(conn: Any, report_date: str) -> dict:
-    """Land→accept one ended period from raw, partitioned by announcement/first-seen."""
-    from services.data_sources.disclosure_dual_write import (
-        write_org_holding_formal_then_mirror,
-    )
-    from services.data_sources.org_holding_announcement import (
-        land_calendar_date,
-        stamp_available_dates,
-    )
-
+def _load_raw_period_material(conn: Any, report_date: str) -> dict:
+    """Load one report_date from local raw. No stamp, no provider I/O."""
     iso = _normalize_date(report_date)
     if not iso:
         return {
             "status": "accept_skipped",
             "error": "unparseable report_date",
             "report_date": report_date,
+            "iso": None,
+            "rows": [],
         }
     compact = iso.replace("-", "")
     cols = ", ".join(_INSERT_KEYS)
@@ -893,6 +887,8 @@ def _accept_plannable_from_local_raw(conn: Any, report_date: str) -> dict:
             "status": "accept_failed",
             "error": str(exc)[:300],
             "report_date": report_date,
+            "iso": iso,
+            "rows": [],
         }
     material = [dict(zip(_INSERT_KEYS, row, strict=True)) for row in raw]
     if not material:
@@ -900,11 +896,442 @@ def _accept_plannable_from_local_raw(conn: Any, report_date: str) -> dict:
             "status": "accept_skipped",
             "error": "no_local_raw",
             "report_date": report_date,
+            "iso": iso,
+            "rows": [],
+        }
+    return {
+        "status": "ok",
+        "report_date": report_date,
+        "iso": iso,
+        "rows": material,
+    }
+
+
+def list_raw_org_holding_report_dates(conn: Any) -> list[str]:
+    """Distinct raw report_dates as ISO, oldest first. Empty if raw table missing."""
+    try:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT replace(CAST(report_date AS VARCHAR), '-', '')
+              FROM raw_org_holding_aif10
+             ORDER BY 1
+            """
+        ).fetchall()
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[str] = []
+    for row in rows:
+        iso = _normalize_date(row[0])
+        if iso:
+            out.append(iso)
+    return out
+
+
+def _stamp_announced_available_dates(
+    rows: list[dict],
+    announcement_by_stock: dict[str, str],
+) -> tuple[list[dict], int]:
+    """KEEP grains whose stock is in the announcement map; DROP the rest.
+
+    Stamps ``available_date`` from the map only. Does **not** call
+    ``resolve_available_iso`` / ``land_date=today`` — that would mark 2019
+    holdings known-at today.
+    """
+    from services.data_sources.org_holding_announcement import (
+        compact_yyyymmdd,
+        iso_date,
+        normalize_stock_code,
+    )
+
+    kept: list[dict] = []
+    skipped = 0
+    for row in rows:
+        code = normalize_stock_code(row.get("stock_code"))
+        announced = compact_yyyymmdd(
+            announcement_by_stock.get(code)
+            or announcement_by_stock.get(str(row.get("stock_code") or ""))
+        )
+        report = compact_yyyymmdd(row.get("report_date"))
+        if announced is None or report is None or announced < report:
+            skipped += 1
+            continue
+        item = dict(row)
+        item["available_date"] = iso_date(announced)
+        kept.append(item)
+    return kept, skipped
+
+
+def _is_missing_relation(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return "does not exist" in msg or "not found" in msg
+
+
+def _mirror_update_raw_available_date(conn: Any, rows: list[dict]) -> int:
+    """Set-based grain UPDATE of raw available_date. Never DELETE+provider re-pull."""
+    from services.data_sources.disclosure_boundaries import (
+        authorize_legacy_mirror_write,
+    )
+    from services.data_sources.org_holding_announcement import (
+        compact_yyyymmdd,
+        iso_date,
+        normalize_stock_code,
+    )
+
+    authorize_legacy_mirror_write("org_holding", allow_test_escape=True)
+    payload: list[tuple[str, str, str, str, str]] = []
+    for row in rows:
+        avail = iso_date(row.get("available_date"))
+        report = compact_yyyymmdd(row.get("report_date"))
+        stock = normalize_stock_code(row.get("stock_code"))
+        holder = str(row.get("holder_code") or "").strip()
+        fund = str(row.get("fund_derivecode") or "").strip()
+        if not avail or not report or not stock or not holder:
+            continue
+        payload.append((report, stock, holder, fund, avail))
+    if not payload:
+        return 0
+    temp = "_k4_org_holding_avail_upd"
+    conn.execute(f"DROP TABLE IF EXISTS {temp}")
+    conn.execute(
+        f"""
+        CREATE TEMP TABLE {temp} (
+            report_date VARCHAR,
+            stock_code VARCHAR,
+            holder_code VARCHAR,
+            fund_derivecode VARCHAR,
+            available_date VARCHAR
+        )
+        """
+    )
+    conn.executemany(
+        f"INSERT INTO {temp} VALUES (?, ?, ?, ?, ?)",
+        payload,
+    )
+    conn.execute(
+        f"""
+        UPDATE raw_org_holding_aif10
+           SET available_date = t.available_date
+          FROM {temp} AS t
+         WHERE replace(CAST(raw_org_holding_aif10.report_date AS VARCHAR), '-', '')
+               = t.report_date
+           AND raw_org_holding_aif10.stock_code = t.stock_code
+           AND raw_org_holding_aif10.holder_code = t.holder_code
+           AND COALESCE(CAST(raw_org_holding_aif10.fund_derivecode AS VARCHAR), '')
+               = t.fund_derivecode
+        """
+    )
+    conn.execute(f"DROP TABLE IF EXISTS {temp}")
+    return len(payload)
+
+
+def _canonical_available_dates_for_report(conn: Any, report_compact: str) -> list[str]:
+    from services.data_sources.org_holding_schema import CANONICAL_TABLE
+
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT DISTINCT replace(CAST(available_date AS VARCHAR), '-', '')
+              FROM {CANONICAL_TABLE}
+             WHERE replace(CAST(report_date AS VARCHAR), '-', '') = ?
+            """,
+            [report_compact],
+        ).fetchall()
+    except Exception as exc:
+        if _is_missing_relation(exc):
+            return []
+        raise
+    return sorted(str(row[0]) for row in rows if row and row[0])
+
+
+def _delete_canonical_report_date(conn: Any, report_compact: str) -> int:
+    """Drop poisoned deadline-partition grains for this report_date (any available_date).
+
+    Caller owns the transaction / restore. Missing table → 0. Other errors raise.
+    """
+    from services.data_sources.org_holding_schema import CANONICAL_TABLE
+
+    try:
+        before = conn.execute(
+            f"""
+            SELECT COUNT(*) FROM {CANONICAL_TABLE}
+             WHERE replace(CAST(report_date AS VARCHAR), '-', '') = ?
+            """,
+            [report_compact],
+        ).fetchone()
+    except Exception as exc:
+        if _is_missing_relation(exc):
+            return 0
+        raise
+    conn.execute(
+        f"""
+        DELETE FROM {CANONICAL_TABLE}
+         WHERE replace(CAST(report_date AS VARCHAR), '-', '') = ?
+        """,
+        [report_compact],
+    )
+    return int(before[0] or 0) if before else 0
+
+
+def _snapshot_canonical_report_date(
+    conn: Any, report_compact: str, snapshot_table: str
+) -> bool:
+    """TEMP copy of this report_date. False if canonical table is missing."""
+    from services.data_sources.org_holding_schema import CANONICAL_TABLE
+
+    conn.execute(f"DROP TABLE IF EXISTS {snapshot_table}")
+    try:
+        conn.execute(
+            f"""
+            CREATE TEMP TABLE {snapshot_table} AS
+            SELECT * FROM {CANONICAL_TABLE}
+             WHERE replace(CAST(report_date AS VARCHAR), '-', '') = ?
+            """,
+            [report_compact],
+        )
+    except Exception as exc:
+        if _is_missing_relation(exc):
+            return False
+        raise
+    return True
+
+
+def _restore_canonical_report_date(
+    conn: Any, report_compact: str, snapshot_table: str
+) -> None:
+    from services.data_sources.org_holding_schema import CANONICAL_TABLE
+
+    conn.execute(
+        f"""
+        DELETE FROM {CANONICAL_TABLE}
+         WHERE replace(CAST(report_date AS VARCHAR), '-', '') = ?
+        """,
+        [report_compact],
+    )
+    conn.execute(
+        f"INSERT INTO {CANONICAL_TABLE} SELECT * FROM {snapshot_table}"
+    )
+
+
+def refresh_org_holding_partition_pointers(
+    conn: Any, partitions: list[str]
+) -> list[dict]:
+    """Recount accepted_partition after grains moved off a deadline date.
+
+    Empty partitions drop the pointer. Remaining siblings keep a full-partition
+    hash (same helper as repair_org_holding_accepted_pointers).
+    """
+    from services.data_sources.accepted_schema import ACCEPTED_TABLE
+    from services.data_sources.disclosure_event_partition import (
+        partition_accepted_pointer_stats,
+    )
+    from services.data_sources.org_holding_acceptance import DOMAIN
+    from services.data_sources.org_holding_schema import DATASET_ID
+
+    refreshed: list[dict] = []
+    seen: set[str] = set()
+    for raw in partitions:
+        pv = "".join(ch for ch in str(raw or "") if ch.isdigit())[:8]
+        if len(pv) != 8 or pv in seen:
+            continue
+        seen.add(pv)
+        try:
+            n, content_hash = partition_accepted_pointer_stats(conn, DOMAIN, pv)
+        except Exception as exc:  # noqa: BLE001
+            refreshed.append(
+                {"partition_value": pv, "action": "hash_failed", "error": str(exc)[:200]}
+            )
+            continue
+        if n <= 0:
+            conn.execute(
+                f"""
+                DELETE FROM {ACCEPTED_TABLE}
+                 WHERE dataset_id = ?
+                   AND replace(CAST(partition_value AS VARCHAR), '-', '') = ?
+                """,
+                [DATASET_ID, pv],
+            )
+            refreshed.append({"partition_value": pv, "action": "deleted_empty", "row_count": 0})
+            continue
+        conn.execute(
+            f"""
+            UPDATE {ACCEPTED_TABLE}
+               SET row_count = ?, content_hash = ?
+             WHERE dataset_id = ?
+               AND replace(CAST(partition_value AS VARCHAR), '-', '') = ?
+            """,
+            [n, content_hash, DATASET_ID, pv],
+        )
+        refreshed.append(
+            {"partition_value": pv, "action": "updated", "row_count": n}
+        )
+    try:
+        conn.commit()
+    except Exception:  # noqa: BLE001
+        pass
+    return refreshed
+
+
+def reaccept_org_holding_period_announced(
+    conn: Any,
+    report_date: str,
+    *,
+    announcement_by_stock: dict[str, str] | None = None,
+    dry_run: bool = True,
+    refresh_pointers: bool = True,
+) -> dict:
+    """Historical-safe accept from local raw: PIT = announcement, never today.
+
+    Daily ``_accept_plannable_from_local_raw`` still uses first-seen as a live
+    fallback. This helper is the history repair: KEEP announced grains, DROP
+    the rest, replace canonical rows for this report_date, UPDATE raw
+    ``available_date`` by grain.
+    """
+    from services.data_sources.disclosure_dual_write import (
+        write_org_holding_formal_then_mirror,
+    )
+    from services.data_sources.org_holding_announcement import compact_yyyymmdd
+
+    loaded = _load_raw_period_material(conn, report_date)
+    iso = loaded.get("iso")
+    material = list(loaded.get("rows") or [])
+    current_canonical = _canonical_report_period_row_count(conn, iso or "") if iso else 0
+    vacated = _canonical_available_dates_for_report(
+        conn, (iso or "").replace("-", "")
+    ) if iso else []
+    base = {
+        "report_date": iso or report_date,
+        "raw_rows": len(material),
+        "with_announcement": 0,
+        "skipped_no_announcement": 0,
+        "distinct_new_available_dates": [],
+        "current_canonical_rows": current_canonical,
+        "vacated_available_dates": vacated,
+        "canonical_rows_written": 0,
+        "legacy_available_dates_updated": 0,
+        "partitions": [],
+        "batch_ids": [],
+        "pointer_refresh": [],
+    }
+    if loaded["status"] != "ok":
+        base["status"] = loaded["status"]
+        base["error"] = loaded.get("error")
+        return base
+
+    announced_map = (
+        dict(announcement_by_stock)
+        if announcement_by_stock is not None
+        else _period_announcement_map(iso)
+    )
+    if not announced_map:
+        # Empty map = join DBs missing or period has zero filings. Fail closed:
+        # do not stamp today, do not DELETE canonical.
+        base["status"] = "blocked_empty_announcement_map"
+        base["skipped_no_announcement"] = len(material)
+        base["error"] = "announcement map empty; refuse historical first-seen stamp"
+        return base
+
+    kept, skipped = _stamp_announced_available_dates(material, announced_map)
+    new_dates = sorted(
+        {
+            compact_yyyymmdd(row.get("available_date"))
+            for row in kept
+            if compact_yyyymmdd(row.get("available_date"))
+        }
+    )
+    base["with_announcement"] = len(kept)
+    base["skipped_no_announcement"] = skipped
+    base["distinct_new_available_dates"] = new_dates
+    if dry_run:
+        base["status"] = "dry_run"
+        return base
+
+    if not kept:
+        # Non-empty map but zero matching raw stocks: do not wipe canonical.
+        base["status"] = "skipped_no_announced_grains"
+        base["error"] = (
+            "announcement map had no matching raw stocks; canonical unchanged"
+        )
+        return base
+
+    compact = iso.replace("-", "")
+    if len(compact) != 8 or not compact.isdigit():
+        base["status"] = "accept_failed"
+        base["error"] = f"unparseable report_date compact={compact!r}"
+        return base
+    snapshot = f"_k4_reaccept_restore_{compact}"
+    # land→accept opens its own BEGIN/COMMIT, so an outer txn cannot wrap
+    # delete+write. Snapshot the doomed report_date, DELETE, write; ROLLBACK
+    # the delete by restoring the snapshot if write/mirror fails.
+    had_canonical = _snapshot_canonical_report_date(conn, compact, snapshot)
+    keep_snapshot = False
+    try:
+        if had_canonical:
+            _delete_canonical_report_date(conn, compact)
+        outcome = write_org_holding_formal_then_mirror(
+            conn,
+            kept,
+            enable_legacy_mirror=True,
+            merge_grains=True,
+            mirror=_mirror_update_raw_available_date,
+        )
+    except Exception as exc:  # noqa: BLE001
+        if had_canonical:
+            try:
+                _restore_canonical_report_date(conn, compact, snapshot)
+            except Exception as restore_exc:  # noqa: BLE001
+                keep_snapshot = True
+                base["status"] = "accept_failed"
+                base["error"] = (
+                    f"{exc}; restore failed: {restore_exc}"
+                )[:300]
+                return base
+        base["status"] = "accept_failed"
+        base["error"] = str(exc)[:300]
+        return base
+    finally:
+        if not keep_snapshot:
+            try:
+                conn.execute(f"DROP TABLE IF EXISTS {snapshot}")
+            except Exception:  # noqa: BLE001
+                pass
+
+    partitions = list(getattr(outcome, "partitions", None) or [])
+    base["status"] = "accepted"
+    base["canonical_rows_written"] = int(getattr(outcome, "canonical_rows", 0) or 0)
+    base["legacy_available_dates_updated"] = int(
+        getattr(outcome, "legacy_rows_written", 0) or 0
+    )
+    base["partitions"] = partitions
+    base["batch_ids"] = list(getattr(outcome, "batch_ids", None) or [])
+    base["available_date"] = partitions[0] if len(partitions) == 1 else None
+
+    if refresh_pointers:
+        leftover = [pv for pv in vacated if pv not in set(new_dates)]
+        base["pointer_refresh"] = refresh_org_holding_partition_pointers(conn, leftover)
+    return base
+
+
+def _accept_plannable_from_local_raw(conn: Any, report_date: str) -> dict:
+    """Land→accept one ended period from raw, partitioned by announcement/first-seen."""
+    from services.data_sources.disclosure_dual_write import (
+        write_org_holding_formal_then_mirror,
+    )
+    from services.data_sources.org_holding_announcement import (
+        land_calendar_date,
+        stamp_available_dates,
+    )
+
+    loaded = _load_raw_period_material(conn, report_date)
+    if loaded["status"] != "ok":
+        return {
+            "status": loaded["status"],
+            "error": loaded.get("error"),
+            "report_date": report_date,
         }
     land = land_calendar_date()
     rows = stamp_available_dates(
-        material,
-        announcement_by_stock=_period_announcement_map(iso),
+        loaded["rows"],
+        announcement_by_stock=_period_announcement_map(loaded["iso"]),
         land_date=land,
         today=land,
     )

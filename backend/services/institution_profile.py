@@ -22,6 +22,17 @@
 E0 read note: disclosure provider-field consumers prefer accepted canonical via
 ``disclosure_research_read`` when shadow MATCH.  Episode rebuild uses
 ``disclosure_enrichment_projection`` (canonical-only after holders fact retire).
+
+K4 consume deferral (2026-08-28): this module does **not** ATTACH the
+``org_holding`` alias. Episode spine is ``holders_top10`` 十大流通股东进出
+(``holder_name_norm`` × stock). ``org_holding`` is 机构持股明细 at
+``holder_code`` × ``fund_derivecode`` — a different grain. A fake ATTACH
+without a real SELECT would be theater; folding org_holding into
+``run_episode_state_machine`` would invent a product join, not repair a
+consume chain. The API router already opens the ``org_holding`` alias for
+``compare_disclosure_research_shadow``, and ``disclosure_research_read``
+already maps ``org_holding`` → ``canonical_org_holding_detail_period``.
+Residual owner = K5 资金方侧 / named query, not this knife.
 """
 from __future__ import annotations
 
@@ -81,6 +92,13 @@ def _db(alias: str) -> str:
 
 
 def _attach_sources(con) -> None:
+    # K4 deferral: do not ATTACH org_holding. Episode spine is holders_top10
+    # (十大流通股东进出). org_holding grain is holder_code × fund_derivecode
+    # (机构持股明细). Mixing it into run_episode_state_machine would invent a
+    # product join, not repair a consume chain. Router already opens
+    # org_holding alias for compare_disclosure_research_shadow;
+    # disclosure_research_read already maps org_holding → canonical.
+    # Residual: K5 资金方侧 / named query.
     con.execute(f"ATTACH IF NOT EXISTS '{_db('smartmoney')}' AS sm (READ_ONLY)")
     con.execute(f"ATTACH IF NOT EXISTS '{_db('market')}' AS mk (READ_ONLY)")
     con.execute(f"ATTACH IF NOT EXISTS '{_db('tushare_raw')}' AS tr (READ_ONLY)")
