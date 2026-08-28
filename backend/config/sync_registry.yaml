@@ -1175,10 +1175,13 @@ domains:
     freshness_sla_trading_days: 30   # 增减持较频, 30 交易日 SLA
     min_rows_per_batch: 1
 
-  # Live probe 2026-08-28: limit-up-pool history from 20200623 (page/size);
-  # limit-down-pool / limit-break-pool vendor window from 20250818 (earlier
-  # dates return code=1002, not empty-set); auction short-term-benchmark
-  # first non-empty sample 20230925 (2022 dates return empty item, not 404).
+  # Live probe 2026-08-28 (二分实测, 非单点抽样): limit-up-pool history from
+  # 20200623; limit-down-pool / limit-break-pool vendor window from 20250813
+  # (20250812 及更早 return code=1002, not empty-set); auction short-term-
+  # benchmark first non-empty 20230919 (更早日期窗口内但全 0 行, 回溯到 20190101
+  # 仍无 1002 —— 是 vendor 上线时间不是窗口边界).
+  # 三端点表达「窗口外」的方式不一致: limit-up 与 auction 返回 0 行,
+  # limit-down / limit-break 抛 code=1002 —— 按统一规则判边界必判错。
   # sync_policy=on_demand: explicit --start/--end only; 禁 mass backfill.
   # page_limit 禁止: 那会走 TuShare limit/offset; 本源分页是 page/size。
   fuyao_limit_up_pool:

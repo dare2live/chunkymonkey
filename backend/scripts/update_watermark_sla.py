@@ -111,6 +111,15 @@ RETIRED_WATERMARK_TOMBSTONES = frozenset(
         #   内容是股东户数(筹码集中度慢变量), owner 确认为策略研究的候选因子之一。
         #   后果: sync_runner 正确写入的 watermark 每次被这行墓碑删掉, 使它成为 44 个域里
         #   唯一没有新鲜度监控的域(goal.md backlog A2 记录的正是此事)。
+        # K3 2026-08-28 退役六个零消费域 (commit 60187b9ad): registry 条目已物理删除,
+        # 但 mart_data_source_watermark 残留行 → 每日 6 条 NO_QUERY_MAPPING 告警噪音。
+        # 已实测确认六者均已不在 sync_registry.yaml (与 stk_holdernumber 那次误判相反)。
+        ("sync:daily_info", "tushare"),
+        ("sync:dc_daily", "tushare"),
+        ("sync:hm_detail", "tushare"),
+        ("sync:hm_list", "tushare"),
+        ("sync:kpl_list", "tushare"),
+        ("sync:ths_hot", "tushare"),
     }
 )
 
