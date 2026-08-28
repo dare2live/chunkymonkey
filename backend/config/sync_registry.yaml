@@ -1215,7 +1215,7 @@ domains:
       size: 200
     pit_anchor: "trade_date from request date_ms; vendor fields first_limit_time/last_limit_time (no is_st on this endpoint)"
     available_after: "18:00"
-    data_start: "20250818"
+    data_start: "20250813"
     freshness_sla_trading_days: 1
     min_rows_per_batch: 0
     freshness_no_probe: "on_demand_explicit_window_not_daily_sla"
@@ -1235,7 +1235,7 @@ domains:
       size: 200
     pit_anchor: "trade_date from request date_ms; open_times is 开板次数 not 连板数"
     available_after: "18:00"
-    data_start: "20250818"
+    data_start: "20250813"
     freshness_sla_trading_days: 1
     min_rows_per_batch: 0
     freshness_no_probe: "on_demand_explicit_window_not_daily_sla"
@@ -1253,7 +1253,7 @@ domains:
     row_dip_tolerance: true
     pit_anchor: "payload.date / date_ms is the auction query day; payload.timestamp is response assembly time and is not the event"
     available_after: "09:30"
-    data_start: "20230925"
+    data_start: "20230919"
     freshness_sla_trading_days: 1
     min_rows_per_batch: 0
     freshness_no_probe: "on_demand_explicit_window_not_daily_sla"
