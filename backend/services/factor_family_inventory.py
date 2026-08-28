@@ -179,6 +179,7 @@ def collect_violations(
             "defer_reason",
             "blocked_reason",
             "continuity_gate",
+            "named_layers",
         }
         if extra_keys:
             viol.append(
@@ -226,6 +227,20 @@ def collect_violations(
             viol.append(
                 f"family {family_id}: invalid coverage_start_policy {csp!r}"
             )
+
+        named_layers = spec.get("named_layers")
+        if named_layers is not None:
+            if not isinstance(named_layers, list) or not named_layers:
+                viol.append(
+                    f"family {family_id}: named_layers must be non-empty list"
+                )
+            elif any(
+                not isinstance(item, str) or not item.strip()
+                for item in named_layers
+            ):
+                viol.append(
+                    f"family {family_id}: named_layers items must be non-empty str"
+                )
 
         se = spec.get("stack_eligibility")
         if se not in STACK_ELIGIBILITY:

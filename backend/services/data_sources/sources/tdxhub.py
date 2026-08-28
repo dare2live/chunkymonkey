@@ -8,8 +8,11 @@ client/broker names, not a live HTTP catalog and not random community IPs.
 
 TCP-open is not enough: several HQ hosts accept TCP then return an empty
 TDX header (``head_buf is not 0x10``). ``quotes_client`` walks hosts until
-handshake + one daily bar for ``000001`` succeeds. Never runs tdxhub
-``bestip`` (that writes the tdxhub runtime config file).
+handshake + one daily bar for ``000001`` succeeds. ``mac_client`` walks the
+same catalog on a *separate* raw socket until handshake + nonempty
+``capital_flow`` for ``000001`` succeeds. Never runs tdxhub ``bestip`` (that
+writes the tdxhub runtime config file). Never reuse the StdQuotes socket for
+MAC frames.
 """
 from __future__ import annotations
 
@@ -223,11 +226,27 @@ def reader_client(*, tdxdir: str | Path, **kwargs: Any):
     return Reader.factory(market="std", tdxdir=str(tdxdir), **kwargs)
 
 
+def mac_client(**kwargs: Any):
+    """MAC-protocol client. Isolated from quotes_client / StdQuotes."""
+    from services.data_sources.tdxhub_mac import mac_client as _mac_client
+
+    return _mac_client(**kwargs)
+
+
+def capital_flow(conn: Any, market: int, code: str, **kwargs: Any) -> dict[str, Any]:
+    """Vendor imbalance proxy via MAC ``0x1218`` / ``Stock_ZJLX``. Not conserved money."""
+    from services.data_sources.tdxhub_mac import capital_flow as _capital_flow
+
+    return _capital_flow(conn, market, code, **kwargs)
+
+
 __all__ = [
     "ALIAS",
+    "capital_flow",
     "is_hq_transport_error",
     "iter_hq_candidates",
     "load_connect_cfg_hq",
+    "mac_client",
     "open_quotes",
     "parse_hq_server",
     "quotes_client",

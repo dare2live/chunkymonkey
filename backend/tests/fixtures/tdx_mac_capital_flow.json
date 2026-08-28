@@ -1,0 +1,16 @@
+{
+  "today": {
+    "main_in": 12.5,
+    "main_out": 3.0,
+    "retail_in": 8.0,
+    "retail_out": 9.5
+  },
+  "five_days": [
+    {
+      "main_in": 1.0,
+      "main_out": 0.4,
+      "retail_in": 0.2,
+      "retail_out": 0.3
+    }
+  ]
+}

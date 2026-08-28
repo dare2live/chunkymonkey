@@ -65,6 +65,13 @@ families:
     frequency: daily
     availability_axis: trade_date
     sync_domains: [moneyflow, moneyflow_dc]
+    # Parallel vendor-imbalance layers, never summed, never a new TuShare domain.
+    # eastmoney_datacenter_flow omitted: live datacenter probe 2026-08-28
+    # returned code 9501 「报表配置不存在」 for fund-flow reportNames while
+    # RPT_MUTUAL_STOCK_HOLDRANKN_NEW worked. Residual = product_mismatch;
+    # do not invent a table.
+    named_layers:
+      - tdx_mac_capital_flow
     bricks: []
     refresh_owner: daily_acquire_catchup
     coverage_start_policy: registry_data_start

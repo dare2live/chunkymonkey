@@ -1,15 +1,22 @@
 """Read-only moneyflow layer recon. Does not cut primaries.
 
-Three named layers, never summed:
-- EOD vendor imbalance proxy = ``fact_stock_moneyflow_dc_daily`` (eastmoney)
-  and separately ``fact_stock_moneyflow_daily`` (tushare order-size). Two EOD
-  vendors are still not one conserved flow.
+Named layers, never summed:
+- EOD vendor imbalance proxy = ``fact_stock_moneyflow_dc_daily`` (eastmoney
+  via TuShare) and separately ``fact_stock_moneyflow_daily`` (tushare
+  order-size). Two EOD vendors are still not one conserved flow.
+- TDX MAC ``capital_flow`` (``0x1218`` / ``Stock_ZJLX``) = a third vendor
+  imbalance proxy. Parallel named layer, not a TuShare replacement.
+- Eastmoney datacenter F10 ``reportName`` fund-flow = probed separately.
+  If no moneyflow reportName returns rows, residual is ``product_mismatch``;
+  do not invent a table. Control ``RPT_MUTUAL_STOCK_HOLDRANKN_NEW`` is not
+  a flow layer.
 - Intraday vendor minute proxy = no accepted publication in this repo
   (eastmoney/THS 主力净流入 polling is not a research plane).
 - Tick active buy/sell delta = tdxhub ``transactions`` sample, bounded,
   truncated-honest. Not identity with either EOD vendor.
 
-qfq kline is not an input. No new TuShare domain. Sample only.
+qfq kline is not an input. No new TuShare domain. Sample only. Never sum
+tdx MAC + eastmoney (or any other pair of) layers.
 """
 from __future__ import annotations
 
@@ -23,7 +30,31 @@ LAYER_EOD_DC = "eod_vendor_imbalance"
 LAYER_EOD_TS = "eod_vendor_tushare_imbalance"
 LAYER_MINUTE = "intraday_vendor_minute"
 LAYER_TICK = "tick_active_imbalance"
+LAYER_TDX_MAC = "tdx_mac_capital_flow"
+LAYER_EM_DC = "eastmoney_datacenter_flow"
 TICK_METHOD = "tdx_tick_active_delta_v1"
+TDX_MAC_METHOD = "tdx_mac_0x1218_stock_zjlx"
+EASTMONEY_FLOW_CANDIDATES = (
+    "RPT_DMSK_FUND_FLOW",
+    "RPT_F10_FUNDFLOW",
+    "RPT_STOCK_FUNDFLOW",
+    "RPT_F10_MAIN_FUNDFLOW",
+)
+EASTMONEY_CONTROL_REPORT = "RPT_MUTUAL_STOCK_HOLDRANKN_NEW"
+_FLOW_COLUMN_NEEDLES = (
+    "net_inflow",
+    "main_net",
+    "main_in",
+    "fund_flow",
+    "zljlr",
+    "super_net",
+    "large_net",
+    "net_mf",
+    "主力",
+    "净流入",
+    "netamount",
+    "net_amount",
+)
 BUYORSSELL_CONVENTION = "0_buy_1_sell"
 BANNED_TICK_MARKETS = frozenset({2})  # BJ
 _TABLE_PART = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -96,7 +127,266 @@ def minute_vendor_status() -> dict[str, Any]:
     }
 
 
-def moneyflow_publication_status() -> dict[str, Any]:
+def tdx_mac_layer_status() -> dict[str, Any]:
+    return {
+        "layer": LAYER_TDX_MAC,
+        "status": "sample_adapter",
+        "accepted": False,
+        "method": TDX_MAC_METHOD,
+        "vendor": "tdx_mac",
+        "unit": "vendor_imbalance_unspecified",
+        "sync_domain": None,
+    }
+
+
+def _looks_like_flow_columns(columns: Sequence[str]) -> bool:
+    joined = " ".join(str(c) for c in columns).lower()
+    return any(needle in joined for needle in _FLOW_COLUMN_NEEDLES)
+
+
+def classify_datacenter_exception(exc: BaseException) -> str:
+    name = type(exc).__name__.lower()
+    text = f"{name} {exc}".lower()
+    if "timeout" in name or "timed out" in text or "timeout" in text:
+        return "timeout"
+    if (
+        "connectionerror" in name
+        or "connection" in text
+        or "connectfailed" in text
+        or "broken pipe" in text
+    ):
+        return "connection_failure"
+    return "http_error"
+
+
+def classify_datacenter_envelope(
+    report_name: str, raw: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    """Classify a datacenter JSON envelope. 9501 / missing result ≠ zero_rows."""
+    payload = raw or {}
+    success = payload.get("success")
+    code = payload.get("code")
+    message = str(payload.get("message") or "")
+    result = payload.get("result")
+    if success is False or code in {9501, "9501"} or "报表配置不存在" in message:
+        return {
+            "report_name": report_name,
+            "status": "product_mismatch",
+            "rows": 0,
+            "count": 0,
+            "columns": [],
+            "code": code,
+            "message": message[:200],
+        }
+    if not isinstance(result, dict):
+        return classify_datacenter_payload(report_name, {"data": [], "count": 0})
+    return classify_datacenter_payload(
+        report_name,
+        {
+            "data": list(result.get("data") or []),
+            "count": result.get("count"),
+            "pages": result.get("pages"),
+        },
+    )
+
+
+def classify_datacenter_payload(
+    report_name: str, payload: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    data = list((payload or {}).get("data") or [])
+    count = (payload or {}).get("count")
+    if not data:
+        return {
+            "report_name": report_name,
+            "status": "zero_rows",
+            "rows": 0,
+            "count": count,
+            "columns": [],
+        }
+    columns = sorted({str(k) for row in data[:1] for k in dict(row)})
+    if not _looks_like_flow_columns(columns):
+        return {
+            "report_name": report_name,
+            "status": "missing_fields",
+            "rows": len(data),
+            "count": count,
+            "columns": columns,
+        }
+    return {
+        "report_name": report_name,
+        "status": "ok",
+        "rows": len(data),
+        "count": count,
+        "columns": columns,
+        "sample": dict(data[0]),
+    }
+
+
+def discover_fundflow_report_names() -> tuple[str, ...]:
+    """Registry siblings that look like fund-flow, excluding cashflow/raise."""
+    names = list(EASTMONEY_FLOW_CANDIDATES)
+    try:
+        from services.data_sources.sibling_repos import ensure_import_path
+
+        ensure_import_path("miaoxiang")
+        from aif10_scraper.registry import REPORTS  # noqa: E402
+    except Exception:  # noqa: BLE001 — probe still has the K2 candidate list
+        return tuple(dict.fromkeys(names))
+    skip = ("CASHFLOW", "CAPITAL_RAISE", "CAPITAL_ITEM")
+    for spec in REPORTS:
+        name = str(getattr(spec, "name", "") or "")
+        upper = name.upper()
+        if any(token in upper for token in skip):
+            continue
+        if "FUNDFLOW" in upper or "FUND_FLOW" in upper or "MAIN_FUNDFLOW" in upper:
+            names.append(name)
+    return tuple(dict.fromkeys(names))
+
+
+def _probe_one_report(
+    client: Any,
+    name: str,
+    *,
+    secucode: str,
+    page_size: int,
+) -> dict[str, Any]:
+    request_json = getattr(client, "_request_json", None)
+    if callable(request_json):
+        try:
+            from aif10_scraper.client import URL_V1
+        except Exception:  # noqa: BLE001
+            URL_V1 = "https://datacenter.eastmoney.com/securities/api/data/v1/get"
+        raw = request_json(
+            URL_V1,
+            {
+                "reportName": name,
+                "columns": "ALL",
+                "pageNumber": 1,
+                "pageSize": page_size,
+                "source": "HSF10",
+                "client": "PC",
+                "filter": f'(SECUCODE="{secucode}")',
+            },
+        )
+        return classify_datacenter_envelope(name, raw)
+    payload = client.get_v1(name, secucode=secucode, page_size=page_size)
+    return classify_datacenter_payload(name, payload)
+
+
+def probe_eastmoney_datacenter_flow(
+    client: Any,
+    *,
+    secucode: str = "600519.SH",
+    page_size: int = 10,
+    report_names: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Classify each reportName separately. 0 rows is not success."""
+    candidates = (
+        tuple(report_names)
+        if report_names is not None
+        else discover_fundflow_report_names()
+    )
+    rows: list[dict[str, Any]] = []
+    for name in candidates:
+        try:
+            rows.append(
+                _probe_one_report(
+                    client, name, secucode=secucode, page_size=page_size
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 — classified, not swallowed
+            rows.append(
+                {
+                    "report_name": name,
+                    "status": classify_datacenter_exception(exc),
+                    "rows": 0,
+                    "columns": [],
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+
+    try:
+        control = _probe_one_report(
+            client,
+            EASTMONEY_CONTROL_REPORT,
+            secucode=secucode,
+            page_size=page_size,
+        )
+        if control["status"] in {"missing_fields", "ok"}:
+            control = {**control, "status": "ok_control"}
+    except Exception as exc:  # noqa: BLE001
+        control = {
+            "report_name": EASTMONEY_CONTROL_REPORT,
+            "status": classify_datacenter_exception(exc),
+            "rows": 0,
+            "columns": [],
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+    ok_layers = [item for item in rows if item.get("status") == "ok"]
+    unmatched = {"zero_rows", "product_mismatch"}
+    if ok_layers:
+        aggregate = "ok"
+        reason = "datacenter returned fund-flow rows; named layer, never summed"
+    elif control.get("status") == "ok_control" and all(
+        item.get("status") in unmatched for item in rows
+    ):
+        aggregate = "product_mismatch"
+        reason = (
+            "control report returned rows but no fund-flow reportName did; "
+            "do not invent a table"
+        )
+    else:
+        aggregate = "probe_failed"
+        reason = "fund-flow reportNames did not return usable rows"
+
+    return {
+        "layer": LAYER_EM_DC,
+        "accepted": False,
+        "primary_cut": False,
+        "status": aggregate,
+        "reason": reason,
+        "secucode": secucode,
+        "candidates": rows,
+        "control": control,
+        "ok_report_names": [item["report_name"] for item in ok_layers],
+        "sample_columns": ok_layers[0]["columns"] if ok_layers else [],
+    }
+
+
+def eastmoney_datacenter_flow_status(
+    probe: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Publication stub. Without a probe this is ``unprobed``, not success.
+
+    Live K2 probe residual (see probe_eastmoney_datacenter_flow): fund-flow
+    reportNames return datacenter code 9501 「报表配置不存在」 while the HSGST
+    control works. Honest status is ``product_mismatch`` — F10 datacenter has
+    no TuShare 日终主力净流入 equivalent. Do not invent a table.
+    """
+    if probe is None:
+        return {
+            "layer": LAYER_EM_DC,
+            "status": "unprobed",
+            "accepted": False,
+            "table": None,
+        }
+    return {
+        "layer": LAYER_EM_DC,
+        "status": probe.get("status"),
+        "accepted": False,
+        "table": None,
+        "reason": probe.get("reason"),
+        "ok_report_names": list(probe.get("ok_report_names") or []),
+        "sample_columns": list(probe.get("sample_columns") or []),
+        "primary_cut": False,
+    }
+
+
+def moneyflow_publication_status(
+    *,
+    eastmoney_probe: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     return {
         "eod_dc": {
             "layer": LAYER_EOD_DC,
@@ -114,6 +404,8 @@ def moneyflow_publication_status() -> dict[str, Any]:
             "unit": "CNY_10k",
             "vendor": "tushare",
         },
+        "tdx_mac": tdx_mac_layer_status(),
+        "eastmoney_datacenter": eastmoney_datacenter_flow_status(eastmoney_probe),
         "minute": minute_vendor_status(),
         "tick": {
             "layer": LAYER_TICK,
