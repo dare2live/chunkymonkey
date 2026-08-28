@@ -13,15 +13,12 @@
 逐项完成史查 `chunkyctl history --grep <关键词>`；FND-GATE 十维实时裁决跑
 `check_foundation_done.py` —— **本节不再复述已闭合项**（复述必然滞后，本轮实证过）。
 
-**换源 strangler（立法；对账未切日更）**
-产品只回答三问：市场在哪、谁在买、价量结构成不成立。研究默认不做因子堆叠、不开 Optuna
-runner、不把 B3+ 当主升浪必经（S5 仍禁）。新输入优先扶摇 / 妙想 F10 / 通达信 hub adapter，
-进同一 `landing→accept→canonical`。当前 accepted 是对账尺子，**不是预选赢家**；一域对完能上场
-的源再切该域 `primary`。TuShare 日更在该域 cutover 前不停；不再注册新 TuShare 域。申万区间
-PIT 三源无等价则**明确留 TuShare**。禁 tdxhub 日线 qfq 当成交 SSOT，禁复活已物删 client / 表名。
+**换源 strangler（判据已换；对账段收口）**
+产品只回答三问：市场在哪、谁在买、价量结构成不成立。研究定位 = **信号条件有效性分层**，不是多因子建模：公式发出的买卖信号，按信号日可见的观测量分桶，看每桶前向收益与胜率；不加权、不回归、不寻优（S5 仍禁）。**「全量因子」= 分层字典不是模型输入** —— `factor_family_inventory.yaml` 是这本字典的目录，不退役。系统四层：信号事件流 → 观测维度字典（信号日可见） → 前向收益（`next_tradable_open`） → 分层胜率表；L4 纯计算，不依赖外部源。
+新输入优先扶摇 / 妙想 F10 / 通达信 hub adapter，进同一 `landing→accept→canonical`。**切换判据不是 identity**：accepted 是二手供应商面不是真相源，跨源口径必然不齐；判据 = 产品要不要 + 源能不能给 + 口径写进字段字典 + 自证式验收（schema 漂移 / 行哈希 / grain 去重 / 分区物理约束 / landing 与 canonical 非空），与 TuShare 数值无关；同名指标口径不同就并列成两个切片维度，不择一。TuShare 日更在该域 cutover 前不停；不再注册新 TuShare 域；三源无等价则**明确留 TuShare**。禁 tdxhub 日线 qfq 当成交 SSOT，禁复活已物删 client / 表名。
 
 **当前 blocker**
-- **数据线滞后**：accepted 日线落后若干交易日，滞后数现查 `scripts/chunkyctl status`。
+- **无阻塞项**（2026-08-28 `chunkyctl status` 实测）：日更链正常 —— 日线 / ST T+1、两融 / 持股变动公告 T+2、十大流通股东 T+0，49 源 0 连续失败 0 fallback。唯一实质滞后是 `org_holding_detail_period`（期轴，`status` 自注「不构成 SLA 判定」），**已归「下一步」K4，不另立 blocker**。`cutover 声明 vs 实际` 的 `tier12_consumer` WARN 是 config 写明的逐日回落、发布一期即自愈，**不是待修项**。滞后数与裁决一律现查 `scripts/chunkyctl status`，禁在本文件写死（2026-08-10 两份手写文档互相矛盾且同时落后两周）。
 
 已裁决硬事实（勿回滚）：
 - accepted daily / ST 起点 **`20190102`** / **`20220104`** 是契约常量；**当前 frontier 是运行时状态，
@@ -29,6 +26,9 @@ PIT 三源无等价则**明确留 TuShare**。禁 tdxhub 日线 qfq 当成交 SS
 - Phase F ladder measured **reject** / `claimable=false`（可 checkpoint；**≠** Release）
 - Delivery-OS：eng_gov §15（一刀 = Rule10 + safe_commit；异步 CI；L3 pre-knife；不放宽 PIT / ≤40d）
 - A→H = 后置研究地图；**E/F remeasure scheduled**（`RX_AUTH=RX-20260824-EF` 与 `backend/config/strategy_lab.yaml` `authorizations.formal_rx` 对锁）。**S5 Optuna 已排期** `PHASE_N_AUTH=OP-20260824-S5`（执行前提 = S1/S2 同 protocol ExperimentVerdict；yaml 第二钥未开、runner 未实现）。StrategyRelease 仍禁；F9 按字面锁 `RX_AUTH=` + `Optuna` + `StrategyRelease`
+- **对账 ≠ 切换**：八刀 recon 是只读诊断器 —— `primary_cut` 在 **4 个 recon 服务 + 5 个 recon CLI 共 18 处硬编码 False**（2026-08-28 实测；`assignment_gap_recon` 独占 8）。**`claimable` 不是 recon 装置的一部分** —— 它是策略侧另一套语义、另有 30 个文件在用（`institution_follow_*` / `main_rally_*` / `formula_challenge` / `strategy_lab`），换源不要动它，其中 4 项子结论 `identity=true`（妙想龙虎榜 / 席位 / 大宗、扶摇沪深 codeset）仍为 False；扶摇与通达信日 K `ohlc_mismatch=0` 仍写 `kline_daily_primary_untouched=true`。**扩样本不会让它变 true**，切换装置须另建（见「下一步」K1）
+- **消费面去供应商化**：`data_access.yaml` entity **禁直指 `raw_*`**（现存直指项列白名单，只减不增），改经 `v_<domain>_<grain>` 视图解析，跨源字段名差异在视图 `AS` 里吸收（先例 = `v_sw_industry_pit`）。**先有视图接缝，再谈 `capability` / `primary`**
+- **扶摇凭证**落 `~/Library/Application Support/hithink-finance/credentials.env`（0600，不进仓库；`resolve_api_key()` 三处来源之一）。实测能力边界：涨停 / 跌停 / 炸板池按 `date_ms` 可回溯至 2020-07（早于 TuShare `limit_list_d` 与 `limit_cpt_list` 起点）；竞价强弱基准 2022 起；热股榜**仅 1 年**；异动分析**仅当日**；`meta/tickers/list` 与 `prices/snapshot` **无 ST 字段**。ST 历史 PIT 身份三源皆无 —— `stock_st` 留 TuShare 的理由是「只有它有历史」，不是「识别不了」
 
 启动：`scripts/chunkyctl agent-boot`；运行时状态：`scripts/chunkyctl status`（现查，零文件）。
 
@@ -59,14 +59,17 @@ owner contract，进度段在此。**不再有第二个说「下一步」的地�
 - 默认序 S1→S2→S3→S4，S5 最后
 
 *三源换源*（按域选最佳再切 `primary`；停更 `raw_tushare_daily` 不当尺子）
-- **刀1** 名义 K：扶摇未复权 10d dump **与** 通达信未复权协议日 K 均已对 accepted（同窗 OHLC 全匹配；禁参赛的 qfq 未用）。通达信官方主机表 = 客户端 `connect.cfg` `[HQHOST]`（`TDXHUB_CONNECT_CFG`，只读、不跑 `bestip`）；`HQ_HOSTS` 是官方客户端/券商 HQ 名的冻结快照（tdxhub 2026-04-11 存活过滤、04-13 合并），不是可轮询的官方 HTTP 目录，也不是随机社区 IP。**未切** `kline_daily.primary`（样本是 10 个交易日不是 10 年）
-- **刀2** 日历 / ST / 停牌：已对 accepted（停牌无 publication）。**未切** primary
-- **刀3** 分类四链：taxonomy 立法补 ths 观察日（禁假装区间 PIT）；DC/SW 同名成员集合对账；扶摇 THS 当前成分抽样；妙想无全市场 DC dump。**未切** primary / 未进 pulse 镜头
-- **刀4** 财务与两融：已对账未切。两融尺子=accepted 沪深交易所汇总，个股明细加总不是身份（含北交所更对不齐）。利润表抽样营收/归母与妙想 GINCOME 近全额对齐仍 `identity=false`；银行 GBALANCE 该报表 0 行；禁 gpcw 复活。**未切** primary
-- **刀5** 名义 K 自建筹码 vs `cyq_perf`：已对账未切。方法=`turnover_overlay_v1`（未复权收盘 + `turnover_rate_f` 衰减直方图，不是持仓观测）；`cyq_perf` 仍是 DataAccess L0 声明、C0 已 FAIL。`identity=false`；不进公式 `winner_rate`。**未切** primary / 不注册新 TuShare 域
-- **刀6** 盘中资金流两层：已对账未切。三名分列（日终 eastmoney/tushare vendor 代理、盘中分钟代理无 publication、通达信分笔主动差额抽样）；禁跨源加总；分笔截断诚实、与日终 `net_amount` 不是身份。**未切** primary / 不注册新 TuShare 域
-- **刀7** 形态×五式下一开盘；主升浪 B0/B1；跟随仍公告日：已对账未切。公式=`next_tradable_open`；主升浪=`setup_signal_only`（全段未实现，B3+ 非必经）；跟随 PIT=`notice_available_at`。`claimable=false`；非 Release / 不开 Optuna。**未切** primary
+- **刀 1–7** 名义 K / 日历·ST·停牌 / 分类四链 / 财务·两融 / 筹码 / 资金流两层 / 形态×五式 —— 全部**已对账未切**，逐刀结论查 `chunkyctl history --grep "feat(source)"`。硬事实留存：通达信官方主机表 = 客户端 `connect.cfg` `[HQHOST]`（`TDXHUB_CONNECT_CFG`，只读、不跑 `bestip`），`HQ_HOSTS` 是冻结快照不是可轮询目录；两融尺子 = accepted 沪深交易所汇总（个股加总不是身份）；筹码 = `turnover_overlay_v1` 非持仓观测；资金流三名分列禁跨源加总；公式 = `next_tradable_open`，主升浪 = `setup_signal_only`，跟随 PIT = `notice_available_at`；禁 gpcw 复活、不注册新 TuShare 域
+- **刀8** 换源缺口补测（未切 primary）：沪深 dump 代码 vs `dim_active` 5212=5212；除权事件≠日频因子（税后对齐、税前大面积差）；妙想龙虎榜股票/席位一日全匹配；大宗括号归一后全匹配；户数茅台全对仍无 accepted；解禁/调研 grain 或 PIT 不同；增减持/业绩预告/开盘啦无等价。扶摇 REST（估值/涨停池/指数/listing）**该刀执行时无 key 未跑；key 已于 2026-08-28 配好并实测**（能力边界见「已裁决硬事实」扶摇凭证条，勿据本行判定仍缺 key）
 - 参考 easy_tdx（学习不抄 OS）：标准 HQ 与 MAC 协议主机隔离、握手/非空载荷后才 failover、复权必须显式 `--adjust`；不抄缠论/回测 UI，qfq 仍禁成交 SSOT
+
+*三源换源 — 执行段*（**刀 1–8 = 只读诊断已收口，不再加刀**；判据见 objective 自证式非 identity。顺序：K1 先行，其余依赖它的接缝；K2 / K3 / K5 可并行；K4 / K6 按线推进）
+- **K1** 消费面视图层（**先决项**）：`data_access.yaml` 里直指 `raw_tushare_*` 的 entity 逐个改指 `v_<domain>_<grain>`，视图内吸收字段名差异；**禁新建门 —— 两道已存在，扩它们**：`check_legacy_raw_plane.py`（检查 2/4/8 已对 data_access entity 的 `raw_*` 分类并管 publication_surface 重定向）+ `check_serve_read_layer.py`（D1 消费者旁路 / D3 lineage 完整 / D5 router 禁内联 raw），把「分类」升到「硬禁新增」即可；现存直指项 **17 个**（`table: raw_*`，2026-08-28 实测）列白名单只减不增。做完之后换源才等于改一处 SELECT
+- **K2** 资金流两条腿并行（三源均无 TuShare 日终主力净流入的等价物）：tdxhub 补 MAC 协议客户端 + `capital_flow` 命令（与标准 HQ 主机隔离、握手 + 非空载荷后才 failover、不跑 `bestip`）· 同时查东财 datacenter 资金流 reportName。两边都拿到就并列进分层字典，不择一
+- **K3** 退役 6 个零消费域：`daily_info` / `dc_daily` / `hm_detail` / `hm_list` / `kpl_list` / `ths_hot` —— 全仓只被采集器、`backend/services/foundation_obs_serve.py`、recon 脚本触及，无业务读取方。`kpl_list` 由扶摇涨停池升级替代。**游资概念留路线图**，重建在妙想席位（`RPT_OPERATEDEPT_TRADE` + 龙虎榜席位，后者 identity 已验），不保留 `hm_*`（`hm_list` 起点太晚、`hm_detail` 无读取方）。**两条执行前提（2026-08-28 实测）**：① `dc_daily` 禁子串匹配 —— 同前缀的 `dc_index` / `moneyflow_ind_dc` / `moneyflow_mkt_dc` 是活域（`dc_daily` 词边界匹配后只剩 `sync_registry` / `pipeline_latency_budgets` / `delta_manifest` / `foundation_obs_serve`，确为零消费）；② `ths_hot` 在 `check_continuity_integrity.py` 有**活登记**（`CROSS_SECTION_GROUP_COLS` 分组检测 + dead_groups 墓碑），退役须同源清掉，否则复刻本文件 A2 那个「墓碑指向活域→watermark 每轮被清→唯一无监控者」的盲区
+- **K4** `org_holding` 两个缺口：① PIT 规则 2026-08-27 才改对，canonical 历史全部由旧「法定截止日冒充已知日」逻辑写入（accepted 分区日期清一色落在 0430 / 0831 / 1031），须按新逻辑 re-accept，且落后源端一个报告期未补；② 已 accept 但无消费方（`institution_profile.py` 未 ATTACH 该库），补消费链或明确暂缓 —— **落库通过 ≠ 被消费**
+- **K5** 扶摇接入（key 已具备）：涨停 / 跌停 / 炸板池日频回填（2020-07 起，含封单额 / 涨停时间 / 连板数 / `is_st`）· 竞价强弱基准 · dump 全历史日 K 与通达信交叉 · 基金 28 端点评估为跟随策略「资金方侧」第二条腿（现有跟随只有上市公司披露侧）
+- **K6** 通达信全历史：协议翻页取全历史未复权日 K + `xdxr`，验证 10 年深度的翻页稳定性（现只验过 10 个交易日窗口）；`block` 板块 / 概念作为第三套命名空间并列，不与 SW / DC / THS 合并。qfq / hfq 仍禁当成交 SSOT
 
 **护栏**（长期有效，非进度）：formal frontier 与 drain soft 窗分立叙述 · PIT + ≤40d ·
 §15 不放宽 · serve = 沪深A 含 ST · 禁为清单洗绿（class-B 诚实状态**留着就是做对了**）。
