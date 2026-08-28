@@ -450,13 +450,13 @@ def test_s7_pulse_flow_builder_tables_are_compatibility() -> None:
     from services.data_access.spec import load_registry
 
     reg = load_registry()
-    assert reg.entity("moneyflow_ind_dc").table == "raw_tushare_moneyflow_ind_dc"
-    assert reg.entity("moneyflow_mkt_dc").table == "raw_tushare_moneyflow_mkt_dc"
-    assert reg.entity("sw_daily").table == "raw_tushare_sw_daily"
-    assert reg.entity("dc_index").table == "raw_tushare_dc_index"
-    assert reg.entity("index_dailybasic").table == "raw_tushare_index_dailybasic"
-    assert reg.entity("limit_cpt_list").table == "raw_tushare_limit_cpt_list"
-    assert reg.entity("top_list").table == "raw_tushare_top_list"
+    assert reg.entity("moneyflow_ind_dc").table == "v_moneyflow_ind_dc_board_day"
+    assert reg.entity("moneyflow_mkt_dc").table == "v_moneyflow_mkt_dc_market_day"
+    assert reg.entity("sw_daily").table == "v_sw_daily_index_day"
+    assert reg.entity("dc_index").table == "v_dc_index_board_day"
+    assert reg.entity("index_dailybasic").table == "v_index_dailybasic_index_day"
+    assert reg.entity("limit_cpt_list").table == "v_limit_cpt_list_board_day"
+    assert reg.entity("top_list").table == "v_top_list_stock_day"
 
     mod = _load_check_mod()
     inv = mod._load_yaml(mod.INVENTORY_YAML)
@@ -678,6 +678,7 @@ def test_s7_gate_allows_membership_compat_with_publication_surface(
     inv = tmp_path / "legacy_raw_plane.yaml"
     inv.write_text(
         "version: 1\n"
+        "data_access_raw_entity_allowlist: [dc_member, daily, margin]\n"
         "membership_l0_entities: [dc_member, index_member_all]\n"
         "tables:\n"
         "  raw_tushare_daily:\n"

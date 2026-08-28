@@ -3,7 +3,10 @@
 
 Checks:
   1. Every sync_registry target_table ``raw_tushare_*`` is classified.
-  2. Every data_access entity table ``raw_*`` is classified.
+  2. Every data_access entity table ``raw_*`` is classified; entity names
+     whose ``table`` starts with ``raw_`` must sit on shrinking
+     ``data_access_raw_entity_allowlist`` (hard-ban new raw pointers);
+     allowlist entries with no current raw_* entity are illegal (force shrink).
   3. Formal-domain raw tables must not be role=ssot; write must be forbidden.
   4. Membership L0: role=ssot OR role=compatibility with publication_surface
      that DataAccess entity resolves to (≠ raw table).
@@ -81,16 +84,35 @@ def sync_registry_raw_tables() -> set[str]:
     return out
 
 
-def data_access_raw_tables() -> set[str]:
+def data_access_raw_entities() -> dict[str, str]:
+    """entity name → table for every data_access entity whose table is ``raw_*``."""
     da = _load_yaml(DATA_ACCESS_YAML)
-    out: set[str] = set()
-    for ent in (da.get("entities") or {}).values():
+    out: dict[str, str] = {}
+    for name, ent in (da.get("entities") or {}).items():
         if not isinstance(ent, dict):
             continue
         table = ent.get("table")
         if isinstance(table, str) and table.startswith("raw_"):
-            out.add(table)
+            out[str(name)] = table
     return out
+
+
+def data_access_raw_tables() -> set[str]:
+    return set(data_access_raw_entities().values())
+
+
+def data_access_raw_entity_allowlist(
+    inv: dict[str, Any] | None = None,
+) -> tuple[set[str], str | None]:
+    """Return (allowlist, error). error is set when the YAML value is not a list."""
+    data = inv if inv is not None else _load_yaml(INVENTORY_YAML)
+    raw = data.get("data_access_raw_entity_allowlist", [])
+    if not isinstance(raw, list):
+        return set(), (
+            "data_access_raw_entity_allowlist must be a list of entity names "
+            f"(got {type(raw).__name__})"
+        )
+    return {str(x) for x in raw}, None
 
 
 def data_access_entity_table(entity: str) -> str | None:
@@ -140,6 +162,22 @@ def collect_violations() -> list[str]:
 
     for table in sorted(data_access_raw_tables() - classified):
         viol.append(f"unclassified data_access entity table: {table}")
+
+    allowlist, allow_err = data_access_raw_entity_allowlist(inv)
+    if allow_err:
+        viol.append(allow_err)
+    raw_ents = data_access_raw_entities()
+    for name, table in sorted(raw_ents.items()):
+        if name not in allowlist:
+            viol.append(
+                f"data_access entity {name!r} table {table!r} is not on "
+                f"data_access_raw_entity_allowlist; point at v_<domain>_<grain>"
+            )
+    for name in sorted(allowlist - set(raw_ents)):
+        viol.append(
+            f"data_access_raw_entity_allowlist contains stale {name!r} "
+            f"(no current data_access entity with table raw_*); shrink the allowlist"
+        )
 
     for domain, expected_table in FORMAL_DOMAIN_RAW_TABLES.items():
         meta = tables.get(expected_table)

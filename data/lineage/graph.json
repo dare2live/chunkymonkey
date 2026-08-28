@@ -6689,13 +6689,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_block_trade"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "dst": "consumer:backend/config/serve_read_views.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_block_trade"
     },
@@ -6719,19 +6719,19 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_block_trade"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_cyq_perf"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "dst": "consumer:backend/config/serve_read_views.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_cyq_perf"
     },
@@ -6749,15 +6749,15 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/tests/services/test_cyq_recon.py",
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_cyq_perf"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
+      "dst": "consumer:backend/tests/services/test_cyq_recon.py",
       "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
+      "src": "table:tushare_raw.raw_tushare_cyq_perf"
     },
     {
       "attrs": {},
@@ -6779,13 +6779,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/sync_registry.yaml",
+      "dst": "consumer:backend/config/serve_read_views.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/routers/ops_manual_run.py",
+      "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
     },
@@ -6821,12 +6821,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/update_watermark_sla.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/data_audit.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
@@ -6845,19 +6839,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_sources/formal_boundaries.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/data_sources/fuyao_kline_recon.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/nominal_ohlcv_contract.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
     },
@@ -6875,43 +6857,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_sources/security_day_acquire.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/security_day_transport.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/sync_runner.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/derive_runtime.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/factor_family_continuity_gates.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/factor_family_inventory.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/foundation_obs_serve.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
     },
@@ -6929,43 +6875,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/market_pulse_serve_read.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/market_read.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/market_schema.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/pipeline/acquire.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/rally_gt.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/technical_states/__init__.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/universe.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
     },
@@ -6978,6 +6888,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_check_continuity_integrity.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_daily"
     },
@@ -7151,13 +7067,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_dc_index"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "dst": "consumer:backend/config/serve_read_views.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_dc_index"
     },
@@ -7187,18 +7103,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/foundation_obs_serve.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_dc_index"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/market_pulse.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_dc_index"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/pipeline/delta_manifest.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_dc_index"
@@ -7206,6 +7110,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_build_dc_industry_view.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_dc_index"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_dc_index"
     },
@@ -7385,13 +7295,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_fina_indicator"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "dst": "consumer:backend/config/serve_read_views.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_fina_indicator"
     },
@@ -7409,7 +7319,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/lineage/query.py",
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_fina_indicator"
     },
@@ -7421,13 +7331,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_forecast"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "dst": "consumer:backend/config/serve_read_views.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_forecast"
     },
@@ -7439,13 +7349,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_forecast"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_forecast"
     },
@@ -7607,12 +7511,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_index_dailybasic"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_index_dailybasic"
@@ -7625,19 +7523,25 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_index_dailybasic"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_index_dailybasic"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "dst": "consumer:backend/services/market_pulse.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_index_dailybasic"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/market_pulse.py",
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_index_dailybasic"
     },
@@ -7757,13 +7661,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_limit_cpt_list"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "dst": "consumer:backend/config/serve_read_views.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_limit_cpt_list"
     },
@@ -7775,13 +7679,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/foundation_obs_serve.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_limit_cpt_list"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/market_pulse.py",
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_limit_cpt_list"
     },
@@ -7877,12 +7775,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin"
@@ -7895,19 +7787,13 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/routers/market_pulse.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/routers/ops_manual_run.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin"
     },
@@ -7919,25 +7805,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/recon_fina_margin.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/data_sources/fina_margin_recon.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/formal_boundaries.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/formal_execution.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin"
     },
@@ -7949,73 +7817,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_sources/margin_ingest.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/margin_population_scope.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/margin_projections.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/margin_readiness.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/margin_reconcile.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/margin_state.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/data_sources/sync_runner.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/foundation_obs_serve.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/market_pulse.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/market_pulse_scope.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/market_pulse_serve_read.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_margin"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/pipeline/acquire.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin"
     },
@@ -8027,13 +7829,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/pipeline/margin_catchup_acquire.py",
+      "dst": "consumer:backend/tests/scripts/test_check_continuity_integrity.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/tests/scripts/test_check_continuity_integrity.py",
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin"
     },
@@ -8369,13 +8171,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow_ind_dc"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "dst": "consumer:backend/config/serve_read_views.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow_ind_dc"
     },
@@ -8387,13 +8189,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/foundation_obs_serve.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_moneyflow_ind_dc"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/market_pulse.py",
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow_ind_dc"
     },
@@ -8417,13 +8213,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow_mkt_dc"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "dst": "consumer:backend/config/serve_read_views.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow_mkt_dc"
     },
@@ -8435,13 +8231,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/foundation_obs_serve.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_moneyflow_mkt_dc"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/market_pulse.py",
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow_mkt_dc"
     },
@@ -8459,13 +8249,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_report_rc"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "dst": "consumer:backend/config/serve_read_views.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_report_rc"
     },
@@ -8477,25 +8267,19 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_report_rc"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/foundation_obs_serve.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_report_rc"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_share_float"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "dst": "consumer:backend/config/serve_read_views.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_share_float"
     },
@@ -8507,19 +8291,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/scripts/recon_assignment_gaps.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_share_float"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_share_float"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_share_float"
     },
@@ -8528,12 +8306,6 @@
       "dst": "consumer:backend/tests/services/test_universe_serve_filter.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_share_float"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_stk_holdernumber"
     },
     {
       "attrs": {},
@@ -8549,13 +8321,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/sync_registry.yaml",
+      "dst": "consumer:backend/config/serve_read_views.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stk_holdernumber"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/routers/stock_dossier.py",
+      "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stk_holdernumber"
     },
@@ -8573,7 +8345,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/holdernumber_assist.py",
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stk_holdernumber"
     },
@@ -8693,6 +8465,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stk_surv"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stk_surv"
@@ -8724,6 +8502,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/source_watermarks.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stk_surv"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stk_surv"
     },
@@ -8813,6 +8597,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stock_st"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_calendar_identity_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stock_st"
@@ -8861,13 +8651,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_sw_daily"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "dst": "consumer:backend/config/serve_read_views.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_sw_daily"
     },
@@ -8879,13 +8669,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/foundation_obs_serve.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_sw_daily"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/market_pulse.py",
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_sw_daily"
     },
@@ -9011,13 +8795,13 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/data_access.yaml",
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_top_list"
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "dst": "consumer:backend/config/serve_read_views.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_top_list"
     },
@@ -9041,13 +8825,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/services/foundation_obs_serve.py",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_top_list"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/services/market_pulse.py",
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_top_list"
     },
@@ -9143,6 +8921,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_calendar_acceptance.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_trade_cal"
@@ -9182,6 +8966,258 @@
       "dst": "consumer:backend/tests/test_calendar_builder.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_block_trade_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_block_trade_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/recon_assignment_gaps.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_block_trade_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_block_trade_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_block_trade_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_cyq_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_cyq_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_cyq_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/routers/ops_manual_run.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_continuity_integrity.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_legacy_raw_plane.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/update_watermark_sla.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_audit.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/formal_boundaries.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/nominal_ohlcv_contract.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/nominal_ohlcv_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/security_day_acquire.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/security_day_transport.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sync_runner.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/factor_family_continuity_gates.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/factor_family_inventory.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_pulse_serve_read.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_read.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/pipeline/acquire.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/rally_gt.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/technical_states/__init__.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/universe.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_market_pulse_serve_read_s6.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_daily_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_dc_index_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_dc_index_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_dc_index_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_dc_index_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/pipeline/delta_manifest.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_dc_index_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_dc_index_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_dc_index_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_dc_index_board_day"
     },
     {
       "attrs": {},
@@ -9229,6 +9265,540 @@
       "attrs": {},
       "dst": "consumer:backend/config/data_access.yaml",
       "kind": "consume",
+      "src": "table:tushare_raw.v_forecast_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_forecast_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_forecast_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_forecast_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_forecast_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_fundamentals_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_fundamentals_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/lineage/query.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_fundamentals_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_fundamentals_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_holder_number_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_holder_number_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/routers/stock_dossier.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_holder_number_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/holdernumber_assist.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_holder_number_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_holder_number_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_holdernumber_assist.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_holder_number_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_index_dailybasic_index_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_index_dailybasic_index_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_index_dailybasic_index_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_index_dailybasic_index_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_index_dailybasic_index_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_index_dailybasic_index_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_index_dailybasic_index_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_institution_survey_event"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_institution_survey_event"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_institution_survey_event"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_limit_cpt_list_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_limit_cpt_list_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_limit_cpt_list_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_limit_cpt_list_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_limit_cpt_list_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_limit_cpt_list_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_limit_cpt_list_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/routers/market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/routers/ops_manual_run.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_legacy_raw_plane.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/recon_fina_margin.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/formal_boundaries.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/formal_execution.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_acceptance.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_ingest.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_population_scope.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_projections.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_readiness.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_reconcile.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_state.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sync_runner.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_pulse_serve_read.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/pipeline/acquire.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/pipeline/frozen_domain_observe.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/pipeline/margin_catchup_acquire.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_market_pulse_serve_read_s6.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_moneyflow_ind_dc_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_moneyflow_ind_dc_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_moneyflow_ind_dc_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_moneyflow_ind_dc_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_moneyflow_ind_dc_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_moneyflow_ind_dc_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_moneyflow_ind_dc_board_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_moneyflow_mkt_dc_market_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_moneyflow_mkt_dc_market_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_moneyflow_mkt_dc_market_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_moneyflow_mkt_dc_market_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_moneyflow_mkt_dc_market_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_moneyflow_mkt_dc_market_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_moneyflow_mkt_dc_market_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_report_rc_event"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_report_rc_event"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_report_rc_event"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_report_rc_event"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_report_rc_event"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_share_float_event"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_share_float_event"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/recon_assignment_gaps.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_share_float_event"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_share_float_event"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_share_float_event"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_sw_daily_index_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_sw_daily_index_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_sw_daily_index_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_sw_daily_index_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_sw_daily_index_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_sw_daily_index_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_sw_daily_index_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
       "src": "table:tushare_raw.v_sw_industry_pit"
     },
     {
@@ -9263,6 +9833,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_sw_industry_pit"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/routers/market_pulse.py",
       "kind": "consume",
       "src": "table:tushare_raw.v_sw_industry_pit"
@@ -9276,6 +9852,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/check_legacy_raw_plane.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_sw_industry_pit"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/ensure_serve_read_views.py",
       "kind": "consume",
       "src": "table:tushare_raw.v_sw_industry_pit"
     },
@@ -9386,12 +9968,54 @@
       "dst": "consumer:backend/tests/test_market_pulse_api.py",
       "kind": "consume",
       "src": "table:tushare_raw.v_sw_industry_pit"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_access.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_top_list_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_top_list_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/foundation_obs_serve.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_top_list_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_top_list_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_top_list_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_top_list_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_market_pulse.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_top_list_stock_day"
     }
   ],
   "meta": {
-    "edge_count": 1517,
-    "generated_at": "2026-08-28T07:57:04.911267+00:00",
-    "node_count": 484,
+    "edge_count": 1621,
+    "generated_at": "2026-08-28T08:53:00.209719+00:00",
+    "node_count": 504,
     "version": 2
   },
   "nodes": [
@@ -9553,6 +10177,14 @@
         "path": "backend/config/serve_derive_closed_loop.yaml"
       },
       "id": "consumer:backend/config/serve_derive_closed_loop.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/serve_read_views.yaml"
+      },
+      "id": "consumer:backend/config/serve_read_views.yaml",
       "kind": "consumer"
     },
     {
@@ -9761,6 +10393,14 @@
         "path": "backend/scripts/derive_cli.py"
       },
       "id": "consumer:backend/scripts/derive_cli.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
+        "path": "backend/scripts/ensure_serve_read_views.py"
+      },
+      "id": "consumer:backend/scripts/ensure_serve_read_views.py",
       "kind": "consumer"
     },
     {
@@ -11049,6 +11689,14 @@
         "path": "backend/tests/scripts/test_downstream_impact.py"
       },
       "id": "consumer:backend/tests/scripts/test_downstream_impact.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/scripts/test_ensure_serve_read_views.py"
+      },
+      "id": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
       "kind": "consumer"
     },
     {
@@ -13172,12 +13820,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "block_trade"
-        ],
         "status": "active",
-        "table": "raw_tushare_block_trade",
-        "vendor": "tushare"
+        "table": "raw_tushare_block_trade"
       },
       "id": "table:tushare_raw.raw_tushare_block_trade",
       "kind": "table"
@@ -13186,12 +13830,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "cyq"
-        ],
         "status": "active",
-        "table": "raw_tushare_cyq_perf",
-        "vendor": "tushare"
+        "table": "raw_tushare_cyq_perf"
       },
       "id": "table:tushare_raw.raw_tushare_cyq_perf",
       "kind": "table"
@@ -13200,12 +13840,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "daily"
-        ],
         "status": "active",
-        "table": "raw_tushare_daily",
-        "vendor": "tushare"
+        "table": "raw_tushare_daily"
       },
       "id": "table:tushare_raw.raw_tushare_daily",
       "kind": "table"
@@ -13244,12 +13880,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "dc_index"
-        ],
         "status": "active",
-        "table": "raw_tushare_dc_index",
-        "vendor": "eastmoney_via_tushare"
+        "table": "raw_tushare_dc_index"
       },
       "id": "table:tushare_raw.raw_tushare_dc_index",
       "kind": "table"
@@ -13278,12 +13910,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "fundamentals"
-        ],
         "status": "active",
-        "table": "raw_tushare_fina_indicator",
-        "vendor": "tushare"
+        "table": "raw_tushare_fina_indicator"
       },
       "id": "table:tushare_raw.raw_tushare_fina_indicator",
       "kind": "table"
@@ -13292,12 +13920,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "forecast"
-        ],
         "status": "active",
-        "table": "raw_tushare_forecast",
-        "vendor": "tushare"
+        "table": "raw_tushare_forecast"
       },
       "id": "table:tushare_raw.raw_tushare_forecast",
       "kind": "table"
@@ -13346,12 +13970,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "index_dailybasic"
-        ],
         "status": "active",
-        "table": "raw_tushare_index_dailybasic",
-        "vendor": "tushare"
+        "table": "raw_tushare_index_dailybasic"
       },
       "id": "table:tushare_raw.raw_tushare_index_dailybasic",
       "kind": "table"
@@ -13380,12 +14000,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "limit_cpt_list"
-        ],
         "status": "active",
-        "table": "raw_tushare_limit_cpt_list",
-        "vendor": "tushare"
+        "table": "raw_tushare_limit_cpt_list"
       },
       "id": "table:tushare_raw.raw_tushare_limit_cpt_list",
       "kind": "table"
@@ -13404,12 +14020,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "margin"
-        ],
         "status": "active",
-        "table": "raw_tushare_margin",
-        "vendor": "tushare"
+        "table": "raw_tushare_margin"
       },
       "id": "table:tushare_raw.raw_tushare_margin",
       "kind": "table"
@@ -13458,12 +14070,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "moneyflow_ind_dc"
-        ],
         "status": "active",
-        "table": "raw_tushare_moneyflow_ind_dc",
-        "vendor": "eastmoney_via_tushare"
+        "table": "raw_tushare_moneyflow_ind_dc"
       },
       "id": "table:tushare_raw.raw_tushare_moneyflow_ind_dc",
       "kind": "table"
@@ -13472,12 +14080,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "moneyflow_mkt_dc"
-        ],
         "status": "active",
-        "table": "raw_tushare_moneyflow_mkt_dc",
-        "vendor": "eastmoney_via_tushare"
+        "table": "raw_tushare_moneyflow_mkt_dc"
       },
       "id": "table:tushare_raw.raw_tushare_moneyflow_mkt_dc",
       "kind": "table"
@@ -13486,12 +14090,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "report_rc"
-        ],
         "status": "active",
-        "table": "raw_tushare_report_rc",
-        "vendor": "tushare"
+        "table": "raw_tushare_report_rc"
       },
       "id": "table:tushare_raw.raw_tushare_report_rc",
       "kind": "table"
@@ -13500,12 +14100,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "share_float"
-        ],
         "status": "active",
-        "table": "raw_tushare_share_float",
-        "vendor": "tushare"
+        "table": "raw_tushare_share_float"
       },
       "id": "table:tushare_raw.raw_tushare_share_float",
       "kind": "table"
@@ -13514,12 +14110,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "holder_number"
-        ],
         "status": "active",
-        "table": "raw_tushare_stk_holdernumber",
-        "vendor": "tushare"
+        "table": "raw_tushare_stk_holdernumber"
       },
       "id": "table:tushare_raw.raw_tushare_stk_holdernumber",
       "kind": "table"
@@ -13548,12 +14140,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "institution_survey"
-        ],
         "status": "active",
-        "table": "raw_tushare_stk_surv",
-        "vendor": "tushare"
+        "table": "raw_tushare_stk_surv"
       },
       "id": "table:tushare_raw.raw_tushare_stk_surv",
       "kind": "table"
@@ -13592,12 +14180,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "sw_daily"
-        ],
         "status": "active",
-        "table": "raw_tushare_sw_daily",
-        "vendor": "shenwan"
+        "table": "raw_tushare_sw_daily"
       },
       "id": "table:tushare_raw.raw_tushare_sw_daily",
       "kind": "table"
@@ -13626,12 +14210,8 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
-        "serve_entities": [
-          "top_list"
-        ],
         "status": "active",
-        "table": "raw_tushare_top_list",
-        "vendor": "tushare"
+        "table": "raw_tushare_top_list"
       },
       "id": "table:tushare_raw.raw_tushare_top_list",
       "kind": "table"
@@ -13650,10 +14230,234 @@
       "attrs": {
         "db": "tushare_raw",
         "layer": "untagged",
+        "serve_entities": [
+          "block_trade"
+        ],
+        "status": "active",
+        "table": "v_block_trade_stock_day",
+        "vendor": "tushare"
+      },
+      "id": "table:tushare_raw.v_block_trade_stock_day",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "cyq"
+        ],
+        "status": "active",
+        "table": "v_cyq_stock_day",
+        "vendor": "tushare"
+      },
+      "id": "table:tushare_raw.v_cyq_stock_day",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "daily"
+        ],
+        "status": "active",
+        "table": "v_daily_stock_day",
+        "vendor": "tushare"
+      },
+      "id": "table:tushare_raw.v_daily_stock_day",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "dc_index"
+        ],
+        "status": "active",
+        "table": "v_dc_index_board_day",
+        "vendor": "eastmoney_via_tushare"
+      },
+      "id": "table:tushare_raw.v_dc_index_board_day",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
         "status": "active",
         "table": "v_dc_industry_pit"
       },
       "id": "table:tushare_raw.v_dc_industry_pit",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "forecast"
+        ],
+        "status": "active",
+        "table": "v_forecast_period",
+        "vendor": "tushare"
+      },
+      "id": "table:tushare_raw.v_forecast_period",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "fundamentals"
+        ],
+        "status": "active",
+        "table": "v_fundamentals_period",
+        "vendor": "tushare"
+      },
+      "id": "table:tushare_raw.v_fundamentals_period",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "holder_number"
+        ],
+        "status": "active",
+        "table": "v_holder_number_period",
+        "vendor": "tushare"
+      },
+      "id": "table:tushare_raw.v_holder_number_period",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "index_dailybasic"
+        ],
+        "status": "active",
+        "table": "v_index_dailybasic_index_day",
+        "vendor": "tushare"
+      },
+      "id": "table:tushare_raw.v_index_dailybasic_index_day",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "institution_survey"
+        ],
+        "status": "active",
+        "table": "v_institution_survey_event",
+        "vendor": "tushare"
+      },
+      "id": "table:tushare_raw.v_institution_survey_event",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "limit_cpt_list"
+        ],
+        "status": "active",
+        "table": "v_limit_cpt_list_board_day",
+        "vendor": "tushare"
+      },
+      "id": "table:tushare_raw.v_limit_cpt_list_board_day",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "margin"
+        ],
+        "status": "active",
+        "table": "v_margin_exchange_day",
+        "vendor": "tushare"
+      },
+      "id": "table:tushare_raw.v_margin_exchange_day",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "moneyflow_ind_dc"
+        ],
+        "status": "active",
+        "table": "v_moneyflow_ind_dc_board_day",
+        "vendor": "eastmoney_via_tushare"
+      },
+      "id": "table:tushare_raw.v_moneyflow_ind_dc_board_day",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "moneyflow_mkt_dc"
+        ],
+        "status": "active",
+        "table": "v_moneyflow_mkt_dc_market_day",
+        "vendor": "eastmoney_via_tushare"
+      },
+      "id": "table:tushare_raw.v_moneyflow_mkt_dc_market_day",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "report_rc"
+        ],
+        "status": "active",
+        "table": "v_report_rc_event",
+        "vendor": "tushare"
+      },
+      "id": "table:tushare_raw.v_report_rc_event",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "share_float"
+        ],
+        "status": "active",
+        "table": "v_share_float_event",
+        "vendor": "tushare"
+      },
+      "id": "table:tushare_raw.v_share_float_event",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "sw_daily"
+        ],
+        "status": "active",
+        "table": "v_sw_daily_index_day",
+        "vendor": "shenwan"
+      },
+      "id": "table:tushare_raw.v_sw_daily_index_day",
       "kind": "table"
     },
     {
@@ -13669,6 +14473,20 @@
         "vendor": "shenwan"
       },
       "id": "table:tushare_raw.v_sw_industry_pit",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "serve_entities": [
+          "top_list"
+        ],
+        "status": "active",
+        "table": "v_top_list_stock_day",
+        "vendor": "tushare"
+      },
+      "id": "table:tushare_raw.v_top_list_stock_day",
       "kind": "table"
     }
   ]

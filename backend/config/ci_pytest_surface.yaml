@@ -160,6 +160,7 @@ blocking_paths:
 - tests/scripts/test_check_strategy_lab.py
 - tests/scripts/test_build_price_kline_qfq_tushare.py
 - tests/scripts/test_build_sw_industry_view.py
+- tests/scripts/test_ensure_serve_read_views.py
 - tests/scripts/test_dip_severity.py
 - tests/scripts/test_dip_scan.py
 - tests/scripts/test_cross_section_full.py

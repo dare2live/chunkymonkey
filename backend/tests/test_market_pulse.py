@@ -128,6 +128,15 @@ CREATE TABLE dim_stock_segment_daily (
     circ_mv DOUBLE);
 CREATE TABLE fact_stock_form_daily (
     stock_code TEXT, trade_date TEXT, form_name TEXT, is_breakout_event BOOLEAN);
+CREATE VIEW tr.v_moneyflow_ind_dc_board_day AS SELECT * FROM tr.raw_tushare_moneyflow_ind_dc;
+CREATE VIEW tr.v_dc_index_board_day AS SELECT * FROM tr.raw_tushare_dc_index;
+CREATE VIEW tr.v_sw_daily_index_day AS SELECT * FROM tr.raw_tushare_sw_daily;
+CREATE VIEW tr.v_daily_stock_day AS SELECT * FROM tr.raw_tushare_daily;
+CREATE VIEW tr.v_moneyflow_mkt_dc_market_day AS SELECT * FROM tr.raw_tushare_moneyflow_mkt_dc;
+CREATE VIEW tr.v_margin_exchange_day AS SELECT * FROM tr.raw_tushare_margin;
+CREATE VIEW tr.v_index_dailybasic_index_day AS SELECT * FROM tr.raw_tushare_index_dailybasic;
+CREATE VIEW tr.v_top_list_stock_day AS SELECT * FROM tr.raw_tushare_top_list;
+CREATE VIEW tr.v_limit_cpt_list_board_day AS SELECT * FROM tr.raw_tushare_limit_cpt_list;
 """
 
 

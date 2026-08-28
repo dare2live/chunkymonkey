@@ -245,7 +245,7 @@ assertions:
     command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_serve_read_layer.py >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
   - id: legacy-raw-plane-inventory
-    claim: "S7 legacy raw_tushare_* 平面清单门全绿：sync_registry + data_access L0 raw 全分类；formal daily/ST/calendar/margin 不得 role=ssot 且 write=forbidden；membership L0 = ssot 或 compatibility+publication_surface(DataAccess≠raw)；pulse_flow_builder=compatibility+mart_*；derive_input/identity_cache=compatibility+non-raw publication_surface；raw_tushare_daily=fill。owner=backend/scripts/check_legacy_raw_plane.py + legacy_raw_plane.yaml"
+    claim: "data_access entities must not point at `raw_*` except shrinking `data_access_raw_entity_allowlist`; inventory still classifies sync_registry raw tables. owner=backend/scripts/check_legacy_raw_plane.py + legacy_raw_plane.yaml"
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_legacy_raw_plane.py >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}

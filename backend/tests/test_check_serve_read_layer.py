@@ -38,6 +38,23 @@ def test_lineage_complete_flags_missing_chain(tmp_path, monkeypatch):
     assert not any("'good'" in v for v in viol)  # 完整 entity 不误报
 
 
+def test_lineage_complete_rejects_raw_table_outside_allowlist(tmp_path, monkeypatch):
+    """D3: injected raw_* entity with empty allowlist must fail (K1 hard-ban)."""
+    da = tmp_path / "data_access.yaml"
+    da.write_text(
+        "entities:\n  sneaky:\n    db: tushare_raw\n    table: raw_foo\n"
+        "    layer: L0\n    vendor: tushare\n    asof_col: trade_date\n"
+        "    code_col: ts_code\n",
+        encoding="utf-8",
+    )
+    inv = tmp_path / "legacy_raw_plane.yaml"
+    inv.write_text("version: 1\ndata_access_raw_entity_allowlist: []\n", encoding="utf-8")
+    monkeypatch.setattr(mod, "DATA_ACCESS_YAML", da)
+    monkeypatch.setattr(mod, "LEGACY_RAW_PLANE_YAML", inv)
+    viol = mod.door_lineage_complete()
+    assert any("sneaky" in v and "v_<domain>_<grain>" in v for v in viol), viol
+
+
 def test_real_data_access_yaml_lineage_complete():
     # 真 config: 全部 entity 声明链应齐全 (绿基线)
     assert mod.door_lineage_complete() == []

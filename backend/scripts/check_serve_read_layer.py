@@ -21,7 +21,9 @@ scope="只迁 dossier")。dossier.py 已随 2026-06-28 纯数据平台重建永�
                             非成员消费者必须走 DataAccess.get()(单概念单真相源, 不变量#4)
   D2 preflight-wired      : drivers/generic.py 调 resolver.preflight (schema 漂移自检接线)
   D3 lineage-complete     : data_access.yaml 每 entity 声明链齐全 (db+table+layer+vendor+asof_col+code_col),
-                            追不到声明源=FAIL (可追溯=确定性走链)
+                            追不到声明源=FAIL (可追溯=确定性走链)；table 以 raw_* 开头且 entity
+                            不在 legacy_raw_plane.yaml data_access_raw_entity_allowlist → FAIL
+                            （改指 v_<domain>_<grain>，不另立 D6）
   D4 feature-from-l2      : backend/scripts 0 个 experiment_/analyze_ 因子 runner
                             (L2-bypass 向量关闭: 实验只能在 sandbox, 按 README 读 L2 panel 不绕 L0 重算)
   D5 router-no-ad-hoc-raw : backend/routers/ 禁止内联 raw_* 读 (S6 serve 边界);
@@ -41,6 +43,7 @@ import yaml
 REPO = Path(__file__).resolve().parents[2]
 GENERIC = REPO / "backend" / "services" / "data_access" / "drivers" / "generic.py"
 DATA_ACCESS_YAML = REPO / "backend" / "config" / "data_access.yaml"
+LEGACY_RAW_PLANE_YAML = REPO / "backend" / "config" / "legacy_raw_plane.yaml"
 SCRIPTS_DIR = REPO / "backend" / "scripts"
 SERVICES_DIR = REPO / "backend" / "services"
 ROUTERS_DIR = REPO / "backend" / "routers"
@@ -129,6 +132,17 @@ def door_preflight_wired() -> list[str]:
     return []
 
 
+def _raw_entity_allowlist() -> set[str]:
+    raw = _read(LEGACY_RAW_PLANE_YAML)
+    if not raw:
+        return set()
+    doc = yaml.safe_load(raw) or {}
+    names = doc.get("data_access_raw_entity_allowlist") or []
+    if not isinstance(names, list):
+        return set()
+    return {str(x) for x in names}
+
+
 def door_lineage_complete() -> list[str]:
     raw = _read(DATA_ACCESS_YAML)
     if not raw:
@@ -137,12 +151,19 @@ def door_lineage_complete() -> list[str]:
     entities = doc.get("entities", {})
     if not entities:
         return ["data_access.yaml entities 为空"]
+    allowlist = _raw_entity_allowlist()
     bad = []
     for name, spec in entities.items():
         spec = spec or {}
         missing = [k for k in REQUIRED_ENTITY_KEYS if not spec.get(k)]
         if missing:
             bad.append(f"entity {name!r} 声明链缺字段 {missing} (追溯断链)")
+        table = spec.get("table")
+        if isinstance(table, str) and table.startswith("raw_") and name not in allowlist:
+            bad.append(
+                f"entity {name!r} table {table!r} still points at raw_*; "
+                f"redirect to v_<domain>_<grain>"
+            )
     return bad
 
 

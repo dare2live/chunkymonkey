@@ -1,0 +1,108 @@
+# K1 serve-read identity views. One view per data_access L0 entity that used to
+# point at raw_*. Cross-source field renames go in `columns` as
+# {out: trade_date, source: date_ms}; K1 names match, so entries are strings.
+# Views live in the DuckDB file (gitignored); this file is the git DDL source.
+# Installer: backend/scripts/ensure_serve_read_views.py
+# Do not register v_sw_industry_pit here (already built by build_sw_industry_view).
+
+version: 1
+views:
+  v_cyq_stock_day:
+    db: tushare_raw
+    source_table: raw_tushare_cyq_perf
+    entity: cyq
+    columns: [ts_code, trade_date, winner_rate, cost_5pct, cost_50pct, cost_95pct, weight_avg]
+  v_share_float_event:
+    db: tushare_raw
+    source_table: raw_tushare_share_float
+    entity: share_float
+    columns: [ts_code, ann_date, float_date, float_ratio]
+  v_holder_number_period:
+    db: tushare_raw
+    source_table: raw_tushare_stk_holdernumber
+    entity: holder_number
+    columns: [ts_code, ann_date, end_date, holder_num]
+  v_block_trade_stock_day:
+    db: tushare_raw
+    source_table: raw_tushare_block_trade
+    entity: block_trade
+    columns: [ts_code, trade_date, price, amount]
+  v_report_rc_event:
+    db: tushare_raw
+    source_table: raw_tushare_report_rc
+    entity: report_rc
+    columns: [ts_code, report_date, rating, tp]
+  v_fundamentals_period:
+    db: tushare_raw
+    source_table: raw_tushare_fina_indicator
+    entity: fundamentals
+    columns: [ts_code, ann_date, end_date, roe, roe_dt, roe_yearly, netprofit_yoy, or_yoy, grossprofit_margin, debt_to_assets]
+  v_forecast_period:
+    db: tushare_raw
+    source_table: raw_tushare_forecast
+    entity: forecast
+    columns: [ts_code, ann_date, end_date, type, p_change_min, p_change_max]
+  v_sw_daily_index_day:
+    db: tushare_raw
+    source_table: raw_tushare_sw_daily
+    entity: sw_daily
+    columns: [ts_code, trade_date, close, pct_change, amount]
+  v_index_dailybasic_index_day:
+    db: tushare_raw
+    source_table: raw_tushare_index_dailybasic
+    entity: index_dailybasic
+    columns: [ts_code, trade_date, pe_ttm, turnover_rate_f]
+  v_limit_cpt_list_board_day:
+    db: tushare_raw
+    source_table: raw_tushare_limit_cpt_list
+    entity: limit_cpt_list
+    columns: [ts_code, name, trade_date, days, up_stat, cons_nums, up_nums, pct_chg, rank]
+  v_top_list_stock_day:
+    db: tushare_raw
+    source_table: raw_tushare_top_list
+    entity: top_list
+    columns: [ts_code, trade_date, net_amount, reason]
+  v_moneyflow_ind_dc_board_day:
+    db: tushare_raw
+    source_table: raw_tushare_moneyflow_ind_dc
+    entity: moneyflow_ind_dc
+    columns: [trade_date, content_type, ts_code, name, pct_change, net_amount, buy_elg_amount, buy_sm_amount_stock]
+  v_moneyflow_mkt_dc_market_day:
+    db: tushare_raw
+    source_table: raw_tushare_moneyflow_mkt_dc
+    entity: moneyflow_mkt_dc
+    columns: [trade_date, net_amount]
+  v_daily_stock_day:
+    db: tushare_raw
+    source_table: raw_tushare_daily
+    entity: daily
+    columns: [ts_code, trade_date, pct_chg]
+  v_margin_exchange_day:
+    db: tushare_raw
+    source_table: raw_tushare_margin
+    entity: margin
+    columns: [trade_date, exchange_id, rzrqye]
+  v_dc_index_board_day:
+    db: tushare_raw
+    source_table: raw_tushare_dc_index
+    entity: dc_index
+    columns:
+      [
+        ts_code,
+        trade_date,
+        name,
+        pct_change,
+        leading,
+        leading_code,
+        leading_pct,
+        total_mv,
+        up_num,
+        down_num,
+        idx_type,
+        level,
+      ]
+  v_institution_survey_event:
+    db: tushare_raw
+    source_table: raw_tushare_stk_surv
+    entity: institution_survey
+    columns: [ts_code, name, surv_date, rece_org, org_type]

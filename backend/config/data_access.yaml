@@ -104,7 +104,7 @@ entities:
   cyq:
     # 长江筹码分布/获利盘 (复权 qfq 空间, 实测核证 CLEAN)
     db: tushare_raw
-    table: raw_tushare_cyq_perf
+    table: v_cyq_stock_day
     layer: L0
     code_col: ts_code
     asof_col: trade_date
@@ -116,7 +116,7 @@ entities:
   share_float:
     # 解禁 (前瞻事件; PIT 锚=ann_date 公告日, 公告≤t 时未来 float_date 已知 0泄露)
     db: tushare_raw
-    table: raw_tushare_share_float
+    table: v_share_float_event
     layer: L0
     code_col: ts_code
     asof_col: ann_date
@@ -128,7 +128,7 @@ entities:
   holder_number:
     # 股东户数 (筹码集中慢变量; PIT 锚=ann_date; end_date 仅报告期排序, 禁作可用日)
     db: tushare_raw
-    table: raw_tushare_stk_holdernumber
+    table: v_holder_number_period
     layer: L0
     code_col: ts_code
     asof_col: ann_date
@@ -140,7 +140,7 @@ entities:
   block_trade:
     # 大宗交易 (折溢价 = 大资金态度)
     db: tushare_raw
-    table: raw_tushare_block_trade
+    table: v_block_trade_stock_day
     layer: L0
     code_col: ts_code
     asof_col: trade_date
@@ -155,7 +155,7 @@ entities:
   report_rc:
     # 券商研报/分析师预期 (PIT 锚=report_date 发布日; tp 单位 ×0.0001元 消费侧 /10000, mythos§8)
     db: tushare_raw
-    table: raw_tushare_report_rc
+    table: v_report_rc_event
     layer: L0
     code_col: ts_code
     asof_col: report_date
@@ -167,7 +167,7 @@ entities:
   fundamentals:
     # 财报指标 (PIT 锚=ann_date 公告日, **非 end_date 期末** = leakage 红线 mythos§3a; end_date 报告期仅排序用)
     db: tushare_raw
-    table: raw_tushare_fina_indicator
+    table: v_fundamentals_period
     layer: L0
     code_col: ts_code
     asof_col: ann_date
@@ -180,7 +180,7 @@ entities:
   forecast:
     # 业绩预告 (前瞻 PEAD; PIT 锚=ann_date 公告日; 修订=新 ann_date 胜)
     db: tushare_raw
-    table: raw_tushare_forecast
+    table: v_forecast_period
     layer: L0
     code_col: ts_code
     asof_col: ann_date
@@ -192,7 +192,7 @@ entities:
   sw_daily:
     # 申万行业指数日线 (S7: pulse builder → mart_sector_pulse_daily; raw = compat residual)
     db: tushare_raw
-    table: raw_tushare_sw_daily
+    table: v_sw_daily_index_day
     layer: L0
     code_col: ts_code
     code_input: ts_passthrough
@@ -205,7 +205,7 @@ entities:
   index_dailybasic:
     # 指数估值/换手 (S7: pulse builder → mart_market_pulse_daily mkt_pe/turnover)
     db: tushare_raw
-    table: raw_tushare_index_dailybasic
+    table: v_index_dailybasic_index_day
     layer: L0
     code_col: ts_code
     code_input: ts_passthrough
@@ -218,7 +218,7 @@ entities:
   limit_cpt_list:
     # 最强板块榜 (S7: pulse builder → mart_market_pulse_daily; TI 码独立卡)
     db: tushare_raw
-    table: raw_tushare_limit_cpt_list
+    table: v_limit_cpt_list_board_day
     layer: L0
     code_col: ts_code
     code_input: ts_passthrough
@@ -231,7 +231,7 @@ entities:
   top_list:
     # 龙虎榜上榜明细 (净买额 + 上榜原因)
     db: tushare_raw
-    table: raw_tushare_top_list
+    table: v_top_list_stock_day
     layer: L0
     code_col: ts_code
     asof_col: trade_date
@@ -320,7 +320,7 @@ entities:
   moneyflow_ind_dc:
     # 东财板块资金流 (pulse builder → mart_sector_pulse_daily; 非 drill 个股叶)
     db: tushare_raw
-    table: raw_tushare_moneyflow_ind_dc
+    table: v_moneyflow_ind_dc_board_day
     layer: L0
     code_col: ts_code
     code_input: ts_passthrough
@@ -333,7 +333,7 @@ entities:
   moneyflow_mkt_dc:
     # 东财大盘资金 (pulse builder → mart_market_pulse_daily)
     db: tushare_raw
-    table: raw_tushare_moneyflow_mkt_dc
+    table: v_moneyflow_mkt_dc_market_day
     layer: L0
     code_col: trade_date
     code_input: ts_passthrough
@@ -346,7 +346,7 @@ entities:
   daily:
     # 名义日线 (事实类; drill 叶 pct_chg JOIN; 执行真相另见 accepted canonical)
     db: tushare_raw
-    table: raw_tushare_daily
+    table: v_daily_stock_day
     layer: L0
     code_col: ts_code
     asof_col: trade_date
@@ -358,7 +358,7 @@ entities:
   margin:
     # 两融交易所余额 (B-ext pulse shadow 探针; 非 project_universe 广度真相)
     db: tushare_raw
-    table: raw_tushare_margin
+    table: v_margin_exchange_day
     layer: L0
     code_col: exchange_id
     code_input: ts_passthrough
@@ -371,7 +371,7 @@ entities:
   dc_index:
     # 东财板块指数 (S7: pulse builder → mart_sector_pulse_daily; dim current-snapshot residual)
     db: tushare_raw
-    table: raw_tushare_dc_index
+    table: v_dc_index_board_day
     layer: L0
     code_col: ts_code
     code_input: ts_passthrough
@@ -418,7 +418,7 @@ entities:
     # PIT 锚=surv_date 调研日; tushare stk_surv 无 notice_date(披露日) → available_after t+1 保守
     # (调研纪要盘后/隔日披露)。旧 aif10+akshare raw_institution_surveys 已退役物删。
     db: tushare_raw
-    table: raw_tushare_stk_surv
+    table: v_institution_survey_event
     layer: L0
     code_col: ts_code
     asof_col: surv_date

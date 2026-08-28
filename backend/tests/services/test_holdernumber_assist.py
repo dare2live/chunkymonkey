@@ -5,6 +5,7 @@ from conftest import duck_mem
 
 from services.data_access import DataAccess
 from services.holdernumber_assist import _yyyymmdd, load_holdernumber_assist
+from services.serve_read_views import ensure_serve_read_views
 
 
 def test_holder_number_entity_pit():
@@ -21,6 +22,7 @@ def test_holder_number_entity_pit():
             ("600519.SH", "20260430", "20260331", "170000"),
         ],
     )
+    ensure_serve_read_views(c)
     res = DataAccess().get(
         "holder_number", codes=["600519"], as_of="2025-07-31", conn=c
     )
@@ -98,7 +100,7 @@ def test_registry_entity_and_sync_axis():
     from services.data_sources.sync_runner import load_registry as load_sync
 
     ent = load_access().entity("holder_number")
-    assert ent.table == "raw_tushare_stk_holdernumber"
+    assert ent.table == "v_holder_number_period"
     assert ent.asof_col == "ann_date"
     sync = load_sync()["domains"]["stk_holdernumber"]
     assert sync["batch_mode"] == "by_ann_date"

@@ -12,6 +12,8 @@
 # Gate: backend/scripts/check_legacy_raw_plane.py
 #   - every sync_registry raw_tushare_* target_table classified
 #   - every data_access entity table raw_* classified
+#   - data_access_raw_entity_allowlist: shrinking; new raw_* entity pointers FAIL;
+#     stale allowlist names FAIL (force shrink). K1 emptied it.
 #   - formal_domain tables must not be role=ssot; write must be forbidden
 #   - serve_l0_leaf / multi_consumer: compatibility only after DataAccess
 #     redirects to a non-raw publication_surface (no pulse-aggregate theater)
@@ -22,6 +24,10 @@
 # not a fetch/accept queue and not readiness.
 
 version: 1
+
+# K1 shrinking allowlist: data_access entity names still pointing at raw_*.
+# Only shrink. Empty after the 17 identity-view redirects.
+data_access_raw_entity_allowlist: []
 
 # High-value sync_orphan domains for *future* publication knives only
 # (module+data+config+contract+evidence). Not auto-triggered; unused now ≠
@@ -186,7 +192,7 @@ tables:
     role: compatibility
     formal_domain: margin
     write: forbidden
-    note: "formal exchange margin accept owns publication; serve L0 entity still points here"
+    note: "formal exchange margin accept owns publication; serve L0 entity reads v_margin_exchange_day"
 
   raw_tushare_margin_detail:
     role: ssot

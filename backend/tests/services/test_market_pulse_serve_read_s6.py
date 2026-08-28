@@ -14,12 +14,13 @@ from test_market_pulse import CFG, D, _fixture_conn
 
 def test_serve_read_entities_resolve_physical_tables():
     reg = load_registry()
-    for name in (
-        "daily",
-        "margin",
+    for name, view in (
+        ("daily", "v_daily_stock_day"),
+        ("margin", "v_margin_exchange_day"),
     ):
         assert reg.entity(name).db == "tushare_raw"
-        assert serve._table(name).startswith("raw_")
+        assert serve._table(name) == view
+        assert reg.entity(name).layer == "L0"
     # B1: dc_member → smartmoney observation-date publication
     assert reg.entity("dc_member").db == "smartmoney"
     assert reg.entity("dc_member").table == "fact_dc_member_daily"
