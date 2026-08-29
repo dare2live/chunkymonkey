@@ -900,8 +900,13 @@ class QuotaExhaustedError(RuntimeError):
 #   (advrecv backfill 两次 0 行停链, 主会话两次误判"配额墙")。修法: 只有明确当日/账户级措辞才算墙;
 #   其余 (瞬态限流/超时/0 行) 一律退避重试, 终败入 failure_queue 由 drain 补 (mythos §10), 不停全链。
 _HARD_WALL_MARKERS = ("今日请求已达上限", "请明天再试", "明日再试", "攻击", "封禁", "黑名单")
+# 混合两类来源: TuShare/tinyshare 代理返回中文措辞, 扶摇返回业务错误码 (官方文档
+# 4001=限流, 应指数退避重试 ≤3 次)。命中后 _fetch_with_retry 改用更长的
+# transient_backoff_seconds (默认 60/120/180) 而非默认 5/30/120 —— 限流窗口是分钟级,
+# 5 秒后重试大概率仍在窗口内, 白费一次尝试。
 _TRANSIENT_RATELIMIT_MARKERS = (
     "并发请求过多", "请稍后重试", "稍后重试", "稍后再试", "访问频率", "频率超限", "请求过于频繁",
+    "code=4001",  # 扶摇限流错误码
 )
 
 
@@ -955,24 +960,28 @@ class _RateLimiter:
             time.sleep(wait + 0.05)  # 锁外睡, 不阻塞其他线程窗口推进
 
 
-_RATE_LIMITER: "_RateLimiter | None" = None
-_RATE_LIMITER_INIT = False
+# 按 source 隔离的限流器缓存。曾经是全局单例, 但那样第一个跑到的 domain 会锁死配额,
+# 之后所有 source 共用同一份 —— 各 vendor 配额完全不同 (tushare 代理 120/分, 扶摇官方
+# 自我节流约 5 QPS), 单例结构性地保证了"给一个源调限流会影响其它源"。
+# 缓存 None 也是有意的: 未配 rate_limit 的 source 每次都重新解析 spec 没有意义。
+_RATE_LIMITERS: "dict[str, _RateLimiter | None]" = {}
 
 
 def _get_rate_limiter(spec: dict[str, Any]) -> "_RateLimiter | None":
-    """从 spec.rate_limit (defaults 合并) 懒初始化全局单例; 未配置 = 不节流 (向后兼容)。"""
-    global _RATE_LIMITER, _RATE_LIMITER_INIT
-    if _RATE_LIMITER_INIT:
-        return _RATE_LIMITER
-    _RATE_LIMITER_INIT = True
+    """按 spec.source 取限流器 (spec.rate_limit 经 domain_spec 合并); 未配置 = 不节流。"""
+    key = str(spec.get("source") or "__default__")
+    if key in _RATE_LIMITERS:
+        return _RATE_LIMITERS[key]
     cfg = spec.get("rate_limit") or {}
     per_api = cfg.get("per_interface_per_min")
     total = cfg.get("total_per_min")
+    limiter: "_RateLimiter | None" = None
     if per_api and total:
-        _RATE_LIMITER = _RateLimiter(per_api, total)
-        log.info("[rate-limit] 主动节流启用: 单接口 %s/分 + 全接口 %s/分 (并发上限 %s)",
-                 per_api, total, cfg.get("max_concurrency"))
-    return _RATE_LIMITER
+        limiter = _RateLimiter(per_api, total)
+        log.info("[rate-limit] 主动节流启用 source=%s: 单接口 %s/分 + 全接口 %s/分 (并发上限 %s)",
+                 key, per_api, total, cfg.get("max_concurrency"))
+    _RATE_LIMITERS[key] = limiter
+    return limiter
 
 
 def _fetch_with_retry(

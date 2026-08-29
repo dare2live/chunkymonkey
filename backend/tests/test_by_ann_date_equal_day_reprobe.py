@@ -79,8 +79,7 @@ def env(monkeypatch):
             "20260723", False, "published"
         ),
     )
-    monkeypatch.setattr(sr, "_RATE_LIMITER", None)
-    monkeypatch.setattr(sr, "_RATE_LIMITER_INIT", False)
+    monkeypatch.setattr(sr, "_RATE_LIMITERS", {})
     monkeypatch.setattr(sr, "_pending_failure_start", lambda _spec: None)
     yield c, adapter
     c.close()

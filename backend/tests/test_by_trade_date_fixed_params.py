@@ -83,8 +83,7 @@ def env(monkeypatch):
     monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
     monkeypatch.setattr(sr, "trading_days", lambda start, end=None: [D])
     monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, source: None)
-    monkeypatch.setattr(sr, "_RATE_LIMITER", None)
-    monkeypatch.setattr(sr, "_RATE_LIMITER_INIT", False)
+    monkeypatch.setattr(sr, "_RATE_LIMITERS", {})
     yield c, adapter
     c.close()
 

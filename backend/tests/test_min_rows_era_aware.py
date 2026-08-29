@@ -139,8 +139,7 @@ def test_run_domain_era_aware_no_false_below_min_rows(monkeypatch):
     monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
     monkeypatch.setattr(sr, "trading_days", lambda start, end=None: [OLD_DAY, NEW_DAY])
     monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, source: None)
-    monkeypatch.setattr(sr, "_RATE_LIMITER", None)
-    monkeypatch.setattr(sr, "_RATE_LIMITER_INIT", False)
+    monkeypatch.setattr(sr, "_RATE_LIMITERS", {})
 
     res = sr.run_domain("md_era_test", backfill=True, registry=_registry(with_era=True))
     assert res["failed_batches"] == 1, \
