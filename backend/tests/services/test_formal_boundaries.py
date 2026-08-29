@@ -1,10 +1,13 @@
 """A5 adversarial tests for formal adapter/landing/canonical boundaries."""
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from services.data_sources.formal_boundaries import (
     LIVE_ADAPTER,
+    _FORMAL_BOUNDARIES,
     FormalBoundaryError,
     boundary_inventory,
     formal_domains,
@@ -18,6 +21,44 @@ def test_live_adapter_is_tushare_only() -> None:
     assert require_live_adapter("tushare", domain="trade_cal") == LIVE_ADAPTER
     with pytest.raises(FormalBoundaryError, match="unsupported_live_adapter"):
         require_live_adapter("akshare", domain="trade_cal")
+
+
+def test_wildcard_domain_accepts_any_registered_formal_adapter() -> None:
+    # domain="*" is the sync_runner._adapter(source_name) call site, which
+    # only has a source name in hand, never a single domain. It must accept
+    # any adapter declared by any registered formal domain.
+    assert require_live_adapter("tushare", domain="*") == "tushare"
+
+
+def test_wildcard_domain_rejects_unregistered_adapter() -> None:
+    with pytest.raises(FormalBoundaryError, match="unsupported_live_adapter"):
+        require_live_adapter("akshare", domain="*")
+
+
+def test_unregistered_domain_falls_back_to_live_adapter_only() -> None:
+    assert require_live_adapter("tushare", domain="no_such_domain") == LIVE_ADAPTER
+    with pytest.raises(FormalBoundaryError, match="unsupported_live_adapter"):
+        require_live_adapter("akshare", domain="no_such_domain")
+
+
+def test_per_domain_adapter_override_is_isolated_to_its_own_domain(monkeypatch) -> None:
+    # Temporarily declare trade_cal as using a different adapter than the
+    # other formal domains, and confirm require_live_adapter enforces that
+    # per-domain, without leaking into sibling domains. monkeypatch.setitem
+    # restores _FORMAL_BOUNDARIES["trade_cal"] automatically after the test.
+    original = _FORMAL_BOUNDARIES["trade_cal"]
+    monkeypatch.setitem(
+        _FORMAL_BOUNDARIES,
+        "trade_cal",
+        dataclasses.replace(original, adapter="baostock"),
+    )
+
+    assert require_live_adapter("baostock", domain="trade_cal") == "baostock"
+    with pytest.raises(FormalBoundaryError, match="unsupported_live_adapter"):
+        require_live_adapter("tushare", domain="trade_cal")
+
+    # Sibling domains are unaffected by trade_cal's override.
+    assert require_live_adapter("tushare", domain="daily") == LIVE_ADAPTER
 
 
 def test_inventory_declares_three_boundaries_for_formal_domains() -> None:

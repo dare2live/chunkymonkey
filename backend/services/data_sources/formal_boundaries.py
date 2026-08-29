@@ -97,12 +97,28 @@ def formal_domains() -> tuple[str, ...]:
 
 def require_live_adapter(adapter_name: str, *, domain: str) -> str:
     name = str(adapter_name or "").strip()
-    if name != LIVE_ADAPTER:
+
+    if domain == "*":
+        # Wildcard callers (e.g. a source-name-only adapter factory) don't
+        # have a single domain in hand. Allow any adapter declared by *any*
+        # registered formal domain.
+        allowed = {item.adapter for item in _FORMAL_BOUNDARIES.values()}
+    else:
+        boundary = _FORMAL_BOUNDARIES.get(domain)
+        if boundary is not None:
+            allowed = {boundary.adapter}
+        else:
+            # Unregistered domain: fall back to the historical single
+            # live-adapter behavior.
+            allowed = {LIVE_ADAPTER}
+
+    if name not in allowed:
+        expected = ", ".join(sorted(allowed)) or LIVE_ADAPTER
         raise FormalBoundaryError(
             domain,
             reason="unsupported_live_adapter",
             detail=(
-                f"formal domains only allow adapter={LIVE_ADAPTER!r}; "
+                f"domain={domain!r} only allows adapter in {{{expected}}}; "
                 f"got {name!r}"
             ),
         )
