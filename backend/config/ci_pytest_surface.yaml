@@ -66,6 +66,7 @@ blocking_paths:
 - tests/services/test_tdxhub_kline_recon.py
 - tests/services/test_tdxhub_history_pagination.py
 - tests/services/test_tdxhub_mac_capital_flow.py
+- tests/services/test_tdxhub_host_memory.py
 - tests/services/test_calendar_identity_recon.py
 - tests/services/test_taxonomy_recon.py
 - tests/services/test_fina_margin_recon.py

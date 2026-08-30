@@ -21,7 +21,10 @@ from services.data_sources.sibling_repos import ensure_import_path
 from services.data_sources.sources.tdxhub import (
     _SMOKE_CODE,
     _SMOKE_MARKET,
+    forget_good_host,
+    hosts_with_memory,
     iter_hq_candidates,
+    remember_good_host,
     tcp_open,
 )
 
@@ -330,17 +333,20 @@ def mac_client(**kwargs: Any) -> MacConnection:
 
     last: BaseException | None = None
     handshake_tries = 0
-    for ip, port in iter_hq_candidates():
+    for ip, port in hosts_with_memory("mac", iter_hq_candidates()):
         if not tcp_open(ip, port, timeout=tcp_timeout):
             continue
         handshake_tries += 1
         try:
-            return open_mac((ip, port), timeout=timeout)
+            conn = open_mac((ip, port), timeout=timeout)
         except Exception as exc:  # noqa: BLE001 — next host
             last = exc
+            forget_good_host("mac", (ip, port))
             if handshake_tries >= max_hosts:
                 break
             continue
+        remember_good_host("mac", (ip, port))
+        return conn
     raise RuntimeError(
         f"no handshake-ready TDX MAC after {handshake_tries} TCP-open hosts: {last!r}"
     )

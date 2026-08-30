@@ -135,6 +135,61 @@ def iter_hq_candidates(
     return ordered
 
 
+_LAST_GOOD_HOST: dict[str, tuple[str, int]] = {}
+
+
+def remember_good_host(protocol: str, server: tuple[str, int]) -> None:
+    """Cache the host whose handshake actually answered, keyed by protocol.
+
+    Protocols are isolated on purpose: a std-HQ handshake succeeding on a
+    host says nothing about whether the MAC frame handshake would succeed
+    on the same host (different wire protocol). ``"hq"`` and ``"mac"`` each
+    get their own slot and never share one.
+    """
+    _LAST_GOOD_HOST[str(protocol)] = (str(server[0]), int(server[1]))
+
+
+def forget_good_host(protocol: str, server: tuple[str, int] | None = None) -> None:
+    """Drop a protocol's cached host.
+
+    With ``server`` given, only evicts when it still matches what is
+    cached (so a failure on some *other*, non-cached host in the same
+    walk cannot accidentally wipe out a still-good memory). Without it,
+    unconditionally clears the slot.
+    """
+    key = str(protocol)
+    if server is None:
+        _LAST_GOOD_HOST.pop(key, None)
+        return
+    current = _LAST_GOOD_HOST.get(key)
+    if current == (str(server[0]), int(server[1])):
+        _LAST_GOOD_HOST.pop(key, None)
+
+
+def hosts_with_memory(
+    protocol: str, candidates: Iterable[tuple[str, int]]
+) -> list[tuple[str, int]]:
+    """Return ``candidates`` reordered so protocol's remembered host is first.
+
+    Relative order of the rest is preserved and nothing is duplicated.
+    Does not itself call ``iter_hq_candidates`` — callers build the base
+    list themselves, which keeps that call monkeypatch-able per module.
+    """
+    remembered = _LAST_GOOD_HOST.get(str(protocol))
+    ordered: list[tuple[str, int]] = []
+    seen: set[tuple[str, int]] = set()
+    if remembered is not None:
+        ordered.append(remembered)
+        seen.add(remembered)
+    for ip, port in candidates:
+        key = (str(ip), int(port))
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(key)
+    return ordered
+
+
 def _payload_len(raw: Any) -> int:
     if raw is None:
         return 0
@@ -207,17 +262,20 @@ def quotes_client(
 
     last: BaseException | None = None
     handshake_tries = 0
-    for ip, port in iter_hq_candidates():
+    for ip, port in hosts_with_memory("hq", iter_hq_candidates()):
         if not tcp_open(ip, port, timeout=tcp_timeout):
             continue
         handshake_tries += 1
         try:
-            return open_quotes((ip, port), timeout=timeout)
+            client = open_quotes((ip, port), timeout=timeout)
         except Exception as exc:  # noqa: BLE001 — next host
             last = exc
+            forget_good_host("hq", (ip, port))
             if handshake_tries >= max_hosts:
                 break
             continue
+        remember_good_host("hq", (ip, port))
+        return client
     raise RuntimeError(
         f"no handshake-ready TDX HQ after {handshake_tries} TCP-open hosts: {last!r}"
     )
@@ -262,6 +320,8 @@ __all__ = [
     "ALIAS",
     "block",
     "capital_flow",
+    "forget_good_host",
+    "hosts_with_memory",
     "is_hq_transport_error",
     "iter_hq_candidates",
     "load_connect_cfg_hq",
@@ -270,6 +330,7 @@ __all__ = [
     "parse_hq_server",
     "quotes_client",
     "reader_client",
+    "remember_good_host",
     "tcp_open",
     "tdxhub_root",
     "xdxr",
