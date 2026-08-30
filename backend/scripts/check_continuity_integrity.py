@@ -168,6 +168,9 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
         source_cfg = sources.get(entry.get("source")) or {}
         default_db = source_cfg.get("target_db") or defaults.get("target_db", "tushare_raw")
         contract_spec = dict(defaults)
+        # 与 sync_runner.domain_spec 同款三层继承链 defaults → sources[source] → entry。
+        # 漏掉中间这层会让 target_db 等已下沉到源级的字段取不到, 进而 contract 构造失败。
+        contract_spec.update(source_cfg)
         contract_spec.update(entry)
         contract_spec["domain"] = domain
         margin_contract = contract_for_spec(contract_spec)

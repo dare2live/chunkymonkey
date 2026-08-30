@@ -39,12 +39,17 @@ pip 包 ``baostock==0.9.3`` (钉死版本, 见 backend/requirements.txt 该行�
 ``BaostockSource.fetch_raw`` 是 sync_runner 的调用约定入口, 与 ``sources/fuyao.py`` /
 ``sources/tushare.py`` 同型: ``fetch_raw(api, **params) -> list[dict]``。
 
-**范围声明**: 本文件只提供接入能力 (source adapter), **不注册任何
-``sync_registry.yaml`` 数据域** —— 域注册 (含 trade_cal 的 formal boundary 考量)
-是另一刀的事。
+**范围声明**: 2026-08-30 上一刀本文件只提供接入能力 (source adapter), 不注册任何
+``sync_registry.yaml`` 数据域。本刀 (同日) 注册了第一个域 ``baostock_trade_cal``
+(``sources.baostock_trade_cal`` in sync_registry.yaml, ``sync_policy: on_demand``,
+不进日更自动链) —— 仍不碰 formal ``trade_cal`` (tushare) 域, 那个的 formal
+boundary 考量继续是另一件事。``query_trade_dates`` 一路另有日历专属默认值:
+调用方未显式传 ``end_date`` 时补 ``f"{当前年份+1}-12-31"`` (见 ``fetch_raw`` 内注释),
+因为 baostock 不传 end_date 就拿不到未来交易日, 而未来交易日正是引入该源的核心理由。
 """
 from __future__ import annotations
 
+import datetime
 import socket
 import threading
 from typing import Any
@@ -386,6 +391,26 @@ class BaostockSource:
             )
         query_params = dict(params)
         expected_row_count = query_params.pop("expected_row_count", None)
+
+        if name == "query_trade_dates" and "end_date" not in query_params:
+            # 日历专属默认值 (2026-08-30 实测, 见 goal 交接): query_trade_dates 不显式
+            # 传 end_date 时只回历史到"今天", 拿不到任何未来交易日 —— 而未来交易日正
+            # 是引入 baostock 的核心理由 (check_continuity_integrity 要求 today 之后
+            # 仍有 >=60 个已登记未来交易日)。补 year+1 而非 year: 跨年时仍能自动拿到
+            # 次年数据 (交易所通常 Q4 公告次年安排); 传超出 vendor 覆盖范围的
+            # end_date 不报错只是没那部分数据 (已实测 2027 Q1 传 20271231 返回 0 行,
+            # 不是异常), 多传不会出错。
+            # 放在 adapter 而非 sync_registry.yaml fixed_params: 年份是动态的, 写死
+            # 进 YAML 每年都要人手动改一次; "补供应商默认行为与调用方期望的差异"正是
+            # adapter (而非声明式配置) 的职责。
+            # 用 "not in" 而非 falsy 检查: 调用方一旦显式传了 end_date (哪怕是空串这类
+            # 边界值) 就必须原样尊重, 绝不覆盖。且只对 query_trade_dates 生效 —— 同一
+            # 分支外的其它 api (如 query_history_k_data_plus) 不受影响。
+            # 本域拉的就是交易日历本身(日历真相源的上游), 此刻尚无日历可查,
+            # 用 latest_closed_or_raise 会形成循环依赖; 且此处只取「年份」当日历天窗口
+            # 上界, 不做任何交易日判断, 上界多给一年只影响 vendor 返回行数上限。
+            year = datetime.date.today().year  # rule-compliance: ok evidence=日历天窗口上界年份, 非最新交易日; 本域即日历上游, 用 services.calendar 会循环依赖
+            query_params["end_date"] = f"{year + 1}-12-31"
 
         self._check_single_thread()
         bs = self._ensure_login()

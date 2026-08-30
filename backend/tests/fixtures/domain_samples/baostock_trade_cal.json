@@ -1,0 +1,35 @@
+{
+ "domain": "baostock_trade_cal",
+ "api": "query_trade_dates",
+ "grain": [
+  "calendar_date"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "calendar_date": "1990-12-19",
+   "is_trading_day": "1",
+   "built_at": "2026-08-30T05:01:20.372888+00:00"
+  },
+  {
+   "calendar_date": "1990-12-20",
+   "is_trading_day": "1",
+   "built_at": "2026-08-30T05:01:20.372888+00:00"
+  },
+  {
+   "calendar_date": "1990-12-21",
+   "is_trading_day": "1",
+   "built_at": "2026-08-30T05:01:20.372888+00:00"
+  },
+  {
+   "calendar_date": "1990-12-22",
+   "is_trading_day": "0",
+   "built_at": "2026-08-30T05:01:20.372888+00:00"
+  },
+  {
+   "calendar_date": "1990-12-23",
+   "is_trading_day": "0",
+   "built_at": "2026-08-30T05:01:20.372888+00:00"
+  }
+ ]
+}

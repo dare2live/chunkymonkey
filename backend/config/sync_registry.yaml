@@ -79,9 +79,11 @@ sources:
     # auth_* 那些 TuShare 专属键。fetch_timeout_seconds 供 services/data_sources/sources/
     # baostock.py 坑 1 (无 socket 超时) 的封堵用: login 前 socket.setdefaulttimeout(该值)。
     fetch_timeout_seconds: 15
+    # 与 sources.fuyao 一致复用 tushare_raw: 库名带 tushare 是历史遗留, 本项目 ban 列表
+    # 明令禁止新建第二个 DB, 新源写入既有库、靠 target_table 前缀区分即可。
+    target_db: tushare_raw
     # rate_limit: 官方从未公布 QPS 配额数字 (2026-08-30 查证 baostock.com "平台访问规则"
-    # 页面在其 CMS 里没有配置内容) —— 不编数字, 待实测后再配。本域目前也未注册任何
-    # sync_registry domains 条目, 无消费方触发限流路径。
+    # 页面在其 CMS 里没有配置内容) —— 不编数字, 待实测后再配。
 
 domains:
   # ── P0-a: 资金流 (套一 L2 + 套二 F1 + 退出组件, 一次回填三用) ──
@@ -1285,6 +1287,30 @@ domains:
     min_rows_per_batch: 0
     freshness_no_probe: "on_demand_explicit_window_not_daily_sla"
     universe_filter: false
+
+  # baostock 首个注册域 (2026-08-30): 交易日历。实测确立 (见 services/data_sources/
+  # sources/baostock.py 模块 docstring, 2026-08-30 逐端点核实, 不重测):
+  #   - query_trade_dates 不传参数 -> 4260 行, 2015-01-01~今天;
+  #     只传 start_date="1990-12-19" -> 13039 行, 1990-12-19~今天;
+  #     即不显式传 end_date 就拿不到任何未来交易日 (adapter 已在 fetch_raw 内补
+  #     year+1 默认值, 这里的 fixed_params 不重复写 end_date, 否则每年要人手动改);
+  #   - 该源日历与本项目 accepted 日历在 1990-12-19~2026-12-31 区间逐日零差异
+  #     (8797 个开市日)。
+  # 引入 baostock 的核心理由正是未来交易日: check_continuity_integrity 要求 today
+  # 之后仍有 >=60 个已登记未来交易日, 而 formal trade_cal (tushare) 域不在本刀改动
+  # 范围内。sync_policy=on_demand: 先手动拉, 不进日更自动链。
+  baostock_trade_cal:
+    source: baostock
+    api: query_trade_dates
+    target_table: raw_baostock_trade_dates
+    grain: [calendar_date]        # 接口只返回 calendar_date + is_trading_day 两个字段, 日期是唯一主键
+    batch_mode: full_refresh      # 一次拉全历史 (13k 行, 实测很快)
+    fixed_params:
+      start_date: "1990-12-19"    # 拿全史下界; end_date 交给 adapter 默认逻辑 (动态 year+1, 不在此写死)
+    sync_policy: on_demand        # 不进日更自动链, 先手动拉
+    data_start: "19901219"
+    pit_anchor: "calendar_date; 交易日历是交易所公告的制度事实, 不是某个时点的 PIT 观测量 —— 与本 registry 其它域根本不同的是它天然含未来日期 (check_continuity_integrity 要求 today 之后仍有 >=60 个已登记未来交易日); 全量刷新覆盖, 无 t/t+1 可用时刻语义"
+    freshness_no_probe: "on_demand_manual_full_refresh_not_in_daily_chain"
 
   # top10_floatholders (tushare 十大流通股东) 域 2026-06-29 批3b 退役删除:
   #   holder 主源已切东财妙想 aif10 (services/holders_aif10.py, source='miaoxiang' → fact_top10_holder_period;

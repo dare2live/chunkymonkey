@@ -3,6 +3,7 @@ never installed/imported for real here — every test injects a fake ``bs_module
 """
 from __future__ import annotations
 
+import datetime
 import socket
 import threading
 
@@ -80,6 +81,9 @@ class _FakeBaostock:
         self.login_error_code = BSERR_SUCCESS
         self.query_results: dict[str, list[_FakeResult]] = {}
         self._query_call_idx: dict[str, int] = {}
+        # 记录每个 api 最近一次实际收到的调用参数 (不连网, 靠这个断言 adapter 有没有
+        # 悄悄改/补参数 —— 例如 query_trade_dates 的 end_date 默认值逻辑)。
+        self.last_params: dict[str, dict] = {}
 
     def login(self):
         self.calls.append("login")
@@ -100,6 +104,7 @@ class _FakeBaostock:
     def _make_query(self, fn_name: str):
         def _query(**params):
             self.calls.append(fn_name)
+            self.last_params[fn_name] = dict(params)
             idx = self._query_call_idx.get(fn_name, 0)
             results = self.query_results[fn_name]
             result = results[min(idx, len(results) - 1)]
@@ -394,8 +399,9 @@ def test_adapter_dispatches_baostock_without_live_adapter_freeze() -> None:
     assert sr._adapter("baostock") is src
 
 
-def test_baostock_domains_section_untouched_by_this_cut() -> None:
-    """Hard scope guard: this cut adds ingestion capability only, no domain registration."""
+def test_baostock_registers_exactly_one_domain_trade_cal() -> None:
+    """Scope guard for THIS cut: baostock registers exactly ``baostock_trade_cal``,
+    nothing else — no other baostock domain snuck in alongside it."""
     import yaml
     from pathlib import Path
 
@@ -403,5 +409,114 @@ def test_baostock_domains_section_untouched_by_this_cut() -> None:
         Path(__file__).resolve().parents[3] / "backend" / "config" / "sync_registry.yaml"
     )
     registry = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
-    for spec in (registry.get("domains") or {}).values():
-        assert spec.get("source") != "baostock"
+    baostock_domains = [
+        name
+        for name, spec in (registry.get("domains") or {}).items()
+        if spec.get("source") == "baostock"
+    ]
+    assert baostock_domains == ["baostock_trade_cal"]
+
+
+# ---------------------------------------------------------------------------
+# registry: baostock_trade_cal domain resolves correctly through domain_spec(),
+# and the existing formal trade_cal (tushare) domain stays untouched by this cut.
+# ---------------------------------------------------------------------------
+
+
+def test_registry_resolves_baostock_trade_cal_domain() -> None:
+    registry = sr.load_registry()
+    spec = sr.domain_spec(registry, "baostock_trade_cal")
+    assert spec["source"] == "baostock"
+    assert spec["api"] == "query_trade_dates"
+    assert spec["target_db"] == "tushare_raw"  # inherited from sources.baostock
+    assert spec["batch_mode"] == "full_refresh"
+    assert spec["sync_policy"] == "on_demand"
+    assert spec["grain"] == ["calendar_date"]
+    assert spec["fetch_timeout_seconds"] == 15  # inherited from sources.baostock
+    assert "rate_limit" not in spec  # baostock quota never published; must not invent one
+
+
+def test_registry_existing_trade_cal_domain_unaffected() -> None:
+    """The formal tushare trade_cal domain must not be touched by registering baostock's."""
+    registry = sr.load_registry()
+    spec = sr.domain_spec(registry, "trade_cal")
+    assert spec["source"] == "tushare"
+    assert spec["api"] == "trade_cal"
+
+
+# ---------------------------------------------------------------------------
+# adapter: query_trade_dates-only default end_date (day-of-init: calendar has to
+# reach into the future, and baostock only returns future dates when end_date is
+# passed explicitly — see module docstring 范围声明 / fetch_raw comment).
+# ---------------------------------------------------------------------------
+
+
+def test_query_trade_dates_defaults_end_date_to_next_year(monkeypatch) -> None:
+    fixed_today = datetime.date(2026, 8, 30)
+
+    class _FixedDate(datetime.date):
+        @classmethod
+        def today(cls):
+            return fixed_today
+
+    monkeypatch.setattr(datetime, "date", _FixedDate)
+
+    bs = _FakeBaostock()
+    bs.queue_result(
+        "query_trade_dates",
+        _FakeResult([[["2026-08-31", "0"]]], fields=["calendar_date", "is_trading_day"]),
+    )
+    src = BaostockSource(bs_module=bs)
+    src.fetch_raw("query_trade_dates", start_date="1990-12-19")
+
+    assert bs.last_params["query_trade_dates"] == {
+        "start_date": "1990-12-19",
+        "end_date": "2027-12-31",
+    }
+
+
+def test_query_trade_dates_respects_explicit_end_date() -> None:
+    bs = _FakeBaostock()
+    bs.queue_result(
+        "query_trade_dates",
+        _FakeResult([[["2026-08-31", "0"]]], fields=["calendar_date", "is_trading_day"]),
+    )
+    src = BaostockSource(bs_module=bs)
+    src.fetch_raw("query_trade_dates", start_date="1990-12-19", end_date="2026-12-31")
+
+    # Caller's explicit end_date must survive untouched, never overwritten.
+    assert bs.last_params["query_trade_dates"] == {
+        "start_date": "1990-12-19",
+        "end_date": "2026-12-31",
+    }
+
+
+def test_end_date_default_does_not_leak_into_other_apis(monkeypatch) -> None:
+    """The query_trade_dates-only default must not bleed into other api calls
+    (e.g. query_history_k_data_plus, which has its own date param semantics)."""
+    fixed_today = datetime.date(2026, 8, 30)
+
+    class _FixedDate(datetime.date):
+        @classmethod
+        def today(cls):
+            return fixed_today
+
+    monkeypatch.setattr(datetime, "date", _FixedDate)
+
+    bs = _FakeBaostock()
+    bs.queue_result(
+        "query_history_k_data_plus",
+        _FakeResult([[["600000.SH", "2020-07-01", "10.0"]]], fields=["code", "date", "close"]),
+    )
+    src = BaostockSource(bs_module=bs)
+    src.fetch_raw(
+        "query_history_k_data_plus",
+        code="600000.SH",
+        start_date="2020-07-01",
+    )
+
+    assert bs.last_params["query_history_k_data_plus"] == {
+        "code": "600000.SH",
+        "start_date": "2020-07-01",
+    }
+    assert "end_date" not in bs.last_params["query_history_k_data_plus"]

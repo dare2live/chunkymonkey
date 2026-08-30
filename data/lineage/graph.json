@@ -3,6 +3,17 @@
     {
       "attrs": {
         "grain": [
+          "calendar_date"
+        ],
+        "pit_anchor": "calendar_date; 交易日历是交易所公告的制度事实, 不是某个时点的 PIT 观测量 —— 与本 registry 其它域根本不同的是它天然含未来日期 (check_continuity_integrity 要求 today 之后仍有 >=60 个已登记未来交易日); 全量刷新覆盖, 无 t/t+1 可用时刻语义"
+      },
+      "dst": "table:tushare_raw.raw_baostock_trade_dates",
+      "kind": "acquire",
+      "src": "source:baostock.query_trade_dates"
+    },
+    {
+      "attrs": {
+        "grain": [
           "trade_date",
           "ts_code"
         ],
@@ -6621,6 +6632,12 @@
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
+      "src": "table:tushare_raw.raw_baostock_trade_dates"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
       "src": "table:tushare_raw.raw_fuyao_auction_benchmark"
     },
     {
@@ -10027,9 +10044,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1626,
-    "generated_at": "2026-08-28T11:09:04.551270+00:00",
-    "node_count": 508,
+    "edge_count": 1628,
+    "generated_at": "2026-08-30T05:34:03.639160+00:00",
+    "node_count": 510,
     "version": 2
   },
   "nodes": [
@@ -12595,6 +12612,15 @@
     },
     {
       "attrs": {
+        "api": "query_trade_dates",
+        "domain": "baostock_trade_cal",
+        "source": "baostock"
+      },
+      "id": "source:baostock.query_trade_dates",
+      "kind": "source_interface"
+    },
+    {
+      "attrs": {
         "api": "auction-short-term-benchmark",
         "domain": "fuyao_auction_benchmark",
         "source": "fuyao"
@@ -13806,6 +13832,16 @@
         "table": "mart_data_deletion_record"
       },
       "id": "table:tushare_raw.mart_data_deletion_record",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "tushare_raw",
+        "layer": "untagged",
+        "status": "active",
+        "table": "raw_baostock_trade_dates"
+      },
+      "id": "table:tushare_raw.raw_baostock_trade_dates",
       "kind": "table"
     },
     {
