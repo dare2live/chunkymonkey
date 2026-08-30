@@ -8,6 +8,7 @@ commit/rollback/close + Row dict 索引。新测试不要引入其它内存数�
 
 from __future__ import annotations
 
+import re
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -60,6 +61,23 @@ def deterministic_margin_calendar(monkeypatch):
         "load_margin_publication_sessions",
         _days,
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_tdxhub_host_memory(monkeypatch, tmp_path_factory, request):
+    """把 tdxhub 主机记忆文件指向 pytest 临时目录, 不碰工作站真实文件。
+
+    与上面 ``deterministic_margin_calendar`` 同型 (测试不得读写工作站运行时
+    状态)。2026-08-30 主机记忆从进程内 dict 改为跨进程落盘后, 未隔离的用例会把
+    测试假主机写进真实的 ``data/scratch/tdxhub_host_memory.json``: 实测
+    ``test_tdxhub_kline_recon.py`` 首跑绿并写出 ``{"hq": {"ip": "3.3.3.3"}}``,
+    次跑即红 —— 污染跨进程存活, 本地与 CI 都会从第二次起持续失败。
+    每个用例给一个独立文件名, 用例之间也不互相串。
+    """
+
+    stem = re.sub(r"[^A-Za-z0-9_.-]", "_", request.node.nodeid)[-80:]
+    target = tmp_path_factory.getbasetemp() / f"tdxhub_host_memory_{stem}.json"
+    monkeypatch.setenv("TDXHUB_HOST_MEMORY_PATH", str(target))
 
 
 # 历史 import 形式: 一些测试 ``from conftest import duck_mem``;

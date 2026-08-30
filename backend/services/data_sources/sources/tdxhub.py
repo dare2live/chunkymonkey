@@ -20,8 +20,11 @@ labels, not crosswalk keys. Both ride ``quotes_client``, never MAC.
 """
 from __future__ import annotations
 
+import json
 import os
 import socket
+import tempfile
+import time
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -137,6 +140,125 @@ def iter_hq_candidates(
 
 _LAST_GOOD_HOST: dict[str, tuple[str, int]] = {}
 
+_HOST_MEMORY_PATH_ENV = "TDXHUB_HOST_MEMORY_PATH"
+# data/scratch/ is gitignored (.gitignore line 33) — scratch/derived, never a
+# source of truth. Losing this file just means the next process re-walks the
+# candidate table once, same as before this cache existed; it is an
+# optimization, never a dependency for taking data. No host IP is hardcoded
+# here or anywhere else in this module — every entry is learned at runtime
+# from a handshake that actually answered.
+_DEFAULT_HOST_MEMORY_PATH = (
+    Path(__file__).resolve().parents[4] / "data" / "scratch" / "tdxhub_host_memory.json"
+)
+
+
+def _host_memory_path() -> Path:
+    """Resolve the on-disk host-memory path.
+
+    Env-overridable (``TDXHUB_HOST_MEMORY_PATH``) so tests can point this
+    at a throwaway ``tmp_path`` instead of the real ``data/scratch/`` —
+    otherwise state persisted by one test run would leak into the next.
+    """
+    override = os.environ.get(_HOST_MEMORY_PATH_ENV, "").strip()
+    return Path(override) if override else _DEFAULT_HOST_MEMORY_PATH
+
+
+def _parse_memory_entry(entry: Any) -> tuple[str, int] | None:
+    if not isinstance(entry, dict):
+        return None
+    ip, port = entry.get("ip"), entry.get("port")
+    if ip is None or port is None:
+        return None
+    try:
+        return (str(ip), int(port))
+    except (TypeError, ValueError):
+        return None
+
+
+def _read_host_memory_file() -> dict[str, Any]:
+    """Best-effort read of the persisted host-memory file.
+
+    Missing file, corrupt JSON, unreadable permissions, or a file that
+    doesn't even hold a JSON object at the top level all collapse to
+    "no memory" here — a bad cache file must never block taking data, it
+    can only cost the same candidate walk a cold process would have paid
+    anyway before this cache existed.
+    """
+    try:
+        raw = _host_memory_path().read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except Exception:  # rule-compliance: ok evidence=tdxhub-host-memory-read-best-effort
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_host_memory_file(data: dict[str, Any]) -> None:
+    """Best-effort atomic write of the whole host-memory file.
+
+    Writes to a sibling temp file and ``os.replace``s it into place so a
+    concurrent reader (another sync process starting up at the same
+    time) can never observe a half-written file. Any failure along the
+    way — missing directory (created if possible, otherwise swallowed),
+    no write permission, disk full — is swallowed: the in-process
+    ``_LAST_GOOD_HOST`` cache still works for this process, only
+    cross-process persistence is lost for this write.
+    """
+    path = _host_memory_path()
+    tmp_name: str | None = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(
+            dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh)
+        os.replace(tmp_name, str(path))
+        tmp_name = None
+    except Exception:  # rule-compliance: ok evidence=tdxhub-host-memory-write-best-effort
+        pass
+    finally:
+        if tmp_name is not None:
+            try:
+                os.unlink(tmp_name)
+            except OSError:  # rule-compliance: ok evidence=tdxhub-host-memory-tmp-cleanup-best-effort
+                pass
+
+
+def _remembered_host(protocol: str) -> tuple[str, int] | None:
+    """In-memory lookup, falling back to disk and hydrating memory on hit.
+
+    A fresh process starts with an empty ``_LAST_GOOD_HOST``; reading
+    through to the persisted file here — once — is what makes the memory
+    survive that restart. Once hydrated, later calls in the same process
+    stay purely in-memory and never touch disk again (until
+    ``forget_good_host`` evicts the slot).
+    """
+    key = str(protocol)
+    if key in _LAST_GOOD_HOST:
+        return _LAST_GOOD_HOST[key]
+    parsed = _parse_memory_entry(_read_host_memory_file().get(key))
+    if parsed is not None:
+        _LAST_GOOD_HOST[key] = parsed
+    return parsed
+
+
+def _evict_host_memory_file(key: str, target: tuple[str, int] | None) -> None:
+    """Mirror an in-memory eviction onto disk, same match-before-evict rule.
+
+    Checked against whatever the *disk* currently holds, independently
+    of this process's in-memory state — the two can legitimately
+    disagree (e.g. a fresh process that has not hydrated from disk yet),
+    and a stale on-disk host must not survive an eviction just because
+    this process's memory did not happen to have it cached.
+    """
+    data = _read_host_memory_file()
+    if key not in data:
+        return
+    if target is not None and _parse_memory_entry(data.get(key)) != target:
+        return
+    data.pop(key, None)
+    _write_host_memory_file(data)
+
 
 def remember_good_host(protocol: str, server: tuple[str, int]) -> None:
     """Cache the host whose handshake actually answered, keyed by protocol.
@@ -144,26 +266,41 @@ def remember_good_host(protocol: str, server: tuple[str, int]) -> None:
     Protocols are isolated on purpose: a std-HQ handshake succeeding on a
     host says nothing about whether the MAC frame handshake would succeed
     on the same host (different wire protocol). ``"hq"`` and ``"mac"`` each
-    get their own slot and never share one.
+    get their own slot and never share one — including on disk, where
+    they are separate keys in the same JSON object.
+
+    Persisted immediately (with a ``saved_at`` timestamp, for future
+    diagnosis — see module docstring note on TTL) so the very next
+    process — tomorrow's daily sync, a parallel backfill worker — skips
+    the cold candidate walk too, not just this one.
     """
-    _LAST_GOOD_HOST[str(protocol)] = (str(server[0]), int(server[1]))
+    key = str(protocol)
+    value = (str(server[0]), int(server[1]))
+    _LAST_GOOD_HOST[key] = value
+    data = _read_host_memory_file()
+    data[key] = {"ip": value[0], "port": value[1], "saved_at": time.time()}
+    _write_host_memory_file(data)
 
 
 def forget_good_host(protocol: str, server: tuple[str, int] | None = None) -> None:
-    """Drop a protocol's cached host.
+    """Drop a protocol's cached host, in memory and on disk.
 
     With ``server`` given, only evicts when it still matches what is
     cached (so a failure on some *other*, non-cached host in the same
     walk cannot accidentally wipe out a still-good memory). Without it,
-    unconditionally clears the slot.
+    unconditionally clears the slot. This is how a host that has gone
+    offline stops being resurrected: the very next handshake failure
+    against it evicts it from disk too, not just from this process.
     """
     key = str(protocol)
-    if server is None:
+    target = None if server is None else (str(server[0]), int(server[1]))
+    if target is None:
         _LAST_GOOD_HOST.pop(key, None)
-        return
-    current = _LAST_GOOD_HOST.get(key)
-    if current == (str(server[0]), int(server[1])):
-        _LAST_GOOD_HOST.pop(key, None)
+    else:
+        current = _LAST_GOOD_HOST.get(key)
+        if current == target:
+            _LAST_GOOD_HOST.pop(key, None)
+    _evict_host_memory_file(key, target)
 
 
 def hosts_with_memory(
@@ -174,8 +311,10 @@ def hosts_with_memory(
     Relative order of the rest is preserved and nothing is duplicated.
     Does not itself call ``iter_hq_candidates`` — callers build the base
     list themselves, which keeps that call monkeypatch-able per module.
+    The remembered host may come from this process's own memory or, on
+    a fresh process, from the persisted file (see ``_remembered_host``).
     """
-    remembered = _LAST_GOOD_HOST.get(str(protocol))
+    remembered = _remembered_host(protocol)
     ordered: list[tuple[str, int]] = []
     seen: set[tuple[str, int]] = set()
     if remembered is not None:
