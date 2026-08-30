@@ -74,6 +74,14 @@ sources:
     # 授权到期语义。这里镜像 tushare 的值只是为了让 domain_spec() 对扶摇域的输出在本次重构前后逐字段
     # 不变 (三处授权探测调用点已改直读 sources.tushare, 不经 domain_spec, 扶摇域的这两个字段实际上无
     # 消费方 —— 不要在别处把它们当真 source 语义使用)。
+  baostock:
+    # 免费源, 自研二进制协议 over 裸 TCP (非 HTTP API), 无 token/无授权到期概念 —— 故不配
+    # auth_* 那些 TuShare 专属键。fetch_timeout_seconds 供 services/data_sources/sources/
+    # baostock.py 坑 1 (无 socket 超时) 的封堵用: login 前 socket.setdefaulttimeout(该值)。
+    fetch_timeout_seconds: 15
+    # rate_limit: 官方从未公布 QPS 配额数字 (2026-08-30 查证 baostock.com "平台访问规则"
+    # 页面在其 CMS 里没有配置内容) —— 不编数字, 待实测后再配。本域目前也未注册任何
+    # sync_registry domains 条目, 无消费方触发限流路径。
 
 domains:
   # ── P0-a: 资金流 (套一 L2 + 套二 F1 + 退出组件, 一次回填三用) ──

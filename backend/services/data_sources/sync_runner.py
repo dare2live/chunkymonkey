@@ -641,16 +641,18 @@ def domain_spec(registry: dict[str, Any], domain: str) -> dict[str, Any]:
 
 _TUSHARE_SOURCE: Any = None
 _FUYAO_SOURCE: Any = None
+_BAOSTOCK_SOURCE: Any = None
 
 
 def _adapter(source_name: str):
     """Dispatch a registry ``source`` to a fetch_raw adapter.
 
     Formal domains still freeze on tushare via ``require_live_adapter``.
-    Non-formal ``source: fuyao`` uses FuyaoSource and does not pass that
-    freeze. Unknown sources fail closed. Do not revive base.py/registry.py.
+    Non-formal ``source: fuyao``/``source: baostock`` use their own adapter and
+    do not pass that freeze. Unknown sources fail closed. Do not revive
+    base.py/registry.py.
     """
-    global _TUSHARE_SOURCE, _FUYAO_SOURCE
+    global _TUSHARE_SOURCE, _FUYAO_SOURCE, _BAOSTOCK_SOURCE
     name = str(source_name or "").strip()
     if name == "fuyao":
         if _FUYAO_SOURCE is None:
@@ -658,6 +660,12 @@ def _adapter(source_name: str):
 
             _FUYAO_SOURCE = FuyaoSource()
         return _FUYAO_SOURCE
+    if name == "baostock":
+        if _BAOSTOCK_SOURCE is None:
+            from services.data_sources.sources.baostock import BaostockSource
+
+            _BAOSTOCK_SOURCE = BaostockSource()
+        return _BAOSTOCK_SOURCE
     from services.data_sources.formal_boundaries import (
         FormalBoundaryError,
         require_live_adapter,
@@ -667,7 +675,7 @@ def _adapter(source_name: str):
         require_live_adapter(name, domain="*")
     except FormalBoundaryError as exc:
         raise KeyError(
-            f"data_sources: 未知 source '{name}' (live adapters: tushare, fuyao)"
+            f"data_sources: 未知 source '{name}' (live adapters: tushare, fuyao, baostock)"
         ) from exc
     if _TUSHARE_SOURCE is None:
         from services.data_sources.sources.tushare import TuShareSource

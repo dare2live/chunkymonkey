@@ -12,6 +12,14 @@ PyYAML>=6.0
 # Tier0 market-data owner. Current acquisition ownership is declared by sync contracts.
 tdxhub @ git+https://github.com/dare2live/tdxhub.git@b039d8c68fb21543a9ff041f004d75113b5a4e3d
 
+# Baostock: free A-share source, custom binary protocol over raw TCP (not HTTP).
+# Pinned hard — services/data_sources/sources/baostock.py is written around four
+# version-specific behaviors of this exact release (no socket timeout on login,
+# ResultData.next() silent-truncation on page failure, unlocked global singleton
+# socket, get_data() using the pandas>=2.0-removed DataFrame.append); an upstream
+# bump could silently change any of them.
+baostock==0.9.3
+
 # AI 模型 (LightGBM + Optuna 多维评分)
 lightgbm
 optuna
