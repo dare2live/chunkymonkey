@@ -8,6 +8,7 @@ import pytest
 
 from conftest import duck_mem
 from services.data_sources.fuyao_kline_recon import ACCEPTED_K_TABLE
+from services.data_sources.sibling_repos import get_sibling_repos
 from services.data_sources.tdxhub_kline_recon import (
     compare_tdx_kline,
     lday_stem_ts_code,
@@ -114,6 +115,11 @@ def test_hq_transport_error_and_env_candidate_order(monkeypatch):
 
 
 def test_official_connect_cfg_is_read_without_bestip(tmp_path, monkeypatch):
+    if not get_sibling_repos().is_present("tdxhub"):
+        pytest.skip(
+            "sibling repo 'tdxhub' missing; CI environment does not include provider dependencies"
+        )
+
     from services.data_sources.sources.tdxhub import iter_hq_candidates, load_connect_cfg_hq
 
     cfg = tmp_path / "connect.cfg"

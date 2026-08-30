@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from services.data_sources.sibling_repos import get_sibling_repos
 from services.data_sources.tdxhub_mac import (
     CMD_STOCK_ZJLX,
     JSON_PREFIX_LEN,
@@ -135,6 +136,11 @@ def test_qfq_rejected_on_capital_flow():
 
 
 def test_setup_bytes_match_tdxhub_setupcmd():
+    if not get_sibling_repos().is_present("tdxhub"):
+        pytest.skip(
+            "sibling repo 'tdxhub' missing; CI environment does not include provider dependencies"
+        )
+
     assert setup_command_bytes() == tdxhub_setup_command_bytes()
 
 
