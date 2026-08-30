@@ -3264,12 +3264,17 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
             f"domain={domain} batch_mode=full_refresh does not accept date bounds"
         )
     if (
-        spec.get("batch_mode") == "by_ts_code"
-        and spec.get("sync_policy") == "on_demand"
+        spec.get("sync_policy") == "on_demand"
+        and batch_mode != "full_refresh"
         and (not start or not end)
     ):
+        # 2026-08-30 修复: 原条件多加了 batch_mode == "by_ts_code" 限定, 但 registry
+        # 里 by_ts_code 域均非 on_demand、on_demand 域全是 by_trade_date/full_refresh
+        # —— 交集为空, 这道门从未生效过 (裸跑 fuyao_* 直接拉全史)。full_refresh 仍需
+        # 豁免: 它结构上本来就不接受 start/end (上面那道门反而会拒绝带 bounds 的调用),
+        # 不豁免会自相矛盾。
         raise ValueError(
-            f"domain={domain} sync_policy=on_demand 要求显式 --start 与 --end，拒绝无界逐股拉取"
+            f"domain={domain} sync_policy=on_demand 要求显式 --start 与 --end，拒绝无界批量拉取"
         )
     eligibility: DomainEligibility | None = None
     operation_window: OperationWindow | None = None
@@ -4162,10 +4167,13 @@ def _preflight_cli_request_shape(
         if (
             not args.drain
             and transport is None
-            and str(spec.get("batch_mode")) == "by_ts_code"
             and spec.get("sync_policy") == "on_demand"
+            and str(spec.get("batch_mode")) != "full_refresh"
             and (args.start is None or args.end is None)
         ):
+            # 2026-08-30 修复: 见 run_domain 内同款门的注释 — 原 by_ts_code 限定与
+            # on_demand 交集为空, 从未生效过。full_refresh 域 (trade_cal/
+            # baostock_trade_cal) 豁免: 它们结构上不接受 start/end。
             raise SyncWindowError(
                 f"domain={domain} sync_policy=on_demand requires both --start and --end"
             )

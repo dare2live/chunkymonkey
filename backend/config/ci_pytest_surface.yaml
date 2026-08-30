@@ -105,6 +105,7 @@ blocking_paths:
 - tests/services/test_observation_population.py
 - tests/services/test_population_scope.py
 - tests/services/test_sync_execution_policy.py
+- tests/services/test_registry_merge_chain_single_source.py
 - tests/services/test_security_day_transport_modularity.py
 - tests/services/test_security_day_acquire_s4.py
 - tests/services/test_derive_runtime_s5.py
@@ -199,6 +200,7 @@ blocking_paths:
 - tests/scripts/test_downstream_impact.py
 - tests/scripts/test_audit_exemptions.py
 - tests/scripts/test_audit_date_bounds.py
+- tests/test_on_demand_window_gate_dead_condition.py
 nightly_paths: []
 ci_test_optional:
 - path: tests/data_governance/test_etl_hook.py
