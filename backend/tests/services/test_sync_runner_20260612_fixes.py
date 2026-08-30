@@ -59,7 +59,9 @@ def test_warn_if_clamped_empty_window(caplog):
 def test_registry_surgery_contract_20260612():
     reg = sr.load_registry()
     d = reg["domains"]
-    assert reg["defaults"]["auth_expiry_warn_days"] == 14
+    # 2026-08-30: auth_expiry_warn_days 是 TuShare user() 授权专属参数, 从 defaults 移入
+    # sources.tushare (源级配置分层, 扶摇不应继承 TuShare 的授权到期语义)。
+    assert reg["sources"]["tushare"]["auth_expiry_warn_days"] == 14
     # 截断防线: dc 系必须声明 page_limit (catalog 单次上限 5000 实锤)
     assert d["dc_member"]["page_limit"] == 5000
     assert d["dc_index"]["page_limit"] == 5000

@@ -58,7 +58,9 @@ def load_registry_specs(registry_path: Path | None = None) -> list[dict[str, Any
     """sync_registry 全域 → [{db, table, grain, origin}] (同表同 grain 去重; 同表异 grain 各查)。"""
     raw = yaml.safe_load((registry_path or REGISTRY_PATH).read_text(encoding="utf-8"))
     defaults = raw.get("defaults") or {}
-    default_db = defaults.get("target_db", "tushare_raw")
+    sources = raw.get("sources") or {}
+    if not isinstance(sources, dict):
+        sources = {}
     seen: set[tuple[str, str, tuple[str, ...]]] = set()
     specs: list[dict[str, Any]] = []
     for domain, entry in (raw.get("domains") or {}).items():
@@ -67,6 +69,10 @@ def load_registry_specs(registry_path: Path | None = None) -> list[dict[str, Any
         grain = entry.get("grain")
         if not table or not grain:
             continue  # full_refresh 静态表也有 grain; 无 grain 条目按注册纪律不存在, 防御跳过
+        # target_db 曾整体挂在 defaults (2026-08-30 移入 sources.<source>); 按本域 source 查
+        # sources 表, 查不到才落回 defaults/字面量兜底, 与旧行为一致。
+        source_cfg = sources.get(entry.get("source")) or {}
+        default_db = source_cfg.get("target_db") or defaults.get("target_db", "tushare_raw")
         key = (entry.get("target_db", default_db), table, tuple(grain))
         if key in seen:
             continue  # 同表同 grain 多域 (index_member_all / _hist 同表 MERGE) 只查一次

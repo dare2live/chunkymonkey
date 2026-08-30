@@ -393,7 +393,9 @@ def dataset_contract_from_spec(domain: str, spec: Mapping[str, Any]) -> DatasetC
 def load_dataset_contract(
     domain: str, registry_path: Path | None = None
 ) -> DatasetContract:
-    """Load one contract, inheriting only ``defaults.target_db``."""
+    """Load one contract, inheriting ``target_db`` from ``sources[spec["source"]]``
+    (2026-08-30: moved out of the old ``defaults.target_db`` single default; that
+    key is still checked as a legacy fallback for minimal/hand-built registries)."""
 
     path = Path(registry_path or REGISTRY_PATH)
     registry = _mapping(yaml.safe_load(path.read_text(encoding="utf-8")), "registry", str(path))
@@ -402,10 +404,17 @@ def load_dataset_contract(
     if not isinstance(raw_spec, Mapping):
         raise KeyError(f"{path}: unknown dataset contract domain {domain!r}")
     spec = dict(raw_spec)
-    defaults = registry.get("defaults")
-    if "target_db" not in spec and isinstance(defaults, Mapping):
-        if "target_db" in defaults:
-            spec["target_db"] = defaults["target_db"]
+    if "target_db" not in spec:
+        sources = registry.get("sources")
+        source_cfg = (
+            sources.get(spec.get("source")) if isinstance(sources, Mapping) else None
+        )
+        if isinstance(source_cfg, Mapping) and "target_db" in source_cfg:
+            spec["target_db"] = source_cfg["target_db"]
+        else:
+            defaults = registry.get("defaults")
+            if isinstance(defaults, Mapping) and "target_db" in defaults:
+                spec["target_db"] = defaults["target_db"]
     return dataset_contract_from_spec(domain, spec)
 
 

@@ -26,7 +26,13 @@ def _live_margin_registry() -> dict:
     live = yaml.safe_load(
         (gate.REPO_ROOT / gate.REGISTRY_RELATIVE_PATH).read_text(encoding="utf-8")
     )
-    return {"defaults": live["defaults"], "domains": {"margin": live["domains"]["margin"]}}
+    # sources 段 (2026-08-30 新增: target_db 等源级参数从 defaults 移入) 必须随 defaults/domains
+    # 一并搬进这份合成 registry, 否则 domain_spec() 在这里解不到 margin 域的 target_db。
+    return {
+        "defaults": live["defaults"],
+        "sources": live.get("sources", {}),
+        "domains": {"margin": live["domains"]["margin"]},
+    }
 
 
 def _write_inputs(repo: Path, registry: dict) -> Path:

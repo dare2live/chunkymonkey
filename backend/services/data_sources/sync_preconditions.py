@@ -60,9 +60,13 @@ def authorization_preflight(
     ):
         return {"inherited_authorization": True}
 
-    timeout = (registry.get("defaults") or {}).get("auth_probe_timeout_seconds")
+    # 授权探测硬编码 tushare adapter, 语义上就是 tushare 源专属参数 (2026-08-30 从
+    # defaults 移入 sources.tushare)；legacy 兜底读 defaults 保持旧式最小 registry (无 sources 段) 可用。
+    timeout = ((registry.get("sources") or {}).get("tushare") or {}).get("auth_probe_timeout_seconds")
+    if timeout is None:
+        timeout = (registry.get("defaults") or {}).get("auth_probe_timeout_seconds")
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
-        raise ValueError("sync_registry.defaults.auth_probe_timeout_seconds 必须是正数")
+        raise ValueError("sync_registry.sources.tushare.auth_probe_timeout_seconds 必须是正数")
     return probe_authorization(
         adapter_factory("tushare"), timeout_seconds=float(timeout)
     )

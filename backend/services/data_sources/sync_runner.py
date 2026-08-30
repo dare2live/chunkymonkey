@@ -619,12 +619,21 @@ def load_registry(path: Path | None = None) -> dict[str, Any]:
 
 
 def domain_spec(registry: dict[str, Any], domain: str) -> dict[str, Any]:
-    """Return one merged registry entry through the stable public read seam."""
+    """Return one merged registry entry through the stable public read seam.
+
+    Three-layer inheritance: ``defaults`` (global) → ``sources[entry["source"]]``
+    (per-vendor, e.g. tushare 配额/授权 vs 扶摇配额) → the domain entry itself.
+    This is the only merge point (37 call sites depend on it) — do not
+    reimplement this chain elsewhere.
+    """
 
     spec = dict(registry.get("defaults") or {})
     entry = registry["domains"].get(domain)
     if entry is None:
         raise KeyError(f"sync_registry: 未注册的数据域 '{domain}' — 新域必须先加 registry 条目 (宪法 v2 第 7/9 条)")
+    source_cfg = (registry.get("sources") or {}).get(entry.get("source"))
+    if source_cfg:
+        spec.update(source_cfg)
     spec.update(entry)
     spec["domain"] = domain
     return spec
@@ -921,7 +930,8 @@ def _is_quota_wall(msg: str) -> bool:
 
 class _RateLimiter:
     """tinyshare 代理限流 **主动节流** (撞墙前先睡, 优于反应式退避): 单接口 per_interface/分钟 +
-    全接口合计 total/分钟 滑窗。配置来源 sync_registry.yaml `defaults.rate_limit` (no-hardcode, 用户
+    全接口合计 total/分钟 滑窗。配置来源 sync_registry.yaml `sources.<source>.rate_limit` (2026-08-30
+    起按源分层, 曾经整体挂在 `defaults.rate_limit`; no-hardcode, 用户
     2026-06-17/19: 单接口120/多接口200/并发2)。runner 链串行单线程调用 → 并发=1 < max_concurrency;
     max_concurrency 配置守界, 未来并行需配 semaphore。reactive 退避 (_is_transient_ratelimit) 保留作兜底。"""
     _WINDOW = 60.0

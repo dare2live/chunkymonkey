@@ -151,6 +151,7 @@ def build_lineage_graph() -> LineageGraph:
     # --- 2. acquire 边 (sync_registry: source.api → target_table) ---
     registry = _load_yaml("sync_registry.yaml")
     defaults = registry.get("defaults", {}) or {}
+    sources_cfg = registry.get("sources", {}) or {}
     domains = registry.get("domains", {})
     for dom in sorted(domains):
         spec = domains[dom] or {}
@@ -162,7 +163,10 @@ def build_lineage_graph() -> LineageGraph:
         src_id = f"source:{source}.{api}"
         g.add_node(Node(id=src_id, kind="source_interface",
                         attrs={"source": source, "api": api, "domain": dom}))
-        target_db = spec.get("target_db", defaults.get("target_db", "unknown"))
+        # target_db 曾整体挂在 defaults (2026-08-30 移入 sources.<source>); 查不到本域 source
+        # 对应的 sources 配置 (未知 vendor / 无 sources 段) 才落回 defaults/字面量兜底。
+        source_cfg = sources_cfg.get(source) or {}
+        target_db = spec.get("target_db") or source_cfg.get("target_db") or defaults.get("target_db", "unknown")
         # 目标表可能不在 live (未回填/已删) — 仍建节点 (acquire 声明存在), 标 declared
         tid = _table_id(target_db, target)
         if g.node(tid) is None:

@@ -111,18 +111,27 @@ def _auth_expiry_warning_days(ctx: PipelineContext) -> int:
     if ctx.auth_expiry_warning_days is not None:
         return ctx.auth_expiry_warning_days
     from services.data_sources.sync_runner import load_registry
-    value = (load_registry().get("defaults") or {}).get("auth_expiry_warn_days")
+    registry = load_registry()
+    # 授权探测硬编码 tushare adapter (下方 TuShareSource()), 语义上就是 tushare 源专属参数
+    # (2026-08-30 从 defaults 移入 sources.tushare)；legacy 兜底读 defaults 保持旧式最小
+    # registry (无 sources 段, 单测常用) 可用。
+    value = ((registry.get("sources") or {}).get("tushare") or {}).get("auth_expiry_warn_days")
+    if value is None:
+        value = (registry.get("defaults") or {}).get("auth_expiry_warn_days")
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError("sync_registry.defaults.auth_expiry_warn_days 必须是非负整数")
+        raise ValueError("sync_registry.sources.tushare.auth_expiry_warn_days 必须是非负整数")
     return value
 
 
 def _auth_probe_timeout_seconds() -> float:
     from services.data_sources.sync_runner import load_registry
 
-    value = (load_registry().get("defaults") or {}).get("auth_probe_timeout_seconds")
+    registry = load_registry()
+    value = ((registry.get("sources") or {}).get("tushare") or {}).get("auth_probe_timeout_seconds")
+    if value is None:
+        value = (registry.get("defaults") or {}).get("auth_probe_timeout_seconds")
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
-        raise ValueError("sync_registry.defaults.auth_probe_timeout_seconds 必须是正数")
+        raise ValueError("sync_registry.sources.tushare.auth_probe_timeout_seconds 必须是正数")
     return float(value)
 
 

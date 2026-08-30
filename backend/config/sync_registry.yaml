@@ -45,19 +45,35 @@ defaults:
   zero_row_policy: fail
   watermark_table: mart_data_source_watermark      # 复用 services/source_watermarks
   failure_queue_table: mart_data_source_failure_queue
-  target_db: tushare_raw
-  # tinyshare 代理限流 (用户 2026-06-17/19): sync_runner._RateLimiter 读此 config **主动节流**
-  #   (撞墙前先睡, 优于反应式退避 transient_backoff)。措辞类瞬态限流 _is_transient_ratelimit 退避作兜底。
-  #   单接口/全接口滑窗 60s; 并发上限 2 (当前链串行=1, 配置守界, 未来并行需 semaphore)。
-  rate_limit:
-    per_interface_per_min: 120     # 单接口 120 次/分钟
-    total_per_min: 200             # 多接口合计 200 次/分钟
-    max_concurrency: 2             # 并发上限 2
   # socket read timeout (防 hung: tinyshare 网关无响应时单次读死等 → 全局 socket 超时令其限时失败 →
   #   退避重试, 不卡死全链。2026-06-19 反例: stk_factor_pro 重试 hung 在无超时 socket 上 71min)。
   fetch_timeout_seconds: 120
-  auth_probe_timeout_seconds: 20 # user() 探针网络边界；持 writer lock 时不得无限挂起
-  auth_expiry_warn_days: 14       # TuShare user() 授权到期预警唯一 owner；preflight 读取，禁止代码散落阈值
+
+# 源级配置 (2026-08-30): target_db / rate_limit / auth_probe_timeout_seconds / auth_expiry_warn_days
+# 曾整体塞进上面的 defaults, 导致扶摇 (fuyao) 域被迫继承 TuShare 专属的配额/授权语义。
+# 扁平两层 sources.<源名>.<字段>; domain_spec() 按域的 source 字段查本表合并 (defaults → sources[source] → domain)。
+sources:
+  tushare:
+    target_db: tushare_raw
+    # tinyshare 代理限流 (用户 2026-06-17/19) 实测: 单接口 120/分, 全接口合计 200/分, 并发上限 2。
+    rate_limit:
+      per_interface_per_min: 120     # 单接口 120 次/分钟
+      total_per_min: 200             # 多接口合计 200 次/分钟
+      max_concurrency: 2             # 并发上限 2
+    auth_probe_timeout_seconds: 20 # user() 探针网络边界；持 writer lock 时不得无限挂起
+    auth_expiry_warn_days: 14       # TuShare user() 授权到期预警唯一 owner；preflight 读取，禁止代码散落阈值
+  fuyao:
+    target_db: tushare_raw
+    # 扶摇官方从未公布 QPS 数字; 其官方 SDK 自我节流 min_interval_seconds=0.2 (≈5 QPS = 300/分),
+    # 以此为依据设限, 与 TuShare 配额无关。
+    rate_limit:
+      per_interface_per_min: 300
+      total_per_min: 300
+      max_concurrency: 1
+    # auth_probe_timeout_seconds/auth_expiry_warn_days 是 TuShare user() 授权探测专属概念, 扶摇没有
+    # 授权到期语义。这里镜像 tushare 的值只是为了让 domain_spec() 对扶摇域的输出在本次重构前后逐字段
+    # 不变 (三处授权探测调用点已改直读 sources.tushare, 不经 domain_spec, 扶摇域的这两个字段实际上无
+    # 消费方 —— 不要在别处把它们当真 source 语义使用)。
 
 domains:
   # ── P0-a: 资金流 (套一 L2 + 套二 F1 + 退出组件, 一次回填三用) ──

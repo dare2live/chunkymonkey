@@ -154,13 +154,19 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
     defaults = raw.get("defaults") or {}
     if not isinstance(defaults, dict):
         raise ValueError("sync_registry defaults must be a mapping")
-    default_db = defaults.get("target_db", "tushare_raw")
+    sources = raw.get("sources") or {}
+    if not isinstance(sources, dict):
+        sources = {}
     from services.data_sources.formal_boundaries import formal_boundary
     from services.data_sources.margin_ingest import contract_for_spec
 
     specs: list[dict[str, Any]] = []
     for domain, entry in (raw.get("domains") or {}).items():
         entry = entry or {}
+        # target_db 曾整体挂在 defaults (2026-08-30 移入 sources.<source>); 按本域 source 查
+        # sources 表, 查不到 (未知/无 source 上下文) 才落回 defaults/字面量兜底, 与旧行为一致。
+        source_cfg = sources.get(entry.get("source")) or {}
+        default_db = source_cfg.get("target_db") or defaults.get("target_db", "tushare_raw")
         contract_spec = dict(defaults)
         contract_spec.update(entry)
         contract_spec["domain"] = domain
