@@ -290,6 +290,11 @@ def test_classify_stdlib_network_exceptions_are_transient() -> None:
 
 
 def test_fetch_raw_logs_in_once_and_reuses_session() -> None:
+    """query_trade_dates 输出经字段归一化 (2026-08-30 trade_cal 授权换源新增):
+    baostock 原始两列 (calendar_date/is_trading_day) 转成 tushare trade_cal 形态
+    (exchange/cal_date 紧凑8位/is_open int/pretrade_date) —— 见
+    sources/baostock.py _normalize_trade_dates_rows。每次调用只在"本次拿到的行"里
+    线性扫描前一个开市日, 两次调用各自只有一行, 故 pretrade_date 均为 None。"""
     bs = _FakeBaostock()
     bs.queue_result(
         "query_trade_dates",
@@ -302,8 +307,12 @@ def test_fetch_raw_logs_in_once_and_reuses_session() -> None:
     src = BaostockSource(bs_module=bs)
     rows1 = src.fetch_raw("query_trade_dates", start_date="2020-07-01")
     rows2 = src.fetch_raw("query_trade_dates", start_date="2020-07-02")
-    assert rows1 == [{"calendar_date": "2020-07-01", "is_trading_day": "1"}]
-    assert rows2 == [{"calendar_date": "2020-07-02", "is_trading_day": "1"}]
+    assert rows1 == [
+        {"exchange": "SSE", "cal_date": "20200701", "is_open": 1, "pretrade_date": None}
+    ]
+    assert rows2 == [
+        {"exchange": "SSE", "cal_date": "20200702", "is_open": 1, "pretrade_date": None}
+    ]
     assert bs.calls.count("login") == 1  # not re-logging in per fetch
 
 
@@ -400,8 +409,11 @@ def test_adapter_dispatches_baostock_without_live_adapter_freeze() -> None:
 
 
 def test_baostock_registers_exactly_one_domain_trade_cal() -> None:
-    """Scope guard for THIS cut: baostock registers exactly ``baostock_trade_cal``,
-    nothing else — no other baostock domain snuck in alongside it."""
+    """Scope guard for THIS cut (2026-08-30 authorized source switch): baostock is
+    now the source for exactly the formal ``trade_cal`` domain, nothing else — the
+    on_demand ``baostock_trade_cal`` domain from the prior cut has been retired
+    (superseded by trade_cal itself switching to baostock; keeping both would be
+    two duplicate calendar domains)."""
     import yaml
     from pathlib import Path
 
@@ -414,34 +426,34 @@ def test_baostock_registers_exactly_one_domain_trade_cal() -> None:
         for name, spec in (registry.get("domains") or {}).items()
         if spec.get("source") == "baostock"
     ]
-    assert baostock_domains == ["baostock_trade_cal"]
+    assert baostock_domains == ["trade_cal"]
+    assert "baostock_trade_cal" not in (registry.get("domains") or {})
 
 
 # ---------------------------------------------------------------------------
-# registry: baostock_trade_cal domain resolves correctly through domain_spec(),
-# and the existing formal trade_cal (tushare) domain stays untouched by this cut.
+# registry: the formal trade_cal domain now resolves through baostock (2026-08-30
+# authorized source switch), while every table-name-shaped field is untouched —
+# physical tables keep their tushare-prefixed legacy names by design.
 # ---------------------------------------------------------------------------
 
 
-def test_registry_resolves_baostock_trade_cal_domain() -> None:
-    registry = sr.load_registry()
-    spec = sr.domain_spec(registry, "baostock_trade_cal")
-    assert spec["source"] == "baostock"
-    assert spec["api"] == "query_trade_dates"
-    assert spec["target_db"] == "tushare_raw"  # inherited from sources.baostock
-    assert spec["batch_mode"] == "full_refresh"
-    assert spec["sync_policy"] == "on_demand"
-    assert spec["grain"] == ["calendar_date"]
-    assert spec["fetch_timeout_seconds"] == 15  # inherited from sources.baostock
-    assert "rate_limit" not in spec  # baostock quota never published; must not invent one
-
-
-def test_registry_existing_trade_cal_domain_unaffected() -> None:
-    """The formal tushare trade_cal domain must not be touched by registering baostock's."""
+def test_registry_trade_cal_domain_now_sources_from_baostock() -> None:
     registry = sr.load_registry()
     spec = sr.domain_spec(registry, "trade_cal")
-    assert spec["source"] == "tushare"
-    assert spec["api"] == "trade_cal"
+    assert spec["source"] == "baostock"
+    assert spec["api"] == "query_trade_dates"
+    assert spec["target_db"] == "tushare_raw"
+    # Physical table/grain/batch_mode/fixed_params are unchanged by design — the
+    # switch is adapter-only; calendar_builder.py and its 17 consumers never
+    # touch source/api and don't need to change.
+    assert spec["target_table"] == "raw_tushare_trade_cal"
+    assert spec["grain"] == ["exchange", "cal_date"]
+    assert spec["batch_mode"] == "full_refresh"
+    assert spec["fixed_params"] == {"exchange": "SSE"}
+    assert spec["page_limit"] == 6000
+    # baostock quota never published; must not invent a rate_limit for trade_cal
+    # now that it no longer inherits sources.tushare's rate_limit block.
+    assert "rate_limit" not in spec
 
 
 # ---------------------------------------------------------------------------
@@ -520,3 +532,146 @@ def test_end_date_default_does_not_leak_into_other_apis(monkeypatch) -> None:
         "start_date": "2020-07-01",
     }
     assert "end_date" not in bs.last_params["query_history_k_data_plus"]
+
+
+# ---------------------------------------------------------------------------
+# adapter: query_trade_dates field normalization for the tushare-shaped calendar
+# contract request (2026-08-30 trade_cal 授权换源新增). calendar_contract.
+# request_for_page() sends exchange + compact 8-digit dates + limit/offset —
+# baostock.query_trade_dates(start_date=None, end_date=None) accepts neither
+# exchange/limit/offset nor compact dates. These tests lock in the translation
+# in both directions plus the tushare-shaped output shape.
+# ---------------------------------------------------------------------------
+
+
+def test_query_trade_dates_strips_exchange_and_converts_compact_dates() -> None:
+    """A calendar-contract-shaped request (exchange + compact dates + limit/offset)
+    must reach baostock as bare dashed start_date/end_date only."""
+    bs = _FakeBaostock()
+    bs.queue_result(
+        "query_trade_dates",
+        _FakeResult(
+            [[["1990-12-19", "1"], ["1990-12-20", "0"]]],
+            fields=["calendar_date", "is_trading_day"],
+        ),
+    )
+    src = BaostockSource(bs_module=bs)
+    src.fetch_raw(
+        "query_trade_dates",
+        exchange="SSE",
+        start_date="19901219",
+        end_date="20261231",
+        limit=6000,
+        offset=0,
+    )
+
+    assert bs.last_params["query_trade_dates"] == {
+        "start_date": "1990-12-19",
+        "end_date": "2026-12-31",
+    }
+
+
+def test_query_trade_dates_output_is_normalized_to_tushare_shape() -> None:
+    """Output rows: exchange=SSE / cal_date compact / is_open int / pretrade_date
+    is the previous open day (compact) within this call's fetched rows, None for
+    the first row — equivalent to the LAG(...) IGNORE NULLS SQL in the module
+    docstring, computed via one ascending linear scan."""
+    bs = _FakeBaostock()
+    bs.queue_result(
+        "query_trade_dates",
+        _FakeResult(
+            [
+                [
+                    ["1990-12-19", "1"],  # first open day: pretrade_date None
+                    ["1990-12-20", "0"],  # closed: pretrade_date carries prior open day
+                    ["1990-12-21", "1"],  # open: pretrade_date still prior open day (not self)
+                    ["1990-12-22", "1"],  # open: pretrade_date is now 1990-12-21
+                ]
+            ],
+            fields=["calendar_date", "is_trading_day"],
+        ),
+    )
+    src = BaostockSource(bs_module=bs)
+    rows = src.fetch_raw(
+        "query_trade_dates", exchange="SSE", start_date="19901219", end_date="19901231"
+    )
+
+    assert rows == [
+        {"exchange": "SSE", "cal_date": "19901219", "is_open": 1, "pretrade_date": None},
+        {"exchange": "SSE", "cal_date": "19901220", "is_open": 0, "pretrade_date": "19901219"},
+        {"exchange": "SSE", "cal_date": "19901221", "is_open": 1, "pretrade_date": "19901219"},
+        {"exchange": "SSE", "cal_date": "19901222", "is_open": 1, "pretrade_date": "19901221"},
+    ]
+
+
+def test_query_trade_dates_applies_local_offset_limit_pagination() -> None:
+    """baostock has no server-side offset (query_trade_dates always returns the
+    whole [start_date, end_date] range) — the adapter must fetch the full range
+    every call and slice [offset:offset+limit] locally, so multi-page contract
+    callers (calendar_contract page_limit=6000) get correctly bounded pages
+    without losing pretrade_date continuity across the page boundary."""
+    bs = _FakeBaostock()
+    full_range = [
+        ["1990-12-19", "1"],
+        ["1990-12-20", "0"],
+        ["1990-12-21", "1"],
+        ["1990-12-22", "1"],
+    ]
+    # Same full range queued twice: one physical call per contract page (baostock
+    # doesn't remember state between calls; each call must ask for everything).
+    bs.queue_result(
+        "query_trade_dates",
+        _FakeResult([full_range], fields=["calendar_date", "is_trading_day"]),
+    )
+    bs.queue_result(
+        "query_trade_dates",
+        _FakeResult([full_range], fields=["calendar_date", "is_trading_day"]),
+    )
+    src = BaostockSource(bs_module=bs)
+
+    page0 = src.fetch_raw(
+        "query_trade_dates",
+        exchange="SSE",
+        start_date="19901219",
+        end_date="19901231",
+        limit=2,
+        offset=0,
+    )
+    page1 = src.fetch_raw(
+        "query_trade_dates",
+        exchange="SSE",
+        start_date="19901219",
+        end_date="19901231",
+        limit=2,
+        offset=2,
+    )
+
+    assert [r["cal_date"] for r in page0] == ["19901219", "19901220"]
+    assert [r["cal_date"] for r in page1] == ["19901221", "19901222"]
+    # pretrade_date on page1's first row must chain from the pre-page1 history
+    # (computed over the full fetched range before slicing), not reset to None.
+    assert page1[0] == {
+        "exchange": "SSE", "cal_date": "19901221", "is_open": 1, "pretrade_date": "19901219"
+    }
+    # limit/offset never reach the real baostock call (it has no such kwargs).
+    assert bs.last_params["query_trade_dates"] == {
+        "start_date": "1990-12-19",
+        "end_date": "1990-12-31",
+    }
+
+
+def test_query_trade_dates_without_limit_returns_unsliced_normalized_rows() -> None:
+    """A direct/manual call with no limit/offset (e.g. the old on_demand-domain
+    call shape) must return every normalized row, not an empty/truncated slice."""
+    bs = _FakeBaostock()
+    bs.queue_result(
+        "query_trade_dates",
+        _FakeResult(
+            [[["1990-12-19", "1"], ["1990-12-20", "0"]]],
+            fields=["calendar_date", "is_trading_day"],
+        ),
+    )
+    src = BaostockSource(bs_module=bs)
+    rows = src.fetch_raw("query_trade_dates", start_date="1990-12-19", end_date="1990-12-31")
+
+    assert [r["cal_date"] for r in rows] == ["19901219", "19901220"]

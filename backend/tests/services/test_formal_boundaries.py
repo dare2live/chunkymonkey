@@ -18,9 +18,20 @@ from services.data_sources import sync_runner as sr
 
 
 def test_live_adapter_is_tushare_only() -> None:
-    assert require_live_adapter("tushare", domain="trade_cal") == LIVE_ADAPTER
+    # trade_cal switched to baostock 2026-08-30 (authorized source change) — use
+    # "daily" here, one of the three formal domains still pinned to LIVE_ADAPTER.
+    assert require_live_adapter("tushare", domain="daily") == LIVE_ADAPTER
     with pytest.raises(FormalBoundaryError, match="unsupported_live_adapter"):
-        require_live_adapter("akshare", domain="trade_cal")
+        require_live_adapter("akshare", domain="daily")
+
+
+def test_trade_cal_live_adapter_is_baostock_only() -> None:
+    """2026-08-30 authorized source switch: trade_cal is the one formal domain
+    whose adapter is no longer LIVE_ADAPTER (tushare) — see formal_boundaries.py
+    _FORMAL_BOUNDARIES["trade_cal"]."""
+    assert require_live_adapter("baostock", domain="trade_cal") == "baostock"
+    with pytest.raises(FormalBoundaryError, match="unsupported_live_adapter"):
+        require_live_adapter("tushare", domain="trade_cal")
 
 
 def test_wildcard_domain_accepts_any_registered_formal_adapter() -> None:
@@ -42,23 +53,28 @@ def test_unregistered_domain_falls_back_to_live_adapter_only() -> None:
 
 
 def test_per_domain_adapter_override_is_isolated_to_its_own_domain(monkeypatch) -> None:
-    # Temporarily declare trade_cal as using a different adapter than the
-    # other formal domains, and confirm require_live_adapter enforces that
-    # per-domain, without leaking into sibling domains. monkeypatch.setitem
-    # restores _FORMAL_BOUNDARIES["trade_cal"] automatically after the test.
-    original = _FORMAL_BOUNDARIES["trade_cal"]
+    # trade_cal itself is now permanently baostock (2026-08-30), so exercise the
+    # override mechanism against "daily" instead — temporarily declare it using a
+    # different adapter than its LIVE_ADAPTER default, and confirm
+    # require_live_adapter enforces that per-domain, without leaking into sibling
+    # domains (including trade_cal's own real, non-monkeypatched baostock
+    # adapter). monkeypatch.setitem restores _FORMAL_BOUNDARIES["daily"]
+    # automatically after the test.
+    original = _FORMAL_BOUNDARIES["daily"]
     monkeypatch.setitem(
         _FORMAL_BOUNDARIES,
-        "trade_cal",
+        "daily",
         dataclasses.replace(original, adapter="baostock"),
     )
 
-    assert require_live_adapter("baostock", domain="trade_cal") == "baostock"
+    assert require_live_adapter("baostock", domain="daily") == "baostock"
     with pytest.raises(FormalBoundaryError, match="unsupported_live_adapter"):
-        require_live_adapter("tushare", domain="trade_cal")
+        require_live_adapter("tushare", domain="daily")
 
-    # Sibling domains are unaffected by trade_cal's override.
-    assert require_live_adapter("tushare", domain="daily") == LIVE_ADAPTER
+    # Sibling domains are unaffected by daily's override: margin/stock_st stay
+    # tushare-only, and trade_cal's real (unrelated) baostock adapter still works.
+    assert require_live_adapter("tushare", domain="margin") == LIVE_ADAPTER
+    assert require_live_adapter("baostock", domain="trade_cal") == "baostock"
 
 
 def test_inventory_declares_three_boundaries_for_formal_domains() -> None:
@@ -69,8 +85,13 @@ def test_inventory_declares_three_boundaries_for_formal_domains() -> None:
     assert inventory["trade_cal"]["runtime_state"] == "accepted_runtime_ready_canary_pending"
     assert inventory["daily"]["runtime_state"] == "accepted_runtime_ready_canary_pending"
     assert inventory["stock_st"]["runtime_state"] == "accepted_runtime_ready_canary_pending"
+    # 2026-08-30 授权换源: trade_cal 是唯一 adapter!=tushare 的 formal 域 (per-domain
+    # adapter, 见 formal_boundaries.py _FORMAL_BOUNDARIES["trade_cal"] 注释); 其余
+    # 三个仍是 LIVE_ADAPTER。
+    assert inventory["trade_cal"]["adapter"] == "baostock"
+    for name in ("margin", "daily", "stock_st"):
+        assert inventory[name]["adapter"] == "tushare"
     for item in inventory.values():
-        assert item["adapter"] == "tushare"
         assert item["legacy_raw_write"] == "forbidden"
         assert item["landing_writer"]
         assert item["canonical_writer"]

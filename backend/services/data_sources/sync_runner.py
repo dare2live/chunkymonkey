@@ -4172,8 +4172,8 @@ def _preflight_cli_request_shape(
             and (args.start is None or args.end is None)
         ):
             # 2026-08-30 修复: 见 run_domain 内同款门的注释 — 原 by_ts_code 限定与
-            # on_demand 交集为空, 从未生效过。full_refresh 域 (trade_cal/
-            # baostock_trade_cal) 豁免: 它们结构上不接受 start/end。
+            # on_demand 交集为空, 从未生效过。full_refresh 域 (trade_cal) 豁免:
+            # 它们结构上不接受 start/end。
             raise SyncWindowError(
                 f"domain={domain} sync_policy=on_demand requires both --start and --end"
             )

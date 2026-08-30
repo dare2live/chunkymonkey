@@ -7,15 +7,15 @@ CLI arg 校验 `_preflight_cli_request_shape` 内), 原条件都是:
 
 实测 registry 里这两个条件的交集为空 —— by_ts_code 只有 income/balancesheet/
 fina_indicator 三域且均非 on_demand; on_demand 域全是 by_trade_date (daily/stock_st/
-margin/扶摇四域) 或 full_refresh (trade_cal/baostock_trade_cal)。所以这道门对任何域
+margin/扶摇四域) 或 full_refresh (trade_cal)。所以这道门对任何域
 都从未触发过 —— 不是"覆盖不全"是"从未生效"。后果: 裸跑
 `chunkyctl sync --domain fuyao_limit_up_pool` 不报错、直接从 data_start 拉全史 (约
 1454 个交易日), 而 registry 注释声称 on_demand「只许 --start/--end、禁 mass
 backfill」——声明与实际背离。
 
 修复: 去掉 batch_mode == "by_ts_code" 这一项, 改为「sync_policy == on_demand 且
-batch_mode != full_refresh 且缺 start 或 end 就拒绝」。full_refresh 域 (trade_cal/
-baostock_trade_cal) 结构上本来就不接受 start/end (另有 `batch_mode == "full_refresh"
+batch_mode != full_refresh 且缺 start 或 end 就拒绝」。full_refresh 域 (trade_cal,
+2026-08-30 授权换源后 source=baostock, 形状不变) 结构上本来就不接受 start/end (另有 `batch_mode == "full_refresh"
 and (start or end)` 的门直接拒绝带 bounds 的调用) —— 放宽后若不豁免 full_refresh,
 会陷入「既不许给 start/end、又因为没给而被拒」的自相矛盾, 必须显式豁免。
 
@@ -53,7 +53,7 @@ SYNTHETIC_BY_TRADE_DATE_ON_DEMAND = {
     "data_start": D,
 }
 
-# 镜像 trade_cal / baostock_trade_cal 的形状: full_refresh + on_demand, 结构上本来
+# 镜像 trade_cal 的形状: full_refresh + on_demand, 结构上本来
 # 就不接受 start/end —— 必须豁免这道门, 否则自相矛盾 (放宽后既不许给又因未给被拒)。
 SYNTHETIC_FULL_REFRESH_ON_DEMAND = {
     "source": "baostock",
@@ -195,9 +195,9 @@ def test_real_registry_fuyao_domains_reject_bare_invocation(domain):
         sr.run_domain(domain, registry=REAL_REG)
 
 
-@pytest.mark.parametrize("domain", ["trade_cal", "baostock_trade_cal"])
+@pytest.mark.parametrize("domain", ["trade_cal"])
 def test_real_registry_full_refresh_on_demand_domains_not_blocked(domain):
-    """真实 full_refresh + on_demand 域 (trade_cal/baostock_trade_cal) 的自相矛盾回归:
+    """真实 full_refresh + on_demand 域 (trade_cal) 的自相矛盾回归:
     放宽门之后, 裸跑 `chunkyctl sync --domain trade_cal` (它们唯一合法的调用方式,
     本来就不带 start/end) 绝不能被这道新放宽的门反而挡住。
     """

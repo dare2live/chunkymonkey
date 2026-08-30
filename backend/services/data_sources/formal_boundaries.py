@@ -52,7 +52,10 @@ _FORMAL_BOUNDARIES: dict[str, FormalDomainBoundary] = {
     ),
     "trade_cal": FormalDomainBoundary(
         domain="trade_cal",
-        adapter=LIVE_ADAPTER,
+        # 2026-08-30 授权换源 (业主已明确授权): tushare -> baostock。其余三个 formal
+        # 域继续用 LIVE_ADAPTER (tushare) 不动 —— per-domain adapter 正是为此解锁的
+        # (见 require_live_adapter 按域校验)。
+        adapter="baostock",
         landing_writer="services.data_sources.calendar_landing.land_calendar_batch",
         canonical_writer="services.data_sources.calendar_acceptance.accept_calendar_batch",
         dataset_id="tier0.reference.sse_trading_calendar_generation",

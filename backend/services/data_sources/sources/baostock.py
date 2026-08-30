@@ -39,13 +39,23 @@ pip 包 ``baostock==0.9.3`` (钉死版本, 见 backend/requirements.txt 该行�
 ``BaostockSource.fetch_raw`` 是 sync_runner 的调用约定入口, 与 ``sources/fuyao.py`` /
 ``sources/tushare.py`` 同型: ``fetch_raw(api, **params) -> list[dict]``。
 
-**范围声明**: 2026-08-30 上一刀本文件只提供接入能力 (source adapter), 不注册任何
-``sync_registry.yaml`` 数据域。本刀 (同日) 注册了第一个域 ``baostock_trade_cal``
-(``sources.baostock_trade_cal`` in sync_registry.yaml, ``sync_policy: on_demand``,
-不进日更自动链) —— 仍不碰 formal ``trade_cal`` (tushare) 域, 那个的 formal
-boundary 考量继续是另一件事。``query_trade_dates`` 一路另有日历专属默认值:
-调用方未显式传 ``end_date`` 时补 ``f"{当前年份+1}-12-31"`` (见 ``fetch_raw`` 内注释),
-因为 baostock 不传 end_date 就拿不到未来交易日, 而未来交易日正是引入该源的核心理由。
+**范围声明**: 2026-08-30 同日先后三刀。第一刀本文件只提供接入能力 (source adapter),
+不注册任何 ``sync_registry.yaml`` 数据域。第二刀注册了 on_demand 域
+``baostock_trade_cal`` (不碰 formal ``trade_cal``)。第三刀 (授权换源, 本次) 把
+formal ``trade_cal`` 域本身的 ``source``/``api`` 从 tushare 改成 baostock
+(``sync_registry.yaml``/``calendar_contract.py``/``formal_boundaries.py`` 三处联动),
+并撤销 ``baostock_trade_cal`` (已被 formal trade_cal 取代, 避免两个日历域重复) ——
+物理表名 (``raw_tushare_trade_cal`` 等) 依设计不改, 只是换了个 adapter 填它们。
+``query_trade_dates`` 一路因此新增两件事 (仅此 api 生效, 不影响其它 api, 见
+``fetch_raw`` 内注释):
+  1. 日历专属默认值 (换源前就有, 未变): 调用方未显式传 ``end_date`` 时补
+     ``f"{当前年份+1}-12-31"``, 因为 baostock 不传 end_date 就拿不到未来交易日,
+     而未来交易日正是引入该源的核心理由。
+  2. 字段归一化 (本刀新增): calendar_contract 仍按 tushare trade_cal 形态发请求
+     (``exchange``/紧凑 8 位日期/``limit``/``offset``) 并期待 tushare 形态的响应
+     (``exchange``/``cal_date``/``is_open``/``pretrade_date``) —— 本方法在两端做转换,
+     等价性已由 controller 独立核证 (对生产 canonical 逐行零差异), 见
+     ``_normalize_trade_dates_rows`` docstring 里的等价 SQL。
 """
 from __future__ import annotations
 
@@ -300,6 +310,54 @@ def _drain_rows(
     return rows
 
 
+def _to_dashed_trade_date(value: Any) -> Any:
+    """紧凑 8 位 (``"19901219"``) → baostock 要的 ``"YYYY-MM-DD"``。
+
+    已是 dashed 格式 (含 ``-``) 或任何非 8 位纯数字串一律原样放行 —— 幂等, 不误伤
+    调用方本就传 dashed 日期的场景 (见下方 fetch_raw 里 query_trade_dates 分支的
+    历史直调用法/单测)。
+    """
+    text = str(value)
+    if len(text) == 8 and text.isdigit():
+        return f"{text[0:4]}-{text[4:6]}-{text[6:8]}"
+    return value
+
+
+def _normalize_trade_dates_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """把 baostock ``query_trade_dates`` 原始两列 (``calendar_date``/``is_trading_day``)
+    转成 tushare ``trade_cal`` 形态: ``exchange``(恒 ``"SSE"``) / ``cal_date``(紧凑 8 位) /
+    ``is_open``(int) / ``pretrade_date``(紧凑 8 位或 ``None``)。
+
+    2026-08-30 授权换源 (trade_cal: tushare -> baostock) 的等价性推导已由 controller
+    独立核证 (对生产 canonical 逐行零差异), 对应 SQL:
+        SELECT 'SSE', CAST(calendar_date AS DATE),
+               CAST(is_trading_day AS INTEGER),
+               CAST(LAG(CASE WHEN is_trading_day='1' THEN calendar_date END IGNORE NULLS)
+                    OVER (ORDER BY calendar_date) AS DATE)
+        FROM raw_baostock_trade_dates
+    本函数是该 SQL 的等价单遍线性扫描 (``rows`` 已按日期升序返回, 不引入 pandas):
+    ``pretrade_date`` = 扫描到当前行为止、之前最近一个 ``is_open==1`` 的
+    ``cal_date`` (不含自身, 天然对齐 SQL 的 LAG 语义); 首行 (或首个开市日之前的行)
+    为 ``None`` —— 生产库首行同样是 NULL, 已核对。
+    """
+    normalized: list[dict[str, Any]] = []
+    last_open_compact: str | None = None
+    for row in rows:
+        compact_date = str(row.get("calendar_date", "")).replace("-", "")
+        is_open = int(str(row.get("is_trading_day", "0")))
+        normalized.append(
+            {
+                "exchange": "SSE",
+                "cal_date": compact_date,
+                "is_open": is_open,
+                "pretrade_date": last_open_compact,
+            }
+        )
+        if is_open == 1:
+            last_open_compact = compact_date
+    return normalized
+
+
 class BaostockSource:
     """sync_runner 调用约定: ``fetch_raw(api, **params) -> list[dict]``。
 
@@ -382,6 +440,15 @@ class BaostockSource:
 
         可选 ``expected_row_count`` (从 ``params`` 里取, 不透传给 baostock 查询函数):
         调用方若知道期望条数, 传入即可让 ``_drain_rows`` 做条数比对 (坑 2 的完整性兜底)。
+
+        ``query_trade_dates`` 这一路另有字段归一化 (2026-08-30 trade_cal 授权换源
+        tushare -> baostock 新增, 仅此 api 生效, 不影响其它 api): 调用方 (calendar
+        contract / sync_registry fixed_params) 仍按 tushare trade_cal 形态传
+        ``exchange``/紧凑 8 位 ``start_date``/``end_date``/``limit``/``offset`` ——
+        baostock 的 ``query_trade_dates(start_date=None, end_date=None)`` 只认后两个
+        且要 dashed 格式, 也没有服务端分页。本方法在调用前丢弃/转换这些键, 调用后把
+        原始两列输出转成 tushare 形态 (见 ``_normalize_trade_dates_rows``) 再按
+        ``limit``/``offset`` 本地切片一页返回。
         """
         name = str(api or "").strip()
         fn_name = API_FUNCTION_NAMES.get(name)
@@ -391,6 +458,17 @@ class BaostockSource:
             )
         query_params = dict(params)
         expected_row_count = query_params.pop("expected_row_count", None)
+
+        normalize_trade_dates = name == "query_trade_dates"
+        page_limit: int | None = None
+        page_offset = 0
+        if normalize_trade_dates:
+            # exchange 恒为 "SSE" (calendar_contract 已校验过, baostock 本就只覆盖
+            # SSE, 这里直接丢) ; limit/offset 改本地分页 —— baostock 没有服务端
+            # offset, 下面每次都整段拉全量, 归一化后再按 [offset:offset+limit] 切片。
+            query_params.pop("exchange", None)
+            page_limit = query_params.pop("limit", None)
+            page_offset = int(query_params.pop("offset", 0) or 0)
 
         if name == "query_trade_dates" and "end_date" not in query_params:
             # 日历专属默认值 (2026-08-30 实测, 见 goal 交接): query_trade_dates 不显式
@@ -411,6 +489,14 @@ class BaostockSource:
             # 上界, 不做任何交易日判断, 上界多给一年只影响 vendor 返回行数上限。
             year = datetime.date.today().year  # rule-compliance: ok evidence=日历天窗口上界年份, 非最新交易日; 本域即日历上游, 用 services.calendar 会循环依赖
             query_params["end_date"] = f"{year + 1}-12-31"
+
+        if normalize_trade_dates:
+            # calendar_contract.request_for_page 送的是紧凑 8 位日期; baostock 只认
+            # dashed "YYYY-MM-DD"。已是 dashed (或任何非紧凑 8 位数字串) 的原样放行 ——
+            # 幂等转换, 不影响直调用法/既有单测传 "1990-12-19" 这种写法。
+            for key in ("start_date", "end_date"):
+                if key in query_params:
+                    query_params[key] = _to_dashed_trade_date(query_params[key])
 
         self._check_single_thread()
         bs = self._ensure_login()
@@ -433,7 +519,12 @@ class BaostockSource:
                 f"msg={getattr(result, 'error_msg', '')!r}",
                 code=code,
             )
-        return _drain_rows(result, expected_row_count=expected_row_count)
+        rows = _drain_rows(result, expected_row_count=expected_row_count)
+        if normalize_trade_dates:
+            rows = _normalize_trade_dates_rows(rows)
+            if page_limit is not None:
+                rows = rows[page_offset : page_offset + page_limit]
+        return rows
 
 
 __all__ = [

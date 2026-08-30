@@ -386,7 +386,7 @@ domains:
       venue_field: exchange
       venue_ids: [SSE]
       population_label: sse_trading_calendar
-      method: tushare_trade_cal
+      method: baostock_query_trade_dates
       unit: calendar_day_status
     # 只保存稳定政策；landing/canonical/writer 由 calendar 代码契约拥有。
     calendar_generation:
@@ -399,8 +399,14 @@ domains:
         rule: response_completed
         at: response_completed_at
       canonicalization_version: "1"
-    source: tushare
-    api: trade_cal
+    # 2026-08-30 授权换源: tushare -> baostock (业主已明确授权)。等价性已由
+    # controller 独立核证 (对生产 canonical 逐行零差异, is_open/pretrade_date 差异
+    # 均为 0)，adapter 侧字段归一化见 services/data_sources/sources/baostock.py。
+    # 物理表名/target_table/grain/batch_mode/fixed_params 依设计一律不动 —— 表名带
+    # tushare 是历史遗留, 本项目 raw 层普遍如此, calendar_builder.py 与 17 个消费方
+    # 因此一行不用改。
+    source: baostock
+    api: query_trade_dates
     target_db: tushare_raw
     # legacy compatibility only — not accepted publication identity
     target_table: raw_tushare_trade_cal
@@ -1287,30 +1293,6 @@ domains:
     min_rows_per_batch: 0
     freshness_no_probe: "on_demand_explicit_window_not_daily_sla"
     universe_filter: false
-
-  # baostock 首个注册域 (2026-08-30): 交易日历。实测确立 (见 services/data_sources/
-  # sources/baostock.py 模块 docstring, 2026-08-30 逐端点核实, 不重测):
-  #   - query_trade_dates 不传参数 -> 4260 行, 2015-01-01~今天;
-  #     只传 start_date="1990-12-19" -> 13039 行, 1990-12-19~今天;
-  #     即不显式传 end_date 就拿不到任何未来交易日 (adapter 已在 fetch_raw 内补
-  #     year+1 默认值, 这里的 fixed_params 不重复写 end_date, 否则每年要人手动改);
-  #   - 该源日历与本项目 accepted 日历在 1990-12-19~2026-12-31 区间逐日零差异
-  #     (8797 个开市日)。
-  # 引入 baostock 的核心理由正是未来交易日: check_continuity_integrity 要求 today
-  # 之后仍有 >=60 个已登记未来交易日, 而 formal trade_cal (tushare) 域不在本刀改动
-  # 范围内。sync_policy=on_demand: 先手动拉, 不进日更自动链。
-  baostock_trade_cal:
-    source: baostock
-    api: query_trade_dates
-    target_table: raw_baostock_trade_dates
-    grain: [calendar_date]        # 接口只返回 calendar_date + is_trading_day 两个字段, 日期是唯一主键
-    batch_mode: full_refresh      # 一次拉全历史 (13k 行, 实测很快)
-    fixed_params:
-      start_date: "1990-12-19"    # 拿全史下界; end_date 交给 adapter 默认逻辑 (动态 year+1, 不在此写死)
-    sync_policy: on_demand        # 不进日更自动链, 先手动拉
-    data_start: "19901219"
-    pit_anchor: "calendar_date; 交易日历是交易所公告的制度事实, 不是某个时点的 PIT 观测量 —— 与本 registry 其它域根本不同的是它天然含未来日期 (check_continuity_integrity 要求 today 之后仍有 >=60 个已登记未来交易日); 全量刷新覆盖, 无 t/t+1 可用时刻语义"
-    freshness_no_probe: "on_demand_manual_full_refresh_not_in_daily_chain"
 
   # top10_floatholders (tushare 十大流通股东) 域 2026-06-29 批3b 退役删除:
   #   holder 主源已切东财妙想 aif10 (services/holders_aif10.py, source='miaoxiang' → fact_top10_holder_period;

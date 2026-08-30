@@ -34,8 +34,9 @@ TRUSTED_NOW = OBSERVED_AT + timedelta(minutes=5)
 def _spec() -> dict:
     return {
         "domain": "trade_cal",
-        "source": "tushare",
-        "api": "trade_cal",
+        # 2026-08-30 授权换源: tushare -> baostock。表/库名相关字段依设计不动。
+        "source": "baostock",
+        "api": "query_trade_dates",
         "target_db": "tushare_raw",
         "target_table": "raw_tushare_trade_cal",
         "grain": ["exchange", "cal_date"],
@@ -48,7 +49,7 @@ def _spec() -> dict:
             "venue_field": "exchange",
             "venue_ids": ["SSE"],
             "population_label": "sse_trading_calendar",
-            "method": "tushare_trade_cal",
+            "method": "baostock_query_trade_dates",
             "unit": "calendar_day_status",
         },
         "calendar_generation": {

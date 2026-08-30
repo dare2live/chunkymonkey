@@ -125,7 +125,7 @@ def test_live_trade_calendar_authorized_manual_generation_uses_formal_path(
         "venue_field": "exchange",
         "venue_ids": ["SSE"],
         "population_label": "sse_trading_calendar",
-        "method": "tushare_trade_cal",
+        "method": "baostock_query_trade_dates",  # 2026-08-30 授权换源 tushare -> baostock
         "unit": "calendar_day_status",
     }
 

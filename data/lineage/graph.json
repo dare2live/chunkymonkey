@@ -3,11 +3,12 @@
     {
       "attrs": {
         "grain": [
-          "calendar_date"
+          "cal_date",
+          "exchange"
         ],
-        "pit_anchor": "calendar_date; 交易日历是交易所公告的制度事实, 不是某个时点的 PIT 观测量 —— 与本 registry 其它域根本不同的是它天然含未来日期 (check_continuity_integrity 要求 today 之后仍有 >=60 个已登记未来交易日); 全量刷新覆盖, 无 t/t+1 可用时刻语义"
+        "pit_anchor": "cal_date; 静态日历, 年度扩展"
       },
-      "dst": "table:tushare_raw.raw_baostock_trade_dates",
+      "dst": "table:tushare_raw.raw_tushare_trade_cal",
       "kind": "acquire",
       "src": "source:baostock.query_trade_dates"
     },
@@ -513,18 +514,6 @@
       "dst": "table:tushare_raw.raw_tushare_top_list",
       "kind": "acquire",
       "src": "source:tushare.top_list"
-    },
-    {
-      "attrs": {
-        "grain": [
-          "cal_date",
-          "exchange"
-        ],
-        "pit_anchor": "cal_date; 静态日历, 年度扩展"
-      },
-      "dst": "table:tushare_raw.raw_tushare_trade_cal",
-      "kind": "acquire",
-      "src": "source:tushare.trade_cal"
     },
     {
       "attrs": {},
@@ -6630,7 +6619,7 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/sync_registry.yaml",
+      "dst": "consumer:backend/services/data_sources/sources/baostock.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_baostock_trade_dates"
     },
@@ -8940,6 +8929,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/baostock.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/lineage/query.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_trade_cal"
@@ -8953,6 +8948,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_ensure_serve_read_views.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_baostock_adapter.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_trade_cal"
     },
@@ -10044,9 +10045,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1628,
-    "generated_at": "2026-08-30T05:34:03.639160+00:00",
-    "node_count": 510,
+    "edge_count": 1629,
+    "generated_at": "2026-08-30T11:41:55.469113+00:00",
+    "node_count": 511,
     "version": 2
   },
   "nodes": [
@@ -10933,6 +10934,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/data_sources/sources/baostock.py"
+      },
+      "id": "consumer:backend/services/data_sources/sources/baostock.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/data_sources/stk_holdertrade_acceptance.py"
       },
       "id": "consumer:backend/services/data_sources/stk_holdertrade_acceptance.py",
@@ -11781,6 +11790,14 @@
     {
       "attrs": {
         "ctype": "test",
+        "path": "backend/tests/services/test_baostock_adapter.py"
+      },
+      "id": "consumer:backend/tests/services/test_baostock_adapter.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
         "path": "backend/tests/services/test_brick_registry_b5.py"
       },
       "id": "consumer:backend/tests/services/test_brick_registry_b5.py",
@@ -12613,7 +12630,7 @@
     {
       "attrs": {
         "api": "query_trade_dates",
-        "domain": "baostock_trade_cal",
+        "domain": "trade_cal",
         "source": "baostock"
       },
       "id": "source:baostock.query_trade_dates",
@@ -12977,15 +12994,6 @@
         "source": "tushare"
       },
       "id": "source:tushare.top_list",
-      "kind": "source_interface"
-    },
-    {
-      "attrs": {
-        "api": "trade_cal",
-        "domain": "trade_cal",
-        "source": "tushare"
-      },
-      "id": "source:tushare.trade_cal",
       "kind": "source_interface"
     },
     {

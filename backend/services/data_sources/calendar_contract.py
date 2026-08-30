@@ -46,18 +46,22 @@ _AVAILABILITY_KEYS = frozenset({"axis", "rule", "at"})
 _SCOPE_KEYS = frozenset(
     {"kind", "venue_field", "venue_ids", "population_label", "method", "unit"}
 )
+# 2026-08-30 授权换源 (trade_cal: tushare -> baostock, 业主已明确授权; 等价性已由
+# controller 独立核证, 对生产 canonical 逐行零差异): source/api/method 改成 baostock
+# 对应值。target_db/target_table/grain/batch_mode/fixed_params 等表/库名相关字段依设计
+# 一律不动 —— 物理表名带 tushare 是历史遗留, 换 adapter 不改表。
 _EXPECTED_SCOPE = {
     "kind": "external_aggregate",
     "venue_field": "exchange",
     "venue_ids": ["SSE"],
     "population_label": "sse_trading_calendar",
-    "method": "tushare_trade_cal",
+    "method": "baostock_query_trade_dates",
     "unit": "calendar_day_status",
 }
 _EXPECTED_PROVIDER_TRANSPORT = {
     "domain": "trade_cal",
-    "source": "tushare",
-    "api": "trade_cal",
+    "source": "baostock",
+    "api": "query_trade_dates",
     "target_db": "tushare_raw",
     "grain": ["exchange", "cal_date"],
     "batch_mode": "full_refresh",
@@ -318,8 +322,9 @@ def verify_calendar_generation_contract(
     if contract.availability.payload() != _EXPECTED_AVAILABILITY:
         raise ValueError("trade_cal: factory-owned availability drift")
     if (
-        contract.source != "tushare"
-        or contract.api != "trade_cal"
+        # 2026-08-30 授权换源: tushare -> baostock。target_db 等表/库名字段不动。
+        contract.source != "baostock"
+        or contract.api != "query_trade_dates"
         or contract.target_db != "tushare_raw"
         or contract.batch_mode != "full_refresh"
         or contract.grain != ("exchange", "cal_date")
@@ -449,8 +454,9 @@ def calendar_contract_for_spec(spec: Mapping[str, Any]) -> CalendarGenerationCon
         ("timezone", str(generation["timezone"])),
         ("availability", availability),
         ("canonicalization_version", str(generation["canonicalization_version"])),
-        ("source", "tushare"),
-        ("api", "trade_cal"),
+        # 2026-08-30 授权换源: tushare -> baostock。target_db 等表/库名字段不动。
+        ("source", "baostock"),
+        ("api", "query_trade_dates"),
         ("target_db", "tushare_raw"),
         ("batch_mode", "full_refresh"),
         ("grain", ("exchange", "cal_date")),
