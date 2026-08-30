@@ -203,20 +203,18 @@ def _sync_registry_queries(*, registry_path: Path | None = None) -> dict[str, di
             raise TypeError("registry defaults must be a mapping")
         from services.data_sources.formal_boundaries import formal_boundary
         from services.data_sources.margin_ingest import contract_for_spec
+        from services.data_sources.sync_runner import domain_spec
 
-        sources_cfg = reg.get("sources") or {}
-        if not isinstance(sources_cfg, dict):
-            sources_cfg = {}
         for name, spec in domains.items():
             if not isinstance(name, str) or not name or not isinstance(spec, dict):
                 raise TypeError("registry domain entries must be named mappings")
             mode = spec.get("batch_mode")
-            # 与 sync_runner.domain_spec 同款三层继承链 defaults → sources[source] → entry。
-            # 漏掉中间这层会让 target_db 等已下沉到源级的字段取不到, contract 构造直接抛。
-            contract_spec = dict(defaults)
-            contract_spec.update(sources_cfg.get(spec.get("source")) or {})
-            contract_spec.update(spec)
-            contract_spec["domain"] = name
+            # 三层继承 (defaults → sources[source] → entry) 走唯一正版实现
+            # services.data_sources.sync_runner.domain_spec ("stable public read seam",
+            # 37 个调用方), 不在这里重建这条链 —— 2026-08-30 target_db 下沉 sources.<source>
+            # 时这里曾手工补层漏掉, contract 构造直接抛; 消除重复实现 = 根治
+            # "下次配置结构再变又漏两处"。
+            contract_spec = domain_spec(reg, name)
             margin_contract = contract_for_spec(contract_spec)
             boundary = formal_boundary(name)
             if margin_contract is not None:

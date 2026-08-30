@@ -154,25 +154,20 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
     defaults = raw.get("defaults") or {}
     if not isinstance(defaults, dict):
         raise ValueError("sync_registry defaults must be a mapping")
-    sources = raw.get("sources") or {}
-    if not isinstance(sources, dict):
-        sources = {}
     from services.data_sources.formal_boundaries import formal_boundary
     from services.data_sources.margin_ingest import contract_for_spec
+    from services.data_sources.sync_runner import domain_spec
 
     specs: list[dict[str, Any]] = []
     for domain, entry in (raw.get("domains") or {}).items():
         entry = entry or {}
-        # target_db 曾整体挂在 defaults (2026-08-30 移入 sources.<source>); 按本域 source 查
-        # sources 表, 查不到 (未知/无 source 上下文) 才落回 defaults/字面量兜底, 与旧行为一致。
-        source_cfg = sources.get(entry.get("source")) or {}
-        default_db = source_cfg.get("target_db") or defaults.get("target_db", "tushare_raw")
-        contract_spec = dict(defaults)
-        # 与 sync_runner.domain_spec 同款三层继承链 defaults → sources[source] → entry。
-        # 漏掉中间这层会让 target_db 等已下沉到源级的字段取不到, 进而 contract 构造失败。
-        contract_spec.update(source_cfg)
-        contract_spec.update(entry)
-        contract_spec["domain"] = domain
+        # 三层继承 (defaults → sources[source] → entry) 走唯一正版实现
+        # services.data_sources.sync_runner.domain_spec ("stable public read seam",
+        # 37 个调用方), 不在这里重建这条链 —— 2026-08-30 target_db 下沉 sources.<source>
+        # 时这里曾手工补层漏掉, 连续性门直接崩 (ValueError: missing outer contract
+        # fields: target_db); 消除重复实现 = 根治"下次配置结构再变又漏两处"。
+        contract_spec = domain_spec(raw, domain)
+        default_db = contract_spec.get("target_db", "tushare_raw")
         margin_contract = contract_for_spec(contract_spec)
         accepted_margin = margin_contract is not None
         boundary = formal_boundary(domain)
