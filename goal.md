@@ -74,7 +74,10 @@ owner contract，进度段在此。**不再有第二个说「下一步」的地�
 - **K6** 通达信全历史（**链路已实测通，`live_unprobed` 这条 Residual 作废**）：2026-08-29 实测 `quotes_client()` 握手成功并拉到 600000 日 K，最新一根与 baostock 同日收盘**逐位一致**，即通达信不是纸面方案。但**握手代价被严重低估**：TCP 探活 0.0 秒全过、协议握手却花 42.6 秒 —— 根因是 **`tcp_open` 不是可用性判据**（实测前 5 台 TCP 可达者全部握手失败，每台付满 8 秒超时，第 6 台才成功；已知主机直连仅 0.24 秒）。这同时解释了 tdxhub 自带 `bestip()` 为何无效 —— **它按 TCP 速度选主机，不按协议可用性**。协议翻页取全历史未复权日 K + `xdxr`，验证 10 年深度的翻页稳定性（现只验过 10 个交易日窗口）；`block` 板块 / 概念作为第三套命名空间并列，不与 SW / DC / THS 合并。qfq / hfq 仍禁当成交 SSOT
 
 *治理缺口*（2026-08-29 实测，均为「治理件存在、执法路径不存在」同型）
-- **234 个测试文件里 80 个（34%）不被 `ci_pytest_surface.yaml` 的 blocking / nightly / optional 任一覆盖** —— 集中在 `backend/tests/` 根目录（blocking 主要覆盖 `tests/services/` 与 `tests/scripts/`）。实证后果：本轮删一个模块级全局名波及其中 9 个文件共 20 处，`safe_commit` 的 ci_pytest 门**全绿放行**，破坏是靠手工跑才发现的。修法不是把 80 个一次性塞进 blocking（会拖垮每次提交），而是先让「新增测试文件必须登记到某一面」成为门，再按域分批归位。
+- ~~「80 个测试文件不被任何 CI 面覆盖」~~ **该结论已于 2026-08-29 自我证伪，勿再引用**：
+  实测 236 个测试文件**全部**被 blocking(156) / nightly(0) / optional(80) 三面之一覆盖，**真正未覆盖 = 0**。原误判源于统计脚本把 `ci_test_optional` 的条目当纯字符串处理 —— 该段条目是 `{path, reason}` 字典形式，匹配失败后整段 80 条被误判为「未覆盖」，而 80 这个数字恰好等于该段条目数，巧合掩盖了 bug。
+  **真实情况是治理比误判更好**：`ci_test_optional` 每条都带 `reason`，如 `test_sync_runner_drain.py` 注明「2026-07-20 CI-tax 审计发现的既有 gap；未经离线 CI 安全性甄别故不静默添加，须在 live-dependency review 后逐片显式提升」—— 是显式待办分类，不是遗漏。
+  **残留的真问题**（比原误判小得多）：`safe_commit` 的 ci_pytest 门只跑 blocking 不跑 optional，所以 optional 里的 80 个文件不阻断提交 —— 本轮删一个模块级全局名波及其中 9 个文件却全绿放行，即为此。修法按那条 reason 自己写的：逐片甄别后提升，不批量塞。
 - **`check_serve_derive_closed_loop.py` 全仓零引用**（不在 `governance_gates.yaml`、无任何调用链），而它对应的法条 `MASTER_TOPLEVEL_DESIGN.md §5.8 派生新鲜度闭环法` 仍挂在本文件「活契约引用」里 —— **法条在，执法者一次没跑过**。要么接进门体系，要么连同法条引用一起退役。
 
 **护栏**（长期有效，非进度）：formal frontier 与 drain soft 窗分立叙述 · PIT + ≤40d ·

@@ -1,6 +1,8 @@
 """drain_domain 单测 — 日历 gap 重放契约 (宪法第 1/5/6 条)."""
 from __future__ import annotations
 
+import argparse
+
 from services.data_sources import sync_runner as sr
 from services.duck_adapter import connect
 
@@ -521,3 +523,83 @@ def test_domain_sample_captured_on_first_batch(tmp_path, monkeypatch):
     sr._write_batch(conn, spec, [{"ts_code": "XXXX", "trade_date": "20200102", "val": 2.0}])
     sample2 = _json.loads((tmp_path / "demo.json").read_text())
     assert sample2["rows"][0]["ts_code"] == "BK0145.DC"
+
+
+# ---------------------------------------------------------------------------
+# _cli_skips_provider_authorization — 按数据源解耦 TuShare 授权探测
+# (TuShare 授权 2026-09-10 到期是硬停; 纯 baostock/纯扶摇域不该被 TuShare 到期拖垮)
+# ---------------------------------------------------------------------------
+
+def _cli_args(**kw):
+    base = dict(
+        domain=None,
+        all_due=False,
+        land_only=False,
+        accept_from_landing=False,
+        land_then_accept=False,
+        from_local_raw=False,
+    )
+    base.update(kw)
+    return argparse.Namespace(**base)
+
+
+def _multi_source_registry():
+    return {
+        "version": 1,
+        "defaults": {},
+        "domains": {
+            "bao_demo": {"source": "baostock", "batch_mode": "by_trade_date"},
+            "fuyao_demo": {"source": "fuyao", "batch_mode": "by_trade_date"},
+            "ts_demo": {"source": "tushare", "batch_mode": "by_trade_date"},
+        },
+    }
+
+
+def test_skips_auth_for_pure_baostock_domain():
+    """纯 baostock 域: TuShare 到期不该拦这条路 — 跳过探测。"""
+    args = _cli_args(domain="bao_demo")
+    assert sr._cli_skips_provider_authorization(args, registry=_multi_source_registry()) is True
+
+
+def test_skips_auth_for_pure_fuyao_domain():
+    """纯扶摇域同理: 跳过探测。"""
+    args = _cli_args(domain="fuyao_demo")
+    assert sr._cli_skips_provider_authorization(args, registry=_multi_source_registry()) is True
+
+
+def test_does_not_skip_auth_for_tushare_domain():
+    """tushare 域必须照常探: 不跳过。"""
+    args = _cli_args(domain="ts_demo")
+    assert sr._cli_skips_provider_authorization(args, registry=_multi_source_registry()) is False
+
+
+def test_does_not_skip_auth_when_all_due_mixes_tushare(monkeypatch):
+    """--all-due 展开后只要含 tushare 域 (日更常态) 必须照常探, 行为不能变。"""
+    registry = _multi_source_registry()
+    monkeypatch.setattr(sr, "automatic_domains", lambda reg: list(reg["domains"].keys()))
+    args = _cli_args(all_due=True)
+    assert sr._cli_skips_provider_authorization(args, registry=registry) is False
+
+
+def test_does_not_skip_auth_when_domain_list_empty():
+    """既没 --domain 也没 --all-due: 保持现状, 探。"""
+    args = _cli_args()
+    assert sr._cli_skips_provider_authorization(args, registry=_multi_source_registry()) is False
+
+
+def test_does_not_skip_auth_when_domain_unregistered():
+    """domain_spec 对未注册域抛 KeyError: fail-safe, 拿不准就探。"""
+    args = _cli_args(domain="nonexistent_domain")
+    assert sr._cli_skips_provider_authorization(args, registry=_multi_source_registry()) is False
+
+
+def test_transport_accept_from_landing_still_skips_even_for_tushare_domain():
+    """原有 transport 条件不受新逻辑影响: accept_from_landing 即使域是 tushare 也跳过。"""
+    args = _cli_args(domain="ts_demo", accept_from_landing=True)
+    assert sr._cli_skips_provider_authorization(args, registry=_multi_source_registry()) is True
+
+
+def test_skips_auth_without_registry_falls_back_to_transport_only():
+    """未传 registry (旧调用形态) 时只按 transport 判断, 不因缺 registry 而误跳过。"""
+    args = _cli_args(domain="bao_demo")
+    assert sr._cli_skips_provider_authorization(args) is False

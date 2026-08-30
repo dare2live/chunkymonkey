@@ -4022,8 +4022,19 @@ def _cli_transport_mode(args: argparse.Namespace) -> str | None:
     return None
 
 
-def _cli_skips_provider_authorization(args: argparse.Namespace) -> bool:
-    """Accept-from-landing and local-raw land paths must not probe TuShare."""
+def _cli_skips_provider_authorization(
+    args: argparse.Namespace, registry: dict[str, Any] | None = None
+) -> bool:
+    """Accept-from-landing and local-raw land paths must not probe TuShare.
+
+    Also skips the TuShare probe when every domain selected for this run
+    has a non-tushare source (e.g. a pure baostock/fuyao collection) —
+    TuShare authorization expiry must not block collection for domains
+    that never touch TuShare. Fail-safe: an empty domain list, a domain
+    whose source can't be resolved, or no ``registry`` at all all keep
+    the probe on — ambiguity always resolves to probing, never to
+    skipping.
+    """
 
     transport = _cli_transport_mode(args)
     if transport == "accept_from_landing":
@@ -4032,7 +4043,20 @@ def _cli_skips_provider_authorization(args: argparse.Namespace) -> bool:
         args, "from_local_raw", False
     ):
         return True
-    return False
+
+    if registry is None:
+        return False
+    try:
+        domains = _selected_domains(args, registry)
+    except Exception:
+        return False
+    if not domains:
+        return False
+    try:
+        sources = [domain_spec(registry, d).get("source") for d in domains]
+    except Exception:
+        return False
+    return all(s is not None and s != "tushare" for s in sources)
 
 
 def _selected_domains(
@@ -4434,7 +4458,7 @@ def main() -> int:
     try:
         with writer_lock(owner="sync_runner") as lease:
             try:
-                if not _cli_skips_provider_authorization(args):
+                if not _cli_skips_provider_authorization(args, registry=reg):
                     _authorization_preflight(lease, registry=reg)
                 return _main_unlocked(args, reg, domains)
             except TuShareAuthorizationError as exc:
