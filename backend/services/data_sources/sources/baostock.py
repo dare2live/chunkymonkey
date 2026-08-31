@@ -280,7 +280,15 @@ class BaostockConcurrencyError(RuntimeError):
 
 
 _SESSION_LOCK_PATH_ENV = "BAOSTOCK_SESSION_LOCK_PATH"
-_DEFAULT_SESSION_LOCK_PATH = Path("data/scratch/baostock_session.lock")
+def _repo_root() -> Path:
+    # sources/ -> data_sources/ -> services/ -> backend/ -> repo
+    return Path(__file__).resolve().parents[4]
+
+
+# 必须是仓库根的绝对路径: 相对路径会随进程 cwd 漂移 —— 2026-08-31 实测 cwd 在 backend/
+# 时锁落到 backend/data/scratch/, 而 .gitignore 的 data/scratch/ 只匹配仓库根那份,
+# 于是产生一个未被忽略的脏文件, 且两个 cwd 下的进程各持一把锁 = 互斥失效。
+_DEFAULT_SESSION_LOCK_PATH = _repo_root() / "data" / "scratch" / "baostock_session.lock"
 
 log = logging.getLogger("data_sources.baostock")
 

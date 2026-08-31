@@ -386,7 +386,7 @@ domains:
       venue_field: exchange
       venue_ids: [SSE]
       population_label: sse_trading_calendar
-      method: baostock_query_trade_dates
+      method: calendar_rule_weekday_minus_holidays
       unit: calendar_day_status
     # 只保存稳定政策；landing/canonical/writer 由 calendar 代码契约拥有。
     calendar_generation:
@@ -399,13 +399,19 @@ domains:
         rule: response_completed
         at: response_completed_at
       canonicalization_version: "1"
-    # 2026-08-30 授权换源: tushare -> baostock (业主已明确授权)。等价性已由
-    # controller 独立核证 (对生产 canonical 逐行零差异, is_open/pretrade_date 差异
-    # 均为 0)，adapter 侧字段归一化见 services/data_sources/sources/baostock.py。
+    # 2026-08-31 授权换源: baostock -> calendar_rule (业主已明确授权)。
+    # **日历自此不向任何供应商取数**: 交易日 = 周一~周五 − 法定节假日
+    # (backend/config/market_holidays.yaml, 245 段/36 年)。等价性已核证 ——
+    # 1990-2026 共 13,162 天与在库日历 is_open/pretrade_date 逐字段零差异。
+    # 换源动因: 未来交易日曾是引入 baostock 的唯一理由 (calendar_horizon 要求 today
+    # 之后 >=60 个已登记交易日), 而 2026-08-31 baostock 被风控拉黑后实测 —— 扶摇日历
+    # 端点窗口锁死 [今日-1年,今日]、通达信只能由已发生 K 线反推、妙想无日历产品线,
+    # **三源结构性都给不了未来交易日**。节假日本是国务院每年 Q4 公布的公开信息,
+    # 本就该是配置而非取数。推导器见 services/data_sources/sources/calendar_rule.py。
     # 物理表名/target_table/grain/batch_mode/fixed_params 依设计一律不动 —— 表名带
     # tushare 是历史遗留, 本项目 raw 层普遍如此, calendar_builder.py 与 17 个消费方
     # 因此一行不用改。
-    source: baostock
+    source: calendar_rule
     api: query_trade_dates
     target_db: tushare_raw
     # legacy compatibility only — not accepted publication identity

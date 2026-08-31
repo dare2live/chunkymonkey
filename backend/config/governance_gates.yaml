@@ -132,6 +132,14 @@ commit_gates:
     checks: "删模块/表/文件后引用方未清 (死 import / config 死路径 / 孤儿脚本)"
     why: "删除动作就在这次 diff 里；漏清引用方是这一刀没做完。"
 
+  repo_blob_size:
+    group: diff_correctness
+    checks: "staged 新增/修改文件的 blob 大小超阈值 (backend/config/repo_blob_policy.yaml) 且不在白名单"
+    why: >-
+      大文件就在这次 diff 里；不拦住它，可重算的分析/实验产物立刻进主干膨胀 .git
+      (2026-08-31 事故: 3.9G，根因正是这类文件被逐次提交)。与 dead_references 同型，
+      不是「登记没跟上」的脚手架问题。
+
   grain_uniqueness:
     group: system_health
     checks: "全域按声明 grain GROUP BY 有无重复组 (live DuckDB)"

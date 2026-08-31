@@ -643,6 +643,7 @@ _TUSHARE_SOURCE: Any = None
 _FUYAO_SOURCE: Any = None
 _BAOSTOCK_SOURCE: Any = None
 _TDXHUB_SOURCE: Any = None
+_CALENDAR_RULE_SOURCE: Any = None
 
 
 def _adapter(source_name: str):
@@ -653,7 +654,7 @@ def _adapter(source_name: str):
     do not pass that freeze. Unknown sources fail closed. Do not revive
     base.py/registry.py.
     """
-    global _TUSHARE_SOURCE, _FUYAO_SOURCE, _BAOSTOCK_SOURCE, _TDXHUB_SOURCE
+    global _TUSHARE_SOURCE, _FUYAO_SOURCE, _BAOSTOCK_SOURCE, _TDXHUB_SOURCE, _CALENDAR_RULE_SOURCE
     name = str(source_name or "").strip()
     if name == "fuyao":
         if _FUYAO_SOURCE is None:
@@ -667,6 +668,12 @@ def _adapter(source_name: str):
 
             _BAOSTOCK_SOURCE = BaostockSource()
         return _BAOSTOCK_SOURCE
+    if name == "calendar_rule":
+        if _CALENDAR_RULE_SOURCE is None:
+            from services.data_sources.sources.calendar_rule import CalendarRuleSource
+
+            _CALENDAR_RULE_SOURCE = CalendarRuleSource()
+        return _CALENDAR_RULE_SOURCE
     if name == "tdxhub":
         if _TDXHUB_SOURCE is None:
             from services.data_sources.sources.tdxhub import TdxhubSource
@@ -682,7 +689,7 @@ def _adapter(source_name: str):
         require_live_adapter(name, domain="*")
     except FormalBoundaryError as exc:
         raise KeyError(
-            f"data_sources: 未知 source '{name}' (live adapters: tushare, fuyao, baostock, tdxhub)"
+            f"data_sources: 未知 source '{name}' (live adapters: tushare, fuyao, baostock, tdxhub, calendar_rule)"
         ) from exc
     if _TUSHARE_SOURCE is None:
         from services.data_sources.sources.tushare import TuShareSource

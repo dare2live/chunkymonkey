@@ -54,6 +54,7 @@ KNOWN_GATES = frozenset({
     "doc_runtime_state",
     "commit_msg",
     "rule10",
+    "repo_blob_size",
 })
 
 ALL_GATES_ORDERED = (
@@ -79,6 +80,7 @@ ALL_GATES_ORDERED = (
     "doc_runtime_state",
     "commit_msg",
     "rule10",
+    "repo_blob_size",
 )
 
 TIER_RANK = {"L1": 1, "L2": 2, "L3": 3}

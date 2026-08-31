@@ -1,0 +1,49 @@
+# repo_blob_policy.yaml — 大 blob 入库阈值 (2026-08-31 事故复盘, 防同类再犯)。
+#
+# 事故 (2026-08-31 `git count-objects -vH`): .git 达 3.9G (size-pack: 2.90 GiB), 根因是
+# 可重算的分析/实验产物被提交进版本库。历史最大 blob:
+#   41.1 MB  data/phase5_exports/.../mart_p0b_lambdamart_v6_predictions.parquet
+#   21.0 MB  bestchoice/analysis/formula_local_optuna_batch_adoption.csv
+#   19.0 MB  data/phase5_exports/.../mart_p0b_lambdamart_v6_predictions.parquet
+#   18.0 MB  bestchoice/analysis/formula_local_optuna_batch.csv
+#   11.0 MB  data/lineage/phase_e_experiment_verdicts/b2.json
+# 历史对象不清 (清史需重写 2615 个 commit + 11 分支 + force push, 代价远超省下的磁盘)。
+# 已做的止血: 上述路径加进 .gitignore + git rm --cached。
+# 本门的职责: 防止同类文件再次进来 —— 判断逻辑数据化在本文件, 不 hardcode 进脚本
+# (backend/scripts/check_staged_blob_size.py 只读本文件, 不含任何阈值/路径字面量)。
+#
+# 消费方: backend/scripts/check_staged_blob_size.py (governance_gates.yaml
+#   commit_gates.repo_blob_size, group=diff_correctness — 大文件就在这次 diff 里,
+#   是这一刀没做完, 与 dead_references 同型)。
+#
+# 阈值依据 (实测, 非估算 — 2026-08-31 测于本仓库):
+#   现有合法入库最大文件 = data/lineage/phase_e_experiment_verdicts/b0.json,
+#     实测 7,324,407 bytes (6.99 MiB)。它被 persist_phase_d_experiment_runs.py 读取,
+#     sha256 写进同目录 manifest.json 参与证据链 —— 该版本化的大文件, 已入 whitelist。
+#   另一类合法大文件 = data/lineage/tier12_publish_batches/{batch,accepted}_*.json
+#     (tier12 发布证据, 逐次发布追加新日期文件, 非可重算产物), 实测现存最大
+#     5,293,244 bytes (5.05 MiB, batch_20260811.json)。这类文件名逐日期变化,
+#     静态 whitelist 按路径列不进(列了也堵不住明天的新日期), 所以不进 whitelist,
+#     而是让 warn_bytes 坐在它之上, 不日常报警。
+#   fail_bytes = 8 MiB (8,388,608 bytes): 比 b0.json 实测值高约 14.5% 余量
+#     (b0.json 本身已进 whitelist 不受阈值约束, 这里留余量是给"以后出现的下一个
+#     b0.json 量级合法大文件"一点缓冲, 而不是刚好卡在临界值上引发误报)。
+#   warn_bytes = 6 MiB (6,291,456 bytes): 高于 tier12_publish_batches 现存最大值
+#     (5.05 MiB) 约 20% 余量, 避免这条正常发布流水线每次提交都报 warn 制造噪音;
+#     同时留出 6~8 MiB 的真实告警窗口, 在文件长到接近 fail 线之前先示警。
+#
+# 白名单条目自清 (feedback-warn-only-degrades-to-warn-nothing 教训: 豁免清单不许烂):
+#   check_staged_blob_size.py 每次跑都会检查这里列的每条路径在当前仓库是否还存在,
+#   不存在就报 stale 计入 warn —— 防止这份清单只增不减、慢慢跟仓库现状脱节。
+
+version: 1
+
+fail_bytes: 8388608   # 8 MiB — 超此阈值且不在 whitelist 里, 阻断 commit
+warn_bytes: 6291456   # 6 MiB — 超此阈值但 <= fail_bytes, 只报警不阻断
+
+whitelist:
+  - path: data/lineage/phase_e_experiment_verdicts/b0.json
+    reason: >-
+      2026-08-31 实测 7,324,407 bytes (6.99 MiB), 超 fail_bytes。它不是可重算的分析产物:
+      persist_phase_d_experiment_runs.py 读取本文件, 其 sha256 写进同目录 manifest.json,
+      参与 phase-D 实验结果的证据链 (删了/不让入库 = 证据链断)。该版本化的大文件, 非事故同类。

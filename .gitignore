@@ -59,3 +59,14 @@ data/archive/
 
 # playwright CLI 本地控制台日志 (工具产物, 非项目资产; 2026-08-11 收口: 长期 untracked 让每次 moth takeover 假报脏 worktree)
 .playwright-cli/
+
+# 2026-08-31 止血: 这些是可重算的分析/实验产物, 单个 7~21MB, 已把 .git 撑到 3.9G
+# (size-pack 2.90 GiB)。历史里的对象不清 (清史要重写 2615 个 commit + 11 分支 + force
+# push, 代价远超省下的磁盘), 但从此不再随新 commit 增长。
+# 例外: phase_e_experiment_verdicts/{manifest.json,b0.json} 仍版本化 —— manifest 被
+# check_strategy_lab / agent_board_projection 读, b0 被 persist_phase_d 读且其 sha256
+# 写进 manifest 参与证据链。
+bestchoice/analysis/*.csv
+data/lineage/phase_e_experiment_verdicts/b1.json
+data/lineage/phase_e_experiment_verdicts/b2.json
+data/lineage/phase_e_experiment_verdicts/b4.json

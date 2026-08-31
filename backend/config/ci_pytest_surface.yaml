@@ -1,209 +1,169 @@
-# Single source of truth for the offline CI pytest surface.
-#
-# Semantics (not gate count): pytest cases run inside ONE `ci_pytest` gate
-# (L2/L3 safe_commit + CI). Gate redesign #1 (2026-07-21):
-#   - `blocking_paths` — default for L2/L3 safe_commit + public CI
-#   - `nightly_paths`  — strategy-paused / heavier offline suite (`--tier nightly`)
-#   - `ci_test_optional` — intentionally NOT run by commit/CI (with reason)
-# Full-repo remainder stays optional until triage. Map:
-#   git log --grep gate_redesign_occams
-#
-# Owner: this file + backend/scripts/run_ci_pytest.py. Consumed IDENTICALLY by:
-#   - .github/workflows/ci.yml ("Run offline tests" step) via `--tier blocking`
-#   - scripts/safe_commit.sh (L2/L3 gate "ci_pytest") via `--tier blocking`
-# so the local pre-commit test surface and the public-CI test surface can never
-# silently drift apart again.
-#
-# Binding finding fixed (2026-07-20 Fable5 CI-tax audit):
-#   1. Local safe_commit ran zero pytest -> stale/broken assertions only exploded
-#      on public CI, long after the local "reviewed" commit.
-#   2. ci.yml's hand-maintained test list had drifted from the actual committed
-#      test surface (e.g. tests/services/test_main_rally_b1.py was never listed,
-#      so a real regression there would have gone green on every push).
-#
-# `blocking_paths`: pytest args (relative to backend/) that run in CI AND in
-#   safe_commit's L2/L3 gate. Keep this list to genuinely offline-collectible,
-#   marker-clean (not realdb/network/perf/gcp/slow) test files only.
-#
-# `nightly_paths`: offline-safe but not commit-blocking (strategy paused bulk,
-#   future triage promotions). Run via `run_ci_pytest.py --tier nightly|all`.
-#
-# `ci_test_optional`: exact test file paths (relative to backend/), each with a
-#   `reason`, that are intentionally NOT run by CI/safe_commit. Enforced by
-#   backend/tests/scripts/test_ci_pytest_surface_drift.py: every tracked
-#   backend/tests/**/test_*.py file must appear in blocking_paths OR
-#   nightly_paths OR here. A new test file that appears in none turns that
-#   drift test red on the very next commit that touches it.
-
 version: 1
 blocking_paths:
-- tests/test_utils.py
-- tests/test_db.py
-- tests/test_source_watermarks.py
+- tests/scripts/test_agent_board_projection.py
+- tests/scripts/test_agent_boot.py
+- tests/scripts/test_audit_date_bounds.py
+- tests/scripts/test_audit_exemptions.py
+- tests/scripts/test_audit_min_rows_baseline.py
+- tests/scripts/test_build_feature_map_drift.py
+- tests/scripts/test_build_price_kline_qfq_tushare.py
+- tests/scripts/test_build_sw_industry_view.py
+- tests/scripts/test_check_calendar_usage.py
+- tests/scripts/test_check_codex_review.py
+- tests/scripts/test_check_commit_message.py
+- tests/scripts/test_check_doc_runtime_state.py
+- tests/scripts/test_check_foundation_done.py
+- tests/scripts/test_check_staged_blob_size.py
+- tests/scripts/test_check_strategy_lab.py
+- tests/scripts/test_check_universe_filter.py
+- tests/scripts/test_ci_paths_policy.py
+- tests/scripts/test_ci_pytest_surface_drift.py
+- tests/scripts/test_classify_commit_tier.py
+- tests/scripts/test_completeness_ref.py
+- tests/scripts/test_cross_section_full.py
 - tests/scripts/test_db_compact.py
-- tests/services/test_duckdb_compact.py
 - tests/scripts/test_db_split_org_holding.py
-- tests/test_primitives.py
-- tests/test_universe.py
-- tests/test_calendar_gate.py
-- tests/test_check_dead_references.py
+- tests/scripts/test_dip_scan.py
+- tests/scripts/test_dip_severity.py
+- tests/scripts/test_downstream_impact.py
+- tests/scripts/test_ensure_serve_read_views.py
+- tests/scripts/test_exemption_integrity.py
+- tests/scripts/test_governance_gates.py
+- tests/scripts/test_history_cli.py
+- tests/scripts/test_manual_job_wrapper.py
+- tests/scripts/test_persist_phase_d_experiment_runs.py
+- tests/scripts/test_pre_knife_audit.py
+- tests/scripts/test_run_ci_pytest.py
+- tests/scripts/test_safe_commit.py
+- tests/scripts/test_verified_low_days.py
 - tests/services/test_accepted_schema.py
-- tests/services/test_availability.py
-- tests/services/test_manual_probe_first_clock.py
-- tests/services/test_frontier_decision.py
-- tests/test_by_ann_date_equal_day_reprobe.py
-- tests/services/test_dataset_contracts.py
-- tests/services/test_disclosure_boundaries.py
-- tests/services/test_dual_plane_faucet.py
-- tests/services/test_formal_boundaries.py
-- tests/services/test_formal_execution.py
-- tests/services/test_holders_top10_acceptance.py
-- tests/services/test_holders_landing_retention.py
-- tests/services/test_org_holding_db.py
-- tests/services/test_sibling_repos.py
-- tests/services/test_fuyao_kline_recon.py
-- tests/services/test_fuyao_k5_adapter.py
-- tests/services/test_baostock_adapter.py
-- tests/services/test_tdxhub_kline_recon.py
-- tests/services/test_tdxhub_history_pagination.py
-- tests/services/test_tdxhub_mac_capital_flow.py
-- tests/services/test_baostock_session_lock.py
-- tests/services/test_universe_st_calendar.py
-- tests/services/test_tdxhub_source_adapter.py
-- tests/services/test_tdxhub_host_memory.py
-- tests/services/test_calendar_identity_recon.py
-- tests/services/test_taxonomy_recon.py
-- tests/services/test_fina_margin_recon.py
-- tests/services/test_cyq_recon.py
-- tests/services/test_moneyflow_recon.py
-- tests/services/test_structure_product_recon.py
+- tests/services/test_acquire_bounded_gap_heal.py
 - tests/services/test_assignment_gap_recon.py
-- tests/services/test_org_holding_acceptance.py
-- tests/services/test_org_holding_announcement.py
-- tests/services/test_periodic_report_calendar.py
-- tests/services/test_org_holding_period_catchup.py
-- tests/services/test_org_holding_pointer_integrity.py
-- tests/services/test_org_holding_truncation_audit.py
-- tests/services/test_pagination_integrity.py
-- tests/services/test_stk_holdertrade_acceptance.py
-- tests/services/test_stk_holdertrade_catchup.py
-- tests/services/test_disclosure_dual_write.py
-- tests/services/test_disclosure_transport_e0.py
-- tests/services/test_disclosure_shadow_compare.py
-- tests/services/test_disclosure_research_read.py
-- tests/services/test_disclosure_enrichment_projection.py
-- tests/services/test_phase_e_smoke.py
-- tests/services/test_research_runtime.py
-- tests/services/test_strategy_lab.py
-- tests/services/test_strategy_spec.py
-- tests/services/test_strategy_paper.py
-- tests/services/test_formal_rx_evidence.py
-- tests/services/test_formula_challenge.py
-- tests/services/test_institution_follow_spec_paper.py
-- tests/services/test_main_rally_setup_paper.py
-- tests/services/test_margin_acceptance.py
-- tests/services/test_margin_population_scope.py
-- tests/services/test_margin_catchup.py
-- tests/services/test_margin_pulse_promote_gate.py
-- tests/services/test_observation_population.py
-- tests/services/test_population_scope.py
-- tests/services/test_sync_execution_policy.py
-- tests/services/test_registry_merge_chain_single_source.py
-- tests/services/test_security_day_transport_modularity.py
-- tests/services/test_security_day_acquire_s4.py
-- tests/services/test_derive_runtime_s5.py
-- tests/services/test_legacy_raw_plane_s7.py
-- tests/services/test_holdernumber_assist.py
+- tests/services/test_availability.py
+- tests/services/test_baostock_adapter.py
+- tests/services/test_baostock_session_lock.py
 - tests/services/test_brick_registry_b5.py
-- tests/services/test_factor_family_inventory_gate.py
+- tests/services/test_calendar_acceptance.py
+- tests/services/test_calendar_contract.py
+- tests/services/test_calendar_identity_recon.py
+- tests/services/test_cyq_recon.py
+- tests/services/test_dataset_contracts.py
+- tests/services/test_dc_member_publish_b1.py
+- tests/services/test_derive_runtime_s5.py
+- tests/services/test_disclosure_boundaries.py
+- tests/services/test_disclosure_dual_write.py
+- tests/services/test_disclosure_enrichment_projection.py
+- tests/services/test_disclosure_research_read.py
+- tests/services/test_disclosure_shadow_compare.py
+- tests/services/test_disclosure_transport_e0.py
+- tests/services/test_dual_plane_faucet.py
+- tests/services/test_duckdb_compact.py
 - tests/services/test_factor_family_continuity_gates.py
 - tests/services/test_factor_family_frontier_projection.py
-- tests/services/test_research_prereg_store.py
-- tests/services/test_snapshot_nominal_bind.py
-- tests/services/test_main_rally_b0.py
-- tests/services/test_main_rally_b1.py
-- tests/services/test_main_rally_b2.py
+- tests/services/test_factor_family_inventory_gate.py
+- tests/services/test_fina_margin_recon.py
+- tests/services/test_formal_boundaries.py
+- tests/services/test_formal_execution.py
+- tests/services/test_formal_rx_evidence.py
+- tests/services/test_formula_challenge.py
+- tests/services/test_foundation_obs_serve.py
+- tests/services/test_frontier_decision.py
+- tests/services/test_fuyao_k5_adapter.py
+- tests/services/test_fuyao_kline_recon.py
+- tests/services/test_holder_research_class.py
+- tests/services/test_holdernumber_assist.py
+- tests/services/test_holders_landing_retention.py
+- tests/services/test_holders_top10_acceptance.py
+- tests/services/test_index_daily_publish_b2.py
 - tests/services/test_institution_follow_b0.py
 - tests/services/test_institution_follow_b1.py
 - tests/services/test_institution_follow_b2.py
 - tests/services/test_institution_follow_b4.py
-- tests/test_holdout_guard.py
+- tests/services/test_institution_follow_spec_paper.py
+- tests/services/test_legacy_raw_plane_s7.py
+- tests/services/test_main_rally_b0.py
+- tests/services/test_main_rally_b1.py
+- tests/services/test_main_rally_b2.py
+- tests/services/test_main_rally_setup_paper.py
+- tests/services/test_manual_probe_first_clock.py
+- tests/services/test_margin_acceptance.py
+- tests/services/test_margin_catchup.py
+- tests/services/test_margin_population_scope.py
+- tests/services/test_margin_pulse_promote_gate.py
+- tests/services/test_market_pulse_serve_read_s6.py
+- tests/services/test_moneyflow_recon.py
+- tests/services/test_northbound_market_flow.py
+- tests/services/test_notification_dispatcher_skip_macos.py
+- tests/services/test_observation_population.py
+- tests/services/test_org_holding_acceptance.py
+- tests/services/test_org_holding_announcement.py
+- tests/services/test_org_holding_db.py
+- tests/services/test_org_holding_period_catchup.py
+- tests/services/test_org_holding_pointer_integrity.py
+- tests/services/test_org_holding_truncation_audit.py
+- tests/services/test_pagination_integrity.py
+- tests/services/test_periodic_report_calendar.py
+- tests/services/test_phase_e_smoke.py
+- tests/services/test_population_scope.py
+- tests/services/test_project_status.py
+- tests/services/test_registry_merge_chain_single_source.py
+- tests/services/test_research_identity_overlays.py
+- tests/services/test_research_prereg_store.py
+- tests/services/test_research_runtime.py
+- tests/services/test_residual_hygiene.py
+- tests/services/test_run_outcome.py
+- tests/services/test_runtime_limits.py
+- tests/services/test_security_day_acquire_s4.py
+- tests/services/test_security_day_transport_modularity.py
+- tests/services/test_sibling_repos.py
+- tests/services/test_snapshot_nominal_bind.py
+- tests/services/test_stk_holdertrade_acceptance.py
+- tests/services/test_stk_holdertrade_catchup.py
 - tests/services/test_stock_limit_publish_b2.py
 - tests/services/test_stock_moneyflow_publish_b2.py
-- tests/services/test_type_b_fact_publish_catchup.py
-- tests/services/test_residual_hygiene.py
-- tests/services/test_index_daily_publish_b2.py
-- tests/services/test_top_inst_seat_publish_b2.py
-- tests/services/test_dc_member_publish_b1.py
-- tests/services/test_market_pulse_serve_read_s6.py
-- tests/services/test_runtime_limits.py
-- tests/services/test_notification_dispatcher_skip_macos.py
-- tests/services/test_run_outcome.py
-- tests/test_pipeline_delta_manifest.py
-- tests/test_pipeline_closed_loop.py
-- tests/test_pipeline_state_sensors.py
-- tests/scripts/test_check_universe_filter.py
-- tests/scripts/test_manual_job_wrapper.py
-- tests/scripts/test_check_calendar_usage.py
-- tests/scripts/test_ci_paths_policy.py
-- tests/scripts/test_classify_commit_tier.py
-- tests/scripts/test_governance_gates.py
-- tests/scripts/test_build_feature_map_drift.py
-- tests/services/test_project_status.py
-- tests/scripts/test_check_doc_runtime_state.py
-- tests/scripts/test_history_cli.py
-- tests/scripts/test_check_commit_message.py
-# 2026-08-11 promote: 它当初进 optional 的理由是「坏的」(沙箱 fixture 缺 always-on 门要的
-# test_ci_pytest_surface_drift.py, 25 例全死在门体系之前)。修好后 14 例约 15s、纯离线,
-# 且它是唯一端到端验 safe_commit 门语义的测试 —— 恰恰最不该在 CI 面之外。
-- tests/scripts/test_safe_commit.py
-# 2026-08-11 promote (one triage slice, per that entry 自己写的 promotion 条件):
-# 实测纯 tmp_path fixture, 无 DB/网络, 12 例 0.03s —— offline-CI safe。
-# 促发因: P4.1 修了 check_doc_governance 的 C7 假阳性, 其回归测试不能不在 CI 面上。
-- tests/test_check_doc_governance.py
-- tests/scripts/test_check_codex_review.py
-- tests/scripts/test_agent_board_projection.py
-- tests/scripts/test_agent_boot.py
-- tests/scripts/test_pre_knife_audit.py
-- tests/scripts/test_persist_phase_d_experiment_runs.py
-- tests/scripts/test_check_strategy_lab.py
-- tests/scripts/test_build_price_kline_qfq_tushare.py
-- tests/scripts/test_build_sw_industry_view.py
-- tests/scripts/test_ensure_serve_read_views.py
-- tests/scripts/test_dip_severity.py
-- tests/scripts/test_dip_scan.py
-- tests/scripts/test_cross_section_full.py
-- tests/scripts/test_verified_low_days.py
-- tests/services/test_tier12_publish_contract.py
-- tests/services/test_tier12_publish_accept.py
-- tests/services/test_tier12_publish_writer.py
-- tests/services/test_tier12_publish_scope.py
-- tests/services/test_tier12_project_universe.py
-- tests/scripts/test_ci_pytest_surface_drift.py
-- tests/scripts/test_run_ci_pytest.py
-- tests/scripts/test_check_foundation_done.py
-- tests/test_stock_dossier_api.py
-- tests/test_frontend_site.py
-- tests/test_strategy_lab_api.py
+- tests/services/test_strategy_lab.py
 - tests/services/test_strategy_lab_serve.py
-- tests/test_foundation_obs_api.py
-- tests/services/test_foundation_obs_serve.py
-- tests/services/test_holder_research_class.py
-- tests/services/test_research_identity_overlays.py
-- tests/test_moneyflow_assist.py
-- tests/services/test_northbound_market_flow.py
-- tests/test_decision_intersection.py
-- tests/test_cx3_capability_bricks.py
-- tests/test_stock_screener.py
+- tests/services/test_strategy_paper.py
+- tests/services/test_strategy_spec.py
+- tests/services/test_structure_product_recon.py
+- tests/services/test_sync_execution_policy.py
 - tests/services/test_sync_runner_20260612_fixes.py
-- tests/scripts/test_audit_min_rows_baseline.py
-- tests/scripts/test_completeness_ref.py
-- tests/scripts/test_exemption_integrity.py
-- tests/services/test_acquire_bounded_gap_heal.py
-- tests/scripts/test_downstream_impact.py
-- tests/scripts/test_audit_exemptions.py
-- tests/scripts/test_audit_date_bounds.py
+- tests/services/test_taxonomy_recon.py
+- tests/services/test_tdxhub_history_pagination.py
+- tests/services/test_tdxhub_host_memory.py
+- tests/services/test_tdxhub_kline_recon.py
+- tests/services/test_tdxhub_mac_capital_flow.py
+- tests/services/test_tdxhub_source_adapter.py
+- tests/services/test_tier12_project_universe.py
+- tests/services/test_tier12_publish_accept.py
+- tests/services/test_tier12_publish_contract.py
+- tests/services/test_tier12_publish_scope.py
+- tests/services/test_tier12_publish_writer.py
+- tests/services/test_top_inst_seat_publish_b2.py
+- tests/services/test_type_b_fact_publish_catchup.py
+- tests/services/test_universe_st_calendar.py
+- tests/test_by_ann_date_equal_day_reprobe.py
+- tests/test_calendar_gate.py
+- tests/test_check_dead_references.py
+- tests/test_check_doc_governance.py
+- tests/test_cx3_capability_bricks.py
+- tests/test_db.py
+- tests/test_decision_intersection.py
+- tests/test_foundation_obs_api.py
+- tests/test_frontend_site.py
+- tests/test_holdout_guard.py
+- tests/test_moneyflow_assist.py
 - tests/test_on_demand_window_gate_dead_condition.py
+- tests/test_pipeline_closed_loop.py
+- tests/test_pipeline_delta_manifest.py
+- tests/test_pipeline_state_sensors.py
+- tests/test_primitives.py
+- tests/test_source_watermarks.py
+- tests/test_stock_dossier_api.py
+- tests/test_stock_screener.py
+- tests/test_strategy_lab_api.py
+- tests/test_universe.py
+- tests/test_utils.py
 nightly_paths: []
 ci_test_optional:
 - path: tests/data_governance/test_etl_hook.py
@@ -261,16 +221,6 @@ ci_test_optional:
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
     review, one triage slice at a time'
 - path: tests/services/test_batch_integrity.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/services/test_calendar_acceptance.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/services/test_calendar_contract.py
   reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
     ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency

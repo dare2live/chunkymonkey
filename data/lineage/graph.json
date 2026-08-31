@@ -10,7 +10,7 @@
       },
       "dst": "table:tushare_raw.raw_tushare_trade_cal",
       "kind": "acquire",
-      "src": "source:baostock.query_trade_dates"
+      "src": "source:calendar_rule.query_trade_dates"
     },
     {
       "attrs": {
@@ -8917,6 +8917,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/market_holidays.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_trade_cal"
@@ -10081,9 +10087,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1635,
-    "generated_at": "2026-08-31T12:34:33.548652+00:00",
-    "node_count": 513,
+    "edge_count": 1636,
+    "generated_at": "2026-08-31T16:05:02.722705+00:00",
+    "node_count": 514,
     "version": 2
   },
   "nodes": [
@@ -10189,6 +10195,14 @@
         "path": "backend/config/margin_pulse_promote.yaml"
       },
       "id": "consumer:backend/config/margin_pulse_promote.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/market_holidays.yaml"
+      },
+      "id": "consumer:backend/config/market_holidays.yaml",
       "kind": "consumer"
     },
     {
@@ -12683,9 +12697,9 @@
       "attrs": {
         "api": "query_trade_dates",
         "domain": "trade_cal",
-        "source": "baostock"
+        "source": "calendar_rule"
       },
-      "id": "source:baostock.query_trade_dates",
+      "id": "source:calendar_rule.query_trade_dates",
       "kind": "source_interface"
     },
     {

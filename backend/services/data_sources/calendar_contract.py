@@ -46,8 +46,9 @@ _AVAILABILITY_KEYS = frozenset({"axis", "rule", "at"})
 _SCOPE_KEYS = frozenset(
     {"kind", "venue_field", "venue_ids", "population_label", "method", "unit"}
 )
-# 2026-08-30 授权换源 (trade_cal: tushare -> baostock, 业主已明确授权; 等价性已由
-# controller 独立核证, 对生产 canonical 逐行零差异): source/api/method 改成 baostock
+# 2026-08-31 授权换源 (trade_cal: baostock -> calendar_rule, 业主已明确授权; 日历自此
+# 不向任何供应商取数, 交易日 = 周一~周五 − 法定节假日, 1990-2026 共 13,162 天逐字段
+# 零差异): source/api/method 改成 calendar_rule
 # 对应值。target_db/target_table/grain/batch_mode/fixed_params 等表/库名相关字段依设计
 # 一律不动 —— 物理表名带 tushare 是历史遗留, 换 adapter 不改表。
 _EXPECTED_SCOPE = {
@@ -55,12 +56,12 @@ _EXPECTED_SCOPE = {
     "venue_field": "exchange",
     "venue_ids": ["SSE"],
     "population_label": "sse_trading_calendar",
-    "method": "baostock_query_trade_dates",
+    "method": "calendar_rule_weekday_minus_holidays",
     "unit": "calendar_day_status",
 }
 _EXPECTED_PROVIDER_TRANSPORT = {
     "domain": "trade_cal",
-    "source": "baostock",
+    "source": "calendar_rule",
     "api": "query_trade_dates",
     "target_db": "tushare_raw",
     "grain": ["exchange", "cal_date"],
@@ -322,8 +323,8 @@ def verify_calendar_generation_contract(
     if contract.availability.payload() != _EXPECTED_AVAILABILITY:
         raise ValueError("trade_cal: factory-owned availability drift")
     if (
-        # 2026-08-30 授权换源: tushare -> baostock。target_db 等表/库名字段不动。
-        contract.source != "baostock"
+        # 2026-08-31 授权换源 (业主已明确授权): baostock -> calendar_rule。target_db 等表/库名字段不动。
+        contract.source != "calendar_rule"
         or contract.api != "query_trade_dates"
         or contract.target_db != "tushare_raw"
         or contract.batch_mode != "full_refresh"
@@ -454,8 +455,8 @@ def calendar_contract_for_spec(spec: Mapping[str, Any]) -> CalendarGenerationCon
         ("timezone", str(generation["timezone"])),
         ("availability", availability),
         ("canonicalization_version", str(generation["canonicalization_version"])),
-        # 2026-08-30 授权换源: tushare -> baostock。target_db 等表/库名字段不动。
-        ("source", "baostock"),
+        # 2026-08-31 授权换源 (业主已明确授权): baostock -> calendar_rule。target_db 等表/库名字段不动。
+        ("source", "calendar_rule"),
         ("api", "query_trade_dates"),
         ("target_db", "tushare_raw"),
         ("batch_mode", "full_refresh"),

@@ -125,7 +125,13 @@ def test_live_trade_calendar_authorized_manual_generation_uses_formal_path(
         "venue_field": "exchange",
         "venue_ids": ["SSE"],
         "population_label": "sse_trading_calendar",
-        "method": "baostock_query_trade_dates",  # 2026-08-30 授权换源 tushare -> baostock
+        # 2026-08-31 授权换源: baostock -> calendar_rule (前一次 2026-08-30 tushare ->
+        # baostock 已被此次取代)。baostock 被自身风控在并发探测中拉黑, 且实测三个备选
+        # 源都结构性给不了未来交易日; calendar_rule 改按规则推导 (周一~周五 − 法定节
+        # 假日, backend/config/market_holidays.yaml), 不再向任何供应商取数。详见
+        # formal_boundaries.py _FORMAL_BOUNDARIES["trade_cal"] 与
+        # services/data_sources/sources/calendar_rule.py 模块 docstring。
+        "method": "calendar_rule_weekday_minus_holidays",
         "unit": "calendar_day_status",
     }
 

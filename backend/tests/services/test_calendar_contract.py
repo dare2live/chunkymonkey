@@ -23,8 +23,9 @@ from services.data_sources.calendar_schema import (
 def _spec() -> dict:
     return {
         "domain": "trade_cal",
-        # 2026-08-30 授权换源: tushare -> baostock。表/库名相关字段依设计不动。
-        "source": "baostock",
+        # 2026-08-31 授权换源: baostock -> calendar_rule (日历改规则推导, 不再取数)。
+        # 表/库名相关字段依设计不动 —— 换 adapter 不改表。
+        "source": "calendar_rule",
         "api": "query_trade_dates",
         "target_db": "tushare_raw",
         "target_table": "raw_tushare_trade_cal",
@@ -38,7 +39,7 @@ def _spec() -> dict:
             "venue_field": "exchange",
             "venue_ids": ["SSE"],
             "population_label": "sse_trading_calendar",
-            "method": "baostock_query_trade_dates",
+            "method": "calendar_rule_weekday_minus_holidays",
             "unit": "calendar_day_status",
         },
         "calendar_generation": {

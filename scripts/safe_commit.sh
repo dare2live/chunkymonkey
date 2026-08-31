@@ -84,7 +84,7 @@ done
 echo
 echo "=== Step 1.5: commit tier classification ==="
 COMMIT_TIER="L3"
-COMMIT_TIER_GATES="staged_worktree_parity project_index_sync feature_map moth moth_invariants rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity no_emoji config_refs doc_drift doc_governance doc_runtime_state commit_msg rule10"
+COMMIT_TIER_GATES="staged_worktree_parity project_index_sync feature_map moth moth_invariants rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity no_emoji config_refs doc_drift doc_governance doc_runtime_state commit_msg rule10 repo_blob_size"
 if [[ -f "backend/scripts/classify_commit_tier.py" && -f "backend/config/commit_tiers.yaml" ]]; then
     if COMMIT_TIER_JSON=$(PYTHONPATH=backend "$PY" backend/scripts/classify_commit_tier.py 2>/tmp/cm_tier_err.out); then
         if parsed=$("$PY" -c '
@@ -531,6 +531,32 @@ else
 fi
 else
     echo "[commit-tier] skip dead_references (tier=$COMMIT_TIER)"
+fi
+
+# Step 3.975: 大 blob 入库硬门 (2026-08-31 事故复盘: .git 达 3.9G size-pack: 2.90 GiB,
+# 根因是可重算的分析/实验产物被提交进版本库)。判断逻辑(阈值/白名单)全部数据化在
+# backend/config/repo_blob_policy.yaml, 本门只负责机械执行。**硬闸**。
+# 必须显式 --repo "$(pwd)": 脚本文件本身从 staged snapshot 加载, 若不传 --repo 它会把
+# 自己所在目录 (STAGED_INDEX_DIR) 当仓库根去跑 git diff --cached —— 而那是 checkout-index
+# 现建的一次性空历史仓库, index 里"一切皆新增", 会把整棵树都误判成"刚 staged"。
+echo
+echo "=== Step 3.975: repo-blob-size gate (大 blob 入库硬门) ==="
+if gate_enabled repo_blob_size; then
+if [[ ! -f "$STAGED_BACKEND/config/repo_blob_policy.yaml" ]]; then
+    echo "ERROR: staged snapshot 缺 repo_blob_policy.yaml；大 blob 门不得静默跳过。"
+    gate_fail repo_blob_size 5
+elif PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_staged_blob_size.py" \
+    --repo "$(pwd)" --policy "$STAGED_BACKEND/config/repo_blob_policy.yaml" > /tmp/cm_blobsize.out 2>&1; then
+    cat /tmp/cm_blobsize.out
+else
+    echo
+    echo "ERROR: 大 blob 门红 — staged 新增/修改文件里有超阈值且不在白名单的大文件:"
+    cat /tmp/cm_blobsize.out
+    echo "正解: 加 .gitignore(可重算产物) / 加 backend/config/repo_blob_policy.yaml whitelist 并写 reason(确需版本化) / 改产出流程不入库。"
+    gate_fail repo_blob_size 5
+fi
+else
+    echo "[commit-tier] skip repo_blob_size (tier=$COMMIT_TIER)"
 fi
 
 # Step 3.98: grain 唯一性门 (R1 根因1: grain 声明错误在良性期抓, 防批内去重升级成静默销毁;

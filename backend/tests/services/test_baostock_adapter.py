@@ -408,12 +408,22 @@ def test_adapter_dispatches_baostock_without_live_adapter_freeze() -> None:
     assert sr._adapter("baostock") is src
 
 
-def test_baostock_registers_exactly_one_domain_trade_cal() -> None:
-    """Scope guard for THIS cut (2026-08-30 authorized source switch): baostock is
-    now the source for exactly the formal ``trade_cal`` domain, nothing else — the
-    on_demand ``baostock_trade_cal`` domain from the prior cut has been retired
-    (superseded by trade_cal itself switching to baostock; keeping both would be
-    two duplicate calendar domains)."""
+def test_baostock_is_not_any_domains_source_after_calendar_rule_switch() -> None:
+    """Regression lock superseding the 2026-08-30 cut's "exactly one domain"
+    scope guard. As of the 2026-08-31 authorized source switch, trade_cal moved
+    OFF baostock ONTO calendar_rule — see formal_boundaries.py
+    _FORMAL_BOUNDARIES["trade_cal"] and
+    services/data_sources/sources/calendar_rule.py's module docstring for why:
+    baostock got blacklisted by its own risk control mid-concurrency-probe on
+    2026-08-31, and real-world testing of the three alternative vendor sources
+    showed all of them structurally incapable of ever returning future trade
+    dates. baostock therefore sources ZERO domains right now — not "exactly
+    one" any more, but zero. This assertion is deliberately the opposite of the
+    old invariant: its value is that if someone reverts trade_cal back onto
+    baostock (e.g. "it's off the blacklist now, switch back"), this test breaks
+    and forces them to read this docstring — and calendar_rule.py's — first.
+    The on_demand ``baostock_trade_cal`` domain retired in the 2026-08-30 cut
+    must also stay retired (it was never resurrected by this switch)."""
     import yaml
     from pathlib import Path
 
@@ -426,21 +436,28 @@ def test_baostock_registers_exactly_one_domain_trade_cal() -> None:
         for name, spec in (registry.get("domains") or {}).items()
         if spec.get("source") == "baostock"
     ]
-    assert baostock_domains == ["trade_cal"]
+    assert baostock_domains == []
     assert "baostock_trade_cal" not in (registry.get("domains") or {})
 
 
 # ---------------------------------------------------------------------------
-# registry: the formal trade_cal domain now resolves through baostock (2026-08-30
-# authorized source switch), while every table-name-shaped field is untouched —
-# physical tables keep their tushare-prefixed legacy names by design.
+# registry: the formal trade_cal domain now resolves through calendar_rule
+# (2026-08-31 authorized source switch, baostock -> calendar_rule — see
+# formal_boundaries.py and calendar_rule.py's module docstring for why), while
+# every table-name-shaped field is untouched — physical tables keep their
+# tushare-prefixed legacy names by design.
 # ---------------------------------------------------------------------------
 
 
-def test_registry_trade_cal_domain_now_sources_from_baostock() -> None:
+def test_registry_trade_cal_domain_now_sources_from_calendar_rule() -> None:
+    """2026-08-31 authorized source switch: baostock -> calendar_rule (see
+    formal_boundaries.py _FORMAL_BOUNDARIES["trade_cal"] and calendar_rule.py's
+    module docstring for the why). Everything table-shaped stays untouched —
+    the switch is adapter-only, so calendar_builder.py and its 17 consumers
+    never touch source/api and don't need to change."""
     registry = sr.load_registry()
     spec = sr.domain_spec(registry, "trade_cal")
-    assert spec["source"] == "baostock"
+    assert spec["source"] == "calendar_rule"
     assert spec["api"] == "query_trade_dates"
     assert spec["target_db"] == "tushare_raw"
     # Physical table/grain/batch_mode/fixed_params are unchanged by design — the
@@ -451,8 +468,11 @@ def test_registry_trade_cal_domain_now_sources_from_baostock() -> None:
     assert spec["batch_mode"] == "full_refresh"
     assert spec["fixed_params"] == {"exchange": "SSE"}
     assert spec["page_limit"] == 6000
-    # baostock quota never published; must not invent a rate_limit for trade_cal
-    # now that it no longer inherits sources.tushare's rate_limit block.
+    # calendar_rule fetches from no network at all (see its module docstring:
+    # "没有网络、没有账号、没有限流、不会被拉黑") — sources.calendar_rule carries
+    # no rate_limit block in sync_registry.yaml, and none must leak into
+    # trade_cal's spec (this also held for baostock's never-published quota
+    # before it, for a different reason — belt-and-suspenders either way).
     assert "rate_limit" not in spec
 
 

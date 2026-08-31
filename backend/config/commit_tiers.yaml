@@ -56,6 +56,12 @@ tier_gates:
     # 2026-08-11 P2.1: 文档写死运行时状态的对账门。L1 = 纯文档提交, 正是最容易
     # 把陈旧前沿/计数写进去的那一类, 所以它必须在 L1 就跑 (scaffold 组 warn-only)。
     - doc_runtime_state
+    # 2026-08-31: 仓库血量门必须在**每个** tier 都跑 —— 大文件不是靠 diff 性质区分的,
+    # 它是"顺手 git add 了个产物"这一动作带来的, 任何 tier 的提交都可能夹带。
+    # 实证: .git 已被撑到 3.9G (size-pack 2.90 GiB), 历史最大 blob 是 41MB parquet /
+    # 21MB csv, 而清历史要重写 2615 个 commit + 11 分支 + force push, 代价远超收益 ——
+    # 即"进来了就拿不出去", 所以拦截点必须无死角。逻辑同上面 doc_runtime_state 那条。
+    - repo_blob_size
     - commit_msg
   L2:
     - project_index_sync
@@ -77,5 +83,6 @@ tier_gates:
     - doc_governance
     - doc_runtime_state
     - commit_msg
+    - repo_blob_size
     - rule10
   L3: all
