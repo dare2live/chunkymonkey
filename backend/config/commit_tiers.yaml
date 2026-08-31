@@ -62,6 +62,7 @@ tier_gates:
     # 21MB csv, 而清历史要重写 2615 个 commit + 11 分支 + force push, 代价远超收益 ——
     # 即"进来了就拿不出去", 所以拦截点必须无死角。逻辑同上面 doc_runtime_state 那条。
     - repo_blob_size
+    - tushare_sunset
     - commit_msg
   L2:
     - project_index_sync
@@ -84,5 +85,6 @@ tier_gates:
     - doc_runtime_state
     - commit_msg
     - repo_blob_size
+    - tushare_sunset
     - rule10
   L3: all

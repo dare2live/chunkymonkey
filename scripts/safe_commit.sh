@@ -84,7 +84,7 @@ done
 echo
 echo "=== Step 1.5: commit tier classification ==="
 COMMIT_TIER="L3"
-COMMIT_TIER_GATES="staged_worktree_parity project_index_sync feature_map moth moth_invariants rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity no_emoji config_refs doc_drift doc_governance doc_runtime_state commit_msg rule10 repo_blob_size"
+COMMIT_TIER_GATES="staged_worktree_parity project_index_sync feature_map moth moth_invariants rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity no_emoji config_refs doc_drift doc_governance doc_runtime_state commit_msg rule10 repo_blob_size tushare_sunset"
 if [[ -f "backend/scripts/classify_commit_tier.py" && -f "backend/config/commit_tiers.yaml" ]]; then
     if COMMIT_TIER_JSON=$(PYTHONPATH=backend "$PY" backend/scripts/classify_commit_tier.py 2>/tmp/cm_tier_err.out); then
         if parsed=$("$PY" -c '
@@ -824,6 +824,31 @@ else
 fi
 else
     echo "[commit-tier] skip doc_runtime_state (tier=$COMMIT_TIER)"
+fi
+
+# 3.99: TuShare 授权到期风险门 (tushare_sunset.yaml 与 sync_registry.yaml 对账)
+echo
+echo "=== Step 3.99: tushare-sunset gate (授权到期风险 + 清单漂移检查) ==="
+if gate_enabled tushare_sunset; then
+if [[ ! -f "$STAGED_BACKEND/config/tushare_sunset.yaml" ]]; then
+    echo "ERROR: staged snapshot 缺 tushare_sunset.yaml；授权到期风险门不得静默跳过。"
+    gate_fail tushare_sunset 5
+elif [[ ! -f "$STAGED_BACKEND/config/sync_registry.yaml" ]]; then
+    echo "ERROR: staged snapshot 缺 sync_registry.yaml；授权到期风险门无法执行完整检查。"
+    gate_fail tushare_sunset 5
+elif PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_tushare_sunset.py" \
+    --sunset "$STAGED_BACKEND/config/tushare_sunset.yaml" \
+    --registry "$STAGED_BACKEND/config/sync_registry.yaml" > /tmp/cm_tushare_sunset.out 2>&1; then
+    tail -2 /tmp/cm_tushare_sunset.out
+else
+    cat /tmp/cm_tushare_sunset.out
+    echo
+    echo "ERROR: TuShare 授权到期风险门红 —— 清单与注册表漂移或未裁决域已过期。"
+    echo "正解: 更新 backend/config/tushare_sunset.yaml 补漏或完成裁决，涉及 registry 变化则同步。"
+    gate_fail tushare_sunset 5
+fi
+else
+    echo "[commit-tier] skip tushare_sunset (tier=$COMMIT_TIER)"
 fi
 
 # 4. Commit message keyword check (manual preview)

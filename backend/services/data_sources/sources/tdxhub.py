@@ -21,6 +21,7 @@ labels, not crosswalk keys. Both ride ``quotes_client``, never MAC.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import socket
@@ -28,10 +29,12 @@ import tempfile
 import time
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 from services.data_sources.sibling_repos import ensure_import_path
 from services.data_sources.tdxhub_kline_recon import fetch_unadjusted_bars
+
+logger = logging.getLogger("data_sources.tdxhub")
 
 HQ_HOSTS_PROVENANCE = (
     "Frozen snapshot of official TDX client/broker HQ names "
@@ -493,6 +496,49 @@ _DEFAULT_XDXR_CACHE_PATH = (
 # 只能靠外部注入的北交所 BJ, 见类 docstring 坑 2)。
 _TS_CODE_RE = re.compile(r"^\d{6}\.(SH|SZ|BJ)$")
 
+# ---------------------------------------------------------------------------
+# 北交所代码来源 — 默认 provider (``TdxhubSource(bj_codes_provider=...)`` 的默认值)。
+# 通达信协议列不出北交所代码表 (``client.stocks(2)`` 报「市场代码错误, 目前只支持
+# 沪深市场」, 见类 docstring 坑 2), 但按代码取北交所日K本身没问题 —— 所以代码清单
+# 从别处拿, 取数仍走 tdxhub。
+#
+# 表选择: raw_tushare_stock_basic, 不是 dim_active_a_stock —— 后者的构建 SQL
+# (services/security_master.py:60-66) 明确 ``WHERE market != '北交所'``, 北交所
+# 已被 universe 政策排掉; 而 raw_tushare_stock_basic 是身份真相源本身, 未做这层
+# 过滤, 北交所记录完整在里面 (``market = '北交所'``)。
+# ---------------------------------------------------------------------------
+
+_BJ_CODES_TABLE = "raw_tushare_stock_basic"
+
+
+def _default_bj_codes_provider() -> list[str]:
+    """默认北交所代码来源: 只读连接 ``tushare_raw`` 库, 查
+    ``raw_tushare_stock_basic WHERE market = '北交所'``。
+
+    连库方式与 security_master.py:57-58 (``refresh_active_a_stock_master`` 里同样
+    只读跨库读 raw_tushare_stock_basic 身份真相源那段) 同型: 走
+    ``services.database_manifest.get_database_manifest().path_for("tushare_raw")``
+    解析路径, ``duckdb.connect(..., read_only=True)``。
+
+    本函数只管"正常路径怎么查" —— 不吞任何异常 (表不存在/库连不上/查询失败原样
+    往外抛)。失败降级 (捕获异常 -> 空列表 + warning) 是调用方
+    ``TdxhubSource._resolve_bj_codes`` 的职责, 不在这里做, 这样单元测试可以直接
+    monkeypatch 掉整个 provider 函数, 不用关心内部是否吞了异常。
+    """
+    import duckdb
+
+    from services.database_manifest import get_database_manifest
+
+    raw_path = get_database_manifest().path_for("tushare_raw")
+    conn = duckdb.connect(str(raw_path), read_only=True)  # rule-compliance: ok evidence=只读跨库读北交所代码来源 raw_tushare_stock_basic, 与 security_master.py:57-58 同型只读连接, 非业务阈值
+    try:
+        rows = conn.execute(
+            f"SELECT ts_code FROM {_BJ_CODES_TABLE} WHERE market = '北交所'"  # rule-compliance: ok evidence=read-tushare-bj-identity-source, 与 security_master.py 读同一身份真相源表, 只是不排除北交所
+        ).fetchall()
+    finally:
+        conn.close()
+    return [str(row[0]) for row in rows if row and row[0]]
+
 
 def _xdxr_cache_path() -> Path:
     """解析磁盘 xdxr 缓存路径。
@@ -620,6 +666,23 @@ class TdxhubSource:
        ``\\d{6}.(SH|SZ|BJ)``) 的注入代码在**构造时**就 ``ValueError``, 不等到
        取数才炸 —— 见 ``_validate_extra_ts_codes``。
 
+       调用方 (``sync_runner._adapter("tdxhub")``) 是无参构造, 传不了
+       ``extra_ts_codes`` —— 把 344 个北交所代码写进 YAML 又必然过期。所以本类
+       还支持**自己解析**北交所代码: 构造参数 ``bj_codes_provider`` (``Callable[[],
+       Sequence[str]] | None``, 默认 ``None``)。**优先级**: 显式传入的
+       ``extra_ts_codes`` 优先 —— 传了就不调 ``bj_codes_provider`` (调用方明确
+       指定时不该被自动行为覆盖); 两者都没传时才用 provider (``None`` ->
+       ``_default_bj_codes_provider``, 只读 ``raw_tushare_stock_basic WHERE
+       market='北交所'``, 见该函数 docstring)。provider 只在 ``_universe()``
+       真正需要时惰性调用一次, 结果缓存在实例上 (``_bj_codes_cache``) ——
+       ``__init__`` 不连库, 同一实例内 ``fetch_raw`` 调多次也只查一次。
+       provider 返回的代码同样过 ``_validate_extra_ts_codes`` 形态校验, 脏数据
+       在解析时 (即 ``_universe()`` 调用期间, 早于任何单票取数) 就
+       ``ValueError``。provider 本身故障 (表不存在/库连不上/查询失败/抛任何
+       异常) 一律降级为空列表 + ``logger.warning``, 不抛 —— 沪深 5,220 只是
+       主体, 不能因为北交所拿不到就让整个日K同步失败; 但 warning 必须写清
+       "本次未覆盖北交所", 不许静默 (见 ``_resolve_bj_codes``)。
+
     3. **amount 单位换算**: ``fetch_unadjusted_bars`` 给的 amount 单位是元,
        tushare ``daily.amount`` 单位是千元 —— 落库前必须 ``/1000``, 不做会让
        下游按 tushare 语义读出的成交额虚高 1000 倍。vol (手) 两边同单位, 原样使用
@@ -698,7 +761,15 @@ class TdxhubSource:
         min_success_rate: float = TDXHUB_DAILY_MIN_SUCCESS_RATE_DEFAULT,
         prev_close_lookback_days: int = TDXHUB_DAILY_PREV_CLOSE_LOOKBACK_DAYS_DEFAULT,
         extra_ts_codes: Sequence[str] | None = None,
+        bj_codes_provider: Callable[[], Sequence[str]] | None = None,
     ) -> None:
+        """``bj_codes_provider``: 北交所代码来源, 惰性调用 (见 ``_resolve_bj_codes``)。
+        ``None`` (默认) 时用 ``_default_bj_codes_provider`` (只读
+        ``raw_tushare_stock_basic``); 测试注入假 callable。**优先级**:
+        ``extra_ts_codes`` 非空时完全不调用本 provider (显式指定优先于自动解析) ——
+        两者都未显式给出时才会在 ``_universe()`` 里调用它, 且只调用一次 (结果
+        缓存在实例上)。详见类 docstring 坑 2 附近的优先级说明。
+        """
         self._client_factory = client_factory  # 测试注入假客户端; 生产环境用 quotes_client
         self._client: Any = None
         self._board_prefixes: dict[str, tuple[str, ...]] = {
@@ -710,6 +781,13 @@ class TdxhubSource:
         self._xdxr_cache: dict[str, list[dict[str, Any]]] = {}
         # 构造期校验, 不等到取数才炸 (坑 2 附近说明)。
         self._extra_ts_codes: tuple[str, ...] = self._validate_extra_ts_codes(extra_ts_codes)
+        # provider 本身不在这里调用 (那会让构造就触发 IO) —— 只记住它, 真正解析
+        # 惰性发生在 ``_resolve_bj_codes`` (由 ``_universe`` 按需触发)。
+        self._bj_codes_provider = bj_codes_provider
+        # ``None`` = 尚未解析过; 解析后 (无论成功/降级为空) 都会变成一个 tuple
+        # (可能是 ``()``), 用 "is not None" 判断是否命中缓存 —— 空 tuple 也是
+        # 合法的已解析结果, 不能用真值判断 (那样每次都会重新触发 provider)。
+        self._bj_codes_cache: tuple[str, ...] | None = None
 
     @staticmethod
     def _validate_extra_ts_codes(extra_ts_codes: Sequence[str] | None) -> tuple[str, ...]:
@@ -736,13 +814,64 @@ class TdxhubSource:
             )
         return self._client
 
+    def _resolve_bj_codes(self) -> tuple[str, ...]:
+        """惰性解析 + 缓存北交所代码来源。只在 ``_universe()`` 判定需要时 (即构造
+        时未显式传 ``extra_ts_codes``, 见该方法) 才会被调用, 且同一实例内只真正
+        解析一次 —— 命中 ``self._bj_codes_cache`` (非 ``None``) 直接返回, 不重复
+        调用 provider。
+
+        provider 选择: ``self._bj_codes_provider`` 非 ``None`` 用它 (测试注入),
+        否则用模块级 ``_default_bj_codes_provider`` (只读 ``raw_tushare_stock_basic``,
+        生产默认)。
+
+        失败姿态 (与 provider 自身的失败/脏数据两条路径, 处置不同, 已实测覆盖):
+        - provider **抛任何异常** (表不存在/库连不上/查询失败/别的任何故障):
+          在这里捕获, 降级为空 tuple 并 ``logger.warning`` 写明"本次未覆盖北交所",
+          不向上抛 —— 沪深 5,220 只是主体, 不能因为北交所拿不到就让整个日K
+          同步失败。
+        - provider **正常返回但内容形态不合法** (如 ``"920002"`` 缺后缀): 不吞,
+          ``_validate_extra_ts_codes`` 照样 ``ValueError`` 往外抛 —— 这是脏数据
+          问题, 不是"北交所暂时拿不到", 不该被静默降级掩盖。
+        - provider 正常返回**空列表**: 合法结果 (只是没有北交所), 原样缓存, 不
+          额外报错, 但仍 warning 一句 (未覆盖北交所这个事实本身值得可见, 即使
+          不是故障)。
+        """
+        if self._bj_codes_cache is not None:
+            return self._bj_codes_cache
+        provider = self._bj_codes_provider or _default_bj_codes_provider
+        try:
+            raw_codes = list(provider())
+        except Exception as exc:  # noqa: BLE001 — provider 故障降级为空, 不拖垮沪深主体
+            logger.warning(
+                "tdxhub: 北交所代码来源不可用 (%s: %s), 本次未覆盖北交所, 仅覆盖沪深代码",
+                type(exc).__name__,
+                exc,
+            )
+            self._bj_codes_cache = ()
+            return self._bj_codes_cache
+        # 形态校验不在 try 内 —— 脏数据是真故障, 要炸, 不能被上面的 except 一并吞掉。
+        validated = self._validate_extra_ts_codes(raw_codes)
+        if not validated:
+            logger.warning(
+                "tdxhub: 北交所代码来源返回空列表, 本次未覆盖北交所, 仅覆盖沪深代码"
+            )
+        self._bj_codes_cache = validated
+        return self._bj_codes_cache
+
     def _universe(self, client: Any) -> list[str]:
         """按 ``STOCKS_MARKET_BY_EXCHANGE``/``DEFAULT_BOARD_PREFIXES`` 过滤出沪深
-        ``ts_code`` 清单, 再把构造时传入并已校验过的 ``extra_ts_codes``(通常是
-        ``client.stocks(2)`` 列不出的北交所代码, 见坑 2) 追加在后面 —— 与沪深
-        代码去重, 顺序确定 (沪深按现有排序规则在前, 注入代码保持调用方传入的
-        原始顺序在后)。追加进来的代码走的是跟沪深完全相同的 ``_fetch_one_row``
-        路径, 这里不为它们单独分支。"""
+        ``ts_code`` 清单, 再把北交所代码追加在后面 —— 与沪深代码去重, 顺序确定
+        (沪深按现有排序规则在前, 北交所代码保持来源的原始顺序在后)。追加进来的
+        代码走的是跟沪深完全相同的 ``_fetch_one_row`` 路径, 这里不为它们单独
+        分支。
+
+        北交所代码来源, 按**优先级**取其一 (不叠加):
+        1. 构造时显式传入并已校验过的 ``extra_ts_codes`` 非空 —— 直接用它,
+           **不调用** ``bj_codes_provider`` (调用方明确指定时不该被自动行为覆盖)。
+        2. 否则调用 ``_resolve_bj_codes()`` (惰性 + 缓存, 见该方法), 用
+           ``bj_codes_provider``(默认读 ``raw_tushare_stock_basic``) 解析出的
+           北交所代码。
+        """
         codes: list[str] = []
         for exchange, market_id in self.STOCKS_MARKET_BY_EXCHANGE.items():
             prefixes = self._board_prefixes.get(exchange) or ()
@@ -753,10 +882,11 @@ class TdxhubSource:
                 if code and code.startswith(prefixes):
                     codes.append(f"{code}.{exchange}")
         universe = sorted(set(codes))
-        if not self._extra_ts_codes:
+        extra_codes = self._extra_ts_codes or self._resolve_bj_codes()
+        if not extra_codes:
             return universe
         seen = set(universe)
-        for extra in self._extra_ts_codes:
+        for extra in extra_codes:
             if extra in seen:
                 continue
             seen.add(extra)

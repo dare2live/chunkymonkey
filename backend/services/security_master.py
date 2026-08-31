@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS dim_active_a_stock ( -- rule-compliance: ok evidence=
 def refresh_active_a_stock_master(conn) -> int:
     """刷新当前可交易 A 股主数据缓存 (2026-06-19: akshare → tushare stock_basic 身份真相源)。
 
-    源 = raw_tushare_stock_basic (sync_registry stock_basic 域, list_status='L' 在市股)。
+    源 = raw_tushare_stock_basic (sync_registry stock_basic 域)。2026-09-01 该域已换源
+    tushare -> fuyao (/api/meta/tickers/list, asset_type=a-share); 表名依设计不随 adapter 变。
     身份真相源切换 (替旧 akshare bare码 + _market_from_code 前缀猜市场):
     - stock_code = symbol (6位, 与 K线/消费侧口径一致)
     - market 列 = ts_code 后缀 (.SH→'SH' / .SZ→'SZ', 权威交易所非前缀猜)
@@ -82,7 +83,10 @@ def refresh_active_a_stock_master(conn) -> int:
             continue
         suffix = str(ts_code or "").split(".")[-1].upper()
         market = "SH" if suffix == "SH" else "SZ"   # 北交所(BJ)已 WHERE 排除
-        rows.append((code, str(name or "").strip(), market, "tushare_stock_basic", now))
+        # source 标签记**域**不记供应商 (2026-09-01 换源 tushare->fuyao 时改):
+        # 供应商会换 (授权到期/质量), 域不会; 记供应商名会在每次换源时静默漂移成假声明。
+        # 该列实测零读方 (全仓库只此一处写, 无 SQL/代码读它), 纯溯源标签。
+        rows.append((code, str(name or "").strip(), market, "stock_basic", now))
 
     # §9 reference 拆库 Stage E (2026-06-27): dim_active_a_stock 已迁 reference 库, smartmoney 副本物删。
     #   writer 只写 reference 真相源 (不再 dual-write); reader 全经 active_codes/active_stock_name_map

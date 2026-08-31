@@ -644,6 +644,8 @@ _FUYAO_SOURCE: Any = None
 _BAOSTOCK_SOURCE: Any = None
 _TDXHUB_SOURCE: Any = None
 _CALENDAR_RULE_SOURCE: Any = None
+_STOCK_ST_DERIVE_SOURCE: Any = None
+_MIAOXIANG_SOURCE: Any = None
 
 
 def _adapter(source_name: str):
@@ -654,7 +656,7 @@ def _adapter(source_name: str):
     do not pass that freeze. Unknown sources fail closed. Do not revive
     base.py/registry.py.
     """
-    global _TUSHARE_SOURCE, _FUYAO_SOURCE, _BAOSTOCK_SOURCE, _TDXHUB_SOURCE, _CALENDAR_RULE_SOURCE
+    global _TUSHARE_SOURCE, _FUYAO_SOURCE, _BAOSTOCK_SOURCE, _TDXHUB_SOURCE, _CALENDAR_RULE_SOURCE, _STOCK_ST_DERIVE_SOURCE, _MIAOXIANG_SOURCE
     name = str(source_name or "").strip()
     if name == "fuyao":
         if _FUYAO_SOURCE is None:
@@ -668,6 +670,18 @@ def _adapter(source_name: str):
 
             _BAOSTOCK_SOURCE = BaostockSource()
         return _BAOSTOCK_SOURCE
+    if name == "miaoxiang":
+        if _MIAOXIANG_SOURCE is None:
+            from services.data_sources.sources.miaoxiang import MiaoxiangSource
+
+            _MIAOXIANG_SOURCE = MiaoxiangSource()
+        return _MIAOXIANG_SOURCE
+    if name == "stock_st_derive":
+        if _STOCK_ST_DERIVE_SOURCE is None:
+            from services.data_sources.sources.stock_st_derive import StockSTDeriveSource
+
+            _STOCK_ST_DERIVE_SOURCE = StockSTDeriveSource()
+        return _STOCK_ST_DERIVE_SOURCE
     if name == "calendar_rule":
         if _CALENDAR_RULE_SOURCE is None:
             from services.data_sources.sources.calendar_rule import CalendarRuleSource

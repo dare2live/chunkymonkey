@@ -36,6 +36,22 @@ def _isolate_xdxr_cache_path(monkeypatch, tmp_path):
     monkeypatch.setenv("TDXHUB_XDXR_CACHE_PATH", str(tmp_path / "xdxr_cache_autouse.json"))
 
 
+@pytest.fixture(autouse=True)
+def _stub_default_bj_codes_provider(monkeypatch):
+    """本文件绝大多数用例既不传 ``extra_ts_codes`` 也不传 ``bj_codes_provider``,
+    这正是触发 ``TdxhubSource`` 自动解析北交所代码 (``_resolve_bj_codes`` ->
+    ``_default_bj_codes_provider``) 的条件 —— 而该默认 provider 会真的用
+    ``services.database_manifest`` 去连本机磁盘上的 ``tushare_raw`` 库。不 stub
+    掉的话, 在这台机器上跑测试会读到真实 ``raw_tushare_stock_basic`` 里的几百个
+    北交所代码, 悄悄把 universe 撑大、把已实测好的成功率/行数断言全部搅乱 ——
+    这正是"测试必须自带 fixture 不许断言宿主环境"同一类教训 (碰真实 DB 的测试
+    必须自建/stub 掉外部依赖)。全局 stub 成返回空列表对全部既有用例零影响 (等价
+    于"这批测试的北交所来源天然是空的"); 专门测 ``bj_codes_provider`` 行为的新
+    用例都是通过构造参数 ``TdxhubSource(bj_codes_provider=...)`` 显式注入假
+    provider, 那条路径不经过这个模块级默认值, 不受此 stub 影响。"""
+    monkeypatch.setattr(tdxhub_adapter, "_default_bj_codes_provider", lambda: [])
+
+
 def _write_xdxr_cache_file(path: Path, payload: dict) -> None:
     """测试专用: 直接把 payload 写成 xdxr 磁盘缓存文件, 绕开
     ``_persist_xdxr_cache_entry`` 走真实取数路径, 用来精确摆好
@@ -745,3 +761,185 @@ def test_extra_ts_codes_dedup_also_within_extra_list_itself(monkeypatch):
 def test_extra_ts_codes_invalid_format_raises_at_construction(bad_code):
     with pytest.raises(ValueError):
         TdxhubSource(client_factory=lambda: FakeQuotesClient(), extra_ts_codes=[bad_code])
+
+
+# ---------------------------------------------------------------------------
+# 22. bj_codes_provider 注入返回 3 个 BJ 代码 -> 出现在 universe 里, 走正常取数
+#     路径拿到行。沪深 universe (stocks_by_market) 特意留空, 只看 provider 那条路。
+# ---------------------------------------------------------------------------
+
+
+def test_bj_codes_provider_injected_codes_appear_in_universe_and_are_fetched(monkeypatch):
+    target = date(2026, 8, 28)
+    bj_codes = ["920001.BJ", "920002.BJ", "920003.BJ"]
+    bars = {
+        code: [
+            _bar(
+                code, target,
+                open_=5.0, high=5.2, low=4.9, close=5.1, vol=200.0, amount=1020.0,
+            )
+        ]
+        for code in bj_codes
+    }
+    _install_fake_bars(monkeypatch, bars)
+    calls = {"n": 0}
+
+    def _provider():
+        calls["n"] += 1
+        return list(bj_codes)
+
+    client = FakeQuotesClient(stocks_by_market={})
+    source = TdxhubSource(client_factory=lambda: client, bj_codes_provider=_provider)
+
+    rows = source.fetch_raw("daily", trade_date="20260828")
+
+    assert {row["ts_code"] for row in rows} == set(bj_codes)
+    assert calls["n"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 23. 显式 extra_ts_codes 优先于 bj_codes_provider —— 两者都给, provider 不被调用
+#     (调用方明确指定时不该被自动行为覆盖)。
+# ---------------------------------------------------------------------------
+
+
+def test_extra_ts_codes_priority_bj_codes_provider_not_called(monkeypatch):
+    target = date(2026, 8, 28)
+    ts_code = "920002.BJ"
+    bars = {
+        ts_code: [
+            _bar(
+                ts_code, target,
+                open_=5.0, high=5.2, low=4.9, close=5.1, vol=200.0, amount=1020.0,
+            )
+        ]
+    }
+    _install_fake_bars(monkeypatch, bars)
+    calls = {"n": 0}
+
+    def _provider():
+        calls["n"] += 1
+        return ["920099.BJ"]  # 若被调用会混进一个额外代码, 断言会露馅
+
+    client = FakeQuotesClient(stocks_by_market={})
+    source = TdxhubSource(
+        client_factory=lambda: client,
+        extra_ts_codes=[ts_code],
+        bj_codes_provider=_provider,
+    )
+
+    rows = source.fetch_raw("daily", trade_date="20260828")
+
+    assert [row["ts_code"] for row in rows] == [ts_code]
+    assert calls["n"] == 0
+
+
+# ---------------------------------------------------------------------------
+# 24. bj_codes_provider 抛异常 -> 降级为空列表, 不向上抛; 沪深部分照常返回。
+# ---------------------------------------------------------------------------
+
+
+def test_bj_codes_provider_exception_degrades_to_empty_hushen_unaffected(monkeypatch):
+    target = date(2026, 8, 28)
+    ts_code = "600869.SH"
+    bars = {
+        ts_code: [
+            _bar(
+                ts_code, target,
+                open_=10.0, high=10.5, low=9.5, close=10.2, vol=100.0, amount=1000.0,
+            )
+        ]
+    }
+    _install_fake_bars(monkeypatch, bars)
+    client = FakeQuotesClient(stocks_by_market={1: [{"code": "600869"}]})
+
+    def _boom():
+        raise RuntimeError("raw_tushare_stock_basic table not found")
+
+    source = TdxhubSource(client_factory=lambda: client, bj_codes_provider=_boom)
+
+    rows = source.fetch_raw("daily", trade_date="20260828")  # 不应抛
+
+    assert [row["ts_code"] for row in rows] == [ts_code]
+
+
+# ---------------------------------------------------------------------------
+# 25. bj_codes_provider 返回脏数据 (无交易所后缀) -> ValueError (形态校验生效,
+#     不被上面第 24 条的"降级为空"路径吞掉 —— 脏数据是真故障, 不是"暂时拿不到")。
+# ---------------------------------------------------------------------------
+
+
+def test_bj_codes_provider_dirty_data_raises_value_error():
+    client = FakeQuotesClient(stocks_by_market={})
+    source = TdxhubSource(
+        client_factory=lambda: client,
+        bj_codes_provider=lambda: ["920002"],  # 无 .BJ 后缀
+    )
+
+    with pytest.raises(ValueError):
+        source.fetch_raw("daily", trade_date="20260828")
+
+
+# ---------------------------------------------------------------------------
+# 26. bj_codes_provider 只被调用一次 (缓存生效) —— 同一实例连续两次 fetch_raw,
+#     断言 provider 调用计数为 1。
+# ---------------------------------------------------------------------------
+
+
+def test_bj_codes_provider_called_once_cached_across_fetch_raw_calls(monkeypatch):
+    target1 = date(2026, 8, 27)
+    target2 = date(2026, 8, 28)
+    bj_code = "920002.BJ"
+    bars = {
+        bj_code: [
+            _bar(
+                bj_code, target1,
+                open_=5.0, high=5.2, low=4.9, close=5.1, vol=200.0, amount=1020.0,
+            ),
+            _bar(
+                bj_code, target2,
+                open_=5.1, high=5.3, low=5.0, close=5.2, vol=210.0, amount=1050.0,
+            ),
+        ]
+    }
+    _install_fake_bars(monkeypatch, bars)
+    calls = {"n": 0}
+
+    def _provider():
+        calls["n"] += 1
+        return [bj_code]
+
+    client = FakeQuotesClient(stocks_by_market={})
+    source = TdxhubSource(client_factory=lambda: client, bj_codes_provider=_provider)
+
+    rows1 = source.fetch_raw("daily", trade_date="20260827")
+    rows2 = source.fetch_raw("daily", trade_date="20260828")
+
+    assert [row["ts_code"] for row in rows1] == [bj_code]
+    assert [row["ts_code"] for row in rows2] == [bj_code]
+    assert calls["n"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 27. bj_codes_provider 返回空列表 -> 正常 (只是没有北交所), 不报错。
+# ---------------------------------------------------------------------------
+
+
+def test_bj_codes_provider_empty_list_is_fine(monkeypatch):
+    target = date(2026, 8, 28)
+    ts_code = "600869.SH"
+    bars = {
+        ts_code: [
+            _bar(
+                ts_code, target,
+                open_=10.0, high=10.5, low=9.5, close=10.2, vol=100.0, amount=1000.0,
+            )
+        ]
+    }
+    _install_fake_bars(monkeypatch, bars)
+    client = FakeQuotesClient(stocks_by_market={1: [{"code": "600869"}]})
+    source = TdxhubSource(client_factory=lambda: client, bj_codes_provider=lambda: [])
+
+    rows = source.fetch_raw("daily", trade_date="20260828")
+
+    assert [row["ts_code"] for row in rows] == [ts_code]

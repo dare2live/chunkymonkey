@@ -63,6 +63,68 @@
     {
       "attrs": {
         "grain": [
+          "ts_code"
+        ],
+        "pit_anchor": "current_snapshot_only; list_date 非历史 membership interval"
+      },
+      "dst": "table:tushare_raw.raw_tushare_stock_basic",
+      "kind": "acquire",
+      "src": "source:fuyao.meta-tickers-list"
+    },
+    {
+      "attrs": {
+        "grain": [
+          "exalter",
+          "side",
+          "trade_date",
+          "ts_code"
+        ],
+        "pit_anchor": "trade_date; 龙虎榜席位明细盘后公布 -> JOIN t-1"
+      },
+      "dst": "table:tushare_raw.raw_tushare_top_inst",
+      "kind": "acquire",
+      "src": "source:miaoxiang.top_inst"
+    },
+    {
+      "attrs": {
+        "grain": [
+          "reason",
+          "trade_date",
+          "ts_code"
+        ],
+        "pit_anchor": "trade_date; 龙虎榜盘后公布 -> JOIN t-1"
+      },
+      "dst": "table:tushare_raw.raw_tushare_top_list",
+      "kind": "acquire",
+      "src": "source:miaoxiang.top_list"
+    },
+    {
+      "attrs": {
+        "grain": [
+          "trade_date",
+          "ts_code"
+        ],
+        "pit_anchor": "trade_date; 9:20 盘前更新 -> t 日盘前可用; 历史每日 ST 名单 = PIT universe 过滤真相源"
+      },
+      "dst": "table:tushare_raw.raw_tushare_stock_st",
+      "kind": "acquire",
+      "src": "source:stock_st_derive.stock_st"
+    },
+    {
+      "attrs": {
+        "grain": [
+          "trade_date",
+          "ts_code"
+        ],
+        "pit_anchor": "trade_date; 收盘后 15-16 点入库 -> 保守 18:00; 未复权价, 复权用 adj_factor 派生"
+      },
+      "dst": "table:tushare_raw.raw_tushare_daily",
+      "kind": "acquire",
+      "src": "source:tdxhub.daily"
+    },
+    {
+      "attrs": {
+        "grain": [
           "trade_date",
           "ts_code"
         ],
@@ -112,18 +174,6 @@
       "dst": "table:tushare_raw.raw_tushare_cyq_perf",
       "kind": "acquire",
       "src": "source:tushare.cyq_perf"
-    },
-    {
-      "attrs": {
-        "grain": [
-          "trade_date",
-          "ts_code"
-        ],
-        "pit_anchor": "trade_date; 收盘后 15-16 点入库 -> 保守 18:00; 未复权价, 复权用 adj_factor 派生"
-      },
-      "dst": "table:tushare_raw.raw_tushare_daily",
-      "kind": "acquire",
-      "src": "source:tushare.daily"
     },
     {
       "attrs": {
@@ -443,29 +493,6 @@
     {
       "attrs": {
         "grain": [
-          "ts_code"
-        ],
-        "pit_anchor": "current_snapshot_only; list_date 非历史 membership interval"
-      },
-      "dst": "table:tushare_raw.raw_tushare_stock_basic",
-      "kind": "acquire",
-      "src": "source:tushare.stock_basic"
-    },
-    {
-      "attrs": {
-        "grain": [
-          "trade_date",
-          "ts_code"
-        ],
-        "pit_anchor": "trade_date; 9:20 盘前更新 -> t 日盘前可用; 历史每日 ST 名单 = PIT universe 过滤真相源"
-      },
-      "dst": "table:tushare_raw.raw_tushare_stock_st",
-      "kind": "acquire",
-      "src": "source:tushare.stock_st"
-    },
-    {
-      "attrs": {
-        "grain": [
           "suspend_type",
           "trade_date",
           "ts_code"
@@ -487,33 +514,6 @@
       "dst": "table:tushare_raw.raw_tushare_sw_daily",
       "kind": "acquire",
       "src": "source:tushare.sw_daily"
-    },
-    {
-      "attrs": {
-        "grain": [
-          "exalter",
-          "side",
-          "trade_date",
-          "ts_code"
-        ],
-        "pit_anchor": "trade_date; 龙虎榜席位明细盘后公布 -> JOIN t-1"
-      },
-      "dst": "table:tushare_raw.raw_tushare_top_inst",
-      "kind": "acquire",
-      "src": "source:tushare.top_inst"
-    },
-    {
-      "attrs": {
-        "grain": [
-          "reason",
-          "trade_date",
-          "ts_code"
-        ],
-        "pit_anchor": "trade_date; 龙虎榜盘后公布 -> JOIN t-1"
-      },
-      "dst": "table:tushare_raw.raw_tushare_top_list",
-      "kind": "acquire",
-      "src": "source:tushare.top_list"
     },
     {
       "attrs": {},
@@ -1531,6 +1531,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/calendar_builder.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/accepted_schema.py",
       "kind": "consume",
       "src": "table:org_holding.accepted_partition"
@@ -1844,6 +1850,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_tier12_consumer_cutover.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_calendar_builder.py",
       "kind": "consume",
       "src": "table:org_holding.accepted_partition"
     },
@@ -2191,6 +2203,18 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:reference.dim_active_a_stock"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
+      "kind": "consume",
+      "src": "table:reference.dim_active_a_stock"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/universe_rules.yaml",
       "kind": "consume",
       "src": "table:reference.dim_active_a_stock"
@@ -2222,6 +2246,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
+      "kind": "consume",
+      "src": "table:reference.dim_active_a_stock"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/stock_st_derive.py",
+      "kind": "consume",
+      "src": "table:reference.dim_active_a_stock"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/tdxhub.py",
       "kind": "consume",
       "src": "table:reference.dim_active_a_stock"
     },
@@ -2653,6 +2689,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/calendar_builder.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/accepted_schema.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -2966,6 +3008,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_tier12_consumer_cutover.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_calendar_builder.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
     },
@@ -3439,6 +3487,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_stock_dc_industry"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/routers/stock_dossier.py",
       "kind": "consume",
       "src": "table:smartmoney.dim_stock_dc_industry"
@@ -3530,6 +3584,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/technical_states.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_stock_segment_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
       "kind": "consume",
       "src": "table:smartmoney.dim_stock_segment_daily"
     },
@@ -4741,6 +4801,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_top_inst_seat_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/routers/stock_dossier.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_top_inst_seat_daily"
@@ -4772,6 +4838,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
+      "kind": "consume",
+      "src": "table:smartmoney.fact_top_inst_seat_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/miaoxiang.py",
       "kind": "consume",
       "src": "table:smartmoney.fact_top_inst_seat_daily"
     },
@@ -5329,6 +5401,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_market_pulse_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/routers/market_pulse.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_market_pulse_daily"
@@ -5438,6 +5516,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_sector_pulse_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
       "kind": "consume",
       "src": "table:smartmoney.mart_sector_pulse_daily"
     },
@@ -5696,6 +5780,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/update_watermark_sla.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/calendar_builder.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -6019,6 +6109,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_calendar_builder.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_continuity_guard.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -6049,7 +6145,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/fina_margin_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_acceptance.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_margin_exchange_daily"
     },
@@ -6110,6 +6218,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_fina_margin_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_formal_boundaries.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_margin_exchange_daily"
     },
@@ -6301,6 +6415,18 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_calendar_builder.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_sse_trading_calendar_generation"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_stk_holdertrade_announcement"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/stk_holdertrade_schema.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_stk_holdertrade_announcement"
@@ -6313,7 +6439,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_stock_st_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/calendar_identity_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_stock_st_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/stock_st_derive.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_stock_st_daily"
     },
@@ -6332,6 +6470,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/universe.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_stock_st_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_stock_st_derive.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_stock_st_daily"
     },
@@ -6538,6 +6682,12 @@
       "dst": "consumer:backend/services/data_sources/stk_holdertrade_schema.py",
       "kind": "consume",
       "src": "table:tushare_raw.landing_tushare_stk_holdertrade"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/stock_st_derive.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_stock_st"
     },
     {
       "attrs": {},
@@ -7627,6 +7777,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_index_member_all"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/audit_date_bounds.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_index_member_all"
@@ -7849,6 +8005,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/check_legacy_raw_plane.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin"
@@ -7904,6 +8066,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_fina_margin_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_formal_boundaries.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_margin"
     },
@@ -8144,6 +8312,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_moneyflow_dc"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow_dc"
     },
@@ -8575,6 +8749,30 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stock_basic"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/fuyao.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stock_basic"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/stock_st_derive.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stock_basic"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/tdxhub.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stock_basic"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/pipeline/acquire.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stock_basic"
@@ -8594,6 +8792,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_legacy_raw_plane_s7.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stock_basic"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_stock_st_derive.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stock_basic"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_tdxhub_source_adapter.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stock_basic"
     },
@@ -8797,6 +9007,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/miaoxiang.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_top_inst"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/top_inst_seat_publish.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_top_inst"
@@ -8870,6 +9086,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/assignment_gap_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_top_list"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/miaoxiang.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_top_list"
     },
@@ -9044,6 +9266,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_block_trade_stock_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.v_block_trade_stock_day"
     },
@@ -9398,6 +9626,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/serve_read_views.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_holder_number_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.v_holder_number_period"
     },
@@ -10057,6 +10291,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/sources/miaoxiang.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_top_list_stock_day"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/foundation_obs_serve.py",
       "kind": "consume",
       "src": "table:tushare_raw.v_top_list_stock_day"
@@ -10087,9 +10327,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1636,
-    "generated_at": "2026-08-31T16:05:02.722705+00:00",
-    "node_count": 514,
+    "edge_count": 1676,
+    "generated_at": "2026-08-31T19:44:08.836157+00:00",
+    "node_count": 521,
     "version": 2
   },
   "nodes": [
@@ -10299,6 +10539,14 @@
         "path": "backend/config/tier12_publish.yaml"
       },
       "id": "consumer:backend/config/tier12_publish.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/tushare_sunset.yaml"
+      },
+      "id": "consumer:backend/config/tushare_sunset.yaml",
       "kind": "consumer"
     },
     {
@@ -10987,6 +11235,30 @@
         "path": "backend/services/data_sources/sources/baostock.py"
       },
       "id": "consumer:backend/services/data_sources/sources/baostock.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/sources/fuyao.py"
+      },
+      "id": "consumer:backend/services/data_sources/sources/fuyao.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/sources/miaoxiang.py"
+      },
+      "id": "consumer:backend/services/data_sources/sources/miaoxiang.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/data_sources/sources/stock_st_derive.py"
+      },
+      "id": "consumer:backend/services/data_sources/sources/stock_st_derive.py",
       "kind": "consumer"
     },
     {
@@ -11992,6 +12264,14 @@
     {
       "attrs": {
         "ctype": "test",
+        "path": "backend/tests/services/test_formal_boundaries.py"
+      },
+      "id": "consumer:backend/tests/services/test_formal_boundaries.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
         "path": "backend/tests/services/test_formula_challenge.py"
       },
       "id": "consumer:backend/tests/services/test_formula_challenge.py",
@@ -12296,6 +12576,14 @@
     {
       "attrs": {
         "ctype": "test",
+        "path": "backend/tests/services/test_stock_st_derive.py"
+      },
+      "id": "consumer:backend/tests/services/test_stock_st_derive.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
         "path": "backend/tests/services/test_sync_execution_policy.py"
       },
       "id": "consumer:backend/tests/services/test_sync_execution_policy.py",
@@ -12339,6 +12627,14 @@
         "path": "backend/tests/services/test_taxonomy_recon.py"
       },
       "id": "consumer:backend/tests/services/test_taxonomy_recon.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_tdxhub_source_adapter.py"
+      },
+      "id": "consumer:backend/tests/services/test_tdxhub_source_adapter.py",
       "kind": "consumer"
     },
     {
@@ -12740,6 +13036,51 @@
     },
     {
       "attrs": {
+        "api": "meta-tickers-list",
+        "domain": "stock_basic",
+        "source": "fuyao"
+      },
+      "id": "source:fuyao.meta-tickers-list",
+      "kind": "source_interface"
+    },
+    {
+      "attrs": {
+        "api": "top_inst",
+        "domain": "top_inst",
+        "source": "miaoxiang"
+      },
+      "id": "source:miaoxiang.top_inst",
+      "kind": "source_interface"
+    },
+    {
+      "attrs": {
+        "api": "top_list",
+        "domain": "top_list",
+        "source": "miaoxiang"
+      },
+      "id": "source:miaoxiang.top_list",
+      "kind": "source_interface"
+    },
+    {
+      "attrs": {
+        "api": "stock_st",
+        "domain": "stock_st",
+        "source": "stock_st_derive"
+      },
+      "id": "source:stock_st_derive.stock_st",
+      "kind": "source_interface"
+    },
+    {
+      "attrs": {
+        "api": "daily",
+        "domain": "daily",
+        "source": "tdxhub"
+      },
+      "id": "source:tdxhub.daily",
+      "kind": "source_interface"
+    },
+    {
+      "attrs": {
         "api": "adj_factor",
         "domain": "adj_factor",
         "source": "tushare"
@@ -12772,15 +13113,6 @@
         "source": "tushare"
       },
       "id": "source:tushare.cyq_perf",
-      "kind": "source_interface"
-    },
-    {
-      "attrs": {
-        "api": "daily",
-        "domain": "daily",
-        "source": "tushare"
-      },
-      "id": "source:tushare.daily",
       "kind": "source_interface"
     },
     {
@@ -13010,24 +13342,6 @@
     },
     {
       "attrs": {
-        "api": "stock_basic",
-        "domain": "stock_basic",
-        "source": "tushare"
-      },
-      "id": "source:tushare.stock_basic",
-      "kind": "source_interface"
-    },
-    {
-      "attrs": {
-        "api": "stock_st",
-        "domain": "stock_st",
-        "source": "tushare"
-      },
-      "id": "source:tushare.stock_st",
-      "kind": "source_interface"
-    },
-    {
-      "attrs": {
         "api": "suspend_d",
         "domain": "suspend_d",
         "source": "tushare"
@@ -13042,24 +13356,6 @@
         "source": "tushare"
       },
       "id": "source:tushare.sw_daily",
-      "kind": "source_interface"
-    },
-    {
-      "attrs": {
-        "api": "top_inst",
-        "domain": "top_inst",
-        "source": "tushare"
-      },
-      "id": "source:tushare.top_inst",
-      "kind": "source_interface"
-    },
-    {
-      "attrs": {
-        "api": "top_list",
-        "domain": "top_list",
-        "source": "tushare"
-      },
-      "id": "source:tushare.top_list",
       "kind": "source_interface"
     },
     {

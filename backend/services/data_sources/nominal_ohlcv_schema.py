@@ -161,7 +161,12 @@ DOMAIN = SecurityDayDomain(
     text_fields=(),
     grain=("ts_code", "trade_date"),
     partition_field="trade_date",
-    source="tushare",
+    # 2026-09-01 授权换源 tushare -> tdxhub (通达信); tushare 授权 2026-09-10 到期不续期。
+    # 实证零差异: 全市场 5208 只 x 9 字段 46872/46872 全对, 代码集双向零缺失。
+    # 注: source 参与 config_hash/contract_hash 计算, 故换源后新写入的 canonical 行
+    # 带新 config_hash, 旧行保留旧值 —— 这是**预期的溯源语义** (不同契约的数据可区分),
+    # 读侧无 "hash 必须相等" 的校验 (只在写入时打戳), 既有 22 年历史不受影响。
+    source="tdxhub",
     api="daily",
     target_db="tushare_raw",
     compatibility_table="raw_tushare_daily",

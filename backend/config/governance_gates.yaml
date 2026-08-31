@@ -198,6 +198,17 @@ commit_gates:
       客观且只关于这次 diff 的事实：有人对**这一刀**写下了未消除的否定裁决，
       或者门根本无法确定 staged 范围。AGENTS.md §9 保留其阻断力。
 
+  tushare_sunset:
+    group: scaffold
+    checks: "tushare_sunset.yaml 与 sync_registry.yaml 对账 (授权到期风险门)"
+    why: >-
+      TuShare 授权 2026-09-10 到期，不续期；硬停不是降级。primitives/seed.py 涨跌停规则
+      过时三月无人发现正因为零消费零执法。清单漂移（新增 tushare 域未记决策、或改了域名
+      未同步）会导致到期后静默断流。检查三项：(1) registry 的每个 tushare 源域必须在
+      sunset.yaml 出现；(2) sunset 的域若已非 tushare 源且未 status:done 报 WARN；
+      (3) 未裁决域倒计时（过期才 FAIL，距到期前只 WARN）。WARN 必须列出全部未裁决域名
+      防 warn-only 退化成 warn-nothing。
+
 # ── 运行时自检 (daily_update) ────────────────────────────────────────────
 # system_health 组的门在这里落地，外加两类本来就只该活在运行时的检查。
 # store.py 逐条跑，失败 = degraded (记录 + 续跑 + 写 flag)，绝不静默。

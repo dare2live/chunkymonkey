@@ -38,11 +38,29 @@ def test_every_section_is_typed_or_honestly_unavailable() -> None:
         assert _is_typed(status[name]), f"{name} 既没给数据也没诚实标 unavailable: {status[name]}"
 
 
+# data/scratch 是公认的进程私有临时区 (通达信除权缓存 .tdxhub_xdxr_cache.json、
+# baostock 会话锁等)。2026-09-01 实证: 一次并发的 daily 跑批在此写缓存, 就让下面这个
+# 测试变红 —— 但它想问的是"collect_status 自己落盘了吗", 不是"有没有别的进程在写 data/"。
+# 判据的实现比意图宽, 任何并发写 data/ 的进程都能伪造失败 (同 engineering_governance §15.5)。
+_SCRATCH = "scratch"
+
+
+def _durable_data_files() -> set:
+    """data/ 下的持久文件, 排除 scratch 临时区 —— 后者按设计就会被并发进程写。"""
+    root = REPO / "data"
+    if not root.is_dir():
+        return set()
+    return {
+        p for p in root.rglob("*")
+        if p.is_file() and _SCRATCH not in p.relative_to(root).parts
+    }
+
+
 def test_collect_writes_no_files(tmp_path, monkeypatch) -> None:
     """L2 契约 = 命令现查、零文件。落盘就等于又造了一份会烂的状态。"""
-    before = {p for p in (REPO / "data").rglob("*") if p.is_file()} if (REPO / "data").is_dir() else set()
+    before = _durable_data_files()
     ps.collect_status()
-    after = {p for p in (REPO / "data").rglob("*") if p.is_file()} if (REPO / "data").is_dir() else set()
+    after = _durable_data_files()
     assert after == before, f"现查入口落了盘: {sorted(str(p) for p in (after - before))[:5]}"
 
 

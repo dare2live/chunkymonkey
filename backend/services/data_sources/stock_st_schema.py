@@ -91,7 +91,9 @@ DOMAIN = SecurityDayDomain(
     text_fields=TEXT_FIELDS,
     grain=("ts_code", "trade_date"),
     partition_field="trade_date",
-    source="tushare",
+    # 2026-09-01 授权换源 -> 本地派生 (见 sync_registry stock_st 域注释)。source 参与
+    # config_hash 计算, 换源后新写入行带新 hash、旧行保留旧值 = 预期溯源语义。
+    source="stock_st_derive",
     api="stock_st",
     target_db="tushare_raw",
     compatibility_table="raw_tushare_stock_st",

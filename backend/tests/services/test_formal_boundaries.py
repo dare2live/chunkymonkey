@@ -17,12 +17,17 @@ from services.data_sources.formal_boundaries import (
 from services.data_sources import sync_runner as sr
 
 
-def test_live_adapter_is_tushare_only() -> None:
-    # trade_cal switched to baostock 2026-08-30 (authorized source change) — use
-    # "daily" here, one of the three formal domains still pinned to LIVE_ADAPTER.
-    assert require_live_adapter("tushare", domain="daily") == LIVE_ADAPTER
+def test_live_adapter_default_still_guards_unmigrated_domains() -> None:
+    # 2026-09-01: tushare 授权 2026-09-10 到期不续期, formal 域已全部换源完毕:
+    #   trade_cal -> calendar_rule (规则推导)   daily     -> tdxhub (通达信)
+    #   stock_st  -> stock_st_derive (名称派生)  margin    -> 仍 tushare 但 retired_readonly
+    # 即 **LIVE_ADAPTER 已无任何活跃取数域在用** —— 只剩 margin 这个已退役只读域挂着它。
+    # 该常量与本守卫仍保留: 它挡的是"往 formal 域塞未授权 adapter"(如 akshare), 与哪个
+    # 域用它无关; margin 是当前唯一还能取样的域。若日后 margin 也物理退役, 本测试应改为
+    # 直接断言守卫行为而非取样某个真实域。
+    assert require_live_adapter("tushare", domain="margin") == LIVE_ADAPTER
     with pytest.raises(FormalBoundaryError, match="unsupported_live_adapter"):
-        require_live_adapter("akshare", domain="daily")
+        require_live_adapter("akshare", domain="margin")
 
 
 def test_trade_cal_live_adapter_is_calendar_rule_only() -> None:
@@ -100,13 +105,37 @@ def test_inventory_declares_three_boundaries_for_formal_domains() -> None:
     assert inventory["trade_cal"]["runtime_state"] == "accepted_runtime_ready_canary_pending"
     assert inventory["daily"]["runtime_state"] == "accepted_runtime_ready_canary_pending"
     assert inventory["stock_st"]["runtime_state"] == "accepted_runtime_ready_canary_pending"
-    # 2026-08-31 授权换源 (baostock -> calendar_rule, 前一次 2026-08-30 tushare ->
-    # baostock 已被此次取代): trade_cal 是唯一 adapter!=tushare 的 formal 域
-    # (per-domain adapter, 见 formal_boundaries.py _FORMAL_BOUNDARIES["trade_cal"]
-    # 注释); 其余三个仍是 LIVE_ADAPTER。
+    # 授权换源进行中 (tushare 2026-09-10 到期不续期), 每个域自己声明 adapter:
+    #   2026-08-31 trade_cal -> calendar_rule (规则推导, 无供应商)
+    #   2026-09-01 daily     -> tdxhub (通达信; 46872/46872 字段零差异 + 覆盖北交所)
+    #   2026-09-01 stock_st  -> stock_st_derive (名称前缀派生, 读本域已换扶摇的 stock_basic)
+    # margin 是唯一仍挂 tushare 的 formal 域。
     assert inventory["trade_cal"]["adapter"] == "calendar_rule"
-    for name in ("margin", "daily", "stock_st"):
-        assert inventory[name]["adapter"] == "tushare"
+    assert inventory["daily"]["adapter"] == "tdxhub"
+    assert inventory["stock_st"]["adapter"] == "stock_st_derive"
+    assert inventory["margin"]["adapter"] == "tushare"
+    # 不变量: 任何仍指向 tushare 的 formal 域, 必须在日落台账 tushare_sunset.yaml 里有裁决。
+    #
+    # **本条最初写的是 `assert runtime_state == "retired_readonly"`, 那是错的** ——
+    # margin 标着 retired_readonly, 但 2026-09-01 实测它**仍在活跃调 tushare**:
+    #   raw_tushare_margin (legacy 镜像)        停在 20260716   ← 只有这半边退役了
+    #   canonical_margin_exchange_daily.built_at 2026-08-28     ← 3 天前还在写
+    #   margin_acceptance.py:83 source="tushare", 走 2026-07-23 解冻的 on_demand 有界追赶
+    # 即 runtime_state 是**会过期的文档标签**, 拿它当事实等于用未经验证的东西做判据。
+    # 改断言"台账里有裁决"——这是真正可验证的: 台账是人写的裁决记录, 不会因为某条
+    # 通道被解冻而悄悄失真, 且日落门 check_tushare_sunset.py 会独立校验台账与 registry 一致。
+    import yaml as _yaml
+    from pathlib import Path as _Path
+    _sunset = _yaml.safe_load(
+        (_Path(__file__).resolve().parents[3] / "backend/config/tushare_sunset.yaml").read_text(encoding="utf-8")
+    )
+    _decided = set(_sunset.get("domains") or {})
+    for item in inventory.values():
+        if item["adapter"] == "tushare":
+            assert item["domain"] in _decided, (
+                f"formal 域 {item['domain']} 仍挂 tushare 但日落台账无裁决 "
+                f"(授权 2026-09-10 到期不续期)"
+            )
     for item in inventory.values():
         assert item["legacy_raw_write"] == "forbidden"
         assert item["landing_writer"]

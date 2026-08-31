@@ -175,6 +175,7 @@ def test_publish_accepts_partition_and_reader_returns_membership(conn) -> None:
     outcome = publish_accepted_nominal_ohlcv_partition(
         conn,
         SecurityDayLandingBatch(
+            source=contract.source,
             batch_id="daily-batch-1",
             partition_value=PARTITION,
             observed_at=OBSERVED,
@@ -204,6 +205,7 @@ def test_premature_publication_is_rejected(conn) -> None:
     outcome = publish_accepted_nominal_ohlcv_partition(
         conn,
         SecurityDayLandingBatch(
+            source=contract.source,
             batch_id="daily-early",
             partition_value=PARTITION,
             observed_at=early,
@@ -256,6 +258,7 @@ def test_kill_point_after_canonical_delete_rolls_back(conn) -> None:
     publish_accepted_nominal_ohlcv_partition(
         conn,
         SecurityDayLandingBatch(
+            source=contract.source,
             batch_id="daily-seed",
             partition_value=PARTITION,
             observed_at=OBSERVED,
@@ -274,6 +277,7 @@ def test_kill_point_after_canonical_delete_rolls_back(conn) -> None:
     land_nominal_ohlcv_batch(
         conn,
         SecurityDayLandingBatch(
+            source=contract.source,
             batch_id="daily-kill",
             partition_value=PARTITION,
             observed_at=OBSERVED.replace(minute=10),
@@ -325,6 +329,7 @@ def test_stock_st_and_ohlcv_resolver_end_to_end(conn) -> None:
     ohlcv_outcome = publish_accepted_nominal_ohlcv_partition(
         conn,
         SecurityDayLandingBatch(
+            source=ohlcv_contract.source,
             batch_id="ohlcv-st-day",
             partition_value=ST_PARTITION,
             observed_at=OHLCV_ON_ST_DAY,
@@ -340,6 +345,7 @@ def test_stock_st_and_ohlcv_resolver_end_to_end(conn) -> None:
     st_outcome = publish_accepted_stock_st_partition(
         conn,
         SecurityDayLandingBatch(
+            source=st_contract.source,
             batch_id="st-batch-1",
             partition_value=ST_PARTITION,
             observed_at=ST_OBSERVED,

@@ -15,6 +15,7 @@ blocking_paths:
 - tests/scripts/test_check_foundation_done.py
 - tests/scripts/test_check_staged_blob_size.py
 - tests/scripts/test_check_strategy_lab.py
+- tests/scripts/test_check_tushare_sunset.py
 - tests/scripts/test_check_universe_filter.py
 - tests/scripts/test_ci_paths_policy.py
 - tests/scripts/test_ci_pytest_surface_drift.py
@@ -70,6 +71,7 @@ blocking_paths:
 - tests/services/test_frontier_decision.py
 - tests/services/test_fuyao_k5_adapter.py
 - tests/services/test_fuyao_kline_recon.py
+- tests/services/test_fuyao_tickers_list.py
 - tests/services/test_holder_research_class.py
 - tests/services/test_holdernumber_assist.py
 - tests/services/test_holders_landing_retention.py
@@ -91,6 +93,7 @@ blocking_paths:
 - tests/services/test_margin_population_scope.py
 - tests/services/test_margin_pulse_promote_gate.py
 - tests/services/test_market_pulse_serve_read_s6.py
+- tests/services/test_miaoxiang_adapter.py
 - tests/services/test_moneyflow_recon.py
 - tests/services/test_northbound_market_flow.py
 - tests/services/test_notification_dispatcher_skip_macos.py
@@ -121,6 +124,7 @@ blocking_paths:
 - tests/services/test_stk_holdertrade_catchup.py
 - tests/services/test_stock_limit_publish_b2.py
 - tests/services/test_stock_moneyflow_publish_b2.py
+- tests/services/test_stock_st_derive.py
 - tests/services/test_strategy_lab.py
 - tests/services/test_strategy_lab_serve.py
 - tests/services/test_strategy_paper.py

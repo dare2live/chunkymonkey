@@ -4,6 +4,14 @@ Two modes feed the same landing projection:
 - ``provider_tushare`` — live faucet adapter → provider-shaped rows
 - ``local_legacy_raw_materialize`` — local ``raw_tushare_*`` rows → same shape
 
+**这个轴是「实时向供应商取 vs 从本地 raw 表物化」, 不是「哪一个供应商」。**
+名字里的 ``tushare`` 是当年只有单一 provider 时的遗留 —— 2026-09-01 起 daily 走 tdxhub、
+stock_st 走 stock_st_derive, 它们的批次**仍然**标 ``acquire_mode=provider_tushare``,
+那是正确的 (确实是实时 adapter 取数), 不是漂移。哪个供应商由 registry 的 ``source:``
+与 ``formal_boundaries`` 的 ``adapter`` 声明, 不由这个字段承担。
+未改名的理由: 已落库批次存了这个字面值, 改名会让历史值与新值不一致, 收益不抵成本;
+若日后要改, 必须连同已落库的值一起迁移, 不能只改代码。
+
 Accept (S2) stays separate and must never call this module.
 Does not revive the retired multi-source fallback registry / plugin bus.
 """

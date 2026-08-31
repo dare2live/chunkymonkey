@@ -53,6 +53,14 @@ defaults:
 # 曾整体塞进上面的 defaults, 导致扶摇 (fuyao) 域被迫继承 TuShare 专属的配额/授权语义。
 # 扁平两层 sources.<源名>.<字段>; domain_spec() 按域的 source 字段查本表合并 (defaults → sources[source] → domain)。
 sources:
+  miaoxiang:
+    # 2026-09-01 新增: 龙虎榜 top_inst / top_list 授权换源 tushare -> 妙想(东财 aif10)。
+    # 物理落库仍是 tushare_raw —— 换 adapter 不改表 (与 fuyao/tdxhub 同约定)。
+    target_db: tushare_raw
+    # 不在此声明 rate_limit: 妙想走 aif10_scraper 自带的客户端 (已内建 3 次退避重试),
+    # 限流由该客户端承担, 与 tdxhub / stock_st_derive / calendar_rule 同 —— 它们也都不在
+    # sources 层声明限流。**注**: 那三个源当前根本没有 sources 层条目, 靠各自 domains 层
+    # 显式写 target_db 兜住; 本条按 source 级属性的正确位置声明, 是更该被跟随的形状。
   tushare:
     target_db: tushare_raw
     # tinyshare 代理限流 (用户 2026-06-17/19) 实测: 单接口 120/分, 全接口合计 200/分, 并发上限 2。
@@ -200,7 +208,18 @@ domains:
       contract_version: "1"
       coverage_start: "20220104"
       schema_hash: 5b1c04ad582ebc79265ec077ae35aded40b24cc937372e9dd05d2a0f994273e4
-    source: tushare
+    # 2026-09-01 授权换源 tushare -> stock_st_derive (本地派生, 无网络无账号无限流)。
+    # ST 的可观测形态就是简称带 ST/*ST 前缀, 而 stock_basic 域今日已换扶摇并每日返 name,
+    # 故 ST 不必向供应商单独取 —— 与 trade_cal 换 calendar_rule 同型 (规则被当数据)。
+    # 实证: 加固正则 (先剥 XD/XR/DR 除权除息装饰前缀再配 S?\*?ST, 覆盖老式 SST) 对
+    # canonical 173,413 行历史**零漏判**; 今日全宇宙 5,563 名称**零假阳性**; 实时交叉
+    # 验证 203/205, 那 2 只 (000711 ST京蓝 / 002586 ST围海) 经 ifind 事件史确认恰在
+    # 08-31 当天摘帽 —— 是 accepted 基准滞后 3 天, 名称派生反而更新鲜, 非判错。
+    # 通达信不可做派生源: 其 get_security_list 不支持北交所, 会漏 3 只 BJ (commit 2de1644f0)。
+    # **局限**: raw_tushare_stock_basic 是 replace_snapshot, 只能派生快照当天,
+    # 无法回填历史 —— 恰匹配本域既有 on_demand 单日模式, 非回归; TuShare 时代历史
+    # (2022-01-04~2026-08-28) 原样保留, 不可也不必从当前名称快照重建。
+    source: stock_st_derive
     api: stock_st
     target_db: tushare_raw
     # legacy compatibility only — not accepted publication identity
@@ -432,8 +451,13 @@ domains:
 
   # ── 基础: 当前在市请求枚举快照（禁止作为历史 PIT 身份真相） ──
   stock_basic:
-    source: tushare
-    api: stock_basic
+    # 2026-09-01 授权换源 (tushare 2026-09-10 到期不续期): tushare -> fuyao。
+    # 扶摇 /api/meta/tickers/list 筛 asset_type=a-share 得 5563 只, **tushare 的 5550 只
+    # 100% 被覆盖** (严格超集, 0 缺失), 且含北交所 343 只。消费方 security_master 实读
+    # ts_code/symbol/name 三列 + market 仅用于一句 `!= '北交所'`; 实测该谓词两侧行为一致
+    # (扶摇 5220 / tushare 5212, 差额即上述待上市新股)。物理表名依设计不随 adapter 变。
+    source: fuyao
+    api: meta-tickers-list
     target_table: raw_tushare_stock_basic
     # 不设 universe_filter: 保留供应商 list_status=L 当前快照中的全部 venue（含北交所）。
     # 它不含退市历史，也没有 delist_date，不能与历史数据交集；仅供 current by-ts-code 枚举。
@@ -441,13 +465,18 @@ domains:
     batch_mode: full_refresh       # 单接口一次拉完全市场 (50次/分, 2000积分); "≤6000 行上限"原为
                                     # 未实测声明, 2026-07-09 全审计标注
     write_mode: replace_snapshot   # list_status=L 当前在市快照；删除上游已移除代码，禁止 MERGE 留假活跃股
-    page_limit: 3000               # 2026-07-09 全审计MEDIUM修复: 本表=universe 身份真相源, 当前
-                                    # 5535 行已逼近传说的 6000 上限(未实测真值, 上市股~150-250只/年
-                                    # 增长 2-3 年内越线), 若截断恰返 6000 行 > min_rows 5000 门照过
-                                    # =静默丢几百只股。offset 分页 2026-07-09 已实弹验证可用
-                                    # (limit=3000,offset=3000 返 2527 行), 一行配置消雷。
-    fixed_params:
-      list_status: L               # 在市股 (current active master, like-for-like 替 ak.stock_info_a_code_name); 退市生存者偏差走 PIT 历史宇宙另案
+    # 2026-09-01 换源后**删去 page_limit** —— 原值 3000 是防 tushare 6000 行截断 (旧注释:
+    # 截断恰返 6000 行 > min_rows 5000 门照过 = 静默丢几百只股)。换源后该防护**由 adapter
+    # 内部承担**: FuyaoSource 按 limit/offset 500 一页翻到取空为止 + MAX_PAGES 兜底,
+    # 实测一次取全 5563 行 (3.7s)。**必须删而非保留** —— sync_runner 见 page_limit 就走
+    # offset 分页并向 adapter 传 limit/offset, 而扶摇 adapter 的 _reject_limit_offset 明确
+    # 拒绝这两个键 (其对外分页语义是 page/size 1-200), 保留会当场抛 FuyaoPaginationError。
+    # 2026-09-01 换源后**删去 fixed_params.list_status** —— 扶摇不认该参数, 在市过滤由
+    # adapter 的 asset_type=='a-share' 承担。**已知语义差异 (非等价)**: tushare list_status=L
+    # 是「在市」, 扶摇 asset_type=a-share 是「A股」含**待上市新股** —— 实测扶摇 5563 只 vs
+    # tushare 5550 只, 多出的 13 只即待上市。影响: security_master 只过滤 market!='北交所'、
+    # 不过滤上市状态, 故这 13 只会进 dim_active_a_stock; 但它们观察日无 K 线, 本就被 universe
+    # 的 traded_on_observation_date 排除, 对 serve 面无害, 待其真上市后自然归位。
     pit_anchor: "current_snapshot_only; list_date 非历史 membership interval"
     available_after: "00:00"
     data_start: "20200101"         # full_refresh 无回填语义, 占位
@@ -552,7 +581,19 @@ domains:
   # northbound(映射盲区) / 复权链(adj_factor+dividend 转正主源, tdxhub xdxr 滞后17天降备援
   # 交叉验证 — 主源序: tushare 主/tdxhub 备)。旧路径双轨核对一致后物理退役。
   top_list:
-    source: tushare
+    # 2026-09-01 授权换源 tushare -> miaoxiang (RPT_DAILYBILLBOARD_DETAILSNEW)。tushare 2026-09-10 到期不续期。
+    # 实证 (5 个交易日 20260819~20260825 逐日逐键对账, 非抽样):
+    #   top_list 键数 60/60/54/68/74, 缺 0, net_amount 对不上 0
+    #   **tushare 的每一个 grain key 都在妙想侧存在 (缺 0), 关键数值全部对得上 (对不上 0)。**
+    # 妙想每日比 tushare 多几十行, 两个已查明原因: (1) 87 个 grain key 在原始 vendor 数据里
+    #   碰撞 —— 'ε机构专用' 是匿名标签可覆盖同向多个真实机构账户, 且同一席位可因不同触发
+    #   条件同日上两个榜单 (数值相同 reason 不同); tushare 自己的表**零重复**, 说明它在
+    #   静默挑一行 (实测它挑的那行总能在妙想候选里精确匹配)。去重交给 sync_runner 既有的
+    #   drop_duplicates(grain, keep='last'), 与 fuyao 约定一致。(2) 妙想还捕获到 tushare
+    #   静默丢弃的真实榜单 (20260825 有 4 个, 逐个核实过确为当日真实二次上榜)。
+    # 已知非缺陷差异: 单边席位 vendor 返 null 而 tushare 返 0.0 (130/650 行), adapter 只对
+    #   4 个金融字段零填充; 债券本就不适用的 turnover_rate/float_values 保持 None 不假填 0。
+    source: miaoxiang
     api: top_list
     target_table: raw_tushare_top_list
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
@@ -571,7 +612,19 @@ domains:
     allow_empty_batch: false
 
   top_inst:
-    source: tushare
+    # 2026-09-01 授权换源 tushare -> miaoxiang (RPT_OPERATEDEPT_TRADE)。tushare 2026-09-10 到期不续期。
+    # 实证 (5 个交易日 20260819~20260825 逐日逐键对账, 非抽样):
+    #   top_inst 键数 526/509/508/626/690, 缺 0, net_buy 对不上 0
+    #   **tushare 的每一个 grain key 都在妙想侧存在 (缺 0), 关键数值全部对得上 (对不上 0)。**
+    # 妙想每日比 tushare 多几十行, 两个已查明原因: (1) 87 个 grain key 在原始 vendor 数据里
+    #   碰撞 —— 'ε机构专用' 是匿名标签可覆盖同向多个真实机构账户, 且同一席位可因不同触发
+    #   条件同日上两个榜单 (数值相同 reason 不同); tushare 自己的表**零重复**, 说明它在
+    #   静默挑一行 (实测它挑的那行总能在妙想候选里精确匹配)。去重交给 sync_runner 既有的
+    #   drop_duplicates(grain, keep='last'), 与 fuyao 约定一致。(2) 妙想还捕获到 tushare
+    #   静默丢弃的真实榜单 (20260825 有 4 个, 逐个核实过确为当日真实二次上榜)。
+    # 已知非缺陷差异: 单边席位 vendor 返 null 而 tushare 返 0.0 (130/650 行), adapter 只对
+    #   4 个金融字段零填充; 债券本就不适用的 turnover_rate/float_values 保持 None 不假填 0。
+    source: miaoxiang
     api: top_inst
     target_table: raw_tushare_top_inst
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
@@ -790,7 +843,19 @@ domains:
       contract_version: "1"
       coverage_start: "20190102"
       schema_hash: fd84a583a868a967980d1a5759fd8ac7b607f9847267b000ca0b0d0f900f8551
-    source: tushare
+    # 2026-09-01 授权换源 (tushare 2026-09-10 到期不续期): tushare -> tdxhub (通达信)。
+    # 实证: 全市场 5208 只 x 9 字段与 canonical 逐项**零差异** (46872/46872 全对), 代码集
+    # 双向零缺失; 除权日 pre_close 15/15 正确 (通达信返前复权口径与本项目一致); 停牌语义
+    # 与项目地基相同 (停牌日不返行, 非返 0 成交)。速度较 tushare 快 18x (10 分钟全市场)。
+    # 北交所: 通达信 stocks(market=2) 列不出 BJ 代码表, 但**按 ts_code 直取可得**; adapter
+    # **实测耗时: 单日全市场约 45-50 分钟** (5,220 沪深 + 338 BJ 串行逐只取, 沪深
+    # ~0.5s/只、BJ ~1.5s/只)。**注意别被'10 分钟'的旧说法误导** —— 那个数字出自换源
+    # 验收脚本, 但脚本里 17 it/s 的进度条是主机探测握手 (25/28 个候选主机), 不是取数进度。
+    # 日更可接受 (凌晨窗口充裕); 但**全历史回填不可行** (1,858 天 x 45 分钟 ≈ 58 天),
+    # 好在本域是 by_trade_date 增量、历史已在库, 不需要回填。
+    # 的 bj_codes_provider 默认从 raw_tushare_stock_basic 读 BJ 代码 (实测 338 只) 补进
+    # universe, 取数路径与沪深完全相同。BJ 拿不到时降级为仅沪深 + warning, 不阻断主体。
+    source: tdxhub
     api: daily
     target_db: tushare_raw
     # legacy compatibility only — not accepted publication identity

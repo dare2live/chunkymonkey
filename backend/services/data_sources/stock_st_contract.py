@@ -121,8 +121,15 @@ def stock_st_contract_for_spec(spec: Mapping[str, Any]) -> StockStContract:
         },
         "grain": list(DOMAIN.grain),
         "partition_by": DOMAIN.partition_field,
-        "source": DOMAIN.source,
-        "api": DOMAIN.api,
+        # 2026-09-01: **source / api 不参与 config_hash**。
+        # 它们是传输轴 (从哪取), 不是语义轴 (数据是什么)。本模块开篇的 formal_boundaries
+        # 契约就写着 "Transport axis only" —— 让取数地址参与语义指纹, 会把"换个供应商取
+        # 同样的 OHLCV"误判成"契约变更", 进而让 security_day_reader 的严格 hash 相等校验
+        # 拒读全部既有 accepted 分区 (实测 daily 1,858 个 + stock_st 1,128 个)。
+        # 语义变更仍被完整覆盖: schema_hash(字段/类型/单位) + grain + partition_by +
+        # population_scope + availability + 表名 + coverage_start, 任一真实语义变化都会动到
+        # 其中至少一项。registry 与 DOMAIN 的 source 一致性由 _expected_transport 独立守卫,
+        # 不依赖 hash。
     }
     contract_payload = {
         **config_payload,

@@ -2,11 +2,13 @@
 
 Transport axis only.  Business tiers must not own these seams.
 
-``LIVE_ADAPTER`` is the only adapter allowed for domains **registered in this
-inventory**.  That is not a claim that the whole repository has a single live
-provider: disclosure paths such as miaoxiang/aif10 currently write facts outside
-this inventory and are NONCONFORMING until E0 formalization — see
-``disclosure_boundaries`` for the E0 strangler inventory and write gates.
+Each domain here names its own ``adapter``; there is no single repo-wide live
+provider.  ``LIVE_ADAPTER`` is merely the *default* (tushare) that domains not
+yet migrated still point at — 2026-09-01 the tushare authorization expires on
+2026-09-10 and is not being renewed, so this default is being drained domain by
+domain (trade_cal -> calendar_rule, daily -> tdxhub).  Disclosure paths such as
+miaoxiang/aif10 write facts outside this inventory and are NONCONFORMING until
+E0 formalization — see ``disclosure_boundaries`` for the E0 strangler inventory.
 Accepted truth for formal domains is always the landing/canonical pair, never
 the adapter response.
 
@@ -38,7 +40,8 @@ class FormalDomainBoundary:
     legacy_raw_write: Literal["forbidden"] = "forbidden"
 
 
-# Sole live adapter for formal domains in this repository.
+# Default adapter for formal domains not yet migrated off tushare (授权 2026-09-10 到期
+# 不续期)。**不是**"唯一"——每个域自己声明 adapter, trade_cal 已走 calendar_rule。
 LIVE_ADAPTER = "tushare"
 
 _FORMAL_BOUNDARIES: dict[str, FormalDomainBoundary] = {
@@ -62,16 +65,21 @@ _FORMAL_BOUNDARIES: dict[str, FormalDomainBoundary] = {
         runtime_state="accepted_runtime_ready_canary_pending",
     ),
     "daily": FormalDomainBoundary(
+        # 2026-09-01 授权换源 tushare -> tdxhub (通达信)。全市场 5208 只 x 9 字段与 canonical
+        # 逐项零差异 (实测 46872/46872 全对), 且覆盖北交所 (tushare 侧 canonical 有 BJ 339 只,
+        # 通达信按 ts_code 直取可得)。写字面量不用 LIVE_ADAPTER: 后者是"尚未迁移"的默认值。
         domain="daily",
-        adapter=LIVE_ADAPTER,
+        adapter="tdxhub",
         landing_writer="services.data_sources.nominal_ohlcv_acceptance.land_nominal_ohlcv_batch",
         canonical_writer="services.data_sources.nominal_ohlcv_acceptance.accept_nominal_ohlcv_batch",
         dataset_id="tier0.market_data.nominal_ohlcv_daily",
         runtime_state="accepted_runtime_ready_canary_pending",
     ),
     "stock_st": FormalDomainBoundary(
+        # 2026-09-01 授权换源 tushare -> stock_st_derive (本地派生, 无供应商)。
+        # baostock 本是候选但 2026-08-31 被其风控拉黑, 且 ST 本就可由名称前缀派生。
         domain="stock_st",
-        adapter=LIVE_ADAPTER,
+        adapter="stock_st_derive",
         landing_writer="services.data_sources.stock_st_acceptance.land_stock_st_batch",
         canonical_writer="services.data_sources.stock_st_acceptance.accept_stock_st_batch",
         dataset_id="tier0.security_identity.stock_st_daily",

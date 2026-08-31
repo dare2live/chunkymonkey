@@ -131,7 +131,13 @@ class SecurityDayLandingBatch:
     available_at: datetime | str
     rows: Iterable[Mapping[str, Any]]
     request: Mapping[str, Any]
-    source: str = "tushare"
+    # 2026-09-01: 去掉 source 的默认值 "tushare"。本 dataclass 被 daily 与 stock_st 共用,
+    # 而两域已不同源 (daily -> tdxhub, stock_st 仍 tushare), 默认值等于假设"所有 SecurityDay
+    # 域同源" —— 该假设已不成立, 且失败方式是**静默**的: 漏传就默默拿到 tushare, 直到
+    # accept 时才以 "batch source=... current=..." 炸出来。两个生产调用点本就显式传
+    # (capture.py source=domain.source / transport.py source=batch.source), 只有测试在吃
+    # 这个默认值 —— 删掉它把静默错变成构造期的显式错。
+    source: str
     contract_version: str = "1"
 
 

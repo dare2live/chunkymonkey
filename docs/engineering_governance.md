@@ -584,3 +584,46 @@ canonical_nominal_ohlcv_daily / accepted_partition     ← 实际真相面
 
 配套的机器执法已落地：`completeness_ref.verified_since`（缺则违规）、
 `audit_min_rows_baseline.py`（基准健康性）、`_result(audited=)`（输出指向）。
+
+### 15.5 判据可能**问错了问题**（2026-09-01 换源实证）
+
+前面几类讲的是「判据的基准是假的」「判据没真的查」。这一类不同：判据在认真工作、
+基准也是真的，但它**问的不是你以为它在问的那个问题**。
+
+**实证**：`daily` 域授权换源（tushare → 通达信）时，`security_day_reader` 拒读全部
+既有分区，报 `accepted_partition_contract_drift`。追下去发现 `config_hash` 的
+payload 里含 `source` 与 `api`——于是「换个供应商取同样的 OHLCV」被算成了「契约变更」。
+
+这个判据本意是问「**数据语义变了吗**」（字段/单位/粒度/总体变了，旧数据就不能用新契约解释）。
+但因为 `source` 参与了指纹，它实际问的是「**取数地址变了吗**」。两个问题平时高度重合
+——同一个源持续供数时，地址不变语义也不变——所以它多年没暴露。**换源那天，重合消失，
+判据当场给出与它意图相反的答案**：数据一字未变，却被判为不可读；影响面实测
+`daily` 1,858 个分区 + `stock_st` 1,128 个。
+
+更讽刺的是同一份代码里就写着答案：`formal_boundaries.py` 开篇是
+「**Transport axis only.** Business tiers must not own these seams.」
+传输轴与语义轴的分离**已经是明文架构原则**，只是 hash 计算没有遵守它。
+
+**修法**：`source`/`api` 移出 `config_payload`；语义仍被 `schema_hash`（字段/类型/单位）
+\+ `grain` + `partition_by` + `population_scope` + `availability` + 表名 + `coverage_start`
+完整覆盖——任何真实语义变化都会动到其中至少一项。registry 与 DOMAIN 的 source 一致性
+另由 `_expected_transport` 独立守卫，不依赖 hash。既有 2,986 个分区一次性重打戳
+（只改元数据一字段、不动数据行、有备份可回滚）。
+
+**可复用的自检**（设计或修改任何指纹/校验和/相等断言时逐条答）：
+1. 这个判据**想**回答什么问题？用一句话写下来。
+2. 它**实际**比较的每一个字段，都属于那个问题吗？逐字段问「这一项变了，
+   我想防的那件坏事就真的发生了吗？」——答不出「是」的字段就不该在里面。
+3. 有没有**两个问题平时重合**的情况？（同源供数时"地址"与"语义"同步不变）
+   重合会让错误的判据长期显得正确，**直到第一次不重合**——那通常正是最需要它准确的时刻。
+4. 仓库里有没有**已经写明的分层原则**（如 transport vs semantic），而这个判据违反了它？
+   代码注释里的架构声明与实际实现不一致时，**不一致本身就是缺陷**，不是文档过时。
+
+同一天的第二个同类实证（判据挂错真相源）：`test_formal_boundaries` 曾断言
+「仍指向 tushare 的 formal 域必须是 `retired_readonly`」。`margin` 标签正是
+`retired_readonly`，断言因此通过——但实测它**仍在活跃调 tushare**
+（`canonical_margin_exchange_daily.built_at` 三天前还在更新，`margin_acceptance.py`
+硬编码 `source="tushare"`，走 2026-07-23 解冻的 on_demand 追赶）。
+`runtime_state` 是**会过期的文档标签**，拿它当事实等于用未经验证的东西做判据。
+改断言为「必须在日落台账 `tushare_sunset.yaml` 里有裁决」——台账是人写的裁决记录，
+不会因为某条通道被悄悄解冻而失真。**改判据后第一次跑就抓出了 `margin` 这个真缺口。**
