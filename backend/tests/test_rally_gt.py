@@ -123,9 +123,15 @@ def _mk_env(kline_rows, calendar_dates, symbols, st_rows=(), member_rows=(),
         [(s, s, "SH") for s in symbols],
     )
     raw = duck_mem()
-    raw.execute("CREATE TABLE raw_tushare_stock_st (ts_code VARCHAR, trade_date VARCHAR)")
+    # PIT ST 真相源 = canonical_stock_st_daily (trade_date 是 DATE 类型; 旧 raw_tushare_stock_st
+    # 已冻结退役, 见 services.universe.load_st_calendar)。st_rows 仍传 (ts_code, 'YYYYMMDD') 紧凑
+    # 字符串, 这里转成 DATE 落库以贴合生产 schema。
+    raw.execute("CREATE TABLE canonical_stock_st_daily (ts_code VARCHAR, trade_date DATE)")
     if st_rows:
-        raw.executemany("INSERT INTO raw_tushare_stock_st VALUES (?,?)", st_rows)
+        raw.executemany(
+            "INSERT INTO canonical_stock_st_daily VALUES (?, strptime(?, '%Y%m%d')::DATE)",
+            st_rows,
+        )
     raw.execute("CREATE TABLE raw_tushare_index_member_all (l1_code VARCHAR, l1_name VARCHAR, "
                 "l2_code VARCHAR, l2_name VARCHAR, ts_code VARCHAR, in_date VARCHAR, out_date INTEGER)")
     if member_rows:

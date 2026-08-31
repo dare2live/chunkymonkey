@@ -740,15 +740,19 @@ def assert_project_exchange_ids_allowed(
 def load_st_calendar(raw_conn) -> dict[str, set[str]]:
     """PIT ST 日历: {code(6位): set(YYYYMMDD)} — 某股某日是否被 ST 标记的真相源.
 
-    源: raw_tushare_stock_st (data_source.st_calendar)。用于历史 t 的 PIT ST 判定
-    (旧 dim_active_a_stock 只有当前名字, 非 PIT)。单一计算点: GT/回测共用本函数,
+    源: canonical_stock_st_daily (data_source.st_calendar)。旧源 raw_tushare_stock_st
+    已冻结 (20260716 起无更新), calendar_identity_recon.py 已把它列入
+    BANNED_ST_BASELINE, ACCEPTED_ST_TABLE 声明的是 canonical_stock_st_daily —— 本函数
+    跟上 recon 层已经做出的裁决。用于历史 t 的 PIT ST 判定 (旧 dim_active_a_stock 只有
+    当前名字, 非 PIT); PIT 判据仍用 trade_date (非 available_at) —— 是否切换到更严格的
+    available_at 是另一个未做的决策, 不在本次改动范围内。单一计算点: GT/回测共用本函数,
     不各自内联 ST 查询。
     """
-    if not _table_exists(raw_conn, "raw_tushare_stock_st"):
-        raise UniverseDataError("raw_tushare_stock_st (PIT ST 真相源) 不存在")
+    if not _table_exists(raw_conn, "canonical_stock_st_daily"):
+        raise UniverseDataError("canonical_stock_st_daily (PIT ST 真相源) 不存在")
     rows = raw_conn.execute(
-        "SELECT DISTINCT SUBSTR(ts_code,1,6) AS code, REPLACE(trade_date,'-','') AS d "
-        "FROM raw_tushare_stock_st"
+        "SELECT DISTINCT SUBSTR(ts_code,1,6) AS code, strftime(trade_date, '%Y%m%d') AS d "
+        "FROM canonical_stock_st_daily"
     ).fetchall()
     cal: dict[str, set[str]] = {}
     for code, d in rows:
