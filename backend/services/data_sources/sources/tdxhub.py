@@ -25,10 +25,12 @@ import os
 import socket
 import tempfile
 import time
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 
 from services.data_sources.sibling_repos import ensure_import_path
+from services.data_sources.tdxhub_kline_recon import fetch_unadjusted_bars
 
 HQ_HOSTS_PROVENANCE = (
     "Frozen snapshot of official TDX client/broker HQ names "
@@ -455,8 +457,284 @@ def block(client: Any, **kwargs: Any) -> dict[str, Any]:
     return fetch_block(client, **kwargs)
 
 
+# ---------------------------------------------------------------------------
+# TdxhubSource — sync_runner adapter for the ``daily`` domain (2026-08-31
+# 授权换源 tushare -> tdxhub). Appended below the pre-existing module-level
+# helpers above; none of those functions were touched.
+# ---------------------------------------------------------------------------
+
+# 无官方建议值; 仅作构造函数默认值 (跟 baostock.py DEFAULT_TIMEOUT_SECONDS 同风格),
+# 真正接入 sync_registry 的域注册环节可显式传参覆盖。
+TDXHUB_DAILY_MIN_SUCCESS_RATE_DEFAULT = 0.9
+# 自然日回看窗口, 用来在批量按 code 拉 K 线时顺带带出前一交易日 close。20 天覆盖
+# A 股最长的春节/国庆连续休市 (含相邻周末) 仍有余量; 不是"猜前一交易日"的日历算术 ——
+# 真正的"前一交易日"是从窗口返回的实际 bars 里按 trade_date < target 取最后一条
+# (见 _fetch_one_row), 这个常量只决定窗口开多大, 不参与任何交易日判断。
+TDXHUB_DAILY_PREV_CLOSE_LOOKBACK_DAYS_DEFAULT = 20
+
+
+class TdxhubDailyBatchError(RuntimeError):
+    """单日全市场成功率低于阈值 —— 拒绝静默半批入库, 见 ``TdxhubSource.fetch_raw``。"""
+
+
+class TdxhubSource:
+    """sync_runner 调用约定: ``fetch_raw(api, **params) -> list[dict]``。
+
+    2026-08-31 ``daily``(日K) 域授权换源 tushare -> tdxhub 的落地 adapter, 与
+    ``sources/fuyao.py`` 的 ``FuyaoSource``、``sources/baostock.py`` 的
+    ``BaostockSource`` 同型。本类要封死的四个坑, 全部已实测 (见任务背景, 非道听途说):
+
+    1. **按票循环, 不是按日期一把拉全市场**: 通达信协议 ``get_security_bars``
+       (经 ``tdxhub_kline_recon.fetch_unadjusted_bars`` 包装) 是"给一个 code 要
+       最近/某窗口的 K 线", 没有"给一个日期要全市场"的接口 —— 跟 tushare
+       ``daily(trade_date=...)`` 语义相反。本类对每个交易日先建全市场代码清单
+       (``client.stocks(0)``/``client.stocks(1)``), 再逐票调
+       ``fetch_unadjusted_bars`` 取一个含前一根的小窗口。单只票约 59ms, 5220 只
+       约 5.1 分钟 (已实测)。
+
+    2. **通达信列不出北交所代码表**: ``client.stocks(2)`` 报错「市场代码错误,
+       目前只支持沪深市场」—— 这是协议本身的限制, 不是本类的 bug。
+       ``STOCKS_MARKET_BY_EXCHANGE`` 目前只含 SZ(0)/SH(1); 未来要加北交所 (代码段
+       ``92``) 得另找代码来源 (如现有 tushare/扶摇代码表), 不能指望
+       ``client.stocks(2)``。**代码段前缀不写死在函数体里** —— 见类常量
+       ``DEFAULT_BOARD_PREFIXES``, 或构造 ``TdxhubSource(board_prefixes=...)``
+       时整体覆盖 (含未来加北交所)。
+
+    3. **amount 单位换算**: ``fetch_unadjusted_bars`` 给的 amount 单位是元,
+       tushare ``daily.amount`` 单位是千元 —— 落库前必须 ``/1000``, 不做会让
+       下游按 tushare 语义读出的成交额虚高 1000 倍。vol (手) 两边同单位, 原样使用
+       不换算。
+
+    4. **pre_close 必须按当日除权事件调整, 不能直接拿前一交易日 close 当 pre_close**:
+       下游 ``institution_follow_paper.py`` 拿 pre_close 判涨停开盘, 算错是真金
+       白银的错。标准除权公式 (``_adjusted_pre_close``)::
+
+           pre_close = (prev_close - fenhong/10 + peigu/10*peigujia)
+                       / (1 + songzhuangu/10 + peigu/10)
+
+       无除权事件时 pre_close = prev_close (round 到 2 位, 对齐 tushare)。事件来自
+       ``client.xdxr(code)`` (``category==1`` 且 ``name=='除权除息'`` 的记录), 按
+       (year, month, day) 精确匹配目标交易日。``client.xdxr`` 一次返回该票**全部**
+       历史除权记录 (不是按日期查单条), 日更要连续处理 5000+ 只票, 所以本类对
+       同一 code 只查一次并做进程内缓存 (``_xdxr_cache``, 见 ``_xdxr_events``) ——
+       同一 ``TdxhubSource`` 实例存活期间不会对同一 code 重复打 ``client.xdxr``。
+
+    取不到前一根 K 线时 (新股上市首日, 或窗口 ``prev_close_lookback_days`` 天内
+    确实没有更早的成交日) pre_close 退化为当日 open, 不崩、不置 None、其余字段
+    正常返回。
+
+    单只票取数异常, 或该票当日在返回窗口里没有目标日那一根 (停牌/未上市/已退市等),
+    一律记录并跳过, 不让整批失败; 但成功票数 / 尝试票数低于 ``min_success_rate``
+    (默认 0.9) 时整批 raise ``TdxhubDailyBatchError``, 避免"静默半批入库"落进
+    ``raw_tushare_daily``。
+
+    客户端复用: ``quotes_client()`` (握手已优化, 冷启动 0.35s, 主机记忆跨进程落盘)
+    在实例内惰性建立一次, 同一实例后续调用复用同一连接, 不逐票重连; 测试可传
+    ``client_factory`` 注入假客户端, 完全不碰网络。
+    """
+
+    name = ALIAS
+
+    # 通达信 client.stocks(market) 的 market 参数取值 (已实测: 0=深市/SZ,
+    # 1=沪市/SH; 2 报错「市场代码错误, 目前只支持沪深市场」, 故此表不含北交所)。
+    STOCKS_MARKET_BY_EXCHANGE: dict[str, int] = {"SZ": 0, "SH": 1}
+
+    # 代码段前缀白名单 (已实测与扶摇代码表交叉验证一致: 深市 00/30=2901 只,
+    # 沪市 60/68=2319 只, 合计 5220 只)。类常量而非函数体内硬编码 —— 加北交所
+    # (前缀 92) 时构造 ``TdxhubSource(board_prefixes={...})`` 整表覆盖即可,
+    # 不用改这个类或 fetch_raw 的任何一行。
+    DEFAULT_BOARD_PREFIXES: dict[str, tuple[str, ...]] = {
+        "SZ": ("00", "30"),
+        "SH": ("60", "68"),
+    }
+
+    SUPPORTED_APIS = frozenset({"daily"})
+
+    def __init__(
+        self,
+        *,
+        client_factory: Any | None = None,
+        board_prefixes: dict[str, tuple[str, ...]] | None = None,
+        min_success_rate: float = TDXHUB_DAILY_MIN_SUCCESS_RATE_DEFAULT,
+        prev_close_lookback_days: int = TDXHUB_DAILY_PREV_CLOSE_LOOKBACK_DAYS_DEFAULT,
+    ) -> None:
+        self._client_factory = client_factory  # 测试注入假客户端; 生产环境用 quotes_client
+        self._client: Any = None
+        self._board_prefixes: dict[str, tuple[str, ...]] = {
+            exchange: tuple(prefixes)
+            for exchange, prefixes in (board_prefixes or self.DEFAULT_BOARD_PREFIXES).items()
+        }
+        self._min_success_rate = float(min_success_rate)
+        self._prev_close_lookback_days = int(prev_close_lookback_days)
+        self._xdxr_cache: dict[str, list[dict[str, Any]]] = {}
+
+    def _get_client(self) -> Any:
+        """惰性建立一次, 实例存活期间复用 (坑 1 附近说明: 不逐票重连)。"""
+        if self._client is None:
+            self._client = (
+                self._client_factory() if self._client_factory is not None else quotes_client()
+            )
+        return self._client
+
+    def _universe(self, client: Any) -> list[str]:
+        """按 ``STOCKS_MARKET_BY_EXCHANGE``/``DEFAULT_BOARD_PREFIXES`` 过滤出全市场
+        ``ts_code`` 清单 (北交所目前不在内, 见坑 2)。"""
+        codes: list[str] = []
+        for exchange, market_id in self.STOCKS_MARKET_BY_EXCHANGE.items():
+            prefixes = self._board_prefixes.get(exchange) or ()
+            if not prefixes:
+                continue
+            for item in client.stocks(market_id) or []:
+                code = str((item or {}).get("code") or "").strip()
+                if code and code.startswith(prefixes):
+                    codes.append(f"{code}.{exchange}")
+        return sorted(set(codes))
+
+    def _xdxr_events(self, client: Any, code: str) -> list[dict[str, Any]]:
+        """同一 code 只调一次 ``client.xdxr``, 进程内缓存 (坑 4)。查询失败按
+        "该票无可用除权信息"降级 (不阻塞这一票, pre_close 退化为不调整), 不重试。"""
+        if code in self._xdxr_cache:
+            return self._xdxr_cache[code]
+        try:
+            events = client.xdxr(code) or []
+        except Exception:  # rule-compliance: ok evidence=tdxhub-xdxr-best-effort-cache
+            events = []
+        self._xdxr_cache[code] = list(events)
+        return self._xdxr_cache[code]
+
+    def _matching_xdxr_event(
+        self, client: Any, code: str, target: date
+    ) -> dict[str, Any] | None:
+        for event in self._xdxr_events(client, code):
+            try:
+                y = int(event.get("year"))
+                m = int(event.get("month"))
+                d = int(event.get("day"))
+            except (TypeError, ValueError):
+                continue
+            if (y, m, d) != (target.year, target.month, target.day):
+                continue
+            if int(event.get("category") or 0) != 1:
+                continue
+            if str(event.get("name") or "") != "除权除息":
+                continue
+            return event
+        return None
+
+    def _adjusted_pre_close(
+        self, client: Any, ts_code: str, target: date, prev_close: float
+    ) -> float:
+        """坑 4 的算式本体。无匹配除权事件时原样返回 prev_close (round 到 2 位)。"""
+        code = ts_code.split(".", 1)[0]
+        event = self._matching_xdxr_event(client, code, target)
+        if event is None:
+            return round(float(prev_close), 2)
+        fenhong = float(event.get("fenhong") or 0)
+        songzhuangu = float(event.get("songzhuangu") or 0)
+        peigu = float(event.get("peigu") or 0)
+        peigujia = float(event.get("peigujia") or 0)
+        denominator = 1.0 + songzhuangu / 10.0 + peigu / 10.0
+        if denominator <= 0:
+            return round(float(prev_close), 2)
+        numerator = float(prev_close) - fenhong / 10.0 + peigu / 10.0 * peigujia
+        return round(numerator / denominator, 2)
+
+    def _fetch_one_row(
+        self, client: Any, ts_code: str, target: date
+    ) -> dict[str, Any] | None:
+        """一只票一天的行。窗口取不到目标日那一根时返回 ``None`` (调用方计入失败)。"""
+        window_start = target - timedelta(days=self._prev_close_lookback_days)
+        bars = fetch_unadjusted_bars(client, ts_code, start=window_start, end=target)
+        if not bars:
+            return None
+        # bars 已由 fetch_unadjusted_bars/dedup_kline_rows 按 (ts_code, trade_date)
+        # 升序去重排好 (见 tdxhub_kline_recon.dedup_kline_rows) —— 不猜前一交易日,
+        # 直接扫描实际返回的 bars 找 trade_date < target 里最后 (最近) 的一条 close。
+        prev_close_raw: float | None = None
+        today_bar: tuple | None = None
+        for bar in bars:
+            bar_date = bar[1]
+            if bar_date < target:
+                prev_close_raw = float(bar[5])
+            elif bar_date == target:
+                today_bar = bar
+                break
+            else:
+                break
+        if today_bar is None:
+            return None
+        open_ = float(today_bar[2])
+        high = float(today_bar[3])
+        low = float(today_bar[4])
+        close = float(today_bar[5])
+        vol = float(today_bar[6])
+        amount = float(today_bar[7]) / 1000.0  # 坑 3: 元 -> 千元
+        if prev_close_raw is None:
+            # 新股上市首日 (或窗口内确实没有更早成交日): 退化为当日 open, 不崩。
+            pre_close = round(open_, 2)
+        else:
+            pre_close = self._adjusted_pre_close(client, ts_code, target, prev_close_raw)
+        change = round(close - pre_close, 4)
+        pct_chg = None if pre_close <= 0 else round(change / pre_close * 100, 4)
+        return {
+            "ts_code": ts_code,
+            "trade_date": target.strftime("%Y%m%d"),
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+            "pre_close": pre_close,
+            "change": change,
+            "pct_chg": pct_chg,
+            "vol": vol,
+            "amount": amount,
+        }
+
+    def fetch_raw(self, api: str, **params: Any) -> list[dict[str, Any]]:
+        """``api == "daily"``: ``params["trade_date"]`` (紧凑 8 位) 当日全市场沪深
+        A 股日K, 返回恰好 11 key 的 ``dict`` 列表 (不含 ``built_at`` —— sync_runner
+        的 ``_prepare_batch_df`` 会自己加, 见该函数 docstring)。"""
+        name = str(api or "").strip()
+        if name not in self.SUPPORTED_APIS:
+            raise KeyError(
+                f"tdxhub: unknown api {api!r} (known: {sorted(self.SUPPORTED_APIS)})"
+            )
+        trade_date_text = str(params.get("trade_date") or "").strip()
+        if len(trade_date_text) != 8 or not trade_date_text.isdigit():
+            raise ValueError(
+                "tdxhub daily requires a compact YYYYMMDD trade_date, got "
+                f"{params.get('trade_date')!r}"
+            )
+        target = date(
+            int(trade_date_text[0:4]), int(trade_date_text[4:6]), int(trade_date_text[6:8])
+        )
+        client = self._get_client()
+        codes = self._universe(client)
+        rows: list[dict[str, Any]] = []
+        attempted = 0
+        for ts_code in codes:
+            attempted += 1
+            try:
+                row = self._fetch_one_row(client, ts_code, target)
+            except Exception:  # noqa: BLE001 — 单票失败不许拖垮整批, 见类 docstring
+                row = None
+            if row is not None:
+                rows.append(row)
+        if attempted > 0:
+            success_rate = len(rows) / attempted
+            if success_rate < self._min_success_rate:
+                raise TdxhubDailyBatchError(
+                    f"tdxhub daily {trade_date_text}: success rate {success_rate:.3f} "
+                    f"({len(rows)}/{attempted}) below threshold "
+                    f"{self._min_success_rate} — refusing silent half-batch"
+                )
+        return rows
+
+
 __all__ = [
     "ALIAS",
+    "TdxhubDailyBatchError",
+    "TdxhubSource",
     "block",
     "capital_flow",
     "forget_good_host",
