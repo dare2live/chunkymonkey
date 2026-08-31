@@ -25,26 +25,16 @@
 - accepted daily / ST 起点 **`20190102`** / **`20220104`** 是契约常量；**当前 frontier 是运行时状态，
   现查 `chunkyctl status`，禁止在本文件写死**（2026-08-10 两份手写文档互相矛盾且同时落后两周）
 - Phase F ladder measured **reject** / `claimable=false`（可 checkpoint；**≠** Release）
-- Delivery-OS：eng_gov §15（一刀 = Rule10 + safe_commit；异步 CI；L3 pre-knife；不放宽 PIT / ≤40d）
+- Delivery-OS：eng_gov §14（一刀 = Rule10 + safe_commit；异步 CI；L3 pre-knife；不放宽 PIT / ≤40d）
 - A→H = 后置研究地图；**E/F remeasure scheduled**（`RX_AUTH=RX-20260824-EF` 与 `backend/config/strategy_lab.yaml` `authorizations.formal_rx` 对锁）。**S5 Optuna 已排期** `PHASE_N_AUTH=OP-20260824-S5`（执行前提 = S1/S2 同 protocol ExperimentVerdict；yaml 第二钥未开、runner 未实现）。StrategyRelease 仍禁；F9 按字面锁 `RX_AUTH=` + `Optuna` + `StrategyRelease`
-- **对账 ≠ 切换**：八刀 recon 是只读诊断器 —— `primary_cut` 在 **4 个 recon 服务 + 5 个 recon CLI 共 18 处硬编码 False**（2026-08-28 实测；`assignment_gap_recon` 独占 8）。**`claimable` 不是 recon 装置的一部分** —— 它是策略侧另一套语义、另有 30 个文件在用（`institution_follow_*` / `main_rally_*` / `formula_challenge` / `strategy_lab`），换源不要动它，其中 4 项子结论 `identity=true`（妙想龙虎榜 / 席位 / 大宗、扶摇沪深 codeset）仍为 False；扶摇与通达信日 K `ohlc_mismatch=0` 仍写 `kline_daily_primary_untouched=true`。**扩样本不会让它变 true**，切换装置须另建（见「下一步」K1）
+- **对账 ≠ 切换**：八刀 recon 是只读诊断器 —— `primary_cut` 在 **11 个文件共 21 处硬编码 False**（2026-08-31 正则精确统计；`assignment_gap_recon` 独占 7，`moneyflow_recon` 4，`cyq_recon` 2，其余 8 文件各 1）。**`claimable` 不是 recon 装置的一部分** —— 它是策略侧另一套语义、另有 30 个文件在用（`institution_follow_*` / `main_rally_*` / `formula_challenge` / `strategy_lab`），换源不要动它，其中 4 项子结论 `identity=true`（妙想龙虎榜 / 席位 / 大宗、扶摇沪深 codeset）仍为 False；扶摇与通达信日 K `ohlc_mismatch=0` 仍写 `kline_daily_primary_untouched=true`。**扩样本不会让它变 true**，切换装置须另建（见「下一步」K1）
 - **消费面去供应商化**：`data_access.yaml` entity **禁直指 `raw_*`**（现存直指项列白名单，只减不增），改经 `v_<domain>_<grain>` 视图解析，跨源字段名差异在视图 `AS` 里吸收（先例 = `v_sw_industry_pit`）。**先有视图接缝，再谈 `capability` / `primary`**
 - **扶摇凭证**落 `~/Library/Application Support/hithink-finance/credentials.env`（0600，不进仓库；`resolve_api_key()` 三处来源之一）。实测能力边界（2026-08-28 逐端点二分实测，非推断）：**涨停池 `20200623` 起** —— 早于 TuShare `limit_list_d`（2023-01）与 `limit_cpt_list`（2024-01）两年半，**这是扶摇唯一的历史深度增量**；**跌停池 / 炸板池只有 `20250813` 起**（三池窗口各不相同；此前把涨停池窗口推广到三池、写成「三池 2020-07」是错的）；**竞价强弱基准 `20230919` 起**（此前写「2022 起」错误，其窗口极宽但 2023-09-19 前全为 0 行）；热股榜**仅 1 年**；异动分析**仅当日**；**三端点表达「窗口外」的方式不一致** —— 涨停池与竞价返回 0 行，跌停 / 炸板抛 `code=1002 Invalid parameter format`（不是参数错，同格式在窗口内正常返回），**按统一规则判边界必判错**；`meta/tickers/list` 与 `prices/snapshot` **无 ST 字段**。ST 历史 PIT 身份三源皆无 —— `stock_st` 留 TuShare 的理由是「只有它有历史」，不是「识别不了」。
 - **扶摇日 K**（`/api/a-share/prices/historical`，2026-08-30 实测）：参数 `{thscode, interval:'1d', start, end, adjust}`，`start`/`end` 是**毫秒时间戳**（`shanghai_midnight_ms()`；`date_ms` 也是上海午夜，用 UTC 解会偏一天）。三条硬约束必须写死在 adapter、不留给调用方：**① `adjust` 缺省是 `forward`（前复权）**，必须显式传 `none` 才是不复权 —— 不传不报错、价格量级看着合理，是最隐蔽的坑（分红事件精确验证：600000.SH 差值 3.311 = 期间 8 笔现金分红之和）；**② 入库必须过 `low ≤ turnover/volume ≤ high` 自洽校验** —— 实测 5 只深市票在 `2025-11-27`/`2025-12-01` 两天越界（反推均价差 10~1000 倍，而同日 OHLC 与 TuShare 一致，且 TuShare 侧自洽、全市场 0 只偏离），**这是扶摇自身的量纲 bug，静默入库即成交量错 10~1000 倍**；**③ 单次跨度上限 3653 天**（超出报 `code=1003 must span at most 10 years`），全历史须分段。单位 `volume = tushare.vol × 100`（股 vs 手）、`turnover = amount × 1000`（元 vs 千元）。`adjust=none` 下 OHLC 与 TuShare **25,226 对 bit-identical**；代码表是 TuShare universe 的**严格超集**（5563 vs 5550，多出 13 只为待上市新股），含**北交所 343 只（全 `920xxx.BJ`）**
 
-- **交易日历已换源 baostock（`81505a995`，换源 strangler 的第一个真 cutover）**：
-  accepted generation `trade_cal:SSE:19901219_20261231:20260830T112700Z` 13,162 行已发布，
-  `chunkyctl status` 可见；与切换前的 tushare generation 逐行比对 `is_open` / `pretrade_date`
-  **差异 0**（`pretrade_date` 是 baostock 根本没有的字段，由两列原始数据 `LAG(...) IGNORE NULLS`
-  独立推导）。`calendar_contract` 的 `source`/`api`/`method` 已改 baostock，**`target_db` /
-  `target_table` 故意不动** —— 表名带 tushare 是历史遗留，换 adapter 不改表。
-  **核实时发现的结构（非切换引入，勿误判为回归）**：日历有两条路 —— accepted truth
-  （`landing_tushare_trade_cal` → `canonical_sse_trading_calendar_generation`，`universe_rules.yaml`
-  明写「正式日期真相 = accepted SSE calendar generation」）**已切**；serve projection
-  （`raw_tushare_trade_cal` → `calendar_builder` → `dim_trading_calendar`，`calendar.py` 自注
-  "Serve projection only"）**仍是 `built_at 2026-07-16` 的旧数据且无人再写**。它覆盖到 `20261231`
-  所以近期不炸，`check_continuity_integrity` 的 `calendar_today_consistency` 也在盯 today 记录，
-  但「truth 已切、projection 冻结」这个分叉属 **K1 视图层**范畴，切 daily 前要一并收口。
+- **交易日历已换源 baostock（`81805a995`；换源 strangler 首个真 cutover，过程查 `chunkyctl history`）**：
+  accepted truth 已切且逐行零差异；**但 serve projection（`raw_tushare_trade_cal` → `dim_trading_calendar`）
+  仍冻结在 `built_at 2026-07-16` 且无人再写** —— 「truth 已切 / projection 冻结」属 K1 范畴，切 daily 前须一并收口。
 - **日 K 三源裁决（2026-08-30 逐源实测，业主 08-31 拍板；勿回滚）**：**通达信 = 日 K 主源**，
   扶摇 = 备源并接三池 / 竞价，baostock = 日历源 + 第三备援。判据是实测出来的三项全满足：
   通达信**有全历史 + 有北交所 + 与 TuShare 逐位一致 + 免费无授权**（`920000.BJ` `2026-08-28`
@@ -53,19 +43,12 @@
   服务不是券商，此前把它的缺失当成「三源共同的硬门槛」是错的，**三家券商源实测全部有北交所**
   （扶摇 343 只 / 妙想 `.BJ` 后缀 / 通达信 market 2）。通达信的代价 = 依赖公网主机可用性
   （协议免费但主机表会变，失败已能自动驱逐重学）。
-- **妙想能力边界（2026-08-30 实测）**：**没有日 K —— 这是产品边界不是数据缺口**
-  （`datacenter.eastmoney.com/securities` 是 F10 基本面库，行情在 `quote` 域；72 个已注册
-  reportName 无行情模块），不要再在这条线上找。能接：财务三表（带真实 `NOTICE_DATE`，PIT 安全）/
-  两融（`2010-03-31` 起，早于 TuShare 的 `2019-01-02`）/ 十大股东 / 龙虎榜（**无独立
-  `NOTICE_DATE`，PIT 锚只能用 `TRADE_DATE`，不可套用财务那套**）/ 大宗 / 陆股通，且**全部原生支持
-  `.BJ`**。接不了：涨跌停池 / 竞价 / 资金流 / 停复牌。**关键澄清**：`dc_index` / `moneyflow_ind_dc` /
-  `moneyflow_mkt_dc` 名字带「dc」像东财直连，实为 **TuShare 代理的东财接口**（`source: tushare`
-  实测），**TuShare 到期一样断**，不得当成「东财资金流已有着落」的证据。
-- **通达信握手代价已根治（`c8e428769`）**：`_LAST_GOOD_HOST` 从进程内 dict 改为跨进程 JSON 落盘，
-  实测冷启动 42.9s → 后续进程 **0.35s**。此前记的「169x 加速」只在**同进程内二次调用**成立 ——
-  日更是独立进程，等于每天白付 43s。**不硬编码任何主机 IP**，好主机靠运行时学习、握手失败即驱逐。
-  连带教训：持久化让测试污染从进程内升级为**跨进程存活**（`test_tdxhub_kline_recon` 首跑绿、
-  次跑必红），已在 `conftest.py` 加 autouse fixture 隔离。
+- **妙想能力边界（2026-08-30 实测）**：**没有日 K —— 产品边界不是数据缺口**（F10 基本面库，行情在东财另一条产品线），
+  不要再在这条线上找。能接：财务三表（带 `NOTICE_DATE`，PIT 安全）/ 两融（`2010-03-31` 起）/ 十大股东 /
+  龙虎榜（**无独立 `NOTICE_DATE`，PIT 锚只能用 `TRADE_DATE`**）/ 大宗 / 陆股通，且全部原生支持 `.BJ`。
+  **关键澄清**：`dc_index` / `moneyflow_ind_dc` / `moneyflow_mkt_dc` 名字带「dc」像东财直连，实为 **TuShare 代理的东财接口**，到期一样断。
+- **通达信握手代价已根治（`c8e428769`）**：主机记忆从进程内 dict 改为跨进程落盘，冷启动 42.9s → 0.35s；
+  不硬编码主机、握手失败即驱逐。连带教训：**持久化会让测试污染从进程内升级为跨进程存活**（已用 conftest autouse fixture 隔离）。
 
 启动：`scripts/chunkyctl agent-boot`；运行时状态：`scripts/chunkyctl status`（现查，零文件）。
 
@@ -101,7 +84,7 @@ owner contract，进度段在此。**不再有第二个说「下一步」的地�
 - 参考 easy_tdx（学习不抄 OS）：标准 HQ 与 MAC 协议主机隔离、握手/非空载荷后才 failover、复权必须显式 `--adjust`；不抄缠论/回测 UI，qfq 仍禁成交 SSOT
 
 *三源换源 — 执行段*（**刀 1–8 = 只读诊断已收口，不再加刀**；判据见 objective 自证式非 identity。并发按**文件重叠**判非逻辑依赖 —— `AGENTS.md` 法条 = parallel agents only when moth proves non-overlap。实测两处硬冲突：**K2 与 K6 同改 `sources/tdxhub.py`**、**K3 与 K5 同改 `sync_registry.yaml`**（K3 删域 / K5 加扶摇域）。故按 wave 走、每 wave 两 agent：**W1 = K1 + K4**（K1 先决，其余刀的接缝靠它）· **W2 = K2 + K3** · **W3 = K5 + K6**。**并发只到编辑与本地验证为止，提交必须串行** —— `safe_commit` 重生 `data/lineage/graph.json`（全仓唯一文件）并跑 `staged_worktree_parity`，同时 commit 必撞；要真并行提交先各自 `git worktree` 隔离再串行合入）
-- **K1** 消费面视图层（**先决项**）：`data_access.yaml` 里直指 `raw_tushare_*` 的 entity 逐个改指 `v_<domain>_<grain>`，视图内吸收字段名差异；**禁新建门 —— 两道已存在，扩它们**：`check_legacy_raw_plane.py`（检查 2/4/8 已对 data_access entity 的 `raw_*` 分类并管 publication_surface 重定向）+ `check_serve_read_layer.py`（D1 消费者旁路 / D3 lineage 完整 / D5 router 禁内联 raw），把「分类」升到「硬禁新增」即可；现存直指项 **17 个**（`table: raw_*`，2026-08-28 实测）列白名单只减不增。做完之后换源才等于改一处 SELECT
+- **K1** 消费面视图层（**先决项**）：`data_access.yaml` 里直指 `raw_tushare_*` 的 entity 逐个改指 `v_<domain>_<grain>`，视图内吸收字段名差异；**禁新建门 —— 两道已存在，扩它们**：`check_legacy_raw_plane.py`（检查 2/4/8 已对 data_access entity 的 `raw_*` 分类并管 publication_surface 重定向）+ `check_serve_read_layer.py`（D1 消费者旁路 / D3 lineage 完整 / D5 router 禁内联 raw），把「分类」升到「硬禁新增」即可；**该项已完成**：`data_access.yaml` 28 个 entity 中直指 `raw_*` 的为 **0**，`legacy_raw_plane.yaml` 的 allowlist 已清空（2026-08-31 实测）。做完之后换源才等于改一处 SELECT
 - **K2** 资金流两条腿并行（三源均无 TuShare 日终主力净流入的等价物）：tdxhub 补 MAC 协议客户端 + `capital_flow` 命令（与标准 HQ 主机隔离、握手 + 非空载荷后才 failover、不跑 `bestip`）· 同时查东财 datacenter 资金流 reportName。两边都拿到就并列进分层字典，不择一
 - **K3** 退役 6 个零消费域：`daily_info` / `dc_daily` / `hm_detail` / `hm_list` / `kpl_list` / `ths_hot` —— 全仓只被采集器、`backend/services/foundation_obs_serve.py`、recon 脚本触及，无业务读取方。`kpl_list` 由扶摇涨停池升级替代。**游资概念留路线图**，重建在妙想席位（`RPT_OPERATEDEPT_TRADE` + 龙虎榜席位，后者 identity 已验），不保留 `hm_*`（`hm_list` 起点太晚、`hm_detail` 无读取方）。**两条执行前提（2026-08-28 实测）**：① `dc_daily` 禁子串匹配 —— 同前缀的 `dc_index` / `moneyflow_ind_dc` / `moneyflow_mkt_dc` 是活域（`dc_daily` 词边界匹配后只剩 `sync_registry` / `pipeline_latency_budgets` / `delta_manifest` / `foundation_obs_serve`，确为零消费）；② `ths_hot` 在 `check_continuity_integrity.py` 有**活登记**（`CROSS_SECTION_GROUP_COLS` 分组检测 + dead_groups 墓碑），退役须同源清掉，否则复刻本文件 A2 那个「墓碑指向活域→watermark 每轮被清→唯一无监控者」的盲区
 - **K4** `org_holding` 两个缺口：① PIT 规则 2026-08-27 才改对，canonical 历史全部由旧「法定截止日冒充已知日」逻辑写入（accepted 分区日期清一色落在 0430 / 0831 / 1031），须按新逻辑 re-accept，且落后源端一个报告期未补；② 已 accept 但无消费方（`institution_profile.py` 未 ATTACH 该库），补消费链或明确暂缓 —— **落库通过 ≠ 被消费**
@@ -117,7 +100,7 @@ owner contract，进度段在此。**不再有第二个说「下一步」的地�
 - **`check_serve_derive_closed_loop.py` 全仓零引用**（不在 `governance_gates.yaml`、无任何调用链），而它对应的法条 `MASTER_TOPLEVEL_DESIGN.md §5.8 派生新鲜度闭环法` 仍挂在本文件「活契约引用」里 —— **法条在，执法者一次没跑过**。要么接进门体系，要么连同法条引用一起退役。
 
 **护栏**（长期有效，非进度）：formal frontier 与 drain soft 窗分立叙述 · PIT + ≤40d ·
-§15 不放宽 · serve = 沪深A 含 ST · 禁为清单洗绿（class-B 诚实状态**留着就是做对了**）。
+§14 不放宽 · serve = 沪深A 含 ST · 禁为清单洗绿（class-B 诚实状态**留着就是做对了**）。
 
 ## 治理体系重构（2026-08-10 立项；L1/L2/L3 层已落地，收尾中）
 

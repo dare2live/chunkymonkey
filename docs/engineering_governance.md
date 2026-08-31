@@ -369,7 +369,7 @@ Agents cannot self-downgrade; unknown/deletion/bad policy → L3 full gates.
 L1 = docs/ sandbox/ data/board/ light gates; L2 = tests/routers/frontend + Rule 10;
 L3 = writer/PIT/schema/config/deletion = current full gate set.
 
-### 14.1 门的分布：按「谁受害、何时受害」分组（2026-08-11 P1 落地）
+### 13.1 门的分布：按「谁受害、何时受害」分组（2026-08-11 P1 落地）
 
 tier 剪枝管**跑不跑**，分组管**跑红了会怎样**，两维正交。owner =
 `backend/config/governance_gates.yaml`（唯一存放处；`gate_policy.py --check`
@@ -379,7 +379,7 @@ tier 剪枝管**跑不跑**，分组管**跑红了会怎样**，两维正交。o
 |---|---|---|---|
 | `diff_correctness` | 这次 diff 本身错 | **阻断** | staged_worktree_parity / moth_invariants / rule_compliance / ci_pytest / sandbox_isolation / serve_read_layer / calendar_usage / population_contract / lineage_drift / dead_references / no_emoji / config_refs / rule10 |
 | `system_health` | 数据 / 策略 / 钱受害 | **不跑** | grain_uniqueness / continuity → `daily_update` store 阶段自检 |
-| `scaffold` | 下一个开发者受害 | **warn-only** | project_index_sync / feature_map / agent_board / moth / doc_drift / doc_governance / doc_runtime_state / commit_msg |
+| `scaffold` | 下一个开发者受害 | **warn-only** | project_index_sync / feature_map / moth / doc_drift / doc_governance / doc_runtime_state / commit_msg |
 
 判据来自实证而非偏好（2026-08-10 审计，`chunkyctl history --since 2026-08-10 --full`）：脚手架门本轮 3 次
 阻断系统修复提交（文档没同步挡住代码 bug 修复），而 cutover 声明是否仍生效 ——
@@ -414,7 +414,7 @@ scripts/chunkyctl gates --run-system-health  # 手动跑运行时自检组
 scripts/chunkyctl scaffold-fix               # 脚手架批量收口
 ```
 
-### 14.2 L2 状态零手写（P2）
+### 13.2 L2 状态零手写（P2）
 
 **运行时状态只许现查，不许人写。** 唯一入口 `scripts/chunkyctl status`
 （`backend/services/project_status.py`；零文件、不缓存、退出码恒 0 —— 它报事实不做裁决，

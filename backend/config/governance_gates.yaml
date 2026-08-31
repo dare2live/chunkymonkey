@@ -12,7 +12,7 @@
 #     数据 / 策略 / 钱   → 运行时自检       → group=system_health
 #     下一个开发者/agent → 提示不阻断       → group=scaffold
 #
-# 实证起点 (2026-08-10 治理审计, ledger 同日条目)：19 门里大部分是脚手架门，
+# 实证起点 (2026-08-10 治理审计, ledger 同日条目)：门里大部分是脚手架门，
 # 脚手架门本轮 3 次阻断系统修复提交 (project_index_sync ×2 / agent_board ×1)；
 # 而真正的系统约束 (b_pit cutover 是否仍生效) 装在 commit 路径上，于是「有没有人
 # 恰好提交相关代码」决定了它何时被查 —— 系统跑了 13 次没人查。
@@ -48,7 +48,7 @@ groups:
       坏掉只让下一个接手的人多花时间，不让系统出错、不让数据变脏。阻断它 =
       用文档没同步挡住代码 bug 修复。批量修入口 scripts/chunkyctl scaffold-fix。
 
-# 19 门 (名字与 scripts/safe_commit.sh 的 gate 标签、
+# 全部门 (数量以本文件 commit_gates 键为准, 不在注释里重复维护；名字与 scripts/safe_commit.sh 的 gate 标签、
 # backend/scripts/classify_commit_tier.py 的 ALL_GATES_ORDERED 一一对应；
 # 三者一致性由 backend/tests/scripts/test_governance_gates.py 锁死)。
 commit_gates:

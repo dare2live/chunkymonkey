@@ -10,13 +10,13 @@ History: `chunkyctl history --grep <term>` (git log) / `--eras` (annotated tags)
 ## 1. Boot
 1. Read `goal.md`.
 2. `scripts/chunkyctl agent-boot` (git + Moth summary + CodeGraph + board +
-   §15 knife-merge reminder). Preserve user/peer worktree changes.
+   §14 knife-merge reminder). Preserve user/peer worktree changes.
 3. Read the one owner doc named by `docs/README.md` for the task.
 4. Verify drift-prone facts with live code / read-only DB/API / current commands.
 Full evidence: `git status --short --branch`, `moth snapshot --repo .`,
 `codegraph status .` / `explore`. Always `cd` target checkout + `--repo .`
 (Moth 0.3.0 cwd; `safe_commit.sh` enforces for staged snapshots).
-**Delivery (eng_gov §15 binding)**: one logical knife = one Rule 10 + one
+**Delivery (eng_gov §14 binding)**: one logical knife = one Rule 10 + one
 `safe_commit`; async CI (no sync `gh run watch`); L3 knives run
 `chunkyctl pre-knife <name>` first; parallel agents only when moth proves
 non-overlap. Never loosen L3 / Rule10 / PIT / ≤40d.
