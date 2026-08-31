@@ -22,12 +22,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import tempfile
 import time
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 from services.data_sources.sibling_repos import ensure_import_path
 from services.data_sources.tdxhub_kline_recon import fetch_unadjusted_bars
@@ -472,6 +473,112 @@ TDXHUB_DAILY_MIN_SUCCESS_RATE_DEFAULT = 0.9
 # (见 _fetch_one_row), 这个常量只决定窗口开多大, 不参与任何交易日判断。
 TDXHUB_DAILY_PREV_CLOSE_LOOKBACK_DAYS_DEFAULT = 20
 
+# ---------------------------------------------------------------------------
+# xdxr 跨进程磁盘缓存 — 全历史回填 1650 个交易日, 若每个交易日都对 5220 只票
+# 各打一次 client.xdxr, 单日约占全市场取数一半耗时, 1650 天不可行; 但回填目标
+# 都是过去的交易日, 历史除权记录不会再变, 查一次落盘就够, 见 TdxhubSource
+# docstring 坑 4 及 ``TdxhubSource._xdxr_events``。data/scratch/ 已 gitignore
+# (.gitignore 第 33 行) —— 跟 host-memory 缓存同一挂载点, 同一"纯优化不是
+# 依赖"哲学: 丢了这个文件, 下一个进程只是重新对没落盘成功的 code 打一次网络,
+# 不会不能取数。
+# ---------------------------------------------------------------------------
+
+_XDXR_CACHE_PATH_ENV = "TDXHUB_XDXR_CACHE_PATH"
+_DEFAULT_XDXR_CACHE_PATH = (
+    Path(__file__).resolve().parents[4] / "data" / "scratch" / "tdxhub_xdxr_cache.json"
+)
+
+# 注入代码 (``TdxhubSource(extra_ts_codes=...)``) 的形态校验 —— 通达信协议
+# ts_code 恰好是 6 位数字代码 + 交易所后缀, 三个交易所都覆盖 (含目前列不出清单、
+# 只能靠外部注入的北交所 BJ, 见类 docstring 坑 2)。
+_TS_CODE_RE = re.compile(r"^\d{6}\.(SH|SZ|BJ)$")
+
+
+def _xdxr_cache_path() -> Path:
+    """解析磁盘 xdxr 缓存路径。
+
+    环境变量可覆盖 (``TDXHUB_XDXR_CACHE_PATH``), 跟上面 ``_host_memory_path``
+    同一理由: 测试必须能把这个路径指到一次性 ``tmp_path``, 否则一次测试写下的
+    状态会串到下一次、甚至写脏真实项目里的 ``data/scratch/`` 文件。
+    """
+    override = os.environ.get(_XDXR_CACHE_PATH_ENV, "").strip()
+    return Path(override) if override else _DEFAULT_XDXR_CACHE_PATH
+
+
+def _today() -> date:
+    """包一层, 让测试能钉死一个确定的"今天", 不必依赖真实墙钟日期去验证
+    ``cached_at`` 新鲜度规则 (见 ``TdxhubSource._xdxr_events``)。"""
+    return date.today()  # rule-compliance: ok evidence=xdxr 缓存写入时刻的墙钟日期,非最新交易日; 新鲜度规则 cached_at>target 比的是'我何时查的'而不是交易日历
+
+
+def _read_xdxr_cache_file() -> dict[str, Any]:
+    """尽力读取落盘 xdxr 缓存。
+
+    文件缺失、JSON 损坏、无读权限、或顶层根本不是 JSON object, 全部收敛成
+    "无缓存" —— 一份坏的缓存文件绝不能挡住取数, 它最多让这个 code 多打一次
+    ``client.xdxr``, 跟这份缓存不存在时冷启动要付的代价一样, 不会更差。
+    """
+    try:
+        raw = _xdxr_cache_path().read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except Exception:  # rule-compliance: ok evidence=tdxhub-xdxr-cache-read-best-effort
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_xdxr_cache_file(data: dict[str, Any]) -> None:
+    """尽力原子写入整份 xdxr 缓存文件。
+
+    跟上面 ``_write_host_memory_file`` 完全同一套 ``tempfile.mkstemp`` +
+    ``os.replace`` 写法, 同一理由: 并发读者 (另一个同时在跑的 sync/回填进程)
+    绝不能看到半写文件。写入路上任何失败 (目录不存在/建不出来、无写权限、
+    磁盘满) 全部吞掉 —— 这份缓存纯粹是优化, 不是取数的依赖; 丢一次写只是让
+    下一个进程对没落盘成功的这批 code 重新打一次网络, 不影响正确性。
+    """
+    path = _xdxr_cache_path()
+    tmp_name: str | None = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(
+            dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh)
+        os.replace(tmp_name, str(path))
+        tmp_name = None
+    except Exception:  # rule-compliance: ok evidence=tdxhub-xdxr-cache-write-best-effort
+        pass
+    finally:
+        if tmp_name is not None:
+            try:
+                os.unlink(tmp_name)
+            except OSError:  # rule-compliance: ok evidence=tdxhub-xdxr-cache-tmp-cleanup-best-effort
+                pass
+
+
+def _parse_xdxr_cache_entry(entry: Any) -> tuple[date, list[Any]] | None:
+    """校验单个 code 的磁盘缓存条目结构完整性。
+
+    ``entry`` 必须是 dict, 带字符串形态、可解析成合法日期的 ``cached_at``
+    (紧凑 YYYYMMDD) 和 list 形态的 ``events``; 任何一处不满足都返回 ``None``
+    (= 对这个 code 按未缓存处理, 照常走网络重查)。这一层校验存在的理由就是
+    "单个 code 的记录损坏不能让整份缓存不可用"—— 顶层文件能读出来、是 dict,
+    就已经不算"整份缓存故障", 剩下的损坏只应该局限在出问题的那一个 code。
+    """
+    if not isinstance(entry, dict):
+        return None
+    cached_at_text = entry.get("cached_at")
+    events = entry.get("events")
+    if not isinstance(cached_at_text, str) or not isinstance(events, list):
+        return None
+    try:
+        cached_at = date(
+            int(cached_at_text[0:4]), int(cached_at_text[4:6]), int(cached_at_text[6:8])
+        )
+    except (TypeError, ValueError):
+        return None
+    return cached_at, events
+
 
 class TdxhubDailyBatchError(RuntimeError):
     """单日全市场成功率低于阈值 —— 拒绝静默半批入库, 见 ``TdxhubSource.fetch_raw``。"""
@@ -500,6 +607,19 @@ class TdxhubSource:
        ``DEFAULT_BOARD_PREFIXES``, 或构造 ``TdxhubSource(board_prefixes=...)``
        时整体覆盖 (含未来加北交所)。
 
+       按代码取北交所日K本身是能拿到真实 OHLCV 的 (``920002.BJ`` 等已实测,
+       ``protocol_market()`` 已支持 ``.BJ -> market 2``) —— 拿不到的只是"列表"
+       接口, 不是"取数"接口。所以北交所走**注入**而不是等 ``stocks(2)`` 修好:
+       构造 ``TdxhubSource(extra_ts_codes=[...])`` 传入的代码 (形如
+       ``920002.BJ``, 由调用方从扶摇代码表/现有 canonical 数据等别处拿到) 会被
+       追加进 ``_universe()`` 的结果, 与 ``client.stocks()`` 得到的沪深代码一样
+       走 ``_fetch_one_row`` —— 不为 BJ 开特殊分支, 也同样受 ``min_success_rate``
+       批量成功率约束 (哪怕全部注入代码都失败, 只要沪深大盘那几千只把成功率托
+       住, 就不会单独因为 BJ 部分而 raise; 但每个注入代码的取数失败/成功都计入
+       同一批 ``attempted``/``rows``, 不单独豁免)。非法形态 (不是
+       ``\\d{6}.(SH|SZ|BJ)``) 的注入代码在**构造时**就 ``ValueError``, 不等到
+       取数才炸 —— 见 ``_validate_extra_ts_codes``。
+
     3. **amount 单位换算**: ``fetch_unadjusted_bars`` 给的 amount 单位是元,
        tushare ``daily.amount`` 单位是千元 —— 落库前必须 ``/1000``, 不做会让
        下游按 tushare 语义读出的成交额虚高 1000 倍。vol (手) 两边同单位, 原样使用
@@ -518,6 +638,26 @@ class TdxhubSource:
        历史除权记录 (不是按日期查单条), 日更要连续处理 5000+ 只票, 所以本类对
        同一 code 只查一次并做进程内缓存 (``_xdxr_cache``, 见 ``_xdxr_events``) ——
        同一 ``TdxhubSource`` 实例存活期间不会对同一 code 重复打 ``client.xdxr``。
+
+       进程内缓存只活一个进程的生命周期, 回填 1650 个交易日等于 1650 次冷启动、
+       1650 遍重打 5220 次 ``client.xdxr`` —— 不可行。所以 ``_xdxr_events`` 在
+       进程内 dict 之下还有一层落盘 JSON 缓存 (默认
+       ``data/scratch/tdxhub_xdxr_cache.json``, 环境变量
+       ``TDXHUB_XDXR_CACHE_PATH`` 可覆盖), 带 ``cached_at``(缓存生成的真实日期)。
+       可用性规则是本层缓存的正确性核心, 精确到"缓存生成日 vs 目标交易日"两者
+       谁在前:
+
+           cached_at(生成日) >  target(目标交易日) -> 可用
+               (生成缓存那天, target 当天的除权记录必然已经出现, 不会再变)
+           cached_at                          <= target -> 必须重查
+               (缓存可能早于/等于 target 当天才出现的除权记录; 日更场景
+               target==今天时 cached_at(今天生成)不会大于今天, 于是永远重查,
+               这是故意的 —— 今天的除权记录随时可能刚发生)
+
+       磁盘缓存的任何故障 (文件缺失/JSON 损坏/顶层非 dict/单条目结构损坏/无读
+       权限/无写权限) 一律静默降级成"这个 code 未缓存", 照常走网络, 绝不阻断
+       取数 —— 见 ``_read_xdxr_cache_file``/``_write_xdxr_cache_file``/
+       ``_parse_xdxr_cache_entry``。
 
     取不到前一根 K 线时 (新股上市首日, 或窗口 ``prev_close_lookback_days`` 天内
     确实没有更早的成交日) pre_close 退化为当日 open, 不崩、不置 None、其余字段
@@ -557,6 +697,7 @@ class TdxhubSource:
         board_prefixes: dict[str, tuple[str, ...]] | None = None,
         min_success_rate: float = TDXHUB_DAILY_MIN_SUCCESS_RATE_DEFAULT,
         prev_close_lookback_days: int = TDXHUB_DAILY_PREV_CLOSE_LOOKBACK_DAYS_DEFAULT,
+        extra_ts_codes: Sequence[str] | None = None,
     ) -> None:
         self._client_factory = client_factory  # 测试注入假客户端; 生产环境用 quotes_client
         self._client: Any = None
@@ -567,6 +708,25 @@ class TdxhubSource:
         self._min_success_rate = float(min_success_rate)
         self._prev_close_lookback_days = int(prev_close_lookback_days)
         self._xdxr_cache: dict[str, list[dict[str, Any]]] = {}
+        # 构造期校验, 不等到取数才炸 (坑 2 附近说明)。
+        self._extra_ts_codes: tuple[str, ...] = self._validate_extra_ts_codes(extra_ts_codes)
+
+    @staticmethod
+    def _validate_extra_ts_codes(extra_ts_codes: Sequence[str] | None) -> tuple[str, ...]:
+        """校验注入代码形态 (``\\d{6}.(SH|SZ|BJ)``), 任何一条不合规立刻
+        ``ValueError`` —— 构造时就炸, 不要等 ``fetch_raw`` 跑到一半才发现。"""
+        if not extra_ts_codes:
+            return ()
+        validated: list[str] = []
+        for raw in extra_ts_codes:
+            code = str(raw)
+            if not _TS_CODE_RE.match(code):
+                raise ValueError(
+                    "tdxhub extra_ts_codes entry must match \\d{6}.(SH|SZ|BJ), "
+                    f"got {raw!r}"
+                )
+            validated.append(code)
+        return tuple(validated)
 
     def _get_client(self) -> Any:
         """惰性建立一次, 实例存活期间复用 (坑 1 附近说明: 不逐票重连)。"""
@@ -577,8 +737,12 @@ class TdxhubSource:
         return self._client
 
     def _universe(self, client: Any) -> list[str]:
-        """按 ``STOCKS_MARKET_BY_EXCHANGE``/``DEFAULT_BOARD_PREFIXES`` 过滤出全市场
-        ``ts_code`` 清单 (北交所目前不在内, 见坑 2)。"""
+        """按 ``STOCKS_MARKET_BY_EXCHANGE``/``DEFAULT_BOARD_PREFIXES`` 过滤出沪深
+        ``ts_code`` 清单, 再把构造时传入并已校验过的 ``extra_ts_codes``(通常是
+        ``client.stocks(2)`` 列不出的北交所代码, 见坑 2) 追加在后面 —— 与沪深
+        代码去重, 顺序确定 (沪深按现有排序规则在前, 注入代码保持调用方传入的
+        原始顺序在后)。追加进来的代码走的是跟沪深完全相同的 ``_fetch_one_row``
+        路径, 这里不为它们单独分支。"""
         codes: list[str] = []
         for exchange, market_id in self.STOCKS_MARKET_BY_EXCHANGE.items():
             prefixes = self._board_prefixes.get(exchange) or ()
@@ -588,24 +752,70 @@ class TdxhubSource:
                 code = str((item or {}).get("code") or "").strip()
                 if code and code.startswith(prefixes):
                     codes.append(f"{code}.{exchange}")
-        return sorted(set(codes))
+        universe = sorted(set(codes))
+        if not self._extra_ts_codes:
+            return universe
+        seen = set(universe)
+        for extra in self._extra_ts_codes:
+            if extra in seen:
+                continue
+            seen.add(extra)
+            universe.append(extra)
+        return universe
 
-    def _xdxr_events(self, client: Any, code: str) -> list[dict[str, Any]]:
-        """同一 code 只调一次 ``client.xdxr``, 进程内缓存 (坑 4)。查询失败按
-        "该票无可用除权信息"降级 (不阻塞这一票, pre_close 退化为不调整), 不重试。"""
+    def _xdxr_events(
+        self, client: Any, code: str, target: date | None = None
+    ) -> list[dict[str, Any]]:
+        """同一 code 的除权事件, 三级读取: 进程内 dict -> 落盘 JSON -> 网络 (坑 4)。
+
+        进程内 ``self._xdxr_cache`` 是一级缓存, 命中即返回, 与 ``target`` 无关
+        (同一实例存活期间对同一 code 只查一次, 这一层语义不因加了磁盘层而变)。
+
+        落盘 JSON 是二级缓存, 只在显式给出 ``target``(要取的交易日) 时才参与
+        —— 可用性规则见类 docstring 坑 4 附近, 精确到"缓存生成日 vs 目标交易日"
+        谁在前 (``cached_at > target`` 才可用, ``<=`` 必须重查), 不是泛泛的"新
+        不新鲜"。``target=None``(仅剩两个直调该方法的旧测试在用) 完全不碰磁盘,
+        是加磁盘层之前的纯进程内缓存语义, 原样保留。
+
+        磁盘缓存的任何故障 (缺文件/JSON 损坏/顶层非 dict/这一条目结构损坏/无读
+        权限/无写权限) 一律静默降级为"这个 code 未缓存", 照常走
+        ``client.xdxr`` 网络查询, 绝不阻断取数——查询失败同样按"该票无可用除权
+        信息"降级 (不阻塞这一票, pre_close 退化为不调整), 不重试。
+        """
         if code in self._xdxr_cache:
             return self._xdxr_cache[code]
+
+        if target is not None:
+            parsed = _parse_xdxr_cache_entry(_read_xdxr_cache_file().get(code))
+            if parsed is not None:
+                cached_at, cached_events = parsed
+                if cached_at > target:
+                    self._xdxr_cache[code] = cached_events
+                    return cached_events
+
         try:
             events = client.xdxr(code) or []
         except Exception:  # rule-compliance: ok evidence=tdxhub-xdxr-best-effort-cache
             events = []
-        self._xdxr_cache[code] = list(events)
-        return self._xdxr_cache[code]
+        events = list(events)
+        self._xdxr_cache[code] = events
+        if target is not None:
+            self._persist_xdxr_cache_entry(code, events)
+        return events
+
+    def _persist_xdxr_cache_entry(self, code: str, events: list[dict[str, Any]]) -> None:
+        """把这个 code 刚查到的除权事件写回磁盘缓存 (读-改-写整份文件, 与
+        模块级 ``remember_good_host`` 同风格)。写失败 (只读文件系统/磁盘满等)
+        全部由 ``_write_xdxr_cache_file`` 吞掉 —— 不影响本次取数, 只影响下次
+        是否要对这个 code 重新打网络。"""
+        data = _read_xdxr_cache_file()
+        data[code] = {"cached_at": _today().strftime("%Y%m%d"), "events": events}
+        _write_xdxr_cache_file(data)
 
     def _matching_xdxr_event(
         self, client: Any, code: str, target: date
     ) -> dict[str, Any] | None:
-        for event in self._xdxr_events(client, code):
+        for event in self._xdxr_events(client, code, target):
             try:
                 y = int(event.get("year"))
                 m = int(event.get("month"))

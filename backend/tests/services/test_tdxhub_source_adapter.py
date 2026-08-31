@@ -3,16 +3,46 @@
 一律 monkeypatch 假 client + 假 ``fetch_unadjusted_bars`` (禁真实网络, CI 跑不了网络)。
 覆盖点对齐任务要求: 四个已实测除权样本、无事件/送转股场景、amount 换算、11-key 严格
 契约、trade_date 紧凑字符串形态、单票失败不拖垮整批、成功率阈值 raise、新股首日退化、
-未知 api 报 KeyError、xdxr 进程内缓存。
+未知 api 报 KeyError、xdxr 进程内缓存 (进程内 + 跨进程落盘两级, 六种磁盘故障姿态降级)、
+``extra_ts_codes`` 北交所代码注入 (去重/校验)。
+
+模块级 ``_isolate_xdxr_cache_path`` autouse fixture 把 ``TDXHUB_XDXR_CACHE_PATH``
+重定向到每个测试自己的 ``tmp_path`` —— 对本文件里全部测试生效 (含加固前已存在的
+15 个用例), 因为新增的磁盘缓存二级层是 ``TdxhubSource._xdxr_events`` 内部实现细节,
+连既有的 ``fetch_raw``/``_adjusted_pre_close`` 直调测试都会经过它、间接写盘。不隔离
+会写脏真实 ``data/scratch/tdxhub_xdxr_cache.json`` (已实测复现: 同一份同 code 不同
+``target``/不同期望值的参数化用例互相读到对方落盘的缓存, 断言跨用例串味) ——这正是
+本任务背景提到的"主机记忆落盘时两个测试没隔离导致复跑必红"同一类教训。
 """
 from __future__ import annotations
 
+import json
+import os
 from datetime import date
+from pathlib import Path
 
 import pytest
 
 import services.data_sources.sources.tdxhub as tdxhub_adapter
 from services.data_sources.sources.tdxhub import TdxhubDailyBatchError, TdxhubSource
+
+
+@pytest.fixture(autouse=True)
+def _isolate_xdxr_cache_path(monkeypatch, tmp_path):
+    """详见模块 docstring —— 对本文件全部测试生效, 绝不碰真实
+    ``data/scratch/tdxhub_xdxr_cache.json``。个别新测试需要精确控制缓存文件
+    内容/路径时, 会在测试体内再显式 ``monkeypatch.setenv`` 一次覆盖这里的
+    默认值, 不影响其它测试各自独立的 ``tmp_path``。"""
+    monkeypatch.setenv("TDXHUB_XDXR_CACHE_PATH", str(tmp_path / "xdxr_cache_autouse.json"))
+
+
+def _write_xdxr_cache_file(path: Path, payload: dict) -> None:
+    """测试专用: 直接把 payload 写成 xdxr 磁盘缓存文件, 绕开
+    ``_persist_xdxr_cache_entry`` 走真实取数路径, 用来精确摆好
+    ``cached_at``/结构损坏等场景。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
 
 EXPECTED_DAILY_KEYS = {
     "ts_code",
@@ -399,3 +429,319 @@ def test_xdxr_cache_isolated_per_code():
 
     assert client.xdxr_calls["600869"] == 1
     assert client.xdxr_calls["002484"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 12. xdxr 落盘缓存 — cached_at > target 时命中, 底层 xdxr 零调用
+# ---------------------------------------------------------------------------
+
+
+def test_xdxr_disk_cache_hit_when_cached_after_target(monkeypatch, tmp_path):
+    cache_path = tmp_path / "xdxr.json"
+    monkeypatch.setenv("TDXHUB_XDXR_CACHE_PATH", str(cache_path))
+    target = date(2026, 8, 28)
+    cached_event = _xdxr_event(target, fenhong=0.7)
+    _write_xdxr_cache_file(
+        cache_path, {"600869": {"cached_at": "20260829", "events": [cached_event]}}
+    )
+    # 若真去查网络会拿到一个不同的 (错的) 事件 —— 断言必须走缓存, 不能碰到它。
+    client = FakeQuotesClient(xdxr_by_code={"600869": [_xdxr_event(target, fenhong=99.0)]})
+    source = TdxhubSource(client_factory=lambda: client)
+
+    events = source._xdxr_events(client, "600869", target)
+
+    assert events == [cached_event]
+    assert client.xdxr_calls.get("600869", 0) == 0
+
+
+# ---------------------------------------------------------------------------
+# 13. cached_at == target / cached_at < target 都必须重查 (两个独立用例)
+# ---------------------------------------------------------------------------
+
+
+def test_xdxr_disk_cache_miss_when_cached_at_equals_target(monkeypatch, tmp_path):
+    cache_path = tmp_path / "xdxr.json"
+    monkeypatch.setenv("TDXHUB_XDXR_CACHE_PATH", str(cache_path))
+    target = date(2026, 8, 28)
+    _write_xdxr_cache_file(cache_path, {"600869": {"cached_at": "20260828", "events": []}})
+    fresh_event = _xdxr_event(target, fenhong=0.7)
+    client = FakeQuotesClient(xdxr_by_code={"600869": [fresh_event]})
+    source = TdxhubSource(client_factory=lambda: client)
+
+    events = source._xdxr_events(client, "600869", target)
+
+    assert events == [fresh_event]
+    assert client.xdxr_calls.get("600869", 0) == 1
+
+
+def test_xdxr_disk_cache_miss_when_cached_before_target(monkeypatch, tmp_path):
+    cache_path = tmp_path / "xdxr.json"
+    monkeypatch.setenv("TDXHUB_XDXR_CACHE_PATH", str(cache_path))
+    target = date(2026, 8, 28)
+    _write_xdxr_cache_file(cache_path, {"600869": {"cached_at": "20260827", "events": []}})
+    fresh_event = _xdxr_event(target, fenhong=0.7)
+    client = FakeQuotesClient(xdxr_by_code={"600869": [fresh_event]})
+    source = TdxhubSource(client_factory=lambda: client)
+
+    events = source._xdxr_events(client, "600869", target)
+
+    assert events == [fresh_event]
+    assert client.xdxr_calls.get("600869", 0) == 1
+
+
+# ---------------------------------------------------------------------------
+# 14. 缓存跨"进程"复用: 写一次 -> 新建实例(模拟新进程) -> 命中且不调 xdxr
+# ---------------------------------------------------------------------------
+
+
+def test_xdxr_disk_cache_survives_new_instance_simulating_new_process(monkeypatch, tmp_path):
+    cache_path = tmp_path / "xdxr.json"
+    monkeypatch.setenv("TDXHUB_XDXR_CACHE_PATH", str(cache_path))
+    monkeypatch.setattr(tdxhub_adapter, "_today", lambda: date(2026, 8, 30))
+    target = date(2020, 1, 1)  # 舒服地早于钉死的"今天", 不依赖真实墙钟日期
+    event = _xdxr_event(target, fenhong=1.23)
+    client = FakeQuotesClient(xdxr_by_code={"600869": [event]})
+
+    first_source = TdxhubSource(client_factory=lambda: client)
+    first_events = first_source._xdxr_events(client, "600869", target)
+    assert first_events == [event]
+    assert client.xdxr_calls["600869"] == 1
+    assert cache_path.exists()
+
+    # 新实例 = 模拟新进程: 进程内 dict 缓存是空的, 只能靠落盘缓存命中。
+    second_source = TdxhubSource(client_factory=lambda: client)
+    second_events = second_source._xdxr_events(client, "600869", target)
+
+    assert second_events == [event]
+    assert client.xdxr_calls["600869"] == 1  # 没有第二次网络调用
+
+
+# ---------------------------------------------------------------------------
+# 15. 缓存文件损坏 ("{{{") -> 静默降级, 正常取数, 不抛异常
+# ---------------------------------------------------------------------------
+
+
+def test_xdxr_disk_cache_corrupt_json_downgrades_silently(monkeypatch, tmp_path):
+    cache_path = tmp_path / "xdxr.json"
+    monkeypatch.setenv("TDXHUB_XDXR_CACHE_PATH", str(cache_path))
+    cache_path.write_text("{{{", encoding="utf-8")
+    target = date(2026, 8, 28)
+    ts_code = "600869.SH"
+    bars = {
+        ts_code: [
+            # 前一交易日的 bar 必须存在, pre_close 才会走 _adjusted_pre_close
+            # (进而调用 xdxr) 而不是退化成"新股首日"用 open 兜底。
+            _bar(
+                ts_code, date(2026, 8, 27),
+                open_=9.9, high=10.0, low=9.8, close=10.0, vol=500.0, amount=5_000_000.0,
+            ),
+            _bar(
+                ts_code, target,
+                open_=10.0, high=10.5, low=9.5, close=10.2, vol=100.0, amount=1000.0,
+            ),
+        ]
+    }
+    _install_fake_bars(monkeypatch, bars)
+    client = FakeQuotesClient(
+        stocks_by_market={1: [{"code": "600869"}]},
+        xdxr_by_code={"600869": [_xdxr_event(target, fenhong=0.1)]},
+    )
+    source = TdxhubSource(client_factory=lambda: client)
+
+    rows = source.fetch_raw("daily", trade_date="20260828")
+
+    assert len(rows) == 1
+    assert client.xdxr_calls.get("600869", 0) == 1
+
+
+# ---------------------------------------------------------------------------
+# 16. 缓存文件顶层是 list 而非 dict -> 同样降级
+# ---------------------------------------------------------------------------
+
+
+def test_xdxr_disk_cache_non_dict_top_level_downgrades_silently(monkeypatch, tmp_path):
+    cache_path = tmp_path / "xdxr.json"
+    monkeypatch.setenv("TDXHUB_XDXR_CACHE_PATH", str(cache_path))
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(["not", "a", "dict"]), encoding="utf-8")
+    target = date(2026, 8, 28)
+    event = _xdxr_event(target, fenhong=0.2)
+    client = FakeQuotesClient(xdxr_by_code={"600869": [event]})
+    source = TdxhubSource(client_factory=lambda: client)
+
+    events = source._xdxr_events(client, "600869", target)
+
+    assert events == [event]
+    assert client.xdxr_calls["600869"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 17. 单个 code 的缓存条目结构损坏 -> 只该条 miss, 其它 code 仍命中
+# ---------------------------------------------------------------------------
+
+
+def test_xdxr_disk_cache_single_entry_corruption_isolated(monkeypatch, tmp_path):
+    cache_path = tmp_path / "xdxr.json"
+    monkeypatch.setenv("TDXHUB_XDXR_CACHE_PATH", str(cache_path))
+    target = date(2026, 8, 28)
+    good_event = _xdxr_event(target, fenhong=0.3)
+    _write_xdxr_cache_file(
+        cache_path,
+        {
+            "600869": "not-a-dict-entry",  # 结构损坏: 不是 dict
+            "002484": {"cached_at": "20260829", "events": [good_event]},  # 完好
+        },
+    )
+    fresh_event_for_broken_code = _xdxr_event(target, fenhong=9.9)
+    client = FakeQuotesClient(
+        xdxr_by_code={
+            "600869": [fresh_event_for_broken_code],
+            "002484": [_xdxr_event(target, fenhong=0.1)],  # 不应被查到 (缓存命中)
+        }
+    )
+    source = TdxhubSource(client_factory=lambda: client)
+
+    got_600869 = source._xdxr_events(client, "600869", target)
+    got_002484 = source._xdxr_events(client, "002484", target)
+
+    assert got_600869 == [fresh_event_for_broken_code]
+    assert client.xdxr_calls["600869"] == 1  # 该条损坏 -> miss -> 重查
+    assert got_002484 == [good_event]
+    assert client.xdxr_calls.get("002484", 0) == 0  # 未损坏 -> 命中缓存, 不重查
+
+
+# ---------------------------------------------------------------------------
+# 18. 无写权限时不抛异常 (取数照常成功)
+# ---------------------------------------------------------------------------
+
+
+def test_xdxr_disk_cache_write_failure_does_not_raise(monkeypatch, tmp_path):
+    readonly_dir = tmp_path / "readonly"
+    readonly_dir.mkdir()
+    cache_path = readonly_dir / "xdxr.json"
+    monkeypatch.setenv("TDXHUB_XDXR_CACHE_PATH", str(cache_path))
+    os.chmod(readonly_dir, 0o555)  # r-xr-xr-x: 目录本身不可写, mkstemp 必失败
+    try:
+        target = date(2026, 8, 28)
+        ts_code = "600869.SH"
+        bars = {
+            ts_code: [
+                # 前一交易日的 bar 必须存在, 才会真的走到 _persist_xdxr_cache_entry
+                # (否则 pre_close 退化成"新股首日"用 open 兜底, 根本不碰磁盘写)。
+                _bar(
+                    ts_code, date(2026, 8, 27),
+                    open_=9.9, high=10.0, low=9.8, close=10.0, vol=500.0, amount=5_000_000.0,
+                ),
+                _bar(
+                    ts_code, target,
+                    open_=10.0, high=10.5, low=9.5, close=10.2, vol=100.0, amount=1000.0,
+                ),
+            ]
+        }
+        _install_fake_bars(monkeypatch, bars)
+        client = FakeQuotesClient(
+            stocks_by_market={1: [{"code": "600869"}]},
+            xdxr_by_code={"600869": [_xdxr_event(target, fenhong=0.05)]},
+        )
+        source = TdxhubSource(client_factory=lambda: client)
+
+        rows = source.fetch_raw("daily", trade_date="20260828")
+
+        assert len(rows) == 1
+        assert client.xdxr_calls.get("600869", 0) == 1
+        assert not cache_path.exists()
+    finally:
+        os.chmod(readonly_dir, 0o755)  # 还原, 让 tmp_path 的自动清理能删掉它
+
+
+# ---------------------------------------------------------------------------
+# 19. extra_ts_codes 注入的北交所代码出现在 universe 里, 走正常取数路径拿到行
+# ---------------------------------------------------------------------------
+
+
+def test_extra_ts_codes_bj_appears_in_universe_and_is_fetched(monkeypatch):
+    target = date(2026, 8, 28)
+    bj_code = "920002.BJ"
+    bars = {
+        bj_code: [
+            _bar(
+                bj_code, target,
+                open_=5.0, high=5.2, low=4.9, close=5.1, vol=200.0, amount=1020.0,
+            )
+        ]
+    }
+    _install_fake_bars(monkeypatch, bars)
+    client = FakeQuotesClient(stocks_by_market={})  # 沪深 universe 为空, 只有注入的北交所
+    source = TdxhubSource(client_factory=lambda: client, extra_ts_codes=[bj_code])
+
+    rows = source.fetch_raw("daily", trade_date="20260828")
+
+    assert len(rows) == 1
+    assert rows[0]["ts_code"] == bj_code
+    assert rows[0]["close"] == pytest.approx(5.1)
+
+
+# ---------------------------------------------------------------------------
+# 20. extra_ts_codes 与 stocks() 返回的代码重复时去重, 不产生重复行
+# ---------------------------------------------------------------------------
+
+
+def test_extra_ts_codes_deduped_against_universe(monkeypatch):
+    target = date(2026, 8, 28)
+    ts_code = "600869.SH"
+    bars = {
+        ts_code: [
+            _bar(
+                ts_code, target,
+                open_=10.0, high=10.5, low=9.5, close=10.2, vol=100.0, amount=1000.0,
+            )
+        ]
+    }
+    _install_fake_bars(monkeypatch, bars)
+    client = FakeQuotesClient(stocks_by_market={1: [{"code": "600869"}]})
+    source = TdxhubSource(client_factory=lambda: client, extra_ts_codes=[ts_code])
+
+    rows = source.fetch_raw("daily", trade_date="20260828")
+
+    assert len(rows) == 1
+    assert rows[0]["ts_code"] == ts_code
+
+
+def test_extra_ts_codes_dedup_also_within_extra_list_itself(monkeypatch):
+    target = date(2026, 8, 28)
+    bj_code = "920002.BJ"
+    bars = {
+        bj_code: [
+            _bar(
+                bj_code, target,
+                open_=5.0, high=5.2, low=4.9, close=5.1, vol=200.0, amount=1020.0,
+            )
+        ]
+    }
+    _install_fake_bars(monkeypatch, bars)
+    client = FakeQuotesClient(stocks_by_market={})
+    source = TdxhubSource(client_factory=lambda: client, extra_ts_codes=[bj_code, bj_code])
+
+    rows = source.fetch_raw("daily", trade_date="20260828")
+
+    assert len(rows) == 1
+
+
+# ---------------------------------------------------------------------------
+# 21. 非法 extra_ts_codes 构造时 ValueError
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_code",
+    [
+        "920002",  # 无交易所后缀
+        "abc.BJ",  # 代码段不是数字
+        "92000.BJ",  # 代码段不是 6 位
+        "920002.SZH",  # 交易所后缀非法
+        "",
+    ],
+)
+def test_extra_ts_codes_invalid_format_raises_at_construction(bad_code):
+    with pytest.raises(ValueError):
+        TdxhubSource(client_factory=lambda: FakeQuotesClient(), extra_ts_codes=[bad_code])
