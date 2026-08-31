@@ -8,7 +8,7 @@ pip 包 ``baostock==0.9.3`` (钉死版本, 见 backend/requirements.txt 该行�
   - 全局单例: ``SocketUtil`` 类级单例 (``instance`` 类属性) + ``baostock/common/context.py``
     模块级全局 ``default_socket``, 均无锁。
 
-四个实测坑, 本 adapter 的职责就是把它们封死:
+五个实测坑, 本 adapter 的职责就是把它们封死:
 
 1. **无 socket 超时**: ``SocketUtil.connect()`` / ``get_default_socket()``
    (util/socketutil.py) 里创建的裸 ``socket.socket()`` 全程从未调用 ``settimeout()``,
@@ -36,6 +36,28 @@ pip 包 ``baostock==0.9.3`` (钉死版本, 见 backend/requirements.txt 该行�
    ``while rs.next(): rows.append(rs.get_row_data())``，再用 ``rs.fields`` 自己组装
    ``list[dict]``。
 
+5. **账号级单会话 + 风控拉黑 (2026-08-31 真实事故, 代价是账号被封)**: 坑 3 只讲了
+   *线程* 不安全; 更狠的是 **进程** 级 —— baostock 服务端按账号 (本项目走 ``bs.login()``
+   无参匿名, 故实际按来源 IP) 维持**单一会话**, 多进程各自 login 会互相踢掉,
+   表现为 ``10001001 用户未登录``; 若短时间反复重连, 服务端**风控直接拉黑**:
+   ``bs.login() -> code=10001011 msg='黑名单用户, 请与管理员联系'``, 之后该 IP
+   **所有** 查询全部 login failed。
+   事故经过: 一个 agent 为测吞吐起 5 进程并发探测, 十几秒内触发拉黑; 拉黑后
+   ``trade_cal`` 域 (当时唯一的 baostock 生产域) 无法再更新 —— 幸而日历数据已覆盖到
+   ``20261231``、尚有 82 个未来交易日缓冲, 未造成日更中断。
+   **教训不是"文档没写清楚", 是"没有机制阻止并发"** —— 坑 3 的 thread-id 检查对
+   多进程完全无效 (每个进程各有一份 ``_owner_thread_id``)。
+   对策 (本次新增): ``_acquire_process_lock`` 在 **login 之前** 用
+   ``fcntl.flock(LOCK_EX|LOCK_NB)`` 抢一把进程间文件锁 (默认
+   ``data/scratch/baostock_session.lock``, ``BAOSTOCK_SESSION_LOCK_PATH`` 可覆盖以便测试隔离)。
+   锁被别的进程占用 -> 直接抛 ``BaostockConcurrencyError`` 并说明原因, **不排队不重试**
+   (排队等于把并发变成串行拥塞, 仍会因超时重连而触发风控)。
+   锁机制自身故障 (目录建不了 / 无权限 / 平台无 fcntl) -> **放行并告警**, 因为防护
+   不该变成新的故障点; 这条降级路径是刻意的, 不是遗漏。
+   **调用方纪律**: 任何时候只允许一个进程使用 baostock; 禁止 ``multiprocessing`` /
+   ``xargs -P`` / 并发 agent 同时跑它。要提吞吐只能靠单进程内的批量接口
+   (如 ``query_daily_history_k_AStock`` 单次返回全市场), 不能靠并发。
+
 ``BaostockSource.fetch_raw`` 是 sync_runner 的调用约定入口, 与 ``sources/fuyao.py`` /
 ``sources/tushare.py`` 同型: ``fetch_raw(api, **params) -> list[dict]``。
 
@@ -60,8 +82,11 @@ formal ``trade_cal`` 域本身的 ``source``/``api`` 从 tushare 改成 baostock
 from __future__ import annotations
 
 import datetime
+import logging
+import os
 import socket
 import threading
+from pathlib import Path
 from typing import Any
 
 ALIAS = "baostock"
@@ -254,6 +279,61 @@ class BaostockConcurrencyError(RuntimeError):
     """baostock's client is a process-global singleton socket with no locking; single-thread only."""
 
 
+_SESSION_LOCK_PATH_ENV = "BAOSTOCK_SESSION_LOCK_PATH"
+_DEFAULT_SESSION_LOCK_PATH = Path("data/scratch/baostock_session.lock")
+
+log = logging.getLogger("data_sources.baostock")
+
+
+def _session_lock_path() -> Path:
+    """进程间会话锁的落点; 环境变量可覆盖 (测试必须指向 tmp_path 以免串到真实文件)。"""
+    override = os.environ.get(_SESSION_LOCK_PATH_ENV, "").strip()
+    return Path(override) if override else _DEFAULT_SESSION_LOCK_PATH
+
+
+def _acquire_process_lock() -> Any:
+    """坑 5 的封堵点: login 前抢进程间独占锁, 拿不到就拒绝而非排队。
+
+    返回已持锁的文件对象 (调用方负责保存并在 logout 时关闭以释放), 或 ``None``
+    表示"锁机制不可用、已降级放行"。
+
+    两条路径刻意不同:
+      * **锁被别的进程占用** -> 抛 ``BaostockConcurrencyError``。这正是要防的情况
+        (2026-08-31 五进程并发把账号打进黑名单)。不排队不重试 —— 排队只是把并发变成
+        拥塞, 超时重连同样会触发服务端风控。
+      * **锁机制自身故障** (目录建不了 / 无写权限 / 平台无 fcntl) -> 记 warning 后放行。
+        防护不该变成新的故障点; 这条降级是刻意的, 不是遗漏。
+    """
+    try:
+        import fcntl
+    except ImportError:  # rule-compliance: ok evidence=非 POSIX 平台无 fcntl, 降级放行非阈值
+        log.warning("baostock: 平台无 fcntl, 进程间会话锁降级为不生效")
+        return None
+    path = _session_lock_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handle = path.open("a+")
+    except Exception as exc:  # rule-compliance: ok evidence=锁文件不可用时降级放行, 不阻断取数
+        log.warning("baostock: 会话锁文件不可用 (%s), 锁降级为不生效", exc)
+        return None
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        raise BaostockConcurrencyError(
+            "baostock session lock is held by another process. baostock keeps a single "
+            "session per account (this project logs in anonymously, so per source IP); "
+            "concurrent logins evict each other and repeated reconnects get the IP "
+            "blacklisted (10001011). Run baostock from one process at a time — for "
+            "throughput use a batch api such as query_daily_history_k_AStock, not parallelism."
+        ) from None
+    except Exception as exc:  # rule-compliance: ok evidence=flock 非预期失败时降级放行
+        handle.close()
+        log.warning("baostock: flock 失败 (%s), 锁降级为不生效", exc)
+        return None
+    return handle
+
+
 def _login_with_bounded_timeout(bs: Any, *, timeout_seconds: float) -> Any:
     """坑 1 的封堵点: login 前设 socket 默认超时, login 后 try/finally 恢复。
 
@@ -382,6 +462,7 @@ class BaostockSource:
         self._bs_module = bs_module  # 测试注入假对象; 生产环境首次用到时才真 import
         self._logged_in = False
         self._owner_thread_id: int | None = None
+        self._lock_handle: Any = None
 
     def _check_single_thread(self) -> None:
         current = threading.get_ident()
@@ -414,6 +495,8 @@ class BaostockSource:
         bs = self._module()
         if self._logged_in:
             return bs
+        if self._lock_handle is None:
+            self._lock_handle = _acquire_process_lock()   # 坑 5: 必须在 login 之前
         result = _login_with_bounded_timeout(bs, timeout_seconds=self._timeout_seconds)
         code = str(getattr(result, "error_code", None))
         if code != BSERR_SUCCESS:
@@ -424,16 +507,33 @@ class BaostockSource:
         self._logged_in = True
         return bs
 
-    def logout(self) -> None:
-        """显式登出释放服务端会话。不碰 socket 超时 (login 已 try/finally 恢复过)。"""
-        self._check_single_thread()
-        if not self._logged_in:
+    def _release_process_lock(self) -> None:
+        """释放坑 5 的进程间会话锁; 无锁 (降级放行过) 时是 no-op。"""
+        handle, self._lock_handle = self._lock_handle, None
+        if handle is None:
             return
-        bs = self._module()
         try:
-            bs.logout()
+            handle.close()   # close 即释放 flock
+        except Exception as exc:  # rule-compliance: ok evidence=释放锁失败只记不抛, 不掩盖上游真异常
+            log.warning("baostock: 释放会话锁失败 (%s)", exc)
+
+    def logout(self) -> None:
+        """显式登出释放服务端会话 + 进程间会话锁。
+
+        锁**无条件释放**: 它在 login 之前就抢下 (坑 5), 若 login 失败则
+        ``_logged_in`` 仍为 False, 早退会把锁泄漏给整个进程生命周期。
+        """
+        self._check_single_thread()
+        try:
+            if not self._logged_in:
+                return
+            bs = self._module()
+            try:
+                bs.logout()
+            finally:
+                self._logged_in = False
         finally:
-            self._logged_in = False
+            self._release_process_lock()
 
     def fetch_raw(self, api: str, **params: Any) -> list[dict[str, Any]]:
         """按 api 名直调对应 ``query_*``，手动翻页取全部行，返回镜像字段的 ``list[dict]``。
