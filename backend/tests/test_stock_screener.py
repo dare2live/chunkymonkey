@@ -69,7 +69,7 @@ def _fresh_conn():
     _insert_form(
         con, stock_code="600001", trade_date="20260620", axis_pos="low",
         axis_trend="up", axis_purity="trending", axis_vol="shrink",
-        form_name="震荡上行", form_sub="温和震荡上行", is_breakout_event=True,
+        form_name="缩量上涨", form_sub="低位缩量上涨", is_breakout_event=True,
     )
     _insert_form(
         con, stock_code="600002", trade_date="20260620", axis_pos="high",
@@ -83,14 +83,14 @@ def _fresh_conn():
 
 def test_form_name_filter_matches_and_has_why_sentence():
     con = _fresh_conn()
-    out = ss.build_form_stage_screen(con, form_names=["震荡上行"])
+    out = ss.build_form_stage_screen(con, form_names=["缩量上涨"])
     assert out["status"] == "ok"
     assert out["as_of"] == "20260620"
     assert out["count"] == 1
     row = out["rows"][0]
     assert row["stock_code"] == "600001"
     assert row["stock_name"] == "甲公司"
-    assert "震荡上行" in row["why"]
+    assert "缩量上涨" in row["why"]
     assert "低位" in row["why"]
 
 
@@ -121,7 +121,7 @@ def test_stale_when_as_of_lags_calendar_beyond_sla():
     _insert_form(
         con, stock_code="600001", trade_date="20260620", axis_pos="low",
         axis_trend="up", axis_purity="trending", axis_vol="shrink",
-        form_name="震荡上行", form_sub="温和震荡上行",
+        form_name="缩量上涨", form_sub="低位缩量上涨",
     )
     out = ss.build_form_stage_screen(con)
     assert out["status"] == "stale"
@@ -143,7 +143,7 @@ def test_options_returns_live_facet_counts():
     assert out["status"] == "ok"
     assert out["as_of"] == "20260620"
     form_values = {f["value"] for f in out["facets"]["form_name"]}
-    assert form_values == {"震荡上行", "放量下跌"}
+    assert form_values == {"缩量上涨", "放量下跌"}
     axis_pos_values = {f["value"]: f["count"] for f in out["facets"]["axis_pos"]}
     assert axis_pos_values == {"low": 1, "high": 1}
 
@@ -154,7 +154,7 @@ def test_options_stale_when_calendar_lags():
     _insert_form(
         con, stock_code="600001", trade_date="20260620", axis_pos="low",
         axis_trend="up", axis_purity="trending", axis_vol="shrink",
-        form_name="震荡上行", form_sub="温和震荡上行",
+        form_name="缩量上涨", form_sub="低位缩量上涨",
     )
     out = ss.build_options(con)
     assert out["status"] == "stale"
@@ -194,7 +194,7 @@ def test_api_multi_form_name_query():
     con = _fresh_conn()
     client = _app_with_conn(con)
     r = client.get(
-        "/api/v3/screener/form_stage?form_name=震荡上行&form_name=放量下跌"
+        "/api/v3/screener/form_stage?form_name=缩量上涨&form_name=放量下跌"
     )
     assert r.status_code == 200
     codes = {row["stock_code"] for row in r.json()["rows"]}

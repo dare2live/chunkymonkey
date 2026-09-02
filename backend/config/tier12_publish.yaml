@@ -64,7 +64,20 @@ consumer_cutover:
   expected_definition_version: stock_state_stage_pattern_v1
   # Live full-universe accept stock config_hash after form enrich v1
   # (form_source=fact_stock_form_daily). Must match publish typed policy hash.
-  expected_config_hash: "184d82ed71a15d61768ce001250b8de86efa1aa0e5ae742bfdf5619d5c24fdd4"
+  #
+  # 2026-09-03 v5 形态词汇重划: 本 hash 从 184d82ed... 换成下面这个, 因为
+  # stock_config_for_hash() 新增了 form_vocabulary_version (取 technical_states.meta.version)。
+  # 补这个字段的原因: 原先该 hash **不含 technical_states.yaml 的任何信息**, 而 StockStateDaily
+  # 发布的 form_name 取值集完全由该文件的 cell映射 决定 —— 词汇表整体换掉而 hash 不变,
+  # 下游会在同一版本号下拿到完全不同的取值集, 且没有任何一道门会报。
+  #
+  # **当前状态: 没有任何已落地的 accepted partition 能匹配本 hash。**
+  # 现存三批 (2026-07-17 / 07-20 / 08-04) 都是 v4 词汇下发布的, 其 payload 里带的是旧 hash。
+  # 因此 consumer 会走 config_hash_mismatch → 回落 legacy fact_stock_form_daily (fail closed)。
+  # 这是**预期且正确**的: v5 重建后 legacy 表就是唯一真相面, overlay 本来就只喂过 3 天,
+  # 且它产出"四列 accepted 七列 fact"的杂交行 —— 对判例引擎那是同一事实的第二真相源。
+  # 要恢复 overlay 生效, 需在 v5 下重新发布 accepted partition; 在那之前它静默失效, 不影响读路。
+  expected_config_hash: "14099ed70e7e6aa6b77d4a540838fbe0d06ded1893ce6f2d090491075454b5f1"
   acknowledge_canary_scope: false
   # Live accept is genuine full project-universe (universe_membership_size ==
   # stock_row_count == 4989); consumers may claim project-universe scope.

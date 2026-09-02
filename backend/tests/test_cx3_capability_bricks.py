@@ -140,7 +140,7 @@ def _briefing_fresh_conn():
         """
         INSERT INTO fact_stock_form_daily VALUES
         ('600001', '20260620', 'low', 'up', 'trending', 'shrink',
-         '震荡上行', '温和震荡上行', NULL, NULL, TRUE, 10)
+         '缩量上涨', '低位缩量上涨', NULL, NULL, TRUE, 10)
         """
     )
     return con
@@ -194,7 +194,7 @@ def test_briefing_fail_closed_when_intersection_stale():
         """
         INSERT INTO fact_stock_form_daily VALUES
         ('600001', '20260620', 'low', 'up', 'trending', 'shrink',
-         '震荡上行', '温和', NULL, NULL, TRUE, 10)
+         '缩量上涨', '低位缩量上涨', NULL, NULL, TRUE, 10)
         """
     )
     out = briefing.build_daily_briefing(con, horizon=20)

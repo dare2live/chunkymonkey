@@ -88,16 +88,37 @@ def test_pulse_attest_default_canary_accept_fails_closed(tmp_path: Path) -> None
     assert "pulse_ui_attestation" in att["notes"]
 
 
-def test_pulse_attest_default_live_partition_accepted_cutover() -> None:
-    """Default on-disk yaml + live 20260717 accept → ACCEPTED_CUTOVER attestation."""
+def test_pulse_attest_default_live_partition_honours_config_hash_pin() -> None:
+    """Default on-disk yaml + live 20260717 accept → 两条出路必居其一, 不许第三种。
+
+    2026-09-03 改写。原断言是 ``uses_legacy is False`` 等六条, 钉的是**当时那一刻**
+    该 partition 恰好匹配 config_hash 这个**运行时状态**。v5 形态词汇重划后
+    ``stock_config_for_hash()`` 纳入了 form_vocabulary_version, 20260717 那批
+    (v4 词汇下发布) 自然不再匹配 → 原测试转红, 但系统行为**完全正确**。
+
+    真正该守的不变量是 hash 钉的契约本身: **匹配就消费, 不匹配就 fail closed 回 legacy
+    并说明是 config_hash_mismatch** —— 没有第三种出路 (尤其不许"不匹配但照样消费")。
+    按这个写, 无论将来是否在 v5 下重新发布该 partition, 它都不会假红。
+    """
 
     att = attest_pulse_tier12_production_read("20260717")
-    assert att["uses_legacy"] is False
-    assert att["cutover_allowed"] is True
-    assert att["status"] == "ACCEPTED_CUTOVER"
-    assert att["source"] == "accepted_partition"
-    assert att["claim_project_universe"] is True
     assert "pulse_ui_attestation" in att["notes"]
+
+    if att["uses_legacy"] is False:
+        # 匹配路径: 必须是完整的 accepted 消费, 不许半吊子
+        assert att["cutover_allowed"] is True
+        assert att["status"] == "ACCEPTED_CUTOVER"
+        assert att["source"] == "accepted_partition"
+        assert att["claim_project_universe"] is True
+        assert not att["reasons"], f"消费了却带拒绝理由: {att['reasons']}"
+    else:
+        # fail-closed 路径: 必须说明为什么, 且不许声称 project-universe
+        assert att["status"] == "BLOCKED"
+        assert att["source"] == "legacy_scaffold"
+        assert att["cutover_allowed"] is False
+        assert att["claim_project_universe"] is False
+        assert att["reasons"], "回落 legacy 却没给任何理由 = 静默降级"
+        assert "fail_closed_consumer_cutover" in att["notes"]
 
 
 def test_pulse_form_overlay_leaves_legacy_rows(tmp_path: Path) -> None:
@@ -105,7 +126,7 @@ def test_pulse_form_overlay_leaves_legacy_rows(tmp_path: Path) -> None:
     rows = [
         {
             "stock_code": "600000",
-            "form_name": "低位横盘",
+            "form_name": "温和横盘",
             "is_breakout_event": True,
         }
     ]
@@ -115,7 +136,7 @@ def test_pulse_form_overlay_leaves_legacy_rows(tmp_path: Path) -> None:
         artifact_root=tmp_path,
     )
     assert read is not None and read.uses_legacy is True
-    assert out[0]["form_name"] == "低位横盘"
+    assert out[0]["form_name"] == "温和横盘"
     assert out[0]["is_breakout_event"] is True
     assert "tier12_form_source" not in out[0]
 

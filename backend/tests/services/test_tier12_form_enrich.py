@@ -54,7 +54,7 @@ def test_stock_state_daily_carries_form_fields() -> None:
         trade_date="20260717",
         axis_trend="up",
         axis_pos="high",
-        form_name="上升通道",
+        form_name="温和上涨",
         is_breakout_event=True,
         definition_version="stock_state_stage_pattern_v1",
         config_hash="abc",
@@ -63,7 +63,7 @@ def test_stock_state_daily_carries_form_fields() -> None:
         available_at="20260717T160000+0800",
     )
     d = row.as_dict()
-    assert d["form_name"] == "上升通道"
+    assert d["form_name"] == "温和上涨"
     assert d["axis_pos"] == "high"
     assert d["is_breakout_event"] is True
     assert d["axis_trend"] == "up"
@@ -91,7 +91,7 @@ def test_writer_enriches_form_exact_day_without_overwriting_axis_trend() -> None
     cfg = _enrich_cfg()
     form_by_code = {
         "600000": {
-            "form_name": "上升通道",
+            "form_name": "温和上涨",
             "axis_pos": "high",
             "axis_trend": "down",  # must NOT overlay writer trend
             "is_breakout_event": True,
@@ -108,7 +108,7 @@ def test_writer_enriches_form_exact_day_without_overwriting_axis_trend() -> None
     )
     row = batch.stock_states[0]
     assert row.axis_trend == "up"  # writer closes trend, not form
-    assert row.form_name == "上升通道"
+    assert row.form_name == "温和上涨"
     assert row.axis_pos == "high"
     assert row.is_breakout_event is True
     assert row.definition_version == "stock_state_stage_pattern_v1"

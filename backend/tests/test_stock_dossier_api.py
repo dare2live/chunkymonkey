@@ -62,7 +62,7 @@ def _fixture_conn():
     con.execute(
         """
         INSERT INTO fact_stock_form_daily VALUES
-        ('600519', '20260721', '放量下跌', '中位放量下跌', '震荡下行', '下跌通道',
+        ('600519', '20260721', '放量下跌', '中位放量下跌', '缩量下跌', '温和下跌',
          FALSE, 'mid', 'down', 'choppy', 'heavy', NULL,
          0.9, 0.3, 0.9, 0.8, NULL)
         """

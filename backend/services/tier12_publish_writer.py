@@ -70,6 +70,27 @@ class TimedInput:
         )
 
 
+_TECHNICAL_STATES_CFG = (
+    Path(__file__).resolve().parents[2] / "backend" / "config" / "technical_states.yaml"
+)
+
+
+def _form_vocabulary_version() -> str:
+    """technical_states.yaml 的 meta.version —— 形态词汇表 (cell映射) 的唯一版本号。
+
+    fail closed: 读不到就抛, 不给默认值。给默认值等于让 config_hash 在配置缺失时
+    仍然"看起来算过了", 正是本函数要堵的那个洞。
+    """
+    raw = yaml.safe_load(_TECHNICAL_STATES_CFG.read_text(encoding="utf-8"))
+    ver = ((raw or {}).get("meta") or {}).get("version")
+    if ver is None:
+        raise ValueError(
+            f"technical_states.yaml 缺 meta.version — 形态词汇表版本无法进 config_hash "
+            f"({_TECHNICAL_STATES_CFG})"
+        )
+    return str(ver)
+
+
 @dataclass(frozen=True)
 class Tier12PublishConfig:
     stock_definition_version: str
@@ -77,6 +98,7 @@ class Tier12PublishConfig:
     stock_axes: tuple[str, ...]
     trend_lookback_bars: int
     form_source: str
+    form_vocabulary_version: str
     stock_availability_policy: Mapping[str, Any]
     market_definition_version: str
     market_eligible_universe_id: str
@@ -114,12 +136,24 @@ class Tier12PublishConfig:
             str(p) for p in (market.get("board_prefixes") or ("60", "00", "30", "68"))
         )
         form_source = str(stock.get("form_source") or "").strip()
+        # 2026-09-03: 形态词汇表版本必须进 config_hash。
+        # 实证的洞: stock_config_for_hash() 原先只哈希 definition_version / universe / axes /
+        # trend_lookback / form_source / availability_policy —— 全都**不含** technical_states.yaml
+        # 的版本或内容。而 StockStateDaily 发布的 `form_name` 取值集完全由该文件的 cell映射 决定。
+        # 后果: 词汇表整体换掉 (如 2026-09-03 顶层重划 11 态 → 9 态) 而 config_hash 不变,
+        # 下游会在同一版本号下拿到完全不同的取值集, 且没有任何一道门会报。
+        # 这里取 meta.version 而不是 bump 一次 definition_version: 后者是打一次补丁, 洞还在;
+        # 前者让此后任何词汇改动自动改 hash。
+        form_vocab = str(stock.get("form_vocabulary_version") or "").strip()
+        if not form_vocab:
+            form_vocab = _form_vocabulary_version()
         return cls(
             stock_definition_version=def_v,
             stock_eligible_universe_id=univ,
             stock_axes=axes,
             trend_lookback_bars=int(stock.get("trend_lookback_bars") or 5),
             form_source=form_source,
+            form_vocabulary_version=form_vocab,
             stock_availability_policy=dict(stock.get("availability_policy") or {}),
             market_definition_version=m_def,
             market_eligible_universe_id=m_univ,
@@ -141,6 +175,7 @@ class Tier12PublishConfig:
             "axes": list(self.stock_axes),
             "trend_lookback_bars": self.trend_lookback_bars,
             "form_source": self.form_source,
+            "form_vocabulary_version": self.form_vocabulary_version,
             "availability_policy": dict(self.stock_availability_policy),
         }
 

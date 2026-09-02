@@ -252,7 +252,7 @@ def test_zero_volume_bar_not_covered():
 
 
 def test_pctile_strict_no_tie_inflation():
-    """medium 修复: 死平序列严格分位 = 0.0 (旧 <= 口径虚高到 1.0 → 误判高位滞涨)。"""
+    """medium 修复: 死平序列严格分位 = 0.0 (旧 <= 口径虚高到 1.0 → 误判高位横盘)。"""
     n = 320
     dates = _weekdays(n)
     c = [10.0] * n
@@ -355,28 +355,28 @@ def test_context_pullback_and_relay_platform():
 
     def mk_rows(last_axes, last_label, last_sub):
         rows = {d: {"axes": {"趋势方向": {"value": "up"}, "位置": {"value": "mid"}},
-                    "label": "上升通道", "sub": "温和上涨"} for d in dates[:11]}
+                    "label": "温和上涨", "sub": "中位温和上涨"} for d in dates[:11]}
         rows[dates[11]] = {"axes": last_axes, "label": last_label, "sub": last_sub}
         return rows
 
     feats = {d: {"mom20": 0.05, "vol_ratio_eff": 1.1, "ma_dist": 0.04} for d in dates}
     # 缩量回踩: 前序 up + 当前 mild 缩量回调
-    rows = mk_rows({"趋势方向": {"value": "flat"}, "位置": {"value": "mid"}}, "中位盘整", "温和盘整")
+    rows = mk_rows({"趋势方向": {"value": "flat"}, "位置": {"value": "mid"}}, "温和横盘", "中位温和横盘")
     feats[dates[11]] = {"mom20": -0.03, "vol_ratio_eff": 0.7, "ma_dist": -0.02}
     LAB.apply_context(rows, feats)
     assert rows[dates[11]]["label"] == "缩量回踩" and rows[dates[11]]["sub"] == "升势回踩"
     # 中继平台: 前序 up + 当前 flat/mid 但不满足回踩当前条件 (量未缩)
-    rows = mk_rows({"趋势方向": {"value": "flat"}, "位置": {"value": "mid"}}, "中位盘整", "温和盘整")
+    rows = mk_rows({"趋势方向": {"value": "flat"}, "位置": {"value": "mid"}}, "温和横盘", "中位温和横盘")
     feats[dates[11]] = {"mom20": 0.005, "vol_ratio_eff": 1.2, "ma_dist": 0.01}
     LAB.apply_context(rows, feats)
     assert rows[dates[11]]["label"] == "中继平台"
     # 前序非 up → 不 refine
-    rows = mk_rows({"趋势方向": {"value": "flat"}, "位置": {"value": "mid"}}, "中位盘整", "温和盘整")
+    rows = mk_rows({"趋势方向": {"value": "flat"}, "位置": {"value": "mid"}}, "温和横盘", "中位温和横盘")
     for d in dates[:11]:
         rows[d]["axes"]["趋势方向"]["value"] = "down"
     feats[dates[11]] = {"mom20": -0.03, "vol_ratio_eff": 0.7, "ma_dist": -0.02}
     LAB.apply_context(rows, feats)
-    assert rows[dates[11]]["label"] == "中位盘整"
+    assert rows[dates[11]]["label"] == "温和横盘"
 
 
 # ---------------------------------------------------------------- candles / patterns (沿用+修正)
@@ -390,12 +390,28 @@ def test_candle_neutral_without_prior_trend():
         candles.candle_pattern(10.0, 11.0, 10.0, 11.0, cfg={})   # cfg 必传, 无内置默认
 
 
+def test_named_pattern_seq_elem_accepts_value_set():
+    """序列元素支持取值集合 (Task B: v5 顶层重划后位置无关态需在多个子标签间取任一, patterns.py
+    最小改动: _elem_hit 新增 list/tuple/set 成员判定分支, 单值精确匹配路径不变)。"""
+    tpl = {"序列": [["中位放量上涨", "中位温和上涨"], "突破事件"], "窗口": 10}
+    cfg = {"命名形态": {"测试形态": tpl}}
+    for first in ("中位放量上涨", "中位温和上涨"):
+        seq = [("d0", first, False), ("d1", "随便", True)]
+        named = patterns.match_named_patterns(seq, cfg)
+        assert any(p["名称"] == "测试形态" for p in named.get("d1", [])), f"{first} 应命中取值集合"
+    # 不在集合内的取值不应命中 (证伪: 集合语义不是"总为真")
+    seq = [("d0", "中位缩量下跌", False), ("d1", "随便", True)]
+    named = patterns.match_named_patterns(seq, cfg)
+    assert not any(p["名称"] == "测试形态" for p in named.get("d1", []))
+
+
 def test_named_patterns_breakout_event_completion_no_backfill():
-    """老鸭头末元素 = 突破事件 (C1 词表适配); 命中只写完成 bar, 不回贴历史 (PIT 三时点 keep)。"""
-    seq = ([(f"d{i:02d}", "上升通道", False) for i in range(5)]
-           + [(f"d{i:02d}", "缩量回踩", False) for i in range(5, 8)]
-           + [(f"d{i:02d}", "中继平台", False) for i in range(8, 12)]
-           + [("d12", "上升通道", True)])                        # 出水日: 标签任意 + 突破事件
+    """老鸭头末元素 = 突破事件 (C1 词表适配); 命中只写完成 bar, 不回贴历史 (PIT 三时点 keep)。
+    序列比较对象 = form_sub (子标签, v5 位置降子层后契约同步更新, patterns.py 头注释)。"""
+    seq = ([(f"d{i:02d}", "中位温和上涨", False) for i in range(5)]
+           + [(f"d{i:02d}", "升势回踩", False) for i in range(5, 8)]
+           + [(f"d{i:02d}", "升势中继", False) for i in range(8, 12)]
+           + [("d12", "中位温和上涨", True)])                     # 出水日: 子标签任意 + 突破事件
     named = patterns.match_named_patterns(seq, CFG)
     assert "d12" in named and any(p["名称"] == "老鸭头" for p in named["d12"])
     for d, _s, _e in seq[:-1]:

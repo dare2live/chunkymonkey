@@ -285,8 +285,8 @@ def _fixture_conn():
         )
     # v3 drill 叶子层 form (as-of 取每股 <= date 最新行; D2 旧行必须被 D3 行覆盖)
     c.executemany("INSERT INTO fact_stock_form_daily VALUES (?, ?, ?, ?)", [
-        ("600001", D[2], "上升通道", False),
-        ("600001", D[3], "低位横盘", True)])
+        ("600001", D[2], "温和上涨", False),
+        ("600001", D[3], "温和横盘", True)])
     # 个股日线 + B1 分层 (sw 链广度/涨跌停聚合桥)
     for d in D:
         c.execute("INSERT INTO tr.raw_tushare_daily VALUES ('600001.SH', ?, 1.0)", [d])

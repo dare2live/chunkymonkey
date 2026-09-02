@@ -494,7 +494,7 @@ def test_drill_leaf_fields_complete(client):
     assert lead["cum_net"] == pytest.approx(60000.0)   # cw=3: 2e4×3
     assert lead["flow_streak"] == 4
     assert lead["flow_regime"] == "accum_in_driving"   # px=1.01^4-1=4.06%>=1
-    assert lead["form_name"] == "低位横盘" and lead["is_breakout_event"] is True
+    assert lead["form_name"] == "温和横盘" and lead["is_breakout_event"] is True
     assert lead["limit_times"] == 2                    # D3 U 行 limit_times
     # 无流数据成员: 字段 NULL (不知道≠0), 仍在列表
     assert rows["000592.SZ"]["net_amount"] is None
@@ -525,7 +525,7 @@ def test_drill_dc_top_and_leaf(client):
     assert leaf["net_amount"] == pytest.approx(-10000.0)
     assert leaf["cum_net"] == pytest.approx(40000.0)   # (5-1) 万元 ×1e4
     assert leaf["flow_streak"] == -1 and leaf["flow_regime"] == "neutral"
-    assert leaf["form_name"] == "低位横盘"
+    assert leaf["form_name"] == "温和横盘"
     assert leaf["limit_times"] is None                 # D4 无涨停行 → NULL 不猜
     # 未知板块 → 200 空
     r5 = client.get(f"/api/v3/pulse/drill?chain={mp.CHAIN_DC_INDUSTRY}&code=BK9999.DC")
