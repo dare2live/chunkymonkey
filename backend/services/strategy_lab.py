@@ -3,6 +3,11 @@
 This is a thin boundary around the existing research runtime. It does not
 implement a second experiment store, scheduler, Optuna study, Modal app, or
 StrategyRelease path.
+
+2026-09-02 拆锁 (业主指令): goal.md 不再持有 RX_AUTH/PHASE_N_AUTH/REMOTE_COMPUTE_AUTH
+授权 token, strategy_lab.yaml 不再有 authorizations 块; 双钥防自批机制退役。准入只剩
+机制性条件 (runner/adapter 未实现、远程安全不变量、holdout 证据校验 — 后者归 holdout
+退役刀处理, 本刀不动)。
 """
 from __future__ import annotations
 
@@ -19,7 +24,6 @@ from services.strategy_spec import StrategySpecError, load_strategy_spec
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_POLICY_PATH = REPO / "backend" / "config" / "strategy_lab.yaml"
-DEFAULT_GOAL_PATH = REPO / "goal.md"
 
 Stage = Literal["local_smoke", "formal_rx", "optuna"]
 Executor = Literal["local", "modal"]
@@ -41,19 +45,12 @@ def _is_day(value: str) -> bool:
 class StrategyLabPolicy:
     status: str
     execution_mode: str
-    formal_rx_authorization: str
-    phase_n_authorization: str
-    remote_compute_authorization: str
     validation_calendar_days: int
     require_read_only_bundle: bool
     forbid_live_database: bool
 
 
-def load_policy(
-    path: Path | str = DEFAULT_POLICY_PATH,
-    *,
-    goal_path: Path | str = DEFAULT_GOAL_PATH,
-) -> StrategyLabPolicy:
+def load_policy(path: Path | str = DEFAULT_POLICY_PATH) -> StrategyLabPolicy:
     policy_path = Path(path)
     try:
         raw = yaml.safe_load(policy_path.read_text(encoding="utf-8"))
@@ -61,17 +58,17 @@ def load_policy(
         raise StrategyLabError(f"strategy lab policy unreadable: {exc}") from exc
     if not isinstance(raw, Mapping) or raw.get("version") != 1:
         raise StrategyLabError("strategy lab policy must be a version=1 mapping")
-    authorizations = raw.get("authorizations")
+    if "authorizations" in raw:
+        raise StrategyLabError(
+            "authorizations block retired 2026-09-02 (goal.md dual-key lock "
+            "removed); delete it"
+        )
     development = raw.get("development_split")
     remote = raw.get("remote_compute")
-    if (
-        not isinstance(authorizations, Mapping)
-        or not isinstance(development, Mapping)
-        or not isinstance(remote, Mapping)
-    ):
+    if not isinstance(development, Mapping) or not isinstance(remote, Mapping):
         raise StrategyLabError(
-            "strategy lab policy requires authorizations, development_split, "
-            "and remote_compute mappings"
+            "strategy lab policy requires development_split and remote_compute "
+            "mappings"
         )
     execution_mode = str(raw.get("execution_mode") or "")
     if execution_mode != "manual_only":
@@ -89,30 +86,10 @@ def load_policy(
     policy = StrategyLabPolicy(
         status=str(raw.get("status") or ""),
         execution_mode=execution_mode,
-        formal_rx_authorization=str(authorizations.get("formal_rx") or "").strip(),
-        phase_n_authorization=str(
-            authorizations.get("phase_n_optuna") or ""
-        ).strip(),
-        remote_compute_authorization=str(
-            authorizations.get("remote_compute") or ""
-        ).strip(),
         validation_calendar_days=validation_days,
         require_read_only_bundle=bool(remote.get("require_read_only_bundle")),
         forbid_live_database=bool(remote.get("forbid_live_database")),
     )
-    try:
-        goal_text = Path(goal_path).read_text(encoding="utf-8")
-    except OSError as exc:
-        raise StrategyLabError(f"goal authorization owner unreadable: {exc}") from exc
-    for token, authorization in (
-        ("RX_AUTH", policy.formal_rx_authorization),
-        ("PHASE_N_AUTH", policy.phase_n_authorization),
-        ("REMOTE_COMPUTE_AUTH", policy.remote_compute_authorization),
-    ):
-        if authorization and f"{token}={authorization}" not in goal_text:
-            raise StrategyLabError(
-                f"{token} authorization is not bound in goal.md"
-            )
     return policy
 
 
@@ -344,7 +321,8 @@ def assess_compute(
     bundle: ResearchInputBundle,
     request: ComputeRequest,
 ) -> ComputeAdmission:
-    """Admit local-smoke (optional loaded spec) and gated formal_rx; never claimable."""
+    """Admit local-smoke (optional loaded spec) and formal_rx on evidence checks;
+    never claimable. Authorization tokens retired 2026-09-02."""
 
     active_policy = load_policy()
     reasons: list[str] = []
@@ -357,18 +335,12 @@ def assess_compute(
 
     formal = request.stage in {"formal_rx", "optuna"}
     if formal:
-        if not active_policy.formal_rx_authorization:
-            reasons.append("formal_rx_not_authorized")
         reasons.extend(validate_formal_rx_evidence(bundle))
 
     if request.stage == "optuna":
-        if not active_policy.phase_n_authorization:
-            reasons.append("phase_n_optuna_not_authorized")
         reasons.append("optuna_runner_not_implemented")
 
     if request.executor == "modal":
-        if not active_policy.remote_compute_authorization:
-            reasons.append("remote_compute_not_authorized")
         reasons.append("modal_adapter_not_implemented")
 
     if request.spec_id:

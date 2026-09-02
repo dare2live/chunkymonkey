@@ -47,18 +47,6 @@
 - **诚实高于完整**：`unknown`/`partial`/`measured reject` 留着就是做对了，禁为清单洗绿。
 - **单机 + 单一计算点**：派生事实只算一次；拒绝为通用而通用的抽象层。
 
-## 授权绑定（执法输入，非叙述）
-
-> 本段**不是文档，是锁**。`services/strategy_lab.py:104-114` 会读本文件全文，校验
-> `strategy_lab.yaml` 里声明的授权码是否在此出现；不匹配则策略实验一律拒绝执行。
-> 这是**双钥防自批**：改 yaml 不足以自我授权，必须由业主在本文件显式落钥。
-> 因此 goal.md 无法是纯叙述文档 —— 删掉本段等于拆锁（2026-09-01 实证：删后 19 个策略侧测试转红）。
-
-- `RX_AUTH=RX-20260824-EF` —— S1/S2 的 E/F 同 protocol remeasure 已排期。
-- `PHASE_N_AUTH=OP-20260824-S5` —— S5 Optuna 已排期；**执行前提 = S1/S2 交付 ExperimentVerdict**，
-  且 `strategy_lab.yaml` 的 `phase_n_optuna` 第二钥未开、runner 未实现。**现禁开 runner。**
-- **StrategyRelease 仍全线禁止。**
-
 ## 边界（明确不做）
 
 不做高频/日内、不做衍生品、不做实盘自动下单、不做多因子打分模型、不做通用回测框架。

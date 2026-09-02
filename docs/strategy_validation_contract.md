@@ -83,7 +83,9 @@
 策略轨默认 **BLOCKED**。同时满足以下全部才可开，缺一即关：
 
 1. 地基出口已 MET（后续若回退，本门**自动重关**，不需要人再判一次）；
-2. `goal.md` 里 owner 的**显式一句**排期，并写入与 typed config 一致的授权 id；
+2. ~~`goal.md` 里 owner 的**显式一句**排期，并写入与 typed config 一致的授权 id~~（2026-09-02 业主拆锁：
+   `goal.md` 不再持有授权 token，`strategy_lab.yaml` 不再有 `authorizations` 块；本条作废，本节其余条款待
+   B0→B5/holdout 退役刀整体重写）；
 3. **同 protocol**：development snapshot 只含 train/validation；sealed holdout 独立冻结且
    worker 不可见；同一 universe / folds / 成本 / 执行约束；
 4. 因子族登记与其 continuity/live 门全 PASS；
@@ -108,7 +110,7 @@ accepted canonical → 冻结 DatasetSnapshot（带 accepted/hash 证据）
 算力四级阶梯，**逐级解锁不得跳级**：
 
 1. **现在**：本地、手动、只读 smoke，`claimable=false`；
-2. **RX**：须 `goal.md` 排期 + fresh freeze + sealed holdout ref + 全部证据 + purged walk-forward；
+2. **RX**：~~须 `goal.md` 排期~~（授权锁 2026-09-02 已拆）+ fresh freeze + sealed holdout ref + 全部证据 + purged walk-forward；
 3. **Optuna**：在 RX 之外**另开**一个 phase；search space 非空且每项必须真的改变 behavior hash
    （否则就是白跑）；objective 只读 development validation；
 4. **远程算力**：最后一步，前提是同 bundle/spec 的本地与远端结果 **hash 0 diff**、只读 bundle、

@@ -184,9 +184,6 @@ def build_status() -> dict[str, object]:
         "framework_ready": control_plane_ready and bool(live_inputs["ready"]),
         "status": policy.status,
         "execution_mode": policy.execution_mode,
-        "formal_rx_authorized": bool(policy.formal_rx_authorization),
-        "optuna_authorized": bool(policy.phase_n_authorization),
-        "modal_authorized": bool(policy.remote_compute_authorization),
         "formal_rx_compute": formal_rx_compute,
         "claimable": False,
         "live_inputs": live_inputs,
@@ -240,12 +237,7 @@ def main() -> int:
         print(json.dumps(status, ensure_ascii=False, sort_keys=True))
     else:
         prefix = "PASS" if status["framework_ready"] else "BLOCKED"
-        print(
-            f"{prefix} strategy_lab framework_only manual_only "
-            f"formal_rx={status['formal_rx_authorized']} "
-            f"optuna={status['optuna_authorized']} "
-            f"modal={status['modal_authorized']}"
-        )
+        print(f"{prefix} strategy_lab framework_only manual_only")
     return 0 if status["framework_ready"] else 2
 
 

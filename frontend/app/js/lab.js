@@ -104,7 +104,7 @@
     });
     const ladder = [
       rung("LOCAL SMOKE", `本地冒烟 · ${fw.framework_ready ? "<b>framework_ready</b>" : "未就绪"}<br>小样本快检，不产 Release`, fw.execution_mode || "manual_only", fw.framework_ready ? "on" : "lock"),
-      rung("RX BATCH", `批量实验 · ${fw.formal_rx_authorized ? "<b>已授权</b>" : "未授权"}<br>allowed=${String(!!rx.allowed)} · claimable=${String(!!rx.claimable)}`, fw.formal_rx_authorized ? "RX locked to goal.md" : "未授权", fw.formal_rx_authorized ? "sched" : "lock"),
+      rung("RX BATCH", `批量实验 · 授权锁已退役 (2026-09-02)<br>allowed=${String(!!rx.allowed)} · claimable=${String(!!rx.claimable)}`, "goal.md 不再持钥", "sched"),
       rung("OPTUNA", `超参搜索 · <b>未开 runner</b><br>yaml 第二钥保持空`, "未授权", "lock"),
       rung("REMOTE", `远程算力 · <b>未授权</b><br>协议与预算先行`, "未授权", "lock"),
     ].join("");

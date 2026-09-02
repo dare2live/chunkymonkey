@@ -541,15 +541,20 @@ ExperimentVerdict
 
 每个 Phase 都用 strangler 方式迁移：契约先行、旧新并跑、逐字段对账、消费者切换、最后删除旧 writer/表/config。Phase 0/1 控制面原语已完成，证据在 commit message（`chunkyctl history --grep "Phase 0"`），不在本表重复充当业务就绪证明。
 
-**地基「完成」不是主观判断，是十项类型化检查联合 PASS。** 从 foundation solidify 切到
+**地基「完成」不是主观判断，是九项类型化检查联合 PASS。** 从 foundation solidify 切到
 scheduled 研究/策略阶段之间有一道机器可判的出口门（`backend/scripts/check_foundation_done.py`
-+ `backend/config/foundation_done.yaml`），十维分别覆盖 strangler transport 的每一根支柱：
++ `backend/config/foundation_done.yaml`），九维分别覆盖 strangler transport 的每一根支柱：
 F1 传输模块化 · F2 legacy 面诚实分型（无假 COMPAT）· F3 无假 publication · F4 brick registry
 与血缘门 · F5 披露域传输三模式 · F6 披露域 accept 广度门槛 · F7 禁 mass/by-date invent ·
-F8 刀级合并行为门 · F9 策略阶梯未越级（RX 可排期；Optuna/Release 仍禁）且前沿诚实 · F10 双轨残差为零。
+F8 刀级合并行为门 · F10 双轨残差为零。（F9「策略阶梯未越级」于 2026-09-02 退役，编号不重排。）
 
-十维不是凑数：F1–F2 管传输、F3 管反假绿、F4 管血缘、F5–F7 管披露域闭合、F8 管流程纪律、
-F9 管策略阶梯（禁越级到 Optuna/Release）、F10 管双轨清洁。**要增删或合并其中任一项，必须先论证「覆盖仍然完整」** ——
+九维不是凑数：F1–F2 管传输、F3 管反假绿、F4 管血缘、F5–F7 管披露域闭合、F8 管流程纪律、
+F10 管双轨清洁。**要增删或合并其中任一项，必须先论证「覆盖仍然完整」** ——
+F9 退役的覆盖论证：它守的是「不越级跳到 Optuna/StrategyRelease」，实现是扫 `goal.md` 字面
+（`RX_AUTH=`/`Optuna`/`StrategyRelease`）+ 禁两份并不存在的 yaml 出现 `enabled: true`。业主 2026-09-02
+把项目定为策略验证项目（`goal.md` 北极星）：StrategyRelease 这个概念不再存在，无级可越；参数扫描
+若做，只允许「全部入档」不允许「只留最优」——这条由判例引擎自身的机制（无 best 列、固定顺序、
+格子样本量门）执法，不再由字面扫描代替。故删 F9 不缺支柱：它守的那根柱子本身被拆了。
 否则就是在不知不觉中把某根支柱移出验收面。具体阈值与实时裁决以脚本实跑为准，不在本文写死。
 
 ## 12. 明确不做

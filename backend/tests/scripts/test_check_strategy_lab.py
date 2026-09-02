@@ -30,9 +30,6 @@ def test_framework_check_reports_live_inputs_when_ready() -> None:
     assert payload["framework_installed"] is True
     assert payload["framework_ready"] is True
     assert payload["execution_mode"] == "manual_only"
-    assert payload["formal_rx_authorized"] is True
-    assert payload["optuna_authorized"] is False
-    assert payload["modal_authorized"] is False
     assert payload["live_inputs"]["ready"] is True
     assert payload["live_inputs"]["snapshots"]["main_rally"]["status"] == "READY"
     assert payload["live_inputs"]["snapshots"]["disclosure"]["status"] == "READY"

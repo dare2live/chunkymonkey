@@ -108,21 +108,23 @@ def test_f8_live_config_passes_bar() -> None:
     assert mean <= float(cfg["section_15"]["max_commits_per_knife"])
 
 
-def test_f7_org_blocked_and_f9_strategy_markers() -> None:
+def test_f7_org_blocked_and_f10_dual_track() -> None:
     mod = _load_mod()
     assert mod.check_f7_org_blocked()["verdict"] == "PASS"
     cfg = mod.load_config()
-    assert mod.check_f9_strategy_paused(cfg)["verdict"] == "PASS"
     assert mod.check_f10_dual_track(cfg)["verdict"] == "PASS"
 
 
-def test_f9_fails_when_goal_loses_pause_marker(tmp_path: Path, monkeypatch) -> None:
+def test_f9_strategy_pause_retired_from_gate() -> None:
+    """2026-09-02 业主拆锁: F9 不再是聚合门成员, 配置里也没有 strategy_pause 块。"""
     mod = _load_mod()
-    fake_goal = tmp_path / "goal.md"
-    fake_goal.write_text("no pause markers here\n", encoding="utf-8")
-    monkeypatch.setattr(mod, "GOAL_MD", fake_goal)
-    cfg = mod.load_config()
-    assert mod.check_f9_strategy_paused(cfg)["verdict"] == "FAIL"
+    report = mod.evaluate_foundation_done(skip_live=True)
+    ids = [c["id"] for c in report["criteria"]]
+    assert ids == ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F10"]
+    assert "F9" not in ids
+    assert tuple(mod.CRITERION_IDS) == tuple(ids)
+    assert "strategy_pause" not in mod.load_config()
+    assert not hasattr(mod, "check_f9_strategy_paused")
 
 
 def test_phase_closure_ready_false_when_live_is_skipped() -> None:

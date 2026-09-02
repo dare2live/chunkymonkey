@@ -47,11 +47,10 @@ def _next_knives(*, c_on: bool) -> list[str]:
     """
     knives = [
         "FOUNDATION §6 exit + 100% usable MET (no class-A): docs/engineering_governance.md §9.1 (残留分类 A/B/C/D)",
-        "STRATEGY blocked: goal.md「下一步」执行 backlog + strategy_validation_contract.md §3.2/§3.3 until goal.md explicit RX schedule",
-        "foundation phase_closure_ready — F1–F10 PASS (docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维))",
+        "STRATEGY: 策略验证范式 (goal.md 北极星 2026-09-02) — 判例查询引擎待建; 旧 B0→B5/RX/holdout 轨逐项退役中 (授权锁已拆)",
+        "foundation phase_closure_ready — F1–F8,F10 PASS (F9 retired 2026-09-02) (docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维))",
         "FND-GATE / §15-VERIFY FIXED; org incremental-check-every-run (mass banned)",
         "S7 typed hard-stop wall — no fake COMPAT; Type-B enrichment FIXED",
-        "E/F RX scheduled RX_AUTH=RX-20260824-EF (Optuna/Release banned)",
     ]
     if not c_on:
         knives.insert(

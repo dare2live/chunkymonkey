@@ -15,7 +15,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-import yaml
 
 from services.strategy_spec import (
     FROZEN_FORMULA_IDS,
@@ -34,7 +33,6 @@ CLOSE_ENTRIES = frozenset(
 RALLY_FORBIDDEN_REQUIRED = frozenset(
     {"B3", "B4", "B5", "b3", "b4", "b5", "optuna", "phase_n_optuna"}
 )
-LAB_PATH = REPO / "backend" / "config" / "strategy_lab.yaml"
 
 
 def reject_same_day_close_entry(entry_kind: str) -> str:
@@ -62,12 +60,6 @@ def reject_rally_requires_b3(required: Sequence[str] | None) -> tuple[str, ...]:
     return items
 
 
-def _lab_authorizations(path: Path = LAB_PATH) -> Mapping[str, Any]:
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    auth = raw.get("authorizations") if isinstance(raw, Mapping) else None
-    return auth if isinstance(auth, Mapping) else {}
-
-
 def attest_structure_products(*, repo: Path | None = None) -> dict[str, Any]:
     formulas = load_strategy_package("formulas", repo=repo)[0]
     follow = load_strategy_spec("institution_follow_v1", repo=repo)
@@ -82,10 +74,9 @@ def attest_structure_products(*, repo: Path | None = None) -> dict[str, Any]:
         raise ValueError("main_rally must stay setup_signal_only")
     if rally.exit_kind != "not_implemented_full_episode":
         raise ValueError("main_rally full episode must stay a stub")
-    auth = _lab_authorizations((repo or REPO) / "backend" / "config" / "strategy_lab.yaml")
-    optuna_key = str(auth.get("phase_n_optuna") or "")
-    if optuna_key:
-        raise ValueError("phase_n_optuna must stay empty until S1/S2 unlock")
+    # 2026-09-02 拆锁: 原此处读 strategy_lab.yaml["authorizations"]["phase_n_optuna"]
+    # 并在非空时 raise。该配置块已随双钥机制退役, 读回来恒为空 -> 守卫恒不触发。
+    # 留着是一道"看起来在把关、实际恒真"的门, 按项目 §15 判据自我验证清单删除而非留死码。
     return {
         "status": "attested",
         "identity": False,

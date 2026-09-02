@@ -28,7 +28,6 @@ sys.path.insert(0, str(REPO / "backend"))
 CONFIG_PATH = REPO / "backend" / "config" / "foundation_done.yaml"
 LEGACY_YAML = REPO / "backend" / "config" / "legacy_raw_plane.yaml"
 BRICK_YAML = REPO / "backend" / "config" / "brick_registry.yaml"
-GOAL_MD = REPO / "goal.md"
 SYNC_RUNNER = REPO / "backend" / "services" / "data_sources" / "sync_runner.py"
 DISCLOSURE_TRANSPORT = (
     REPO / "backend" / "services" / "data_sources" / "disclosure_transport.py"
@@ -39,7 +38,7 @@ SECURITY_DAY_ACQUIRE = (
     REPO / "backend" / "services" / "data_sources" / "security_day_acquire.py"
 )
 
-CRITERION_IDS = tuple(f"F{i}" for i in range(1, 11))
+CRITERION_IDS = ("F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F10")  # F9 strategy-pause 于 2026-09-02 退役 (业主拆锁; 策略阶梯不再存在)
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -631,41 +630,6 @@ def check_f8_section15(cfg: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def check_f9_strategy_paused(cfg: dict[str, Any]) -> dict[str, Any]:
-    """F9: RX may be scheduled; Optuna/Release stay banned; frontier honest."""
-    if not GOAL_MD.is_file():
-        return _crit("F9", "FAIL", detail="goal.md missing")
-    text = _read_text(GOAL_MD)
-    required = list((cfg.get("strategy_pause") or {}).get("goal_must_contain") or [])
-    missing = [s for s in required if s not in text]
-    if missing:
-        return _crit(
-            "F9",
-            "FAIL",
-            detail=f"goal.md missing strategy-pause markers: {missing}",
-        )
-    # Ban accidental Optuna enablement flip in common configs
-    for rel in (
-        "backend/config/strategy_release.yaml",
-        "backend/config/optuna.yaml",
-    ):
-        path = REPO / rel
-        if not path.is_file():
-            continue
-        body = _read_text(path).lower()
-        if "enabled: true" in body or "enable: true" in body:
-            return _crit(
-                "F9",
-                "FAIL",
-                detail=f"{rel} appears enabled while Optuna/Release remain banned",
-            )
-    return _crit(
-        "F9",
-        "PASS",
-        detail="RX_AUTH bound in goal; Optuna/StrategyRelease bans intact",
-    )
-
-
 def check_f10_dual_track(cfg: dict[str, Any]) -> dict[str, Any]:
     """F10: dual-track residual NONE (retire notes + serve-read clean)."""
     dt = cfg.get("dual_track") or {}
@@ -707,7 +671,6 @@ def evaluate_foundation_done(
         check_f6_e0_breadth(cfg, skip_live=skip_live),
         check_f7_org_blocked(),
         check_f8_section15(cfg),
-        check_f9_strategy_paused(cfg),
         check_f10_dual_track(cfg),
     ]
     by_id = {c["id"]: c["verdict"] for c in criteria}
@@ -733,7 +696,7 @@ def evaluate_foundation_done(
         },
         "note": (
             "PARTIAL (e.g. F8 §15) does not fail this gate; "
-            "phase_closure_ready requires all F1–F10 PASS before scheduled E/F"
+            "phase_closure_ready requires F1–F8 and F10 PASS (F9 retired 2026-09-02)"
         ),
     }
 

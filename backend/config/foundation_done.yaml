@@ -1,4 +1,4 @@
-# Foundation-done aggregate gate (F1–F10)
+# Foundation-done aggregate gate (F1–F8, F10; F9 strategy-pause 于 2026-09-02 退役 — 业主拆锁, 策略阶梯/StrategyRelease 概念不再存在)
 #
 # Authority: docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维) §3
 # Owner script: backend/scripts/check_foundation_done.py
@@ -87,13 +87,6 @@ section_15:
         commits: 1
         pre_knife: true
         subject: "feat(foundation): §15-VERIFY — F8 PASS knife-merge evidence (this knife)"
-
-# Strategy ladder (F9) — RX may be scheduled; Optuna/Release stay banned.
-strategy_pause:
-  goal_must_contain:
-    - "RX_AUTH="
-    - "Optuna"
-    - "StrategyRelease"
 
 # Dual-track (F10)
 dual_track:

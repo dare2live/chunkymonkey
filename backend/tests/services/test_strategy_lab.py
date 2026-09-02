@@ -340,7 +340,6 @@ def test_formal_rx_is_allowed_when_evidence_checks_pass() -> None:
     assert admission.claimable is False
     assert admission.reasons == ()
     assert "formal_evidence_validators_not_implemented" not in admission.reasons
-    assert "formal_rx_not_authorized" not in admission.reasons
 
 
 def test_formal_rx_rejects_holdout_start_mismatch_vs_policy() -> None:
@@ -374,7 +373,6 @@ def test_optuna_is_blocked_until_real_runner_exists() -> None:
     assert admission.claimable is False
     assert "formal_evidence_validators_not_implemented" not in admission.reasons
     assert "optuna_runner_not_implemented" in admission.reasons
-    assert "phase_n_optuna_not_authorized" in admission.reasons
 
 
 def test_modal_is_blocked_until_real_adapter_exists() -> None:
@@ -389,7 +387,6 @@ def test_modal_is_blocked_until_real_adapter_exists() -> None:
     )
 
     assert admission.allowed is False
-    assert "remote_compute_not_authorized" in admission.reasons
     assert "modal_adapter_not_implemented" in admission.reasons
 
 
@@ -397,40 +394,10 @@ def test_live_policy_is_framework_only() -> None:
     policy = load_policy()
     assert policy.status == "framework_only"
     assert policy.execution_mode == "manual_only"
-    assert policy.formal_rx_authorization == "RX-20260824-EF"
-    assert not policy.phase_n_authorization
-    assert not policy.remote_compute_authorization
-
-
-def test_authorization_id_must_be_bound_by_goal_owner(tmp_path: Path) -> None:
-    policy_path = tmp_path / "strategy_lab.yaml"
-    goal_path = tmp_path / "goal.md"
-    policy_path.write_text(
-        """
-version: 1
-status: framework_only
-execution_mode: manual_only
-development_split:
-  validation_calendar_days: 20
-authorizations:
-  formal_rx: RX-001
-  phase_n_optuna: ""
-  remote_compute: ""
-remote_compute:
-  require_read_only_bundle: true
-  forbid_live_database: true
-""",
-        encoding="utf-8",
-    )
-    goal_path.write_text("RX remains blocked\n", encoding="utf-8")
-
-    with pytest.raises(StrategyLabError, match="not bound in goal.md"):
-        load_policy(policy_path, goal_path=goal_path)
 
 
 def test_remote_safety_invariants_cannot_be_disabled(tmp_path: Path) -> None:
     policy_path = tmp_path / "strategy_lab.yaml"
-    goal_path = tmp_path / "goal.md"
     policy_path.write_text(
         """
 version: 1
@@ -438,25 +405,19 @@ status: framework_only
 execution_mode: manual_only
 development_split:
   validation_calendar_days: 20
-authorizations:
-  formal_rx: ""
-  phase_n_optuna: ""
-  remote_compute: ""
 remote_compute:
   require_read_only_bundle: false
   forbid_live_database: true
 """,
         encoding="utf-8",
     )
-    goal_path.write_text("", encoding="utf-8")
 
     with pytest.raises(StrategyLabError, match="must remain true"):
-        load_policy(policy_path, goal_path=goal_path)
+        load_policy(policy_path)
 
 
 def test_validation_window_rejects_yaml_boolean(tmp_path: Path) -> None:
     policy_path = tmp_path / "strategy_lab.yaml"
-    goal_path = tmp_path / "goal.md"
     policy_path.write_text(
         """
 version: 1
@@ -464,17 +425,42 @@ status: framework_only
 execution_mode: manual_only
 development_split:
   validation_calendar_days: true
-authorizations:
-  formal_rx: ""
-  phase_n_optuna: ""
-  remote_compute: ""
 remote_compute:
   require_read_only_bundle: true
   forbid_live_database: true
 """,
         encoding="utf-8",
     )
-    goal_path.write_text("", encoding="utf-8")
 
     with pytest.raises(StrategyLabError, match="positive integer"):
-        load_policy(policy_path, goal_path=goal_path)
+        load_policy(policy_path)
+
+
+def test_policy_loads_without_goal_md_or_tokens(tmp_path: Path) -> None:
+    """2026-09-02 拆锁: 策略实验室政策不再依赖 goal.md 任何字样。"""
+    policy_path = tmp_path / "strategy_lab.yaml"
+    policy_path.write_text(
+        "version: 1\nstatus: framework_only\nexecution_mode: manual_only\n"
+        "development_split:\n  validation_calendar_days: 20\n"
+        "remote_compute:\n  require_read_only_bundle: true\n  forbid_live_database: true\n",
+        encoding="utf-8",
+    )
+    policy = load_policy(policy_path)   # tmp_path 下没有 goal.md, 也不该去找
+    assert policy.status == "framework_only"
+    assert not hasattr(policy, "formal_rx_authorization")
+    assert not hasattr(policy, "phase_n_authorization")
+    assert not hasattr(policy, "remote_compute_authorization")
+
+
+def test_authorizations_block_is_rejected_as_retired(tmp_path: Path) -> None:
+    """反向证明: 旧双钥块若被人加回来, 政策直接拒载 (fail-closed), 不是静默忽略。"""
+    policy_path = tmp_path / "strategy_lab.yaml"
+    policy_path.write_text(
+        "version: 1\nstatus: framework_only\nexecution_mode: manual_only\n"
+        "development_split:\n  validation_calendar_days: 20\n"
+        "authorizations:\n  formal_rx: RX-999\n"
+        "remote_compute:\n  require_read_only_bundle: true\n  forbid_live_database: true\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(StrategyLabError, match="retired 2026-09-02"):
+        load_policy(policy_path)

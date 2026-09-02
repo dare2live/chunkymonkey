@@ -404,7 +404,7 @@ assertions:
     command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_factor_family_gates.py >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
   - id: foundation-done-f1-f10
-    claim: "FND-GATE foundation-done F1–F10 聚合门：真实缺口 FAIL；S7 ssot typed hard-stop (计数现查 check_legacy_raw_plane, 勿写死) / org mass-by-date banned+daily incremental-by-period required / Type-B enrichment defer 为诚实墙 PASS；F8 §15 PASS 需 ≥3 连续 L3 刀 evidence（commits/knife≤1.5 + pre_knife；禁放宽阈值）；PARTIAL 仍 exit0。owner=backend/scripts/check_foundation_done.py + foundation_done.yaml；权威=docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维构成理由) + git log --grep section15_verify"
+    claim: "FND-GATE foundation-done F1–F8,F10 聚合门（F9 strategy-pause 2026-09-02 退役, 业主拆锁）：真实缺口 FAIL；S7 ssot typed hard-stop (计数现查 check_legacy_raw_plane, 勿写死) / org mass-by-date banned+daily incremental-by-period required / Type-B enrichment defer 为诚实墙 PASS；F8 §15 PASS 需 ≥3 连续 L3 刀 evidence（commits/knife≤1.5 + pre_knife；禁放宽阈值）；PARTIAL 仍 exit0。owner=backend/scripts/check_foundation_done.py + foundation_done.yaml；权威=docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维构成理由) + git log --grep section15_verify"
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_foundation_done.py --skip-live >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
