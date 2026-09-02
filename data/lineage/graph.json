@@ -613,6 +613,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/derive_cli.py",
+      "kind": "consume",
+      "src": "table:feature_store.fact_rally_ground_truth"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/main_rally_dataset_snapshot.py",
       "kind": "consume",
       "src": "table:feature_store.fact_rally_ground_truth"
@@ -656,6 +662,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_rally_gt.py",
+      "kind": "consume",
+      "src": "table:feature_store.fact_rally_ground_truth"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:scripts/chunkyctl",
       "kind": "consume",
       "src": "table:feature_store.fact_rally_ground_truth"
     },
@@ -10789,8 +10801,8 @@
     }
   ],
   "meta": {
-    "edge_count": 1753,
-    "generated_at": "2026-09-02T01:44:14.502111+00:00",
+    "edge_count": 1755,
+    "generated_at": "2026-09-02T06:29:08.355741+00:00",
     "node_count": 528,
     "version": 2
   },
