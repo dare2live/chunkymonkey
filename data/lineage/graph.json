@@ -7663,6 +7663,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/strategy_packages/strong_stock_funnel_v1.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_cyq_perf"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_cyq_perf"
@@ -11041,9 +11047,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1795,
-    "generated_at": "2026-09-02T15:33:01.043156+00:00",
-    "node_count": 535,
+    "edge_count": 1796,
+    "generated_at": "2026-09-02T15:45:22.273908+00:00",
+    "node_count": 536,
     "version": 2
   },
   "nodes": [
@@ -11229,6 +11235,14 @@
         "path": "backend/config/stock_flow_streak.yaml"
       },
       "id": "consumer:backend/config/stock_flow_streak.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/strategy_packages/strong_stock_funnel_v1.yaml"
+      },
+      "id": "consumer:backend/config/strategy_packages/strong_stock_funnel_v1.yaml",
       "kind": "consumer"
     },
     {
