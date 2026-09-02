@@ -751,6 +751,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/tushare_sunset.yaml",
+      "kind": "consume",
+      "src": "table:feature_store.fact_rally_strata"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/main_rally_dataset_snapshot.py",
       "kind": "consume",
       "src": "table:feature_store.fact_rally_strata"
@@ -1501,6 +1507,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/check_foundation_done.py",
       "kind": "consume",
       "src": "table:org_holding.accepted_partition"
@@ -1543,6 +1555,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/calendar_contract.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/disclosure_boundaries.py",
       "kind": "consume",
       "src": "table:org_holding.accepted_partition"
@@ -1574,6 +1592,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/margin_schema.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_state.py",
       "kind": "consume",
       "src": "table:org_holding.accepted_partition"
     },
@@ -1712,6 +1736,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_check_continuity_integrity.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_contract_stamp_consistency.py",
       "kind": "consume",
       "src": "table:org_holding.accepted_partition"
     },
@@ -1891,6 +1921,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:org_holding.canonical_org_holding_detail_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/org_holding_schema.py",
       "kind": "consume",
       "src": "table:org_holding.canonical_org_holding_detail_period"
@@ -1933,6 +1969,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/db_split_org_holding.py",
       "kind": "consume",
       "src": "table:org_holding.ingest_batch"
@@ -1963,6 +2005,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_state.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/sync_runner.py",
       "kind": "consume",
       "src": "table:org_holding.ingest_batch"
@@ -1970,6 +2018,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_schema.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_contract_stamp_consistency.py",
       "kind": "consume",
       "src": "table:org_holding.ingest_batch"
     },
@@ -2000,6 +2060,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_disclosure_transport_e0.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_domain_spec_channels.py",
       "kind": "consume",
       "src": "table:org_holding.ingest_batch"
     },
@@ -2053,6 +2119,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_market_db_canonical_kline.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:org_holding.landing_miaoxiang_org_holding"
@@ -2060,6 +2132,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/database_manifest.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.landing_miaoxiang_org_holding"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
       "kind": "consume",
       "src": "table:org_holding.landing_miaoxiang_org_holding"
     },
@@ -2659,6 +2737,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/check_foundation_done.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -2701,6 +2785,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/calendar_contract.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/disclosure_boundaries.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
@@ -2732,6 +2822,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/margin_schema.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_state.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
     },
@@ -2870,6 +2966,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_check_continuity_integrity.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_contract_stamp_consistency.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
     },
@@ -3086,6 +3188,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/routers/stock_dossier.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
     },
@@ -4933,6 +5041,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:smartmoney.ingest_batch"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/db_split_org_holding.py",
       "kind": "consume",
       "src": "table:smartmoney.ingest_batch"
@@ -4963,6 +5077,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_state.py",
+      "kind": "consume",
+      "src": "table:smartmoney.ingest_batch"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/sync_runner.py",
       "kind": "consume",
       "src": "table:smartmoney.ingest_batch"
@@ -4970,6 +5090,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:smartmoney.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_schema.py",
+      "kind": "consume",
+      "src": "table:smartmoney.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_contract_stamp_consistency.py",
       "kind": "consume",
       "src": "table:smartmoney.ingest_batch"
     },
@@ -5000,6 +5132,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_disclosure_transport_e0.py",
+      "kind": "consume",
+      "src": "table:smartmoney.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_domain_spec_channels.py",
       "kind": "consume",
       "src": "table:smartmoney.ingest_batch"
     },
@@ -5053,7 +5191,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_market_db_canonical_kline.py",
+      "kind": "consume",
+      "src": "table:smartmoney.ingest_batch"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.landing_miaoxiang_holders_top10"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
       "kind": "consume",
       "src": "table:smartmoney.landing_miaoxiang_holders_top10"
     },
@@ -5191,7 +5341,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_data_lineage"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/schema_marts.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_data_lineage"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_contract_stamp_consistency.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_data_lineage"
     },
@@ -5269,6 +5431,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_data_source_watermark"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/refresh_source_watermarks.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_data_source_watermark"
@@ -5323,6 +5491,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_data_source_watermark"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_update_watermark_sla.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_data_source_watermark"
@@ -5341,6 +5515,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_watermark_domain_frontier.py",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_data_source_watermark"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_source_watermarks.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_data_source_watermark"
@@ -5348,6 +5528,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.mart_lineage"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
       "kind": "consume",
       "src": "table:smartmoney.mart_lineage"
     },
@@ -5755,6 +5941,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/check_foundation_done.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -5797,6 +5989,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/calendar_contract.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/disclosure_boundaries.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
@@ -5828,6 +6026,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/margin_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_state.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -5966,6 +6170,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_check_continuity_integrity.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_contract_stamp_consistency.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -6151,6 +6361,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/fina_margin_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_margin_exchange_daily"
@@ -6200,6 +6416,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_check_continuity_integrity.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_margin_exchange_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_contract_stamp_consistency.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_margin_exchange_daily"
     },
@@ -6283,6 +6505,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/cyq_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
@@ -6308,6 +6536,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/market_pulse_scope.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_schema.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_nominal_ohlcv_daily"
     },
@@ -6391,6 +6625,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_sse_trading_calendar_generation"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/calendar_builder.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_sse_trading_calendar_generation"
@@ -6427,6 +6667,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_stk_holdertrade_announcement"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/stk_holdertrade_schema.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_stk_holdertrade_announcement"
@@ -6440,6 +6686,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/tushare_sunset.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.canonical_stock_st_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
       "kind": "consume",
       "src": "table:tushare_raw.canonical_stock_st_daily"
     },
@@ -6511,6 +6763,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/db_split_org_holding.py",
       "kind": "consume",
       "src": "table:tushare_raw.ingest_batch"
@@ -6541,6 +6799,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/data_sources/margin_state.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/sync_runner.py",
       "kind": "consume",
       "src": "table:tushare_raw.ingest_batch"
@@ -6548,6 +6812,18 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/holders_landing_retention.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_contract_stamp_consistency.py",
       "kind": "consume",
       "src": "table:tushare_raw.ingest_batch"
     },
@@ -6578,6 +6854,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/services/test_disclosure_transport_e0.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_domain_spec_channels.py",
       "kind": "consume",
       "src": "table:tushare_raw.ingest_batch"
     },
@@ -6631,7 +6913,25 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_market_db_canonical_kline.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_daily"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/nominal_ohlcv_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_daily"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_contract_stamp_consistency.py",
       "kind": "consume",
       "src": "table:tushare_raw.landing_tushare_daily"
     },
@@ -6643,7 +6943,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_margin"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/margin_schema.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_margin"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_contract_stamp_consistency.py",
       "kind": "consume",
       "src": "table:tushare_raw.landing_tushare_margin"
     },
@@ -6679,9 +6991,21 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_stk_holdertrade"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/stk_holdertrade_schema.py",
       "kind": "consume",
       "src": "table:tushare_raw.landing_tushare_stk_holdertrade"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_stock_st"
     },
     {
       "attrs": {},
@@ -6694,6 +7018,12 @@
       "dst": "consumer:backend/services/data_sources/stock_st_schema.py",
       "kind": "consume",
       "src": "table:tushare_raw.landing_tushare_stock_st"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_trade_cal"
     },
     {
       "attrs": {},
@@ -6712,6 +7042,12 @@
       "dst": "consumer:backend/tests/services/test_calendar_contract.py",
       "kind": "consume",
       "src": "table:tushare_raw.landing_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.landing_tushare_trade_cal_fragment"
     },
     {
       "attrs": {},
@@ -6860,6 +7196,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/data_sources/fuyao_kline_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_adj_factor"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/market_schema.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_adj_factor"
     },
@@ -9793,6 +10135,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.v_margin_exchange_day"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/check_legacy_raw_plane.py",
       "kind": "consume",
       "src": "table:tushare_raw.v_margin_exchange_day"
@@ -10327,9 +10675,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1676,
-    "generated_at": "2026-08-31T19:44:08.836157+00:00",
-    "node_count": 521,
+    "edge_count": 1734,
+    "generated_at": "2026-09-02T00:29:00.665736+00:00",
+    "node_count": 525,
     "version": 2
   },
   "nodes": [
@@ -10659,6 +11007,14 @@
         "path": "backend/scripts/check_continuity_integrity.py"
       },
       "id": "consumer:backend/scripts/check_continuity_integrity.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
+        "path": "backend/scripts/check_contract_stamp_consistency.py"
+      },
+      "id": "consumer:backend/scripts/check_contract_stamp_consistency.py",
       "kind": "consumer"
     },
     {
@@ -12032,6 +12388,14 @@
     {
       "attrs": {
         "ctype": "test",
+        "path": "backend/tests/scripts/test_check_contract_stamp_consistency.py"
+      },
+      "id": "consumer:backend/tests/scripts/test_check_contract_stamp_consistency.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
         "path": "backend/tests/scripts/test_check_grain_uniqueness.py"
       },
       "id": "consumer:backend/tests/scripts/test_check_grain_uniqueness.py",
@@ -12235,6 +12599,14 @@
         "path": "backend/tests/services/test_disclosure_transport_e0.py"
       },
       "id": "consumer:backend/tests/services/test_disclosure_transport_e0.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_domain_spec_channels.py"
+      },
+      "id": "consumer:backend/tests/services/test_domain_spec_channels.py",
       "kind": "consumer"
     },
     {
@@ -12683,6 +13055,14 @@
         "path": "backend/tests/services/test_universe_st_calendar.py"
       },
       "id": "consumer:backend/tests/services/test_universe_st_calendar.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_watermark_domain_frontier.py"
+      },
+      "id": "consumer:backend/tests/services/test_watermark_domain_frontier.py",
       "kind": "consumer"
     },
     {

@@ -63,8 +63,14 @@ def load_org_holding_contract() -> OrgHoldingContract:
         "writer_id": WRITER_ID,
         "landing_table": LANDING_TABLE,
         "canonical_table": CANONICAL_TABLE,
-        "source": SOURCE,
-        "api": API,
+        # 2026-09-01: **source / api 不参与 config_hash**。
+        # 它们是传输轴 (从哪取), 不是语义轴 (数据是什么)。同一手术已在 nominal_ohlcv_contract.py /
+        # stock_st_contract.py 做过 (docs/engineering_governance.md §15.5) —— 让取数地址参与语义
+        # 指纹, 会把"换个供应商取同样的数据"误判成"契约变更", 让 accept 路径的严格 hash 相等校验
+        # 拒读全部既有 accepted 分区。语义变更仍被完整覆盖: schema_hash(字段/类型/单位) + grain +
+        # partition_by + population_scope + availability + landing_table/canonical_table/
+        # compatibility_table, 任一真实语义变化都会动到其中至少一项。source/api 仍是
+        # OrgHoldingContract 的字段 (值来自 schema 常量), 不依赖 hash。
         "compatibility_table": COMPATIBILITY_TABLE,
         "grain": list(GRAIN),
         "partition_by": PARTITION_FIELD,

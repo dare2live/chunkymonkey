@@ -4,20 +4,20 @@
   "consumers": [
     "backend/scripts/agent_board_projection.py"
   ],
-  "frozen_at": "2026-08-26T00:50:23.877552+00:00",
+  "frozen_at": "2026-09-02T00:17:56.573265+00:00",
   "kind": "phase_d_experiment_run_manifest",
   "runs": {
     "b0_bound": "data/lineage/phase_d_experiment_runs/b0_bound.json",
     "measured_offline": "data/lineage/phase_d_experiment_runs/measured_offline.json"
   },
   "schema_version": 1,
-  "snapshot_hash": "b96cf1db26e8b3aa0d1f53b67ee422364dc4c28357dad7b2bbe04d5756dfee30",
+  "snapshot_hash": "0cced86c62a14eeedc64428899ad1f2db75ddff427f0cb76bd487ba3ed9c2c07",
   "snapshot_relpath": "data/lineage/disclosure_dataset_snapshot.json",
   "summary": {
     "block": "B0",
     "claimable": false,
     "embargo_days": 1,
-    "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530:3899c46dabf2",
+    "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530:df73d4c79fdc",
     "fold_ids": [
       "purged_fold_0",
       "purged_fold_1",
@@ -28,7 +28,7 @@
     "label_horizon_days": 1,
     "measured_offline": {
       "claimable": false,
-      "experiment_id": "phase_d_offline:B0:disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530:meas:352fd04fc79a",
+      "experiment_id": "phase_d_offline:B0:disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530:meas:9f2d9b442ea3",
       "measure_status": "measured",
       "n_trades_completed": 2,
       "paper_fills": "measured",

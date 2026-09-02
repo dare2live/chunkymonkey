@@ -35,8 +35,15 @@ _CALENDAR_SCHEMA_PAYLOAD: dict[str, Any] = {
     "physical_grain": ["generation_id", "exchange", "cal_date"],
     "duplicate_policy": "reject_before_canonicalization",
     "transport_evidence": {
-        "source": "tushare",
-        "api": "trade_cal",
+        # 2026-09-01: source/api 不进 schema (进而不进 CALENDAR_SCHEMA_HASH)。schema
+        # 描述的是"证据长什么样/怎么验"(字段/哈希算法/分页终止规则/fragment 身份),
+        # 不是"从哪取"——那是传输轴, formal_boundaries.py 开篇即 "Transport axis only.
+        # Business tiers must not own these seams."。同型判据已在 config_hash 层翻车过:
+        # nominal_ohlcv/stock_st 的 config_hash 曾含 source/api, 换源(tushare->通达信)
+        # 被误判成契约变更, 拒读 2,986 个既有分区 (docs/engineering_governance.md §15.5)。
+        # trade_cal 自己的 source 已换了两次 (tushare -> baostock -> calendar_rule) 而
+        # 这份证据捕获协议一字未变, 不该让它跟着漂移。registry/adapter 一致性由
+        # calendar_contract.py 的 _EXPECTED_PROVIDER_TRANSPORT 独立守卫, 不依赖这个 hash。
         "provider_fields": list(PROVIDER_FIELDS),
         "landing_population": "provider_response",
         "provider_row_hash": "sha256_stable_json_exact_provider_row",

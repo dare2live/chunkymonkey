@@ -636,7 +636,79 @@ def domain_spec(registry: dict[str, Any], domain: str) -> dict[str, Any]:
         spec.update(source_cfg)
     spec.update(entry)
     spec["domain"] = domain
+    spec["channels"] = _channel_views(registry, domain, entry, primary_view=spec)
     return spec
+
+
+# 通道视图只允许覆盖**传输轴**键 (从哪取), 不许碰语义轴 (数据是什么)。
+# 出现 grain/target_table/universe_filter 这类键 = 设计错误, 不是配置疏漏:
+# 那意味着有人想用"备用源"偷换数据定义, 而不是换一根水管取同一份数据。
+_CHANNEL_KEYS = frozenset({
+    "source", "api", "fetch_timeout_seconds", "page_limit",
+    "rate_limit", "required_fields", "system_evidence", "note",
+})
+
+
+def _channel_views(
+    registry: dict[str, Any],
+    domain: str,
+    entry: dict[str, Any],
+    *,
+    primary_view: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """有序通道视图: channels[0] = 主源视图, 其余 = 声明的 fallback, 按声明顺序。
+
+    2026-09-02 P1 channels 地基。**只在 domain_spec 内调用** —— 三层继承链仍是单一实现
+    (见 domain_spec docstring 与 test_registry_merge_chain_single_source 防回归锁)。
+    channels[0] 去掉 'channels' 键本身以防自引用递归。
+
+    全部校验 fail-closed: 宁可拒绝启动, 不可让一条未验收/越权的通道悄悄生效。
+    """
+    views: list[dict[str, Any]] = [
+        {k: v for k, v in primary_view.items() if k != "channels"}
+    ]
+    raw = entry.get("fallback_channels") or []
+    if not raw:
+        return views
+
+    # 观点类 (vendor_view) 不许跨体系接力: 东财资金流和同花顺资金流不是同一份数据的
+    # 两条水管, 是两个不同机构的两种算法 —— 让它们互为 fallback 等于静默换数据。
+    kind = (entry.get("identity") or {}).get("kind")
+    if kind not in ("exchange_fact", "derived_rule"):
+        raise ValueError(
+            f"{domain}: 声明了 fallback_channels 但 identity.kind={kind!r} — "
+            "只有 exchange_fact / derived_rule 允许多通道接力 (观点类换 judge = 换数据)"
+        )
+
+    sources_cfg = registry.get("sources") or {}
+    for ch in raw:
+        if not isinstance(ch, dict) or not ch.get("source") or not ch.get("api"):
+            raise ValueError(f"{domain}: fallback channel 缺 source/api: {ch!r}")
+        illegal = set(ch) - _CHANNEL_KEYS
+        if illegal:
+            raise ValueError(
+                f"{domain}: fallback channel {ch['source']!r} 含非传输轴键 {sorted(illegal)} — "
+                "通道只能换水管, 不能换水"
+            )
+        if not str(ch.get("system_evidence") or "").strip():
+            raise ValueError(
+                f"{domain}: fallback channel {ch['source']!r} 缺 system_evidence — "
+                "未经实证验收的通道不得生效 (留空 = 通道不存在)"
+            )
+        if ch["source"] not in sources_cfg:
+            raise ValueError(
+                f"{domain}: fallback source {ch['source']!r} 未在 sources 段登记"
+            )
+        view = dict(registry.get("defaults") or {})
+        view.update(sources_cfg[ch["source"]])
+        view.update({
+            k: v for k, v in entry.items()
+            if k not in ("fallback_channels", "source", "api")
+        })
+        view.update(ch)
+        view["domain"] = domain
+        views.append(view)
+    return views
 
 
 _TUSHARE_SOURCE: Any = None
@@ -955,6 +1027,15 @@ _TRANSIENT_RATELIMIT_MARKERS = (
 )
 
 
+# 2026-09-02 刀3 起, 下面两个函数是**第③层兜底**, 不再是主判据 ——
+# 第①层(供应商错误码/异常属性) 与第②层(异常类) 在 services/data_sources/fetch_verdict.py,
+# 只有它们返回 UNKNOWN 时才落到这里。
+# 保留它们不是技术债: tushare 经 tinyshare 网关只吐中文散文, 无状态码无业务码,
+# **文案是那条水管仅有的信号**。故是分层判据, 不是一刀替换。
+# 新接入的源请在 fetch_verdict 里补 classify, 不要再往这两张表里加措辞 ——
+# 表越长越没人知道哪条还有效, 且它天然只覆盖已见过的措辞 (假阴面见 fetch_verdict 模块注释)。
+
+
 def _is_transient_ratelimit(msg: str) -> bool:
     return any(m in msg for m in _TRANSIENT_RATELIMIT_MARKERS)
 
@@ -1055,9 +1136,17 @@ def _fetch_with_retry(
     allow_empty = bool(spec.get("allow_empty_batch"))
     rate_limiter = _get_rate_limiter(spec)
     from services.data_sources.sources.tushare import TuShareAuthorizationError
+    from services.data_sources.fetch_verdict import (
+        FailureKind,
+        classify_failure,
+        is_hard_stop,
+        should_retry_same_channel,
+    )
 
     last_err: str | None = None
+    source_name = str(spec.get("source") or "")
     for i in range(attempts):
+        kind = FailureKind.UNKNOWN
         try:
             if rate_limiter is not None:
                 rate_limiter.acquire(spec["api"])   # 主动节流: 撞墙前先睡 (config-driven)
@@ -1071,14 +1160,25 @@ def _fetch_with_retry(
             raise  # 账户授权是硬阻断；重试同一批只会制造噪音与额外请求
         except Exception as exc:  # noqa: BLE001 — 重试边界
             last_err = str(exc)[:200]
-            if _is_quota_wall(last_err):
+            # 分层判据 (2026-09-02 刀3): ①供应商错误码/异常属性 → ②异常类 → ③中文文案表。
+            # 前两层在 fetch_verdict; 判不出返 UNKNOWN 时才落到第③层 —— 对 tushare 而言
+            # ①②恒为 UNKNOWN (tinyshare 网关只吐中文散文), 故那条水管行为逐位不变。
+            kind = classify_failure(exc, source=source_name)
+            if is_hard_stop(kind) or _is_quota_wall(last_err):
                 raise QuotaExhaustedError(
-                    f"信道配额/反刷量墙命中 domain={spec['domain']} params={params} err={last_err}"
+                    f"信道配额/反刷量墙命中 domain={spec['domain']} params={params} "
+                    f"kind={kind.value} err={last_err}"
                 ) from exc
+            if not should_retry_same_channel(kind):
+                # STRUCTURAL: 缺字段/端点不存在/参数被拒 —— 同样的请求重试多少次都一样。
+                # 早退不改变结果 (仍是 None → failure_queue), 只是不再空烧 attempts。
+                log.warning("fetch 结构性失败, 不重试 domain=%s params=%s err=%s",
+                            spec["domain"], params, last_err)
+                return None
             # 瞬态限流/超时 → 不停链, 退避重试 (瞬态限流用更长退避等窗口恢复)
         if i < attempts - 1:
             wait = backoffs[min(i, len(backoffs) - 1)]
-            if last_err and _is_transient_ratelimit(last_err):
+            if kind is FailureKind.TRANSIENT or (last_err and _is_transient_ratelimit(last_err)):
                 wait = max(wait, transient_backoffs[min(i, len(transient_backoffs) - 1)])
                 log.warning("瞬态限流退避 %ds domain=%s params=%s (非当日墙, 不停链): %s",
                             wait, spec["domain"], params, last_err)
@@ -1798,19 +1898,30 @@ def _record_suspicious_empty(spec: dict[str, Any], params: dict[str, Any],
         conn.close()
 
 
-def _last_watermark_date(domain: str, source: str) -> str | None:
-    conn = _smartmoney_conn()
+def _last_watermark_date(domain: str, conn=None) -> str | None:
+    """域前沿水位 —— 按域聚合, 不按 source 过滤。
+
+    2026-09-02 实测事故: daily/top_list/top_inst/stock_st/trade_cal 换源后, 水位行仍挂
+    旧源名 (source_name='tushare'), 旧谓词 `AND source_name = ?` 返 None →
+    start_d 回落 data_start → daily 会重拉 1858 个交易日 (约 310 小时)。
+    水位语义 = "该域推进到哪天" (MERGE 幂等、按域消费), 与谁供货无关;
+    供货者证据在写入行 source_name 里, 不参与读取身份。
+    conn 可注入 —— 测试自带 fixture, 不断言宿主库。
+    """
+    own_conn = conn is None
+    conn = conn or _smartmoney_conn()
     try:
         from services.source_watermarks import ensure_source_watermark_schema
 
         ensure_source_watermark_schema(conn)
         row = conn.execute(
-            "SELECT last_data_date FROM mart_data_source_watermark WHERE data_domain = ? AND source_name = ?",
-            [f"sync:{domain}", source],
+            "SELECT max(last_data_date) FROM mart_data_source_watermark WHERE data_domain = ?",
+            [f"sync:{domain}"],
         ).fetchone()
         return str(row[0]).replace("-", "") if row and row[0] else None
     finally:
-        conn.close()
+        if own_conn:
+            conn.close()
 
 
 def _failure_dates_from_error(raw: Any) -> set[str]:
@@ -3331,7 +3442,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         if backfill:
             start_d = start or spec["data_start"]
         else:
-            wm = _last_watermark_date(domain, spec["source"])
+            wm = _last_watermark_date(domain)
             start_d = start or wm or spec["data_start"]
         end_d = _operation_end()
         batches = (
@@ -3375,7 +3486,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         if backfill:
             start_d = start or spec["data_start"]
         else:
-            wm = _last_watermark_date(domain, spec["source"])
+            wm = _last_watermark_date(domain)
             start_d = start or wm or spec["data_start"]
         end_d = _operation_end()
         days = trading_days(start_d, end_d) if end_d else []
@@ -3422,7 +3533,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         if backfill:
             start_d = start or spec["data_start"]
         else:
-            wm = _last_watermark_date(domain, spec["source"])
+            wm = _last_watermark_date(domain)
             pending_start = _pending_failure_start(spec) if start is None else None
             candidates = [d for d in (wm, pending_start) if d]
             start_d = start or (min(candidates) if candidates else spec["data_start"])
@@ -3457,7 +3568,7 @@ def run_domain(domain: str, *, backfill: bool = False, start: str | None = None,
         if backfill:
             start_d = start or spec["data_start"]
         else:
-            wm = _last_watermark_date(domain, spec["source"])
+            wm = _last_watermark_date(domain)
             pending_start = _pending_failure_start(spec) if start is None else None
             candidates = [d for d in (wm, pending_start) if d]
             start_d = start or (min(candidates) if candidates else spec["data_start"])

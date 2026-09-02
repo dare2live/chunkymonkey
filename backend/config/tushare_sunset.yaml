@@ -8,10 +8,14 @@
 # 「说『先不做』前必答: 它出现时哪行代码告诉我」。
 #
 # decision 取值:
-#   replace   — 已有已验证替代，必须在到期前切换 (must_by 给期限)
-#   derive    — 可由「已注册域 + 公开规则」推导，退役取数域 (根因立法 §5.9)
-#   accept    — 明确接受断流: 四源均无等价，且断流后果已知并可接受
-#   undecided — 尚未裁决 (**这个值只应短暂存在**；门应把它当 FAIL 而非 WARN)
+#   replace        — 已有已验证替代，必须在到期前切换 (must_by 给期限)
+#   derive         — 可由「已注册域 + 公开规则」推导，退役取数域 (根因立法 §5.9)
+#   accept         — 明确接受断流: 四源均无等价，且断流后果已知并可接受
+#   accept_outage  — 明确接受断流，且已有活跃消费方在用旧数据继续跑 (区别于 accept:
+#                    这类域断流后不是"没人用"，而是"有人用但接受它冻结在最后一次同步")
+#   retire         — 域本身退役: 不再需要这份数据 (与 accept/accept_outage 的区别是
+#                    连"接受旧值冻结"都不需要，因为没有活跃消费方)
+#   undecided      — 尚未裁决 (**这个值只应短暂存在**；门应把它当 FAIL 而非 WARN)
 #
 # evidence 必须是本项目实测出的数字或 commit，不接受"据说/应该"。
 
@@ -293,7 +297,7 @@ domains:
       切换前建议补测, 但方法论已验证有效。"
 
   dc_member:
-    decision: unknown
+    decision: undecided
     blocked_by: "同 dc_index; 且妙想默认路由到**同花顺(THS)** taxonomy —— 项目红线已裁定
       'ths_member 因无 PIT 出局做分类源', 等于替代方案继承了已被否决的同一 PIT 缺陷, 不能直接用。"
     evidence: "与 dc_index 完全同构的消费链 (build_dc_industry_view -> dim_stock_dc_industry ->
@@ -307,7 +311,7 @@ domains:
       stock_dossier 前端行业/概念展示与 moneyflow_assist 分类停止更新 —— **这是有前端可见影响的降级, 不是零代价**。"
 
   dc_index:
-    decision: unknown
+    decision: undecided
     blocked_by: "三家指定源均未验出可用替代; 妙想 taxonomy 不对口 (查'东方财富行业板块'被路由到申万SW);
       直连 push2.eastmoney.com 探测失败: agent 侧 TLS 握手成功但返空响应, 主线**独立复现**同一结果 (clist/get 板块列表端点返 RemoteDisconnected, 带完整 UA+Referer 亦然)。同一时段扶摇正常取回 5,563 行, 证明**网络本身通**, 是该端点特定的反爬或会话要求。两次独立尝试均不通, 需换手段 (浏览器会话/代理) 而非换参数。注: 姊妹域 moneyflow_dc 虽已裁决 replace->eastmoney_push2, 但全仓库**没有任何实际的 push2 HTTP 调用代码** —— 那个裁决同样只是裁决、尚未实现, 不能当作'这条路已验证可行'的先例。"
     evidence: "**活跃且直达前端**: build_dc_industry_view.py (联合 dc_member 建 dim_stock_dc_industry)
@@ -406,10 +410,20 @@ domains:
       adj_factor 的 product_mismatch, 没专门对 dividend 测过。若 owner 想保留对账能力, 值得补测。"
 
   index_member_all:
-    decision: unknown
-    blocked_by: "妙想有历史 as-of 能力但抽测出现未解释的 3 倍量级差异 (申万L1食品饮料 as-of 20200101:
-      库内 98 只 vs 妙想 34 只), 最可能是**申万分类版本(2014版 vs 2021版)不一致**但**该假设未验证** ——
-      没查清妙想默认服务哪一版、也没做 l1_code/l1_name 逐个映射核对。"
+    decision: undecided
+    blocked_by: "2026-09-02 实测**推翻**原阻塞理由, 换成一条更小的。原写: 『3 倍量级差异
+      (申万L1食品饮料 as-of 20200101: 库内 98 只 vs 妙想 34 只), 最可能是申万分类版本
+      (2014版 vs 2021版)不一致』—— **版本假设是错的**。实测: 34 恰好等于库内
+      `食品加工 (801124.SI)` 的成分数, 是『食品饮料』五个 L2 之一 (食品加工 34 / 白酒Ⅱ 18 /
+      非白酒 18 / 饮料乳品 17 / 调味发酵品Ⅱ 11 = 98)。**是层级对错(L1 vs L2), 不是版本对错。**
+      库内版本本身无歧义: 31 个 L1 = 2021 版 (2014 版为 28 个), 名称是『基础化工/电力设备/
+      纺织服饰』这套 2021 命名, 2014 版独有的 化工/电气设备/休闲服务/采掘/纺织服装/商业贸易/
+      交运设备 **全部 0 行**。
+      **且『需要供应商具备历史 as-of 能力』这个前提也不成立** —— 见 evidence 末段:
+      本表在分类学意义上本就不是 PIT 的。所以对替代源的真实要求只是
+      『给得出 L1 **和** L2 编码 + 每只股票的归属起止日』, 门槛比原先设想的低得多。
+      **剩余待验(唯一)**: 妙想能否按 L1 层级返回 (而不是被路由到某个 L2), 且其 L1 编码能与库内
+      801xxx.SI 对齐。这是一次接口参数核对, 不是分类学考古。"
     evidence: "**PIT 敏感、直达前端与 GT 标注的地基级参照表**: build_sw_industry_view.py -> v_sw_industry
       -> routers/market_pulse.py 前端 + services/institution_profile.py + services/market_pulse.py +
       services/segments.py + scripts/ensure_serve_read_views.py; 另有 **rally_gt.py 直接用
@@ -417,12 +431,23 @@ domains:
       在库 7,911 行 (参照维度表非日频面板, 量级符合) in_date 1984-05-09~2026-08-14, 历年持续新增
       (2025年143行/2026年176行), 未见异常多年真空。fuyao/tdxhub 均无 (tdxhub block() 已明文声明不可与 SW 对照)。
       妙想 sector_data **确认支持历史 as-of 查询** (同一板块 2020-01-01 时点返回值区别于'最新'值, 证明有真实历史能力),
-      但量级对不上。**本报告第二个高优先级开放项** —— 因直接喂 Rally GT 标注和前端行业展示,
-      不能在查清'分类版本对齐'之前当作已验证替代。建议 owner 先确认妙想申万数据对应哪版、
-      与库内 l1_code (801xxx.SI, 需确认是哪版编码) 是否可映射。"
+      但量级对不上(已解释, 见 blocked_by: 是 L1 vs L2 层级差, 非版本差)。
+      **2026-09-02 追加实测 —— 本表在分类学意义上不是 PIT 的, 且是『不一致地不 PIT』**:
+      个股在既有行业间迁移**确实**留带日期的记录 (1,649/5,897 只股票有多行, is_new='N' 共 2,009 行);
+      但 2021 版**整行业拆分是无痕改标** —— 中国神华 601088.SH 全表**只有一行**:
+      煤炭(801950.SI), in_date=20071008, out_date=NULL, 而 801950 这个一级行业 2021 年才存在
+      (2014 版下属『采掘』801020, 本表 0 行); 中国石油 601857.SH 同型。2021 版新增的 4 个 L1 里
+      in_date<2021 的共 **187 行** (煤炭36/石油石化41/环保92/美容护理18), 每行都在声称某股在一个
+      当时不存在的行业里待了多年。**两种语义混在同一张表且无字段可区分。**
+      落到下游 (实测 feature_store.fact_rally_strata): bottom_date < 2021-07-01 的 3,446 条样本中
+      **132 条 (3.83%)** 的 sw_l1 是底部当日尚不存在的行业。定性: 不是价格/收益泄漏, 是
+      **分层变量里的事后视角**; 描述性分层可控, 但 sw_l1/sw_l2 一旦被当**特征**或负样本配对键用即成泄漏。
+      细节与边界写在 backend/services/rally_gt.py 的模块 docstring (同日更正了原写的『= 真 PIT』)。
+      **对本裁决的影响**: 换源不改变这条 (申万官方发布的也是当前版分类, 任何供应商同病),
+      因此它**不构成换源阻塞**; 但也意味着替代源**不需要**具备历史 as-of 分类能力, 门槛降低。"
 
   index_member_all_hist:
-    decision: unknown
+    decision: undecided
     blocked_by: "与 index_member_all 同表同源 (同一张 raw_tushare_index_member_all, 按 is_new=Y/N MERGE), 同一阻塞。"
     evidence: "见 index_member_all 条目。两域共用一张物理表与同一条消费链, 应合并裁决。"
 

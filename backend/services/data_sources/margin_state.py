@@ -164,8 +164,23 @@ def _prove_margin_pointer(
         or int(batch["canonical_row_count"] or 0) != row_count
         or str(batch["canonical_hash"] or "") != content_hash
         or str(batch["contract_version"]) != str(pointer["contract_version"])
-        or str(batch["contract_hash"]) != str(pointer["contract_hash"])
-        or str(batch["config_hash"]) != str(pointer["config_hash"])
+        # 2026-09-01: batch 与 pointer 的 **契约指纹**(contract_hash/config_hash)不再要求相等。
+        #
+        # 起因: source/api 这两个传输轴字段被移出 config_hash 的 payload
+        # (见 docs/engineering_governance.md §15.5), 于是同一份契约的指纹值变了。
+        # accepted_partition 与 canonical_* 跟着当前契约重打了戳——它们表达的是
+        # "这批数据符合哪个契约", 契约实体没变、只是指纹算法变了, 跟着改是对的。
+        # 但 ingest_batch 不同: 它的 payload_hash 是**落地那一刻的证据封印**
+        # (margin_validation._batch_payload_hash 把 contract_hash/config_hash 连同来源、
+        # 时间戳、逐行签名一起 sha256), 改它等于重新封印历史, 且会让
+        # LANDING_HASH_MISMATCH 当场炸——实测确认过。所以 ingest_batch 有意停在落地时刻。
+        #
+        # 结论: "批次指纹 == 指针指纹"这个等式在新语义下**已被有意作废**, 不再是不变量。
+        # 仍然守住的是: contract_version(版本不因指纹算法而变, 见上一行)、
+        # canonical_row_count/canonical_hash(内容)、source_name/writer_id(血缘)、
+        # observed_at/available_at(时间)、dataset_id/status/partition_value(身份)。
+        # 指针本身是否符合当前契约, 由本函数上方 147-152 行那段独立守卫, 未放松。
+        # 代价: 失去"指针与批次出自同一契约指纹"这一条; 由上述两段合力覆盖。
         or str(batch["source_name"]) != contract.source
         or str(batch["writer_id"]) != contract.writer
         or batch["observed_at"] != pointer["observed_at"]

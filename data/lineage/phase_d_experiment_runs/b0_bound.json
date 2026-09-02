@@ -42,7 +42,7 @@
           "available_at_upper": "20250531",
           "block": "B0",
           "claimable_target": false,
-          "config_hash": "8dd9991bb8b3a751d5e2f1a350f4a0e9af661c320cf9c8251876a4f06bdcc706",
+          "config_hash": "86418dae37fb01cfc9a5b35cb08c2f4965d4046e40a257b9e67eecface34f1a1",
           "fold_embargo": {
             "embargo_days": 1,
             "fold_ids": [],
@@ -58,14 +58,14 @@
             "protocol": "undeclared_stub"
           },
           "holdout_protocol_version": "research_holdout_v1",
-          "holdout_scope_id": "7630576e9a4f6fba59638339d602a2bb215e560b4ffce8485c134285ff3e26e7",
+          "holdout_scope_id": "d3db890a8a8590daa1ad24c27d5c54c1916cecb201a85a71b0188a87c644a047",
           "hypothesis": "institution_follow_b0_bare_k_no_edge_claim",
-          "param_hash": "8a89b7de70820dd83381b4b4a4b604baa7ffb693caa132a7e29bda88fb012e59",
+          "param_hash": "aa05d464aa971f25b1d6dc99facf9ca0eb05ee3d4b8205186b4a989dfa3e7bb6",
           "primary_metric": "holdout_net_return",
           "random_seed": 0,
           "search_space": [],
-          "single_touch_token": "7dcc5f48da9a4122a893d3c66e655437",
-          "snapshot_content_hash": "455af932eeb4004d93fa1303b21dec7648172d769ff17e50b4bea74b63085f9c",
+          "single_touch_token": "13d24b61967b4563ba4d4e5db985ab8f",
+          "snapshot_content_hash": "adcf771d4f49dccba05adb3a9ee5930c801bf17d8f44aa957306c330069c7c09",
           "snapshot_id": "disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530",
           "stop_conditions": [
             "no_strategy_release",
@@ -78,8 +78,8 @@
         "research_runtime_snapshot": {
           "available_at_lower": "20190102",
           "available_at_upper": "20250531",
-          "config_hash": "8dd9991bb8b3a751d5e2f1a350f4a0e9af661c320cf9c8251876a4f06bdcc706",
-          "content_hash": "455af932eeb4004d93fa1303b21dec7648172d769ff17e50b4bea74b63085f9c",
+          "config_hash": "86418dae37fb01cfc9a5b35cb08c2f4965d4046e40a257b9e67eecface34f1a1",
+          "content_hash": "adcf771d4f49dccba05adb3a9ee5930c801bf17d8f44aa957306c330069c7c09",
           "snapshot_id": "disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530",
           "source_kind": "disclosure_freeze",
           "universe_id": "traded_on_observation_date"
@@ -92,7 +92,7 @@
         "available_at_upper": "20250531",
         "block": "B0",
         "claimable_target": false,
-        "config_hash": "8dd9991bb8b3a751d5e2f1a350f4a0e9af661c320cf9c8251876a4f06bdcc706",
+        "config_hash": "86418dae37fb01cfc9a5b35cb08c2f4965d4046e40a257b9e67eecface34f1a1",
         "fold_embargo": {
           "embargo_days": 1,
           "fold_ids": [
@@ -113,14 +113,14 @@
           "protocol": "purged_walk_forward"
         },
         "holdout_protocol_version": "research_holdout_v1",
-        "holdout_scope_id": "591f35b836ca97577df2ddfb739ec702def35594c597fd53017754a0e46ee71d",
+        "holdout_scope_id": "a634b8e1c1aebfca876393dea519d482409a0adc3591ce9746434c112e8a4eaa",
         "hypothesis": "b0_bare_k_offline_bound_to_research_runtime",
-        "param_hash": "57142a613c64a8708db2f8bf850775af526ceed21c12195ff27006198ddceef0",
+        "param_hash": "cb09a504559d928ea7cd82de7d3171765e9b61e5d5c0378adeda7fa896865fdb",
         "primary_metric": "holdout_net_return",
         "random_seed": 0,
         "search_space": [],
-        "single_touch_token": "6e0f66b7fc12436786d1dfda98732d7b",
-        "snapshot_content_hash": "455af932eeb4004d93fa1303b21dec7648172d769ff17e50b4bea74b63085f9c",
+        "single_touch_token": "34d85999cd1844429241389313c04083",
+        "snapshot_content_hash": "adcf771d4f49dccba05adb3a9ee5930c801bf17d8f44aa957306c330069c7c09",
         "snapshot_id": "disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530",
         "stop_conditions": [
           "no_strategy_release",
@@ -133,8 +133,8 @@
       "research_runtime_snapshot": {
         "available_at_lower": "20190102",
         "available_at_upper": "20250531",
-        "config_hash": "8dd9991bb8b3a751d5e2f1a350f4a0e9af661c320cf9c8251876a4f06bdcc706",
-        "content_hash": "455af932eeb4004d93fa1303b21dec7648172d769ff17e50b4bea74b63085f9c",
+        "config_hash": "86418dae37fb01cfc9a5b35cb08c2f4965d4046e40a257b9e67eecface34f1a1",
+        "content_hash": "adcf771d4f49dccba05adb3a9ee5930c801bf17d8f44aa957306c330069c7c09",
         "snapshot_id": "disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530",
         "source_kind": "disclosure_freeze",
         "universe_id": "traded_on_observation_date"
@@ -142,9 +142,9 @@
       "strategy_release": false
     },
     "block": "B0",
-    "config_hash": "8dd9991bb8b3a751d5e2f1a350f4a0e9af661c320cf9c8251876a4f06bdcc706",
+    "config_hash": "86418dae37fb01cfc9a5b35cb08c2f4965d4046e40a257b9e67eecface34f1a1",
     "decision_date": "20250531",
-    "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530:3899c46dabf2",
+    "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530:df73d4c79fdc",
     "kept_observation_count": 0,
     "notes": [
       "phase_d_offline_b0_bound",
@@ -160,7 +160,7 @@
       "available_at_upper": "20250531",
       "block": "B0",
       "claimable_target": false,
-      "config_hash": "8dd9991bb8b3a751d5e2f1a350f4a0e9af661c320cf9c8251876a4f06bdcc706",
+      "config_hash": "86418dae37fb01cfc9a5b35cb08c2f4965d4046e40a257b9e67eecface34f1a1",
       "fold_embargo": {
         "embargo_days": 1,
         "fold_ids": [
@@ -181,14 +181,14 @@
         "protocol": "purged_walk_forward"
       },
       "holdout_protocol_version": "research_holdout_v1",
-      "holdout_scope_id": "591f35b836ca97577df2ddfb739ec702def35594c597fd53017754a0e46ee71d",
+      "holdout_scope_id": "a634b8e1c1aebfca876393dea519d482409a0adc3591ce9746434c112e8a4eaa",
       "hypothesis": "b0_bare_k_offline_bound_to_research_runtime",
-      "param_hash": "57142a613c64a8708db2f8bf850775af526ceed21c12195ff27006198ddceef0",
+      "param_hash": "cb09a504559d928ea7cd82de7d3171765e9b61e5d5c0378adeda7fa896865fdb",
       "primary_metric": "holdout_net_return",
       "random_seed": 0,
       "search_space": [],
-      "single_touch_token": "6e0f66b7fc12436786d1dfda98732d7b",
-      "snapshot_content_hash": "455af932eeb4004d93fa1303b21dec7648172d769ff17e50b4bea74b63085f9c",
+      "single_touch_token": "34d85999cd1844429241389313c04083",
+      "snapshot_content_hash": "adcf771d4f49dccba05adb3a9ee5930c801bf17d8f44aa957306c330069c7c09",
       "snapshot_id": "disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530",
       "stop_conditions": [
         "no_strategy_release",
@@ -198,13 +198,13 @@
       "strategy_package": "institution_follow",
       "universe_id": "traded_on_observation_date"
     },
-    "snapshot_content_hash": "455af932eeb4004d93fa1303b21dec7648172d769ff17e50b4bea74b63085f9c",
+    "snapshot_content_hash": "adcf771d4f49dccba05adb3a9ee5930c801bf17d8f44aa957306c330069c7c09",
     "snapshot_id": "disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530",
     "strategy_package": "institution_follow_v1",
     "universe_id": "traded_on_observation_date"
   },
   "schema_version": 1,
-  "snapshot_hash": "b96cf1db26e8b3aa0d1f53b67ee422364dc4c28357dad7b2bbe04d5756dfee30",
+  "snapshot_hash": "0cced86c62a14eeedc64428899ad1f2db75ddff427f0cb76bd487ba3ed9c2c07",
   "snapshot_relpath": "data/lineage/disclosure_dataset_snapshot.json",
   "strategy_release": false,
   "verdict": {
@@ -221,7 +221,7 @@
         "available_at_upper": "20250531",
         "block": "B0",
         "claimable_target": false,
-        "config_hash": "8dd9991bb8b3a751d5e2f1a350f4a0e9af661c320cf9c8251876a4f06bdcc706",
+        "config_hash": "86418dae37fb01cfc9a5b35cb08c2f4965d4046e40a257b9e67eecface34f1a1",
         "fold_embargo": {
           "embargo_days": 1,
           "fold_ids": [
@@ -242,14 +242,14 @@
           "protocol": "purged_walk_forward"
         },
         "holdout_protocol_version": "research_holdout_v1",
-        "holdout_scope_id": "591f35b836ca97577df2ddfb739ec702def35594c597fd53017754a0e46ee71d",
+        "holdout_scope_id": "a634b8e1c1aebfca876393dea519d482409a0adc3591ce9746434c112e8a4eaa",
         "hypothesis": "b0_bare_k_offline_bound_to_research_runtime",
-        "param_hash": "57142a613c64a8708db2f8bf850775af526ceed21c12195ff27006198ddceef0",
+        "param_hash": "cb09a504559d928ea7cd82de7d3171765e9b61e5d5c0378adeda7fa896865fdb",
         "primary_metric": "holdout_net_return",
         "random_seed": 0,
         "search_space": [],
-        "single_touch_token": "6e0f66b7fc12436786d1dfda98732d7b",
-        "snapshot_content_hash": "455af932eeb4004d93fa1303b21dec7648172d769ff17e50b4bea74b63085f9c",
+        "single_touch_token": "34d85999cd1844429241389313c04083",
+        "snapshot_content_hash": "adcf771d4f49dccba05adb3a9ee5930c801bf17d8f44aa957306c330069c7c09",
         "snapshot_id": "disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530",
         "stop_conditions": [
           "no_strategy_release",
@@ -263,7 +263,7 @@
       "strategy_release": false,
       "surface_status": "tier3_research_evidence_only"
     },
-    "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530:3899c46dabf2",
+    "experiment_id": "institution_follow_v1:B0:disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530:df73d4c79fdc",
     "reason": "scaffold_no_measured_edge",
     "verdict": "inconclusive"
   }

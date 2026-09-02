@@ -4,7 +4,7 @@
     "b1": "data/lineage/phase_f_experiment_verdicts/b1.json",
     "b2": "data/lineage/phase_f_experiment_verdicts/b2.json"
   },
-  "frozen_at": "2026-08-24T15:16:41.449940+00:00",
+  "frozen_at": "2026-09-02T00:17:56.423663+00:00",
   "kind": "phase_f_experiment_verdict_manifest",
   "ladder": [
     {
@@ -167,7 +167,7 @@
           ],
           "details": {
             "full_episode_not_attempted": true,
-            "measured_at": "2026-08-24T15:16:15.275208+00:00",
+            "measured_at": "2026-09-02T00:17:30.815237+00:00",
             "measurement_kind": "setup_entry_short_horizon",
             "min_required_nominal_days": 5
           },
@@ -745,7 +745,7 @@
     "F2",
     "F3"
   ],
-  "snapshot_hash": "779c1ae2d4c41cce0f031e409083aca99f485bb31b871f8dd05adf59030e4d0e",
+  "snapshot_hash": "877f3ca2ff812d97cb746ce0dc9ffdbd7fb1b7c81b42753a7362e8e9318acdf6",
   "snapshot_id": "main_rally_bounded_20241115_20250530_n130_gtv2_20260702",
   "snapshot_relpath": "data/lineage/main_rally_dataset_snapshot/snapshot.json",
   "snapshot_scope": "bounded_accepted_partitions",

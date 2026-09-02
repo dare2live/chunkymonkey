@@ -2,7 +2,7 @@
   "block": "b2",
   "blocked": true,
   "claimable": false,
-  "experiment_id": "main_rally_v1:B2:main_rally_bounded_20241115_20250530_n130_gtv2_20260702:bca8e891486e",
+  "experiment_id": "main_rally_v1:B2:main_rally_bounded_20241115_20250530_n130_gtv2_20260702:02578d5cda84",
   "kind": "phase_f_experiment_verdict",
   "metrics_summary": {
     "accept_edge_gates": {
@@ -256,7 +256,7 @@
   "reason": "measured_protocol_ready_edge_gates_unmet",
   "run": {
     "artifact_manifest": {
-      "b0_experiment_id": "main_rally_v1:B0:main_rally_bounded_20241115_20250530_n130_gtv2_20260702:e546863dcb38",
+      "b0_experiment_id": "main_rally_v1:B0:main_rally_bounded_20241115_20250530_n130_gtv2_20260702:aaee67c94627",
       "feature_block": {
         "ablation_parent": "B0",
         "availability": "decision_time_eod_available_at_required",
@@ -4940,7 +4940,7 @@
           "available_at_upper": "20250530",
           "block": "B0",
           "claimable_target": false,
-          "config_hash": "387ca14478023f8b697fedae044d440d183e0379eeb394d294a8988e3cf6fa04",
+          "config_hash": "8ad59f709567c2a54ae25d0f35e702c3ef6832e3024c81cc07fb2df52b3cdc08",
           "fold_embargo": {
             "embargo_days": 1,
             "fold_ids": [
@@ -4961,14 +4961,14 @@
             "protocol": "purged_walk_forward"
           },
           "holdout_protocol_version": "research_holdout_v1",
-          "holdout_scope_id": "b52e977cc9e34c0bf879914fb0dc93c7a0a68600e236bac26c7fe0dfbcd78896",
+          "holdout_scope_id": "8c70d5f1a6067e1b6bc787c84861e96dbad0f8477b99f7a32b17d3f3460c1641",
           "hypothesis": "main_rally_b0_setup_entry_short_horizon_no_edge_claim",
-          "param_hash": "d3299d64ffd9ef374eb188c5ec6bba72fa711712839ac9d9f003b0b581ee1729",
+          "param_hash": "262bd4e2e71ec9ef84781c439c85cea1cee57a5cdd049dc373e4389105f6eae6",
           "primary_metric": "holdout_net_return",
           "random_seed": 0,
           "search_space": [],
-          "single_touch_token": "1488576eec2747f0ab2c7f7fd6275bd8",
-          "snapshot_content_hash": "82e7cffd6ac7d61a3a435ebaff0137059a5854862e244bcea726edd9a19f9027",
+          "single_touch_token": "0ba227dfa72a49dc9984a47951a2ebb7",
+          "snapshot_content_hash": "c41e12b976ab1b28ce65d583f95c0e50735e8bce8edca8c437c5496218c12e9a",
           "snapshot_id": "main_rally_bounded_20241115_20250530_n130_gtv2_20260702",
           "stop_conditions": [
             "no_strategy_release",
@@ -4981,8 +4981,8 @@
         "research_runtime_snapshot": {
           "available_at_lower": "20241115",
           "available_at_upper": "20250530",
-          "config_hash": "387ca14478023f8b697fedae044d440d183e0379eeb394d294a8988e3cf6fa04",
-          "content_hash": "82e7cffd6ac7d61a3a435ebaff0137059a5854862e244bcea726edd9a19f9027",
+          "config_hash": "8ad59f709567c2a54ae25d0f35e702c3ef6832e3024c81cc07fb2df52b3cdc08",
+          "content_hash": "c41e12b976ab1b28ce65d583f95c0e50735e8bce8edca8c437c5496218c12e9a",
           "snapshot_id": "main_rally_bounded_20241115_20250530_n130_gtv2_20260702",
           "source_kind": "main_rally_freeze",
           "universe_id": "traded_on_observation_date"
@@ -5123,7 +5123,7 @@
           ],
           "details": {
             "full_episode_not_attempted": true,
-            "measured_at": "2026-08-24T15:16:15.275208+00:00",
+            "measured_at": "2026-09-02T00:17:30.815237+00:00",
             "measurement_kind": "setup_entry_short_horizon",
             "min_required_nominal_days": 5
           },
@@ -5136,7 +5136,7 @@
       "block": "B0",
       "cutover_allowed": true,
       "data_end_date": "20250531",
-      "experiment_id": "main_rally_v1:B0:main_rally_bounded_20241115_20250530_n130_gtv2_20260702:e546863dcb38",
+      "experiment_id": "main_rally_v1:B0:main_rally_bounded_20241115_20250530_n130_gtv2_20260702:aaee67c94627",
       "holdout": {
         "holdout_start": "20250601",
         "status": "exercised",
@@ -8150,7 +8150,7 @@
         ],
         "details": {
           "full_episode_not_attempted": true,
-          "measured_at": "2026-08-24T15:16:15.275208+00:00",
+          "measured_at": "2026-09-02T00:17:30.815237+00:00",
           "measurement_kind": "setup_entry_short_horizon",
           "min_required_nominal_days": 5
         },
@@ -8164,7 +8164,7 @@
       "surface_status": "tier3_research_evidence_only"
     },
     "block": "B2",
-    "experiment_id": "main_rally_v1:B2:main_rally_bounded_20241115_20250530_n130_gtv2_20260702:bca8e891486e",
+    "experiment_id": "main_rally_v1:B2:main_rally_bounded_20241115_20250530_n130_gtv2_20260702:02578d5cda84",
     "feature_block": {
       "ablation_parent": "B0",
       "availability": "decision_time_eod_available_at_required",
@@ -10010,7 +10010,7 @@
     "surface_status": "tier3_research_evidence_only"
   },
   "schema_version": 1,
-  "snapshot_hash": "779c1ae2d4c41cce0f031e409083aca99f485bb31b871f8dd05adf59030e4d0e",
+  "snapshot_hash": "877f3ca2ff812d97cb746ce0dc9ffdbd7fb1b7c81b42753a7362e8e9318acdf6",
   "snapshot_id": "main_rally_bounded_20241115_20250530_n130_gtv2_20260702",
   "snapshot_relpath": "data/lineage/main_rally_dataset_snapshot/snapshot.json",
   "snapshot_scope": "bounded_accepted_partitions",
@@ -10250,7 +10250,7 @@
             ],
             "details": {
               "full_episode_not_attempted": true,
-              "measured_at": "2026-08-24T15:16:15.275208+00:00",
+              "measured_at": "2026-09-02T00:17:30.815237+00:00",
               "measurement_kind": "setup_entry_short_horizon",
               "min_required_nominal_days": 5
             },
@@ -10480,7 +10480,7 @@
             ],
             "details": {
               "full_episode_not_attempted": true,
-              "measured_at": "2026-08-24T15:16:15.275208+00:00",
+              "measured_at": "2026-09-02T00:17:30.815237+00:00",
               "measurement_kind": "setup_entry_short_horizon",
               "min_required_nominal_days": 5
             },
@@ -10926,7 +10926,7 @@
             ]
           }
         },
-        "experiment_id": "main_rally_v1:B0:main_rally_bounded_20241115_20250530_n130_gtv2_20260702:e546863dcb38",
+        "experiment_id": "main_rally_v1:B0:main_rally_bounded_20241115_20250530_n130_gtv2_20260702:aaee67c94627",
         "reason": "measured_protocol_ready_edge_gates_unmet",
         "verdict": "reject"
       },
@@ -11608,7 +11608,7 @@
         ]
       }
     },
-    "experiment_id": "main_rally_v1:B2:main_rally_bounded_20241115_20250530_n130_gtv2_20260702:bca8e891486e",
+    "experiment_id": "main_rally_v1:B2:main_rally_bounded_20241115_20250530_n130_gtv2_20260702:02578d5cda84",
     "reason": "measured_protocol_ready_edge_gates_unmet",
     "verdict": "reject"
   }

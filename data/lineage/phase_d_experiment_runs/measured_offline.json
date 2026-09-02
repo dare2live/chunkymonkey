@@ -82,7 +82,7 @@
         "available_at_upper": "20250531",
         "block": "B0",
         "claimable_target": false,
-        "config_hash": "8dd9991bb8b3a751d5e2f1a350f4a0e9af661c320cf9c8251876a4f06bdcc706",
+        "config_hash": "86418dae37fb01cfc9a5b35cb08c2f4965d4046e40a257b9e67eecface34f1a1",
         "fold_embargo": {
           "embargo_days": 1,
           "fold_ids": [
@@ -104,14 +104,14 @@
           "protocol": "purged_walk_forward"
         },
         "holdout_protocol_version": "research_holdout_v1",
-        "holdout_scope_id": "5b73b5f78e25b1feb929c62e36b0774adf7db0f360e668521591aec368a906b6",
+        "holdout_scope_id": "6166c649cd33bb41f708ebaa731d7c760a937753d1a9af175d6262a8f5a113ca",
         "hypothesis": "offline_measured_nominal_fills_no_edge_claim",
-        "param_hash": "481ac7c1a9e93ba369f0c18fc8a508f1b8d0d6dd6abd020ee56dbf2c5492c794",
+        "param_hash": "a2f43100cdef47997264a4c392ce8136570b10a9568a6bdfb70bb2be5251e1f5",
         "primary_metric": "holdout_net_return",
         "random_seed": 0,
         "search_space": [],
-        "single_touch_token": "fadf94a2c0fc41f097ceda5cb1205983",
-        "snapshot_content_hash": "455af932eeb4004d93fa1303b21dec7648172d769ff17e50b4bea74b63085f9c",
+        "single_touch_token": "5f7b758f3eff4fc8942c7be26d0b07ab",
+        "snapshot_content_hash": "adcf771d4f49dccba05adb3a9ee5930c801bf17d8f44aa957306c330069c7c09",
         "snapshot_id": "disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530",
         "stop_conditions": [
           "no_strategy_release",
@@ -124,8 +124,8 @@
       "research_runtime_snapshot": {
         "available_at_lower": "20190102",
         "available_at_upper": "20250531",
-        "config_hash": "8dd9991bb8b3a751d5e2f1a350f4a0e9af661c320cf9c8251876a4f06bdcc706",
-        "content_hash": "455af932eeb4004d93fa1303b21dec7648172d769ff17e50b4bea74b63085f9c",
+        "config_hash": "86418dae37fb01cfc9a5b35cb08c2f4965d4046e40a257b9e67eecface34f1a1",
+        "content_hash": "adcf771d4f49dccba05adb3a9ee5930c801bf17d8f44aa957306c330069c7c09",
         "snapshot_id": "disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530",
         "source_kind": "disclosure_freeze",
         "universe_id": "traded_on_observation_date"
@@ -133,9 +133,9 @@
       "strategy_release": false
     },
     "block": "B0",
-    "config_hash": "8dd9991bb8b3a751d5e2f1a350f4a0e9af661c320cf9c8251876a4f06bdcc706",
+    "config_hash": "86418dae37fb01cfc9a5b35cb08c2f4965d4046e40a257b9e67eecface34f1a1",
     "decision_date": "20250531",
-    "experiment_id": "phase_d_offline:B0:disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530:meas:352fd04fc79a",
+    "experiment_id": "phase_d_offline:B0:disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530:meas:9f2d9b442ea3",
     "kept_observation_count": 2,
     "notes": [
       "phase_d_offline_measured_loop",
@@ -151,7 +151,7 @@
       "available_at_upper": "20250531",
       "block": "B0",
       "claimable_target": false,
-      "config_hash": "8dd9991bb8b3a751d5e2f1a350f4a0e9af661c320cf9c8251876a4f06bdcc706",
+      "config_hash": "86418dae37fb01cfc9a5b35cb08c2f4965d4046e40a257b9e67eecface34f1a1",
       "fold_embargo": {
         "embargo_days": 1,
         "fold_ids": [
@@ -173,14 +173,14 @@
         "protocol": "purged_walk_forward"
       },
       "holdout_protocol_version": "research_holdout_v1",
-      "holdout_scope_id": "5b73b5f78e25b1feb929c62e36b0774adf7db0f360e668521591aec368a906b6",
+      "holdout_scope_id": "6166c649cd33bb41f708ebaa731d7c760a937753d1a9af175d6262a8f5a113ca",
       "hypothesis": "offline_measured_nominal_fills_no_edge_claim",
-      "param_hash": "481ac7c1a9e93ba369f0c18fc8a508f1b8d0d6dd6abd020ee56dbf2c5492c794",
+      "param_hash": "a2f43100cdef47997264a4c392ce8136570b10a9568a6bdfb70bb2be5251e1f5",
       "primary_metric": "holdout_net_return",
       "random_seed": 0,
       "search_space": [],
-      "single_touch_token": "fadf94a2c0fc41f097ceda5cb1205983",
-      "snapshot_content_hash": "455af932eeb4004d93fa1303b21dec7648172d769ff17e50b4bea74b63085f9c",
+      "single_touch_token": "5f7b758f3eff4fc8942c7be26d0b07ab",
+      "snapshot_content_hash": "adcf771d4f49dccba05adb3a9ee5930c801bf17d8f44aa957306c330069c7c09",
       "snapshot_id": "disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530",
       "stop_conditions": [
         "no_strategy_release",
@@ -190,13 +190,13 @@
       "strategy_package": "phase_d_offline",
       "universe_id": "traded_on_observation_date"
     },
-    "snapshot_content_hash": "455af932eeb4004d93fa1303b21dec7648172d769ff17e50b4bea74b63085f9c",
+    "snapshot_content_hash": "adcf771d4f49dccba05adb3a9ee5930c801bf17d8f44aa957306c330069c7c09",
     "snapshot_id": "disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530",
     "strategy_package": "phase_d_offline",
     "universe_id": "traded_on_observation_date"
   },
   "schema_version": 1,
-  "snapshot_hash": "b96cf1db26e8b3aa0d1f53b67ee422364dc4c28357dad7b2bbe04d5756dfee30",
+  "snapshot_hash": "0cced86c62a14eeedc64428899ad1f2db75ddff427f0cb76bd487ba3ed9c2c07",
   "snapshot_relpath": "data/lineage/disclosure_dataset_snapshot.json",
   "strategy_release": false,
   "verdict": {
@@ -206,7 +206,7 @@
     "details": {
       "available_at_lower": "20190102",
       "available_at_upper": "20250531",
-      "config_hash": "8dd9991bb8b3a751d5e2f1a350f4a0e9af661c320cf9c8251876a4f06bdcc706",
+      "config_hash": "86418dae37fb01cfc9a5b35cb08c2f4965d4046e40a257b9e67eecface34f1a1",
       "measure": {
         "decision_date": "20250531",
         "details": {
@@ -284,7 +284,7 @@
         "available_at_upper": "20250531",
         "block": "B0",
         "claimable_target": false,
-        "config_hash": "8dd9991bb8b3a751d5e2f1a350f4a0e9af661c320cf9c8251876a4f06bdcc706",
+        "config_hash": "86418dae37fb01cfc9a5b35cb08c2f4965d4046e40a257b9e67eecface34f1a1",
         "fold_embargo": {
           "embargo_days": 1,
           "fold_ids": [
@@ -306,14 +306,14 @@
           "protocol": "purged_walk_forward"
         },
         "holdout_protocol_version": "research_holdout_v1",
-        "holdout_scope_id": "5b73b5f78e25b1feb929c62e36b0774adf7db0f360e668521591aec368a906b6",
+        "holdout_scope_id": "6166c649cd33bb41f708ebaa731d7c760a937753d1a9af175d6262a8f5a113ca",
         "hypothesis": "offline_measured_nominal_fills_no_edge_claim",
-        "param_hash": "481ac7c1a9e93ba369f0c18fc8a508f1b8d0d6dd6abd020ee56dbf2c5492c794",
+        "param_hash": "a2f43100cdef47997264a4c392ce8136570b10a9568a6bdfb70bb2be5251e1f5",
         "primary_metric": "holdout_net_return",
         "random_seed": 0,
         "search_space": [],
-        "single_touch_token": "fadf94a2c0fc41f097ceda5cb1205983",
-        "snapshot_content_hash": "455af932eeb4004d93fa1303b21dec7648172d769ff17e50b4bea74b63085f9c",
+        "single_touch_token": "5f7b758f3eff4fc8942c7be26d0b07ab",
+        "snapshot_content_hash": "adcf771d4f49dccba05adb3a9ee5930c801bf17d8f44aa957306c330069c7c09",
         "snapshot_id": "disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530",
         "stop_conditions": [
           "no_strategy_release",
@@ -328,7 +328,7 @@
       "strategy_release": false,
       "universe_id": "traded_on_observation_date"
     },
-    "experiment_id": "phase_d_offline:B0:disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530:meas:352fd04fc79a",
+    "experiment_id": "phase_d_offline:B0:disclosure_bounded_holders_top10:20250331,20250430,20250508,20250512,20250521,20250528,20250530,20250531-org_holding:20240831,20250430-stk_holdertrade:20250418,20250506,20250508,20250513,20250523,20250528,20250530:meas:9f2d9b442ea3",
     "reason": "phase_d_offline_measured_inconclusive",
     "verdict": "inconclusive"
   }

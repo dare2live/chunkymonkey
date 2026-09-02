@@ -371,14 +371,28 @@ def dataset_contract_from_spec(domain: str, spec: Mapping[str, Any]) -> DatasetC
             f"{domain}: canonical_table and target_table compatibility surface "
             "must have different single writers"
         )
+    # 2026-09-01: **source / api 不参与 config_hash** (excluded below, kept out of
+    # the spread). 它们是传输轴 (从哪取), 不是语义轴 (数据是什么)。同一手术已在
+    # nominal_ohlcv_contract.py / stock_st_contract.py 做过 (docs/engineering_governance.md
+    # §15.5) —— 让取数地址参与语义指纹, 会把"换个供应商取同样的数据"误判成"契约变更",
+    # 让 margin_acceptance.py 的严格 hash 相等校验拒读全部既有 accepted 分区。语义变更仍被
+    # 完整覆盖: schema_hash(字段/类型/单位) + grain + partition_by + availability_policy +
+    # batch_completeness + canonical_table/compatibility_table + coverage_start +
+    # owner/writer/criticality/failure_policy/retention/rebuild_policy 等治理字段, 任一真实
+    # 语义变化都会动到其中至少一项。source/api 仍是 DatasetContract 的字段 (值从 spec 校验
+    # 读出) —— margin_acceptance.py 用它们做独立的 batch-source 一致性校验, 不依赖 hash。
     config_payload = {
-        **values,
-        "allowed_fallbacks": list(fallbacks),
-        "consumers": list(values["consumers"]),
-        "grain": list(grain),
-        "availability_policy": values["availability_policy"].payload(),
-        "batch_completeness": batch.payload(),
+        key: value for key, value in values.items() if key not in ("source", "api")
     }
+    config_payload.update(
+        {
+            "allowed_fallbacks": list(fallbacks),
+            "consumers": list(values["consumers"]),
+            "grain": list(grain),
+            "availability_policy": values["availability_policy"].payload(),
+            "batch_completeness": batch.payload(),
+        }
+    )
     config_hash = _hash(config_payload)
     contract_hash = _hash(
         {

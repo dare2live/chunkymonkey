@@ -227,7 +227,7 @@ def test_run_domain_passes_domain_eligible_end_to_calendar(monkeypatch):
         "trading_days",
         lambda start, end=None: calendar_calls.append((start, end)) or ["20260715"],
     )
-    monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, source: None)
+    monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, conn=None: None)
     monkeypatch.setattr(sr, "_adapter", lambda source: object())
     monkeypatch.setattr(sr, "_fetch_paged", lambda adapter, spec, params: [])
     monkeypatch.setattr(sr, "_record_outcome", lambda *args, **kwargs: None)

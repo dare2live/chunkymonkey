@@ -247,10 +247,26 @@ def _expected_hashes(
     availability: CalendarAvailabilityPolicy,
     scope: CalendarPopulationScope,
 ) -> tuple[str, str]:
+    # 2026-09-01: source/api 不参与 config_hash —— 同型手术见
+    # nominal_ohlcv_contract.py / stock_st_contract.py 及
+    # docs/engineering_governance.md §15.5。它们是传输轴 (从哪取), 不是语义轴
+    # (数据是什么); formal_boundaries.py 开篇即 "Transport axis only. Business tiers
+    # must not own these seams."。让取数地址参与语义指纹, 会把"换个供应商取同样的日历"
+    # 误判成"契约变更", 拒读既有 accepted 分区 (trade_cal 实测 accepted_partition 里
+    # 已有 4 个分区因两次换源背出 3 种 config_hash)。
+    # 语义变更仍被完整覆盖: domain/target_db/grain/batch_mode/fixed_params/page_limit +
+    # publication(landing/fragment/canonical 表名 + dataset_id) +
+    # calendar_generation(coverage_start/required_through_rule/timezone/
+    # canonicalization_version/availability) + population_scope + schema_hash
+    # (经 contract_hash 纳入) —— 任一真实语义变化都会动到其中至少一项。registry 与当前
+    # adapter 的 source/api 一致性由本函数调用方 calendar_contract_for_spec() 对
+    # _EXPECTED_PROVIDER_TRANSPORT 的逐字段校验独立守卫, 不依赖这个 hash。
     transport_payload = {
-        **_EXPECTED_PROVIDER_TRANSPORT,
-        "page_limit": page_limit,
+        key: value
+        for key, value in _EXPECTED_PROVIDER_TRANSPORT.items()
+        if key not in ("source", "api")
     }
+    transport_payload["page_limit"] = page_limit
     policy_payload = {
         key: generation[key]
         for key in (

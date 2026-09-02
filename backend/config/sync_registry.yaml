@@ -54,14 +54,17 @@ defaults:
 # 扁平两层 sources.<源名>.<字段>; domain_spec() 按域的 source 字段查本表合并 (defaults → sources[source] → domain)。
 sources:
   miaoxiang:
+    kind: network_vendor
     # 2026-09-01 新增: 龙虎榜 top_inst / top_list 授权换源 tushare -> 妙想(东财 aif10)。
     # 物理落库仍是 tushare_raw —— 换 adapter 不改表 (与 fuyao/tdxhub 同约定)。
     target_db: tushare_raw
     # 不在此声明 rate_limit: 妙想走 aif10_scraper 自带的客户端 (已内建 3 次退避重试),
     # 限流由该客户端承担, 与 tdxhub / stock_st_derive / calendar_rule 同 —— 它们也都不在
-    # sources 层声明限流。**注**: 那三个源当前根本没有 sources 层条目, 靠各自 domains 层
-    # 显式写 target_db 兜住; 本条按 source 级属性的正确位置声明, 是更该被跟随的形状。
+    # sources 层声明限流。2026-09-02 P1 channels 改造地基收口: tdxhub / stock_st_derive /
+    # calendar_rule 三个源已补齐 sources 层条目 (kind + target_db), 不再靠 domains 层显式
+    # target_db 兜底一致性; 本条 target_db 声明的位置仍是三者共同遵循的正确形状。
   tushare:
+    kind: network_vendor
     target_db: tushare_raw
     # tinyshare 代理限流 (用户 2026-06-17/19) 实测: 单接口 120/分, 全接口合计 200/分, 并发上限 2。
     rate_limit:
@@ -71,6 +74,7 @@ sources:
     auth_probe_timeout_seconds: 20 # user() 探针网络边界；持 writer lock 时不得无限挂起
     auth_expiry_warn_days: 14       # TuShare user() 授权到期预警唯一 owner；preflight 读取，禁止代码散落阈值
   fuyao:
+    kind: network_vendor
     target_db: tushare_raw
     # 扶摇官方从未公布 QPS 数字; 其官方 SDK 自我节流 min_interval_seconds=0.2 (≈5 QPS = 300/分),
     # 以此为依据设限, 与 TuShare 配额无关。
@@ -83,6 +87,7 @@ sources:
     # 不变 (三处授权探测调用点已改直读 sources.tushare, 不经 domain_spec, 扶摇域的这两个字段实际上无
     # 消费方 —— 不要在别处把它们当真 source 语义使用)。
   baostock:
+    kind: network_vendor
     # 免费源, 自研二进制协议 over 裸 TCP (非 HTTP API), 无 token/无授权到期概念 —— 故不配
     # auth_* 那些 TuShare 专属键。fetch_timeout_seconds 供 services/data_sources/sources/
     # baostock.py 坑 1 (无 socket 超时) 的封堵用: login 前 socket.setdefaulttimeout(该值)。
@@ -92,10 +97,32 @@ sources:
     target_db: tushare_raw
     # rate_limit: 官方从未公布 QPS 配额数字 (2026-08-30 查证 baostock.com "平台访问规则"
     # 页面在其 CMS 里没有配置内容) —— 不编数字, 待实测后再配。
+  tdxhub:
+    # 2026-09-02 P1 channels 改造地基收口新增: 通达信 hub, 出网取数 (裸 TCP 行情协议,
+    # 见 daily 域注释)。此前无 sources 层条目, 靠 domains.daily 显式写 target_db 兜住 ——
+    # 该条目只补 kind + target_db, 不新增/不推测 rate_limit 等未实测字段。
+    kind: network_vendor
+    target_db: tushare_raw
+  calendar_rule:
+    # 2026-09-02 P1 channels 改造地基收口新增: 本地按周一~周五减法定节假日推导, 无网络
+    # 无会话 (见 trade_cal 域注释)。此前无 sources 层条目, 靠 domains.trade_cal 显式写
+    # target_db 兜住 —— 该条目只补 kind + target_db。
+    kind: local_derive
+    target_db: tushare_raw
+  stock_st_derive:
+    # 2026-09-02 P1 channels 改造地基收口新增: 本地从 stock_basic 快照名称正则派生 ST 状态,
+    # 无网络无会话 (见 stock_st 域注释)。此前无 sources 层条目, 靠 domains.stock_st 显式写
+    # target_db 兜住 —— 该条目只补 kind + target_db。
+    kind: local_derive
+    target_db: tushare_raw
 
 domains:
   # ── P0-a: 资金流 (套一 L2 + 套二 F1 + 退出组件, 一次回填三用) ──
   moneyflow:
+    identity:
+      kind: vendor_view
+      judge: "tushare"
+      fact: "大/中/小单划分算法 (单别阈值专有)"
     # 同日行数对账: 该域每个交易日应覆盖当日 K 线的全部标的。
     # 这是比 min_rows_per_batch 强得多的完整性判据 —— 底线只能检出"明显残缺"(实测该域底线
     # 3000 而真值 5197, 丢 42% 才报), 对账则丢 1 行就报。
@@ -119,6 +146,10 @@ domains:
     min_rows_per_batch: 3000      # 2026-06-15 扩2020回补降4000->3000: 2020 universe ~3740股 (实测) < 4000 误报; 与 daily 一致, 仍防真截断
 
   moneyflow_dc:   # 2026-06-16 用户"全拉初评有用数据": 东财个股资金流 (net_amount/net_amount_rate, 补 order-size moneyflow 的东财口径)
+    identity:
+      kind: vendor_view
+      judge: "东财"
+      fact: "资金流单别, 东财口径"
     source: tushare
     api: moneyflow_dc
     target_table: raw_tushare_moneyflow_dc
@@ -140,6 +171,9 @@ domains:
 
   # ── P0-b: 可执行性真相源 + 情绪温度计 ──
   limit_list_d:
+    identity:
+      kind: derived_rule
+      fact: "涨跌停统计 = OHLCV + stk_limit 比对"
     source: tushare
     api: limit_list_d
     target_table: raw_tushare_limit_list_d
@@ -162,6 +196,9 @@ domains:
                               # 此域从无 calendar_gaps 问题, row_dip_tolerance 才是准确语义)
 
   stk_limit:
+    identity:
+      kind: derived_rule
+      fact: "涨跌停价 = 昨收 x 板块规则 (主板10/双创20/北交所30/ST5)"
     source: tushare
     api: stk_limit
     target_table: raw_tushare_stk_limit
@@ -192,6 +229,9 @@ domains:
                                # 对 2019 年这类真实但较小的历史批次误报。
 
   stock_st:
+    identity:
+      kind: derived_rule
+      fact: "ST 状态 = 证券简称含 ST/*ST; 已换 stock_st_derive, 402 样本 100% 一致"
     execution_policy:
       mode: enabled
       # Authorized manual single-day only:
@@ -241,6 +281,9 @@ domains:
                                    # 漏进 universe(红线相邻); 100≤histmin 零幻影缺口
 
   suspend_d:
+    identity:
+      kind: derived_rule
+      fact: "停牌 = 该交易日无成交; 券商没有这张表, 因为『没交易就是停牌』"
     source: tushare
     api: suspend_d
     target_table: raw_tushare_suspend_d
@@ -259,6 +302,9 @@ domains:
 
   # ── 两融族 (B3 2026-07-02 用户点名日更参数, 主升浪 D2 L1 叠加层; 实弹核证见 commit) ──
   margin_detail:
+    identity:
+      kind: exchange_fact
+      fact: "融资融券个股明细 (交易所公布)"
     source: tushare
     api: margin_detail
     target_table: raw_tushare_margin_detail
@@ -308,6 +354,9 @@ domains:
       required_groups: [SH, SZ]    # provider API 不支持 exchange 参数；禁止伪 split_by，缺任一市场即 fail closed
 
   margin:                          # 交易所汇总: B4 市场感知大盘水位原料 (accepted=SSE+SZSE)
+    identity:
+      kind: exchange_fact
+      fact: "融资融券市场汇总余额 (交易所公布)"
     execution_policy:
       mode: enabled
       reason: bounded_calendar_catchup
@@ -378,6 +427,10 @@ domains:
 
   # ── P0-c: regime gate 原料 (1 行/日, ROI 最高) ──
   moneyflow_mkt_dc:
+    identity:
+      kind: vendor_view
+      judge: "东财"
+      fact: "大盘资金流, 东财口径"
     source: tushare
     api: moneyflow_mkt_dc
     target_table: raw_tushare_moneyflow_mkt_dc
@@ -391,6 +444,9 @@ domains:
 
   # ── 基础: 交易日历去 akshare 单点 (用户决策: 能 tushare 就 tushare) ──
   trade_cal:
+    identity:
+      kind: derived_rule
+      fact: "交易日 = K线有成交的日期; 已换 calendar_rule, 逐行零差异"
     execution_policy:
       mode: enabled
       # Authorized manual generation only: chunkyctl sync --domain trade_cal
@@ -451,6 +507,9 @@ domains:
 
   # ── 基础: 当前在市请求枚举快照（禁止作为历史 PIT 身份真相） ──
   stock_basic:
+    identity:
+      kind: exchange_fact
+      fact: "上市证券名册与上市/退市日"
     # 2026-09-01 授权换源 (tushare 2026-09-10 到期不续期): tushare -> fuyao。
     # 扶摇 /api/meta/tickers/list 筛 asset_type=a-share 得 5563 只, **tushare 的 5550 只
     # 100% 被覆盖** (严格超集, 0 缺失), 且含北交所 343 只。消费方 security_master 实读
@@ -486,6 +545,10 @@ domains:
 
   # ── P0-d: 概念/板块域 (E8 探底实测起点; 仅经 manual pipeline/sync_runner 增量) ──
   dc_member:
+    identity:
+      kind: vendor_view
+      judge: "东财"
+      fact: "东财板块分类体系 (成分归属)"
     source: tushare
     api: dc_member
     target_table: raw_tushare_dc_member
@@ -518,6 +581,10 @@ domains:
       "20260409": "2026-08-21 向 vendor 逐页核证: dc_member 全量 32,629 行 / 633 板块(库 32,534), 同上属 vendor 侧覆盖差异"
 
   dc_index:
+    identity:
+      kind: vendor_view
+      judge: "东财"
+      fact: "东财板块分类体系 (板块清单)"
     source: tushare
     api: dc_index
     target_table: raw_tushare_dc_index
@@ -532,6 +599,10 @@ domains:
                                 # 1022; 400≤histmin 零幻影缺口, 原 100 比率仅 0.10 过松
 
   moneyflow_ind_dc:
+    identity:
+      kind: vendor_view
+      judge: "东财"
+      fact: "行业资金流, 东财口径"
     source: tushare
     api: moneyflow_ind_dc
     target_table: raw_tushare_moneyflow_ind_dc
@@ -554,6 +625,10 @@ domains:
     # 按月分布无连续缺失窗口。不建议加 gap_tolerance(那是日期级空洞用的字段, 这里没有日期空洞)。
 
   limit_cpt_list:
+    identity:
+      kind: vendor_view
+      judge: "tushare"
+      fact: "涨停概念归类"
     source: tushare
     api: limit_cpt_list
     target_table: raw_tushare_limit_cpt_list
@@ -581,6 +656,9 @@ domains:
   # northbound(映射盲区) / 复权链(adj_factor+dividend 转正主源, tdxhub xdxr 滞后17天降备援
   # 交叉验证 — 主源序: tushare 主/tdxhub 备)。旧路径双轨核对一致后物理退役。
   top_list:
+    identity:
+      kind: exchange_fact
+      fact: "龙虎榜个股 (交易所公布)"
     # 2026-09-01 授权换源 tushare -> miaoxiang (RPT_DAILYBILLBOARD_DETAILSNEW)。tushare 2026-09-10 到期不续期。
     # 实证 (5 个交易日 20260819~20260825 逐日逐键对账, 非抽样):
     #   top_list 键数 60/60/54/68/74, 缺 0, net_amount 对不上 0
@@ -612,6 +690,9 @@ domains:
     allow_empty_batch: false
 
   top_inst:
+    identity:
+      kind: exchange_fact
+      fact: "龙虎榜机构席位 (交易所公布)"
     # 2026-09-01 授权换源 tushare -> miaoxiang (RPT_OPERATEDEPT_TRADE)。tushare 2026-09-10 到期不续期。
     # 实证 (5 个交易日 20260819~20260825 逐日逐键对账, 非抽样):
     #   top_inst 键数 526/509/508/626/690, 缺 0, net_buy 对不上 0
@@ -656,6 +737,10 @@ domains:
   #   批2 2026-06-28 institution_survey SERVE entity 切此 tushare 唯一源 (旧 aif10+akshare raw_institution_surveys 退役物删)。
 
   report_rc:
+    identity:
+      kind: vendor_view
+      judge: "券商分析师"
+      fact: "评级与盈利预测"
     source: tushare
     api: report_rc
     target_table: raw_tushare_report_rc
@@ -705,6 +790,9 @@ domains:
                                                    # 2026-07-08 根因深查又发现独立缺口 20260328(见上)。
 
   stk_surv:
+    identity:
+      kind: exchange_fact
+      fact: "机构调研记录 (公告)"
     source: tushare
     api: stk_surv
     target_table: raw_tushare_stk_surv
@@ -750,6 +838,9 @@ domains:
   # 盲注册有截断/grain 撞键风险。K3 已退役 ths_hot (零消费), 不按该模式补注册。
 
   moneyflow_hsgt:
+    identity:
+      kind: exchange_fact
+      fact: "沪深港通资金流 (交易所公布)"
     source: tushare
     api: moneyflow_hsgt
     target_table: raw_tushare_moneyflow_hsgt
@@ -781,6 +872,9 @@ domains:
       # 故删任一侧都会改变行为: 删本字段 -> 每日重探这 4 天; 删 gap_tolerance -> 缺口检查判红。
 
   dividend:
+    identity:
+      kind: exchange_fact
+      fact: "分红送转方案 (公告)"
     source: tushare
     api: dividend
     target_table: raw_tushare_dividend
@@ -807,6 +901,9 @@ domains:
                               # 低于邻域中位 = 除权事件日频脉冲, 非截断/半空批
 
   adj_factor:
+    identity:
+      kind: undecided
+      blocked_by: "可由 dividend + 价格推导, 但复权因子口径各家有差异; 2026-06-22 那次自算事故证明的是『实现写错了』(因子当乘数用反, 分叉89%) 而非『不可自算』—— 需一次真实口径核对才能定 derived_rule vs vendor_view"
     source: tushare
     api: adj_factor
     target_table: raw_tushare_adj_factor
@@ -826,6 +923,9 @@ domains:
   # data_start 起步 20190102 (覆盖项目全部回测窗+3年缓冲); 需更早历史时改小 data_start,
   # gap drain 会自动补老缺口 (日历 gap 扫描天然支持向前扩窗)。
   daily:
+    identity:
+      kind: exchange_fact
+      fact: "日频未复权 OHLCV + 除权口径昨收"
     execution_policy:
       mode: enabled
       # Authorized manual single-day only:
@@ -876,6 +976,9 @@ domains:
     allow_empty_batch: false
 
   daily_basic:
+    identity:
+      kind: undecided
+      blocked_by: "可由 OHLCV + 股本 + 财务推导, 但换手/市值/PE 的分母定义各家有差异; 待验推导路径 circ_mv ~ close*volume/turn*100 (验收 p95 相对误差 <1%)"
     # 同日行数对账: 该域每个交易日应覆盖当日 K 线的全部标的。
     # 这是比 min_rows_per_batch 强得多的完整性判据 —— 底线只能检出"明显残缺"(实测该域底线
     # 3000 而真值 5197, 丢 42% 才报), 对账则丢 1 行就报。
@@ -907,6 +1010,10 @@ domains:
 
   # ── 筹码族 (用户点名: 筹码胜率 alpha; 2026-06-12 实弹核证) ──
   cyq_perf:
+    identity:
+      kind: vendor_view
+      judge: "tushare"
+      fact: "筹码分布模型"
     source: tushare
     api: cyq_perf
     target_table: raw_tushare_cyq_perf
@@ -939,6 +1046,9 @@ domains:
   # 现状: KPI 超额走 akshare = 主从倒挂; 申万退役真因 = 只有快照无历史 → index_member_all 带
   # in_date/out_date 是 PIT 原生解。两域均 2000 积分实测可调 (2026-06-13 单发核证字段/grain)。
   index_daily_benchmark:
+    identity:
+      kind: exchange_fact
+      fact: "指数日行情 (交易所发布)"
     source: tushare
     api: index_daily
     target_table: raw_tushare_index_daily
@@ -967,6 +1077,10 @@ domains:
                                     # 原 100 对 3000 级截断完全测不出(重建/回填场景静默丢 2005-2013 段)
     allow_empty_batch: false
   index_member_all:
+    identity:
+      kind: vendor_view
+      judge: "申万"
+      fact: "申万行业分类体系 (成分归属)"
     source: tushare
     api: index_member_all
     target_table: raw_tushare_index_member_all
@@ -983,6 +1097,10 @@ domains:
     allow_empty_batch: false
     fixed_params: {is_new: "Y"}    # 当前成分 (out_date NULL=仍在); 2026-06-15 显式化: is_new 默认只 Y, 历史剔除走 _hist 域
   index_member_all_hist:           # 2026-06-15 P0: 历史已剔除成分 (is_new=N, out_date 填) — 补真 PIT 区间
+    identity:
+      kind: vendor_view
+      judge: "申万"
+      fact: "申万行业分类体系 (历史成分)"
     source: tushare                # 根因: 原域只 is_new=Y => out_date 100% NULL = latest-snapshot leakage; 单发探针实测 is_new=N 给 out_date (801010: 56行全填)
     api: index_member_all
     target_table: raw_tushare_index_member_all  # 同表 MERGE on grain (N行 in_date 区间异于 Y行, 不冲突共存)
@@ -997,6 +1115,9 @@ domains:
     allow_empty_batch: true        # 部分 l1 可能 0 剔除 (新行业/无调整)
     fixed_params: {is_new: "N"}
   index_dailybasic:
+    identity:
+      kind: exchange_fact
+      fact: "指数日频估值 (交易所发布)"
     source: tushare
     api: index_dailybasic
     target_table: raw_tushare_index_dailybasic
@@ -1030,6 +1151,9 @@ domains:
 
   # ── 基本面/盈利预测族 (alpha 验证程序 S1, 2026-06-14 实弹核证 PASS: PEAD 事件因子, 最大未挖矿) ──
   forecast:
+    identity:
+      kind: exchange_fact
+      fact: "业绩预告 (公告)"
     source: tushare
     api: forecast
     target_table: raw_tushare_forecast
@@ -1062,6 +1186,9 @@ domains:
                               # (1/4/7/10月强双峰), 淡季tinyshare逐日探测源端同样0行, 真实事件稀疏
 
   income:   # 正式利润表 (2026-06-14 实弹核证: 96 列全套利润表科目, PEAD 后段慢信号)
+    identity:
+      kind: exchange_fact
+      fact: "利润表原始科目 (公告)"
     source: tushare
     api: income
     target_table: raw_tushare_income
@@ -1079,6 +1206,9 @@ domains:
     allow_empty_batch: true   # 多数交易日无新财报披露
 
   balancesheet:   # 完整资产负债表 (2026-06-26 通达信全删 单元4: gpcw 财务链迁 tushare; contract_liab 新准则字段=contract_to_revenue 源, 实弹核证茅台2026Q1 contract_liab=30.27亿; 替代 balancesheet_advrecv 旧stale预收账款拉)
+    identity:
+      kind: exchange_fact
+      fact: "资产负债表原始科目 (公告)"
     source: tushare
     api: balancesheet
     target_table: raw_tushare_balancesheet
@@ -1105,6 +1235,9 @@ domains:
 
   # balancesheet_advrecv 域已删 2026-06-28 (G5 退役: 与 balancesheet contract_liab 重叠 + by_period drain 无兜底卡2020; 0 消费方)
   block_trade:   # 2026-06-16 用户提议试: 大宗交易 (机构折价/大单方向 — stage 内 alpha 增强候选, moneyflow 抓不到的机构维度)
+    identity:
+      kind: exchange_fact
+      fact: "大宗交易成交 (交易所公布)"
     source: tushare
     api: block_trade
     target_table: raw_tushare_block_trade
@@ -1145,6 +1278,10 @@ domains:
   #   证据: git log --grep post_close_update_e2e §5–6.
 
   fina_indicator:   # 财务指标 (2026-06-14 实弹核证: 167 项衍生指标 ROE/ROA/毛利率/负债率 = 直接因子料)
+    identity:
+      kind: vendor_view
+      judge: "tushare"
+      fact: "财务指标计算口径 (ROE/毛利率等分母定义)"
     source: tushare
     api: fina_indicator
     target_table: raw_tushare_fina_indicator
@@ -1174,6 +1311,9 @@ domains:
 
   # ── P0 (2026-06-17 tushare 选股潜力研究, owner=git log --grep tushare_alpha_potential_research): 口径对齐项目(行业=申万/概念=东财, 禁同花顺) ──
   sw_daily:   # 申万行业日线 (行业口径=申万与项目一致; sector_momentum/行业相对强弱分层; 实弹 439-587 指数/日)
+    identity:
+      kind: exchange_fact
+      fact: "申万行业指数日行情 —— 编制方案公开、成分可核, 属可核对的发布值"
     source: tushare
     api: sw_daily
     target_table: raw_tushare_sw_daily
@@ -1191,6 +1331,9 @@ domains:
     #   立墓碑, 先进 failure_queue 观察窗。
 
   share_float:   # 解禁 (天然前瞻 PIT: ann_date 公告日已知未来 float_date 解禁=0泄露; 出场/风控)
+    identity:
+      kind: exchange_fact
+      fact: "限售股解禁 (公告)"
     source: tushare
     api: share_float
     target_table: raw_tushare_share_float
@@ -1235,6 +1378,9 @@ domains:
   #   (no formal accept plane yet). Consumer = DataAccess holder_number + dossier assist.
   #   Evidence: git log --grep stk_holdernumber_retire_evidence.
   stk_holdernumber:   # 股东户数 (筹码集中慢变量; 辅助因子/dossier; 非择时)
+    identity:
+      kind: exchange_fact
+      fact: "股东户数 (公告)"
     source: tushare
     api: stk_holdernumber
     target_table: raw_tushare_stk_holdernumber
@@ -1262,6 +1408,9 @@ domains:
     # accepted partition yet — same class as share_float/cyq serve_l0_declared).
 
   stk_holdertrade:   # 股东增减持 (2026-06-24 替 tdx fact_shareholder_plan_tdx_f10; 实测 ann_date 全市场71行/期)
+    identity:
+      kind: exchange_fact
+      fact: "股东增减持 (公告)"
     source: tushare
     api: stk_holdertrade
     target_table: raw_tushare_stk_holdertrade
@@ -1288,6 +1437,10 @@ domains:
   # sync_policy=on_demand: explicit --start/--end only; 禁 mass backfill.
   # page_limit 禁止: 那会走 TuShare limit/offset; 本源分页是 page/size。
   fuyao_limit_up_pool:
+    identity:
+      kind: vendor_view
+      judge: "扶摇"
+      fact: "涨停池入池口径"
     source: fuyao
     api: limit-up-pool
     target_table: raw_fuyao_limit_up_pool
@@ -1308,6 +1461,10 @@ domains:
     universe_filter: false
 
   fuyao_limit_down_pool:
+    identity:
+      kind: vendor_view
+      judge: "扶摇"
+      fact: "跌停池入池口径"
     source: fuyao
     api: limit-down-pool
     target_table: raw_fuyao_limit_down_pool
@@ -1328,6 +1485,10 @@ domains:
     universe_filter: false
 
   fuyao_limit_break_pool:
+    identity:
+      kind: vendor_view
+      judge: "扶摇"
+      fact: "炸板池入池口径"
     source: fuyao
     api: limit-break-pool
     target_table: raw_fuyao_limit_break_pool
@@ -1348,6 +1509,10 @@ domains:
     universe_filter: false
 
   fuyao_auction_benchmark:
+    identity:
+      kind: vendor_view
+      judge: "扶摇"
+      fact: "竞价基准算法"
     source: fuyao
     api: auction-short-term-benchmark
     target_table: raw_fuyao_auction_benchmark

@@ -163,9 +163,15 @@ DOMAIN = SecurityDayDomain(
     partition_field="trade_date",
     # 2026-09-01 授权换源 tushare -> tdxhub (通达信); tushare 授权 2026-09-10 到期不续期。
     # 实证零差异: 全市场 5208 只 x 9 字段 46872/46872 全对, 代码集双向零缺失。
-    # 注: source 参与 config_hash/contract_hash 计算, 故换源后新写入的 canonical 行
-    # 带新 config_hash, 旧行保留旧值 —— 这是**预期的溯源语义** (不同契约的数据可区分),
-    # 读侧无 "hash 必须相等" 的校验 (只在写入时打戳), 既有 22 年历史不受影响。
+    # 注 (2026-09-02 更正: 下面两句原文**都是错的**, 且同日实测各自造成过一次误判):
+    #   原写「source 参与 config_hash/contract_hash 计算」—— 已不成立。同日
+    #   nominal_ohlcv_contract.py:125-133 明确把 source/api 移出 config_payload
+    #   (「传输轴非语义轴」), 换源不再改指纹。语义变更仍被 schema_hash/grain/partition_by/
+    #   population_scope/availability/表名/coverage_start 完整覆盖; registry 与 DOMAIN 的
+    #   source 一致性由 _expected_transport 独立守卫, 不靠 hash。
+    #   原写「读侧无 "hash 必须相等" 的校验」—— **假的**。security_day_reader.py:96 就是
+    #   严格相等; 正因如此, 当初若让 source 进指纹, 换源会让既有 accepted 分区全部读不出来
+    #   (实测 daily 1,858 个 + stock_st 1,128 个)。这句话本身曾把人带进沟里, 别再复活。
     source="tdxhub",
     api="daily",
     target_db="tushare_raw",

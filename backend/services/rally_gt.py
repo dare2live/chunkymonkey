@@ -21,10 +21,32 @@ holdout 接线 (修正#1): rebuild 入口第一行 assert_holdout_untouched(data
   purge 同股正样本 bottom ±max_forward_days 根; 同股间隔 >= min_gap_bars;
   ST 留消费侧 PIT 硬门 (is_st_on — ST 是时变量不可一刀切删股, v1.5 同)。
 strata (考古 §3.4): 申万 L1/L2 as-of (raw_tushare_index_member_all, in_date<=底<=out_date, 含
-  is_new='N' 历史区间 = 真 PIT) + 长底桶 + B1 sm.dim_stock_segment_daily ASOF bottom
+  is_new='N' 历史区间 —— **成员迁移是 PIT 的, 分类学本身不是**; 2026-09-02 实测更正原
+  "= 真 PIT" 的说法, 见下) + 长底桶 + B1 sm.dim_stock_segment_daily ASOF bottom
   (mktcap_seg/turnover_seg/vol_regime, 修正#7 单一计算点) + B2 sm.fact_stock_form_daily
   bottom 日精确对照 (axis_pos/axis_purity)。B2 全局 2020-01-10 起 + per-stock warmup →
   更早 bottom 结构性 NULL; vol_regime 源端 rv warmup 期 NULL 如实透传 (实测 9%)。
+
+  申万分层的 PIT 边界 (2026-09-02 实测, 更正上面原写的 "含 is_new='N' 历史区间 = 真 PIT"):
+    该说法对 **个股迁移** 成立, 对 **分类学改版** 不成立, 两者混在同一张表里且无字段可区分。
+    实测: raw_tushare_index_member_all 只含申万 **2021 版** (31 个 L1; 名称是"基础化工/电力
+    设备/纺织服饰"这套 2021 命名; 2014 版独有的 化工/电气设备/休闲服务/采掘/纺织服装/商业贸易/
+    交运设备 全部 0 行)。1,649/5,897 只股票有多行 = 个股在既有行业间迁移**确实**留了带日期的
+    记录 (is_new='N' 共 2,009 行); 但 2021 版**整行业拆分**是无痕改标: 中国神华 601088.SH 全表
+    只有一行 —— 煤炭(801950.SI), in_date=20071008, out_date=NULL —— 而 801950 这个一级行业
+    2021 年才存在, 2014 版下它属于"采掘"(801020, 本表 0 行)。同型: 中国石油 601857.SH 单行
+    石油石化(801960.SI) 自 20071101。2021 版新增的 4 个 L1 里, in_date<2021 的行共 187 行
+    (煤炭 36 / 石油石化 41 / 环保 92 / 美容护理 18), 每一行都在声称某股在一个当时不存在的行业里
+    待了多年。
+    对本表的实际影响 (实测 fact_rally_strata): bottom_date < 2021-07-01 的样本 3,446 条中,
+    132 条 (3.83%) 的 sw_l1 是底部当日尚不存在的行业 —— 环保 50 / 煤炭 39 / 石油石化 27 /
+    美容护理 16。这是 L1 下界; 2021 版 L2 重构幅度更大, L2 污染只会更高, 未单独量化。
+    定性: 这**不是**价格/收益泄漏 (行业归属不直接编码前向收益), 而是**分层变量里的事后视角** ——
+    2021 版把煤炭/环保从采掘里划出来, 这条线本身是看过 2007-2021 之后画的; 拿它标 2019 年的底部,
+    等于用后画的框圈先发生的事。描述性分层里这是可控偏差; 一旦 sw_l1/sw_l2 被当**特征**或负样本
+    配对键使用, 性质就变成泄漏 —— 那一刻必须先解决本条, 不能沿用。
+    未处置: 尚未加标记列/未剔除, 因为改 GT 语义属研究设计决策 (blast radius 覆盖正负样本配对),
+    留 owner 拍板。换源不改变本条 —— 申万官方发布的也是当前版分类, 任何供应商都有同一问题。
 
 列契约: backend/config/rally_gt_columns.yaml + services.gt_label_contract (修正#4 第一天重立);
   landing 断言核契约-表列同步 + gain/base 压线 + universe 干净 + 0 bottom > data_end。

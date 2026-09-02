@@ -25,6 +25,28 @@ from __future__ import annotations
 # 上建视图即崩 (生产 init 路径 landmine; 此前 live DB 因 builder 早跑过表已存在掩盖了 bug)。
 # 视图只用 code/date/open/high/low/close/volume/amount + lineage; builder DROP+CREATE AS 会覆盖空壳。
 # 注: SQL 串内禁用 -- 注释 (duck_adapter.executescript 的 _split_statements 会在注释处截断语句).
+#
+# 2026-09-01 修 source_name 假血缘 (moth qfq-serving-tushare-only 从建立起数学上恒为0, 从未真查过):
+#   source_name/source_tier/is_fallback 三列从来不是 PRICE_KLINE_QFQ_TUSHARE_DDL 里的物理列,
+#   是本视图 SELECT 里的字面量 —— 'tushare' 硬编码只声明"取数方法没有兜底分支"(source_tier=1
+#   恒定 / is_fallback 恒 FALSE 仍准确, 因 2026-06-22 移除的那条 akshare/tdxhub 兜底 tier 确未复活),
+#   但拿它冒充"这行数据的真实供货商"是假血缘: nominal OHLCV 现经 canonical_nominal_ohlcv_daily 摄入
+#   (build_price_kline_qfq_tushare.py --from-accepted 默认), 该表真实供货商已按裁决从 tushare 转
+#   向通达信 —— 裁决现由 backend/config/tushare_sunset.yaml 的 domains.daily 记录 (decision=
+#   replace/replacement=tdxhub/status=done@2026-09-01); 原引"goal.md 2026-08-31 业主拍板"那段
+#   文本已随 09-01 goal.md 160→41 行瘦身重写(commit b28449b6a)被删, goal.md 现全文查不到"三源/
+#   裁决/tdxhub"任一词, 故改引现存 owner, 勿再引已不存在的原文。实测 ingest_batch 2026-08-31
+#   批次 tier0.market_data.nominal_ohlcv_daily 的 source_name 已是 tdxhub。price_kline_qfq_tushare
+#   未透传 canonical 的 ingest_batch_id, 本表/本视图故不掌握逐行真实供货商, 不再假冒常量骗自己。
+#   source_name 改 NULL (诚实缺口, 呼应上面第 22 行 mio: unknown > 假填); 复权因子仍恒定锁死
+#   raw_tushare_adj_factor (JOIN 见 build_price_kline_qfq_tushare.py) 未变, 这才是 2026-06-22
+#   真正要防的回归 (tdxhub 自算 adj_factor 系统性错, 见上); 该不变量现由
+#   .moth/assertions/claims.yaml 的 qfq-lineage-guard 断言守 (解析真实 JOIN 图 + ingest_batch
+#   全历史真血缘, 不再查字符串 presence 或已知不可能查到东西的字面量列)。真实逐行供货商查
+#   ingest_batch, 不查本视图。注: tushare_sunset.yaml 的 domains.adj_factor 已裁决 replace->
+#   tdxhub (must_by 2026-09-10), 但尚无 status:done —— 该域一旦切换完成, 本注释与
+#   qfq-lineage-guard 的期望物理表集合都要同步改, 否则会重演本次修的同一种病 (门锁死昨天的
+#   真相, 见门顶 claim 开头)。
 PRICE_KLINE_QFQ_TUSHARE_DDL = """
 CREATE TABLE IF NOT EXISTS price_kline_qfq_tushare (
     code   TEXT NOT NULL,
@@ -63,7 +85,7 @@ WITH primary_rows AS (
         volume,
         amount,
         1.0 AS factor,
-        'tushare' AS source_name,
+        CAST(NULL AS VARCHAR) AS source_name,
         1::SMALLINT AS source_tier,
         FALSE AS is_fallback,
         batch_id,

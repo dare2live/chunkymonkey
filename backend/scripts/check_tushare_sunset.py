@@ -7,7 +7,11 @@ owner: backend/config/tushare_sunset.yaml + docs/engineering_governance.md §14.
 直接 raise TuShareAuthorizationError —— 硬停不是降级。此前三月 primitives/seed.py 的
 涨跌停规则过时无人发现，正因为它零消费/零执法。**没有门的清单必然烂掉**。
 
-**检查三项**:
+**检查五项**:
+0. decision 值域校验: tushare_sunset.yaml 每个域条目的 decision 字段必须在
+   LEGAL_DECISIONS 合法集里；缺字段和写了非法值（如历史遗留的 unknown）分别报不同的
+   **FAIL** 文案，不许合并成同一种错误。
+
 1. 覆盖完整性: sync_registry.yaml 里每个 source: tushare 的域，必须在 tushare_sunset.yaml
    里出现（要么有自己的条目，要么列在 undecided_domains）。遗漏 → **FAIL** (真漂移)。
 
@@ -15,14 +19,21 @@ owner: backend/config/tushare_sunset.yaml + docs/engineering_governance.md §14.
    （已换源或已退役），应报 **WARN** —— 但 decision: derive/replace 且 status: done
    的条目除外（已完成的记录，正常）。
 
-3. 到期倒计时: 比较 authorization_expires 与当天：
+3. 到期倒计时: 比较 authorization_expires 与当天，未裁决域 = undecided_domains 列表
+   ∪ 所有 decision == "undecided" 的条目（两个来源取并集，任一来源缺了都会漏报）：
    - 未裁决域数 > 0 且距到期 > 14 天 → WARN (列出全部未裁决域名)
    - 未裁决域数 > 0 且距到期 ≤ 14 天 → WARN 但消息升级为醒目提示
    - 已过期 + 仍有未裁决域 → **FAIL**
 
-**关键设计约束**（不许改）: 未裁决域在到期前**只报 WARN 不 FAIL**。理由: 现在有
-24 个未裁决域、距到期 9 天，若设成 FAIL 会立刻阻断所有提交 —— 过度阻断只会卡住诚实的
-提交者。但 WARN **必须列出全部未裁决域名** —— 项目教训是「warn-only 会退化成 warn-nothing」。
+4. 裁决执行度: 域在 registry 中仍是 source: tushare，且台账 decision ∈ {replace, derive}
+   且 status != done —— 即"声明要换源却没换"。报 **WARN**（不 FAIL：业主已明确解除
+   断流时限压力，这条检查的价值是让声明与实际的漂移可见，不是催今天切换）。一条汇总
+   warn 列出全部命中域，不逐域刷屏。
+
+**关键设计约束**（不许改）: 未裁决域在到期前**只报 WARN 不 FAIL**。理由: 若设成 FAIL
+会立刻阻断所有提交 —— 过度阻断只会卡住诚实的提交者。但 WARN **必须列出全部未裁决域名**
+—— 项目教训是「warn-only 会退化成 warn-nothing」。decision 值域校验(检查 0)例外：非法值
+/缺字段是配置本身写错，报 FAIL。
 
 退出码: 有 fail → 非 0; 只有 warn → 0。门 group: scaffold (warn-only 组)。
 
@@ -42,6 +53,12 @@ import yaml
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_SUNSET = REPO / "backend" / "config" / "tushare_sunset.yaml"
 DEFAULT_REGISTRY = REPO / "backend" / "config" / "sync_registry.yaml"
+
+# tushare_sunset.yaml legend 里定义的合法 decision 取值。"unknown" 不在其中——
+# 那是历史遗留的占位字面量，不是合法裁决状态；台账里出现它必须 FAIL，不许静默通过。
+LEGAL_DECISIONS = frozenset(
+    {"replace", "derive", "accept", "accept_outage", "retire", "undecided"}
+)
 
 
 class PolicyError(RuntimeError):
@@ -87,9 +104,42 @@ def extract_tushare_domains(registry: dict[str, Any]) -> set[str]:
     return domains
 
 
+def validate_decisions(sunset: dict[str, Any]) -> list[str]:
+    """检查 0: decision 值域校验。
+
+    缺字段与写了非法值 (如历史遗留的 'unknown') 必须产生不同的报错文案 —— 不能像旧代码
+    那样用 entry.get("decision", "unknown") 把"没写"和"写了 unknown"压成同一个值，
+    那会让两种截然不同的配置错误在日志里长得一模一样，没法区分该去补字段还是改字面量。
+    undecided_domains 列表项本身没有 decision 字段（它们是纯字符串名单），不适用本校验。
+    """
+    fails: list[str] = []
+    domain_entries = sunset.get("domains", {})
+    for domain_name, entry in domain_entries.items():
+        if domain_name == "undecided_domains":
+            continue
+        if not isinstance(entry, dict):
+            continue
+        if "decision" not in entry:
+            fails.append(
+                f"域 {domain_name} 缺失 decision 字段（未写，非写了非法值）。"
+                f"合法取值集: {sorted(LEGAL_DECISIONS)}。"
+            )
+            continue
+        decision_value = entry["decision"]
+        if decision_value not in LEGAL_DECISIONS:
+            fails.append(
+                f"域 {domain_name} 的 decision 值 {decision_value!r} 不合法（字段已写但值不在合法集里）。"
+                f"合法取值集: {sorted(LEGAL_DECISIONS)}。"
+            )
+    return fails
+
+
 def extract_sunset_domains(sunset: dict[str, Any]) -> dict[str, Any]:
     """从 sunset 提取所有被记录的域 (包括 undecided_domains)。
-    返回 dict {domain_name: (decision|"undecided", status_if_any)}.
+    返回 dict {domain_name: (decision, status_if_any)}.
+
+    decision 缺字段时这里存 None，不再假装成 "unknown" —— 值域是否合法由
+    validate_decisions 单独判定并报错，这里只负责如实转录，不做默认值遮盖。
     """
     domains: dict[str, Any] = {}
     domain_entries = sunset.get("domains", {})
@@ -98,7 +148,7 @@ def extract_sunset_domains(sunset: dict[str, Any]) -> dict[str, Any]:
             # 这是一个列表，不是一个域条目
             continue
         if isinstance(entry, dict):
-            decision = entry.get("decision", "unknown")
+            decision = entry.get("decision")
             status = entry.get("status")
             domains[domain_name] = (decision, status)
 
@@ -115,7 +165,7 @@ def run(
     registry_path: Path = DEFAULT_REGISTRY,
     today: date | None = None,
 ) -> tuple[list[str], list[str]]:
-    """执行三项检查。返回 (fails, warns)。"""
+    """执行五项检查 (检查 0~4)。返回 (fails, warns)。"""
     if today is None:
         today = date.today()  # rule-compliance: ok evidence=与授权到期日比对的墙钟日期(非交易日判定/非交易决策锚), 墙钟即语义本身
 
@@ -127,6 +177,9 @@ def run(
 
     registry_tushare = extract_tushare_domains(registry)
     sunset_domains = extract_sunset_domains(sunset)
+
+    # ── 检查 0: decision 值域校验 ─────────────────────────────────────
+    fails.extend(validate_decisions(sunset))
 
     # ── 检查 1: 覆盖完整性 ────────────────────────────────────────────
     missing_from_sunset = registry_tushare - set(sunset_domains.keys())
@@ -164,8 +217,16 @@ def run(
             "(期望 YYYY-MM-DD 格式)"
         ) from None
 
-    undecided = sunset.get("domains", {}).get("undecided_domains", [])
-    undecided_list = sorted(undecided) if undecided else []
+    # 未裁决域 = undecided_domains 列表 ∪ 所有 decision == "undecided" 的条目。
+    # 旧代码只读列表；真实台账里列表恒为空、"undecided" 全部是以条目形式写的
+    # (decision: undecided)，导致这个分支在生产从未触发过。extract_sunset_domains
+    # 已经把两个来源都转录进 sunset_domains（列表项也被赋值 decision="undecided"），
+    # 所以直接按 decision 过滤即可覆盖两个来源，不需要分别读两处。
+    raw_undecided_list = set(sunset.get("domains", {}).get("undecided_domains", []))
+    decision_undecided = {
+        name for name, (decision, _status) in sunset_domains.items() if decision == "undecided"
+    }
+    undecided_list = sorted(raw_undecided_list | decision_undecided)
 
     if undecided_list:
         days_left = (expires_date - today).days
@@ -191,6 +252,32 @@ def run(
                 f"仍有 {len(undecided_list)} 个未裁决域待处理：\n  "
                 + "\n  ".join(f"- {d}" for d in undecided_list)
             )
+
+    # ── 检查 4: 裁决执行度 (声明 vs 实际的漂移) ──────────────────────
+    # 检查 2 只查一个方向 (已换源却没标 done)。这里查反方向: 台账已经裁决要换
+    # (replace/derive) 却 registry 里源还没换。报 WARN 不 FAIL —— 业主已解除断流时限
+    # 压力，这条检查的价值是让"声明与实际不一致"可见，不是催今天必须切换。
+    raw_domain_entries = sunset.get("domains", {})
+    drifted: list[tuple[str, str]] = []
+    for domain_name, (decision, status) in sunset_domains.items():
+        if domain_name not in registry_tushare:
+            continue
+        if decision not in ("replace", "derive"):
+            continue
+        if status == "done":
+            continue
+        entry = raw_domain_entries.get(domain_name, {})
+        label = entry.get("replacement", decision) if isinstance(entry, dict) else decision
+        drifted.append((domain_name, label))
+
+    if drifted:
+        drifted.sort(key=lambda pair: pair[0])
+        warns.append(
+            f"声明与实际的漂移（非紧急，仅供可见性）: {len(drifted)} 个域在 "
+            "tushare_sunset.yaml 里已裁决 replace/derive 但未标 status: done，"
+            "registry 里 source 仍是 tushare。这是台账落后于计划、不是今天要断流：\n  "
+            + "\n  ".join(f"- {name} -> {label}" for name, label in drifted)
+        )
 
     return fails, warns
 

@@ -88,7 +88,7 @@ def env(monkeypatch):
 def test_routine_incremental_keeps_ann_watermark_day(env, monkeypatch):
     """wm=20260722 end=20260723: must re-pull wm day (late same-day filers)."""
     _c, adapter = env
-    monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, source: "20260722")
+    monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, conn=None: "20260722")
     res = sr.run_domain("synthetic_ann_domain", registry=REG, end="20260723")
     assert res["ok"] is True
     dates = sorted(c["ann_date"] for c in adapter.calls)
@@ -101,7 +101,7 @@ def test_routine_incremental_keeps_ann_watermark_day(env, monkeypatch):
 def test_equal_frontier_single_day_still_pulls(env, monkeypatch):
     """wm == eligible_end: single-day window must still fetch (population unproven)."""
     _c, adapter = env
-    monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, source: "20260723")
+    monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, conn=None: "20260723")
     monkeypatch.setattr(
         sr,
         "_calendar_days",

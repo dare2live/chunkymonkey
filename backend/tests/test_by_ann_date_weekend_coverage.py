@@ -76,7 +76,7 @@ def env(monkeypatch):
     monkeypatch.setattr(sr, "_adapter", lambda name: adapter)
     monkeypatch.setattr(sr, "_target_conn", lambda spec: shared)
     monkeypatch.setattr(sr, "_smartmoney_conn", lambda: shared)
-    monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, source: None)
+    monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, conn=None: None)
     monkeypatch.setattr(
         sr,
         "eligible_end_date",

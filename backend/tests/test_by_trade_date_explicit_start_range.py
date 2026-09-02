@@ -83,7 +83,7 @@ def env(monkeypatch):
 def test_explicit_start_range_backfill_keeps_first_day(env, monkeypatch):
     """手工 --start 20260615 --end 20260617 (未加 --backfill): 首日不能被静默丢弃。"""
     _c, adapter = env
-    monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, source: "20260614")
+    monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, conn=None: "20260614")
     res = sr.run_domain("synthetic_trade_date_domain", registry=REG,
                          start="20260615", end="20260617")
     assert res["ok"] is True
@@ -95,7 +95,7 @@ def test_explicit_start_range_backfill_keeps_first_day(env, monkeypatch):
 def test_routine_incremental_still_skips_watermark_day(env, monkeypatch):
     """不传 --start, 纯 watermark 续拉: watermark 当天(已写过)仍应被跳过 (回归防护)。"""
     _c, adapter = env
-    monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, source: "20260615")
+    monkeypatch.setattr(sr, "_last_watermark_date", lambda domain, conn=None: "20260615")
     res = sr.run_domain("synthetic_trade_date_domain", registry=REG, end="20260617")
     assert res["ok"] is True
     dates = sorted(c["trade_date"] for c in adapter.calls)

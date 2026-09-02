@@ -481,7 +481,7 @@ def test_run_domain_ok_strict_any_failure_is_not_ok(monkeypatch):
     monkeypatch.setattr(sr, "_adapter", lambda name: adapter)
     monkeypatch.setattr(sr, "_target_conn", lambda spec: conn)
     monkeypatch.setattr(sr, "trading_days", lambda start, end=None: ["20200101", "20200102"])
-    monkeypatch.setattr(sr, "_last_watermark_date", lambda d, s: None)
+    monkeypatch.setattr(sr, "_last_watermark_date", lambda d, conn=None: None)
     monkeypatch.setattr(sr, "_record_outcome",
                         lambda spec, **kw: recorded.update(kw))
     r = sr.run_domain("demo", backfill=True, registry=reg)

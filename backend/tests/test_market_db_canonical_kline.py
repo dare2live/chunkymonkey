@@ -60,8 +60,16 @@ def _setup(conn):
 
 
 def test_analysis_kline_reads_tushare_only_ignores_tdxhub_and_akshare():
-    """tushare-only 契约 (2026-06-22): v_price_kline_qfq 只读 price_kline_qfq_tushare;
-    akshare (price_kline) 不再进视图。(price_kline_tdxhub 已 M3 物删, 2026-06-23)。"""
+    """单表来源契约 (2026-06-22): v_price_kline_qfq 只读 price_kline_qfq_tushare;
+    akshare (price_kline) 不再进视图。(price_kline_tdxhub 已 M3 物删, 2026-06-23)。
+
+    2026-09-01: source_name 期望值由 "tushare" 改为 None。原先视图里那个
+    `'tushare' AS source_name` 是 SQL 字面量、不读任何真实血缘, 已被证实在说谎
+    (日K 2026-08-31 起合法地来自 tdxhub, 见 goal.md 三源裁决), 现改为
+    CAST(NULL AS VARCHAR) —— 项目"unknown 优于假填"信条。**本测试真正断言的结构契约不变**:
+    视图只从 price_kline_qfq_tushare 读、排除旧 akshare 表, date/close/factor/batch_id/
+    factor_as_of 全部照旧校验。逐行供应商血缘不在这张表里, 真血缘在上游
+    ingest_batch.source_name (未传播到此层)。"""
     conn = duck_mem()
     try:
         _setup(conn)
@@ -85,14 +93,15 @@ def test_analysis_kline_reads_tushare_only_ignores_tdxhub_and_akshare():
             "FROM v_price_kline_qfq ORDER BY date"
         ).fetchall()
 
-        # 只有 tushare 行; physical lineage passthrough; akshare 另一天不进视图
+        # 只有本表的行; physical lineage passthrough; akshare 另一天不进视图。
+        # source_name 恒 None: 该列是视图字面量而非真实血缘, 2026-09-01 起诚实置空。
         assert [tuple(r) for r in rows] == [
             (
                 "000001",
                 "2026-05-04",
                 10.5,
                 1.0,
-                "tushare",
+                None,
                 1,
                 False,
                 "qfq:test:from_accepted",
