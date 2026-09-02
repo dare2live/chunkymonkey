@@ -178,14 +178,26 @@ def test_formula_challenge_module_does_not_import_execution_model() -> None:
 def test_frozen_engine_load_does_not_write_pycache(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.formula_challenge as challenge
 
+    def _pyc_set() -> set[str]:
+        return {
+            path.relative_to(REPO).as_posix()
+            for path in (REPO / "bestchoice").rglob("*.pyc")
+            if path.is_file()
+        }
+
+    # 2026-09-03: 改成**前后快照差**, 原实现断言 bestchoice/ 下不存在任何 .pyc。
+    # 那问的是"存不存在", 想守的是"这次加载写没写" —— 任何人在此之前随手 import 一次
+    # formula_engine 就会让它红, 且报错栽赃给 loader。本会话三次误报 (盘点 agent / 拆锁
+    # worker / 主会话测信号密度), 每次都得靠 rm -rf __pycache__ 才能提交。
+    # 差集判据守的强度不变 (loader 写了就红), 归因却精确了: 只怪这次调用。
+    before = _pyc_set()
     monkeypatch.setattr(challenge, "_ENGINE", None)
     load_formula_engine()
-    leftovers = [
-        path.relative_to(REPO).as_posix()
-        for path in (REPO / "bestchoice").rglob("*.pyc")
-        if path.is_file()
-    ]
-    assert leftovers == []
+    written_by_this_load = sorted(_pyc_set() - before)
+    assert written_by_this_load == [], (
+        "load_formula_engine() 写了字节码, 冻结引擎的 SHA256 校验会因此失真: "
+        f"{written_by_this_load}"
+    )
 
 
 def test_formula_spec_cannot_use_follow_paper() -> None:
