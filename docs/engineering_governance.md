@@ -627,3 +627,56 @@ payload 里含 `source` 与 `api`——于是「换个供应商取同样的 OHLC
 `runtime_state` 是**会过期的文档标签**，拿它当事实等于用未经验证的东西做判据。
 改断言为「必须在日落台账 `tushare_sunset.yaml` 里有裁决」——台账是人写的裁决记录，
 不会因为某条通道被悄悄解冻而失真。**改判据后第一次跑就抓出了 `margin` 这个真缺口。**
+
+### 15.6 同一个事实存两处、然后断言相等（2026-09-02 两处活体故障）
+
+上一节的手术（`source`/`api` 移出 `config_hash`）本身是对的，但它的收尾把病带进了第二层：
+契约指纹算法一变，`accepted_partition` / `canonical_*` 的戳跟着当前契约重打（它们表达
+「这批数据符合哪个契约」），而 `ingest_batch.{contract_hash, config_hash, source_name}` 是
+**落地那一刻的证据封印**——`payload_hash` 从它们连同逐行签名一起 sha256 派生，改它等于重新
+封印历史（实测 47,604 行同步尝试当场 `LANDING_HASH_MISMATCH`，已回滚）。于是两侧各自都对，
+错的是「两侧必须相等」这条断言本身。它散落在 N 处运行时代码里，09-01 只修了 `margin_state`
+一处，漏掉的两处次日成为活体故障：
+
+- `calendar_reader._load_and_verify_batch` 把指针戳与批次戳逐键比相等 → `open_calendar_truth()`
+  永久 `BLOCKED fields=['config_hash','contract_hash']`，连带 `resolve_traded_on_observation_date` /
+  `evaluate_observation_population_readiness` 一起断；而 `calendar_builder` 不走 reader，
+  `dim_trading_calendar` 照常生成——**故障是静默的**。
+- `margin_acceptance.prove_current_landed_margin_batch` 把 LANDED 检查点的戳与现算契约比相等 →
+  最新一个仍处 LANDED 的检查点被判「stale checkpoint」，该日追赶路径卡死。
+
+补掉第一处后故障往下挪一层（`calendar_acceptance` 六元组 `CONTRACT_DRIFT`），再补一处又挪到
+封印重算（它拿**现算契约**当身份重算 `payload_hash`）——一处一处补到不炸为止，正是这类漂移
+的典型修法，也正是要禁止的修法。
+
+**先给操作数分类，再决定谁能跟谁比**（这是判据，不是清单）：
+
+| 存放点 | 性质 | 指纹算法变了之后 |
+|---|---|---|
+| 现算契约 `contract.*` | 活 | 新值 |
+| `accepted_partition.*` 指针戳 | 重打 | 跟着活契约 |
+| `canonical_*.config_hash` | 重打 | 跟着活契约 |
+| `ingest_batch.{contract_hash, config_hash}` | **冻结**（封印派生） | 停在落地时刻 |
+| `ingest_batch.source_name` | **冻结**（传输轴血缘） | 与现 `contract.source` 无关 |
+| `ingest_batch.{contract_version, writer_id, dataset_id, partition_value}` | 声明身份（人定的字符串，不是算法输出） | 不变 |
+
+规则一句话：**算法派生的指纹与传输轴标签是冻结证据，只能用来重算封印，不能与任何「现在」
+的值比相等**；可比的是声明身份、内容（`canonical_hash` / `row_count`）与时间链。
+「批次是不是被动过」由封印自洽（按批次**自己**的戳重算 `payload_hash`）回答，
+「指针是不是当前契约的」由指针 vs 活契约回答——这两问合起来覆盖了原来那条等式想防的一切，
+且在换算法、换源那天不会给出与意图相反的答案。
+
+**执法**（两层，缺一不可）：
+- 行为测试自带 fixture 造「批次戳陈旧但指针/契约一致」的状态跑真路径：
+  `tests/services/test_calendar_frozen_landing_stamp.py`（含业主点名的「只换 source_name」用例）、
+  `test_margin_frozen_landing_stamp.py`、`test_accept_frozen_landing_stamp.py`。修复前全部红，
+  且各带负向控制（指针漂移仍 BLOCK / 封印不重算仍 BLOCK / 声明身份仍比对）证明不是放松成恒绿。
+- 静态门 `backend/scripts/check_frozen_stamp_compare.py` 抓三种真实出现过的写法形状
+  （直接比 / 元组比 / SQL `ib.contract_hash = ?`），修复前对真实代码报 13 处，修复后 0；
+  它**诚实列出盲区**（dict 键循环、下标取列、拿现算契约重算封印、跨函数传递），这些靠上面的
+  行为测试兜底。经 `tests/scripts/test_check_frozen_stamp_compare.py` 接进 `ci_pytest` 门。
+
+对新 `backend/sync/` 包的约束（反向绞杀替换 transport 层时不许把病带过去）：落地封印与
+验收指针必须是**两个类型**——`LandingSeal`（落地时刻、只进封印重算、无 `__eq__` 跨型比较）
+与 `AcceptedStamp`（跟随活契约）；跨型能比的只有声明身份字段。任何「同一语义事实存两处、
+再断言相等」的结构在设计评审时按本节判。

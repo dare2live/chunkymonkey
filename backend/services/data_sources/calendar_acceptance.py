@@ -23,6 +23,7 @@ from services.data_sources.calendar_landing import (
     CalendarFragmentCapture,
     CalendarLandingBatch,
     CalendarValidationError,
+    LandingStamp,
     ValidatedCalendarGeneration,
     land_calendar_batch,
 )
@@ -150,21 +151,21 @@ def _validate_batch_identity_and_time(
     contract: Any,
     trusted_now: datetime,
 ) -> datetime:
+    # 2026-09-02: 只比**声明身份** (partition/batch 同一、contract_version、writer_id)。
+    # contract_hash / config_hash / source_name 是落地时刻的冻结证据 (封印派生), 指纹算法
+    # 一变或换源之后必然与现算契约不等, 与之比相等 = 把正确状态判成 CONTRACT_DRIFT
+    # (2026-09-02 活体故障第二层)。"批次有没有被动过"由下方封印重算 (按批次自己的
+    # LandingStamp) 回答, "指针是不是当前契约的"由 reader 的指针选取回答。
+    # 见 docs/engineering_governance.md §15.6。
     expected_wiring = (
         batch_id,
         str(contract.contract_version),
-        str(contract.contract_hash),
-        str(contract.config_hash),
         str(contract.writer_id),
-        str(contract.source),
     )
     actual_wiring = (
         str(batch["partition_value"]),
         str(batch["contract_version"]),
-        str(batch["contract_hash"]),
-        str(batch["config_hash"]),
         str(batch["writer_id"]),
-        str(batch["source_name"]),
     )
     if actual_wiring != expected_wiring:
         raise CalendarValidationError(
@@ -263,12 +264,14 @@ def _validate_fragment_chain(
         raise CalendarValidationError("ZERO_ROWS", "calendar generation has no rows")
 
     request_json, outcomes_json = _batch_summary(fragments)
+    # 封印按批次**自己**的落地戳重算 (不是现算契约): 证明的是"这行没被动过", 不是
+    # "这行是当前契约落的" —— 后者在重打指纹之后是个必假的问题。
     recomputed_payload_hash = _sha256(
         _stable_json(
             _batch_payload(
                 batch_id=batch_id,
                 observed_at=observed_at,
-                contract=contract,
+                stamp=LandingStamp.from_batch_row(batch),
                 fragments=fragments,
             )
         )

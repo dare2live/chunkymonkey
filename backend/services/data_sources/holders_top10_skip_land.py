@@ -4,6 +4,13 @@ Knife 2: stop uuid re-land storm without deleting landing evidence.
 Identity is accepted landing row_hashes + contract/config, not the fetch
 envelope clock (observed_at/available_at). Clock in payload_hash would make
 every same-day re-click a new batch.
+
+2026-09-02: "under the current contract" is answered by the **pointer's** stamp
+(``accepted_partition.contract_hash/config_hash`` — restamped whenever the
+fingerprint algorithm changes), never by ``ingest_batch``'s frozen landing seal:
+after a restamp the frozen values no longer equal the live contract, and filtering
+on them silently turned every skip into a re-land (docs/engineering_governance.md
+§15.6).
 """
 from __future__ import annotations
 
@@ -30,8 +37,8 @@ def find_accepted_batch_with_same_payload(
          WHERE ap.dataset_id = ?
            AND ap.partition_value = ?
            AND ib.status = 'ACCEPTED'
-           AND ib.contract_hash = ?
-           AND ib.config_hash = ?
+           AND ap.contract_hash = ?
+           AND ap.config_hash = ?
          LIMIT 1
         """,
         [DATASET_ID, partition, contract_hash, config_hash],

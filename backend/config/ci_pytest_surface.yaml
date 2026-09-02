@@ -14,6 +14,7 @@ blocking_paths:
 - tests/scripts/test_check_contract_stamp_consistency.py
 - tests/scripts/test_check_doc_runtime_state.py
 - tests/scripts/test_check_foundation_done.py
+- tests/scripts/test_check_frozen_stamp_compare.py
 - tests/scripts/test_check_staged_blob_size.py
 - tests/scripts/test_check_strategy_lab.py
 - tests/scripts/test_check_tushare_sunset.py
@@ -39,6 +40,7 @@ blocking_paths:
 - tests/scripts/test_run_ci_pytest.py
 - tests/scripts/test_safe_commit.py
 - tests/scripts/test_verified_low_days.py
+- tests/services/test_accept_frozen_landing_stamp.py
 - tests/services/test_accepted_schema.py
 - tests/services/test_acquire_bounded_gap_heal.py
 - tests/services/test_assignment_gap_recon.py
@@ -48,7 +50,9 @@ blocking_paths:
 - tests/services/test_brick_registry_b5.py
 - tests/services/test_calendar_acceptance.py
 - tests/services/test_calendar_contract.py
+- tests/services/test_calendar_frozen_landing_stamp.py
 - tests/services/test_calendar_identity_recon.py
+- tests/services/test_calendar_reader.py
 - tests/services/test_cyq_recon.py
 - tests/services/test_dataset_contracts.py
 - tests/services/test_dc_member_publish_b1.py
@@ -95,8 +99,10 @@ blocking_paths:
 - tests/services/test_manual_probe_first_clock.py
 - tests/services/test_margin_acceptance.py
 - tests/services/test_margin_catchup.py
+- tests/services/test_margin_frozen_landing_stamp.py
 - tests/services/test_margin_population_scope.py
 - tests/services/test_margin_pulse_promote_gate.py
+- tests/services/test_margin_state.py
 - tests/services/test_market_pulse_serve_read_s6.py
 - tests/services/test_miaoxiang_adapter.py
 - tests/services/test_moneyflow_recon.py
@@ -235,11 +241,6 @@ ci_test_optional:
     ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
     review, one triage slice at a time'
-- path: tests/services/test_calendar_reader.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
 - path: tests/services/test_calendar_runtime.py
   reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
     ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
@@ -271,11 +272,6 @@ ci_test_optional:
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
     review, one triage slice at a time'
 - path: tests/services/test_margin_reconcile.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/services/test_margin_state.py
   reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
     ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency

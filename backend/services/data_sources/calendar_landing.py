@@ -263,22 +263,67 @@ def _fragment_hash(row_hashes: Iterable[str]) -> str:
     return _sha256(_stable_json(list(row_hashes)))
 
 
+@dataclass(frozen=True)
+class LandingStamp:
+    """落地时刻的证据身份 —— 封印 (payload_hash) 唯一合法的输入。
+
+    落地 (Tx-A) 时从活契约派生 (``from_contract``); 复验/验收时从 ingest_batch 行
+    **自己的冻结值**派生 (``from_batch_row``)。它刻意是一个独立类型而不是契约对象:
+    契约指纹算法一变 (2c4af4a08 把 source/api 移出 config_hash), accepted_partition /
+    canonical_* 跟着当前契约重打, 而落地封印停在当时 —— 拿活契约去重算旧批次的封印
+    必然 BATCH_EVIDENCE_MISMATCH (2026-09-02 活体故障的第三层)。
+    见 docs/engineering_governance.md §15.6。
+    """
+
+    contract_version: str
+    contract_hash: str
+    config_hash: str
+    writer_id: str
+    source: str
+
+    @classmethod
+    def from_contract(cls, contract: Any) -> "LandingStamp":
+        return cls(
+            contract_version=str(contract.contract_version),
+            contract_hash=str(contract.contract_hash),
+            config_hash=str(contract.config_hash),
+            writer_id=str(contract.writer_id),
+            source=str(contract.source),
+        )
+
+    @classmethod
+    def from_batch_row(cls, batch: Mapping[str, Any]) -> "LandingStamp":
+        return cls(
+            contract_version=str(batch["contract_version"]),
+            contract_hash=str(batch["contract_hash"]),
+            config_hash=str(batch["config_hash"]),
+            writer_id=str(batch["writer_id"]),
+            source=str(batch["source_name"]),
+        )
+
+
 def _batch_payload(
     *,
     batch_id: str,
     observed_at: datetime,
-    contract: Any,
+    stamp: LandingStamp,
     fragments: Iterable[_LandedFragment],
 ) -> dict[str, Any]:
+    if not isinstance(stamp, LandingStamp):
+        raise TypeError(
+            "calendar payload seal must be computed from a LandingStamp "
+            "(from_contract at landing, from_batch_row at revalidation), "
+            f"never from {type(stamp).__name__}"
+        )
     return {
         "dataset_id": DATASET_ID,
         "batch_id": batch_id,
         "partition_value": batch_id,
-        "contract_version": str(contract.contract_version),
-        "contract_hash": str(contract.contract_hash),
-        "config_hash": str(contract.config_hash),
-        "writer_id": str(contract.writer_id),
-        "source_name": str(contract.source),
+        "contract_version": stamp.contract_version,
+        "contract_hash": stamp.contract_hash,
+        "config_hash": stamp.config_hash,
+        "writer_id": stamp.writer_id,
+        "source_name": stamp.source,
         "observed_at": observed_at.isoformat(),
         "available_at": observed_at.isoformat(),
         "fragments": [
@@ -423,7 +468,7 @@ def land_calendar_batch(conn, batch: CalendarLandingBatch, contract: Any) -> str
             _batch_payload(
                 batch_id=batch_id,
                 observed_at=observed_at,
-                contract=contract,
+                stamp=LandingStamp.from_contract(contract),
                 fragments=fragments,
             )
         )

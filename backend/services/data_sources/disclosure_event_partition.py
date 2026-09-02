@@ -656,10 +656,9 @@ def accept_disclosure_event_batch(
         )
     if status != "LANDED":
         raise error_type(f"batch status={status!r} not acceptible")
-    if str(batch["contract_hash"]) != contract_hash:
-        raise error_type("landed contract_hash drift vs handoff")
-    if str(batch["config_hash"]) != config_hash:
-        raise error_type("landed config_hash drift vs handoff")
+    # 2026-09-02: 不再拿 batch 的 contract_hash / config_hash (落地时刻的冻结封印) 与 handoff
+    # 契约比相等 —— 指纹算法重打之后遗留的 LANDED 批次会全部被判 drift 而卡死。
+    # 指针与 canonical 行照旧打现算契约 (形参 contract_hash/config_hash) 的戳。§15.6。
 
     available_at = aware_instant(
         batch["available_at"], "available_at", error_type=error_type

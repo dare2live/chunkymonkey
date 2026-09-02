@@ -115,15 +115,18 @@ _POINTER_FIELDS = (
     "accepted_at",
 )
 
+# 2026-09-02: contract_hash / config_hash / source_name 刻意**不读**进来。它们是落地时刻
+# 的冻结证据 (payload_hash 从它们派生), 指纹算法一变或换源后必然与指针/现算契约不等;
+# 本 reader 曾把它们与指针逐键比相等, 活库上 open_calendar_truth() 因此永久 BLOCKED
+# (fields=['config_hash','contract_hash'])。不读 = 想比也比不了。封印自洽由
+# validate_landed_calendar_batch 按批次自己的 LandingStamp 重算; 指针是否为当前契约
+# 由 _select_pointer 的 WHERE 守。见 docs/engineering_governance.md §15.6。
 _BATCH_FIELDS = (
     "batch_id",
     "dataset_id",
     "contract_version",
-    "contract_hash",
-    "config_hash",
     "writer_id",
     "partition_value",
-    "source_name",
     "status",
     "canonical_row_count",
     "canonical_hash",
@@ -319,18 +322,16 @@ def _load_and_verify_batch(conn, pointer: dict[str, Any], contract) -> dict[str,
             "BLOCKED", "accepted_calendar_pointer_batch_cardinality_mismatch"
         )
     batch = _mapping(_BATCH_FIELDS, rows[0])
+    # 可比的只有声明身份 + 内容 + 时间链 (见 _BATCH_FIELDS 上方说明)。
     exact = {
         "batch_id": pointer["batch_id"],
         "dataset_id": pointer["dataset_id"],
         "contract_version": pointer["contract_version"],
-        "contract_hash": pointer["contract_hash"],
-        "config_hash": pointer["config_hash"],
         "partition_value": pointer["partition_value"],
         "status": "ACCEPTED",
         "canonical_row_count": pointer["row_count"],
         "canonical_hash": pointer["content_hash"],
         "writer_id": contract.writer_id,
-        "source_name": contract.source,
     }
     mismatches = [name for name, value in exact.items() if batch[name] != value]
     for field in ("observed_at", "available_at", "accepted_at"):

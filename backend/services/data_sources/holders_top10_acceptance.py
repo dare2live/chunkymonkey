@@ -638,10 +638,9 @@ def accept_holders_top10_batch(
         )
     if status != "LANDED":
         raise HoldersTop10AcceptanceError(f"batch status={status!r} not acceptible")
-    if str(batch["contract_hash"]) != contract.contract_hash:
-        raise HoldersTop10AcceptanceError("landed contract_hash drift vs handoff")
-    if str(batch["config_hash"]) != contract.config_hash:
-        raise HoldersTop10AcceptanceError("landed config_hash drift vs handoff")
+    # 2026-09-02: 不再拿 batch 的 contract_hash / config_hash (落地时刻的冻结封印) 与 handoff
+    # 契约比相等 —— 指纹算法重打之后遗留的 LANDED 批次会全部被判 drift 而卡死。声明身份
+    # (contract_version / source) 已在 land 时校验; 指针照旧打现算契约的戳。§15.6。
 
     available_at = _aware(batch["available_at"], "available_at")
     try:

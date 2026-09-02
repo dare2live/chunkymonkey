@@ -712,7 +712,14 @@ domains:
     universe_filter_col: ts_code     # 2026-06-28 谄媚死修: 缺此→用 grain[0]=trade_date 过滤前缀'20'整日全丢仍假报成功
     grain: [trade_date, ts_code, exalter, side]   # 同席位同股按买卖方向分行 (字段实测在录)
     batch_mode: by_trade_date
-    page_limit: 1000          # 实测单页 1000 整上限; runner offset 分页拉全 (中间页败=整批重试)
+    # 2026-09-02 删 page_limit —— 09-01 换源妙想后 top_inst **每次取数必败**, 静默停更。
+    # 机制: 妙想的分页是内部的, sources/miaoxiang.py::_reject_caller_paging 明文禁止调用方传
+    # limit/offset/page/page_size; 而 sync_runner 只要见到 page_limit 就走 _fetch_paged 注入
+    # limit+offset。实弹复现: err=miaoxiang pagination is internal (caller passes trade_date
+    # only); got ['limit','offset'] → 3 次重试后返 None。
+    # 同刀给 stock_basic 换扶摇时因同一原因删过 page_limit: 3000, 这里漏扫。
+    # 已穷举全 registry: 仅此一处冲突 (其余 page_limit 都在 tushare, 它接受 limit/offset;
+    # trade_cal 是本地推导, 该键惰性)。原值 1000 是 tushare 时代的单页上限, 与妙想无关。
     pit_anchor: "trade_date; 龙虎榜席位明细盘后公布 -> JOIN t-1"
     available_after: "18:00"
     data_start: "20190102"    # 2026-07-05 二次收窄, 对齐 daily(K线真相源)边界: institution_profile.py

@@ -621,15 +621,17 @@ def accept_security_day_batch(
     if status != "LANDED":
         raise SecurityDayError(f"batch {batch_id!r} not LANDED: {status!r}")
 
+    # 2026-09-02: 只比声明身份 (contract_version / writer_id)。batch 的 contract_hash /
+    # config_hash / source_name 是落地时刻的冻结证据 (payload_hash 从它们派生), 指纹算法重打
+    # 或换源之后必然与现算契约不等 —— 与之比相等会把遗留的 LANDED 批次全部判成 CONTRACT_DRIFT
+    # 并写成 REJECTED。指针 (accepted_partition) 与 canonical 行照旧打**现算**契约的戳。
+    # 见 docs/engineering_governance.md §15.6。
     wiring_mismatch = (
         str(batch["contract_version"]) != domain.contract_version
-        or str(batch["contract_hash"]) != contract_hash
-        or str(batch["config_hash"]) != config_hash
-        or str(batch["source_name"]) != domain.source
         or str(batch["writer_id"]) != domain.writer_id
     )
     if wiring_mismatch:
-        code, detail = "CONTRACT_DRIFT", "landed contract/config hash is no longer current"
+        code, detail = "CONTRACT_DRIFT", "landed contract_version/writer_id is no longer current"
         conn.execute(
             f"""
             UPDATE {INGEST_BATCH_TABLE}

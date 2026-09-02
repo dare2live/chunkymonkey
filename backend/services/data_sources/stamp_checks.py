@@ -421,9 +421,8 @@ def _recompute_payload_hash_margin(conn: Any, domain: DomainSpec, row: dict[str,
 
 def _recompute_payload_hash_calendar(conn: Any, domain: DomainSpec, row: dict[str, Any]) -> tuple[str | None, str | None]:
     try:
-        from types import SimpleNamespace  # noqa: PLC0415
-
         from services.data_sources.calendar_landing import (  # noqa: PLC0415
+            LandingStamp,
             _LandedFragment,
             _batch_payload,
             _sha256,
@@ -459,14 +458,10 @@ def _recompute_payload_hash_calendar(conn: Any, domain: DomainSpec, row: dict[st
                 error_type=etype, error_detail=edetail, rows=rows_tuple,
             )
         )
-    contract_stub = SimpleNamespace(
-        contract_version=row["contract_version"], contract_hash=row["contract_hash"],
-        config_hash=row["config_hash"], writer_id=row["writer_id"], source=row["source_name"],
-    )
     payload = _batch_payload(
         batch_id=row["batch_id"],
         observed_at=row["observed_at"].astimezone(timezone.utc),
-        contract=contract_stub,
+        stamp=LandingStamp.from_batch_row(row),
         fragments=fragments,
     )
     return _sha256(_stable_json(payload)), None

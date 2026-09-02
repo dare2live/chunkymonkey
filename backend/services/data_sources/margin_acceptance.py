@@ -407,14 +407,12 @@ def prove_current_landed_margin_batch(
         raise MarginAcceptanceError(
             "LANDED margin checkpoint requires non-empty batch_id/payload_hash"
         )
-    actual = tuple(str(row[index]) for index in range(1, 6))
-    expected = (
-        contract.contract_version,
-        contract.contract_hash,
-        contract.config_hash,
-        contract.source,
-        contract.writer,
-    )
+    # 2026-09-02: 只比声明身份 (contract_version, writer_id)。row[2:5] 是落地时刻的
+    # contract_hash / config_hash / source_name —— 冻结证据, 指纹重打/换源后必然与现算契约
+    # 不等; 曾因此把 20260828 的 LANDED 检查点判成 "stale", 追赶路径卡死。
+    # 见 docs/engineering_governance.md §15.6。
+    actual = (str(row[1]), str(row[5]))
+    expected = (contract.contract_version, contract.writer)
     if actual != expected:
         raise MarginAcceptanceError(
             f"stale LANDED margin checkpoint batch_id={batch_id!r}; "
@@ -457,16 +455,15 @@ def _validate_loaded_margin_batch(
     batch: dict[str, Any],
 ) -> ValidatedMarginBatch:
     partition = _partition(batch["partition_value"])
+    # 2026-09-02: 只比声明身份; contract_hash / config_hash / source_name 是冻结落地戳,
+    # 不与现算契约比相等 (封印自洽由 _candidate_rows 按批次自己的戳重算)。§15.6。
     wiring_mismatch = (
         str(batch["contract_version"]) != contract.contract_version
-        or str(batch["contract_hash"]) != contract.contract_hash
-        or str(batch["config_hash"]) != contract.config_hash
-        or str(batch["source_name"]) != contract.source
         or str(batch["writer_id"]) != contract.writer
     )
     if wiring_mismatch:
         raise MarginValidationError(
-            "CONTRACT_DRIFT", "landed contract/config hash is no longer current"
+            "CONTRACT_DRIFT", "landed contract_version/writer_id is no longer current"
         )
 
     validate_margin_publication_time(
