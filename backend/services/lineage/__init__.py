@@ -10,5 +10,5 @@ T2 范围 (用户 2026-06-25 批准先造): 缝合 sync_registry (acquire 源→
 transform (字段→组合字段, T3) + display (消费方→展示, T4) 段押后, 不在 T2。
 """
 from services.lineage.model import LineageGraph, Node, Edge  # noqa: F401
-from services.lineage.builder import build_lineage_graph  # noqa: F401
+from services.lineage.builder import build_lineage_graph, catalog_drift  # noqa: F401
 from services.lineage.query import impact, provenance, dead_tables  # noqa: F401

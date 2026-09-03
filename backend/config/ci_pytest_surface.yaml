@@ -15,6 +15,8 @@ blocking_paths:
 - tests/scripts/test_check_doc_runtime_state.py
 - tests/scripts/test_check_foundation_done.py
 - tests/scripts/test_check_frozen_stamp_compare.py
+- tests/scripts/test_check_lineage_catalog_drift.py
+- tests/scripts/test_check_lineage_drift.py
 - tests/scripts/test_check_staged_blob_size.py
 - tests/scripts/test_check_strategy_lab.py
 - tests/scripts/test_check_tushare_sunset.py
@@ -34,6 +36,7 @@ blocking_paths:
 - tests/scripts/test_exemption_integrity.py
 - tests/scripts/test_governance_gates.py
 - tests/scripts/test_history_cli.py
+- tests/scripts/test_lineage_cli.py
 - tests/scripts/test_manual_job_wrapper.py
 - tests/scripts/test_persist_phase_d_experiment_runs.py
 - tests/scripts/test_pre_knife_audit.py

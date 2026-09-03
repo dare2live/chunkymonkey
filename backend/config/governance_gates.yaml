@@ -175,15 +175,22 @@ commit_gates:
 
   lineage_drift:
     group: diff_correctness
-    checks: "提交版 data/lineage/graph.json 与重生结果逐字一致"
+    checks: "提交版 data/lineage/graph.json 与仅从暂存树登记表重生的结果逐字一致 (不读活库)"
     why: >-
       漂移的成因是这次 diff 改了 registry/schema/消费方却没重生血缘 —— 纯 diff 正确性。
       2026-08-11 曾把它的 live-catalog 面也挂进运行时自检，独立审查实测推翻：它在运行时
       报的是「有人改了代码没重生血缘」这种**开发者状态**，与数据健康无关（审查那次命中
       正是因为本会话在改代码），且写锁期的降级路径从未验证。已撤出 runtime_checks ——
       放一个信号含义不明的检查进日更，只会训练人无视 degraded。
+      2026-09-04 (#4 #12(i)) 补一刀：build_lineage_graph() 本身在提交路径上也读活库
+      information_schema (builder.py:62-84)，与上面这次撤销是同一类问题的另一半——日更
+      建新表/写者持锁 (形态面重建 64 min) 都会让这道 diff_correctness 门红/炸，而 diff
+      一字未改。改法：门用 build_lineage_graph(catalog=False)（纯暂存树/登记表函数，不
+      连任何 .duckdb），活库 vs 登记表的差单独用新 runtime check lineage_catalog_drift
+      承接——它比的是「活库真实表 vs 登记表声明表」两个当下事实，不是「有没有人跑过
+      build」，与 2026-08-11 撤销的那个检查不是同一件事，不重蹈同一个覆辙。
     object: "data/lineage/graph.json"
-    invariant: "提交版 data/lineage/graph.json 与从 registry/schema/消费方重生的结果逐字一致"
+    invariant: "提交版 data/lineage/graph.json 与仅从暂存树的登记表/代码重生的结果逐字一致 (不读活库; 活库 vs 登记表差由 runtime lineage_catalog_drift 报)"
     kill_when: "keep_forever: 血缘图是 registry/schema/消费方的投影, 只要投影存在就要防漂移"
     paradigm: engineering
 
@@ -387,6 +394,25 @@ runtime_checks:
       实际裁决背离, 或生效性无法验证 (结构性背离/逐日回落/日历不可达三选一,
       精确原因见 data/audit/cutover_effective_{date}.json)
     skip_when_dry: false
+
+  - id: lineage_catalog_drift
+    # #12(i) (2026-09-04) 雏形: lineage_drift 提交门改成纯登记表函数(不读活库)后, 活库
+    # 真实表 vs 登记表声明表的差没人报了 —— 这里补上, 只报不拦。K4 check_datasets_registry
+    # 落地时改名并升 blocking, 用同一个 builder (services/lineage/builder.catalog_drift) 算,
+    # 不是第二套实现。与 2026-08-11 撤出 runtime_checks 的旧检查不是同一件事 (见
+    # commit_gates.lineage_drift.why 的说明): 旧检查比「提交版 graph.json vs 重生」, 报的是
+    # 开发者状态; 这个比「活库 vs 登记表」, 报的是数据/配置当下事实。
+    from_gate: null
+    script: backend/scripts/check_lineage_catalog_drift.py
+    args:
+      - "--json-out"
+      - "data/audit/lineage_catalog_drift_{date}.json"
+    degraded_msg: >-
+      system_health lineage_catalog_drift 非 PASS — 活库真实表集合与登记表
+      (sync_registry/data_layers/data_access/database_manifest) 声明表集合不一致
+      (幽灵表: 活库有登记表未声明; 孤儿表: 登记表声明但活库没有),
+      精确清单见 data/audit/lineage_catalog_drift_{date}.json
+    skip_when_dry: true
 
 # ── 脚手架批量修 ────────────────────────────────────────────────────────
 # scaffold 组不再阻断提交，代价是必须有一个「一条命令修完」的入口，

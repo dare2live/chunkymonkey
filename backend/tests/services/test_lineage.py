@@ -108,7 +108,12 @@ def test_dead_excludes_l0_acquired_table():
 
 
 def test_builder_keeps_same_table_name_in_two_databases(monkeypatch):
-    """跨库同名表必须保留两节点；裸名直引保守挂两边，entity 别名只挂精确 db。"""
+    """跨库同名表必须保留两节点；裸名直引保守挂两边，entity 别名只挂精确 db。
+
+    catalog=True 显式传参 (#12(i), 2026-09-04): 这条用例专测 live-catalog 面
+    (_live_tables_by_db 的两库同名场景), 提交门已改用 catalog=False(默认) 不再
+    读活库 —— 显式传 catalog=True 让这条用例继续测它本来要测的东西, 不受默认值
+    翻转影响。"""
     monkeypatch.setattr(builder, "_live_tables_by_db", lambda: {
         "market": ["same_name"],
         "smartmoney": ["same_name"],
@@ -152,7 +157,7 @@ def test_builder_keeps_same_table_name_in_two_databases(monkeypatch):
         lambda entity: ["backend/services/entity_user.py"] if entity == "smart_same" else [],
     )
 
-    graph = builder.build_lineage_graph()
+    graph = builder.build_lineage_graph(catalog=True)
     market = "table:market.same_name"
     smart = "table:smartmoney.same_name"
     assert graph.node(market) is not None
@@ -214,6 +219,103 @@ def test_catalog_scan_fails_closed_when_database_cannot_be_read(tmp_path, monkey
 
     with pytest.raises(RuntimeError, match="lineage catalog scan failed for market"):
         builder._live_tables_by_db()
+
+
+# --- catalog=False (#12(i), 2026-09-04): 登记表(无活库)表枚举 ---
+
+def _fake_yaml_for_registry(overrides: dict) -> "callable":
+    def fake_yaml(name: str):
+        return overrides.get(name, {})
+    return fake_yaml
+
+
+def test_registry_mode_never_touches_live_catalog(monkeypatch):
+    """catalog=False (默认) 绝不能调 _live_tables_by_db —— 这是提交门"写者持锁也能过"
+    的机制来源, 用一个会 raise 的替身证明这条路径真的不会被调到。"""
+    def _boom():
+        raise AssertionError("catalog=False must not touch the live catalog")
+
+    monkeypatch.setattr(builder, "_live_tables_by_db", _boom)
+    monkeypatch.setattr(builder, "_table_layers", lambda: {"dim_x": "L1_foundation"})
+    monkeypatch.setattr(builder, "_load_yaml", _fake_yaml_for_registry({
+        "database_manifest.yaml": {"databases": {"main": {}, "other": {"table_patterns": ["raw_y"]}}},
+        "sync_registry.yaml": {"defaults": {}, "sources": {}, "domains": {}},
+        "data_layers.yaml": {"tables": {"dim_x": "L1_foundation"}},
+        "data_access.yaml": {"entities": {}},
+    }))
+    monkeypatch.setattr(builder, "_git_grep_consumers", lambda table: [])
+    monkeypatch.setattr(builder, "_git_grep_entity_consumers", lambda entity: [])
+
+    g = builder.build_lineage_graph()  # default catalog=False
+    assert g.node("table:main.dim_x") is not None
+    assert g.node("table:main.dim_x").attrs["status"] == "declared"
+
+
+def test_registry_mode_routes_by_manifest_table_patterns(monkeypatch):
+    """database_manifest.table_patterns (含通配符) 把表路由到非默认库; 没被任何
+    pattern 命中的表落回唯一没声明 table_patterns 的 catch-all 库。"""
+    monkeypatch.setattr(builder, "_table_layers", lambda: {
+        "raw_vendor_x": "L0_source", "dim_unrouted": "L1_foundation",
+    })
+    monkeypatch.setattr(builder, "_load_yaml", _fake_yaml_for_registry({
+        "database_manifest.yaml": {"databases": {
+            "main": {},  # catch-all: 唯一没有 table_patterns 的库
+            "vendor_raw": {"table_patterns": ["raw_vendor_*"]},
+        }},
+        "sync_registry.yaml": {"defaults": {}, "sources": {}, "domains": {}},
+        "data_layers.yaml": {"tables": {"raw_vendor_x": "L0_source", "dim_unrouted": "L1_foundation"}},
+        "data_access.yaml": {"entities": {}},
+    }))
+    monkeypatch.setattr(builder, "_git_grep_consumers", lambda table: [])
+    monkeypatch.setattr(builder, "_git_grep_entity_consumers", lambda entity: [])
+
+    specs = builder._registry_table_specs()
+    assert specs["raw_vendor_x"] == "vendor_raw"      # 通配符命中
+    assert specs["dim_unrouted"] == "main"             # 没命中任何 pattern -> catch-all
+
+
+def test_registry_mode_ambiguous_catch_all_raises(monkeypatch):
+    """table_patterns 缺失的库不是恰好一个 (0 个或 >=2 个) 时必须 fail-closed, 不许
+    静默猜库。"""
+    monkeypatch.setattr(builder, "_load_yaml", _fake_yaml_for_registry({
+        "database_manifest.yaml": {"databases": {"a": {}, "b": {}}},
+    }))
+    with pytest.raises(RuntimeError, match="ambiguous"):
+        builder._registry_table_specs()
+
+
+def test_registry_mode_data_access_db_overrides_pattern_routing(monkeypatch):
+    """data_access.entities 自带 db, 优先级最高 (即便 database_manifest 的 pattern
+    会把它路由去另一个库)。"""
+    monkeypatch.setattr(builder, "_table_layers", lambda: {})
+    monkeypatch.setattr(builder, "_load_yaml", _fake_yaml_for_registry({
+        "database_manifest.yaml": {"databases": {
+            "main": {}, "vendor_raw": {"table_patterns": ["v_shared"]},
+        }},
+        "sync_registry.yaml": {"defaults": {}, "sources": {}, "domains": {}},
+        "data_layers.yaml": {"tables": {}},
+        "data_access.yaml": {"entities": {"e1": {"table": "v_shared", "db": "main"}}},
+    }))
+    specs = builder._registry_table_specs()
+    assert specs["v_shared"] == "main"
+
+
+def test_catalog_drift_reports_ghosts_and_orphans(monkeypatch):
+    """catalog_drift() 用 table:<db>.<table> id 空间独立算两侧, 不经过 LineageGraph
+    (K4 datasets_registry 雏形; §12(i) runtime lineage_catalog_drift 的核心函数)。"""
+    monkeypatch.setattr(builder, "_live_tables_by_db", lambda: {
+        "main": ["dim_registered", "dim_ghost"],
+    })
+    monkeypatch.setattr(builder, "_table_layers", lambda: {"dim_registered": "L1_foundation", "dim_missing": "L1_foundation"})
+    monkeypatch.setattr(builder, "_load_yaml", _fake_yaml_for_registry({
+        "database_manifest.yaml": {"databases": {"main": {}}},
+        "sync_registry.yaml": {"defaults": {}, "sources": {}, "domains": {}},
+        "data_layers.yaml": {"tables": {"dim_registered": "L1_foundation", "dim_missing": "L1_foundation"}},
+        "data_access.yaml": {"entities": {}},
+    }))
+    drift = builder.catalog_drift()
+    assert drift["ghosts"] == ["table:main.dim_ghost"]
+    assert drift["orphans"] == ["table:main.dim_missing"]
 
 
 # --- 集成: 真实 build (确定性 + killer 用例) ---

@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import fnmatch
 import re
 import subprocess
 from pathlib import Path
@@ -90,6 +91,131 @@ def _table_layers() -> dict[str, str]:
     return dict(dl.get("tables", {}) or {})
 
 
+# ── 登记表(无活库)表枚举 (#12(i), 2026-09-04): 提交门 build_lineage_graph(catalog=False)
+# 只用这条链路, 不碰任何 .duckdb —— 纯暂存树函数, 写者持锁也能过。──────────────────────
+
+def _manifest_table_patterns() -> dict[str, list[str]]:
+    """database_manifest.yaml 每个非 skip 库声明的 table_patterns (纯配置读取, 不连库)。"""
+    manifest = _load_yaml("database_manifest.yaml").get("databases", {})
+    return {
+        alias: list((spec or {}).get("table_patterns") or [])
+        for alias, spec in manifest.items()
+        if alias not in LINEAGE_DBS_SKIP
+    }
+
+
+def _default_registry_db(patterns_by_db: dict[str, list[str]]) -> str:
+    """table_patterns 缺失的库 = 未按表名分区声明的 catch-all 库 (今天=smartmoney)。
+    路由算法要求这个库恰好一个, 否则表名→库归属存在歧义, 拒绝静默猜测 (fail-closed,
+    与本仓其余门的纪律一致: 查不了/猜不出不算过)。"""
+    catch_alls = sorted(alias for alias, pats in patterns_by_db.items() if not pats)
+    if len(catch_alls) != 1:
+        raise RuntimeError(
+            "lineage registry table routing ambiguous: database_manifest.yaml 里没有 "
+            f"table_patterns 的库(catch-all)必须恰好一个, 现在是 {catch_alls} —— "
+            "登记表枚举(catalog=False)拒绝在多个/零个候选间静默猜库"
+        )
+    return catch_alls[0]
+
+
+def _match_manifest_db(table: str, patterns_by_db: dict[str, list[str]]) -> str | None:
+    """按 database_manifest.table_patterns (含 * 通配符) 把表名路由到库; 多库同名 pattern
+    撞车时取字典序首个 (确定性优先于"正确"—— 这种撞车本身该在 database_manifest 里修)。"""
+    hits = sorted(
+        alias for alias, patterns in patterns_by_db.items()
+        if any(fnmatch.fnmatchcase(table, pat) for pat in patterns)
+    )
+    return hits[0] if hits else None
+
+
+def _sync_registry_target_db_by_table() -> dict[str, str]:
+    """sync_registry domains[*].target_table → target_db, 与 acquire 边算法同一路数据源
+    (defaults → sources[source] → domain 字面量, 见 sync_registry.yaml 字段语义注释)。"""
+    registry = _load_yaml("sync_registry.yaml")
+    defaults = registry.get("defaults", {}) or {}
+    sources_cfg = registry.get("sources", {}) or {}
+    out: dict[str, str] = {}
+    for spec in (registry.get("domains") or {}).values():
+        spec = spec or {}
+        target = spec.get("target_table")
+        if not target:
+            continue
+        source = spec.get("source", "unknown")
+        source_cfg = sources_cfg.get(source) or {}
+        target_db = spec.get("target_db") or source_cfg.get("target_db") or defaults.get("target_db")
+        if target_db:
+            out.setdefault(target, target_db)
+    return out
+
+
+def _registry_table_specs() -> dict[str, str]:
+    """登记表(无活库)枚举 table_name → db_alias, 供 catalog=False 建表节点 (#12(i))。
+
+    来源与优先级:
+      1. data_access.entities[*].(table, db) — 自带 db, 直采最高优先级
+      2. database_manifest.table_patterns 里的字面量项(非通配符) — 自带 db
+      3. sync_registry.domains[*].target_table ∪ data_layers.tables 的表名 — 按
+         database_manifest.table_patterns(含通配符) 匹配 db, 找不到再退
+         sync_registry 解出的 target_db, 最后落到 database_manifest 里唯一未声明
+         table_patterns 的 catch-all 库 (今天=smartmoney)。
+
+    刻意不用 brick_registry.outputs 做第四个表名来源: 实测 10 项 outputs 里 7 项
+    (MarketContextSnapshot / StockStateDaily / kline_qfq / market_risk_on /
+    pattern_event / project_board_adv_dec_ratio / stock_state_stage) 是别名或概念性
+    产物, 不是物理表名, 无法确定库归属 —— 强行归并会把假节点塞进图 (与本文件
+    "不新增手填表" 的设计原则#1 冲突), 已在 A1 交付报告 "方案与现实不符" 一节说明。
+    """
+    patterns_by_db = _manifest_table_patterns()
+    default_db = _default_registry_db(patterns_by_db)
+    sync_target_db = _sync_registry_target_db_by_table()
+    layer_names = set(_table_layers())
+
+    specs: dict[str, str] = {}
+
+    entities = _load_yaml("data_access.yaml").get("entities", {}) or {}
+    for spec in entities.values():
+        spec = spec or {}
+        table, db = spec.get("table"), spec.get("db")
+        if table and db and db not in LINEAGE_DBS_SKIP:
+            specs[table] = db
+
+    for db_alias, patterns in sorted(patterns_by_db.items()):
+        for pat in patterns:
+            if "*" not in pat and pat not in specs:
+                specs[pat] = db_alias
+
+    for name in sorted(set(sync_target_db) | layer_names):
+        if name in specs:
+            continue
+        db = _match_manifest_db(name, patterns_by_db) or sync_target_db.get(name) or default_db
+        if db in LINEAGE_DBS_SKIP:
+            continue
+        specs[name] = db
+
+    return specs
+
+
+def catalog_drift() -> dict[str, list[str]]:
+    """活库(information_schema)与登记表(catalog=False 枚举)的表集合差 (#12(i) runtime 雏形)。
+
+    ghosts  = 活库存在但没有任何登记表声明它的表 (没人认领)
+    orphans = 登记表声明了但活库不存在的表 (声明了没建 / 已删没退登记)
+    两侧各自独立算 db 归属 (不假设一致), 用同一个 table:<db>.<table> id 空间比较。
+    与 build_lineage_graph 共用全部私有 helper —— K4 check_datasets_registry 落地时
+    "用同一个 builder 算" (方案 §7.5), 不是第二套实现。
+    """
+    live_ids = {
+        _table_id(db_alias, t)
+        for db_alias, tables in _live_tables_by_db().items()
+        for t in tables
+    }
+    registry_ids = {_table_id(db, t) for t, db in _registry_table_specs().items()}
+    return {
+        "ghosts": sorted(live_ids - registry_ids),
+        "orphans": sorted(registry_ids - live_ids),
+    }
+
+
 def _git_grep_consumers(table: str) -> list[str]:
     """确定性 fan-in: tracked 文件里词边界引用 <table> 的文件列表 (排序)。
 
@@ -130,22 +256,38 @@ def _git_grep_entity_consumers(entity: str) -> list[str]:
     return sorted({ln.strip() for ln in proc.stdout.splitlines() if ln.strip()})
 
 
-def build_lineage_graph() -> LineageGraph:
+def build_lineage_graph(catalog: bool = False) -> LineageGraph:
+    """catalog=False (默认, #12(i)): 表节点纯从登记表枚举, 不连任何 .duckdb —— 提交门
+    lineage_drift 用这个模式, 是暂存树的纯函数, 写者持锁/日更建新表都不影响它。
+    catalog=True (--with-catalog): 额外读 information_schema, 给交互式
+    impact/provenance/dead 查询或诊断用; 活库 vs 登记表的差由 catalog_drift() 单独算,
+    不靠这个模式的 node status 字段推断。
+    """
     g = LineageGraph()
-
-    # --- 1. 表节点 (information_schema 真相源 + layer 标签) ---
-    live = _live_tables_by_db()
     layers = _table_layers()
     table_ids_by_name: dict[str, set[str]] = {}
-    for db_alias, tables in live.items():
-        for t in tables:
-            tid = _table_id(db_alias, t)
-            table_ids_by_name.setdefault(t, set()).add(tid)
+
+    # --- 1. 表节点 (catalog=True: information_schema 真相源; catalog=False: 登记表) ---
+    if catalog:
+        for db_alias, tables in _live_tables_by_db().items():
+            for t in tables:
+                tid = _table_id(db_alias, t)
+                table_ids_by_name.setdefault(t, set()).add(tid)
+                g.add_node(Node(
+                    id=tid,
+                    kind="table",
+                    attrs={"db": db_alias, "table": t, "layer": layers.get(t, "untagged"),
+                           "status": "active"},
+                ))
+    else:
+        for name, db_alias in sorted(_registry_table_specs().items()):
+            tid = _table_id(db_alias, name)
+            table_ids_by_name.setdefault(name, set()).add(tid)
             g.add_node(Node(
                 id=tid,
                 kind="table",
-                attrs={"db": db_alias, "table": t, "layer": layers.get(t, "untagged"),
-                       "status": "active"},
+                attrs={"db": db_alias, "table": name, "layer": layers.get(name, "untagged"),
+                       "status": "declared"},
             ))
 
     # --- 2. acquire 边 (sync_registry: source.api → target_table) ---
@@ -173,7 +315,7 @@ def build_lineage_graph() -> LineageGraph:
             g.add_node(Node(id=tid, kind="table",
                             attrs={"db": target_db, "table": target,
                                    "layer": layers.get(target, "untagged"),
-                                   "status": "declared_not_live"}))
+                                   "status": "declared_not_live" if catalog else "declared"}))
             table_ids_by_name.setdefault(target, set()).add(tid)
         g.add_edge(Edge(src=src_id, dst=tid, kind="acquire",
                         attrs={"pit_anchor": spec.get("pit_anchor", ""),
