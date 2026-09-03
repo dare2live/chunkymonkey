@@ -178,11 +178,11 @@ PIT 截断测试是硬门：在 cutoff 后增加未来数据，cutoff 前的特�
 
 ## 8. 策略包边界
 
-接入顺序（已裁决）：**机构跟随 → 主升浪 → 公式**。消融阶梯 B0–B5 不变；共享 snapshot/universe/成本/执行。Tier0 硬门与研究运行时未闭合前，任何策略包不得宣称正式有效。
+接入顺序：业主给一条公式，就接一条（缠论分型 `all_fenxing` 第一）。不再有消融阶梯；每条公式共享同一 universe / 日历 / 名义可成交判定 / 前向窗口。任何公式的结论都以"格内先例不足 → 报先例不足"为底线，不宣称"有效"。
 
 ### 8.1 机构跟随（第一条正式闭环）
 
-机构画像、episode 和历史表现是研究输入，不是“机构身份即买入”的证书。第一条正式闭环为 `institution_follow_v1`，且硬依赖 goal **E0**（披露域已进 landing→accept→canonical；miaoxiang/aif10 直写路径不得充当冻结 snapshot）。
+机构画像、episode 和历史表现是研究输入，不是“机构身份即买入”的证书。第一条正式闭环为 `institution_follow_v1`，且硬依赖披露域已进 landing→accept→canonical（2026-08 已达成，`chunkyctl status` 可查）（披露域已进 landing→accept→canonical；miaoxiang/aif10 直写路径不得充当冻结 snapshot）。
 
 三层不得混称（混称会把展示战绩、隔夜动量消融和跟随纸面当成同一策略）：
 
@@ -236,7 +236,7 @@ BestChoice 保持冻结 challenger：
 - 只有正式 `ExperimentVerdict` 支持时才吸收公式代码；
 - 单股历史最优参数或旧 Optuna 报告不等于组合级可交易 edge。
 
-当前第一刀（goal **S3**）只做合成 daily trigger + 信号日后下一可交易 open 烟测，`claimable=false`。纸面是一名一仓顺序开平，卖出不得早于买入次日（T+1）。旧 Optuna adoption CSV 与 `execution_model.vwap_tradable_v1` **不是**本项目纸面。单名重放必须是 typed offline fixture 或 live pointer 预检后的 **单 `ts_code` canonical 子集**；bar 日必须落在 snapshot 名义日集合并早于 holdout。live pointer 不是全日 `content_hash` bind，也不是全宇宙重放；holdout 日在 pointer 查询之前拒绝，并有单名测试。全宇宙 B5 / purged WF / holdout consume / `ExperimentVerdict` accept / 吸收公式代码均未实现。
+已做的只有合成 daily trigger + 次日 open 烟测，`claimable=false`。纸面是一名一仓顺序开平，卖出不得早于买入次日（T+1）。旧 Optuna adoption CSV 与 `execution_model.vwap_tradable_v1` **不是**本项目纸面。单名重放必须是 typed offline fixture 或 live pointer 预检后的 **单 `ts_code` canonical 子集**；bar 日必须落在 snapshot 名义日集合并早于 holdout。live pointer 不是全日 `content_hash` bind，也不是全宇宙重放；holdout 日在 pointer 查询之前拒绝，并有单名测试。全宇宙 B5 / purged WF / holdout consume / `ExperimentVerdict` accept / 吸收公式代码均未实现。
 
 ## 9. 发布门
 

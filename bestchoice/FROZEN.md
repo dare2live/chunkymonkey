@@ -69,9 +69,7 @@ research/incremental/drift DuckDB，已从活动证据中删除。上述 candida
 1. 校验上述 code/data hash，并登记 lineage、数据截止日和 `DatasetSnapshot`；
 2. 在主项目当前 eligible universe 与 availability/PIT 契约下重放 daily trigger；
 3. 使用名义可成交价格，执行 T+1、停牌/涨跌停、成本、容量和仓位规则；
-4. 固定同一 snapshot、fold、成本和执行，按 B0→B5 做单 block 增量消融；
-5. 使用 purged walk-forward、embargo 与 single-touch holdout；
-6. 产出可复现 artifact manifest 和 `ExperimentVerdict(accept/reject/inconclusive)`；
-7. 只有 `accept` verdict 才能讨论在新 namespace 吸收公式代码，且不得覆盖本证据包。
+4. 以上三步之后，本证据包只作为 `casebook` 的只读公式源（`load_formula_engine` 经 sha256 校验导入）；
+   不做消融、不做 holdout、不产出 verdict——判例引擎按格报历史阶梯，格内先例不足报先例不足。
 
 Tier 0 与分类契约未闭合前，不启动大规模公式搜索。

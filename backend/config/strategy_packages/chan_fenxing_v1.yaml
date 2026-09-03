@@ -1,0 +1,292 @@
+# 缠论分型强弱 v1 —— 业主 2026-09-03 给的一篇教程 (《能看清K线图里的分型，你就知道什么时候建仓，什么时候清仓》)
+#   逐条转录为可执行规格。文字没给数的一律 TODO_OWNER, 不替业主编数。
+#
+# 状态: **备用规格, 未接线, 不进任何白名单, 未跟踪 (git ??), 业主未拍板**。
+#   第二轮 (2026-09-03 下午) 就地修订: 核实第一轮的裁决与数字, 改正 1.4 锚定错误, 删掉不需要的引擎要求,
+#   落实全部 measured。设计裁决与实测全文: /tmp/fable_fenxing_design.md (以下简称 DESIGN)。
+#   与 strong_stock_funnel_v1.yaml 同处一目录、同样不被旧 StrategySpec/ALLOWED_PACKAGES 加载
+#   (白名单机制在退役清单里, .git/cm_worklog/casebook_design/ARCHITECTURE.md §4 第 2 项);
+#   本目录本身在退役清单 (步⑤), 本文件的最终家由业主定 (candidate: 随 casebook.yaml 注册表走)。
+#
+# 本规格与 funnel v1 的形状差异: funnel 是"三级筛选漏斗", 本策略是"一个几何事件 (分型) + 一张强弱分级表 + 分级→动作"。
+#   分型识别有**路径依赖** (包含处理是从左到右的折叠), 这是它区别于现有五条公式 (有界回看) 的唯一工程特征。
+#
+# ── 一手来源 (核验状态按 DESIGN §10.5; "逐字" 只标核到原句的) ──────────────────────────
+# [S1] 缠中说禅《教你炒股票62：分型、笔与线段》(2007-06-30; 镜像 chanluns.com/yuanwen/yuanwen-yw62, cnblogs.com/doseoer/p/19035093)
+#   顶分型 (逐字): 「第二K线高点是相邻三K线高点中最高的，而低点也是相邻三K线低点中最高的」
+#   底分型 (逐字): 「第二K线低点是相邻三K线低点中最低的，而高点也是相邻三K线高点中最低的」
+#   包含   (概念, 原句未核到): 相邻两K线一根的高低点全在另一根范围里
+#   合并   (逐字): 「向上时，把两K线的最高点当高点，而两K线低点中的较高者当成低点」
+#                  「向下时，把两K线的最低点当低点，而两K线高点中的较低者当成高点」
+# [S2] 缠中说禅《教你炒股票65：再说说分型、笔与线段》(镜像 chanluns.com/yuanwen/yuanwen-yw65)
+#   方向   (概念, 镜像为英译): gn >= gn-1 则第 n-1,n,n+1 根向上; dn <= dn-1 则向下 (即包含对 (n, n+1) 的方向由 n 相对 n-1 决定)
+#   顺序   (逐字, 词序微差): 「先用第1根、第2根K线的包含关系确认新的K线，然后用新的K线与第3根K线相比，如果有包含关系，就继续用包含关系的处理法则结合成新的K线」
+#   链式   (概念): 顺次 n 个包含关系的K线组等价于 [max d, max g] (向上) / [min d, min g] (向下) 的一根K线
+# [S3] 业主给的教程全文 + 10 张配图的**派单人**读图转述 (本轮 fable 未亲见图片): 示意图画实体不画影线; 图 7 的 K3 顶高于 K2 顶 (= 包含处理之前的原始K线);
+#     图 8/9/10 的「上边沿」箭头指 K1 实体上沿 (但无影线的图分不清实体与全幅, 见 todo_owner)。
+#
+# 来源里**没有**的 (不是没查到, 是原文没写): 首对K线无前驱时的合并方向; 包含判定等号归属; 分型强弱的任何数值阈值; 分档优先级。全部在 todo_owner。
+
+version: 1
+package_id: chan_fenxing_v1
+spec_id: chan_fenxing_v1
+origin: owner_supplied_article_2026_09_03
+wired: false          # 未接线; 接线前需 (a) 业主拍板 todo_owner_index 组 A (b) casebook 落地 (ARCHITECTURE 步②) (c) technical_states/chan.py + 事件表
+one_liner: "包含处理后的三根合并K线出顶/底分型; 按原始 K1..K4 几何分强弱; 强底建仓, 强顶清仓, 中继型持票"
+
+# ══ 0. 术语 (全文件唯一定义, 后面只引用) ════════════════════════════════════════════
+definitions:
+  raw_bar: "v_price_kline_qfq 一行 (code, date, o/h/l/c); 停牌日在视图里是缺行, 不是 0 行"
+  body_hi: "max(o, c)"
+  body_lo: "min(o, c)"
+  body: "|c - o|"
+  body_mid: "(body_hi + body_lo) / 2"
+  range_mid: "(h + l) / 2"
+  up_shadow: "h - body_hi"
+  yang: "c > o"
+  yin: "c < o"
+  doji: "c == o    # 既非阳也非阴 (实测各 K 约 2.6%~2.9%); 见 todo_owner.doji"
+  rel_body: "|c - o| / o    # 『大/小』阳阴线的幅度量纲 (待定, 见 todo_owner)"
+  inclusive(A, B): "(A.h >= B.h and A.l <= B.l) or (A.h <= B.h and A.l >= B.l)    # 闭区间; 等号归属见 todo_owner"
+  engulf_hl(A, B): "A.h >= B.h and A.l <= B.l          # A 在 high/low 上吞没 B"
+  engulf_body(A, B): "body_hi(A) >= body_hi(B) and body_lo(A) <= body_lo(B)    # A 在实体上吞没 B (图 7 画法)"
+
+# ══ 1. 包含处理 (缠论, 从左到右折叠; 单一计算点 = technical_states/chan.py 里一个纯函数) ═══════════
+inclusion_merge:
+  source: "[S1] 合并规则 + [S2] 方向规则/处理顺序"
+  input: "单股全史 raw_bar 序列, 按日期升序"
+  state: "已合并K线列表 M, 每根 = (h, l, start_i, end_i)   # start/end = 构成它的 raw_bar 行号区间"
+  fold:
+    - "M 为空 → 新建合并K线 (r.h, r.l, i, i)"
+    - "B = M[-1]; 若 not inclusive(B, r) → 新建合并K线; B 从此**永久封闭**"
+    - "若 inclusive(B, r): 方向 = 'up' if B.h >= M[-2].h else 'down'   # [S2]; 非包含不变量下 B.h == M[-2].h 不会出现"
+    - "up:   B.h = max(B.h, r.h); B.l = max(B.l, r.l); B.end_i = i"
+    - "down: B.h = min(B.h, r.h); B.l = min(B.l, r.l); B.end_i = i"
+  invariant: "相邻两根合并K线永不包含 ⇒ 要么 h,l 同时更高, 要么同时更低 (严格; 等高不等低会被判包含而合并)"
+  seed_direction:
+    value: null
+    default_in_measurement: up    # 第一轮实测脚本用的值, 只为跑数; 不是裁决
+    todo_owner:
+      - "**首对K线无前驱时 (M 只有 1 根) 若出现包含, 方向取什么?** [S1][S2] 原课**未写** (本轮 WebFetch 核过)。"
+      - "一本后人汇编电子书 (m.yunqi.qq.com/read/34618658/11) 写『若当前K线没有前一根K线，则初始化为向下（默认向上也可以）』—— 那是实现不是原典, 只说明这个选择无关紧要。"
+      - "影响上界 (实测): 只在每股序列最前几根发生 (全宇宙 2,654 次); 截断起步 fold 与整史 fold 在 ≤7 根 bar 内重同步 (545 股样本 max 7, p99 5)。"
+  strictness:
+    todo_owner:
+      - "包含判定的等号: 原课『全部在…范围之内』措辞偏严格, 但形式定义用闭区间 [d, g]; 本规格闭区间。若改开区间, 改 definitions.inclusive 一处; 分型数会变, 变多少未测。"
+
+# ══ 2. 分型 (在合并K线上识别; 确认时点 = 第三根合并K线的第一根 raw_bar) ═══════════════
+fenxing:
+  source: "[S1] 顶/底分型定义; 教程『非包含关系的3根K线』与之一致"
+  on: merged_bars
+  top:    "M2.h > M1.h and M2.h > M3.h      # 由不变量, 等价于 M2 的 h 与 l 都是三根中最高 (实测 n_invariant_violations = 0)"
+  bottom: "M2.l < M1.l and M2.l < M3.l"
+  confirm_i: "M3.start_i    # 第三根合并K线开始的那根 raw_bar"
+  pit_proof: "顶: M3 此后只可能向下并入 (M3.h < M2.h ⇒ 方向 down ⇒ M3.h 只减) ⇒ 顶永不撤销; 底对称。DESIGN §3.2"
+  signal_date: "date[confirm_i]    # 判例引擎主键 (code, signal_date) 用的就是这一天; 2.3 例外见 grades.bottom.2.3"
+  apex_i: "顶: M2 覆盖的 raw_bar 中 high 最大者 (并列取最早); 底: low 最小者    # 只是属性, 不是主键"
+  adjacent_pair_theorem:
+    article_says: "『相邻的两个分型一定要满足: 顶的中间K线最低点不低于底的中间K线低点; 底的最高点不高于顶的最高点』"
+    verdict: "在合并K线上这是**合并算法的定理**, 不是可选过滤器: 相邻合并K严格同向, 相邻两个分型之间无变号 ⇒ 从顶到底单调下行。全宇宙 2,846,549 对零违反 = 定理的实测。"
+    raw_bar_version: "若在原始 apex bar 上读 (K2 的 raw h/l), 不是定理: 实测条件1违反 3.99%, 条件2违反 4.11%, 任一 7.95%。教程说『非包含关系的3根K线』= 合并K, 所以定理读法是对的。"
+    consequence: "识别器不用它过滤 (也过滤不掉任何东西); 规格里不再把它列为条件。第一轮 YAML 的 at_least_one_bar_between (缠论笔的要求) 删除 —— 教程没讲笔, 本策略不做笔。"
+
+# ══ 3. K1..K4 的锚定 (强弱分级读的是原始K线, 不是合并K线) ══════════════════════════
+k_anchoring:
+  K2: "raw_bar[apex_i]"
+  K1: "raw_bar[apex_i - 1]"
+  K3: "raw_bar[apex_i + 1]      # 恒 <= confirm_i (实测违反 0)"
+  K4: "raw_bar[apex_i + 2]      # 只 2.3 用; 74.64% 的情形 = confirm_i + 1 (确认日的次日)"
+  why_raw: "分级用到 阳/阴/实体/上影, 合并K只有 (h, l); 图 4–10 全是原始K线 [S3]"
+  rule_1_4_exception:
+    what: "1.4 在 (K1, K2) = (apex-1, apex) 上判, 不在 (K2, K3) 上判"
+    why: "教程 1.4『K3 完全包含 K2 的大阴线』+ 图 7 K3 顶高于 K2 顶。按缠论合并, 吞没 K2 的 K3 在 high 上 >= K2 ⇒ 它自己就是 apex。实测: K3=apex+1 在 high/low 上吞没 K2=apex 的情形 K3.h > K2.h **恰为 0** (只剩 18,885 个等高平局)。所以教程的 K2/K3 = 本规格的 apex-1/apex。"
+    first_round_error: "第一轮 YAML 把 1.4 写成 k23_inclusive_raw (K3 吞 K2, h/l), 而其脚本实际算的是 K3 实体吞 K2 实体 —— 两者都不是教程画的形态。"
+  composition_measured: "M2 含 >1 根 raw: 37.14%; K1 落在 M2 内 14.13%; K3 落在 M2 内 25.36%"
+  todo_owner:
+    - "教程的 K1/K2/K3 指原始K线还是合并后的三根, 教程没说; 本规格全按原始 bar。备选读法 (M1 末根 / apex / M3 首根 = confirm 日那根) 未测。"
+
+# ══ 4. 强弱分级 (教程 1.1–1.4 / 2.1–2.3; 列值用几何名, 教程动作词只放 article_says; 数值全 TODO_OWNER) ═══
+# 教程 4+3 档**不互斥也不穷尽**: 实测 16.53% 的顶同时命中 >=2 档; 强者优先归档后 50.90% 的顶落不进任何一档 (探针阈值下)。
+grades:
+  precedence:
+    top: ["1.4", "1.3", "1.2", "1.1", "unclassified"]     # 强者优先 (本规格默认)
+    bottom: ["2.3", "2.1", "2.2"]                          # 2.3 是 2.2 的后续事件, 先判
+    todo_owner:
+      - "**优先级教程没写。** 1.2 ∧ 1.3 同时成立的顶实测 152,992 (10.73% 的顶), 教程给的动作相反 (持有 vs 清仓)。强者优先 vs 弱者优先, 235,596 个顶 (16.53%) 归档不同。本规格取强者优先, 理由: 教程按『强度』排序, 强度语义下取强者唯一自洽。"
+  top:
+    "1.1":
+      column_value: top_yang_yin_yang_shrinking
+      article_says: "K1大阳线，K2小阴线，K3小阳线 → 经典的中继顶分型，继续拿住手中的票即可 (图4)"
+      predicate_relative: "yang(K1) and yin(K2) and yang(K3) and body(K2) < body(K1) and body(K3) < body(K1)    # number-free 读法; 实测 91,866 = 6.45% 的顶"
+      predicate_threshold: "yang(K1) and yin(K2) and yang(K3) and rel_body(K1) >= big and rel_body(K2) <= small and rel_body(K3) <= small"
+      action: hold
+      todo_owner:
+        - "**big/small 阈值与量纲**: 图 4 只是图例。探针 (big, small) = (3%,1%) 28,924 / (3%,2%) 93,555 / (5%,1%) 8,251 / (5%,2%) 30,042。或采用相对读法 (不要数)。"
+    "1.2":
+      column_value: top_k3_breaks_k1_low_under_mid
+      article_says: "K3的底跌破K1的底，且K3的顶不高于K1区间的一半 → 也是中继顶分型，强度略高于1.1，继续持票 (图5)"
+      predicate: "body_lo(K3) < body_lo(K1) and body_hi(K3) <= body_mid(K1)    # 实体读法 (number-free); 实测 322,512 = 22.63% 的顶"
+      action: hold
+      todo_owner:
+        - "『K1 区间』= 实体 (图 5 无影线的画法) 还是 high–low (文字『区间』的常用义)? 全幅读法 (K3.l < K1.l and K3.h <= range_mid(K1)) 155,452 = 10.91%; 混合读法 278,373。"
+    "1.3":
+      column_value: top_k2_shadow_or_yin_k3_fails_hold
+      article_says: "K2存在长上影或K2本身就是大阴线，且K3不能以阳线形式守在K2区间的一半以上 → 力度较大，可能引发持续下跌，可以减仓或清仓 (图6)"
+      predicate: "(up_shadow(K2) >= theta_sh * body(K2) or (yin(K2) and rel_body(K2) >= big)) and not (yang(K3) and c(K3) >= body_mid(K2))"
+      action: reduce_or_exit
+      todo_owner:
+        - "**长上影**: 上影/实体 >= 1/2/3 命中 52.13% / 32.16% / 22.81% 的顶; 上影/全幅 >= 0.4/0.5/0.6 命中 50.61% / 35.75% / 21.73%。阈值与量纲二选一。"
+        - "**大阴线**: yin ∧ rel_body >= 3% 7.41%, >= 5% 2.83%。"
+        - "**『守在 K2 区间一半以上』**: H1 收盘 >= 实体中点 16.21% / H2 实体下沿 >= 实体中点 6.43% / H3 收盘 >= 全幅中点 10.93%。本规格 H1。"
+        - "12 格探针网格下 1.3 命中 27.5% ~ 39.4% 的顶 (DESIGN §10.4)。"
+    "1.4":
+      column_value: top_apex_engulf_yin
+      article_says: "K2与K3存在包含关系，且K3为完全包含K2的大阴线 → 强度最高，后面必然下跌，直接清仓 (图7)"
+      predicate: "yin(K2) and engulf_hl(K2, K1) and engulf_body(K2, K1) and rel_body(K2) >= big    # K2 = apex, K1 = apex-1; 见 k_anchoring.rule_1_4_exception"
+      predicate_number_free: "yin(K2) and engulf_hl(K2, K1) and engulf_body(K2, K1)    # 实测 64,052 = 4.49% 的顶"
+      action: exit
+      todo_owner:
+        - "『包含关系』(h/l) 与『完全包含』(图 7 画实体) 是否都要求? 只 h/l 121,367 (8.52%); 只实体 122,497 (8.60%); 两者 64,052 (4.49%)。"
+        - "**大阴线阈值**: 两者 ∧ rel_body >= 3%: 29,057; >= 5%: 14,417。"
+        - "第一轮的『K3 实体吞 K2 实体』读法 167,231 (11.73%) 是另一种形态 (K2 长上影 + K3 高开低走), 不是图 7; 若业主认为它也算, 另立一档。"
+  bottom:
+    "2.1":
+      column_value: bottom_k3_far_above_k1
+      article_says: "K3的高点远高于K1的高点 → 强度很高，可以考虑建仓入场 (图8)"
+      predicate: "h(K3) > h(K1) * (1 + far)    # 参照取文字的『高点』; 图 8 无影线分不清"
+      action: enter
+      todo_owner:
+        - "**far**: 参照 K1.h 时 far = 0 / 0.5% / 1% / 2% / 3% / 5% → 45.43 / 37.37 / 29.72 / 19.17 / 12.79 / 6.23 % 的底; 参照 K1 实体上沿 → 63.75 / 55.78 / 46.59 / 31.36 / 21.22 / 10.35 %。"
+        - "参照 K1.h (文字) 还是 K1 实体上沿 (第一轮从图)?"
+    "2.2":
+      column_value: bottom_k3_near_k1
+      article_says: "K3的高点等于、低于、或略高于底分型的高点，只要没有超过K1的高点太多 → 强度都不强，不要着急进场，等待机会 (图9)"
+      predicate: "not 2.1    # 与 2.1 用同一个 far 二分, 教程三种情况的并集就是『不远』"
+      action: wait
+    "2.3":
+      column_value: bottom_near_then_k4_gap_up
+      article_says: "出现2.2中的底分型，但其后第1根K线（K4）的低点直接超过K1的上边沿 → 等待的机会出现了，可以放心入场 (图10)"
+      predicate: "2.2 and K4 exists and l(K4) > max(h(K1), h(K3))    # 『分型的上边沿』(图 10 标题) = 三根K的最高点; 后半 number-free"
+      signal_date: "date[max(confirm_i, apex_i + 2)]    # **K4 收盘后才知道 K4.l**; 74.64% 的情形 K4 = confirm+1"
+      action: enter
+      pit_warning: "用 confirm_i 当 2.3 的信号日 = 在 K4 开盘进场 = 泄漏。实测 (T2 读法, H=10): 泄漏版胜率 53.15% vs 正确信号日 48.66% (基线 48.46%) —— 跳空那根 K4 自己贡献了全部『边际』。"
+      todo_owner:
+        - "**上边沿四读法**, 实测差 14×: T1 K4.l > K1.h 181,469 / T2 > K1 实体上沿 315,097 (第一轮默认) / T3 > max(K1.h, K3.h) 22,481 (本规格默认) / T4 > max(实体上沿) 51,580。正文说『K1 的上边沿』, 图 10 标题说『分型的上边沿』, 二者在 2.2 之下相差不超过 far。"
+  unclassified:
+    column_value: top_unclassified
+    meaning: "顶分型成立但不落在教程任何一档 (例: K3 是阳线且守住 K2 中点, 又不破 K1 底, K1 不是大阳)。**不是『弱顶』**: 1.1/1.2 是教程明说的中继型, 本档没有任何教程语义。"
+    action: none    # 出场规则不触发, 操作上等于持有; 与 1.1/1.2 动作相同、标签不同, 判例引擎里独立成桶
+    measured: "探针阈值 + 强者优先: 50.90% 的顶 (第一轮四组探针 39.5%~53.0%)。业主定阈值后按实际值重算 = 教程分级表的覆盖率。"
+    bottom: "底分型 2.1/2.2 按 far 二分穷尽, 2.3 ⊂ 2.2, 无 unclassified"
+
+# ══ 5. 触发 (策略的动作映射; 这是业主给的规则, 系统不改它) ═══════════════════════════
+triggers:
+  entry:  {on: bottom, grades: ["2.1", "2.3"]}
+  exit:   {on: top,    grades: ["1.3", "1.4"]}
+  hold:   {on: top,    grades: ["1.1", "1.2", "unclassified"]}    # 教程: 中继顶分型继续持票; unclassified 教程没说, 操作上同持有但独立成桶
+  wait:   {on: bottom, grades: ["2.2"]}
+  re_entry_after_false_top:
+    article_says: "在顶分型时卖出后，一定要再多观察几天，如果发现之前的顶分型是中继顶分型一定要及时回补"
+    pit_nature: "一条**再入场规则** (需仓位状态 + N 天 + 判据)。规则本身可以 PIT 干净 (在 conf+N 日按 <= conf+N 的数据判); 但『发现是中继』作为**标签**是事后结果, 只能是判例引擎的 ret_N 输出, 永远不能回贴到顶分型上当维度。"
+    todo_owner:
+      - "**『几天』= ?** 没数。"
+      - "『发现是中继顶分型』的判据 (价格重回顶的高点? 出现 2.1/2.3 底?) 没写。"
+      - "v1 不进 triggers: 判例引擎的触发点模型无状态。定了 N 与判据后可作第二条策略。"
+
+# ══ 6. 放哪 (DESIGN §2–§4 三条裁决) ══════════════════════════════════════════════
+placement:
+  tier1_module: "backend/services/technical_states/chan.py    # 纯函数: inclusion_merge / detect_fenxing / anchor_k / primitives; 无 DB"
+  why_technical_states: "三根K线几何 = 形态识别 (同目录已有 candles.py 单日K构件、patterns.py 标签序列模板); 业主『形态识别自成模块别藏在别处』指别藏进 stock_state, 不是把形态识别拆两个包"
+  tier1_table: "smartmoney.fact_stock_fenxing    # 主键 (stock_code, signal_date, kind); 一行 = 一个分型事件 (MASTER §7 PatternEvent)"
+  tier1_columns: "kind, apex_date, confirm_date, m1_h/l, m2_h/l, m3_h/l, m2_raw_count, k1..k4 的 o/h/l/c (16 列, 任何读法都是查询不是重算), 默认读法的 number-free 布尔列 (top_k3_breaks_k1_low_under_mid / top_apex_engulf_yin / top_yang_yin_yang_shrinking / bottom_k4_gap_over_fx_top), k3_high_over_k1_high (连续量, 供 far 分桶), built_at"
+  grade_column: "**v1 不落**: 数值阈值无主, 烧进表就没人记得是猜的。业主定数后用同一纯函数升为 grade 列 (几何命名), 策略改读列。"
+  config: "backend/config/technical_states.yaml 新节 `缠论分型` (阈值 = todo_owner 落定值; config_hash 自动覆盖)"
+  entrypoint: "chunkyctl derive fenxing (与 derive form 并列); process.py 在 _form_latest 之后接 _fenxing_latest"
+  build_policy: "逐股整史重算 (全宇宙 merge+detect 3.81 s, 含锚定 12.69 s; 读 market.duckdb 只读, 不持 smartmoney 锁) → 与现表按主键全字段比对 → 短暂持 smartmoney RW 只写差异。不 DROP+CTAS (built_at 天天变会触发判例引擎『判断死』重刷)。"
+  not_doing: "不往 fact_stock_form_daily 加列 (事件塞状态表; 2.3 让同一 (code,date) 出两行; 绑上 64 min 重建)"
+
+# ══ 7. 接入判例查询引擎 (ARCHITECTURE §1; 零引擎改动) ══════════════════════════════
+casebook_consumption:
+  strategy_registry: "casebook.yaml.strategies.chan_fenxing_v1: {source_ref: services.casebook.formulas.chan_fenxing:signals, param_sets: [all_fenxing, article_rule]}"
+  strategy_identity: "sha256(chan_fenxing.py 源码 + chan.py 源码 + canonical(params)); 任一改动 = 新 key, 旧档案原样保留"
+  strategy_function: "约 30 行: 读 fact_stock_fenxing → 按 param_set 的 grade 规则给 entry/exit; **不含几何**"
+  signal_date: "= fenxing.signal_date (确认日); 2.3 取 K4 日"
+  entry_execution: "signal_date 次日可成交 open (casebook 统一规则; 涨停/停牌按名义面判); 收益全在 qfq 序列算"
+  param_sets:
+    - key: all_fenxing
+      params: {entry_grades: all, exit_grades: all}
+      meaning: "**裸K基线/消融**: 每个确认底入场、每个确认顶出场, 不看分级。检验教程『中继型不跌 / 强型必跌』这句话的对照组。今天可跑, 无数值依赖。"
+      measured_baseline: "全市场 PIT H=10: 底 n=1,415,766 胜率 48.46% 中位 -0.20%; 顶 n=1,414,660 跌率 51.44% 中位 -0.31% (DESIGN §10.2)。分型本身没有边际。"
+    - key: article_rule
+      params: {entry_grades: ["2.1", "2.3"], exit_grades: ["1.3", "1.4"], thresholds: {big: null, small: null, theta_sh: null, far: null}}
+      meaning: "教程的动作规则原样 = 业主给的策略。**阈值 null → 注册表拒跑**, 不是用默认值跑 (机制, 不是告诫)。"
+  dimensions_to_register:    # casebook.yaml.dimensions, entity=fenxing, visible_lag=0, coverage_start=2019-01-02
+    - {column: top_k3_breaks_k1_low_under_mid, bucket: boolean}
+    - {column: top_apex_engulf_yin, bucket: boolean}
+    - {column: top_yang_yin_yang_shrinking, bucket: boolean}
+    - {column: bottom_k4_gap_over_fx_top, bucket: boolean, note: "as-of 查值必须用 signal_date = K4 日的那一行"}
+    - {column: k3_high_over_k1_high, bucket: {edges: null}, note: "edges = 业主的 far 候选, 冻结进 YAML 后才登记"}
+  removed_from_first_round:
+    - "signal_tags (casebook_signal 加 tags 列): 不需要, 分级走 Tier1 列/维度"
+    - "7 个 param_set 的 fallback: 出场档 5 种 × 同一套入场 = 同一批 1.43M 入场的 ret_5/10/20 算 5 遍"
+  per_stock_layer:
+    verdict: "深度 0 与二分档深度 1 能给数字; 交叉形态不能 (DESIGN §9)"
+    depth0: "每股中位 298 底; >=200 (可比较) 4,366 只 (80%), >=30 5,372 只; 对照 gs_raw_buy 中位 83, >=200 0 只, >=30 5,182 只"
+    depth1_binary: "top×1.2 每股中位 63, >=30 的 5,026 只; bottom×2.3(T2) 中位 61, >=30 的 5,010 只; top×1.4(实体) 中位 32, >=30 的 3,124 只; top×1.1(相对) 中位 17, >=30 的 106 只"
+    depth1_form11: "每股 11 格里中位 7 格 >=10, 3 格 >=30, 0 格 >=200 (与 ARCHITECTURE 对 gs_raw_buy 的结论同量级)"
+    depth2: "档 × 形态: 每股 11 格里中位 2 格 >=10"
+    caveats:
+      - "高频 = 选择性弱: 底分型 ≈ 每个局部低点, 基线贴近无条件漂移"
+      - "样本不独立: ~每 5 日一信号, 10 日持有窗重叠约一半; Wilson 区间按独立算, 本股层『可比较』分辨率要打折 (有效 n 减半是 estimate 非实测)。建议 casebook 对高频策略附『窗口重叠率』出处字段, 不改阶梯。"
+
+# ══ 8. 引擎要求 (本策略比现有五条公式多出来的东西) ═══════════════════════════════
+engine_requirements:
+  lookback: full
+  reason: "包含处理是无界回看的折叠。**实测尾窗其实可用** (545 股: 从 n-300 起 fold, 丢前 10 根后与整史 fold 差 0; 重同步 max 7 根) —— 第一轮『尾窗对折叠不成立』说过头了。仍选整史重算: 全宇宙 3.81 s, 不值得为省 3 秒引入一个只靠经验保证的同步假设; 且 qfq 视图在复权因子变时整股重写历史, 本来就要整股重算。"
+  qfq_rewrite: "fold 对均匀缩放严格不变 (×1.7/×0.37 差异 0); 对分段缩放 (复权) 差异局限在断点后 <=6 根 bar (3×545 股实测, >50 根处 0)。某股 qfq 重写 ⇒ 该股分型整史重算, 差异可预期。"
+  db_lock_window: "派单人 2026-09-03 实测: DuckDB 写者持 RW 锁时拒绝只读连接 (Conflicting lock is held); 形态面全量重建 3,836 s 期间 smartmoney.duckdb 整库不可读。分型面: 全宇宙计算 12.69 s 且读的是 market.duckdb (只读), 只有差异写入持 smartmoney RW 锁 ⇒ 不可读窗口 = 写入秒级。12.69 s vs 3,836 s 就是『无界回看在这里廉价、不必设计增量』的证据 (DESIGN §3.4)。"
+  nothing_else: "无 signal_tags; 无新表形状; 维度登记走既有 casebook.yaml.dimensions"
+
+# ══ 9. 与形态面 v5 的关系 ═══════════════════════════════════════════════════════════
+relation_to_form_v5:
+  verdict: orthogonal
+  why: "分型 = 3 根合并K线的局部极值**事件** (日级尺度, PatternEvent); 9 格 = 20–250 日窗口的 趋势×量能 **状态** (StockStateDaily)。不同对象、尺度、表形状。"
+  measured_joint: "底分型确认日 313,811 落『温和下跌』、241,206 落『温和上涨』—— 底分型不集中在下跌格, 因为上涨趋势里的回踩低点也是底分型。要并排展示, 不合并标签。重叠度 Cramér's V 接线后由 casebook_overlap 算。"
+  join_coverage: "分型 → 形态面 join 命中 84.11% (2019 = 0%, 形态面 250 日热身; 2025/26 98.3%); 2019 触发点形态 = 『维度不可见』"
+
+# ══ 10. 实测 (2026-09-03; 全宇宙 5,447 股 2019-01-02~2026-08-28; 全文 DESIGN §10) ═══
+measured:
+  see: "/tmp/fable_fenxing_design.md §10; 脚本 <scratchpad>/fenxing/{fenxing_measure,fx_cells,fx_pit,fx_incremental,fx_grades}.py"
+  universe: "8,542,863 raw bar → 6,232,356 合并K (压缩 27.05%; 72.66% 单根); 顶 1,425,289 / 底 1,426,707; 每 100 raw bar 33.4 个分型"
+  per_stock: "中位 298 顶 / 298 底 (p10 146/147, p90 323); 信号覆盖月数中位 92"
+  runtime: "全宇宙 merge+detect 3.81 s, 含 K 锚定 12.7 s (第一轮); 样本 3.23M 行/s (本轮)"
+  seed_merges: 2654
+  invariant_violations: 0
+  k3_after_confirm: 0
+  adjacent_theorem_violations_merged: 0
+  adjacent_violations_raw_apex: "7.95% 的相邻对 (只作说明)"
+  conf_minus_apex: "1: 74.64% / 2: 20.65% / 3: 3.67% / 4: 0.79% / >=5: 0.25%"
+  pit_leak_demo: "底 H=10: PIT 48.46% / apex 当信号日 56.80% / 极值bar收盘进 58.08%; 一天偷看值 7pp (gap=1 子集 55.28 vs 48.24)"
+  grade_probe_counts: "见 grades.*.todo_owner 各条与 DESIGN §10.4; 全部为探针"
+  left_truncation: "s=n-300: W=0 差 481 (352/545 股), W=5 差 11 (7 股), W>=10 差 0; 重同步 max 7"
+  scale_invariance: "×1.7 / ×0.37 差异 0"
+  piecewise_rescale: "断点前 ×0.95/×1.05: 差异全部在断点后 <=6 根"
+  not_measured_on_purpose: "分级 × 前向收益 (阈值无主); 只测了两个 number-free 拆分且其中 2.3 的 agent 版被判泄漏后重算 (DESIGN §10.2)"
+
+# ══ 11. 开放项汇总 (每条上文都有出处与实测计数) ══════════════════════════════════
+todo_owner_index:
+  group_A_blocks_article_rule:      # 不定就跑不了 article_rule
+    - grades.top.1.1 big/small 阈值与量纲 (或采相对读法)
+    - grades.top.1.3 长上影阈值与量纲 / 大阴线阈值 / 『守住』口径
+    - grades.top.1.4 『包含』与『完全包含』口径 / 大阴线阈值
+    - grades.bottom.2.1 far / 参照 (K1.h vs 实体上沿)
+    - grades.bottom.2.3 上边沿四读法
+    - grades.precedence (强者优先 vs 弱者优先)
+  group_B_does_not_block_all_fenxing:   # all_fenxing 与 number-free 维度今天就能跑; 这些定了只改一处
+    - inclusion_merge.seed_direction
+    - inclusion_merge.strictness (等号)
+    - k_anchoring (原始 bar vs 合并 bar 读法)
+    - grades.top.1.2 区间口径 (实体 vs 全幅)
+    - definitions.doji
+    - triggers.re_entry_after_false_top (『几天』与判据)
+    - 本文件的最终存放位置 (strategy_packages/ 在退役清单)

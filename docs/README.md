@@ -20,8 +20,8 @@
 | `../PROJECT_INDEX.md` | 短项目导航与当前资产判断，不是规则 owner |
 | `../frontend/DESIGN.md` | 界面信息架构、视觉系统、页面↔端点、展示诚实性；不是架构 owner |
 | `../FEATURE_MAP.md` | 机器生成的入口/数据域/writer 地图；可重建，不手改 |
-| `../goal.md「下一步」执行 backlog` | 数据底座执行 backlog（evidence-only；`goal.md` 指向） |
-| `../goal.md「下一步」执行 backlog + strategy_validation_contract.md §3.2/§3.3` | 后续策略执行 backlog（RX 前 BLOCKED；evidence-only） |
+| `scripts/chunkyctl status` | 当前进度 / 阻断 / 前沿的唯一入口（live 投影，零文件）；`goal.md` 只写目标与达成判据，不写进度 |
+| `scripts/chunkyctl history --grep <词>` | 已完成工作与决策记录（git log 即原件） |
 
 `CLAUDE.md` 是 legacy compatibility pointer，Codex 默认不读。旧 session handoff / workflow checkpoint 体系已经退役；新会话从 git、Moth、CodeGraph 和 live data 重建状态。（`analysis/` 目录已于 2026-08-11 整体归零退役；历史台账与账号交接记录查 `chunkyctl history --grep <关键词>`。）
 

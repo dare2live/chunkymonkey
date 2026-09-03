@@ -13,7 +13,7 @@ ChunkyMonkey 要把 A 股公开数据变成可审计、可复现、可执行的�
 2. 描述股票当前阶段、形态和交易状态；
 3. 描述市场资金活动、参与广度和价格响应；
 4. 在统一数据快照上验证机构跟随、主升浪猎手和选股公式；
-5. 只把通过 PIT、样本外和真实执行约束的研究结果发布为候选与纸面交易。
+5. 只对通过 PIT 与名义可成交约束的信号给出历史阶梯与今日匹配，不发布候选。
 
 这不是“多抓数据、多建表、多跑公式”的项目。系统价值来自从原始证据到决策的完整闭环，以及每一步都能回答：数据从哪来、何时可知、谁加工、用的哪版规则、为何可信、失败时阻断谁。
 
@@ -79,7 +79,7 @@ flowchart TD
 | Tier 1 `stock_state` | 截至决策时点的股票位置、趋势、纯度、量能、波动和形态事件 | `StockStateDaily`、`PatternEvent` | 未来收益、上涨概率、买卖信号；每个轴一张表 |
 | Tier 2 `market_sensing` | 分类级/市场级的活跃度、方向性成交不平衡代理、参与广度、价格响应和版本化状态 | `SectorObservation`、`MarketContextSnapshot` | 把供应商“主力净流入”称为资金守恒流转；跨口径求和 |
 | Tier 3 `research_runtime` + strategy packages | 冻结快照、基线、消融、PIT/OOS/成本验证、研究裁决 | `DatasetSnapshot`、`ExperimentRun`、`ExperimentVerdict`、`StrategySpec` | 每个策略自建实验框架；用展示 mart 直接做历史特征 |
-| Tier 4 `decision` / `paper_execution` / `product` | 发布策略、生成候选、模拟订单成交、展示可追溯证据 | `StrategyRelease`、`DecisionBatch`、`CandidateSignal`、`PaperOrder/Fill/Nav` | 未发布实验直接变选股建议；用 qfq close 模拟真实成交 |
+| Tier 4 `decision` / `paper_execution` / `product` | 发布策略、生成候选、模拟订单成交、展示可追溯证据 | `CasebookLadder`、`TodayMatch` | 未发布实验直接变选股建议；用 qfq close 模拟真实成交 |
 
 策略包只有三个：`institution_follow`、`main_rally`、`formulas`。它们共享研究和执行契约，不各建一套候选表、回测器或参数系统。
 
@@ -491,16 +491,8 @@ Provider 是可替换 adapter：业务真相在 accepted/canonical，不绑定�
 
 ## 10. Tier 4 决策与产品
 
-正式链路必须是：
-
-```text
-ExperimentVerdict
-  -> StrategyRelease
-  -> DecisionBatch
-  -> CandidateSignal
-  -> PaperOrder / PaperFill / PaperNav
-  -> DecisionEvidence
-```
+本项目不发布策略（`goal.md` 北极星，2026-09-02）。Tier 4 不再有 `StrategyRelease` / `DecisionBatch` / `CandidateSignal`；
+产品面只展示判例引擎的历史阶梯与今日匹配（`casebook query|match`），每个数字可追到公式 id、情形维度、样本量与 Wilson 区间。
 
 每个候选必须能追到策略发布、实验、数据快照、配置 hash 和决策时点。产品页面可以展示研究中的证据，但必须明确 `research/unknown/stale/blocked/released`，不能用“看起来完整”的 mock、latest fallback 或 qfq 成交价伪装生产能力。
 
@@ -524,7 +516,7 @@ ExperimentVerdict
 
 ## 11. 迁移顺序
 
-当前执行板以 `goal.md` 的 A→H 为准（下表为稳定架构映射）。每个子步边做边测：坏例先红 → 最小实现 → 绿 → 窄回归；工具绿不得洗绿 `live_readiness`。
+本节只保留稳定架构映射；执行顺序不再用阶段号协作，当前顺序看 `scripts/chunkyctl status`。每个子步边做边测：坏例先红 → 最小实现 → 绿 → 窄回归；工具绿不得洗绿 `live_readiness`。
 
 | Phase | 工作 | 退出条件 |
 |---:|---|---|

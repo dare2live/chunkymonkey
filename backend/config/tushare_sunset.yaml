@@ -297,32 +297,47 @@ domains:
       切换前建议补测, 但方法论已验证有效。"
 
   dc_member:
-    decision: undecided
-    blocked_by: "同 dc_index; 且妙想默认路由到**同花顺(THS)** taxonomy —— 项目红线已裁定
-      'ths_member 因无 PIT 出局做分类源', 等于替代方案继承了已被否决的同一 PIT 缺陷, 不能直接用。"
+    decision: accept_outage
+    must_by: "2026-09-10"
+    frozen_at: "2026-09-10"
     evidence: "与 dc_index 完全同构的消费链 (build_dc_industry_view -> dim_stock_dc_industry ->
       routers/stock_dossier + moneyflow_assist), 另有 dc_member_publish / type_b_fact_publish_catchup /
       .moth/assertions/claims.yaml 治理断言层 / data_access.yaml / data_layers.yaml / segments.yaml 声明。
       在库 27,303,428 行 (全市场×全概念每日展开, 量级符合) 2025-01-02~2026-08-28,
       2 个 verified_low_days 已 vendor 核实为真实覆盖差异非截断。
-      实测妙想查'上海板块'返回同花顺地域类 446 只成分股 —— taxonomy 体系不对且撞项目红线。
-      **建议与 dc_index 合并处理** (同一张 dim_stock_dc_industry 的两个原料表)。
-      若东财直连不可行, 退而求其次是 accept_outage: 影响=dim_stock_dc_industry 冻结在最后快照,
-      stock_dossier 前端行业/概念展示与 moneyflow_assist 分类停止更新 —— **这是有前端可见影响的降级, 不是零代价**。"
+      实测妙想查'上海板块'返回同花顺地域类 446 只成分股 —— taxonomy 体系不对 (同花顺 THS 无 PIT,
+      项目红线已否决 'ths_member 出局做分类源', 妙想默认路由到 THS taxonomy = 继承同一被否决缺陷,
+      不能直接用做替代)。东财 push2 直连三家指定源均未验出可用替代 (见 dc_index 条目)。"
+    note: "**裁决 = accept_outage (2026-09-05 落决)**: 明确接受断流, 但这不是'没人用'而是
+      '有人用但接受它冻结在最后一次同步'。2026-09-10 起 backend/routers/stock_dossier.py
+      (个股档案页行业/概念展示) 与 backend/services/moneyflow_assist.py (资金流板块分类辅助)
+      读到的 dim_stock_dc_industry 定格在 2026-09-10 (或到期前最后一个交易日) 的成分快照，
+      此后新股上市/概念调入调出/板块新增均不再反映，前端展示会逐渐与实际脱节但不会报错崩溃。
+      **建议与 dc_index 合并处理** (同一张 dim_stock_dc_industry 的两个原料表)。若日后东财直连
+      (push2.eastmoney.com) 探通，可解冻切换，不必等到 undecided。"
 
   dc_index:
-    decision: undecided
-    blocked_by: "三家指定源均未验出可用替代; 妙想 taxonomy 不对口 (查'东方财富行业板块'被路由到申万SW);
-      直连 push2.eastmoney.com 探测失败: agent 侧 TLS 握手成功但返空响应, 主线**独立复现**同一结果 (clist/get 板块列表端点返 RemoteDisconnected, 带完整 UA+Referer 亦然)。同一时段扶摇正常取回 5,563 行, 证明**网络本身通**, 是该端点特定的反爬或会话要求。两次独立尝试均不通, 需换手段 (浏览器会话/代理) 而非换参数。注: 姊妹域 moneyflow_dc 虽已裁决 replace->eastmoney_push2, 但全仓库**没有任何实际的 push2 HTTP 调用代码** —— 那个裁决同样只是裁决、尚未实现, 不能当作'这条路已验证可行'的先例。"
+    decision: accept_outage
+    must_by: "2026-09-10"
+    frozen_at: "2026-09-10"
     evidence: "**活跃且直达前端**: build_dc_industry_view.py (联合 dc_member 建 dim_stock_dc_industry)
       -> routers/stock_dossier.py 前端 + services/moneyflow_assist.py。在库 272,212 行 仅 2025-01-02~2026-08-28
       (data_start 声明与实际一致, 无历史断层假象), 2 个 verified_low_days 已逐页核对 vendor 为真实低值非截断。
       fuyao dump kinds 无板块数据(has_index_dump=False); tdxhub 的 block() docstring 直接写明
       'Vendor tdx_block membership. **Not SW / DC / THS; no name crosswalk.**' 即通达信自有板块体系
-      与东财(DC)不可对照。
-      **本报告优先级最高的开放项** —— 直达前端 stock_dossier 行业/概念展示。项目已有的
-      moneyflow_dc->eastmoney_push2 (12字段位对位匹配) 先例说明'直连东财公开接口'这条路很可能可行,
-      建议尽快在能出网的环境里复用 moneyflow_dc 的探测方法。"
+      与东财(DC)不可对照。妙想 taxonomy 不对口 (查'东方财富行业板块'被路由到申万SW);
+      直连 push2.eastmoney.com 探测失败: agent 侧 TLS 握手成功但返空响应, 主线**独立复现**同一结果
+      (clist/get 板块列表端点返 RemoteDisconnected, 带完整 UA+Referer 亦然)。同一时段扶摇正常取回 5,563 行,
+      证明**网络本身通**, 是该端点特定的反爬或会话要求。两次独立尝试均不通, 需换手段 (浏览器会话/代理)
+      而非换参数。注: 姊妹域 moneyflow_dc 虽已裁决 replace->eastmoney_push2, 但全仓库**没有任何实际的
+      push2 HTTP 调用代码** —— 那个裁决同样只是裁决、尚未实现, 不能当作'这条路已验证可行'的先例。"
+    note: "**裁决 = accept_outage (2026-09-05 落决)**: 明确接受断流, 有活跃消费方在用旧数据继续跑,
+      不是'没人用'。2026-09-10 起 backend/routers/stock_dossier.py (个股档案页行业/概念展示) 与
+      backend/services/moneyflow_assist.py 读到的 dim_stock_dc_industry 定格在 2026-09-10 (或到期前
+      最后一个交易日) 的成分快照，此后板块调整/新概念不再反映。**本域是本报告优先级最高的开放项** ——
+      直达前端 stock_dossier 行业/概念展示。项目已有的 moneyflow_dc->eastmoney_push2 (12字段位对位匹配)
+      先例说明'直连东财公开接口'这条路很可能可行, 建议尽快在能出网的环境里复用 moneyflow_dc 的探测方法,
+      探通后可随时解冻切换, 不必等 undecided。"
 
   margin:
     decision: accept_outage
@@ -410,9 +425,27 @@ domains:
       adj_factor 的 product_mismatch, 没专门对 dividend 测过。若 owner 想保留对账能力, 值得补测。"
 
   index_member_all:
-    decision: undecided
-    blocked_by: "2026-09-02 实测**推翻**原阻塞理由, 换成一条更小的。原写: 『3 倍量级差异
-      (申万L1食品饮料 as-of 20200101: 库内 98 只 vs 妙想 34 只), 最可能是申万分类版本
+    decision: accept_outage
+    must_by: "2026-09-10"
+    frozen_at: "2026-09-10"
+    verdict_deviation: "**2026-09-05 本条与战略裁决 (/tmp/fable_strategy_verdict.md Q4 ⑤) 给出的
+      accept 不同 —— 此处改判 accept_outage，已按任务指令『发现假设不符先停下明说』记录，未照改**。
+      裁决理由『本表本就非 PIT，换源同病』只回答了『要不要继续等 PIT-合规的替代源』这个阻塞问题
+      (答案: 不需要等，见下方 blocked_by_resolved)，没有回答 accept vs accept_outage 该选哪个 ——
+      这两个值的分界不是 PIT 与否，是本文件顶部 legend 写明的『有没有活跃消费方』:
+      accept = 四源均无等价且**断流后果已知并可接受** (本文件里 cyq_perf/forecast/index_dailybasic/
+      limit_cpt_list/moneyflow 五个 accept 域全部『已落库历史仍可用于回测』, 均无实读生产消费方);
+      accept_outage 才是『有人用但接受它冻结在最后一次同步』。本域**实测**有重度活跃消费:
+      backend/routers/market_pulse.py:695 的 /api/v3/pulse/members?chain=sw 端点直接读
+      index_member_all (is_new='Y' 快照) 做板块成分下钻展示; backend/services/market_pulse.py:53
+      的 sw 资金流链按 v_sw_industry_pit as-of 归属 GROUP BY l1/l2/l3 落到前端;
+      backend/services/institution_profile.py:317 LEFT JOIN v_sw_industry_pit 做持仓 PIT 行业标注;
+      backend/services/segments.py:116 同样 LEFT JOIN v_sw_industry_pit 做特征分位行业标注;
+      backend/services/rally_gt.py:319 直接读 raw_tushare_index_member_all 做 Rally Ground Truth
+      分层标注 (项目北极星策略的标注依据)。这比本文件里任何一个 accept_outage 域 (margin/
+      stk_holdertrade/dc_member/dc_index) 的消费链更重，没有理由降格成『无人用』的 accept。"
+    blocked_by_resolved: "2026-09-02 实测**推翻**原阻塞理由, 换成一条更小的、且已解除。原写:
+      『3 倍量级差异 (申万L1食品饮料 as-of 20200101: 库内 98 只 vs 妙想 34 只), 最可能是申万分类版本
       (2014版 vs 2021版)不一致』—— **版本假设是错的**。实测: 34 恰好等于库内
       `食品加工 (801124.SI)` 的成分数, 是『食品饮料』五个 L2 之一 (食品加工 34 / 白酒Ⅱ 18 /
       非白酒 18 / 饮料乳品 17 / 调味发酵品Ⅱ 11 = 98)。**是层级对错(L1 vs L2), 不是版本对错。**
@@ -422,8 +455,9 @@ domains:
       **且『需要供应商具备历史 as-of 能力』这个前提也不成立** —— 见 evidence 末段:
       本表在分类学意义上本就不是 PIT 的。所以对替代源的真实要求只是
       『给得出 L1 **和** L2 编码 + 每只股票的归属起止日』, 门槛比原先设想的低得多。
-      **剩余待验(唯一)**: 妙想能否按 L1 层级返回 (而不是被路由到某个 L2), 且其 L1 编码能与库内
-      801xxx.SI 对齐。这是一次接口参数核对, 不是分类学考古。"
+      **裁决为何是 accept_outage 而非继续等替代**: 到期前 (2026-09-10) 没有时间再做妙想 L1
+      接口参数核对这一步剩余验证 (fable Q4 ⑤ 排到 09-05 一小时内落决), 与其让它到期时仍是
+      undecided 静默冻结, 先明确接受断流并登记冻结影响; 日后若妙想 L1 层级核对通过，随时可解冻改判 replace。"
     evidence: "**PIT 敏感、直达前端与 GT 标注的地基级参照表**: build_sw_industry_view.py -> v_sw_industry
       -> routers/market_pulse.py 前端 + services/institution_profile.py + services/market_pulse.py +
       services/segments.py + scripts/ensure_serve_read_views.py; 另有 **rally_gt.py 直接用
@@ -431,7 +465,7 @@ domains:
       在库 7,911 行 (参照维度表非日频面板, 量级符合) in_date 1984-05-09~2026-08-14, 历年持续新增
       (2025年143行/2026年176行), 未见异常多年真空。fuyao/tdxhub 均无 (tdxhub block() 已明文声明不可与 SW 对照)。
       妙想 sector_data **确认支持历史 as-of 查询** (同一板块 2020-01-01 时点返回值区别于'最新'值, 证明有真实历史能力),
-      但量级对不上(已解释, 见 blocked_by: 是 L1 vs L2 层级差, 非版本差)。
+      但量级对不上(已解释, 见 blocked_by_resolved: 是 L1 vs L2 层级差, 非版本差)。
       **2026-09-02 追加实测 —— 本表在分类学意义上不是 PIT 的, 且是『不一致地不 PIT』**:
       个股在既有行业间迁移**确实**留带日期的记录 (1,649/5,897 只股票有多行, is_new='N' 共 2,009 行);
       但 2021 版**整行业拆分是无痕改标** —— 中国神华 601088.SH 全表**只有一行**:
@@ -445,11 +479,21 @@ domains:
       细节与边界写在 backend/services/rally_gt.py 的模块 docstring (同日更正了原写的『= 真 PIT』)。
       **对本裁决的影响**: 换源不改变这条 (申万官方发布的也是当前版分类, 任何供应商同病),
       因此它**不构成换源阻塞**; 但也意味着替代源**不需要**具备历史 as-of 分类能力, 门槛降低。"
+    note: "**2026-09-10 冻结后果**: routers/market_pulse.py 的 sw 板块成分下钻、
+      institution_profile.py 的持仓 PIT 行业标注、segments.py 的特征分位行业标注、
+      rally_gt.py 的 Rally GT 分层标注，全部锚定在 2026-09-10 (或到期前最后一个交易日)
+      的申万成分快照上；此后新股上市的行业归属、个股行业迁移都不再被捕获，
+      Rally GT 标注对 2026-09-10 之后的新样本会用旧行业分类打标 (与本域已知的
+      『2021 版整行业拆分无痕改标』同类偏差、但从这天起额外多一层『未来行业变更也捕获不到』)。"
 
   index_member_all_hist:
-    decision: undecided
-    blocked_by: "与 index_member_all 同表同源 (同一张 raw_tushare_index_member_all, 按 is_new=Y/N MERGE), 同一阻塞。"
-    evidence: "见 index_member_all 条目。两域共用一张物理表与同一条消费链, 应合并裁决。"
+    decision: accept_outage
+    must_by: "2026-09-10"
+    frozen_at: "2026-09-10"
+    verdict_deviation: "同 index_member_all：与战略裁决给出的 accept 不同，此处改判 accept_outage，
+      理由见 index_member_all 条目的 verdict_deviation。"
+    evidence: "与 index_member_all 同表同源 (同一张 raw_tushare_index_member_all, 按 is_new=Y/N MERGE),
+      同一消费链、同一冻结影响。见 index_member_all 条目。两域共用一张物理表, 合并裁决。"
 
   # ── undecided: 尚未裁决 (门应视为 FAIL) ──────────────────
   # 以下域到期前必须做出裁决，否则将静默断流。

@@ -23,9 +23,10 @@ non-overlap. Never loosen L3 / Rule10 / PIT / ≤40d.
 
 ## 2. Skills
 Owner: engineering_governance §2. `$mio` judgment; `$architect-controller`
-broad/multi-agent; `$chunkymonkey-governance` data/strategy/PIT/deletion/gate;
-`$chunkymonkey-debug-delivery` debug/TDD/handoff; `$chunkymonkey-review-gate`
-Rule 10/commit; `$codex-local-ops` local Codex. Sidecar = evidence not verdict.
+broad/multi-agent; `$chunkymonkey-governance` / `$chunkymonkey-debug-delivery` /
+`$chunkymonkey-review-gate` / `$codex-local-ops`: **Codex-only** (live in
+`~/.codex/skills/`, not loadable from Claude Code; Claude uses `$mio` +
+`$architect-controller` + this file). Sidecar = evidence not verdict.
 
 ## 3. Architecture (MASTER_TOPLEVEL_DESIGN.md)
 Transport `landing→validate→accepted canonical→serve` ≠ business
@@ -54,10 +55,10 @@ Namespaces separate; names=labels not keys; concepts M2M; crosswalks need
 version+evidence. "Money flow"=vendor imbalance proxy unless proven; never sum
 overlapping concepts/levels as conserved money. Features need `available_at`,
 method, unit, denominator, coverage, config hash. Tier1=decision-time-visible
-only; future return/prob/signals→Tier3. Strategy:
-`strategy_validation_contract.md` B0→B5 one block, same snapshot/universe/
-folds/costs/execution; PIT truncation, purged WF, embargo, one-touch holdout,
-T+1, nominal exec, 停牌/涨跌停, costs; unmeasured=`unknown` never 0.
+only; future return/prob/signals→Tier3. Strategy (`strategy_validation_contract.md`): formulas are input, never fitted;
+same universe/calendar/forward window for every formula; PIT truncation, T+1,
+nominal exec, 停牌/涨跌停, costs; unmeasured=`unknown` never 0; cells with too
+few precedents report "insufficient", never a number.
 BestChoice frozen (`bestchoice/FROZEN.md`).
 
 ## 6. Compute

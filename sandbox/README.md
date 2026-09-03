@@ -28,10 +28,11 @@ explore in sandbox
   -> REJECT: wipe everything
   -> candidate worth keeping: rewrite as a versioned Tier3 package + tests + evidence
   -> Rule 10 review
-  -> only then may a governed ExperimentRun/StrategyRelease be created
+  -> only then may the formula be registered in `casebook.yaml` (one line) and its
+     translation (30–60 lines) land in `backend/services/casebook/formulas/`
 ```
 
-当前仓库没有已闭合的 ExperimentRun/StrategyRelease writer。历史
+当前仓库没有 ExperimentRun/StrategyRelease 这类对象；探索结果唯一的转正形式是"一条已注册公式的历史阶梯"。历史
 `fact_experiment_verdict` 表只是 evidence schema，不能把不存在的 `record_verdict` 当执法点，
 也不能从 sandbox 直接写主库或把探索结果称为已发布结论。
 
