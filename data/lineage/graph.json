@@ -2251,12 +2251,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/tushare_sunset.yaml",
-      "kind": "consume",
-      "src": "table:reference.dim_active_a_stock"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/universe_rules.yaml",
       "kind": "consume",
       "src": "table:reference.dim_active_a_stock"
@@ -6421,6 +6415,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_tushare_sunset.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_index_member_all"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/taxonomy_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_index_member_all"
@@ -7364,12 +7364,6 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/sync_registry.yaml",
-      "kind": "consume",
-      "src": "table:tushare_raw.raw_tushare_stock_basic"
-    },
-    {
-      "attrs": {},
-      "dst": "consumer:backend/config/tushare_sunset.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stock_basic"
     },
@@ -8731,12 +8725,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:backend/config/tushare_sunset.yaml",
-      "kind": "consume",
-      "src": "table:tushare_raw.v_sw_industry_pit"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/routers/market_pulse.py",
       "kind": "consume",
       "src": "table:tushare_raw.v_sw_industry_pit"
@@ -8917,9 +8905,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1441,
-    "generated_at": "2026-09-03T19:21:17.773542+00:00",
-    "node_count": 505,
+    "edge_count": 1439,
+    "generated_at": "2026-09-03T19:27:05.489936+00:00",
+    "node_count": 506,
     "version": 2
   },
   "nodes": [
@@ -9313,6 +9301,14 @@
         "path": "backend/scripts/check_lineage_catalog_drift.py"
       },
       "id": "consumer:backend/scripts/check_lineage_catalog_drift.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
+        "path": "backend/scripts/check_tushare_sunset.py"
+      },
+      "id": "consumer:backend/scripts/check_tushare_sunset.py",
       "kind": "consumer"
     },
     {

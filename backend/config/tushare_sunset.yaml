@@ -10,18 +10,43 @@
 # decision 取值:
 #   replace        — 已有已验证替代，必须在到期前切换 (must_by 给期限)
 #   derive         — 可由「已注册域 + 公开规则」推导，退役取数域 (根因立法 §5.9)
-#   accept         — 明确接受断流: 四源均无等价，且断流后果已知并可接受
-#   accept_outage  — 明确接受断流，且已有活跃消费方在用旧数据继续跑 (区别于 accept:
-#                    这类域断流后不是"没人用"，而是"有人用但接受它冻结在最后一次同步")
-#   retire         — 域本身退役: 不再需要这份数据 (与 accept/accept_outage 的区别是
-#                    连"接受旧值冻结"都不需要，因为没有活跃消费方)
+#   freeze         — 明确接受断流: 到期后台账不再更新，消费方读到的是最后一次同步的
+#                    冻结快照。原 accept/accept_outage 两个值在此合并 (2026-09-04
+#                    收口) —— 那两者的区分点「有没有活跃消费方」本应由
+#                    `chunkyctl lineage impact` 机器判定，手写在这份台账里已经判错
+#                    三次 (moneyflow/index_dailybasic/cyq_perf 手写 accept 但实测
+#                    均有活跃消费方)。谁在读、断流后果是什么，写在 evidence 里；
+#                    "有没有人用"不再是 decision 取值的一部分。
+#   retire         — 域本身退役: 不再需要这份数据 (连"接受旧值冻结"都不需要，
+#                    因为没有活跃消费方)
 #   undecided      — 尚未裁决 (**这个值只应短暂存在**；门应把它当 FAIL 而非 WARN)
 #
-# evidence 必须是本项目实测出的数字或 commit，不接受"据说/应该"。
+# evidence 必须是本项目实测出的数字或 commit，不接受"据说/应该"。evidence 是本文件
+# 唯一保留的自由文本槽——2026-09-04 收口前台账里还有 verdict_deviation/note/impact/
+# risk/caveat/fallback/residual_risk/impact_if_lost/done_evidence/blocked_by/
+# blocked_by_resolved/frozen_at 十二个键，全部没有任何 loader 读过 (只有 checker
+# 读 decision/status/replacement + 顶层 authorization_expires/undecided_domains)。
+# 叙事(为什么偏离、当时怎么想)进 commit message，不进这张表；可从别处推导的事实
+# (frozen_at = 顶层 authorization_expires) 不重复登记。字段必须满足二者之一才能
+# 留在这张表: (a) 至少一个 loader 读它且写错/缺失时有门/测试会红 (b) 是这张表
+# 唯一的自由文本槽 evidence。KNOWN_KEYS 之外的键 = FAIL, 见 check_tushare_sunset.py。
+#
+# 字段-决策矩阵 (谁能带哪些额外字段):
+#   replace  → must_by, replacement, status, done_at 均可
+#   derive   → replacement, status, done_at 可 (无 must_by: 推导链不是"换源"，无期限可催)
+#   retire / freeze / undecided → 只有 decision + evidence，不带其他字段
+#
+# 同一个 target_table (sync_registry.yaml 里的物理表) 若被多个域共用，
+# 这些域的 decision 必须相等——一张表不可能一半冻结一半换源。
 
 version: 1
 authorization_expires: "2026-09-10"
 renew: false
+
+# 未裁决域 (到期前必须做出裁决，否则静默断流)。曾经嵌在 domains 字典里和一个
+# dict-of-dicts 混装 (checker 要三处特判才能把它摘出来)，2026-09-04 收口上移到
+# 顶层——它本来就不是一个域条目，是一份名单。
+undecided_domains: []
 
 domains:
 
@@ -44,18 +69,6 @@ domains:
       TdxhubSource 已实现并通过真实端到端验收，adapter 就绪待启用。"
     status: done
     done_at: "2026-09-01"
-    done_evidence: "四处联动全改: registry source -> tdxhub; formal_boundaries daily.adapter
-      由 LIVE_ADAPTER 改字面 'tdxhub'; nominal_ohlcv_schema DOMAIN.source -> tdxhub
-      (config_hash 随之 7d122f28->ff6528d5, 新写入行带新 hash 旧行保留旧值 = 预期溯源语义,
-      读侧无 hash 相等校验); test_formal_boundaries 两处样例改用 stock_st。
-      北交所: adapter 的 bj_codes_provider 从 raw_tushare_stock_basic 读 338 只 BJ 补进
-      universe (5,220 沪深 + 338 BJ = 5,558), 拿不到时降级仅沪深 + warning 不阻断。
-      顺带根治: SecurityDayLandingBatch.source 的硬编码默认值 'tushare' 已删 —— 该
-      dataclass 被 daily 与 stock_st 共用而两域已不同源, 默认值等于假设'所有 SecurityDay
-      域同源', 且失败方式是静默的(漏传就默默拿 tushare)。两个生产调用点本就显式传,
-      只有测试在吃它; 删后测试改为从契约读 source, 下次换源自动跟随。"
-    blocked_by: "BJ 代码列表 — 通达信 stocks(market=2) 报『只支持沪深市场』，
-      需 stock_basic 换源后从代码表读 (见 stock_basic)。"
 
   stock_basic:
     decision: replace
@@ -66,16 +79,6 @@ domains:
       消费方 security_master 实际只读 symbol/name/ts_code 三列 + market 用于排北交所。"
     status: done
     done_at: "2026-09-01"
-    done_evidence: "registry source: tushare -> fuyao (同时删 page_limit —— 它会让 sync_runner
-      走 offset 分页而扶摇 adapter 拒收 limit/offset; 删 fixed_params.list_status —— 扶摇不认)。
-      端到端实跑 5,563 行 0 失败; dim_active_a_stock 5,212 -> 5,220 只, **消失 0 只**
-      (严格超集), 新增 8 只全是待上市新股。security_master 的 source 标签由硬编码
-      'tushare_stock_basic' 改为域名 'stock_basic' —— 标签记域不记供应商, 供应商会换域不会。"
-    residual_risk: "扶摇 asset_type=a-share 含待上市新股, 而 tushare list_status=L 不含;
-      这 13 只会进 dim_active_a_stock, 但观察日无 K 线故被 universe 的
-      traded_on_observation_date 排除, 对 serve 面无害。"
-    note: "它是 daily 的 BJ 代码列表来源，故排在 daily 之前。且 stock_basic 进日更 drain，
-      到期后每天都断，不是等人手动跑才暴露。"
 
   adj_factor:
     decision: replace
@@ -83,7 +86,6 @@ domains:
     must_by: "2026-09-10"
     evidence: "通达信 xdxr() 提供除权除息事件 (600000 有 88 条)，已在
       TdxhubSource._adjusted_pre_close 生产代码中用于逐日复权，机制已跑通。"
-    risk: "adj_factor 是 qfq K线(回测主源)的输入，换源需复现验证历史因子，不可只验最近。"
 
   limit_list_d:
     decision: replace
@@ -91,7 +93,6 @@ domains:
     must_by: "2026-09-10"
     evidence: "扶摇三池端点已注册为域 (fuyao_limit_up/down/break_pool)，
       涨停池 20200623 起 (早于 TuShare limit_list_d 的 2023-01 两年半)。"
-    note: "跌停/炸板池仅 20250813 起，历史段需保留 TuShare 已落库数据。"
 
   moneyflow_dc:
     decision: replace
@@ -101,8 +102,6 @@ domains:
       raw_tushare_moneyflow_dc 同日同票**12 字段位对位匹配** (600000.SH 2026-08-28，
       金额类差 <50 元 = tushare 万元两位小数取整边界，五个 rate 字段完全相同)。
       即同一份东财数据的两个出口，非两个体系。免 key。"
-    note: "板块/市场/北向 (moneyflow_ind_dc / mkt_dc / hsgt) 字段体系同构，
-      但历史逐日对账[未测] —— push2his 触发限流，需更长间隔重测后才能同判 replace。"
 
   # ── derive: 可推导，退役取数域 (根因立法 §5.9) ───────────
   stk_limit:
@@ -110,16 +109,11 @@ domains:
     evidence: "up/down_limit = round(pre_close × (1±band), 2)，band 由板块定
       (30/68→20%, 92/43/83/87→30%, 其余→10%; 北交所向下取整到分)。
       实测复现率 涨停价 99.82% / 跌停价 99.51%。8,654,737 行本质是几十行规则的逐票逐日展开。"
-    caveat: "① 残余 0.2~0.5% 是新股/特殊标的，需一张小例外表。
-      ② **推导依赖 stock_st 定 ST 档**，故其可用性 = min(K线, ST) —— 见根因立法『推导链传染』。
-      ③ 该表 pre_close 列是 INTEGER，8,654,737 行仅 1.7% 非空且值域[0,2586]，
-      价格已被截断成垃圾，而 limits.py 从未读它 —— 推导版严格优于现状。"
 
   suspend_d:
     decision: derive
     evidence: "项目地基原则即『K 线有交易 = 在交易，没有 = 不在』。
       实测正向 97.86% (S 型行当日无 K 线)、反向沪深 99.9%。"
-    caveat: "盘中临停 (suspend_timing 非空) 占 2.14%，推导拿不到，需单独留源或接受缺失。"
 
   # ── 有替代但源当前不可用 ────────────────────────────────
   stock_st:
@@ -130,111 +124,82 @@ domains:
       实测 402 只样本 (202 ST + 200 非 ST) 与 canonical_stock_st_daily **准确率 100.00%**
       (假阳 0 / 假阴 0)。且同一接口一次调用还同时给 OHLCV/preclose/turn/pe/pb/ps/tradestatus,
       即 daily + daily_basic + stock_st + suspend_d 四域的核心需求。"
-    blocked_by: "**baostock 当前被风控拉黑** (2026-08-31 并发探测触发 10001011,
-      匿名登录故为 IP 级)。截至 2026-09-01 仍未解封。"
-    fallback: "若到期前未解封: 通达信 stocks()/扶摇 tickers 的 name 前缀识别 ——
-      实测 205 只 ST 中漏 2 只 (000711.SZ ST京蓝 / 002586.SZ ST围海, 两源名称均滞后),
-      即 ~1% 误差。**可用于标记与分层，不可用于价格计算**。
-      注: 2026-07-06 起沪深主板 ST 涨跌幅已由 5% 改为 10%,
-      故 ST 状态不再决定主板涨跌停档 —— 这 1% 误差不再传导到价格。"
-    impact_if_lost: "断流后 ST 状态冻结, GT 正负样本标注**渐进失准**(非立即崩)。
-      ST 变化频率约每年数十次摘帽/戴帽, 故影响随时间线性累积。
-      历史 166,840 行保留, 回测不受影响。"
-
     status: done
     done_at: "2026-09-01"
-    done_evidence: "四处联动: registry source -> stock_st_derive; formal_boundaries
-      stock_st.adapter 同改; stock_st_schema DOMAIN.source -> stock_st_derive; sync_runner
-      _adapter 加分支。新建 sources/stock_st_derive.py (39 测试全绿, 纯 fixture 无 IO)。
-      端到端实测 20260831: 派生 203 只 vs canonical 20260828 的 205 只, **多出 0 只**,
-      少的 2 只 (000711.SZ ST京蓝 / 002586.SZ ST围海) 经 ifind 事件史确认恰在 08-31 当天
-      摘帽 —— 是基准滞后 3 天, 派生反而更新鲜。adapter 有 StockSTStaleSnapshotError
-      fail-closed 防陈旧快照 (默认要求快照 built_at 日期 == 请求 trade_date)。"
-  # ── accept: 四源均无等价，明确接受断流 ────────────────────
+
+  # ── freeze (原 accept，2026-09-04 与 accept_outage 合并): 四源均无等价，明确接受断流 ────────────────────
   cyq_perf:
-    decision: accept
+    decision: freeze
     evidence: "筹码分布(成本分位/胜率)，扶摇/通达信/妙想/baostock 四源枚举均无等价物。"
-    impact: "断流后 turnover_overlay_v1 观测维度停止更新；已落库 8,394,360 行历史仍可用于回测。
-      注: 项目已裁决筹码是 overlay 非持仓观测，不构成地基。"
 
   forecast:
-    decision: accept
+    decision: freeze
     evidence: "公司自身业绩预告。妙想 forecast 模块 5 个报表全是**卖方分析师预测**，概念不同不可冒充。"
-    impact: "B4 披露类观测维度少一条；已落库 48,955 行历史保留。"
 
   index_dailybasic:
-    decision: accept
+    decision: freeze
     evidence: "指数 pe/pb/换手。扶摇 valuations 端点文档明确排除指数；其余三源无。"
-    impact: "market_pulse 的指数估值维度停更；11,148 行历史保留。"
 
   limit_cpt_list:
-    decision: accept
+    decision: freeze
     evidence: "最强板块排行。四源均无『最强板块』这一产品概念。"
-    impact: "12,914 行历史保留；板块强度可由 dc_index/moneyflow_ind_dc 另行推导(未做)。"
 
   moneyflow:
-    decision: accept
+    decision: freeze
     evidence: "个股买卖双向 5 档量额 (10 列)。东财两条线公开吐出的都是**单向净额型**
       (net + 5 档净额/占比)，结构不匹配；扶摇/通达信/baostock 均无。
       通达信 MAC 0x1218 是**另一口径**的失衡代理 (项目已标 accepted=False,
       unit=vendor_imbalance_unspecified, 注释 Not conserved money)，按项目法条
       『资金流单别=vendor算法=观点类，跨体系不可冒充等价』不得当替代。"
-    impact: "7,672,367 行历史保留；买卖分列结构的观测维度停更。"
 
   # ── replace: 已测试替代，到期前必须切 ────────────────────
   margin_detail:
     decision: retire
-    must_by: "2026-09-10"
     evidence: "零业务消费方: 唯一触点 fina_margin_recon.py 把它列入 BANNED_EXCHANGE_BASELINE (不可当交易所口径基准); legacy_raw_plane 标 blocked_no_publication。在库 4,820,384 行 20190102-20260826 按年连续无缺口。妙想 RPT_MARGIN_STATISTICS_STOCKS 同 grain 但从未对账, 零消费不值得投入验证。断流不影响任何在产功能; 历史留库 (删源≠删数据)。"
 
   moneyflow_hsgt:
     decision: retire
-    must_by: "2026-09-10"
     evidence: "本域是全市场每日一行的聚合流量 (north_money/south_money/hgt/sgt), **与已停更的个股北向持股 hk_hold 是两码事**, 未受其影响。零消费: 唯一读取者 northbound_market_flow.py::latest_northbound_market_flow() 全仓库**零调用方**, 是死代码; legacy_raw_plane 标 sync_orphan 且在 publication_watchlist (承认'以后可能有用但现在没人用')。在库 2,776 行 20141117-20260828 连续。四源均无市场级聚合流量等价物 (妙想只有个股持股明细 RPT_MUTUAL_STOCK_HOLDRANKN_NEW, 不同产品; ifind MCP 实测两次均返空)。"
 
   moneyflow_ind_dc:
     decision: replace
     replacement: eastmoney_push2
     must_by: "2026-09-10"
-    evidence: "**活跃消费**: market_pulse.py 五处引用驱动 mart_sector_pulse_daily 板块/概念资金龙头, 经 /api/v3/pulse 到前端 flow_board?chain=dc_industry / dc_concept / heatmap / flow_stripe, 端到端确认。在库 335,161 行 20240102-20260828 无缺口。候选 eastmoney_push2 继承姊妹域 moneyflow_dc 的证据链 (12 字段位对位匹配), 项目笔记已写明'板块/市场/北向字段体系同构', **但本域 grain 从未逐日对账**——被 push2his 限流挡住。注: 资金流供应商算法属观点类, 但 push2 是**同厂商东财同算法**换出口, 不构成跨体系冒充。fallback: 9 天内测不完则降 accept_outage, 后果=板块资金龙头/热力图 dc chain 冻结。"
+    evidence: "**活跃消费**: market_pulse.py 五处引用驱动 mart_sector_pulse_daily 板块/概念资金龙头, 经 /api/v3/pulse 到前端 flow_board?chain=dc_industry / dc_concept / heatmap / flow_stripe, 端到端确认。在库 335,161 行 20240102-20260828 无缺口。候选 eastmoney_push2 继承姊妹域 moneyflow_dc 的证据链 (12 字段位对位匹配), 项目笔记已写明'板块/市场/北向字段体系同构', **但本域 grain 从未逐日对账**——被 push2his 限流挡住。注: 资金流供应商算法属观点类, 但 push2 是**同厂商东财同算法**换出口, 不构成跨体系冒充。fallback: 9 天内测不完则降 freeze, 后果=板块资金龙头/热力图 dc chain 冻结。"
 
   moneyflow_mkt_dc:
     decision: replace
     replacement: eastmoney_push2
     must_by: "2026-09-10"
-    evidence: "**活跃但更薄**: market_pulse.py:802 取 mkt_net_amount 进 mart_market_pulse_daily 大盘情绪面板一列, 前端 /api/v3/pulse/sentiment 确认。属展示型消费, 无证据它 gate 任何策略信号。在库 818 行 20230417-20260828 逐年满勤。候选同 moneyflow_ind_dc (eastmoney_push2, 未测), **建议合并测试省一次限流冷却**。fallback accept_outage: 断流后仅该列冻结, 面板其余 9 列来自其他域不受影响。"
+    evidence: "**活跃但更薄**: market_pulse.py:802 取 mkt_net_amount 进 mart_market_pulse_daily 大盘情绪面板一列, 前端 /api/v3/pulse/sentiment 确认。属展示型消费, 无证据它 gate 任何策略信号。在库 818 行 20230417-20260828 逐年满勤。候选同 moneyflow_ind_dc (eastmoney_push2, 未测), **建议合并测试省一次限流冷却**。fallback freeze: 断流后仅该列冻结, 面板其余 9 列来自其他域不受影响。"
 
   report_rc:
     decision: retire
-    must_by: "2026-09-10"
     evidence: "零业务消费方: assignment_gap_recon 只把它列为 product_mismatch 不对账; foundation_obs_serve 只是对全 43 域一视同仁的同步新鲜度监控; legacy_raw_plane 标 'historical load_analyst_reports retired; no formal plane'。**更正一条过时说法**: 所谓'中间 12 年整段挖空'指的是 2010-2019 段, 而 data_start 早已收窄到 20190102 (对齐 K 线真相源起点), 实测在库 1,684,839 行 2019-2026 **按年连续无挖空**。唯一测过的候选妙想 RPT_HSF10_RES_ORGRATING 已判 product_mismatch (研报目标价明细 ≠ 评级统计包, grain 不同)。"
 
   share_float:
     decision: retire
-    must_by: "2026-09-10"
     evidence: "零业务消费方: 仅 assignment_gap_recon 对账、audit_date_bounds 的未来日期豁免样例、通用健康面板。在库 16,580,813 行 (grain 含 holder_name 故行数远大于事件数) 20190102-20260827, 2021 年 495 万是解禁潮非异常, 无挖空。候选妙想 RPTA_APP_LIFTFUTURE 已实测判定不等价: TuShare 是 holder 级明细, 妙想是 stock-day 解禁聚合, jaccard=0.3, same_product=false。"
 
   stk_holdernumber:
     decision: replace
     replacement: 妙想 RPT_F10_EH_HOLDERNUM
     must_by: "2026-09-10"
-    evidence: "**活跃**: holdernumber_assist.py 经 DataAccess 读 v_holder_number_period, 上游 stock_dossier.py:873 进个股档案 holder_number 集中度辅助, 经 /api/v3/stock 到前端档案页, 端到端确认; 2026-07-24 owner 刚 RESTORE 过接线。在库 336,864 行 20190101-20260827 无缺口。候选已实测 (样本 600519.SH): 户数 296,404 **完全一致**、end_date 一致、ann_date=NOTICE_DATE 一致, same_product=true; 仅因**只测了 1 样本 1 截面**未切 primary。工程路径现成 (holders_aif10.py 已按同模式接 canonical)。**9 天内必做**: 扩样本覆盖 ST/北交所/密集披露日边界。fallback accept_outage: 档案页该字段冻结, 前端已有 fail-closed 标 holder_number_empty 不会崩。"
+    evidence: "**活跃**: holdernumber_assist.py 经 DataAccess 读 v_holder_number_period, 上游 stock_dossier.py:873 进个股档案 holder_number 集中度辅助, 经 /api/v3/stock 到前端档案页, 端到端确认; 2026-07-24 owner 刚 RESTORE 过接线。在库 336,864 行 20190101-20260827 无缺口。候选已实测 (样本 600519.SH): 户数 296,404 **完全一致**、end_date 一致、ann_date=NOTICE_DATE 一致, same_product=true; 仅因**只测了 1 样本 1 截面**未切 primary。工程路径现成 (holders_aif10.py 已按同模式接 canonical)。**9 天内必做**: 扩样本覆盖 ST/北交所/密集披露日边界。fallback freeze: 档案页该字段冻结, 前端已有 fail-closed 标 holder_number_empty 不会崩。"
 
   stk_holdertrade:
-    decision: accept_outage
-    must_by: "2026-09-10"
+    decision: freeze
     evidence: "**有活跃消费方但无可用替代**: institution_profile.py:72 经 compare_disclosure_research_shadow 进 Tier3 披露研究 disclosure_shadow 侧栏, 经 /api/v3/inst 到前端确认; 另有完整 E0 land→accept→canonical 管线 (canonical_stk_holdertrade_announcement 已 73,304 行)。在库 72,340 行 20190102-20260715。**两个妙想候选均已实测判定 product_mismatch**: RPT_F10_SHAREHOLDER_CHANGE (TuShare 是公告事件轴 ann_date×holder_name, 妙想是十大股东季度差分 end_date×holder_rank, 轴不同) 与 RPT_EXECUTIVE_HOLD_DETAILS (高管持股变动≠股东增减持)。断流后果: 该维度停更, 已落库 raw 72,340 + canonical 73,304 行历史保留, 回测不受影响。真要替代需重新调研产品级差异, 非简单换源。"
 
   stk_surv:
     decision: retire
-    must_by: "2026-09-10"
     evidence: "零消费: 下游 mart_stock_survey_activity **已于 2026-06-28 物理删除** (data_audit_rules/data_audit 双处确认), 之后是纯 landing 表; legacy_raw_plane 标 serve_l0_declared 'no formal plane'。在库 839,098 行 20210805-20260818 无缺口。候选妙想 RPT_ORG_SURVEYNEW 已实测对账两次: surv_date 与 RECEIVE_START_DATE / NOTICE_DATE 两个候选日期字段均对不齐 (jaccard 0.34 / 0.42, same_product=false)。注: 妙想覆盖面明显更宽 (1568/751 vs 本地同期 17 条), 未来若重建该功能它是更优起点, 但轴对齐需重新设计。"
 
   sw_daily:
     decision: replace
     replacement: ifind_shenwan_index
     must_by: "2026-09-10"
-    evidence: "**活跃且用量重**: market_pulse.py 五处 + routers/market_pulse.py:569 驱动申万 RS 双窗/rs_rank_4w/turnover_amt_share (588 码含全级指数), 前端 pulse/heatmap|rotation|drill?chain=sw_industry 三条链路端到端确认。在库 921,483 行 20190102-20260828 无缺口。候选实测: mcp__ifind-index__sector_data 查'申万一级行业银行指数 2026-08-28'返回收盘价 8.6948 + 成交额 250.1994 亿, **确认覆盖申万 L1**。**但两点未验证**: (1) L2/L3 覆盖比例未知 (588 码里大部分是 L2/L3); (2) 该 MCP 是自然语言查询接口, **不在项目已知三 adapter 之列**, 能否变成生产级 sync adapter (授权/批量/稳定接口) 未定。注: ifind=同花顺, **与代码里的'妙想'(东财 aif10 scraper) 是不同供应商**。fallback accept_outage: sw_industry 三条链路冻结, 但 dc_industry/dc_concept chain 不受影响, 前端仍有一条链路可看。"
+    evidence: "**活跃且用量重**: market_pulse.py 五处 + routers/market_pulse.py:569 驱动申万 RS 双窗/rs_rank_4w/turnover_amt_share (588 码含全级指数), 前端 pulse/heatmap|rotation|drill?chain=sw_industry 三条链路端到端确认。在库 921,483 行 20190102-20260828 无缺口。候选实测: mcp__ifind-index__sector_data 查'申万一级行业银行指数 2026-08-28'返回收盘价 8.6948 + 成交额 250.1994 亿, **确认覆盖申万 L1**。**但两点未验证**: (1) L2/L3 覆盖比例未知 (588 码里大部分是 L2/L3); (2) 该 MCP 是自然语言查询接口, **不在项目已知三 adapter 之列**, 能否变成生产级 sync adapter (授权/批量/稳定接口) 未定。注: ifind=同花顺, **与代码里的'妙想'(东财 aif10 scraper) 是不同供应商**。fallback freeze: sw_industry 三条链路冻结, 但 dc_industry/dc_concept chain 不受影响, 前端仍有一条链路可看。"
 
   top_inst:
     decision: replace
@@ -244,15 +209,7 @@ domains:
 
     status: done
     done_at: "2026-09-01"
-    done_evidence: "registry source -> miaoxiang (非 formal 域, 无 formal_boundaries 联动);
-      sync_runner _adapter 加 miaoxiang 分支; sources 层补 miaoxiang.target_db=tushare_raw
-      (三层继承链中间层, 漏了会让 domain_spec 取不到 target_db —— 该门当场抓到)。
-      新建 sources/miaoxiang.py + 27 测试 (纯 fixture 无网络)。
-      **5 个交易日扩验** (20260819~20260825, 逐日逐键非抽样): 键数 526/509/508/626/690,
-      tushare 的每个 grain key 都在妙想侧 (缺 0), net_buy 全部对上 (对不上 0)。
-      字段映射有一处真陷阱已避开: net_buy 映 NET 而非 NET_BUY (后者是 stock-day 级净额)。
-      已知非缺陷差异: 单边席位 vendor 返 null 而 tushare 返 0.0 (130/650 行), adapter 只对
-      4 个金融字段零填充, 债券本就不适用的 turnover_rate/float_values 保持 None 不假填 0。"
+
   top_list:
     decision: replace
     replacement: 妙想 RPT_DAILYBILLBOARD_DETAILSNEW
@@ -261,13 +218,7 @@ domains:
 
     status: done
     done_at: "2026-09-01"
-    done_evidence: "与 top_inst 同批切换 (同一龙虎榜产品线)。**5 个交易日扩验**
-      (20260819~20260825): 键数 60/60/54/68/74, 缺 0, net_amount 对不上 0。
-      对账中发现 **tushare 侧两处问题**: (1) 它的表零重复 grain key, 而原始 vendor 数据
-      有 87 个键碰撞 —— 说明 tushare 在静默挑一行 (实测它挑的那行总能在妙想候选里精确匹配);
-      (2) 300313.SZ 的 amount_rate=200% 超过理论上限 100%, 妙想的 100% 才是物理合理值。
-      另: 妙想还捕获到 tushare 静默丢弃的真实榜单 (20260825 有 4 个, 逐个核实确为当日二次上榜)。
-      **待办**: cross_check_domain 交叉核验需同步改成两个新源互查, 不能留一个 tushare 一个妙想。"
+
   daily_basic:
     decision: replace
     replacement: 妙想
@@ -297,9 +248,7 @@ domains:
       切换前建议补测, 但方法论已验证有效。"
 
   dc_member:
-    decision: accept_outage
-    must_by: "2026-09-10"
-    frozen_at: "2026-09-10"
+    decision: freeze
     evidence: "与 dc_index 完全同构的消费链 (build_dc_industry_view -> dim_stock_dc_industry ->
       routers/stock_dossier + moneyflow_assist), 另有 dc_member_publish / type_b_fact_publish_catchup /
       .moth/assertions/claims.yaml 治理断言层 / data_access.yaml / data_layers.yaml / segments.yaml 声明。
@@ -308,18 +257,9 @@ domains:
       实测妙想查'上海板块'返回同花顺地域类 446 只成分股 —— taxonomy 体系不对 (同花顺 THS 无 PIT,
       项目红线已否决 'ths_member 出局做分类源', 妙想默认路由到 THS taxonomy = 继承同一被否决缺陷,
       不能直接用做替代)。东财 push2 直连三家指定源均未验出可用替代 (见 dc_index 条目)。"
-    note: "**裁决 = accept_outage (2026-09-05 落决)**: 明确接受断流, 但这不是'没人用'而是
-      '有人用但接受它冻结在最后一次同步'。2026-09-10 起 backend/routers/stock_dossier.py
-      (个股档案页行业/概念展示) 与 backend/services/moneyflow_assist.py (资金流板块分类辅助)
-      读到的 dim_stock_dc_industry 定格在 2026-09-10 (或到期前最后一个交易日) 的成分快照，
-      此后新股上市/概念调入调出/板块新增均不再反映，前端展示会逐渐与实际脱节但不会报错崩溃。
-      **建议与 dc_index 合并处理** (同一张 dim_stock_dc_industry 的两个原料表)。若日后东财直连
-      (push2.eastmoney.com) 探通，可解冻切换，不必等到 undecided。"
 
   dc_index:
-    decision: accept_outage
-    must_by: "2026-09-10"
-    frozen_at: "2026-09-10"
+    decision: freeze
     evidence: "**活跃且直达前端**: build_dc_industry_view.py (联合 dc_member 建 dim_stock_dc_industry)
       -> routers/stock_dossier.py 前端 + services/moneyflow_assist.py。在库 272,212 行 仅 2025-01-02~2026-08-28
       (data_start 声明与实际一致, 无历史断层假象), 2 个 verified_low_days 已逐页核对 vendor 为真实低值非截断。
@@ -331,17 +271,9 @@ domains:
       证明**网络本身通**, 是该端点特定的反爬或会话要求。两次独立尝试均不通, 需换手段 (浏览器会话/代理)
       而非换参数。注: 姊妹域 moneyflow_dc 虽已裁决 replace->eastmoney_push2, 但全仓库**没有任何实际的
       push2 HTTP 调用代码** —— 那个裁决同样只是裁决、尚未实现, 不能当作'这条路已验证可行'的先例。"
-    note: "**裁决 = accept_outage (2026-09-05 落决)**: 明确接受断流, 有活跃消费方在用旧数据继续跑,
-      不是'没人用'。2026-09-10 起 backend/routers/stock_dossier.py (个股档案页行业/概念展示) 与
-      backend/services/moneyflow_assist.py 读到的 dim_stock_dc_industry 定格在 2026-09-10 (或到期前
-      最后一个交易日) 的成分快照，此后板块调整/新概念不再反映。**本域是本报告优先级最高的开放项** ——
-      直达前端 stock_dossier 行业/概念展示。项目已有的 moneyflow_dc->eastmoney_push2 (12字段位对位匹配)
-      先例说明'直连东财公开接口'这条路很可能可行, 建议尽快在能出网的环境里复用 moneyflow_dc 的探测方法,
-      探通后可随时解冻切换, 不必等 undecided。"
 
   margin:
-    decision: accept_outage
-    must_by: "2026-09-10"
+    decision: freeze
     evidence: "**重要更正: formal_boundaries 标的 runtime_state=retired_readonly 是过期文档标签**。
       实测 2026-09-01: legacy 镜像 raw_tushare_margin 确实停在 20260716, 但正式 land->accept 通道
       仍在活跃调 tushare —— canonical_margin_exchange_daily 最新 built_at=2026-08-28 (3天前),
@@ -355,7 +287,7 @@ domains:
       断流后果: 系统已有优雅降级路径 (margin_pulse_promote/market_pulse_scope 已实现 typed EMPTY
       处理 not_expected/confirmed_empty), 面板 rzrqye 停更不会崩。4,533 行历史保留供回测。
       **⚠ 需 owner 主动确认**: 它眼下**还在活跃取数**不是自然停止, 09-10 到期后若没人主动关掉这条
-      on_demand 通道, 会从'正常运行'直接变成'报错'而非优雅停止 —— 建议到期前显式切成 accept_outage 状态。"
+      on_demand 通道, 会从'正常运行'直接变成'报错'而非优雅停止 —— 建议到期前显式切成 freeze 状态。"
 
   income:
     decision: replace
@@ -412,8 +344,7 @@ domains:
       167 项衍生指标只核了 4 个, 全量切换前建议补测更多字段。"
 
   dividend:
-    decision: accept_outage
-    must_by: "2026-09-10"
+    decision: freeze
     evidence: "零生产消费方: 仅 fuyao_kline_recon.py + assignment_gap_recon.py, 两者 docstring 都明写
       'Read-only... Does not change kline_daily.primary or write accepted partitions' = 纯 QA 对账不进生产链路;
       grep backend/routers 与 frontend 零命中。真正生产用的复权因子来自已独立裁决的 adj_factor(replace->tdxhub),
@@ -425,39 +356,7 @@ domains:
       adj_factor 的 product_mismatch, 没专门对 dividend 测过。若 owner 想保留对账能力, 值得补测。"
 
   index_member_all:
-    decision: accept_outage
-    must_by: "2026-09-10"
-    frozen_at: "2026-09-10"
-    verdict_deviation: "**2026-09-05 本条与战略裁决 (/tmp/fable_strategy_verdict.md Q4 ⑤) 给出的
-      accept 不同 —— 此处改判 accept_outage，已按任务指令『发现假设不符先停下明说』记录，未照改**。
-      裁决理由『本表本就非 PIT，换源同病』只回答了『要不要继续等 PIT-合规的替代源』这个阻塞问题
-      (答案: 不需要等，见下方 blocked_by_resolved)，没有回答 accept vs accept_outage 该选哪个 ——
-      这两个值的分界不是 PIT 与否，是本文件顶部 legend 写明的『有没有活跃消费方』:
-      accept = 四源均无等价且**断流后果已知并可接受** (本文件里 cyq_perf/forecast/index_dailybasic/
-      limit_cpt_list/moneyflow 五个 accept 域全部『已落库历史仍可用于回测』, 均无实读生产消费方);
-      accept_outage 才是『有人用但接受它冻结在最后一次同步』。本域**实测**有重度活跃消费:
-      backend/routers/market_pulse.py:695 的 /api/v3/pulse/members?chain=sw 端点直接读
-      index_member_all (is_new='Y' 快照) 做板块成分下钻展示; backend/services/market_pulse.py:53
-      的 sw 资金流链按 v_sw_industry_pit as-of 归属 GROUP BY l1/l2/l3 落到前端;
-      backend/services/institution_profile.py:317 LEFT JOIN v_sw_industry_pit 做持仓 PIT 行业标注;
-      backend/services/segments.py:116 同样 LEFT JOIN v_sw_industry_pit 做特征分位行业标注;
-      backend/services/rally_gt.py:319 直接读 raw_tushare_index_member_all 做 Rally Ground Truth
-      分层标注 (项目北极星策略的标注依据)。这比本文件里任何一个 accept_outage 域 (margin/
-      stk_holdertrade/dc_member/dc_index) 的消费链更重，没有理由降格成『无人用』的 accept。"
-    blocked_by_resolved: "2026-09-02 实测**推翻**原阻塞理由, 换成一条更小的、且已解除。原写:
-      『3 倍量级差异 (申万L1食品饮料 as-of 20200101: 库内 98 只 vs 妙想 34 只), 最可能是申万分类版本
-      (2014版 vs 2021版)不一致』—— **版本假设是错的**。实测: 34 恰好等于库内
-      `食品加工 (801124.SI)` 的成分数, 是『食品饮料』五个 L2 之一 (食品加工 34 / 白酒Ⅱ 18 /
-      非白酒 18 / 饮料乳品 17 / 调味发酵品Ⅱ 11 = 98)。**是层级对错(L1 vs L2), 不是版本对错。**
-      库内版本本身无歧义: 31 个 L1 = 2021 版 (2014 版为 28 个), 名称是『基础化工/电力设备/
-      纺织服饰』这套 2021 命名, 2014 版独有的 化工/电气设备/休闲服务/采掘/纺织服装/商业贸易/
-      交运设备 **全部 0 行**。
-      **且『需要供应商具备历史 as-of 能力』这个前提也不成立** —— 见 evidence 末段:
-      本表在分类学意义上本就不是 PIT 的。所以对替代源的真实要求只是
-      『给得出 L1 **和** L2 编码 + 每只股票的归属起止日』, 门槛比原先设想的低得多。
-      **裁决为何是 accept_outage 而非继续等替代**: 到期前 (2026-09-10) 没有时间再做妙想 L1
-      接口参数核对这一步剩余验证 (fable Q4 ⑤ 排到 09-05 一小时内落决), 与其让它到期时仍是
-      undecided 静默冻结, 先明确接受断流并登记冻结影响; 日后若妙想 L1 层级核对通过，随时可解冻改判 replace。"
+    decision: freeze
     evidence: "**PIT 敏感、直达前端与 GT 标注的地基级参照表**: build_sw_industry_view.py -> v_sw_industry
       -> routers/market_pulse.py 前端 + services/institution_profile.py + services/market_pulse.py +
       services/segments.py + scripts/ensure_serve_read_views.py; 另有 **rally_gt.py 直接用
@@ -465,7 +364,7 @@ domains:
       在库 7,911 行 (参照维度表非日频面板, 量级符合) in_date 1984-05-09~2026-08-14, 历年持续新增
       (2025年143行/2026年176行), 未见异常多年真空。fuyao/tdxhub 均无 (tdxhub block() 已明文声明不可与 SW 对照)。
       妙想 sector_data **确认支持历史 as-of 查询** (同一板块 2020-01-01 时点返回值区别于'最新'值, 证明有真实历史能力),
-      但量级对不上(已解释, 见 blocked_by_resolved: 是 L1 vs L2 层级差, 非版本差)。
+      但量级对不上(是 L1 vs L2 层级差, 非版本差, 2026-09-02 实测已排除版本不一致假设)。
       **2026-09-02 追加实测 —— 本表在分类学意义上不是 PIT 的, 且是『不一致地不 PIT』**:
       个股在既有行业间迁移**确实**留带日期的记录 (1,649/5,897 只股票有多行, is_new='N' 共 2,009 行);
       但 2021 版**整行业拆分是无痕改标** —— 中国神华 601088.SH 全表**只有一行**:
@@ -479,22 +378,8 @@ domains:
       细节与边界写在 backend/services/rally_gt.py 的模块 docstring (同日更正了原写的『= 真 PIT』)。
       **对本裁决的影响**: 换源不改变这条 (申万官方发布的也是当前版分类, 任何供应商同病),
       因此它**不构成换源阻塞**; 但也意味着替代源**不需要**具备历史 as-of 分类能力, 门槛降低。"
-    note: "**2026-09-10 冻结后果**: routers/market_pulse.py 的 sw 板块成分下钻、
-      institution_profile.py 的持仓 PIT 行业标注、segments.py 的特征分位行业标注、
-      rally_gt.py 的 Rally GT 分层标注，全部锚定在 2026-09-10 (或到期前最后一个交易日)
-      的申万成分快照上；此后新股上市的行业归属、个股行业迁移都不再被捕获，
-      Rally GT 标注对 2026-09-10 之后的新样本会用旧行业分类打标 (与本域已知的
-      『2021 版整行业拆分无痕改标』同类偏差、但从这天起额外多一层『未来行业变更也捕获不到』)。"
 
   index_member_all_hist:
-    decision: accept_outage
-    must_by: "2026-09-10"
-    frozen_at: "2026-09-10"
-    verdict_deviation: "同 index_member_all：与战略裁决给出的 accept 不同，此处改判 accept_outage，
-      理由见 index_member_all 条目的 verdict_deviation。"
+    decision: freeze
     evidence: "与 index_member_all 同表同源 (同一张 raw_tushare_index_member_all, 按 is_new=Y/N MERGE),
       同一消费链、同一冻结影响。见 index_member_all 条目。两域共用一张物理表, 合并裁决。"
-
-  # ── undecided: 尚未裁决 (门应视为 FAIL) ──────────────────
-  # 以下域到期前必须做出裁决，否则将静默断流。
-  undecided_domains: []
