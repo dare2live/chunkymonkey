@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import re
 from pathlib import Path
@@ -67,6 +68,111 @@ def test_registry_is_fail_closed_on_garbage(tmp_path: Path) -> None:
     missing = tmp_path / "nope.yaml"
     with pytest.raises(gg.GatePolicyError):
         gg.load_registry(missing)
+
+
+# ── R1/R6 死亡条件字段 (object/invariant/kill_when/paradigm, 2026-09-03) ──────
+# mio #7 实证边界: 40 道门 8 事故 32 计划催生, 维护占比 5 月 2% → 9 月 43%。每道门
+# 现在必须自带「守谁/守什么/对象消失时怎么死/哪个范式」四个字段, 缺一不可 (与既有
+# group/checks/why 同一处 fail-closed); object 命中 0 不是 loader 错误, 是 DEAD_GATE
+# 信号 —— 门自己红要求删门, 不阻断提交 (见 gate_policy.py --check / safe_commit.sh §1.65)。
+def _raw_registry() -> dict:
+    return yaml.safe_load(
+        (REPO / "backend" / "config" / "governance_gates.yaml").read_text(encoding="utf-8")
+    )
+
+
+def _write_mutated(tmp_path: Path, mutate) -> Path:
+    raw = _raw_registry()
+    mutate(raw)
+    path = tmp_path / "governance_gates.yaml"
+    path.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
+    return path
+
+
+def test_every_gate_declares_all_four_death_fields() -> None:
+    reg = gg.load_registry()
+    for spec in reg.gates:
+        assert spec.object.strip(), f"{spec.name}.object 不能为空"
+        assert spec.invariant.strip(), f"{spec.name}.invariant 不能为空"
+        assert spec.kill_when.strip(), f"{spec.name}.kill_when 不能为空"
+        assert spec.paradigm in gg.KNOWN_PARADIGMS, f"{spec.name}.paradigm 未知: {spec.paradigm!r}"
+
+
+def test_no_dead_gate() -> None:
+    """全部 object 至少命中一个真实路径 —— 0 个 DEAD_GATE 是现状, 不是巧合。
+
+    红了只有一种修法: 删那道门 (YAML 条目 + safe_commit.sh Step + 测试), 不是把
+    object 改到能凑合命中的地方 —— 那正是这道门试图揭穿的 「declared vs actual」漂移。
+    """
+    reg = gg.load_registry()
+    dead = gg.dead_gate_report(reg)
+    assert not dead, (
+        "DEAD_GATE (object 命中 0 个路径, 删这道门): "
+        + "; ".join(f"{name}: {items}" for name, items in sorted(dead.items()))
+    )
+
+
+@pytest.mark.parametrize("field", ["object", "invariant", "kill_when", "paradigm"])
+def test_missing_death_field_raises(tmp_path: Path, field: str) -> None:
+    path = _write_mutated(tmp_path, lambda raw: raw["commit_gates"]["dead_references"].pop(field))
+    with pytest.raises(gg.GatePolicyError, match=re.escape(f"commit_gates.dead_references.{field}")):
+        gg.load_registry(path)
+
+
+def test_kill_when_bad_prefix_raises(tmp_path: Path) -> None:
+    def mutate(raw: dict) -> None:
+        raw["commit_gates"]["dead_references"]["kill_when"] = "someday, maybe, who knows"
+
+    path = _write_mutated(tmp_path, mutate)
+    with pytest.raises(gg.GatePolicyError, match="delete / move_to:<group> / keep_forever:"):
+        gg.load_registry(path)
+
+
+def test_keep_forever_without_reason_raises(tmp_path: Path) -> None:
+    def mutate(raw: dict) -> None:
+        raw["commit_gates"]["dead_references"]["kill_when"] = "keep_forever:"
+
+    path = _write_mutated(tmp_path, mutate)
+    with pytest.raises(gg.GatePolicyError, match="keep_forever: 后必须带理由"):
+        gg.load_registry(path)
+
+
+def test_paradigm_unknown_enum_raises(tmp_path: Path) -> None:
+    def mutate(raw: dict) -> None:
+        raw["commit_gates"]["dead_references"]["paradigm"] = "vibes"
+
+    path = _write_mutated(tmp_path, mutate)
+    with pytest.raises(gg.GatePolicyError, match="unknown paradigm"):
+        gg.load_registry(path)
+
+
+def test_object_zero_glob_hits_is_dead_gate_not_a_load_error() -> None:
+    """DEAD_GATE 是 --check 时机器强制的信号, 不是 load_registry 本身的 fail-closed 错误——
+
+    否则一道门守的文件被删掉的瞬间, 它会把**加载整份策略**都炸掉 (全部门连带阻断),
+    这比它本来该做的事 (提示删自己) 严重得多。
+    """
+    reg = gg.load_registry()
+    gates = list(reg.gates)
+    for i, spec in enumerate(gates):
+        if spec.name == "dead_references":
+            gates[i] = dataclasses.replace(spec, object="backend/this_path_definitely_absent_xyz/**/*.py")
+    mutated = dataclasses.replace(reg, gates=tuple(gates))
+    dead = gg.dead_gate_report(mutated)
+    assert dead == {"dead_references": ["backend/this_path_definitely_absent_xyz/**/*.py"]}
+
+
+def test_table_and_rule_prefixed_objects_skip_filesystem_check() -> None:
+    """`table:`/`rule:` 条目不查文件系统 —— 不误报 DEAD_GATE。"""
+    reg = gg.load_registry()
+    gates = list(reg.gates)
+    for i, spec in enumerate(gates):
+        if spec.name == "dead_references":
+            gates[i] = dataclasses.replace(
+                spec, object="table:no_such_db.no_such_table, rule:no_such_rule_id"
+            )
+    mutated = dataclasses.replace(reg, gates=tuple(gates))
+    assert gg.dead_gate_report(mutated) == {}
 
 
 def test_system_health_gate_removed_from_registry_must_break_loudly(tmp_path: Path) -> None:

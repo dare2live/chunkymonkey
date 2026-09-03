@@ -130,6 +130,27 @@ else
     echo "[gate-policy] scaffold=warn-only:[$GATES_SCAFFOLD]"
     echo "[gate-policy] system_health→daily_update:[$GATES_SYSTEM_HEALTH]"
 fi
+
+# ── 1.65 门死亡条件检测 (R1, 2026-09-03; mio #7 实证边界) ──────────────────
+# `gate_policy.py --check` 现在做两件事: (a) 三处门名副本(registry/classify_commit_tier/
+# 本文件兜底串)对账 —— 漂移 = 策略文件本身坏了, exit 1, 与既有 fail-closed 同级阻断;
+# (b) 每道门的 object 是否在 repo 里还命中路径 —— 命中 0 = DEAD_GATE, exit 2。
+# DEAD_GATE **不是这次 diff 错了**, 是这道门守的对象已经不在仓库里了 —— 它自己红,
+# 要求删掉自己(YAML 条目 + 本文件对应 Step + 测试), 而不是拦住这次提交。处置: 打印
+# 提示 + 把该门从本次要跑的门里摘掉 (gate_enabled 里查 DEAD_GATES), 不 exit。
+GATE_CHECK_OUT="$(PYTHONPATH=backend "$PY" backend/scripts/gate_policy.py --check 2>&1)" && GATE_CHECK_RC=0 || GATE_CHECK_RC=$?
+DEAD_GATES=""
+if [[ "$GATE_CHECK_RC" -eq 2 ]]; then
+    printf '%s\n' "$GATE_CHECK_OUT"
+    DEAD_GATES="$(printf '%s\n' "$GATE_CHECK_OUT" | sed -n 's/^DEAD_GATE \([A-Za-z0-9_]*\):.*/\1/p' | sort -u | tr '\n' ' ')"
+    echo "[gate-policy] DEAD_GATE 门已跳过本次提交, 不阻断: [$DEAD_GATES]"
+elif [[ "$GATE_CHECK_RC" -ne 0 ]]; then
+    printf '%s\n' "$GATE_CHECK_OUT"
+    echo "ERROR: [gate-policy --check] 门登记表三处漂移 (registry/classify_commit_tier/safe_commit.sh) → fail-closed 阻断提交"
+    exit 1
+else
+    printf '%s\n' "$GATE_CHECK_OUT"
+fi
 SCAFFOLD_WARNED=""
 
 gate_group() {
@@ -140,6 +161,11 @@ gate_group() {
 
 gate_enabled() {
     local g="$1"
+    # DEAD_GATE: object 命中 0 个路径 —— 对象已经不在仓库里了, 不是这次 diff 的问题。
+    # 跳过不跑, 但不阻断 (§1.65 已打印 DEAD_GATE 提示, 处置权在人: 删门)。
+    case " $DEAD_GATES " in
+        *" $g "*) return 1 ;;
+    esac
     # system_health 组在 commit 路径不跑 —— 它查的是 live 数据与 config 生效性,
     # 与本次 diff 无关; 受害时刻在运行时, 门已归位 daily_update。
     case " $GATES_SYSTEM_HEALTH " in

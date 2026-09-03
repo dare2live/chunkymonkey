@@ -19,8 +19,20 @@
 #
 # fail-closed 铁律: 本文件缺失 / 不可解析 / 门名与 classify_commit_tier 不一致时，
 # gate_policy 返回空分组 → safe_commit 退回「全部阻断」，绝不因配置坏掉而放行。
-# 门只按分组改变**后果**，永不删除；tier 剪枝 (L1/L2/L3) 是正交的另一维，
-# owner 仍是 backend/config/commit_tiers.yaml。
+# tier 剪枝 (L1/L2/L3) 是正交的另一维, owner 仍是 backend/config/commit_tiers.yaml。
+#
+# 死亡条件字段 (R1/R6, 2026-09-03; mio #7 实证边界: 40 道门 8 事故 32 计划催生,
+# 门维护占提交比 5 月 2% → 9 月 43%)：每个 commit_gates.<id> 除 group/checks/why
+# 外还须有 —
+#   object    : 逗号分隔, 每项 table:<db>.<name> / rule:<id> (不查文件系统) 或
+#               repo 相对 glob (loader 在 --check 时验证命中 ≥1 路径, 命中 0 =
+#               DEAD_GATE —— 门自己红要求删门, 不拦提交, 见 gate_policy.py --check)
+#   invariant : 一句可判的话, 说清"什么必须成立"
+#   kill_when : delete | move_to:<group> | keep_forever:<理由> 之一开头
+#   paradigm  : engineering | strategy_validation | casebook (今天全是 engineering)
+# 四字段任一缺失/格式不对 → GatePolicyError (与 group/checks/why 同一处 fail-closed)。
+# 门不再「永不删除」——DEAD_GATE 就是"该删了"的机器信号; 门只按分组改变**后果**
+# 这条对活门仍成立, 但对象消失的死门要删, 不是继续挂着改分组。
 
 version: 1
 
@@ -56,11 +68,19 @@ commit_gates:
     group: scaffold
     checks: "改了 service/script/yaml 就必须同批改 PROJECT_INDEX.md"
     why: "索引陈旧只让下次 session 的地图不准；它挡不住任何一个真实缺陷。"
+    object: "PROJECT_INDEX.md, backend/services/**, backend/scripts/*.py, backend/config/*.yaml, AGENTS.md"
+    invariant: "改了 TRIGGERS 命中的路径 (services/**, scripts/build_*|optimize_*|run_*|backfill_*|rebuild_*|audit_*, config/**, AGENTS.md) 必须同批 stage PROJECT_INDEX.md"
+    kill_when: "keep_forever: 只要 PROJECT_INDEX.md 还是人工维护的活索引, 漂移检测就要在"
+    paradigm: engineering
 
   feature_map:
     group: scaffold
     checks: "FEATURE_MAP.md 派生地图与 staged 源快照一致"
     why: "机器可重生的投影；陈旧 = 重新跑一次生成器，不是系统故障。"
+    object: "FEATURE_MAP.md, backend/**/*.py, backend/routers/*.py"
+    invariant: "FEATURE_MAP.md 与从 backend/**/*.py + routers/*.py rglob 重生的结果逐字一致"
+    kill_when: "keep_forever: 只要 FEATURE_MAP.md 是机器生成产物, 就要防手改/漂移"
+    paradigm: engineering
 
   moth_invariants:
     group: diff_correctness
@@ -73,10 +93,18 @@ commit_gates:
       这与 warn-only 短路吞掉 coupling 同形态: 粗粒度分组悄悄改了不该改的东西的强制级别。
       判据只有一条: 违反它意味着**数据/平台此刻就是错的**, 而不是「登记没跟上」——
       阈值棘轮(表数/索引数/体量带)刻意不在此列, 拿它挡提交正是 P1 要消灭的张力。
+    object: ".moth/**"
+    invariant: "moth assert JSON 里标 severity: blocking 的数据不变量全部通过"
+    kill_when: "keep_forever: 只要 .moth profile 还在版本控制里"
+    paradigm: engineering
   moth:
     group: scaffold
     checks: "moth assert (仓库自述断言) + moth coupling"
     why: "断言过期误导的是下一个读它的人；数据与 PIT 不依赖它。"
+    object: ".moth/**"
+    invariant: "moth assert(仓库自述断言全集) + moth coupling 全部闭合"
+    kill_when: "keep_forever: 只要 .moth profile 还在版本控制里"
+    paradigm: engineering
 
   staged_worktree_parity:
     group: diff_correctness
@@ -85,30 +113,54 @@ commit_gates:
       ci_pytest 刻意拿 live worktree 跑(测试需要 repo 的 pytest.ini 与 fixture), 因此它对
       「工作树 != 索引」结构性失明 —— 跑的是手上的版本, 提交的是索引里的版本。两次事故同一动作:
       `git add` 之后又编辑。范围只限 .py: 其余门都读 staged 快照对漂移免疫, 只有 ci_pytest 会被骗, 而骗它的介质就是 pytest 导入执行的 .py。开到所有文件会误伤 `git add -p` 分批提交。
+    object: "**/*.py"
+    invariant: "每个 staged 的 .py 文件, git 索引内容必须与工作树内容一致"
+    kill_when: "keep_forever: 只要 ci_pytest 门还拿 live worktree 跑测试, 就需要这层校验"
+    paradigm: engineering
   rule_compliance:
     group: diff_correctness
     checks: "staged diff 里的魔数 / 估算参数缺 evidence|measured|from yaml 注释"
     why: "扫的就是这次 diff 的内容；拍脑袋常数一旦进主干就成了别人的既定事实。"
+    object: "rule:magic_number"
+    invariant: "staged diff 新增的魔数/估算参数/DB 边界反 pattern 必须带 evidence|measured|from yaml 注释"
+    kill_when: "keep_forever: 拍脑袋常数一旦进主干就是既定事实, 工程卫生"
+    paradigm: engineering
 
   ci_pytest:
     group: diff_correctness
     checks: "与 public CI 同面的 blocking pytest"
     why: "这次改动是否打破现有契约 —— 典型的 diff 正确性。"
+    object: "backend/tests/**/test_*.py, backend/config/ci_pytest_surface.yaml"
+    invariant: "ci_pytest_surface.yaml 的 blocking_paths 与 public CI 同面全绿"
+    kill_when: "keep_forever: 只要还用 pytest 就要防契约破坏未经检测合入主干"
+    paradigm: engineering
 
   sandbox_isolation:
     group: diff_correctness
     checks: "backend/ 引用 sandbox/ (C1) / 探索 runner 漏进 backend/scripts (C3)"
     why: "实验残留是被这次 diff 带进来的；下一刀再查就已经污染了主代码。"
+    object: "backend/**/*.py, sandbox/**"
+    invariant: "backend/ 不 import sandbox/; 探索 runner 不漏进 backend/scripts"
+    kill_when: "delete: sandbox/ 目录清空且 backend 半年内 0 次误引用命中 (即 C1/C3 长期零命中), 隔离已达成"
+    paradigm: engineering
 
   serve_read_layer:
     group: diff_correctness
     checks: "非成员消费者绕过 DataAccess 裸查 / entity 声明链断 / L2 bypass"
     why: "旁路读是这次 diff 写下的代码形状，静态可判。"
+    object: "backend/services/**/*.py, backend/scripts/**/*.py, backend/routers/*.py, backend/config/data_module_members.yaml"
+    invariant: "非成员消费者不得内联裸查; preflight 已接线; entity 声明链齐全; L2 bypass 关闭"
+    kill_when: "keep_forever: 读层边界"
+    paradigm: engineering
 
   calendar_usage:
     group: diff_correctness
     checks: "wall-clock 当最新交易日 / SQL CURRENT_DATE 当上界"
     why: "第零条规定的静态执法面；绕过日历是这行代码本身的缺陷。"
+    object: "backend/**/*.py"
+    invariant: "交易日只从 services.calendar 取; 不内联 wall-clock(date.today/datetime.now) 当最新交易日, 不裸写 SQL <=CURRENT_DATE 上界锚"
+    kill_when: "keep_forever: 日历单一计算点"
+    paradigm: engineering
 
   population_contract:
     group: diff_correctness
@@ -116,6 +168,10 @@ commit_gates:
     why: >-
       静态契约面属于这次 diff。同一脚本报的 live_readiness 从来只是投影、
       不阻断，真的 live 数据裁决在 continuity 运行时自检里。
+    object: "backend/config/universe_rules.yaml, backend/config/sync_registry.yaml"
+    invariant: "静态 population 契约 verdict=PASS 且 formal_dataset_count>0"
+    kill_when: "keep_forever: universe 单一入口"
+    paradigm: engineering
 
   lineage_drift:
     group: diff_correctness
@@ -126,11 +182,19 @@ commit_gates:
       报的是「有人改了代码没重生血缘」这种**开发者状态**，与数据健康无关（审查那次命中
       正是因为本会话在改代码），且写锁期的降级路径从未验证。已撤出 runtime_checks ——
       放一个信号含义不明的检查进日更，只会训练人无视 degraded。
+    object: "data/lineage/graph.json"
+    invariant: "提交版 data/lineage/graph.json 与从 registry/schema/消费方重生的结果逐字一致"
+    kill_when: "keep_forever: 血缘图是 registry/schema/消费方的投影, 只要投影存在就要防漂移"
+    paradigm: engineering
 
   dead_references:
     group: diff_correctness
     checks: "删模块/表/文件后引用方未清 (死 import / config 死路径 / 孤儿脚本)"
     why: "删除动作就在这次 diff 里；漏清引用方是这一刀没做完。"
+    object: "backend/**/*.py, backend/config/*.yaml, docs/*.md, .moth/**"
+    invariant: "删除的模块/表/文件, 其引用方(import / config 死路径 / 文档链接)必须同批清除"
+    kill_when: "keep_forever: 与范式无关的工程卫生"
+    paradigm: engineering
 
   repo_blob_size:
     group: diff_correctness
@@ -139,6 +203,10 @@ commit_gates:
       大文件就在这次 diff 里；不拦住它，可重算的分析/实验产物立刻进主干膨胀 .git
       (2026-08-31 事故: 3.9G，根因正是这类文件被逐次提交)。与 dead_references 同型，
       不是「登记没跟上」的脚手架问题。
+    object: "backend/config/repo_blob_policy.yaml"
+    invariant: "staged 新增/修改文件的 blob 大小不超阈值且不在白名单外"
+    kill_when: "keep_forever: 2026-08-31 3.9G 事故根治门, 防可重算产物再次入库"
+    paradigm: engineering
 
   grain_uniqueness:
     group: system_health
@@ -146,6 +214,10 @@ commit_gates:
     why: >-
       查的是库里现有数据，与本次 diff 无关。grain 声明错会被批内去重升级成
       静默销毁 —— 受害时刻是每次跑批写表，不是提交代码。
+    object: "table:*"
+    invariant: "全域按声明 grain (sync_registry.yaml 域 + MART_GRAINS) GROUP BY 无重复组"
+    kill_when: "keep_forever: 数据正确性"
+    paradigm: engineering
 
   continuity:
     group: system_health
@@ -153,6 +225,10 @@ commit_gates:
     why: >-
       纯 live 数据 readiness。safe_commit 里它早已只打印不阻断 (2026-07-17
       分离 code fitness 与 data readiness)，现在连跑都不跑 —— 归位到日更。
+    object: "table:*"
+    invariant: "应有交易日无缺日/中间空洞/子榜断流, 声明覆盖与实测不漂移"
+    kill_when: "keep_forever: 数据可用性验证器自身的自洽性, 门策略坏掉时最需要它可信"
+    paradigm: engineering
 
   no_emoji:
     group: diff_correctness
@@ -161,21 +237,37 @@ commit_gates:
       扫的就是这次 diff 的内容, 静态可判。owner 的硬偏好(全项目不用 emoji);
       2026-08-11 之前它只活在 git hook 里 —— **登记表之外的执法点**, 意味着
       `safe_commit` 路径根本不查它, 而两条路径给出不同结果正是 P1 要消灭的。
+    object: "rule:no_emoji"
+    invariant: "staged diff (代码/yaml/markdown/commit body) 不含 emoji"
+    kill_when: "keep_forever: owner 全项目硬偏好"
+    paradigm: engineering
 
   config_refs:
     group: diff_correctness
     checks: "data_access.yaml 引的 layer 值在 data_layers.yaml 有定义"
     why: "跨 config 悬空引用是这次 diff 写下的，纯静态。"
+    object: "backend/config/data_access.yaml, backend/config/data_layers.yaml"
+    invariant: "data_access.yaml 引用的 layer 值必须在 data_layers.yaml 有定义"
+    kill_when: "keep_forever: 层词汇单一真相源"
+    paradigm: engineering
 
   doc_drift:
     group: scaffold
     checks: "活文档引用的代码路径 / 本地链接实际存在"
     why: "悬空引用害的是按图索骥的下一个人；系统照常跑。"
+    object: "AGENTS.md, docs/*.md, PROJECT_INDEX.md"
+    invariant: "活文档 (活索引 + 规则 + docs/ 契约) 引用的代码路径/本地链接必须实际存在"
+    kill_when: "keep_forever: 只要文档引用代码路径, 悬空引用就会误导下一个人"
+    paradigm: engineering
 
   doc_governance:
     group: scaffold
     checks: "活文档 owner 唯一 / 无 retired CLI / fails=0 warns=0"
     why: "文档生命周期纪律；坏掉不改变任何运行时行为。"
+    object: "AGENTS.md, goal.md, PROJECT_INDEX.md, docs/*.md, FEATURE_MAP.md"
+    invariant: "活文档 owner 唯一; docs/ authority allowlist 精确匹配; fails=0 warns=0"
+    kill_when: "keep_forever: 文档生命周期纪律"
+    paradigm: engineering
 
   doc_runtime_state:
     group: scaffold
@@ -184,11 +276,19 @@ commit_gates:
       写死的运行时状态坏掉时，系统照常跑，受害的是下一个照着文档做判断的人
       (2026-08-10 实证: 两份手写文档互相矛盾且同时落后两周，误导了整整两周)。
       故 warn-only；但它是**唯一**查语义时效的门 —— 其余文档门只查悬空链接与代码路径。
+    object: "docs/*.md, backend/config/doc_runtime_state.yaml"
+    invariant: "人工活文档里没有未声明的紧凑日期/写死的旧前沿/已失效的豁免"
+    kill_when: "keep_forever: 唯一查语义时效的门, 其余文档门只查悬空链接"
+    paradigm: engineering
 
   commit_msg:
     group: scaffold
     checks: "commit message 关键词提示 (GROUP A/B)"
     why: "自述型；本来就只打印 WARNING 不阻断，登记在此保持一致。"
+    object: "rule:commit_message_structure"
+    invariant: "commit message 含 Q/Fix/Evidence/Residual 结构关键词提示"
+    kill_when: "keep_forever: 自述型提示, 保持与 commit-msg hook 一致"
+    paradigm: engineering
 
   rule10:
     group: diff_correctness
@@ -197,6 +297,10 @@ commit_gates:
       2026-08-10 已拆掉无法验证的那一半 (缺 APPROVE 不再阻断)。剩下两条都是
       客观且只关于这次 diff 的事实：有人对**这一刀**写下了未消除的否定裁决，
       或者门根本无法确定 staged 范围。AGENTS.md §9 保留其阻断力。
+    object: "rule:codex_review_verdict"
+    invariant: "commit message 里没有未消除的 Codex REQUEST_CHANGES 裁决, 且 staged 范围可判定"
+    kill_when: "keep_forever: AGENTS.md §9 保留其阻断力"
+    paradigm: engineering
 
   tushare_sunset:
     group: scaffold
@@ -208,6 +312,10 @@ commit_gates:
       sunset.yaml 出现；(2) sunset 的域若已非 tushare 源且未 status:done 报 WARN；
       (3) 未裁决域倒计时（过期才 FAIL，距到期前只 WARN）。WARN 必须列出全部未裁决域名
       防 warn-only 退化成 warn-nothing。
+    object: "backend/config/tushare_sunset.yaml, backend/config/sync_registry.yaml"
+    invariant: "sunset 清单与 registry 的 tushare 源域一一对账, 无未裁决的过期域"
+    kill_when: "delete: 2026-09-10 TuShare 授权到期且全部域已切换后"
+    paradigm: engineering
 
 # ── 运行时自检 (daily_update) ────────────────────────────────────────────
 # system_health 组的门在这里落地，外加两类本来就只该活在运行时的检查。

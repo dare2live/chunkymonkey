@@ -16,6 +16,7 @@ fail-closed：配置缺失/不合法一律抛 :class:`GatePolicyError`，由调�
 """
 from __future__ import annotations
 
+import glob as _glob_mod
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,6 +35,20 @@ KNOWN_GROUPS = (GROUP_DIFF, GROUP_SYSTEM, GROUP_SCAFFOLD)
 _GROUP_REQUIRED_FIELDS = ("victim", "harm_at", "commit_behavior", "runtime_behavior", "why")
 _COMMIT_BEHAVIOR = {GROUP_DIFF: "block", GROUP_SYSTEM: "not_run", GROUP_SCAFFOLD: "warn"}
 
+# ── R1/R6 死亡条件字段 (2026-09-03; mio #7 实证边界: 40 道门 8 事故 32 计划催生,
+# 门维护占提交比 5 月 2% → 9 月 43%) ────────────────────────────────────────
+# 每道门必须自带 object(守谁) / invariant(守什么, 一句可判) / kill_when(对象消失
+# 或范式退役时怎么死) / paradigm(哪个范式声明的)。前三个字段缺失即 GatePolicyError
+# (与既有 group/checks/why 同一处 fail-closed); object 的 glob 命中 0 不是 loader
+# 错误 —— 那是 DEAD_GATE 信号, 由 dead_gate_report() 在 --check 时机器强制处置。
+PARADIGM_ENGINEERING = "engineering"
+PARADIGM_STRATEGY_VALIDATION = "strategy_validation"
+PARADIGM_CASEBOOK = "casebook"
+KNOWN_PARADIGMS = (PARADIGM_ENGINEERING, PARADIGM_STRATEGY_VALIDATION, PARADIGM_CASEBOOK)
+
+_KILL_WHEN_PREFIXES = ("delete", "move_to:", "keep_forever:")
+_OBJECT_NO_FS_PREFIXES = ("table:", "rule:")
+
 
 class GatePolicyError(RuntimeError):
     """策略文件缺失 / 不可解析 / 违反硬不变量 —— 调用方必须 fail closed。"""
@@ -41,12 +56,21 @@ class GatePolicyError(RuntimeError):
 
 @dataclass(frozen=True)
 class GateSpec:
-    """一道 commit 门的分组标签。"""
+    """一道 commit 门的分组标签 + 死亡条件 (R1/R6, 2026-09-03)。"""
 
     name: str
     group: str
     checks: str
     why: str
+    object: str
+    invariant: str
+    kill_when: str
+    paradigm: str
+
+    @property
+    def object_items(self) -> tuple[str, ...]:
+        """逗号分隔的 object 字段拆成独立条目 (已 strip)。"""
+        return tuple(s.strip() for s in self.object.split(",") if s.strip())
 
 
 @dataclass(frozen=True)
@@ -107,6 +131,43 @@ def _require_str(value: Any, what: str) -> str:
     return value.strip()
 
 
+def _require_object(value: Any, what: str) -> str:
+    """`object`: 非空字符串, 逗号分隔; 每个条目非空 (拒绝 "a,,b" 或 "a, ,b" 这类空洞)。
+
+    命中 0 个文件系统路径**不在这里判** —— 那是 dead_gate_report() 的活, 不是加载期错误。
+    """
+    raw = _require_str(value, what)
+    items = [s.strip() for s in raw.split(",")]
+    if any(not item for item in items):
+        raise GatePolicyError(f"{what} malformed: empty item in comma-separated list {raw!r}")
+    return raw
+
+
+def _require_kill_when(value: Any, what: str) -> str:
+    """`kill_when`: 必须以 delete / move_to:<group> / keep_forever:<理由> 之一开头。"""
+    raw = _require_str(value, what)
+    if not raw.startswith(_KILL_WHEN_PREFIXES):
+        raise GatePolicyError(
+            f"{what} 必须以 delete / move_to:<group> / keep_forever: 三者之一开头: {raw!r}"
+        )
+    if raw.startswith("keep_forever:") and not raw[len("keep_forever:"):].strip():
+        raise GatePolicyError(f"{what}: keep_forever: 后必须带理由")
+    if raw.startswith("move_to:"):
+        target = raw[len("move_to:"):].strip()
+        if not target:
+            raise GatePolicyError(f"{what}: move_to: 后必须带目标组名")
+        if target not in KNOWN_GROUPS:
+            raise GatePolicyError(f"{what}: move_to: 目标组未知: {target!r}")
+    return raw
+
+
+def _require_paradigm(value: Any, what: str) -> str:
+    raw = _require_str(value, what)
+    if raw not in KNOWN_PARADIGMS:
+        raise GatePolicyError(f"{what} unknown paradigm {raw!r} (must be one of {KNOWN_PARADIGMS})")
+    return raw
+
+
 def _load_raw(path: Path) -> dict[str, Any]:
     if not path.is_file():
         raise GatePolicyError(f"missing gate registry: {path}")
@@ -159,6 +220,10 @@ def _parse_gates(raw: dict[str, Any]) -> tuple[GateSpec, ...]:
                 group=group,
                 checks=_require_str(body.get("checks"), f"commit_gates.{name}.checks"),
                 why=_require_str(body.get("why"), f"commit_gates.{name}.why"),
+                object=_require_object(body.get("object"), f"commit_gates.{name}.object"),
+                invariant=_require_str(body.get("invariant"), f"commit_gates.{name}.invariant"),
+                kill_when=_require_kill_when(body.get("kill_when"), f"commit_gates.{name}.kill_when"),
+                paradigm=_require_paradigm(body.get("paradigm"), f"commit_gates.{name}.paradigm"),
             )
         )
     return tuple(out)
@@ -283,6 +348,37 @@ def run_runtime_checks(
             }
         )
     return rows
+
+
+def _classify_object_item(item: str) -> tuple[str, str]:
+    """Return (kind, payload). kind ∈ {'table', 'rule', 'glob'}; table:/rule: skip fs check."""
+    for prefix in _OBJECT_NO_FS_PREFIXES:
+        if item.startswith(prefix):
+            return prefix[:-1], item[len(prefix):]
+    return "glob", item
+
+
+def dead_gate_report(registry: GateRegistry, *, repo_root: Path | None = None) -> dict[str, list[str]]:
+    """gate name -> 该门 object 里命中 0 个路径的 glob 条目清单 (DEAD_GATE 信号)。
+
+    只查 glob 条目; `table:`/`rule:` 条目按 R1 原文不查文件系统。命中 0 的门不是
+    loader 错误 (仍会正常加载) —— 死亡处置是 --check 的活: 打印 DEAD_GATE 提示删门,
+    不阻断提交 (门自己红并要求删门, 不是拦提交)。
+    """
+    root = repo_root or REPO
+    dead: dict[str, list[str]] = {}
+    for spec in registry.gates:
+        misses: list[str] = []
+        for item in spec.object_items:
+            kind, payload = _classify_object_item(item)
+            if kind in ("table", "rule"):
+                continue
+            matches = _glob_mod.glob(str(root / payload), recursive=True)
+            if not matches:
+                misses.append(item)
+        if misses:
+            dead[spec.name] = misses
+    return dead
 
 
 def load_registry(path: Path | None = None) -> GateRegistry:

@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from services.governance_gates import (  # noqa: E402
     GatePolicyError,
     RuntimeCheckSpec,
+    dead_gate_report,
     load_registry,
 )
 
@@ -73,7 +74,15 @@ def _print_table() -> int:
 
 
 def _check() -> int:
-    """登记表 ↔ classify_commit_tier ↔ safe_commit.sh 三处门名对账。"""
+    """登记表 ↔ classify_commit_tier ↔ safe_commit.sh 三处门名对账 + DEAD_GATE 死亡条件检测。
+
+    退出码 (三态, 严重性递减):
+      1 = 三方门名漂移 (策略文件本身坏了) —— fail-closed, 调用方须继续按旧行为全阻断。
+      2 = 三方一致, 但至少一道门是 DEAD_GATE (它守的 object 一个路径都不命中) ——
+          这不是「这次 diff 错了」, 是「这道门该删了」。safe_commit.sh 据此跳过该门,
+          不阻断提交 (R1 原文: 门自己红并要求删门, 而不是拦提交)。
+      0 = 全部一致, 零 DEAD_GATE。
+    """
     problems: list[str] = []
     try:
         reg = load_registry()
@@ -111,13 +120,25 @@ def _check() -> int:
         for p in problems:
             print(f"[gate-policy] FAIL: {p}", file=sys.stderr)
         return 1
+
+    # 三方一致 —— 现在查死亡条件。DEAD_GATE 不是策略文件坏了, 是某道门守的对象已经
+    # 不在这个仓库里了; 处置权交给人 (删 YAML 条目 + safe_commit.sh Step + 测试),
+    # 机器只负责指出来, 不代为决定, 也不因此拦下这次提交。
+    dead = dead_gate_report(reg)
+    for name in sorted(dead):
+        for glob_item in dead[name]:
+            print(
+                f"DEAD_GATE {name}: object {glob_item} 命中 0 → "
+                "删这道门（YAML 条目 + safe_commit.sh Step + 测试）"
+            )
     print(
         f"[gate-policy] PASS: {len(registry_names)} 门三处一致 "
         f"(diff_correctness={len(reg.names_in_group('diff_correctness'))} "
         f"system_health={len(reg.names_in_group('system_health'))} "
-        f"scaffold={len(reg.names_in_group('scaffold'))})"
+        f"scaffold={len(reg.names_in_group('scaffold'))}) "
+        f"dead_gates={len(dead)}"
     )
-    return 0
+    return 2 if dead else 0
 
 
 def _subprocess_runner(spec: RuntimeCheckSpec, args: list[str]) -> int:
