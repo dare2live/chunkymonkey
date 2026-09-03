@@ -390,7 +390,7 @@ def test_get_active_universe_reads_st_mapping_from_reference(tmp_path, monkeypat
 
 
 # test_audit_contamination 2026-07-07 随 audit_strategy_universe_contamination() 一并退役
-# (owner=PROJECT_INDEX.md dim_all_ever_listed 决策收口): 被测函数已删, 见 services/universe.py。
+# (决策见 git log --grep dim_all_ever_listed): 被测函数已删, 见 services/universe.py。
 
 
 # === 2026-06-17 universe 升交易日历级真相源: 硬验证器 + PIT ST 防回归 ===

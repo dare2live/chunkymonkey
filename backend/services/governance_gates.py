@@ -281,8 +281,11 @@ def _parse_scaffold_fixes(
     raw: dict[str, Any], gate_group: Mapping[str, str]
 ) -> tuple[ScaffoldFixSpec, ...]:
     rows = raw.get("scaffold_fix")
-    if not isinstance(rows, list) or not rows:
-        raise GatePolicyError("scaffold_fix must be a non-empty list")
+    # 空列表合法 (2026-09-04): scaffold 组门可以一时没有可批量修的产物/清单入口，
+    # 与 runtime_checks 不同 —— 后者是 system_health 组「摘掉就必须有人接手」的硬约束，
+    # 这里只要求键存在且类型是 list，不要求非空。
+    if not isinstance(rows, list):
+        raise GatePolicyError("scaffold_fix must be a list")
     out: list[ScaffoldFixSpec] = []
     for index, body in enumerate(rows):
         if not isinstance(body, dict):
@@ -358,27 +361,58 @@ def _classify_object_item(item: str) -> tuple[str, str]:
     return "glob", item
 
 
-def dead_gate_report(registry: GateRegistry, *, repo_root: Path | None = None) -> dict[str, list[str]]:
-    """gate name -> 该门 object 里命中 0 个路径的 glob 条目清单 (DEAD_GATE 信号)。
+def _object_glob_hits(spec, root: Path) -> tuple[list[str], list[str]]:
+    """(命中的 glob 条目, 命中 0 的 glob 条目)。`table:`/`rule:` 条目按 R1 原文不查文件系统。"""
+    hit: list[str] = []
+    miss: list[str] = []
+    for item in spec.object_items:
+        kind, payload = _classify_object_item(item)
+        if kind in ("table", "rule"):
+            continue
+        (hit if _glob_mod.glob(str(root / payload), recursive=True) else miss).append(item)
+    return hit, miss
 
-    只查 glob 条目; `table:`/`rule:` 条目按 R1 原文不查文件系统。命中 0 的门不是
-    loader 错误 (仍会正常加载) —— 死亡处置是 --check 的活: 打印 DEAD_GATE 提示删门,
-    不阻断提交 (门自己红并要求删门, 不是拦提交)。
+
+def dead_gate_report(registry: GateRegistry, *, repo_root: Path | None = None) -> dict[str, list[str]]:
+    """gate name -> 全部 glob 条目都命中 0 的门 (真 DEAD_GATE 信号)。
+
+    2026-09-04 修正语义。原实现是「**任一** glob 命中 0 就报 DEAD_GATE」, 这与它想守的
+    东西不是一回事:
+      - 想守: 这道门守的**对象整个不在仓库里了** → 删门。
+      - 实际问: 这道门的 object 清单里**有没有哪一条**路径不存在。
+    差别不是学术的。`dead_references` 的 object 是四条
+    (`backend/**/*.py, backend/config/*.yaml, docs/*.md, .moth/**`), 删掉 docs/ 后第三条
+    命中 0, 而它是一道活的阻断门。更糟的是 `safe_commit.sh:145` 会从 DEAD_GATE 行里
+    抓门名并**整道跳过不跑** —— 于是"删了一批文档"这个动作, 恰好把唯一能抓"删完留下
+    悬空引用"的门关掉了。豁免的作用域比意图大, 同 [[feedback-warn-only-degrades-to-warn-nothing]]。
+
+    现在切成两个信号:
+      - `dead_gate_report`  = 全部 glob 命中 0 → 门该死, 机器可判, 处置=删门。
+      - `stale_object_report` = 部分命中 0 → 门还活着, object 清单该修, 处置=删那几条 glob。
+    只有前者会被 safe_commit 跳过; 后者照跑。
     """
     root = repo_root or REPO
     dead: dict[str, list[str]] = {}
     for spec in registry.gates:
-        misses: list[str] = []
-        for item in spec.object_items:
-            kind, payload = _classify_object_item(item)
-            if kind in ("table", "rule"):
-                continue
-            matches = _glob_mod.glob(str(root / payload), recursive=True)
-            if not matches:
-                misses.append(item)
-        if misses:
-            dead[spec.name] = misses
+        hit, miss = _object_glob_hits(spec, root)
+        if miss and not hit:
+            dead[spec.name] = miss
     return dead
+
+
+def stale_object_report(registry: GateRegistry, *, repo_root: Path | None = None) -> dict[str, list[str]]:
+    """gate name -> 命中 0 的 glob 条目 (但该门另有 glob 命中, 所以门本身还活着)。
+
+    处置是**从 object 清单里删掉这几条**, 不是删门。留着不修 = 登记表烂掉, 且下次真死时
+    分不清是"一直烂着"还是"刚死"。
+    """
+    root = repo_root or REPO
+    stale: dict[str, list[str]] = {}
+    for spec in registry.gates:
+        hit, miss = _object_glob_hits(spec, root)
+        if miss and hit:
+            stale[spec.name] = miss
+    return stale
 
 
 def load_registry(path: Path | None = None) -> GateRegistry:

@@ -9,5 +9,5 @@ status: training_boundary_plus_research_prereg_v1
 holdout_start: "20250601"
 
 # research_prereg_v1 closes atomic prereg / param_hash / single-touch token for
-# research ExperimentRun. It is NOT StrategyRelease and does not replace the
-# full publish gate in docs/strategy_validation_contract.md §9.
+# research ExperimentRun. It does not by itself authorize anything downstream
+# —— 旧的 StrategyRelease / B0-B5 发布阶梯已随范式退役 (git log --grep StrategyRelease)。

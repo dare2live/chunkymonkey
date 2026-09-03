@@ -32,8 +32,9 @@ REPO = Path(__file__).resolve().parents[2]
 DEFAULT_POLICY = REPO / "backend" / "config" / "commit_tiers.yaml"
 
 KNOWN_GATES = frozenset({
-    "project_index_sync",
-    "feature_map",
+    "doc_allowlist",
+    "brick_registry",
+    "legacy_raw_plane",
     "moth",
     "rule_compliance",
     "ci_pytest",
@@ -49,18 +50,14 @@ KNOWN_GATES = frozenset({
     "moth_invariants",
     "staged_worktree_parity",
     "config_refs",
-    "doc_drift",
-    "doc_governance",
-    "doc_runtime_state",
-    "commit_msg",
-    "rule10",
     "repo_blob_size",
     "tushare_sunset",
 })
 
 ALL_GATES_ORDERED = (
-    "project_index_sync",
-    "feature_map",
+    "doc_allowlist",
+    "brick_registry",
+    "legacy_raw_plane",
     "moth",
     "rule_compliance",
     "ci_pytest",
@@ -76,11 +73,6 @@ ALL_GATES_ORDERED = (
     "moth_invariants",
     "staged_worktree_parity",
     "config_refs",
-    "doc_drift",
-    "doc_governance",
-    "doc_runtime_state",
-    "commit_msg",
-    "rule10",
     "repo_blob_size",
     "tushare_sunset",
 )
@@ -158,10 +150,8 @@ def validate_policy(policy: dict[str, Any]) -> None:
         unknown = set(names) - KNOWN_GATES
         if unknown:
             raise PolicyError(f"tier_gates.{tier} unknown gates: {sorted(unknown)}")
-    if "doc_governance" not in gates["L1"] or "doc_drift" not in gates["L1"]:
-        raise PolicyError("L1 must include doc_drift and doc_governance")
-    if "rule10" not in gates["L2"]:
-        raise PolicyError("L2 must include rule10")
+    if "doc_allowlist" not in gates["L1"]:
+        raise PolicyError("L1 must include doc_allowlist")
     if "ci_pytest" not in gates["L2"]:
         # 2026-07-20 Fable5 CI-tax fix: L2 code changes must run the same offline
         # pytest surface as public CI locally, not just at push time.

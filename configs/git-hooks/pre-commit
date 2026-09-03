@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ChunkyMonkey pre-commit hook — `git commit` 直调时的兜底防线。
 #
-# Owner: docs/engineering_governance.md §14.1 + backend/config/governance_gates.yaml。
+# Owner: backend/config/governance_gates.yaml。
 #
 # **为什么它入了 git** (2026-08-11 P3 收口时发现): 此前 hook 只存在于每台机器的
 # `.git/hooks/` 里 —— 不入版本、不被审查、不被任何门覆盖, 新克隆的人根本没有这道防线,
@@ -37,7 +37,6 @@ run_gate() {   # $1=登记表里的门名 (无对应登记则恒阻断)  $2..=�
     exit 1
 }
 
-run_gate project_index_sync  "$PY" backend/scripts/check_project_index_sync.py
 run_gate rule_compliance     "$PY" backend/scripts/check_rule_compliance.py
 run_gate no_emoji            "$PY" backend/scripts/check_no_emoji.py
 run_gate population_contract "$PY" backend/scripts/check_universe_filter.py --staged

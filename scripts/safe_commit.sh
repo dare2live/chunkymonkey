@@ -14,7 +14,7 @@
 # Classifier owner: backend/scripts/classify_commit_tier.py +
 # backend/config/commit_tiers.yaml. Missing/bad classifier → L3 fail-closed.
 #
-# 门分布 (正交于 tier; goal.md「治理体系重构」P1, owner backend/config/governance_gates.yaml):
+# 门分布 (正交于 tier; owner backend/config/governance_gates.yaml):
 #   diff_correctness → 阻断 (这次 diff 本身错, 受害时刻就是 commit)
 #   system_health    → commit 路径不跑, 归 scripts/daily_update.sh 运行时自检
 #                      (查的是 live 数据与 config 生效性, 与本次 diff 无关)
@@ -84,7 +84,7 @@ done
 echo
 echo "=== Step 1.5: commit tier classification ==="
 COMMIT_TIER="L3"
-COMMIT_TIER_GATES="staged_worktree_parity project_index_sync feature_map moth moth_invariants rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity no_emoji config_refs doc_drift doc_governance doc_runtime_state commit_msg rule10 repo_blob_size tushare_sunset"
+COMMIT_TIER_GATES="staged_worktree_parity doc_allowlist brick_registry legacy_raw_plane moth moth_invariants rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity no_emoji config_refs repo_blob_size tushare_sunset"
 if [[ -f "backend/scripts/classify_commit_tier.py" && -f "backend/config/commit_tiers.yaml" ]]; then
     if COMMIT_TIER_JSON=$(PYTHONPATH=backend "$PY" backend/scripts/classify_commit_tier.py 2>/tmp/cm_tier_err.out); then
         if parsed=$("$PY" -c '
@@ -113,7 +113,7 @@ else
     echo "WARNING: classify_commit_tier.py or commit_tiers.yaml missing → L3 fail-closed"
 fi
 
-# ── 1.6 门分布策略 (goal.md「治理体系重构」P1; owner backend/config/governance_gates.yaml) ──
+# ── 1.6 门分布策略 (owner backend/config/governance_gates.yaml) ──
 # 三组按「谁受害、何时受害」切:
 #   diff_correctness = 这次 diff 本身错   → commit 阻断
 #   system_health    = 数据/策略/钱受害   → commit 不跑, 归 daily_update 运行时自检
@@ -189,58 +189,6 @@ gate_fail() {
     fi
     exit "$code"
 }
-
-# 2. PROJECT_INDEX sync check
-echo
-echo "=== Step 2: PROJECT_INDEX sync check ==="
-if gate_enabled project_index_sync; then
-if [[ ! -f "$STAGED_BACKEND/scripts/check_project_index_sync.py" ]]; then
-    echo "ERROR: staged snapshot 缺 check_project_index_sync.py，拒绝用 worktree 版本代验。"
-    gate_fail project_index_sync 2
-else
-    # 2026-09-03: 原为 `| tail -5`, 把违规清单截掉只留末尾通用建议 (同 Step 3 实证)。
-    # 改成整段输出 —— 检查器输出有界, 截断省下的那点行数远不值"看不见真原因"的代价。
-    PI_OUT="$(PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_project_index_sync.py" 2>&1)" && PI_RC=0 || PI_RC=$?
-    printf '%s\n' "$PI_OUT"
-if [[ $PI_RC -ne 0 ]]; then
-    echo
-    echo "ERROR: PROJECT_INDEX.md 未同步."
-    echo "修法: 更新 PROJECT_INDEX.md 对应活索引节 (历史叙事写 ledger, 不进 INDEX changelog) + git add PROJECT_INDEX.md"
-    gate_fail project_index_sync 2
-fi
-fi
-else
-    echo "[commit-tier] skip project_index_sync (tier=$COMMIT_TIER)"
-fi
-
-# 2.6 Feature map gate — 从 Git index 导出 staged snapshot，在隔离目录重建 CodeGraph 后验真。
-# 禁止 safe_commit 自动改写或 stage 当前工作树，避免未提交的其他 dirty slice 混入派生地图。
-echo
-echo "=== Step 2.6: feature map gate (staged snapshot, read-only) ==="
-if gate_enabled feature_map; then
-if [[ -f "$STAGED_BACKEND/scripts/build_feature_map.py" ]]; then
-    if ! codegraph init "$STAGED_INDEX_DIR" > "$STAGED_INDEX_DIR/codegraph-sync.out" 2>&1; then
-        tail -20 "$STAGED_INDEX_DIR/codegraph-sync.out"
-        echo "ERROR: staged snapshot CodeGraph 初始化失败，无法验证 FEATURE_MAP。"
-        gate_fail feature_map 2
-    elif ! codegraph sync "$STAGED_INDEX_DIR" >> "$STAGED_INDEX_DIR/codegraph-sync.out" 2>&1; then
-        tail -20 "$STAGED_INDEX_DIR/codegraph-sync.out"
-        echo "ERROR: staged snapshot CodeGraph 构建失败，无法验证 FEATURE_MAP。"
-        gate_fail feature_map 2
-    elif PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/build_feature_map.py" --check --quiet; then
-        echo "[feature-map] staged snapshot fresh; current worktree was not modified"
-    else
-        echo "ERROR: staged FEATURE_MAP.md 与 staged source snapshot 不一致。"
-        echo "正解: 在隔离 staged snapshot 上重生、review 后显式 stage；不得提交当前 dirty-tree 派生物。"
-        gate_fail feature_map 2
-    fi
-else
-    echo "ERROR: staged snapshot 缺 build_feature_map.py；生成地图门不得静默跳过。"
-    gate_fail feature_map 2
-fi
-else
-    echo "[commit-tier] skip feature_map (tier=$COMMIT_TIER)"
-fi
 
 # 2.7 Moth gate — Moth 0.3.0 resolves profile repo_path relative to process cwd.
 # Always enter the exported snapshot before invoking it; passing an absolute --repo
@@ -428,27 +376,12 @@ else
     echo "[commit-tier] skip ci_pytest (tier=$COMMIT_TIER)"
 fi
 
-# (Step 3.5 旧 leakage audit gate 已删 2026-07-02: 触发实体与 verifier 同时退役。
-#   safe_commit 不因此声称策略泄漏已验证；策略发布必须另走独立契约 (git log --grep strategy_validation)。)
-
-
-# 3.6 旧消费方 leakage gate 已随当时的特征/策略 serving 层退役。
-#   当前尚无 StrategyRelease，因此本地提交门不冒充 PIT/发布证书。
-
-# 3.7 散落死闸已退役；当前 gate owner=governance_gates.yaml + live scripts/tests：
-#   check_experiment_harness.py 本体 + 被守护的 harness 层(phaseD_signal_eval.py/experiment_store.py)
-#   + 当时的 conditional-alpha owner 文档均已随 2026-06-28 reset 删除。原有
-#   -f 存在性守卫已优雅跳过多日(非报错), 但触发条件(backend/scripts/experiment_*.py 被 staged)
-#   本身也已被 check_serve_read_layer.py D4(feature-from-l2)硬性禁止(该目录不许有 experiment_*.py
-#   文件存在), 双重确认这块永不会再触发, 整块死代码物删而非继续留守卫。
-#   当前策略研究/发布边界 owner=本文件历史注释 (git log --grep strategy_validation)。
-
 # 3.8 沙盒隔离门 (实验室产物只留实验室, 2026-06-21 立; 4+次隔离失守根治):
 # C1 backend引用sandbox(FAIL) / C2 控制面嵌未promote(confirmed_by_owner=0)实验结果(WARN) / C3 探索runner漏主脚本(FAIL)。
 echo
 echo "=== Step 3.8: sandbox isolation gate ==="
 if gate_enabled sandbox_isolation; then
-if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_sandbox_isolation.py" 2>&1 | tail -12; then
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_sandbox_isolation.py"; then
     echo "[sandbox-isolation] PASS"
 else
     echo
@@ -608,8 +541,7 @@ fi
 echo
 echo "=== Step 3.98: grain-uniqueness gate (grain 持续审计门) ==="
 if gate_enabled grain_uniqueness; then
-if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_grain_uniqueness.py" \
-     --exempt mart_sector_pulse_daily:20260710 > /tmp/cm_grain.out 2>&1; then
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_grain_uniqueness.py" > /tmp/cm_grain.out 2>&1; then
     tail -1 /tmp/cm_grain.out
 else
     echo
@@ -782,10 +714,11 @@ else
     echo "[gate] skip continuity — system_health 组已归位 daily_update 运行时自检 (或 tier=$COMMIT_TIER 剪枝)"
 fi
 
-# Step 3.991/992: 2026-07-06 全面数据审计根因根治 — 治理脚本覆盖率盲区之二: 18 个
+# Step 3.991: 2026-07-06 全面数据审计根因根治 — 治理脚本覆盖率盲区之二: 18 个
 # check_*.py 里 5 个此前完全未接入任何机制(safe_commit/CI/git hooks 都没有)。逐个实测:
-# check_config_refs/check_doc_drift 现在都能跑通且真 PASS, 检查内容仍有价值(层词汇/文档
-# 死引用一致性) → 接成硬闸(与其余静态一致性门同级别)。
+# check_config_refs 现在能跑通且真 PASS, 检查内容仍有价值(层词汇一致性) → 接成硬闸
+# (与其余静态一致性门同级别)。doc_drift/doc_governance/doc_runtime_state 已随 2026-09 7 门
+# 精简退役 (owner backend/config/governance_gates.yaml)。
 echo
 echo "=== Step 3.991: config-refs gate (data_access/data_layers 层词汇一致性) ==="
 if gate_enabled config_refs; then
@@ -803,36 +736,51 @@ else
 fi
 
 echo
-echo "=== Step 3.992: doc-drift gate (live docs + generated map + source/config owners) ==="
-if gate_enabled doc_drift; then
-if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_doc_drift.py" > /tmp/cm_docdrift.out 2>&1; then
-    tail -2 /tmp/cm_docdrift.out
+echo "=== Step 3.992: doc-allowlist gate (tracked md 白名单 + bestchoice 冻结集合) ==="
+if gate_enabled doc_allowlist; then
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_tracked_allowlist.py" > /tmp/cm_docallow.out 2>&1; then
+    tail -2 /tmp/cm_docallow.out
 else
     echo
-    echo "ERROR: doc-drift 门红 — 活文档(活索引/AGENTS/docs)引用了已删文件路径:"
-    cat /tmp/cm_docdrift.out
-    echo "正解: 改文档指向现存路径 / 标 deprecated 头注豁免。误报修脚本本身, 不 --no-verify 绕。"
-    gate_fail doc_drift 5
+    echo "ERROR: doc-allowlist 门红 — 跟踪 markdown 越出白名单, 或 bestchoice/ 冻结集合漂移:"
+    cat /tmp/cm_docallow.out
+    echo "正解: 新增文档进 backend/config/tracked_doc_allowlist.yaml 白名单或撤销新增 md；bestchoice/ 补齐/删除到与冻结清单一致。误报修脚本本身, 不 --no-verify 绕。"
+    gate_fail doc_allowlist 5
 fi
 else
-    echo "[commit-tier] skip doc_drift (tier=$COMMIT_TIER)"
+    echo "[commit-tier] skip doc_allowlist (tier=$COMMIT_TIER)"
 fi
 
-# Step 3.993: 活文档治理硬闸。WARN 也是未闭合状态，不能随 commit 传播。
 echo
-echo "=== Step 3.993: doc-governance (fails=0, warns=0) ==="
-if gate_enabled doc_governance; then
-if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_doc_governance.py" > /tmp/cm_docgov.out 2>&1; then
-    tail -3 /tmp/cm_docgov.out
+echo "=== Step 3.993: brick-registry gate (L2/L3/Type-B 分层完整性 + hop 深度 + 孤儿) ==="
+if gate_enabled brick_registry; then
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_brick_registry.py" > /tmp/cm_brickreg.out 2>&1; then
+    tail -2 /tmp/cm_brickreg.out
 else
-    cat /tmp/cm_docgov.out
     echo
-    echo "ERROR: doc-governance 门红 — FAIL/WARN 均未闭合。"
-    echo "正解: 修 owner、退役 CLI、幽灵链接或文档生命周期；不放宽 gate。"
-    gate_fail doc_governance 5
+    echo "ERROR: brick-registry 门红 — L2 依赖 L3/L4、静默 raw bypass、hop 超深或积木未登记:"
+    cat /tmp/cm_brickreg.out
+    echo "正解: 补 brick_registry.yaml 登记 / 修积木依赖形状。误报修脚本本身, 不 --no-verify 绕。"
+    gate_fail brick_registry 5
 fi
 else
-    echo "[commit-tier] skip doc_governance (tier=$COMMIT_TIER)"
+    echo "[commit-tier] skip brick_registry (tier=$COMMIT_TIER)"
+fi
+
+echo
+echo "=== Step 3.994: legacy-raw-plane gate (raw_* 表登记完整性 + formal 域诚实 role) ==="
+if gate_enabled legacy_raw_plane; then
+if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_legacy_raw_plane.py" > /tmp/cm_legacyraw.out 2>&1; then
+    tail -2 /tmp/cm_legacyraw.out
+else
+    echo
+    echo "ERROR: legacy-raw-plane 门红 — raw_* 表登记缺口或 formal 域 role 不诚实:"
+    cat /tmp/cm_legacyraw.out
+    echo "正解: 补 legacy_raw_plane.yaml role 登记; formal 域 raw 表须非 ssot 且 write forbidden。误报修脚本本身, 不 --no-verify 绕。"
+    gate_fail legacy_raw_plane 5
+fi
+else
+    echo "[commit-tier] skip legacy_raw_plane (tier=$COMMIT_TIER)"
 fi
 
 # Step 3.9935: emoji 硬门 (owner 全项目偏好; 2026-08-11 登记进门表 —— 此前只在 git hook 里,
@@ -849,25 +797,6 @@ else
 fi
 else
     echo "[commit-tier] skip no_emoji (tier=$COMMIT_TIER)"
-fi
-
-# Step 3.994: 人工文档写死运行时状态的对账门 (goal.md P2.1)。
-# 唯一查**语义时效**的门 —— doc_drift/doc_governance 只查悬空链接与代码路径, 于是
-# 「两份手写文档互相矛盾且同时落后两周」能在它们全绿时发生 (2026-08-10 实证)。
-echo
-echo "=== Step 3.994: doc-runtime-state (文档写死运行时状态对账) ==="
-if gate_enabled doc_runtime_state; then
-if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_doc_runtime_state.py" > /tmp/cm_docstate.out 2>&1; then
-    head -2 /tmp/cm_docstate.out
-else
-    cat /tmp/cm_docstate.out
-    echo
-    echo "ERROR: 活文档里有未声明的运行时状态 (写死的前沿/计数, 或已失效的豁免)。"
-    echo "正解: 改成指向 \`scripts/chunkyctl status\`; 确属常量则在 backend/config/doc_runtime_state.yaml 写明理由。"
-    gate_fail doc_runtime_state 5
-fi
-else
-    echo "[commit-tier] skip doc_runtime_state (tier=$COMMIT_TIER)"
 fi
 
 # 3.99: TuShare 授权到期风险门 (tushare_sunset.yaml 与 sync_registry.yaml 对账)
@@ -893,35 +822,6 @@ else
 fi
 else
     echo "[commit-tier] skip tushare_sunset (tier=$COMMIT_TIER)"
-fi
-
-# 4. Commit message keyword check (manual preview)
-echo
-echo "=== Step 4: commit message 结构自检 (Q/Fix/Evidence/Residual) ==="
-if gate_enabled commit_msg; then
-# 与 commit-msg hook 共用同一实现, 不在 shell 里维护第二份关键词表 ——
-# 旧版这里有一张 `sharpe|calmar|max_dd` 词表, 与 hook 各写一份且都会烂。
-MSG_FILE="$STAGED_INDEX_DIR/COMMIT_MSG_STRUCT"
-printf '%s\n' "$MSG" > "$MSG_FILE"
-PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_commit_message.py" "$MSG_FILE" || true
-else
-    echo "[commit-tier] skip commit_msg (tier=$COMMIT_TIER)"
-fi
-
-# 4.5. Codex review gate (Rule 10 blocking; one policy owner shared with commit-msg hook)
-echo
-echo "=== Step 4.5: Codex review gate (Rule 10) ==="
-if gate_enabled rule10; then
-REVIEW_MSG_FILE="$STAGED_INDEX_DIR/COMMIT_EDITMSG"
-printf '%s\n' "$MSG" > "$REVIEW_MSG_FILE"
-if PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_codex_review.py" "$REVIEW_MSG_FILE"; then
-    echo "Rule 10 PASS: canonical staged check_codex_review gate"
-else
-    echo "ERROR: Rule 10 blocking review gate failed."
-    gate_fail rule10 6
-fi
-else
-    echo "[commit-tier] skip rule10 (tier=$COMMIT_TIER)"
 fi
 
 # 4.9 脚手架汇总 — warn-only 不等于「可以永远忽略」。一次性列全 + 指到批量修入口,

@@ -445,7 +445,7 @@ def _check_cross_table_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResu
     # 不靠 dim 表枚举。此 coverage 仅守"非A股板块(北交所83x/三板/指数) leak 进 A股 K线"。
     extras = sorted(c for c in kline_codes if classify_exclusion(c) is not None)
 
-    # inactive_still_trading 子检查 2026-07-07 整段退役 (owner=PROJECT_INDEX.md 决策收口): 原逻辑靠
+    # inactive_still_trading 子检查 2026-07-07 整段退役 (决策见 git log --grep inactive_still_trading): 原逻辑靠
     # dim_all_ever_listed 声明的 is_active 标记去比对"是否仍在交易", 该表已物删(无存活 writer, 冻结
     # 10+ 周的快照, 且 universe.py 已确立 K 线本身即活跃真相源) — 少了外部 is_active 声明源, 这个
     # 检查会退化为拿 K 线跟自己比对的空转; 保留仅剩这里的 kline_universe_coverage(北交所/非A股板块 leak)。

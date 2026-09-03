@@ -1,7 +1,15 @@
-"""check_sandbox_isolation 单测 (2026-06-21) — 隔离门 C1/C3 正则+命名 + 当前仓库集成 PASS。"""
+"""check_sandbox_isolation 单测 (2026-06-21; C2 删于 2026-09-04) — 隔离门 C1/C3 正则+命名
++ 当前仓库集成 PASS + 临时 git 仓库红/绿双向验证。
+
+C2 (控制面文档嵌入未 promote 实验 run_id) 随 docs/ 整个目录退役一起删除,
+check_c1/check_c3 的红例测试改用 tmp_path 建的临时 git 仓库当 fixture —— 不断言宿主
+仓库的状态。这个项目栽过: 本地仓库信息完整而 CI 是浅克隆 (0 tag / 1 commit), 断言宿主
+git 状态本地绿 CI 红 (见 feedback-test-must-carry-its-own-fixture.md)。
+"""
 from __future__ import annotations
 
 import pathlib
+import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -12,7 +20,6 @@ from scripts.check_sandbox_isolation import (  # noqa: E402
     C1_PAT,
     check_c1,
     check_c3,
-    control_doc_paths,
 )
 
 
@@ -36,70 +43,59 @@ def test_current_repo_passes():
     assert check_c3() == [], f"C3 探索runner: {check_c3()}"
 
 
-def test_control_docs_follow_live_doc_registry(tmp_path):
-    (tmp_path / "AGENTS.md").write_text("policy\n", encoding="utf-8")
-    (tmp_path / "CLAUDE.md").write_text("legacy\n", encoding="utf-8")
-    (tmp_path / "docs").mkdir()
-    contract = tmp_path / "docs" / "strategy_validation_contract.md"
-    contract.write_text("contract\n", encoding="utf-8")
-
-    assert control_doc_paths(tmp_path) == [tmp_path / "AGENTS.md", contract]
+# ---------------------------------------------------------------------------
+# 临时 git 仓库 fixture —— 不碰宿主仓库, 只造一个一次性小仓库当 check_c1/check_c3
+# 的输入 (两者都经 `git -C <repo> ls-files` 读, 需要一个真 git 仓库, 但不需要 commit,
+# `git add` 进 index 就够 `git ls-files` 看见)。
+# ---------------------------------------------------------------------------
 
 
-def test_c2_warning_is_blocking_and_never_reported_as_pass(monkeypatch, capsys):
-    monkeypatch.setattr(sandbox_gate, "check_c1", lambda: [])
-    monkeypatch.setattr(sandbox_gate, "check_c3", lambda: [])
-    monkeypatch.setattr(sandbox_gate, "check_c2", lambda: ["UNVERIFIED evidence"])
-
-    assert sandbox_gate.main() == 1
-    output = capsys.readouterr().out
-    assert "[C2 WARN]" in output
-    assert "[C2 OK]" not in output
+def _init_repo(tmp_path: pathlib.Path) -> pathlib.Path:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    return tmp_path
 
 
-def _force_store_unreadable(monkeypatch, store_path):
-    """让 connect_ro 抛错逼 check_c2 走 except 分支; 并把 manifest 指向给定路径。
-
-    路径经 database_manifest 解析 (而非 REPO 拼字面量) —— 硬编码 duckdb 路径会被
-    check_rule_compliance 的 DB 边界检查挡下, 那道门是对的。
-    """
-    import services.data_access.resolver as resolver
-    import services.database_manifest as dbm
-
-    def _boom(alias):
-        raise RuntimeError("IO Error: simulated")
-
-    class _FakeManifest:
-        def path_for(self, alias):
-            assert alias == "experiment_store"
-            return store_path
-
-    monkeypatch.setattr(resolver, "connect_ro", _boom)
-    monkeypatch.setattr(dbm, "get_database_manifest", lambda: _FakeManifest())
+def _stage(repo: pathlib.Path, relative: str, text: str) -> pathlib.Path:
+    path = repo / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", relative], check=True)
+    return path
 
 
-def test_c2_missing_store_is_not_a_violation(monkeypatch, tmp_path):
-    """库**不存在** → 一个 run_id 都不存在 → 没有文档能嵌入未 promote 的 run_id → 放行。
+def test_c1_red_example_flags_sandbox_import_then_green_after_fix(tmp_path):
+    repo = _init_repo(tmp_path)
+    _stage(repo, "backend/services/leaky_module.py", "from sandbox import scratch_helper\n")
 
-    2026-09-03 加。原实现把「库不存在」判成 UNVERIFIED 并阻断, 犯的是
-    「门问的是我能不能核实, 却把不能核实当成了违规」。
-    实测后果: data/*.duckdb 在 .gitignore, 该库不在版本控制, 全仓只有
-    build_experiment_store.py 能造它 → 任何 fresh clone 都提交不了
-    (safe_commit.sh 有 set -o pipefail, 会传播本脚本退出码)。
-    """
-    _force_store_unreadable(monkeypatch, tmp_path / "data" / "experiment_store.duckdb")
-    assert sandbox_gate.check_c2() == []
+    bad = check_c1(repo=repo)
+    assert bad, "C1 该抓到 backend/ 引用 sandbox/ 却没抓到"
+    assert any("backend/services/leaky_module.py" in x for x in bad)
+
+    # 去掉缺陷 (换成正常 services 内部引用) 后必须转绿 —— 双向验证, 不是只测红例
+    _stage(repo, "backend/services/leaky_module.py", "from services.other_module import scratch_helper\n")
+    good = check_c1(repo=repo)
+    assert good == [], f"去掉 sandbox 引用后 C1 应为空, 实得: {good}"
 
 
-def test_c2_present_but_unreadable_still_fails_closed(monkeypatch, tmp_path):
-    """库**存在却读不了** (损坏/权限/schema 不符) 是真的不能核实 → 仍然阻断。
+def test_c3_red_example_flags_experiment_runner_then_green_after_removal(tmp_path):
+    repo = _init_repo(tmp_path)
+    _stage(repo, "backend/scripts/experiment_new_alpha.py", "print('exploring')\n")
 
-    与上一条配对: 修复只放宽「不存在」这一种情形, 不许顺手把 fail-closed 整个拆掉。
-    """
-    (tmp_path / "data").mkdir()
-    store = tmp_path / "data" / "experiment_store.duckdb"
-    store.write_text("not a duckdb file")
-    _force_store_unreadable(monkeypatch, store)
-    out = sandbox_gate.check_c2()
-    assert out and "UNVERIFIED" in out[0]
-    assert "存在但不可读" in out[0]
+    bad = check_c3(repo=repo)
+    assert bad == ["backend/scripts/experiment_new_alpha.py"], f"C3 该抓到探索 runner: {bad}"
+
+    # 去掉缺陷 (探索 runner 移出/删除) 后必须转绿
+    (repo / "backend/scripts/experiment_new_alpha.py").unlink()
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    good = check_c3(repo=repo)
+    assert good == [], f"删掉探索 runner 后 C3 应为空, 实得: {good}"
+
+
+def test_main_passes_repo_kwarg_through_and_exits_clean_on_empty_repo(tmp_path, monkeypatch, capsys):
+    # main() 本身不接受 repo 参数 (CLI 入口固定用宿主 REPO), 但 check_c1/check_c3 的
+    # repo 参数要能被 monkeypatch 进 main() 调用的默认值路径复用 —— 这里只验证一个空
+    # 临时仓库经由显式 repo= 调用两个 check_* 都是空, 防止 _tracked 的 glob 签名改动
+    # 悄悄破坏 main() 里的无参调用方式。
+    repo = _init_repo(tmp_path)
+    assert check_c1(repo=repo) == []
+    assert check_c3(repo=repo) == []

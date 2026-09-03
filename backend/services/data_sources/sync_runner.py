@@ -804,7 +804,7 @@ def _smartmoney_conn():
 def _warn_if_clamped(domain: str, start_d: str, days: list[str]) -> None:
     """回填/增量起点早于交易日历首日 = 更早段被静默 clamp — 必须显式可见.
 
-    反例 (AGENTS.md Tier0 calendar truth, 2026-06-12): registry data_start=20050104 被日历起点
+    反例 (2026-06-12, 违 CLAUDE.md 红线 2): registry data_start=20050104 被日历起点
     2023-01-03 clamp, top_list 等 2005-2022 全军未落零告警; 验收必须按落库
     min(trade_date) 对账 data_start, 不是"跑完没报错"。
     """

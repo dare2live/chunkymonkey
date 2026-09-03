@@ -99,7 +99,7 @@ def test_every_gate_declares_all_four_death_fields() -> None:
 
 
 def test_no_dead_gate() -> None:
-    """全部 object 至少命中一个真实路径 —— 0 个 DEAD_GATE 是现状, 不是巧合。
+    """没有一道门的 object **全部**命中 0 —— 全没了 = 这道门该删。
 
     红了只有一种修法: 删那道门 (YAML 条目 + safe_commit.sh Step + 测试), 不是把
     object 改到能凑合命中的地方 —— 那正是这道门试图揭穿的 「declared vs actual」漂移。
@@ -107,9 +107,49 @@ def test_no_dead_gate() -> None:
     reg = gg.load_registry()
     dead = gg.dead_gate_report(reg)
     assert not dead, (
-        "DEAD_GATE (object 命中 0 个路径, 删这道门): "
+        "DEAD_GATE (object 全部条目命中 0, 删这道门): "
         + "; ".join(f"{name}: {items}" for name, items in sorted(dead.items()))
     )
+
+
+def test_no_stale_object() -> None:
+    """没有一道活门的 object 清单里挂着已不存在的路径。
+
+    与 test_no_dead_gate 是两个判据, 不能合并: 全没了 = 删门; 少了几条 = 修清单。
+    合并过就出过事 —— 见 dead_gate_report docstring (2026-09-04)。
+    """
+    reg = gg.load_registry()
+    stale = gg.stale_object_report(reg)
+    assert not stale, (
+        "STALE_OBJECT (门还活着, 但 object 清单有条目命中 0, 删掉那几条): "
+        + "; ".join(f"{name}: {items}" for name, items in sorted(stale.items()))
+    )
+
+
+def test_partial_object_miss_is_stale_not_dead() -> None:
+    """一道门 object 里**部分** glob 命中 0 → STALE_OBJECT, 绝不能报成 DEAD_GATE。
+
+    为什么这条必须存在: `safe_commit.sh:145` 抓 `^DEAD_GATE ` 的门名并把该门整道跳过
+    不跑。若部分命中 0 也算 DEAD_GATE, 那么 `dead_references` (四条 object, 删掉 docs/
+    后第三条命中 0) 会在**删文档那次提交**上被静默关掉 —— 而它正是唯一能抓"删完留下
+    悬空引用"的门。豁免的作用域比意图大, 这条测试就是钉住那个边界。
+    """
+    reg = gg.load_registry()
+    gates = list(reg.gates)
+    for i, spec in enumerate(gates):
+        if spec.name == "dead_references":
+            gates[i] = dataclasses.replace(
+                spec, object="backend/**/*.py, backend/this_path_definitely_absent_xyz/**/*.py"
+            )
+    mutated = dataclasses.replace(reg, gates=tuple(gates))
+    # 断言只看被 mutate 的这一道门 —— 登记表里别的门死没死是它自己的事,
+    # 断言整份报告等于 {} 就是在断言宿主状态 (见 [[feedback-test-must-carry-its-own-fixture]])。
+    assert "dead_references" not in gg.dead_gate_report(mutated), (
+        "部分命中 0 被误报成 DEAD_GATE → 活门会被 safe_commit 跳过"
+    )
+    assert gg.stale_object_report(mutated)["dead_references"] == [
+        "backend/this_path_definitely_absent_xyz/**/*.py"
+    ]
 
 
 @pytest.mark.parametrize("field", ["object", "invariant", "kill_when", "paradigm"])
@@ -159,7 +199,10 @@ def test_object_zero_glob_hits_is_dead_gate_not_a_load_error() -> None:
             gates[i] = dataclasses.replace(spec, object="backend/this_path_definitely_absent_xyz/**/*.py")
     mutated = dataclasses.replace(reg, gates=tuple(gates))
     dead = gg.dead_gate_report(mutated)
-    assert dead == {"dead_references": ["backend/this_path_definitely_absent_xyz/**/*.py"]}
+    assert dead["dead_references"] == ["backend/this_path_definitely_absent_xyz/**/*.py"]
+    assert "dead_references" not in gg.stale_object_report(mutated), (
+        "全部命中 0 只能是 DEAD_GATE, 不同时是 STALE"
+    )
 
 
 def test_table_and_rule_prefixed_objects_skip_filesystem_check() -> None:
@@ -172,7 +215,8 @@ def test_table_and_rule_prefixed_objects_skip_filesystem_check() -> None:
                 spec, object="table:no_such_db.no_such_table, rule:no_such_rule_id"
             )
     mutated = dataclasses.replace(reg, gates=tuple(gates))
-    assert gg.dead_gate_report(mutated) == {}
+    assert "dead_references" not in gg.dead_gate_report(mutated)
+    assert "dead_references" not in gg.stale_object_report(mutated)
 
 
 def test_system_health_gate_removed_from_registry_must_break_loudly(tmp_path: Path) -> None:
@@ -253,8 +297,7 @@ def test_gates_use_gate_fail_instead_of_hardcoded_exit() -> None:
     )
     called = set(re.findall(r"gate_fail (\w+) ", text))
     reg = gg.load_registry()
-    # commit_msg 没有失败路径 (它本来就只打印 WARNING)。
-    expected = set(reg.gate_names) - {"commit_msg"}
+    expected = set(reg.gate_names)
     assert expected <= called, f"仍在硬编码 exit 的门: {sorted(expected - called)}"
     assert called <= set(reg.gate_names)
 
@@ -268,10 +311,13 @@ def test_always_on_ci_surface_drift_stays_blocking() -> None:
 
 
 def test_scaffold_fix_entrypoint_exists_for_every_regenerable_artifact() -> None:
+    """每条 scaffold_fix 的 from_gate 必须是 scaffold 组的门；列表本身允许为空。
+
+    2026-09-04: 原 5 条 scaffold_fix (feature_map/doc_drift/doc_governance/
+    project_index_sync/doc_runtime_state) 随各自门一起随 8 份文档删除退役 ——
+    本节此刻是空的, 断言不该硬编码某一条必须存在 (那条门已经不在了)。
+    """
     reg = gg.load_registry()
-    fixes = {f.from_gate: f for f in reg.scaffold_fixes}
-    # agent_board 于 P2.3 随 BOARD.md 退役 —— board 已是现查投影，没有产物可重生。
-    assert fixes["feature_map"].kind == "regenerate"
     assert all(f.from_gate in reg.names_in_group("scaffold") for f in reg.scaffold_fixes)
     chunkyctl = (REPO / "scripts" / "chunkyctl").read_text(encoding="utf-8")
     assert "scaffold-fix)" in chunkyctl

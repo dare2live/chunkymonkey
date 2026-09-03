@@ -5059,12 +5059,6 @@
     },
     {
       "attrs": {},
-      "dst": "consumer:scripts/safe_commit.sh",
-      "kind": "consume",
-      "src": "table:smartmoney.mart_sector_pulse_daily"
-    },
-    {
-      "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
       "src": "table:smartmoney.mart_step_fingerprint"
@@ -8911,9 +8905,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1440,
-    "generated_at": "2026-09-03T20:29:50.154769+00:00",
-    "node_count": 506,
+    "edge_count": 1439,
+    "generated_at": "2026-09-03T21:12:54.413224+00:00",
+    "node_count": 505,
     "version": 2
   },
   "nodes": [
@@ -11691,14 +11685,6 @@
         "path": "scripts/chunkyctl"
       },
       "id": "consumer:scripts/chunkyctl",
-      "kind": "consumer"
-    },
-    {
-      "attrs": {
-        "ctype": "script",
-        "path": "scripts/safe_commit.sh"
-      },
-      "id": "consumer:scripts/safe_commit.sh",
       "kind": "consumer"
     },
     {

@@ -20,6 +20,22 @@ Authority: 本文件 (派生新鲜度闭环法; 2026-09 文档大刀后法条正
   L5  禁 mass 仍须诚实        人口有洞 → count probe + grain MERGE 或如实
                                观测；**不**在日更里对 count 未变的期全市场
                                重拉
+  L6  回改 ≠ 前进             上游 accepted 分区或 derive_build 的时间戳晚于
+                               本派生的 built_at → 本派生不新鲜, **不论 tip 在哪**
+
+L6 为什么要单列: L1–L5 全部在问「派生追上**最新**分区了吗」—— 全是关于**前进**的。
+没有一条管「tip 之下的某个历史分区被重新接受了怎么办」。一次历史回填不推动 tip,
+于是所有比 tip 的检查都全绿, 而那段历史派生出来的东西已经错了。这是「标量代表不了
+集合」在时间轴上的同一个洞: 拿 MAX(date) 当覆盖度, 中间挖空看不见。
+
+L6 今天守到哪 (别把它当已闭环):
+  - 已守: **阶段级**。stage_status.py 比较同一次 pipeline run 内各阶段的 started_at,
+    上游重跑晚于下游 → 下游 stale (test_pipeline_stage_status.py::
+    test_derived_stale_when_upstream_rerun_later)。
+  - 未守: **数据集/分区级**。没有 derived_stale 门, 没有 dataset 粒度的 built_at
+    与 accepted_at 对照 —— 全仓 grep derived_stale 只有上面那条测试。
+    也就是说: 今晚回填一段 2023 年的历史, 没有任何一行代码会告诉你哪些派生因此过期。
+    这是已知缺口, 不是「大概没事」。
 
 三种死法 (每条都真实发生过, 写在这里是为了让下一个人认得出):
   - 感知死 —— 门禁只查「存在」不查「新鲜/人口」。partition 在, 于是全绿,

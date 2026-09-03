@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-# ChunkyMonkey commit-msg hook — Rule 10 与 message 检查的兜底路径。
-# Owner: AGENTS.md §9 + docs/engineering_governance.md §14。入 git 的理由见 pre-commit 头注。
-# 跳过: git commit --no-verify (项目铁律: 不许用)
-set -e
-cd "$(git rev-parse --show-toplevel)"
-if [ -x ".venv/bin/python3" ]; then PY=".venv/bin/python3"; elif command -v python3 >/dev/null 2>&1; then PY="python3"; else PY="python"; fi
-"$PY" backend/scripts/check_commit_message.py "$1" || exit 1
-"$PY" backend/scripts/check_codex_review.py "$1" || exit 1

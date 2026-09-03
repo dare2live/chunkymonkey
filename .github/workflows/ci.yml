@@ -1,6 +1,6 @@
 name: CI
 
-# paths-ignore mirrors the L1 (docs/board-only) surface of
+# paths-ignore mirrors the L1 surface of
 # backend/config/commit_tiers.yaml. Policy owner = commit_tiers.yaml; this list
 # is a projection and MUST stay a subset of L1 — enforced by
 # backend/tests/scripts/test_ci_paths_policy.py (drift toward skipping a risky
@@ -11,19 +11,15 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - 'docs/**'
       - 'sandbox/**'
       - 'goal.md'
-      - 'PROJECT_INDEX.md'
-      - 'README.md'
+      - 'CLAUDE.md'
   pull_request:
     branches: [main]
     paths-ignore:
-      - 'docs/**'
       - 'sandbox/**'
       - 'goal.md'
-      - 'PROJECT_INDEX.md'
-      - 'README.md'
+      - 'CLAUDE.md'
 
 jobs:
   test:
@@ -102,3 +98,27 @@ jobs:
           # 2026-06-28 根因根治: 删模块/表/文件后引用方必须同步清 (import-services + dead-services-ref + config-dead-path)。
           # server-side 强制 (本地 hook 够不到的最终防线, mio §7 enforcement 沉到提交者够不到处)。
           PYTHONPATH=backend python backend/scripts/check_dead_references.py
+
+  static-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-ci.txt
+
+      - name: Config and repo integrity gates
+        run: |
+          PYTHONPATH=backend python backend/scripts/check_serve_read_layer.py
+          PYTHONPATH=backend python backend/scripts/check_config_refs.py
+          PYTHONPATH=backend python backend/scripts/check_sandbox_isolation.py
+          PYTHONPATH=backend python backend/scripts/check_tracked_allowlist.py

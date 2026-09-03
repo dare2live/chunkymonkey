@@ -33,6 +33,7 @@ from services.governance_gates import (  # noqa: E402
     GatePolicyError,
     RuntimeCheckSpec,
     dead_gate_report,
+    stale_object_report,
     load_registry,
 )
 
@@ -116,29 +117,46 @@ def _check() -> int:
                 f"only_shell={sorted(shell_names - registry_names)}"
             )
 
-    if problems:
-        for p in problems:
-            print(f"[gate-policy] FAIL: {p}", file=sys.stderr)
-        return 1
+    # 门名漂移不 return —— 对象检查照跑。
+    # 2026-09-04: 原来这里直接 return 1, 于是三处门名一有漂移, 下面的 DEAD_GATE /
+    # STALE_OBJECT 检查**整个不执行**。而门名漂移最常见的场景恰恰是「正在增删门」——
+    # 也就是人最需要知道"哪些门的对象已经没了"的那一刻, 这个信息被扣住了。
+    # 与今天修的 dead_gate_report 是同一族缺陷: 一个检查因为控制流而静默不跑。
+    # 漂移仍然 exit 1 (它是更硬的失败), 只是不再顺手吞掉另一半信息。
+    for p in problems:
+        print(f"[gate-policy] FAIL: {p}", file=sys.stderr)
 
     # 三方一致 —— 现在查死亡条件。DEAD_GATE 不是策略文件坏了, 是某道门守的对象已经
     # 不在这个仓库里了; 处置权交给人 (删 YAML 条目 + safe_commit.sh Step + 测试),
     # 机器只负责指出来, 不代为决定, 也不因此拦下这次提交。
     dead = dead_gate_report(reg)
     for name in sorted(dead):
-        for glob_item in dead[name]:
-            print(
-                f"DEAD_GATE {name}: object {glob_item} 命中 0 → "
-                "删这道门（YAML 条目 + safe_commit.sh Step + 测试）"
-            )
+        print(
+            f"DEAD_GATE {name}: object 全部条目命中 0 ({', '.join(dead[name])}) → "
+            "删这道门（YAML 条目 + safe_commit.sh Step + 测试）"
+        )
+
+    # STALE_OBJECT 与 DEAD_GATE 是两回事: 门还活着 (另有 object 命中), 只是清单里有几条
+    # 路径已经不存在。处置是删那几条 glob, **不是删门**。前缀故意不叫 DEAD_GATE ——
+    # safe_commit.sh:145 只抓 `^DEAD_GATE ` 并把该门整道跳过不跑, 一道活的阻断门绝不能
+    # 因为清单里有条过期路径就被静默关掉。
+    stale = stale_object_report(reg)
+    for name in sorted(stale):
+        print(
+            f"STALE_OBJECT {name}: object 条目命中 0 ({', '.join(stale[name])}) → "
+            "从该门 object 清单删掉这几条（门本身还活着, 照跑）"
+        )
+
     print(
         f"[gate-policy] PASS: {len(registry_names)} 门三处一致 "
         f"(diff_correctness={len(reg.names_in_group('diff_correctness'))} "
         f"system_health={len(reg.names_in_group('system_health'))} "
         f"scaffold={len(reg.names_in_group('scaffold'))}) "
-        f"dead_gates={len(dead)}"
+        f"dead_gates={len(dead)} stale_objects={len(stale)}"
     )
-    return 2 if dead else 0
+    if problems:
+        return 1
+    return 2 if (dead or stale) else 0
 
 
 def _subprocess_runner(spec: RuntimeCheckSpec, args: list[str]) -> int:

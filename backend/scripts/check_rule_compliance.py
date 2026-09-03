@@ -1,26 +1,18 @@
 #!/usr/bin/env python3
-"""Pre-commit hook: 检测 staged diff 里的 Rule 6/5/7 和 DB 边界反 pattern.
+"""Pre-commit hook: 检测 staged diff 里的 DB 边界 / Rule 5 / Rule 7 反 pattern.
 
-根因 (用户 push back #N):
-  仅靠文档提醒写着 "Rule 6 拍脑袋默认是 anti-pattern" 不足以防止实现时违反 —
-  e.g. Phase ψ.β.5 L2 vol-aware 的 sigma=2.0/3.0/1.0 + bounds [-0.20, -0.05] 全是估算.
-  Rule 文字是被动的, 没硬护栏.
+Invariant: staged diff 新增行不得含直接 duckdb.connect / 硬编码 .duckdb 路径 /
+裸 except: pass / 硬编码 YYYY-MM-DD 或 6 位代码字面量。
 
-修法 (跟 PROJECT_INDEX hook 同套路, 技术层硬挡):
-  扫 staged diff 找 4 类高风险 pattern, 必须有 `# evidence:` / `# from yaml:` /
-  `# measured:` 同行/上一行注释, 否则 reject commit:
+  1. DB boundary raw duckdb connect call (新增生产 raw connect 必须显式说明例外)
+  2. DB boundary hardcoded duckdb path   (新增 data/*.duckdb 字面量必须走 manifest/config)
+  3. Rule 5 try/except: pass             (静默 bypass 反 Rule)
+  4. Rule 7/9 hardcoded date 或 hardcoded stock_code
+     (业务代码硬编码 YYYY-MM-DD / 60xxxx 6 位数字字符串)
 
-  1. Rule 6 magic alpha weight    (alpha 权重 hardcoded)
-     例: `weight = 0.15`  →  必须 `# evidence: backtest commit abc1234` 或 `# from yaml: ensemble_alphas`
-  2. Rule 6 magic sigma           (sigma 倍数)
-     例: `stop_sigma = 2.0`  →  必须 `# measured: optuna study xyz789`
-  3. Rule 6 magic multiplier      (regime / boost / threshold multiplier)
-     例: `bear_multiplier = 0.3`  →  必须 evidence
-  4. Rule 5 try/except: pass      (静默 bypass 反 Rule)
-  5. Rule 7/9 hardcoded date      (业务代码硬编码 YYYY-MM-DD)
-  6. Rule 7/9 hardcoded stock_code (业务代码硬编码 60xxxx 6 位数字字符串)
-  7. DB boundary raw duckdb connect call (新增生产 raw connect 必须显式说明例外)
-  8. DB boundary hardcoded duckdb path (新增 data/*.duckdb 字面量必须走 manifest/config)
+  1/2/4 支持同行或上一行 (须为纯注释行) 加 `# evidence:` / `# from yaml:` /
+  `# measured:` 等注释豁免 (见 EVIDENCE_KEYWORDS)。3 (except: pass) 不支持豁免——
+  静默吞异常没有"有证据就可以"这回事, 只能改写成真实处理 / 重新抛出 / 记日志。
 
 Whitelist (跳过检测):
   - yaml 文件本身 (config 就是 yaml-backed)
@@ -28,8 +20,14 @@ Whitelist (跳过检测):
   - backend/config/ (config 就是阈值, 加进 yaml 就是合规)
   - migrations / fixtures / mock data
 
-Bypass: 在违规行同行/上一行加 `# rule-compliance: ok evidence=<source>` 注释.
-强烈不建议 `--no-verify`.
+Bypass: 在违规行同行/上一行加 `# rule-compliance: ok evidence=<source>` 注释
+(except: pass 除外, 见上)。强烈不建议 `--no-verify`.
+
+2026-09-04: 项目从「量化/参数寻优」范式转成「策略验证」范式——系统不再产出/拟合
+alpha 权重、sigma 倍数、regime multiplier、threshold 之类的策略参数。原 Rule 6 的
+4 条 magic-number 正则 (alpha weight / sigma / multiplier / threshold, 要求
+backtest/optuna evidence) 检查对象已经消失, 随范式一并删除。DB 边界与 Rule 5/7
+跟量化范式无关, 继续守。
 """
 from __future__ import annotations
 
@@ -98,30 +96,8 @@ class Violation(NamedTuple):
     line: str
 
 
-# Rule 6 — magic numbers in 关键 context. 注意只 match 赋值不 match 比较 (==).
-# (?<![\w.]) prefix prevents matching `xxx.weight=0.5` (probably ORM 字段名)
-# Note: bounds 检测在赋值右值是 list/tuple 时, 例 `bounds = [0.1, 0.2]`
+# 注意只 match 赋值不 match 比较 (==).
 PATTERNS = (
-    # Rule 6: alpha weight (排除 'w' 单字母 — 太泛会误判)
-    (
-        "Rule 6 magic alpha weight",
-        re.compile(r"\b(weight|alpha_weight|alpha_w)\s*=\s*\d+\.\d+"),
-    ),
-    # Rule 6: sigma 倍数 (匹配任何 \w*sigma\w*)
-    (
-        "Rule 6 magic sigma multiplier",
-        re.compile(r"\b\w*sigma\w*\s*=\s*\d+\.\d+"),
-    ),
-    # Rule 6: regime / boost / mode multiplier
-    (
-        "Rule 6 magic multiplier",
-        re.compile(r"\b\w*multiplier\s*=\s*\d+\.\d+"),
-    ),
-    # Rule 6: threshold (但 if x > 0.5: 也会触发 — 限制为赋值)
-    (
-        "Rule 6 magic threshold",
-        re.compile(r"\b\w*_?threshold\s*=\s*\d+\.\d+"),
-    ),
     # Rule 5: try/except: pass — 静默 bypass
     (
         "Rule 5 silent except pass",
@@ -376,31 +352,30 @@ def main() -> int:
         return 0
 
     print("=" * 80, file=sys.stderr)
-    print(f"ERROR: 发现 {len(violations)} 个 Rule/DB 边界违规 (Rule 6/5/7 + DB boundary):", file=sys.stderr)
+    print(f"ERROR: 发现 {len(violations)} 个 Rule/DB 边界违规 (Rule 5/7 + DB boundary):", file=sys.stderr)
     print(file=sys.stderr)
     for v in violations:
         print(f"  [{v.rule}]", file=sys.stderr)
         print(f"    {v.file}:{v.lineno}", file=sys.stderr)
         print(f"    {v.line}", file=sys.stderr)
         print(file=sys.stderr)
-    print("修法 (3 选 1):", file=sys.stderr)
-    print("  1. 把 magic number 外置到 yaml (推荐, Rule 6 干净):", file=sys.stderr)
-    print("     - 数值进 backend/config/*.yaml", file=sys.stderr)
-    print("     - 业务代码读 yaml, 不 hardcode", file=sys.stderr)
-    print("  2. 加 evidence 注释 (业务代码同行/上一行):", file=sys.stderr)
-    print("     - `# evidence: backtest commit <hash>` (有 Optuna / 实测 数据支撑)", file=sys.stderr)
-    print("     - `# measured: optuna study <id>` (寻优产物)", file=sys.stderr)
-    print("     - `# from yaml: <section>` (yaml 兜底默认)", file=sys.stderr)
-    print("     - `# rule-compliance: ok evidence=<source>` (显式 bypass, 慎用)", file=sys.stderr)
-    print("  3. 如果误判 (e.g. enum 值 / range 参数 / unit test fixture):", file=sys.stderr)
-    print("     改 backend/scripts/check_rule_compliance.py 的 PATTERNS / EVIDENCE_KEYWORDS", file=sys.stderr)
-    print("  4. DB 边界违规:", file=sys.stderr)
+    print("修法:", file=sys.stderr)
+    print("  1. DB 边界违规 (raw duckdb.connect / 硬编码 .duckdb 路径):", file=sys.stderr)
     print("     - 新代码优先用 services.duck_adapter.connect / services.database_manifest", file=sys.stderr)
     print("     - DB 路径字面量放进 backend/config/database_manifest.yaml 或专属 config", file=sys.stderr)
     print("     - 历史 raw connect 由 backend/config/duckdb_connect_policy.yaml 继续跟踪; 新增行默认阻断", file=sys.stderr)
+    print("  2. Rule 5 (except: pass 静默吞异常): 改成真实处理 / 重新抛出 / 记日志, 不留空 except", file=sys.stderr)
+    print("     (这条不支持 evidence 注释豁免)", file=sys.stderr)
+    print("  3. Rule 7 (硬编码 YYYY-MM-DD / 6 位代码字面量): 优先改从 services.calendar /", file=sys.stderr)
+    print("     universe 一手取数; 确有必要保留字面量时同行/上一行加:", file=sys.stderr)
+    print("     - `# evidence: backtest commit <hash>` / `# measured: <来源>` / `# from yaml: <section>`", file=sys.stderr)
+    print("     - `# rule-compliance: ok evidence=<source>` (显式 bypass, 慎用)", file=sys.stderr)
+    print("  4. 如果误判 (e.g. 测试 fixture / config 值):", file=sys.stderr)
+    print("     改 backend/scripts/check_rule_compliance.py 的 PATTERNS / EVIDENCE_KEYWORDS", file=sys.stderr)
     print(file=sys.stderr)
-    print("根因: AGENTS.md / engineering governance Rule 6 (Measured not Estimated) — 任何参数/阈值/权重必须有 backtest 证据.", file=sys.stderr)
-    print("拍脑袋默认是 anti-pattern (反例见 Rule 6 表).", file=sys.stderr)
+    print("背景: PIT 红线 (交易日/universe 只从 services.calendar 一手源取, 不许硬编码日期或", file=sys.stderr)
+    print("代码) 与 DB 边界 (单 writer / 路径走 manifest) 是本项目机器可验证的硬约束,", file=sys.stderr)
+    print("详见 backend/config/governance_gates.yaml 各门 invariant。", file=sys.stderr)
     print("=" * 80, file=sys.stderr)
     return 1
 

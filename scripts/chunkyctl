@@ -33,7 +33,6 @@ Usage:
   scripts/chunkyctl sync --domain holders_top10|org_holding|stk_holdertrade --land-then-accept --from-local-raw --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl sync --domain holders_top10|stk_holdertrade --land-then-accept --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl sync --domain daily|stock_st --land-then-accept [--from-local-raw] --start YYYYMMDD --end YYYYMMDD
-  scripts/chunkyctl map [--check]
   scripts/chunkyctl derive qfq|form [--from-accepted|--allow-legacy-fill] [--rebuild|--check-only]
   scripts/chunkyctl derive rally-gt [--data-end YYYYMMDD]
   scripts/chunkyctl pipeline acquire|clean|process|store [--force]
@@ -83,7 +82,6 @@ Notes:
                 Thin passthrough to services.rally_gt.rebuild(data_end=...) — Tier3 主升浪
                 ground-truth 三表 (fact_rally_ground_truth/_negative/_strata) 全量重建,
                 DROP 重建 wipeable。--data-end 可选 (默认 holdout_start 前一自然日)。
-  map         = regenerate FEATURE_MAP.md machine-derived feature map; --check = drift gate only.
   pipeline    = manually run one declared data stage; full manual chain remains daily_update.sh.
   lineage     = generated dependency projection; impact <table> audits fan-in before delete/migrate.
   history     = 项目历史检索。`--grep <词>` 查逐刀细节（`git log`，可加 `--full` 出正文）；
@@ -96,8 +94,8 @@ Notes:
   gates       = 门分布策略 (backend/config/governance_gates.yaml): 无参打印三组分布表;
                 --check 与 classify_commit_tier / safe_commit.sh 门名对账;
                 --run-system-health 手动跑 system_health 组 (daily_update 里自动跑同一份)。
-  scaffold-fix = scaffold 组 (warn-only) 的批量收口: 重生 FEATURE_MAP/BOARD, 并列出
-                只能人改的 doc_drift / doc_governance / PROJECT_INDEX 缺口。
+  scaffold-fix = scaffold 组 (warn-only) 的批量收口入口。清单可能为空 (scaffold 组现
+                只剩 moth / tushare_sunset), 空清单打印"无", 不当错误处理。
 EOF
 }
 
@@ -110,8 +108,6 @@ cmd="$1"
 shift
 
 # Public commands whose implementations were removed by the platform reset.
-# Keep this declaration machine-readable: build_feature_map.py uses it to
-# prevent retired surfaces from reappearing as live capabilities.
 RETIRED_COMMANDS=(worktree docs preflight audit data-status jobs)
 for retired_command in "${RETIRED_COMMANDS[@]}"; do
   if [[ "$cmd" == "$retired_command" ]]; then
@@ -193,9 +189,6 @@ case "$cmd" in
   derive)
     # S5: qfq/form derive from accepted/canonical — never fused with acquire/accept.
     PYTHONPATH=backend "$PY" backend/scripts/derive_cli.py "$@"
-    ;;
-  map)
-    PYTHONPATH=backend "$PY" backend/scripts/build_feature_map.py "$@"
     ;;
   pipeline)
     # Manual single-stage entrypoint; it never installs or schedules a background job.

@@ -11,7 +11,6 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SAFE_COMMIT = REPO_ROOT / "scripts" / "safe_commit.sh"
-CODEX_REVIEW_GATE = REPO_ROOT / "backend" / "scripts" / "check_codex_review.py"
 MOTH_INVARIANTS_GATE = REPO_ROOT / "backend" / "scripts" / "check_moth_invariants.py"
 
 
@@ -80,21 +79,19 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
     shutil.copy2(SAFE_COMMIT, repo / "scripts" / "safe_commit.sh")
     (repo / "backend" / "scripts").mkdir(parents=True)
     (repo / "backend" / "config").mkdir(parents=True)
-    shutil.copy2(CODEX_REVIEW_GATE, repo / "backend" / "scripts" / "check_codex_review.py")
     # 拷**真**脚本而非 stub: 本文件有一例专门验证 blocking 分流真的会阻断,
     # 用 stub 就变成「测 stub」而不是测分流逻辑 (语料 D 族原样复现)。
     shutil.copy2(MOTH_INVARIANTS_GATE, repo / "backend" / "scripts" / "check_moth_invariants.py")
     # WP1: fixture without classifier → safe_commit fail-closes to L3 full gates
-    # (explicit stub keeps classify import path available for Rule 10 L1 checks).
+    # (explicit stub keeps classify import path available for L1/L2 tier checks).
     _write(
         repo / "backend" / "scripts" / "classify_commit_tier.py",
         "import json\n"
         "print(json.dumps({'tier':'L3','gates':["
-        "'staged_worktree_parity','project_index_sync','feature_map','moth','moth_invariants','rule_compliance',"
+        "'staged_worktree_parity','doc_allowlist','brick_registry','legacy_raw_plane','moth','moth_invariants','rule_compliance',"
         "'sandbox_isolation','serve_read_layer','calendar_usage',"
         "'population_contract','lineage_drift','dead_references',"
-        "'grain_uniqueness','continuity','no_emoji','config_refs','doc_drift',"
-        "'doc_governance','doc_runtime_state','commit_msg','rule10'],"
+        "'grain_uniqueness','continuity','no_emoji','config_refs','tushare_sunset'],"
         "'reasons':['fixture_l3'],'paths':[]}))\n",
     )
     # 2026-08-11: agent_board 门随 BOARD.md 退役(P2.3); no_emoji / doc_runtime_state 新登记。
@@ -105,23 +102,17 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
         "def test_stub():\n    assert True\n",
     )
     _write(repo / "backend" / "scripts" / "check_no_emoji.py", "raise SystemExit(0)\n")
-    _write(repo / "backend" / "scripts" / "check_doc_runtime_state.py",
-           "print('[doc-runtime-state] stub PASS')\nraise SystemExit(0)\n")
-    _write(repo / "backend" / "scripts" / "check_commit_message.py", "raise SystemExit(0)\n")
     # gate_policy 不可用时 safe_commit 走 fail-closed(全阻断) —— 沙箱给最小实现, 让
     # 分组语义(scaffold=warn / system_health=skip)在测试里也真的生效。
     _write(
         repo / "backend" / "scripts" / "gate_policy.py",
         "import sys\n"
         "g = sys.argv[sys.argv.index('--names')+1] if '--names' in sys.argv else ''\n"
-        "print({'scaffold':'project_index_sync feature_map moth doc_drift doc_governance "
-        "doc_runtime_state commit_msg','system_health':'grain_uniqueness continuity'}.get(g,''))\n",
+        "print({'scaffold':'moth tushare_sunset',"
+        "'system_health':'grain_uniqueness continuity'}.get(g,''))\n",
     )
     _write(repo / "backend" / "config" / "commit_tiers.yaml", "version: 1\n")
-    _write(repo / "backend" / "scripts" / "check_project_index_sync.py", "raise SystemExit(0)\n")
     _write(repo / "backend" / "scripts" / "check_rule_compliance.py", "raise SystemExit(0)\n")
-    _write(repo / "backend" / "scripts" / "build_feature_map.py", "raise SystemExit(0)\n")
-    _write(repo / "FEATURE_MAP.md", "generated fixture\n")
     # 2026-07-02 沙箱跟上 safe_commit 新门 (3.8 sandbox/3.9 serve/3.95 calendar/3.97 dead-references;
     #   pre-existing 6失败根因=沙箱缺这些脚本 → python 非0 → exit 5)
     _write(repo / "backend" / "scripts" / "check_sandbox_isolation.py", "raise SystemExit(0)\n")
@@ -140,13 +131,21 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
     # 2026-07-06 沙箱跟上 Step 3.99 (continuity-integrity 门, 全面数据审计根因根治新 wire):
     #   同款坑, 沙箱无真实 sync_registry/数据库不 stub 会真跑报错退出非0。
     _write_continuity_stub(repo, _continuity_report(), rc=0)
-    # Step 3.991-3.994 都是硬闸；空测试仓库必须提供确定性 stub。
+    # Step 3.99 (tushare-sunset 门, scaffold 组): 沙箱提供最小 yaml + 默认 PASS stub,
+    # 否则 test_scaffold_gate_failure_warns_but_never_goes_silent[tushare_sunset] 会在
+    # "缺 tushare_sunset.yaml" 分支就已经 WARN, 测不到脚本本身失败这条路径。
+    _write(repo / "backend" / "config" / "tushare_sunset.yaml", "version: 1\n")
+    _write(repo / "backend" / "config" / "sync_registry.yaml", "version: 1\n")
+    _write(repo / "backend" / "scripts" / "check_tushare_sunset.py", "raise SystemExit(0)\n")
+    # Step 3.991/3.992/3.993/3.994 都是硬闸；空测试仓库必须提供确定性 stub。
     _write(repo / "backend" / "scripts" / "check_config_refs.py",
            "print('[config-refs] PASS')\nraise SystemExit(0)\n")
-    _write(repo / "backend" / "scripts" / "check_doc_drift.py",
-           "print('{\"overall\": \"PASS\"}')\nraise SystemExit(0)\n")
-    _write(repo / "backend" / "scripts" / "check_doc_governance.py",
-           "print('doc-governance: stub PASS')\nraise SystemExit(0)\n")
+    _write(repo / "backend" / "scripts" / "check_tracked_allowlist.py",
+           "print('[doc-allowlist] stub PASS')\nraise SystemExit(0)\n")
+    _write(repo / "backend" / "scripts" / "check_brick_registry.py",
+           "print('[brick-registry] stub PASS')\nraise SystemExit(0)\n")
+    _write(repo / "backend" / "scripts" / "check_legacy_raw_plane.py",
+           "print('[legacy-raw-plane] stub PASS')\nraise SystemExit(0)\n")
     _write(repo / "backend" / "scripts" / "check_lineage_drift.py",
            "print('[lineage-drift] stub PASS')\nraise SystemExit(0)\n")
     _write(repo / "README.md", "seed\n")
@@ -201,34 +200,6 @@ def _safe_commit_no_push(repo: Path, message: str) -> subprocess.CompletedProces
     return _run(["bash", "scripts/safe_commit.sh", message], repo, env=env)
 
 
-def _stage_feature_map_fixture(repo: Path, *, source: str, rendered: str) -> None:
-    _write(
-        repo / "backend" / "scripts" / "build_feature_map.py",
-        """from pathlib import Path
-import sys
-
-root = Path(__file__).resolve().parents[2]
-expected = f"map:{(root / 'SOURCE_VALUE.txt').read_text(encoding='utf-8').strip()}\\n"
-actual = (root / 'FEATURE_MAP.md').read_text(encoding='utf-8')
-raise SystemExit(0 if actual == expected else 1)
-""",
-    )
-    _write(repo / "SOURCE_VALUE.txt", source)
-    _write(repo / "FEATURE_MAP.md", rendered)
-    _write(repo / "PROJECT_INDEX.md", "feature map fixture registered\n")
-    assert _run(
-        [
-            "git",
-            "add",
-            "backend/scripts/build_feature_map.py",
-            "SOURCE_VALUE.txt",
-            "FEATURE_MAP.md",
-            "PROJECT_INDEX.md",
-        ],
-        repo,
-    ).returncode == 0
-
-
 def _stage_lineage_fixture(repo: Path, *, source: str, rendered: str) -> None:
     _write(
         repo / "backend" / "scripts" / "check_lineage_drift.py",
@@ -254,59 +225,10 @@ raise SystemExit(0 if actual == expected else 1)
     ).returncode == 0
 
 
-def test_rule10_missing_approve_only_notes_since_20260810(tmp_path: Path) -> None:
-    """2026-08-10 裁决: 缺 APPROVE 不再阻断 —— 该门只能匹配提交者自写的字符串,
-    验证不了审查是否真发生; 阻断只挡住不愿假称「审过了」的诚实提交者。"""
-    repo = _make_repo_with_staged_python(tmp_path)
-    result = _safe_commit_no_push(repo, "test audit without any review verdict")
-    assert result.returncode == 0
-    assert "NOTE: Rule 10" in result.stdout or "NOTE: Rule 10" in result.stderr
-
-def test_rule10_blocks_request_changes_review_verdict(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: REQUEST_CHANGES")
-
-    assert result.returncode == 6
-    assert "REQUEST_CHANGES" in result.stdout
-
-
-def test_rule10_blocks_request_changes_even_with_skip_reason(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-
-    result = _safe_commit(
-        repo,
-        "test audit\nCodex-Reviewed: REQUEST_CHANGES\ncodex-review: skipped reason=docs-only rename",
-    )
-
-    assert result.returncode == 6
-    assert "REQUEST_CHANGES" in result.stdout
-
-
-def test_rule10_accepts_approved_review_for_staged_python(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE_WITH_NOTES")
-
-    assert result.returncode == 0
-    assert "Rule 10 PASS" in result.stdout
-    assert "canonical staged check_codex_review gate" in result.stdout
-    assert "SAFE_COMMIT_DRY_RUN=1" in result.stdout
-
-
-def test_rule10_still_blocks_explicit_request_changes(tmp_path: Path) -> None:
-    """仍阻断的那一半: 没人会「忘记」写下否定裁决, 写了就意味着有未消除的异议。"""
-    repo = _make_repo_with_staged_python(tmp_path)
-    result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: REQUEST_CHANGES")
-    assert result.returncode != 0
-
 @pytest.mark.parametrize(
     "gate,script",
     [
-        ("project_index_sync", "check_project_index_sync.py"),
-        ("doc_drift", "check_doc_drift.py"),
-        ("doc_governance", "check_doc_governance.py"),
-        ("doc_runtime_state", "check_doc_runtime_state.py"),
+        ("tushare_sunset", "check_tushare_sunset.py"),
     ],
 )
 def test_scaffold_gate_failure_warns_but_never_goes_silent(
@@ -325,20 +247,6 @@ def test_scaffold_gate_failure_warns_but_never_goes_silent(
     assert f"WARN-ONLY [{gate}]" in result.stdout, "降级后必须仍然点名报出来"
     assert result.returncode == 0, "scaffold 门不得阻断提交"
 
-def test_stale_staged_feature_map_warns_but_does_not_block(tmp_path: Path) -> None:
-    """P1 起 feature_map 属 scaffold 组 —— 陈旧只提示不阻断。
-
-    受害者是下一个读地图的人, 不是这次 diff; 用它挡住代码修复正是 P1 要消灭的。
-    """
-    repo = _make_repo_with_staged_python(tmp_path)
-    _write(repo / "backend" / "scripts" / "build_feature_map.py", "raise SystemExit(1)\n")
-    assert _run(["git", "add", "backend/scripts/build_feature_map.py"], repo).returncode == 0
-
-    result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: APPROVE")
-    assert "WARN-ONLY [feature_map]" in result.stdout
-    assert result.returncode == 0, "scaffold 门不得阻断提交"
-
-
 def test_system_health_gates_are_not_run_at_commit(tmp_path: Path) -> None:
     """P1: continuity / grain 查的是 live 数据, 与本次 diff 无关 —— commit 路径不跑。
 
@@ -352,18 +260,6 @@ def test_system_health_gates_are_not_run_at_commit(tmp_path: Path) -> None:
     for gate in ("grain_uniqueness", "continuity"):
         assert f"skip {gate}" in result.stdout, f"{gate} 应在 commit 路径被跳过"
     assert "LIVE DATA READINESS" not in result.stdout, "commit 不再产生任何 readiness 声明"
-
-def test_feature_map_gate_ignores_unstaged_worktree_change(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-    _stage_feature_map_fixture(repo, source="v2\n", rendered="map:v2\n")
-    _write(repo / "SOURCE_VALUE.txt", "v3-unstaged\n")
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 0
-    assert "staged snapshot fresh" in result.stdout
-    assert "SAFE_COMMIT_DRY_RUN=1" in result.stdout
-
 
 def test_stale_staged_lineage_graph_blocks_commit(tmp_path: Path) -> None:
     repo = _make_repo_with_staged_python(tmp_path)

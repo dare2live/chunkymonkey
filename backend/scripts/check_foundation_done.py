@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""FND-GATE: foundation-done aggregate checklist (F1–F10).
+"""FND-GATE: foundation-done aggregate checklist (F1–F7).
 
 Authority: 本文件 + foundation_done.yaml (FND-GATE 十维) §3
 Config: backend/config/foundation_done.yaml
 
 FAIL on real gaps; typed walls (S7 ssot / org mass-ban / Type-B defer) stay PASS
 when honest. --skip-live omits F4/F6 DuckDB probes (CI). phase_closure_ready
-requires all F1–F10 PASS. Exit 0 PASS|PARTIAL; 1 FAIL; 2 crash.
+requires all F1–F7 PASS. Exit 0 PASS|PARTIAL; 1 FAIL; 2 crash.
 
 Run: PYTHONPATH=backend python backend/scripts/check_foundation_done.py [--json] [--skip-live]
 """
@@ -38,7 +38,7 @@ SECURITY_DAY_ACQUIRE = (
     REPO / "backend" / "services" / "data_sources" / "security_day_acquire.py"
 )
 
-CRITERION_IDS = ("F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F10")  # F9 strategy-pause 于 2026-09-02 退役 (业主拆锁; 策略阶梯不再存在)
+CRITERION_IDS = ("F1", "F2", "F3", "F4", "F5", "F6", "F7")  # F9 strategy-pause 于 2026-09-02 退役 (业主拆锁; 策略阶梯不再存在); F8/F10 于 docs/ 整目录退役同刀删 (§15 knife-merge 与 dual-track retire notes 的 owner 文档已不存在)
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -556,106 +556,6 @@ def check_f7_org_blocked() -> dict[str, Any]:
     )
 
 
-def check_f8_section15(cfg: dict[str, Any]) -> dict[str, Any]:
-    """F8: §15 knife-merge behavior — PARTIAL until §15-VERIFY fills evidence."""
-    s15 = cfg.get("section_15") or {}
-    status = str(s15.get("status") or "PARTIAL").upper()
-    reason = str(s15.get("reason") or "unspecified")
-    max_ratio = float(s15.get("max_commits_per_knife") or 1.5)
-    need = int(s15.get("required_consecutive_l3_knives") or 3)
-    evidence = s15.get("evidence") or {}
-    knives = list(evidence.get("knives") or [])
-
-    if status == "PARTIAL":
-        return _crit(
-            "F8",
-            "PARTIAL",
-            detail=(
-                f"§15 behavior adoption incomplete ({reason}); "
-                f"need {need} L3 knives with commits/knife≤{max_ratio}"
-            ),
-            evidence={"status": status, "knives": knives},
-            wall="section15_behavior_adoption",
-        )
-
-    if status != "PASS":
-        return _crit(
-            "F8",
-            "FAIL",
-            detail=f"section_15.status must be PASS|PARTIAL (got {status!r})",
-        )
-
-    if len(knives) < need:
-        return _crit(
-            "F8",
-            "FAIL",
-            detail=f"F8 PASS claim lacks {need} knife evidence entries (got {len(knives)})",
-            evidence={"knives": knives},
-        )
-
-    ratios: list[float] = []
-    for knife in knives:
-        if not isinstance(knife, dict):
-            return _crit("F8", "FAIL", detail="knife evidence entries must be mappings")
-        commits = knife.get("commits")
-        if not isinstance(commits, int) or commits < 1:
-            return _crit(
-                "F8",
-                "FAIL",
-                detail=f"knife {knife.get('name')!r} missing positive commits count",
-            )
-        if not knife.get("pre_knife"):
-            return _crit(
-                "F8",
-                "FAIL",
-                detail=f"knife {knife.get('name')!r} missing pre_knife=true",
-            )
-        ratios.append(float(commits))
-
-    # commits/knife for the consecutive window = mean commits per knife
-    mean_ratio = sum(ratios) / len(ratios)
-    if mean_ratio > max_ratio:
-        return _crit(
-            "F8",
-            "FAIL",
-            detail=f"commits/knife={mean_ratio:.3f} > {max_ratio}",
-            evidence={"knives": knives, "commits_per_knife": mean_ratio},
-        )
-
-    return _crit(
-        "F8",
-        "PASS",
-        detail=f"§15 behavior PASS; commits/knife={mean_ratio:.3f}≤{max_ratio}; n={len(knives)}",
-        evidence={"knives": knives, "commits_per_knife": mean_ratio},
-    )
-
-
-def check_f10_dual_track(cfg: dict[str, Any]) -> dict[str, Any]:
-    """F10: dual-track residual NONE (retire notes + serve-read clean)."""
-    dt = cfg.get("dual_track") or {}
-    notes_rel = str(dt.get("retire_notes") or "data/lineage/legacy_retire_notes.md")
-    notes = REPO / notes_rel
-    if not notes.is_file():
-        return _crit("F10", "FAIL", detail=f"missing {notes_rel}")
-    text = _read_text(notes)
-    needles = list(dt.get("must_contain") or ["residual = NONE"])
-    if not any(n in text for n in needles):
-        # accept alternate punctuation
-        alt = "residual: NONE"
-        if alt not in text and "residual = NONE" not in text:
-            return _crit(
-                "F10",
-                "FAIL",
-                detail=f"{notes_rel} missing dual-track residual NONE claim",
-            )
-    return _crit(
-        "F10",
-        "PASS",
-        detail="dual-track residual NONE (legacy_retire_notes re-audit)",
-        evidence={"retire_notes": notes_rel},
-    )
-
-
 def evaluate_foundation_done(
     *,
     cfg: dict[str, Any] | None = None,
@@ -670,8 +570,6 @@ def evaluate_foundation_done(
         check_f5_e0_transport(),
         check_f6_e0_breadth(cfg, skip_live=skip_live),
         check_f7_org_blocked(),
-        check_f8_section15(cfg),
-        check_f10_dual_track(cfg),
     ]
     by_id = {c["id"]: c["verdict"] for c in criteria}
     if any(v == "FAIL" for v in by_id.values()):
@@ -695,8 +593,9 @@ def evaluate_foundation_done(
             "FAIL": sum(1 for v in by_id.values() if v == "FAIL"),
         },
         "note": (
-            "PARTIAL (e.g. F8 §15) does not fail this gate; "
-            "phase_closure_ready requires F1–F8 and F10 PASS (F9 retired 2026-09-02)"
+            "PARTIAL (e.g. F6 live evidence skipped) does not fail this gate; "
+            "phase_closure_ready requires F1–F7 PASS (F9 retired 2026-09-02; "
+            "F8/F10 removed with docs/ retirement)"
         ),
     }
 

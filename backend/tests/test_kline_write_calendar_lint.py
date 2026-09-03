@@ -1,4 +1,4 @@
-"""Test K-line write-side calendar lint (AGENTS.md Tier0 calendar truth).
+"""Test K-line write-side calendar lint (CLAUDE.md 红线 2: 交易日只从 services.calendar 取).
 
 Codex review 2026-05-19 HIGH 3: 缺最小有效单测覆盖 future-date filter (现有 test 用
 fake row VWAP-close mismatch 被 clean_price_rows 先 reject, lint 没机会跑).

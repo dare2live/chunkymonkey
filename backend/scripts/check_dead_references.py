@@ -66,7 +66,7 @@ _PY_PATH_RE = re.compile(r"(?<![\w/])(?:backend/)?(?:services|scripts|tests)/[\w
 _SERVICES_IMPORT_RE = re.compile(r"(?:from|import)\s+services\.([a-zA-Z0-9_.]+)")
 # D 扫: 注册表 dataclass 的 module="services.X"/"scripts.X"/"routers.X" 字符串字面量 (= 或 :)
 _MODULE_LITERAL_RE = re.compile(r"""\bmodule\s*[=:]\s*["']((?:services|scripts|routers)\.[\w.]+)["']""")
-# E 扫: SQL FROM/JOIN 后跟项目表命名惯例前缀 (与 build_feature_map.py WRITE_RE 同款口径);
+# E 扫: SQL FROM/JOIN 后跟项目表命名惯例前缀 (fact_/dim_/mart_/raw_/canonical_ 等);
 # 动态 f-string 表名 (FROM {table}) 不匹配字面前缀, 自然跳过 (静态无法核实, 不误判)。
 # 前缀后至少 1 个字符 (+非*): 防文档字符串里"禁止 FROM raw_*"这类规则描述被误判成真表名
 # (2026-07-06 实测反例: services/data_access/__init__.py 的门禁说明文字被 * 前的 "raw_" 裸前缀

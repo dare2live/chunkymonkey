@@ -5,18 +5,15 @@ blocking_paths:
 - tests/scripts/test_audit_date_bounds.py
 - tests/scripts/test_audit_exemptions.py
 - tests/scripts/test_audit_min_rows_baseline.py
-- tests/scripts/test_build_feature_map_drift.py
 - tests/scripts/test_build_price_kline_qfq_tushare.py
 - tests/scripts/test_build_sw_industry_view.py
 - tests/scripts/test_check_calendar_usage.py
-- tests/scripts/test_check_codex_review.py
-- tests/scripts/test_check_commit_message.py
 - tests/scripts/test_check_contract_stamp_consistency.py
-- tests/scripts/test_check_doc_runtime_state.py
 - tests/scripts/test_check_foundation_done.py
 - tests/scripts/test_check_frozen_stamp_compare.py
 - tests/scripts/test_check_lineage_catalog_drift.py
 - tests/scripts/test_check_lineage_drift.py
+- tests/scripts/test_check_rule_compliance.py
 - tests/scripts/test_check_staged_blob_size.py
 - tests/scripts/test_check_strategy_lab.py
 - tests/scripts/test_check_tracked_allowlist.py
@@ -165,7 +162,6 @@ blocking_paths:
 - tests/test_by_ann_date_equal_day_reprobe.py
 - tests/test_calendar_gate.py
 - tests/test_check_dead_references.py
-- tests/test_check_doc_governance.py
 - tests/test_cx3_capability_bricks.py
 - tests/test_db.py
 - tests/test_decision_intersection.py
@@ -387,11 +383,6 @@ ci_test_optional:
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
     review, one triage slice at a time'
 - path: tests/test_calendar_builder.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/test_check_doc_drift.py
   reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
     ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency

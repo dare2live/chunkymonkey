@@ -6,7 +6,7 @@
 #   - backend/services/pipeline/store.py  取 runtime_checks → daily_update 运行时自检
 #   - backend/scripts/gate_policy.py  CLI: --names / --table / --check / --run-system-health
 #
-# 分布判据 (goal.md 三条原则之三「门装在受害发生的时刻，不装在最方便检查的时刻」)：
+# 分布判据 (「门装在受害发生的时刻，不装在最方便检查的时刻」)：
 #   问「谁受害、何时受害」，不问「这条规则属于哪个主题」。
 #     这次 diff 本身错   → commit 阻断      → group=diff_correctness
 #     数据 / 策略 / 钱   → 运行时自检       → group=system_health
@@ -64,22 +64,31 @@ groups:
 # backend/scripts/classify_commit_tier.py 的 ALL_GATES_ORDERED 一一对应；
 # 三者一致性由 backend/tests/scripts/test_governance_gates.py 锁死)。
 commit_gates:
-  project_index_sync:
-    group: scaffold
-    checks: "改了 service/script/yaml 就必须同批改 PROJECT_INDEX.md"
-    why: "索引陈旧只让下次 session 的地图不准；它挡不住任何一个真实缺陷。"
-    object: "PROJECT_INDEX.md, backend/services/**, backend/scripts/*.py, backend/config/*.yaml, AGENTS.md"
-    invariant: "改了 TRIGGERS 命中的路径 (services/**, scripts/build_*|optimize_*|run_*|backfill_*|rebuild_*|audit_*, config/**, AGENTS.md) 必须同批 stage PROJECT_INDEX.md"
-    kill_when: "keep_forever: 只要 PROJECT_INDEX.md 还是人工维护的活索引, 漂移检测就要在"
+  doc_allowlist:
+    group: diff_correctness
+    checks: "git 跟踪的 markdown 集合 ⊆ 7 文件白名单; bestchoice/ 跟踪集合 == 冻结清单"
+    why: "文档增生是这次 diff 写下的动作 (新增一份跟踪 md); 业主裁决文档越少越好, 静态可判。"
+    object: "*.md, bestchoice/**, backend/config/tracked_doc_allowlist.yaml"
+    invariant: "git 跟踪的 markdown 集合 ⊆ 白名单 7 文件 (CLAUDE.md, goal.md, sandbox/README.md, bestchoice/FROZEN.md, bestchoice/README.md, frontend/DESIGN.md, frontend/README.md); bestchoice/ 跟踪集合 == 冻结清单"
+    kill_when: "keep_forever: 文档增生是本项目反复出现的病, 白名单是唯一机器可判的抑制手段"
     paradigm: engineering
 
-  feature_map:
-    group: scaffold
-    checks: "FEATURE_MAP.md 派生地图与 staged 源快照一致"
-    why: "机器可重生的投影；陈旧 = 重新跑一次生成器，不是系统故障。"
-    object: "FEATURE_MAP.md, backend/**/*.py, backend/routers/*.py"
-    invariant: "FEATURE_MAP.md 与从 backend/**/*.py + routers/*.py rglob 重生的结果逐字一致"
-    kill_when: "keep_forever: 只要 FEATURE_MAP.md 是机器生成产物, 就要防手改/漂移"
+  brick_registry:
+    group: diff_correctness
+    checks: "brick_registry.yaml L2/L3/Type-B 分层完整性 + hop 深度 + 孤儿"
+    why: "L2 依赖 L3/L4、静默 raw bypass、hop 超深都是这次 diff 写下的积木装配形状，静态可判。"
+    object: "backend/config/brick_registry.yaml, backend/services/**/*.py, backend/scripts/check_brick_registry.py"
+    invariant: "brick_registry.yaml: L2 不依赖 L3/L4, 无静默 raw bypass, L3 hop <=2, backend/services 每个 FEATURE_BLOCK_ID 已登记, data_layers L2_feature 表在 outputs, partial 带 reason, owner 路径存在"
+    kill_when: "delete: brick_registry.yaml 随 K8 并入 datasets.yaml 时"
+    paradigm: engineering
+
+  legacy_raw_plane:
+    group: diff_correctness
+    checks: "legacy_raw_plane.yaml 对 raw_* 表登记完整性 + formal 域诚实 role"
+    why: "新增/改名 raw_* 表未登记角色是这次 diff 写下的登记缺口，静态可判。"
+    object: "backend/config/legacy_raw_plane.yaml, backend/config/sync_registry.yaml, backend/config/data_access.yaml, backend/scripts/check_legacy_raw_plane.py"
+    invariant: "sync_registry/data_access 引用的每张 raw_* 表在 legacy_raw_plane.yaml 有诚实 role; formal 域 raw 表非 ssot 且 write forbidden; raw entity allowlist 只缩不涨"
+    kill_when: "delete: legacy_raw_plane.yaml 随 K6 删四张 legacy raw 表时"
     paradigm: engineering
 
   moth_invariants:
@@ -168,6 +177,7 @@ commit_gates:
     why: >-
       静态契约面属于这次 diff。同一脚本报的 live_readiness 从来只是投影、
       不阻断，真的 live 数据裁决在 continuity 运行时自检里。
+    script: backend/scripts/check_universe_filter.py
     object: "backend/config/universe_rules.yaml, backend/config/sync_registry.yaml"
     invariant: "静态 population 契约 verdict=PASS 且 formal_dataset_count>0"
     kill_when: "keep_forever: universe 单一入口"
@@ -198,7 +208,7 @@ commit_gates:
     group: diff_correctness
     checks: "删模块/表/文件后引用方未清 (死 import / config 死路径 / 孤儿脚本)"
     why: "删除动作就在这次 diff 里；漏清引用方是这一刀没做完。"
-    object: "backend/**/*.py, backend/config/*.yaml, docs/*.md, .moth/**"
+    object: "backend/**/*.py, backend/config/*.yaml, .moth/**"
     invariant: "删除的模块/表/文件, 其引用方(import / config 死路径 / 文档链接)必须同批清除"
     kill_when: "keep_forever: 与范式无关的工程卫生"
     paradigm: engineering
@@ -256,57 +266,6 @@ commit_gates:
     object: "backend/config/data_access.yaml, backend/config/data_layers.yaml"
     invariant: "data_access.yaml 引用的 layer 值必须在 data_layers.yaml 有定义"
     kill_when: "keep_forever: 层词汇单一真相源"
-    paradigm: engineering
-
-  doc_drift:
-    group: scaffold
-    checks: "活文档引用的代码路径 / 本地链接实际存在"
-    why: "悬空引用害的是按图索骥的下一个人；系统照常跑。"
-    object: "AGENTS.md, docs/*.md, PROJECT_INDEX.md"
-    invariant: "活文档 (活索引 + 规则 + docs/ 契约) 引用的代码路径/本地链接必须实际存在"
-    kill_when: "keep_forever: 只要文档引用代码路径, 悬空引用就会误导下一个人"
-    paradigm: engineering
-
-  doc_governance:
-    group: scaffold
-    checks: "活文档 owner 唯一 / 无 retired CLI / fails=0 warns=0"
-    why: "文档生命周期纪律；坏掉不改变任何运行时行为。"
-    object: "AGENTS.md, goal.md, PROJECT_INDEX.md, docs/*.md, FEATURE_MAP.md"
-    invariant: "活文档 owner 唯一; docs/ authority allowlist 精确匹配; fails=0 warns=0"
-    kill_when: "keep_forever: 文档生命周期纪律"
-    paradigm: engineering
-
-  doc_runtime_state:
-    group: scaffold
-    checks: "人工活文档里未声明的紧凑日期 / 写死的旧前沿 / 已失效的豁免"
-    why: >-
-      写死的运行时状态坏掉时，系统照常跑，受害的是下一个照着文档做判断的人
-      (2026-08-10 实证: 两份手写文档互相矛盾且同时落后两周，误导了整整两周)。
-      故 warn-only；但它是**唯一**查语义时效的门 —— 其余文档门只查悬空链接与代码路径。
-    object: "docs/*.md, backend/config/doc_runtime_state.yaml"
-    invariant: "人工活文档里没有未声明的紧凑日期/写死的旧前沿/已失效的豁免"
-    kill_when: "keep_forever: 唯一查语义时效的门, 其余文档门只查悬空链接"
-    paradigm: engineering
-
-  commit_msg:
-    group: scaffold
-    checks: "commit message 关键词提示 (GROUP A/B)"
-    why: "自述型；本来就只打印 WARNING 不阻断，登记在此保持一致。"
-    object: "rule:commit_message_structure"
-    invariant: "commit message 含 Q/Fix/Evidence/Residual 结构关键词提示"
-    kill_when: "keep_forever: 自述型提示, 保持与 commit-msg hook 一致"
-    paradigm: engineering
-
-  rule10:
-    group: diff_correctness
-    checks: "显式 Codex-Reviewed: REQUEST_CHANGES 阻断 + staged 范围不可判定 fail-closed"
-    why: >-
-      2026-08-10 已拆掉无法验证的那一半 (缺 APPROVE 不再阻断)。剩下两条都是
-      客观且只关于这次 diff 的事实：有人对**这一刀**写下了未消除的否定裁决，
-      或者门根本无法确定 staged 范围。AGENTS.md §9 保留其阻断力。
-    object: "rule:codex_review_verdict"
-    invariant: "commit message 里没有未消除的 Codex REQUEST_CHANGES 裁决, 且 staged 范围可判定"
-    kill_when: "keep_forever: AGENTS.md §9 保留其阻断力"
     paradigm: engineering
 
   tushare_sunset:
@@ -417,29 +376,7 @@ runtime_checks:
 # ── 脚手架批量修 ────────────────────────────────────────────────────────
 # scaffold 组不再阻断提交，代价是必须有一个「一条命令修完」的入口，
 # 否则 warn 会被无限忽略。scripts/chunkyctl scaffold-fix 消费本节。
-scaffold_fix:
-  - id: feature_map
-    from_gate: feature_map
-    kind: regenerate
-    command: ["backend/scripts/build_feature_map.py"]
-    note: "重生 FEATURE_MAP.md + data/feature_map.json (BOARD 已于 P2.3 改现查, 无产物可重生)"
-  - id: doc_drift
-    from_gate: doc_drift
-    kind: report
-    command: ["backend/scripts/check_doc_drift.py"]
-    note: "悬空引用需人改文档指向，机器只能报清单"
-  - id: doc_governance
-    from_gate: doc_governance
-    kind: report
-    command: ["backend/scripts/check_doc_governance.py"]
-    note: "owner/生命周期违规需人裁决，机器只能报清单"
-  - id: project_index_sync
-    from_gate: project_index_sync
-    kind: report
-    command: ["backend/scripts/check_project_index_sync.py"]
-    note: "活索引节要写什么是人的判断，机器只报缺口"
-  - id: doc_runtime_state
-    from_gate: doc_runtime_state
-    kind: report
-    command: ["backend/scripts/check_doc_runtime_state.py"]
-    note: "写死的状态该改成指针还是该声明为常量，是人的判断；机器给出真相源当前值"
+# 2026-09-04: 原 5 条 (feature_map/doc_drift/doc_governance/project_index_sync/
+# doc_runtime_state) 全部随各自门一起随 8 份文档删除退役 —— 本节允许为空
+# (governance_gates.py._parse_scaffold_fixes 已放宽此约束)。
+scaffold_fix: []

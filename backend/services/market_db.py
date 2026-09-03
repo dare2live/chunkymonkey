@@ -74,7 +74,8 @@ def filter_kline_rows_by_calendar(
     """Filter rows by latest_completed_trade_date (write-side PIT lint).
 
     通用 K-line writer 写侧日历 lint (Codex review 2026-05-19 CRITICAL): 任何 K线写入前
-    剔除 date > latest_completed_trade_date 的盘中 partial 行 (AGENTS.md Tier0 时间边界)。
+    剔除 date > latest_completed_trade_date 的盘中 partial 行 —— 盘中未收盘的当日行不是
+    完成交易日, 计入会让下游把半天数据当整天 (边界由 services.calendar 定, 不在此处硬编码)。
 
     max_date_override: batch sync 启动时锁定的 cutoff, 避免跨 15:05 阈值导致同批次不一致.
 

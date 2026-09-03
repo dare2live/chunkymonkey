@@ -2,7 +2,7 @@
 
 Consumes ``mart_sector_pulse_daily`` + ``fact_stock_moneyflow(_dc)_daily``.
 Never writes behavior labels into Tier0/Tier2. Moneyflow = vendor imbalance
-proxy (AGENTS.md), not conserved cash.
+proxy, not conserved cash.
 
 Authority: 本文件 (产品能力边界, Cap A) +
 goal.md「下一步」执行 backlog §2.

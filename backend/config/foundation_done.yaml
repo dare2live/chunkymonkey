@@ -1,4 +1,6 @@
-# Foundation-done aggregate gate (F1–F8, F10; F9 strategy-pause 于 2026-09-02 退役 — 业主拆锁, 策略阶梯/StrategyRelease 概念不再存在)
+# Foundation-done aggregate gate (F1–F7; F9 strategy-pause 于 2026-09-02 退役 — 业主拆锁, 策略阶梯/StrategyRelease 概念不再存在;
+# F8 §15 knife-merge behavior + F10 dual-track residual 随 docs/ 整目录退役同刀删 — 两者的正文
+# owner 文档都已不存在, 门问不出机器可验证的问题)
 #
 # Authority: 本文件 + backend/scripts/check_foundation_done.py (FND-GATE 十维) §3
 # Owner script: backend/scripts/check_foundation_done.py
@@ -11,9 +13,6 @@
 #     are PASS when the wall is honestly maintained — they must NOT block
 #     foundation-phase closure incorrectly
 #   - Type-B enrichment was a defer wall; FIXED 2026-07-23 (canonical ACCEPTED)
-#   - F8 §15 behavior PASS only when §15-VERIFY evidence lists
-#     ≥3 consecutive L3 knives with commits/knife ≤1.5 and pre_knife=true
-#     (do NOT loosen thresholds to force PASS)
 #   - Aggregate gate exit 0 for PASS|PARTIAL; exit 1 only on FAIL
 #   - phase_closure_ready (E/F may schedule) requires every criterion PASS
 
@@ -58,38 +57,3 @@ b5:
   # Empty = no typed defer wall; institution_profile_edge must not be partial
   # without a listed defer code (gate still enforces).
   type_b_defer_codes: []
-
-# §15 behavior (F8) — PASS after §15-VERIFY (2026-07-21)
-# Evidence authority: git log --grep section15_verify
-section_15:
-  status: PASS
-  reason: section15_verify_three_consecutive_l3_knives
-  max_commits_per_knife: 1.5
-  required_consecutive_l3_knives: 3
-  # PASS requires ≥3 knives each with positive commits + pre_knife=true;
-  # mean commits/knife must be ≤ max_commits_per_knife (not loosened).
-  evidence:
-    measured_at: "2026-07-21"
-    commits_per_knife: 1.0
-    artifact: git log --grep section15_verify
-    knives:
-      - name: e0-hist
-        commits: 1
-        pre_knife: true
-        sha: "4f7a13af083f21494b720806c9a3d3607d33be4c"
-        subject: "feat(foundation): E0-HIST F6 PASS — holders/stk local-raw chunked accept"
-      - name: fnd-gate
-        commits: 1
-        pre_knife: true
-        sha: "eefd19e532c7403202664a304d7f9191ff2f4109"
-        subject: "feat(foundation): FND-GATE — machine-checkable F1–F10 foundation-done aggregate"
-      - name: section15-verify
-        commits: 1
-        pre_knife: true
-        subject: "feat(foundation): §15-VERIFY — F8 PASS knife-merge evidence (this knife)"
-
-# Dual-track (F10)
-dual_track:
-  retire_notes: data/lineage/legacy_retire_notes.md
-  must_contain:
-    - "residual = NONE"

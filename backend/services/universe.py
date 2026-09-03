@@ -620,7 +620,7 @@ def build_limit_up_pct_map(stock_codes) -> dict[str, float]:
     return {code: get_limit_up_pct(code) for code in stock_codes}
 
 
-# audit_strategy_universe_contamination() 2026-07-07 整段退役 (owner=PROJECT_INDEX.md dim_all_ever_listed
+# audit_strategy_universe_contamination() 2026-07-07 整段退役 (git log --grep dim_all_ever_listed
 # 决策收口): 审计"策略预测表"(strategy predictions table)是否混入排除股, 但策略/serving/scoring 层已
 # 于 2026-06-28 纯数据平台重建整体退役, 项目里已不存在这类预测表可审; 生产 0 调用方(仅
 # backend/tests/test_universe.py 测试自身), 且其退市码集来源 dim_all_ever_listed 本身也已物删。

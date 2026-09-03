@@ -17,18 +17,18 @@ def test_live_policy_validates() -> None:
     policy = clas.load_policy(POLICY)
     clas.validate_policy(policy)
     assert policy["tier_gates"]["L3"] == "all"
-    assert "rule10" in policy["tier_gates"]["L2"]
-    assert "doc_governance" in policy["tier_gates"]["L1"]
+    assert "ci_pytest" in policy["tier_gates"]["L2"]
+    assert "doc_allowlist" in policy["tier_gates"]["L1"]
 
 
 def test_l1_docs_only() -> None:
     result = clas.classify(
-        ["goal.md", "PROJECT_INDEX.md", "sandbox/probe.md"],
+        ["goal.md", "CLAUDE.md", "sandbox/probe.md"],
         scan_content=False,
     )
     assert result["tier"] == "L1"
-    assert "rule10" not in result["gates"]
-    assert "doc_governance" in result["gates"]
+    assert "brick_registry" not in result["gates"]
+    assert "doc_allowlist" in result["gates"]
     assert "grain_uniqueness" not in result["gates"]
     assert "continuity" not in result["gates"]
 
@@ -39,7 +39,7 @@ def test_l2_tests_and_routers() -> None:
         scan_content=False,
     )
     assert result["tier"] == "L2"
-    assert "rule10" in result["gates"]
+    assert "brick_registry" in result["gates"]
     assert "ci_pytest" in result["gates"]
     assert "grain_uniqueness" not in result["gates"]
     assert "continuity" not in result["gates"]
@@ -66,7 +66,7 @@ def test_mixed_docs_and_service_is_l3() -> None:
 def test_pit_file_in_docs_commit_escalates() -> None:
     """Bad case: PIT/writer surface mixed into a docs-looking set → L3."""
     result = clas.classify(
-        ["PROJECT_INDEX.md", "backend/services/data_sources/nominal_ohlcv_acceptance.py"],
+        ["CLAUDE.md", "backend/services/data_sources/nominal_ohlcv_acceptance.py"],
         scan_content=False,
     )
     assert result["tier"] == "L3"
@@ -90,14 +90,14 @@ def test_retired_board_artifact_is_no_longer_special_cased() -> None:
 
 def test_feature_map_alone_is_l3() -> None:
     """FEATURE_MAP is generated; hand edits must not take the L1 light path."""
-    result = clas.classify(["FEATURE_MAP.md"], scan_content=False)
+    result = clas.classify(["SOME_GENERATED_DOC.md"], scan_content=False)
     assert result["tier"] == "L3"
 
 
 def test_deletion_forces_l3() -> None:
     policy = clas.load_policy(POLICY)
     clas.validate_policy(policy)
-    result = clas.classify_paths([("D", "PROJECT_INDEX.md")], policy, scan_content=False)
+    result = clas.classify_paths([("D", "goal.md")], policy, scan_content=False)
     assert result["tier"] == "L3"
     assert any(r.startswith("status_D:") for r in result["reasons"])
 
@@ -129,9 +129,9 @@ def test_invalid_policy_l3_missing_all_fail_closed(tmp_path: Path) -> None:
             "l2_files": [],
             "content_scan_exempt_prefixes": [],
             "tier_gates": {
-                "L1": ["doc_drift", "doc_governance"],
-                "L2": ["rule10"],
-                "L3": ["doc_drift"],  # must be 'all'
+                "L1": ["doc_allowlist"],
+                "L2": ["ci_pytest"],
+                "L3": ["doc_allowlist"],  # must be 'all'
             },
         }),
         encoding="utf-8",

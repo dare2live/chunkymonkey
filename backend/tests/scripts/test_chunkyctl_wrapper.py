@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
 import shutil
 import subprocess
 from pathlib import Path
@@ -10,7 +9,6 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 WRAPPER = REPO_ROOT / "scripts" / "chunkyctl"
-FEATURE_MAP_BUILDER = REPO_ROOT / "backend" / "scripts" / "build_feature_map.py"
 RETIRED_COMMANDS = ("worktree", "docs", "preflight", "audit", "data-status", "jobs")
 
 
@@ -128,15 +126,3 @@ def test_sync_help_is_the_wrapper_contract_not_runner_all_due(tmp_path: Path) ->
     assert "scripts/chunkyctl sync --domain DOMAIN" in result.stdout
     assert "--backfill --start YYYYMMDD --end YYYYMMDD" in result.stdout
     assert "--all-due" not in result.stdout
-
-
-def test_feature_map_does_not_publish_retired_commands() -> None:
-    spec = importlib.util.spec_from_file_location("build_feature_map", FEATURE_MAP_BUILDER)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
-    commands = {name for name, _help in module.scan_chunkyctl(REPO_ROOT)}
-
-    assert {"agent-boot", "pre-knife", "doctor", "sync", "map", "pipeline", "lineage"} <= commands
-    assert commands.isdisjoint(RETIRED_COMMANDS)

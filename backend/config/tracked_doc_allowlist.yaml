@@ -1,8 +1,11 @@
 version: 1
-purpose: 仓库允许被 git 跟踪的文档白名单。判据数据化, 不 hardcode 在门脚本里 —— 脚本里出现 "sandbox/..." 字面量会被 check_sandbox_isolation
-  的 C1 (正则第三支 ['"]sandbox/) 误判成「backend 代码依赖 sandbox/」。C1 想守的是依赖, 问的是字符串出现 —— 与其给那道门开文件级豁免(会连带放过真 import),
+purpose: '仓库允许被 git 跟踪的文档白名单。判据数据化, 不 hardcode 在门脚本里 —— 脚本里出现 "sandbox/..." 字面量会被 check_sandbox_isolation
+  的 C1 (正则第三支 [''"]sandbox/) 误判成「backend 代码依赖 sandbox/」。C1 想守的是依赖, 问的是字符串出现 —— 与其给那道门开文件级豁免(会连带放过真 import),
   不如让本门无字面量可抓。2026-09-04。 bestchoice_frozen 用**仓库根相对**路径 (loader 剥 bestchoice/ 前缀再比对) —— 配置里的相对路径按惯例是仓库根相对,
-  写成 bestchoice/ 相对会被 check_dead_references 的 config-dead-path 判成死引用 (2026-09-04 实测 3 处)。
+  写成 bestchoice/ 相对会被 check_dead_references 的 config-dead-path 判成死引用 (2026-09-04 实测 3 处)。 2026-09-04:
+  移出 analysis/*.csv 两条 —— 它们被 .gitignore:69 (bestchoice/analysis/*.csv) 按设计排除以压仓库体积 (02d39cfd3), **永远不可能被
+  git 跟踪**, 留在本清单里这道门就永远红。移走不丢保护: 冻结证据的真牙是 bestchoice/scripts/verify_frozen_evidence.py 的 sha256 校验 (验磁盘内容不验跟踪状态),
+  已双向实测——往 stock_formula_best.csv 追加一个字节即报 "sha256 mismatch", 复原即 ok。本门管跟踪集合, 那个门管内容, 不重叠。'
 tracked_md:
 - CLAUDE.md
 - bestchoice/FROZEN.md
@@ -15,8 +18,6 @@ bestchoice_frozen:
 - bestchoice/.gitignore
 - bestchoice/FROZEN.md
 - bestchoice/README.md
-- bestchoice/analysis/formula_local_optuna_batch_adoption.csv
-- bestchoice/analysis/stock_formula_best.csv
 - bestchoice/evidence_manifest.json
 - bestchoice/execution_model.py
 - bestchoice/formula_engine.py

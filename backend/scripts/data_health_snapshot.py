@@ -559,7 +559,7 @@ def _load_assets_from_registry(con) -> list[dict]:
             "SELECT table_name FROM information_schema.tables WHERE table_schema='main'").fetchall()}
     except Exception as e:  # 连接/表枚举失败 — 记 debug 不静默吞
         log.debug("live table enumeration skipped: %s", e)
-    # 2026-07-07 dim_all_ever_listed/dim_listing_status 整表退役, 4dim 监控集减至 2 (owner=PROJECT_INDEX.md)
+    # 2026-07-07 dim_all_ever_listed/dim_listing_status 整表退役, 4dim 监控集减至 2 (决策见 git log --grep dim_all_ever_listed)
     ref_dims = {"dim_active_a_stock", "dim_trading_calendar"}  # rule-compliance: ok evidence=reference库dim监控集(非universe取数, 列出data_health经dim_read_conn可读的reference表)
     monitorable = live | ref_dims
     assets: list[dict] = []

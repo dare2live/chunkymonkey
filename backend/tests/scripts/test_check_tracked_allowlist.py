@@ -67,7 +67,7 @@ def test_extra_tracked_markdown_fails(repo: Path) -> None:
         _add_file(repo, rel)
     _add_frozen_bestchoice(repo)
     _add_file(repo, "notes/sneaky_new_doc.md")  # 白名单外新增一份 (注意: 不要用 "docs/" 前缀
-    # —— 那会被 check_doc_drift._SOURCE_DOC_REF_RE 当成源码里的 docs/*.md 引用误判成本仓自己的
+    # —— 那会被死引用门当成源码里的真实路径引用, 误判成本仓自己的
     # 悬空引用, 本 fixture 字面量与真实 docs/ 语义无关, 换个不触发那条正则的前缀即可)
 
     r = gate.audit(repo)
@@ -121,11 +121,11 @@ def test_red_then_green_after_removing_extra_file(repo: Path) -> None:
     for rel in sorted(gate.MD_ALLOWLIST):
         _add_file(repo, rel)
     _add_frozen_bestchoice(repo)
-    extra = repo / "PROJECT_INDEX.md"
+    extra = repo / "SOME_EXTRA_DOC.md"
     extra.write_text("x", encoding="utf-8")
-    _run(["git", "add", "PROJECT_INDEX.md"], repo)
+    _run(["git", "add", "SOME_EXTRA_DOC.md"], repo)
 
     assert gate.audit(repo)["overall"] == "FAIL"
 
-    _run(["git", "rm", "-q", "-f", "PROJECT_INDEX.md"], repo)
+    _run(["git", "rm", "-q", "-f", "SOME_EXTRA_DOC.md"], repo)
     assert gate.audit(repo)["overall"] == "PASS"
