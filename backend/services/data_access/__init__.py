@@ -1,4 +1,4 @@
-"""SERVE 读侧统一层 — owner=docs/MASTER_TOPLEVEL_DESIGN.md §3.1/§5.1。
+"""SERVE 读侧统一层 — owner=本文件。
 
 唯一取数 + PIT 执行 + 口径清洗点。消费者 (dossier/feature_panel/选股/实验) **全走 DataAccess.get**,
 禁内联 FROM raw_* (check_serve_read_layer D1) / 禁自写 asof (check_serve_read_layer D2)。

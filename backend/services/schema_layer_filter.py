@@ -5,7 +5,7 @@ schema 文件的 CREATE/ALTER/INDEX 在执行前按 backend/config/data_layers.y
 只对**活层 (KEEP)** 的表执行; 非活层 (L2_feature/L3_model/L4_experiment, status=wiped) 的 DDL 滤除。
 → 删除"粘住", 不被启动重建。重建某层时改 data_layers.yaml 该表 layer 至活层即自动恢复 (声明式)。
 
-owner = docs/MASTER_TOPLEVEL_DESIGN.md §4/§5 (分层与数据集契约)。
+owner = 本文件 + backend/config/data_layers.yaml (分层与数据集契约)。
 """
 from __future__ import annotations
 

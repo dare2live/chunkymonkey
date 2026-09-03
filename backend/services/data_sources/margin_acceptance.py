@@ -410,7 +410,7 @@ def prove_current_landed_margin_batch(
     # 2026-09-02: 只比声明身份 (contract_version, writer_id)。row[2:5] 是落地时刻的
     # contract_hash / config_hash / source_name —— 冻结证据, 指纹重打/换源后必然与现算契约
     # 不等; 曾因此把 20260828 的 LANDED 检查点判成 "stale", 追赶路径卡死。
-    # 见 docs/engineering_governance.md §15.6。
+    # 见本文件同型注释 (git log --grep landing_seal_vs_contract_restamp)。
     actual = (str(row[1]), str(row[5]))
     expected = (contract.contract_version, contract.writer)
     if actual != expected:

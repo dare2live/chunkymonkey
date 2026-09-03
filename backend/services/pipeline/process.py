@@ -128,7 +128,7 @@ def run_process(ctx: PipelineContext) -> None:
     ctx.step(_form_latest, degraded_msg="Tier1 形态状态增量失败 — form 标签与 Tier3 研究输入将 stale")
 
     # Closed-loop: institution episode→profile must track holders land (not manual-only).
-    # Authority: docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)
+    # Authority: backend/services/pipeline/closed_loop.py (派生新鲜度闭环法)
     inst_plan = dict(process_plan.get("institution_profile") or {})
     if str(inst_plan.get("action") or "run") == "skip":
         ctx.log(

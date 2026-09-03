@@ -1,6 +1,6 @@
 """market_pulse router — Tier2 市场感知 API。
 
-现行边界: docs/MASTER_TOPLEVEL_DESIGN.md；历史设计证据: git log --grep market_pulse_design。
+现行边界: 本文件 + backend/services/market_pulse.py；历史设计证据: git log --grep market_pulse_design。
 
 前端契约 (卡片↔API 一一对应, widget 独立取数):
   GET /api/v3/pulse/heatmap     资金热力图 (板块×近N日 net_amount 矩阵, dc_industry 默认;

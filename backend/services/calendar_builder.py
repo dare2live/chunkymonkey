@@ -8,7 +8,7 @@ consumers (horizon checks, scheduling helpers).  Prototype/content hashes from
 this table must never be treated as an accepted generation proof.
 
 R2 根因修复 (历史证据: git log --grep data_foundation_root_causes；现行边界:
-docs/MASTER_TOPLEVEL_DESIGN.md):
+本文件 + services.calendar):
 legacy ``raw_tushare_trade_cal`` 中间层在生产代码里零 writer (``trade_cal`` sync 是
 on_demand, 不进 drain), 只有测试写它 —— dim 全靠 2026-07-16 那批冻结数据的未来余量撑着,
 horizon 倒计时中。第一性原理: 能由已发布的 accepted generation 直接得到的东西, 不该再

@@ -1,6 +1,6 @@
 # tier12_publish.yaml — Phase C Tier1/2 publish writer typed policy
 #
-# Owner: docs/MASTER_TOPLEVEL_DESIGN.md §7–8 + docs/strategy_validation_contract.md §4
+# Owner: 本文件
 # Scope: lineage-bearing StockStateDaily / MarketContextPublishEnvelope emission
 #        with PIT truncation (available_at <= decision_date).
 # Hard gates:

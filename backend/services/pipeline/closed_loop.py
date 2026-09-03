@@ -1,6 +1,37 @@
 """Serve→derive closed-loop helpers (single compute for process plan + gates).
 
-Authority: docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)
+Authority: 本文件 (派生新鲜度闭环法; 2026-09 文档大刀后法条正文从旧版顶层设计
+文档 §5.8 原样搬入, git log --grep serve_derive_closed_loop_law)。
+
+产品 serve 面依赖的派生 (可擦除的 L1/L2) 必须与 accepted 源在同一个日更闭环内
+保持新鲜, 否则就诚实标 BLOCKED / manual。**禁止用「分区存在」或「软绿灯」冒充
+完成。**
+
+判断法典 —— 五条, 每条左边是人话、右边是机器判据:
+
+  L1  运输完成 ≠ 产品新鲜     accepted_partition 存在**不蕴含**派生已追上
+  L2  存在 ≠ 人口             只有 population gate PASS 才可 skip_current；
+                               否则 under_populated_accepted
+  L3  时钟 ≠ 完整             run_outcome 四态判定 (见 backend/services/
+                               pipeline/run_outcome.py)；完整性观测不是
+                               「等时钟」
+  L4  未接线不许自称 fresh    inventory status ∈ wired* / population_gated /
+                               blocked_manual，没有第四种
+  L5  禁 mass 仍须诚实        人口有洞 → count probe + grain MERGE 或如实
+                               观测；**不**在日更里对 count 未变的期全市场
+                               重拉
+
+三种死法 (每条都真实发生过, 写在这里是为了让下一个人认得出):
+  - 感知死 —— 门禁只查「存在」不查「新鲜/人口」。partition 在, 于是全绿,
+    而产品面是陈的。
+  - 判断死 —— 把完整性问题叙事成「在等时钟」。前者要人去修, 后者让人安心
+    等待。
+  - 谄媚死 —— 为了让门变绿而调低人口或新鲜度门槛。这比不设门更糟: 它制造
+    了「已验证」的假象。
+
+L2 与 L5 合起来是一条完整约束: **薄接受不等于可用, 但补救方式不是每天全量
+重拉。**
+
 Config: backend/config/serve_derive_closed_loop.yaml
 """
 from __future__ import annotations

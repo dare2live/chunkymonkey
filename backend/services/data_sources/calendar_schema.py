@@ -40,7 +40,7 @@ _CALENDAR_SCHEMA_PAYLOAD: dict[str, Any] = {
         # 不是"从哪取"——那是传输轴, formal_boundaries.py 开篇即 "Transport axis only.
         # Business tiers must not own these seams."。同型判据已在 config_hash 层翻车过:
         # nominal_ohlcv/stock_st 的 config_hash 曾含 source/api, 换源(tushare->通达信)
-        # 被误判成契约变更, 拒读 2,986 个既有分区 (docs/engineering_governance.md §15.5)。
+        # 被误判成契约变更, 拒读 2,986 个既有分区 (git log --grep source_api_transport_axis)。
         # trade_cal 自己的 source 已换了两次 (tushare -> baostock -> calendar_rule) 而
         # 这份证据捕获协议一字未变, 不该让它跟着漂移。registry/adapter 一致性由
         # calendar_contract.py 的 _EXPECTED_PROVIDER_TRANSPORT 独立守卫, 不依赖这个 hash。

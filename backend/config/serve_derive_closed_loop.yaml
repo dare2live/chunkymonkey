@@ -1,6 +1,6 @@
 # Serve → derive closed loop (machine inventory)
 #
-# Authority: docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)
+# Authority: backend/services/pipeline/closed_loop.py (派生新鲜度闭环法, 法条正文见该模块 docstring)
 # Invariant: product serve surfaces that depend on wipeable L1/L2 derives must
 # either (a) be wired into daily process with skip-when-unchanged, or (b) be
 # honestly labeled BLOCKED/manual — never FIXED-fresh by partition existence alone.

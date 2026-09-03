@@ -625,7 +625,7 @@ def accept_security_day_batch(
     # config_hash / source_name 是落地时刻的冻结证据 (payload_hash 从它们派生), 指纹算法重打
     # 或换源之后必然与现算契约不等 —— 与之比相等会把遗留的 LANDED 批次全部判成 CONTRACT_DRIFT
     # 并写成 REJECTED。指针 (accepted_partition) 与 canonical 行照旧打**现算**契约的戳。
-    # 见 docs/engineering_governance.md §15.6。
+    # 见本文件同型注释 (git log --grep landing_seal_vs_contract_restamp)。
     wiring_mismatch = (
         str(batch["contract_version"]) != domain.contract_version
         or str(batch["writer_id"]) != domain.writer_id

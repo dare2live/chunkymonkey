@@ -1,6 +1,6 @@
 """主升浪候选检测共享原语 (pivot 底 / 前瞻涨幅 / 长底 / forward 完整) — 单一计算点。
 
-owner=docs/strategy_validation_contract.md §8.1 + d1_gt_archaeology_20260702.md (历史定义证据)。
+owner=本文件 + d1_gt_archaeology_20260702.md (历史定义证据)。
 缘起: 正样本 (services/rally_gt.detect_episodes) 与 hard-negative 必须共用**同一候选检测口径**,
   否则正负不可比 (v1.5 教训: GT builder 内联 pivot 检测 / 负样本走本模块 = 双真相源漂移风险)。
   v2 起两侧全部经本模块, 定义只在这里改。

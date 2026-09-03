@@ -1,6 +1,6 @@
 """Atomic research prereg + single-touch holdout token store (Tier3 research).
 
-Closes the gap called out by ``docs/strategy_validation_contract.md`` §10 /
+Closes the gap called out by the (retired) StrategyRelease contract §10 /
 ``holdout_guard``: training-boundary alone is not a release gate. This module
 owns a **filesystem** evidence store with atomic create + single-touch consume.
 

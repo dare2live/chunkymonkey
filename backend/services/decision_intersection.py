@@ -11,7 +11,7 @@ Input honesty (plan §3.5): membership + strength must share a serve as-of; a
 stale or mismatched as-of degrades the whole surface to ``status=stale`` with
 empty rows — never a fake freshness claim (mirrors ``/pulse/strongest``).
 
-Authority: docs/MASTER_TOPLEVEL_DESIGN.md §10.1 (产品能力边界) (Cap D) +
+Authority: 本文件 (产品能力边界, Cap D) +
 goal.md「下一步」执行 backlog §2.
 """
 from __future__ import annotations

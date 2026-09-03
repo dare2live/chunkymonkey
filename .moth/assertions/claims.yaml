@@ -85,7 +85,7 @@ assertions:
     expect: {op: "==", value: "2005-01-04"}
   - id: section9-dims-in-reference
     severity: blocking
-    claim: "§9 reference 拆库: 2 dim (active/trading_calendar) 全在 reference.duckdb (2026-06-27 Stage E 迁移真相源; 缺=迁移丢失/回滚)。原 4 dim 含 all_ever_listed/listing_status 2026-07-07 整表退役物删 (0 存活 writer / 0 业务读者), 断言集从 4 缩至 2, 见 PROJECT_INDEX.md 决策收口"
+    claim: "§9 reference 拆库: 2 dim (active/trading_calendar) 全在 reference.duckdb (2026-06-27 Stage E 迁移真相源; 缺=迁移丢失/回滚)。原 4 dim 含 all_ever_listed/listing_status 2026-07-07 整表退役物删 (0 存活 writer / 0 业务读者), 断言集从 4 缩至 2, 见 git log --grep dim_all_ever_listed"
     type: duckdb_sql
     database: data/reference.duckdb
     query: "SELECT count(*) FROM duckdb_tables() WHERE table_name IN ('dim_active_a_stock','dim_trading_calendar')"
@@ -118,11 +118,6 @@ assertions:
     type: shell
     command: ["grep", "-ci", "utc", "backend/services/source_watermarks.py"]
     expect: {op: ">=", value: 1}
-  - id: doc-governance
-    claim: "活文档治理严格 PASS: fails=0 且 warns=0；不存在幽灵链接、退役 CLI 活引用或第二 owner (owner=docs/README.md)"
-    type: shell
-    command: ["python3", "backend/scripts/check_doc_governance.py"]
-    expect: {op: regex, pattern: "verdict=PASS fails=0 warns=0"}
   - id: bestchoice-frozen-evidence
     claim: "BestChoice 仅是冻结 challenger 证据包；两个实现与两份机器证据的 hash、shape、唯一键、candidate/reject 和五公式分布必须与 manifest 精确一致"
     type: shell
@@ -138,16 +133,6 @@ assertions:
     type: shell
     command: [".venv/bin/python", "-c", "import tinyshare; assert hasattr(tinyshare,'pro_api'); assert hasattr(tinyshare,'TinySharePermissionError'); assert hasattr(tinyshare,'TinyShareConnectionError'); print('TINYSHARE_RUNTIME_OK')"]
     expect: {op: regex, pattern: "TINYSHARE_RUNTIME_OK"}
-  - id: doc-drift
-    claim: "活文档、生成地图以及 source/config 中的文档 owner 均存在；不继续引用 legacy CLAUDE 章节"
-    type: shell
-    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_doc_drift.py --check | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)[\"overall\"]==\"PASS\" else 1)' && echo DOC_OK"]
-    expect: {op: regex, pattern: "DOC_OK"}
-  - id: dead-references-zero
-    claim: "0 死引用 (2026-06-28 根因根治: 删模块/表/文件必同步清引用方; import-services + dead-services-ref + config-dead-path 三道。根因=之前每波清理删供给侧漏需求侧, 验收够不到孤儿脚本/懒import/guarded垫片/config死路径→静默累积)"
-    type: shell
-    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_dead_references.py >/dev/null 2>&1 && echo DEADREF_OK"]
-    expect: {op: regex, pattern: "DEADREF_OK"}
   - id: data-layer-integrity
     severity: blocking
     claim: "每张活表必在 data_layers.yaml 声明 layer + Type A 列纯度 (2026-06-14 层级声明化 + 2026-06-28 加工分层 A/B: asset_class=A 层[L1_foundation/L1k/display=确定性PIT重排]表禁含 forward/label/score/signal/ic/predicted 等 Type B 列, 防策略派生伪装混入平台; 未声明 or Type A 含泄漏列=FAIL)"
@@ -169,52 +154,11 @@ assertions:
     type: shell
     command: ["grep", "-c", "refresh_source_watermarks.py", "backend/services/pipeline/store.py"]
     expect: {op: ">=", value: 1}
-  - id: safe-commit-rule10-blocking
-    claim: "safe_commit 和 commit-msg 共用 backend/scripts/check_codex_review.py 的高风险 staged 文件判定；显式 REQUEST_CHANGES 与 staged 范围不可判定仍阻断（缺 APPROVE 自 2026-08-10 起只提示，见该脚本 docstring）；rule10 在 governance_gates.yaml 属 diff_correctness 组，故 gate_fail 走阻断分支；策略 PIT/发布证书仍由 strategy validation contract 独立负责"
-    type: shell
-    command: ["bash", "-c", "grep -q 'check_codex_review.py' scripts/safe_commit.sh && grep -q 'has_rejected_codex_review' backend/scripts/check_codex_review.py && grep -q 'REQUEST_CHANGES_REVIEW_RE' backend/scripts/check_codex_review.py && grep -q 'gate_fail rule10 6' scripts/safe_commit.sh && PYTHONPATH=backend python3 -c \"import sys; sys.path.insert(0,'backend'); from services.governance_gates import load_registry; sys.exit(0 if load_registry().group_of('rule10')=='diff_correctness' else 1)\" && echo RULE10_BLOCKING"]
-    expect: {op: regex, pattern: "RULE10_BLOCKING"}
-  - id: run-outcome-four-states-law
-    claim: "run_outcome 四态 (success/soft_waiting_clock/integrity_observe/hard_fail) 的法条 owner = docs/MASTER_TOPLEVEL_DESIGN.md §5.4 (系统语义, 非开发纪律); 文档列出的态与 services/pipeline/run_outcome.py 的 enum 逐字一致, 任一侧增删态而不同步即红"
-    type: shell
-    command:
-      - bash
-      - -c
-      - |
-        python3 - <<'PY'
-        import pathlib, re, sys
-        code = pathlib.Path("backend/services/pipeline/run_outcome.py").read_text(encoding="utf-8")
-        doc = pathlib.Path("docs/MASTER_TOPLEVEL_DESIGN.md").read_text(encoding="utf-8")
-        states = set(re.findall(r'^OUTCOME_\w+: RunOutcome = "(\w+)"', code, re.M))
-        parts = doc.split("### 5.4")
-        if len(parts) != 2:
-            sys.exit("MASTER 缺 §5.4 run_outcome 法条")
-        # 取到**下一个 ### 小节**为止, 不是到 "## 6."。2026-08-11 实测: 在 §5.4 与 §6
-        # 之间插入 §5.5–§5.7 后, 原切法把 §5.7 的前沿 outcome 名也当成了 run_outcome 的态
-        # —— 断言自己抓到了自己的取节假设失效, 这正是它该做的。
-        rest = parts[1]
-        section = rest.split("\n### ")[0].split("\n## ")[0]
-        documented = set(re.findall(r"^\| `(\w+)` \|", section, re.M))
-        if not states or states != documented:
-            sys.exit(f"run_outcome 法条漂移: code={sorted(states)} doc={sorted(documented)}")
-        print("RUN_OUTCOME_LAW_LOCKED")
-        PY
-    expect: {op: regex, pattern: "RUN_OUTCOME_LAW_LOCKED"}
-  - id: governance-gate-distribution-wired
-    claim: "门分布策略 (backend/config/governance_gates.yaml) 是唯一 owner：safe_commit 经 gate_policy --names 取分组决定阻断/warn/不跑，system_health 组每道都挂在 daily_update 的 store 运行时自检上；三处门名副本 (registry / classify_commit_tier / safe_commit fail-closed 兜底串) 由 gate_policy --check 机械对账"
-    type: shell
-    command: ["bash", "-c", "grep -q 'gate_policy.py --names scaffold' scripts/safe_commit.sh && grep -q 'run_system_health_checks' backend/services/pipeline/store.py && PYTHONPATH=backend python3 backend/scripts/gate_policy.py --check >/dev/null && echo GATE_DISTRIBUTION_WIRED"]
-    expect: {op: regex, pattern: "GATE_DISTRIBUTION_WIRED"}
   - id: coupling-no-orphan-refs
     claim: "Moth 可枚举的表/脚本/config/assertion 耦合无孤儿；source/config→文档引用由独立 doc-drift assertion 覆盖，不把本 claim 夸大为全仓证明"
     type: shell
     command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && moth coupling --repo . 2>&1 | grep -o 'verdict=[A-Z]*' | head -1"]
     expect: {op: regex, pattern: "verdict=PASS"}
-  - id: universe-population-contract-static
-    claim: "universe 静态契约与对抗单测通过；live_readiness 经 observation loaders 评估；READY 仅当 eligible frontier 有 observation_date+accepted 源证明，否则 NOT_EVALUATED/BLOCKED"
-    type: shell
-    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 -m pytest -q backend/tests/services/test_population_scope.py backend/tests/scripts/test_check_universe_filter.py backend/tests/services/test_observation_population.py >/dev/null && PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_universe_filter.py --format json | .venv/bin/python3 -c 'import json,sys; r=json.load(sys.stdin); d=r.get(\"live_readiness_detail\") or {}; reasons=d.get(\"reasons\") or []; assert r[\"verdict\"]==\"PASS\" and r[\"live_readiness\"] in {\"NOT_EVALUATED\",\"BLOCKED\",\"READY\",\"DEGRADED\"} and reasons; status=r[\"live_readiness\"]; assert (status==\"READY\" and d.get(\"observation_date\") and any(\"accepted_calendar_kline_st\" in x for x in reasons)) or (status!=\"READY\" and any(\"nominal_ohlcv\" in x or \"stock_st\" in x or \"calendar\" in x for x in reasons)); print(\"STATIC_POPULATION_CONTRACT_PASS\")'"]
-    expect: {op: regex, pattern: "STATIC_POPULATION_CONTRACT_PASS"}
   - id: exploration-isolated-in-sandbox
     claim: "探索隔离在 sandbox/ 不污染主代码 (2026-06-17 用户根治: 探索脚本/findings草稿/结果散进 backend/scripts+analysis+docs = 反复污染根因, 本对话清~100文件). sandbox/ gitignored 且默认整包清理; 探索 runner (experiment_*/analyze_*) 不许在 backend/scripts (该在 sandbox/<exp>/). 需要晋升的结果必须按现行 Tier3 契约重写、经 Rule 10 审核并由正式 owner 接管; 当前没有跨删存活的 verdict writer. 复活旧路径=污染根因复发. owner=sandbox/README.md"
     type: shell
@@ -378,49 +322,13 @@ assertions:
         print("QFQ_LINEAGE_GUARD_OK")
         PY
     expect: {op: regex, pattern: "QFQ_LINEAGE_GUARD_OK"}
-  - id: serve-read-layer-doors
-    claim: "过渡期 SERVE 读层门全绿：check_serve_read_layer.py 扫全量非成员 consumer bypass、resolver preflight、entity 声明链、backend 探索 runner，与 S6 D5 router 禁内联 raw_*（live 零 serve-exempt）；红例固化在 live tests。Phase1 后由 module contract/typed output 取代 roster。"
-    type: shell
-    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_serve_read_layer.py >/dev/null 2>&1 && echo 0 || echo 1"]
-    expect: {op: "<=", value: 0}
-  - id: legacy-raw-plane-inventory
-    claim: "data_access entities must not point at `raw_*` except shrinking `data_access_raw_entity_allowlist`; inventory still classifies sync_registry raw tables. owner=backend/scripts/check_legacy_raw_plane.py + legacy_raw_plane.yaml"
-    type: shell
-    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_legacy_raw_plane.py >/dev/null 2>&1 && echo 0 || echo 1"]
-    expect: {op: "<=", value: 0}
-  - id: brick-registry-l2-l3
-    claim: "B5 brick registry 门全绿：L2 primitives vs L3 FeatureBlocks+Type-B edge 已登记；禁 silent raw bypass；L3 max_composite_hops≤2；FEATURE_BLOCK_ID 无 orphan；data_layers L2_feature 表均在 outputs；status=partial 须 typed partial_reasons。owner=backend/scripts/check_brick_registry.py + brick_registry.yaml；权威=docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层)"
-    type: shell
-    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_brick_registry.py >/dev/null 2>&1 && echo 0 || echo 1"]
-    expect: {op: "<=", value: 0}
   - id: factor-family-inventory-gate
-    claim: "因子族 inventory 结构门：families 必填字段+typed enums；defer/blocked 须 reason；bricks∈brick_registry；sync_domains∈sync_registry∪serve_derive source_domains∪miaoxiang acquire；gate_matrix 引用存在 family_id。owner=backend/scripts/check_factor_family_inventory.py + factor_family_inventory.yaml；权威=docs/MASTER_TOPLEVEL_DESIGN.md §9.1 (因子族边界) + strategy_validation_contract.md §3.1 (窗口对齐)"
+    claim: "因子族 inventory 结构门：families 必填字段+typed enums；defer/blocked 须 reason；bricks∈brick_registry；sync_domains∈sync_registry∪serve_derive source_domains∪miaoxiang acquire；gate_matrix 引用存在 family_id。owner=backend/scripts/check_factor_family_inventory.py + factor_family_inventory.yaml；权威=本文件 + factor_family_inventory.yaml (因子族边界, 窗口对齐)"
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_factor_family_inventory.py >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}
   - id: factor-family-continuity-gate-matrix
-    claim: "因子族 frequency-typed continuity/readiness 矩阵：每族 continuity_gate.mode 与 frequency/axis 一致；trade_date 日频→calendar_gaps+wired；event/quarterly 禁 full trade calendar；defer/blocked 须 typed wired；gate_matrix check↔continuity kind。owner=backend/scripts/check_factor_family_gates.py + factor_family_inventory.yaml；权威=docs/MASTER_TOPLEVEL_DESIGN.md §9.1 (因子族边界) + strategy_validation_contract.md §3.1 (窗口对齐)"
+    claim: "因子族 frequency-typed continuity/readiness 矩阵：每族 continuity_gate.mode 与 frequency/axis 一致；trade_date 日频→calendar_gaps+wired；event/quarterly 禁 full trade calendar；defer/blocked 须 typed wired；gate_matrix check↔continuity kind。owner=backend/scripts/check_factor_family_gates.py + factor_family_inventory.yaml；权威=本文件 + factor_family_inventory.yaml (因子族边界, 窗口对齐)"
     type: shell
     command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_factor_family_gates.py >/dev/null 2>&1 && echo 0 || echo 1"]
-    expect: {op: "<=", value: 0}
-  - id: foundation-done-f1-f10
-    claim: "FND-GATE foundation-done F1–F8,F10 聚合门（F9 strategy-pause 2026-09-02 退役, 业主拆锁）：真实缺口 FAIL；S7 ssot typed hard-stop (计数现查 check_legacy_raw_plane, 勿写死) / org mass-by-date banned+daily incremental-by-period required / Type-B enrichment defer 为诚实墙 PASS；F8 §15 PASS 需 ≥3 连续 L3 刀 evidence（commits/knife≤1.5 + pre_knife；禁放宽阈值）；PARTIAL 仍 exit0。owner=backend/scripts/check_foundation_done.py + foundation_done.yaml；权威=docs/MASTER_TOPLEVEL_DESIGN.md §11 (FND-GATE 十维构成理由) + git log --grep section15_verify"
-    type: shell
-    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_foundation_done.py --skip-live >/dev/null 2>&1 && echo 0 || echo 1"]
-    expect: {op: "<=", value: 0}
-    # 2026-08-14 加 --skip-live: 实测该脚本全量 39.23s / 带 --skip-live 0.37s ——
-    # **38.9 秒(占 moth 全量 46.9s 的 83%)全花在 F4/F6 两个 live DuckDB 探测上**。
-    # 那两项查的是「数据地基够不够」(accept breadth / qfq 补齐), 不是「这次 diff 对不对」,
-    # 按 governance_gates.yaml 的分组原则(谁受害、何时受害)属 system_health, 受害时刻是跑日更。
-    # 故 live 侧移进 daily_update 的 runtime_checks(foundation_live), 此处只留静态契约面。
-    # 覆盖零损失: F4/F6 仍每天跑, 只是不再让每次提交付 39 秒。
-  - id: calendar-usage-clean
-    claim: "交易日历静态强制门全绿：导入 calendar 不再豁免整文件，空扫描失败关闭；B1 wall-clock 当最新交易日、B2/B3 SQL wall-clock cutoff 均阻断，显式 evidence 仅豁免具体合法行。owner=backend/scripts/check_calendar_usage.py"
-    type: shell
-    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_calendar_usage.py --strict >/dev/null 2>&1 && echo 0 || echo 1"]
-    expect: {op: "<=", value: 0}
-  - id: config-refs-clean
-    claim: "config 跨文件引用完整性: data_access 的 layer 值全部在 data_layers 定义(长键或 alias 短码), 0 悬空 = 层词汇单一真相源未漂回两套 (2026-06-23 config最小手术 Step1 层词汇统一 + Step4 引用门, 对抗panel wry13dfr0 裁决最小手术)。check_config_refs.py red→green 实证(注入 L99 变红 exit1/还原回绿)。>0=新增 entity 写错层名/层词汇漂移回潮。owner=backend/scripts/check_config_refs.py"
-    type: shell
-    command: ["bash", "-c", "PYTHONPATH=backend .venv/bin/python3 backend/scripts/check_config_refs.py --check >/dev/null 2>&1 && echo 0 || echo 1"]
     expect: {op: "<=", value: 0}

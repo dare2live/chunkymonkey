@@ -1,19 +1,50 @@
 """Shared frontier decision primitive — local axis max vs target probe/calendar.
 
-Owner model (docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (前沿判定)):
-  local max(axis) → calendar/disclosure rule → should-have set → fetch gap
+Authority: 本文件 (2026-09 文档大刀后法条正文从旧版顶层设计文档 §5.7 原样搬入,
+git log --grep frontier_decision_law; 单一实现 = 本模块, typed outcomes, 不是
+DetectionService / plugin / DAG)。
 
-This is one typed compare + day-window policy helper — not a DetectionService,
-plugin bus, or DAG. Generalized from holders equal-day sparse fix (e040f4889).
+Owner model — 「该拉哪些数据」不是拿 wall-clock 跟昨天比出来的, 统一模型只有一句:
+  local max(axis) → calendar/disclosure rule → should-have set → 与已有作差
+
+五个 typed outcome, 缺一不可:
+  skip_behind               目标 < 本地 (provider 或日历落后于我们)
+  equal_day_population_gap  目标 == 本地 —— **日期相等不等于人口完备**
+  advance_window            目标 > 本地, 或目标未知 —— 开窗
+  pending_clock             发布钟未到 (由调用方声明, 不由这里猜)
+  hard_fail                 探针失败 —— fail-closed
+
+第二条最容易被省掉:「最新日期一样」不证明「那天的证券一个不缺」。把它折叠进 skip
+就会静默漏人口。
 
 Axis values are domain frontiers (trade_date / notice_date / ann_date /
 report_period), never wall-clock 「对昨天」.
 
-Partition leap catchup (docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (分区补洞法)):
-  Tip watermark advances via MAX(axis) can skip sparse mid partitions.
-  Holes sit **at or below** the tip (set difference), not tip+1.
-  ``plan_partition_catchup`` owns the due-set law; domain modules execute
-  bounded repair (≤40). Do not couple dossier into sync.
+Partition tip-leap catchup —— 洞在 tip 之下, 不在 tip+1:
+  水位按 MAX(轴) 前进时, 稀疏的中间分区可能还留在 source 里而 accepted 的 tip
+  已经越过了它们; 此时「从 tip+1 继续拉」永远补不到那些洞。根本法是**集合差**
+  而非游标推进:
+
+    due = (source_partitions \\ accepted_partitions)             -- A: 源有而未接受
+        ∪ (calendar_partitions \\ accepted \\ known_empty)        -- B: 日历应有而缺 (调用方显式要求稠密时才启用)
+          且 partition ≤ watermark                                -- 不越过水位造未来分区
+          且 |due| ≤ 40                                           -- 有界, 禁 mass backfill
+
+  职责三分, 不得合并: **法**在 ``plan_partition_catchup`` (集合差 + tip 过滤 +
+  上界); **执行**在各域的 catchup 模块 (只做 accept/land); **接线**是每次增量
+  **先修洞再前进**。域模块自己发明补洞逻辑 = 每个域各修一个 bandage, 正是这条法
+  要终结的。
+
+三条硬禁 (每条都对应一次真实代价):
+  - 禁对已落地且探针未变的期做全市场重拉 —— 「顺手刷新一下」等于每天付一次
+    全量代价; 源端增长走 grain MERGE, 不是 DELETE+全期重写。
+  - 禁在只有报告期轴的域上凭空发明按日期抓取 (by-date invent) —— 那是把不
+    存在的轴假装成存在。
+  - 禁在日更里逐个公司扫公告找更新 —— 它与全量扫描等价, 只是慢; 中间历史洞
+    走 bounded catchup (N=1/run), 不进全史 backfill。
+
+判据一句话: **先看供应商给了什么轴, 再决定增量怎么做**; 轴不支持的增量形态,
+不能靠多花算力硬凑出来。
 """
 from __future__ import annotations
 

@@ -156,7 +156,7 @@ def _validate_batch_identity_and_time(
     # 一变或换源之后必然与现算契约不等, 与之比相等 = 把正确状态判成 CONTRACT_DRIFT
     # (2026-09-02 活体故障第二层)。"批次有没有被动过"由下方封印重算 (按批次自己的
     # LandingStamp) 回答, "指针是不是当前契约的"由 reader 的指针选取回答。
-    # 见 docs/engineering_governance.md §15.6。
+    # 见本文件同型注释 (git log --grep landing_seal_vs_contract_restamp)。
     expected_wiring = (
         batch_id,
         str(contract.contract_version),

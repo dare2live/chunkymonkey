@@ -1,6 +1,6 @@
 """Factor-family inventory + gate matrix — structural SSOT gate (RX prereg).
 
-Authority: docs/MASTER_TOPLEVEL_DESIGN.md §9.1 (因子族边界) + strategy_validation_contract.md §3.1 (窗口对齐)
+Authority: 本文件 (因子族边界, 窗口对齐)
 Orthogonal to brick_registry / sync_registry / data_layers.
 
 v1 scope (machine-only, no DuckDB):

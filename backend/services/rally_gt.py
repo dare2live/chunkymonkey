@@ -1,6 +1,6 @@
 """rally_gt.py — Tier3 主升浪 ground-truth package（历史编号 D1）。
 
-owner=docs/strategy_validation_contract.md §8.1 + d1_gt_archaeology_20260702.md (历史定义证据)。
+owner=本文件 + d1_gt_archaeology_20260702.md (历史定义证据)。
 方法论锚: MASTER Tier3 + strategy validation contract（episode-first，底=起涨点=PIT 决策锚）。
 
 定义 (v1.5 规则本体照搬, 双证据验证 — 考古 §4.1; 阈值全在 backend/config/rally_gt.yaml, 修正#10):

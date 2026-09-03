@@ -447,7 +447,7 @@ def release_projection(
         "n_inconclusive": n_inc,
         "any_accept": False,
         "gates": gates,
-        "contract": "docs/strategy_validation_contract.md §9",
+        "contract": "retired paradigm — git log --grep strategy_lab_serve",
     }
 
 

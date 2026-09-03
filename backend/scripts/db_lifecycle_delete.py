@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""生命周期删除执行器 (owner=docs/engineering_governance.md §6/§10)。
+"""生命周期删除执行器 (owner=本文件)。
 
 按删除 manifest (yaml) 安全删除 L1 探索数据 / 死表, 内置 4 道闸:
   1. live 守护: 每张表删前 word-boundary grep live 服务面 (daily_update 脚本集 + serving/ensemble/scoring/
@@ -45,7 +45,7 @@ def _live_surface() -> list[Path]:
     (治理/审计/build_* 一次性脚本) + backend/services/pipeline/ (真实当前调用图) = live 服务面。
 
     2026-07-06 全面数据审计根因根治（历史证据=git log --grep comprehensive_data_module_audit；
-    现行 owner=docs/engineering_governance.md
+    现行 owner=本文件
     pit_leakage_spotcheck 维度): 原实现只对 `scripts/daily_update.sh` 做正则抓已调用脚本名 +
     `serving/recommendation/scoring/ensemble` 四个目录——**结构性排除 `backend/scripts/` 整个
     目录本身**, 导致 data_quality.py 这类"表已删但治理脚本仍用 SQL 字符串引用"的死引用完全

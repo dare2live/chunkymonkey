@@ -2,7 +2,7 @@
 
 **为什么需要它** (2026-08-11 实测): 项目此前**没有任何一条命令**能回答「数据前沿在哪」。
 真相散在各库的 `accepted_partition` 里 (tushare_raw / smartmoney / org_holding), 而
-`docs/README.md` 让人「查真相源或生成投影 (BOARD.md)」—— BOARD.md 第 6 行却明说
+旧版规则文档 (git log --grep project_status_p2_2) 让人「查真相源或生成投影 (BOARD.md)」—— BOARD.md 第 6 行却明说
 「本文件幂等…数据前沿请查 accepted 分区表，勿据此判断」。**指针指向了一个声明自己
 没有这个数的文件**, 于是每个人只好手写一份, 然后各自烂掉 (同日实测: PROJECT_INDEX
 同一份文档内部就有 20/46 与 23/46 两个互相矛盾的计数)。

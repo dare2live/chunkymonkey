@@ -1,6 +1,6 @@
 """Org-holding population probes (existence ≠ population).
 
-Authority: docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)
+Authority: backend/services/pipeline/closed_loop.py (派生新鲜度闭环法, 法条正文见该模块 docstring)
 Kept out of org_holding_aif10.py to avoid god-file ratchet growth.
 """
 from __future__ import annotations

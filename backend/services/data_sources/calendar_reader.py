@@ -120,7 +120,7 @@ _POINTER_FIELDS = (
 # 本 reader 曾把它们与指针逐键比相等, 活库上 open_calendar_truth() 因此永久 BLOCKED
 # (fields=['config_hash','contract_hash'])。不读 = 想比也比不了。封印自洽由
 # validate_landed_calendar_batch 按批次自己的 LandingStamp 重算; 指针是否为当前契约
-# 由 _select_pointer 的 WHERE 守。见 docs/engineering_governance.md §15.6。
+# 由 _select_pointer 的 WHERE 守。见本文件同型注释 (git log --grep landing_seal_vs_contract_restamp)。
 _BATCH_FIELDS = (
     "batch_id",
     "dataset_id",

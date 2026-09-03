@@ -1,6 +1,6 @@
 """L2/L3 brick registry — strangler for FeatureBlock + Type-B + primitive lineage gates.
 
-Authority: docs/MASTER_TOPLEVEL_DESIGN.md §5.5 (变量积木分层) (B5).
+Authority: 本文件 + brick_registry.yaml (变量积木分层) (B5).
 Orthogonal to legacy backend/config/data_layers.yaml (physical/wiped L2_feature/L3_model).
 
 Rules enforced cheaply:

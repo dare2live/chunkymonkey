@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Commit-msg 自检: 查 **Q / Fix / Evidence / Residual 四段结构**, 不查关键词。
 
-owner: docs/engineering_governance.md §14 + AGENTS.md §9。
+owner: 本文件 + AGENTS.md §9。
 
 **为什么从关键词改成结构** (2026-08-11, goal.md P3.1):
 旧版匹配 `sharpe|calmar|max_dd|walk-forward|实测…` 这类关键词组。两个问题:

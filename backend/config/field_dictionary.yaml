@@ -424,7 +424,7 @@ databases:
         built_at:              {type: TEXT}
 
     mart_p3_acceptance_result:
-      description: "Legacy P3 acceptance schema; not a StrategyRelease. Current release contract: docs/strategy_validation_contract.md"
+      description: "Legacy P3 acceptance schema; not a StrategyRelease. Retired paradigm — see git log --grep P3_acceptance_schema."
       fields:
         run_id:               {type: TEXT, role: pk}
         model_id:             {type: TEXT, role: pk}

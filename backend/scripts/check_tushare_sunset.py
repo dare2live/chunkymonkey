@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """TuShare 授权到期风险门 (tushare_sunset.yaml 与 sync_registry.yaml 对账).
 
-owner: backend/config/tushare_sunset.yaml + docs/engineering_governance.md §14.
+owner: backend/config/tushare_sunset.yaml + 本文件。
 
 **根因**: TuShare 授权 2026-09-10 到期，不续期。tushare.py 在 expires_at <= now 时
 直接 raise TuShareAuthorizationError —— 硬停不是降级。此前三月 primitives/seed.py 的

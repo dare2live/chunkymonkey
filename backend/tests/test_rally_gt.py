@@ -1,4 +1,4 @@
-"""主升浪 ground-truth 证伪门单测 (owner=docs/strategy_validation_contract.md §8.1)。
+"""主升浪 ground-truth 证伪门单测 (owner=本文件 + backend/services/rally_gt.py)。
 
 1. 边界压线: 合成序列 gain=0.599 拒 / 0.601 收 (定义压线, 真 yaml 阈值非测试复制品);
 2. holdout red-green: data_end 越界 raise (入口第一行, 不碰库) / train 窗内落库 + 右删失 embargo 剔除;

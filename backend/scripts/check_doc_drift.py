@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""文档漂移检查器 (2026-06-14 地基-reset 后立, owner=docs/engineering_governance.md)。
+"""文档漂移检查器 (2026-06-14 地基-reset 后立, owner=本文件 + governance_gates.yaml)。
 
 固化 mythos §16 "漂移是默认态, 对账要机器做" + 用户"及时更新文档": **活文档**引用的
 **代码文件路径、本地 Markdown 链接、显式 owner 路径**必须实际存在; 代码/配置也不得
@@ -81,7 +81,7 @@ _LEGACY_CLAUDE_SECTION_RE = re.compile(
 #
 # **2026-08-14 收窄**: 原来还有一支裸关键词豁免 (已删|退役|移除|retired|deprecated|
 # deleted|陈旧|stale)，只要一行里出现任一词，**整行**连同行上的活指针一起被跳过。
-# 实证代价: `docs/README.md` 两处指向已归零的 `analysis/` 的引用被它同时藏住 ——
+# 实证代价: 旧版规则文档 (git log --grep doc-drift) 两处指向已归零的 `analysis/` 的引用被它同时藏住 ——
 # 第 24 行表格含 "kept/deleted"、第 25 行含 "已经退役"，而后者是一句**活的阅读指令**
 # (「跨账号续作时另读 `../analysis/xxx.md`」)，不是历史叙述。两道文档门当时全绿。
 # 这是本仓第三次同款 bug (C7 按 basename 豁免吞掉真悬空 / moth 门 elif 短路):

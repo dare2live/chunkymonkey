@@ -13,7 +13,7 @@ Freshness (mirrors ``/pulse/strongest`` + Cap 4D honesty): the global as-of
 trade date beyond the configured SLA — stale → ``status=stale`` + empty rows,
 never a silently outdated screen.
 
-Authority: docs/MASTER_TOPLEVEL_DESIGN.md §10.1 (产品能力边界) (Cap B) +
+Authority: 本文件 (产品能力边界, Cap B) +
 goal.md「下一步」执行 backlog §2.
 """
 from __future__ import annotations

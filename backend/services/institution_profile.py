@@ -525,8 +525,8 @@ def recent_signals(*, days: int = 30, min_holder_episodes: int = MIN_EPISODES,
 
     **非跟随回测口径声明**: 本函数只是"最近新开episode"展示流, 返回的 holder_median_alpha/
     holder_win_rate 是该机构自身历史战绩(自身整窗VWAP成本口径, 见 build_profiles), 不是
-    "跟随该signal的预期收益"。真正 execution-aware 的跟随策略是
-    docs/strategy_validation_contract.md §8.1 的 `institution_follow_v1` StrategySpec
+    "跟随该signal的预期收益"。真正 execution-aware 的跟随策略是 (退役范式, 见 git log --grep institution_follow_v1)
+    的 `institution_follow_v1` StrategySpec
     （画像 ≠ 跟随 spec ≠ E B0/B4 隔夜动量消融）。本函数属于画像展示层, 消费方/前端
     展示结果时不应暗示"跟随可获得同等收益"。
     """

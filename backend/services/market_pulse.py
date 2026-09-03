@@ -1,6 +1,6 @@
 """market_pulse.py — Tier2 市场感知引擎（历史编号 B4/C4）。
 
-现行边界: docs/MASTER_TOPLEVEL_DESIGN.md + docs/strategy_validation_contract.md。
+现行边界: 本文件。
 历史设计证据: git log --grep market_pulse_design（evidence-only）。
 用户定调: "看钱在哪里从哪里流出流向哪里 … 哪里资金悄悄的在流入、哪里悄悄在流出"。
 

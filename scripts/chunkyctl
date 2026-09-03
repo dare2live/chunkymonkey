@@ -208,17 +208,17 @@ case "$cmd" in
     PYTHONPATH=backend "$PY" backend/scripts/lineage_cli.py "$@"
     ;;
   history)
-    # 项目历史检索 (goal.md P3.2): --grep 查逐刀细节 (git log), --eras 看时期导航
+    # 项目历史检索: --grep 查逐刀细节 (git log), --eras 看时期导航
     # (annotated tag)。git 是唯一原件 —— 不再有 ledger 这类必然滞后的人工副本。
     PYTHONPATH=backend "$PY" backend/scripts/history_cli.py "$@"
     ;;
   status)
-    # L2 运行时状态单一现查入口 (goal.md P2.2): 前沿/滞后/水位/cutover/门/告警。
+    # L2 运行时状态单一现查入口: 前沿/滞后/水位/cutover/门/告警。
     # 零文件 —— 每次现查, 不落盘不缓存; 退出码恒 0 (报状态不做裁决)。
     PYTHONPATH=backend "$PY" -m services.project_status "$@"
     ;;
   gates)
-    # 门分布策略 (goal.md 治理体系重构 P1): 无参=人读分组表;
+    # 门分布策略: 无参=人读分组表;
     # --check 三处门名对账; --run-system-health 手动跑运行时自检组。
     PYTHONPATH=backend "$PY" backend/scripts/gate_policy.py "$@"
     ;;

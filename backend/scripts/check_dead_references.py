@@ -57,7 +57,12 @@ _SQL_TABLE_REF_KNOWN_SAFE: dict[tuple[str, str], str] = {
 }
 
 # C 扫描的 path-token 正则: backend/ 前缀可选, services|scripts|tests 下的 .py
-_PY_PATH_RE = re.compile(r"(?:backend/)?(?:services|scripts|tests)/[\w/]+\.py")
+# 2026-09-04: 加左边界 (?<![\w/])。原正则无锚, 会从更长的路径里截一段:
+#   "bestchoice/scripts/x.py" → 提取出 "scripts/x.py" → 按仓库根解析 → 判"不存在"。
+#   实测 3 处假阳性 (tracked_doc_allowlist.yaml 的 bestchoice/scripts/*.py, 文件真实存在)。
+# 门想守的是「backend/ 或仓库根下的 py 引用还在不在」, 问的却是「这行里有没有出现
+# services|scripts|tests/xxx.py 这个子串」—— 第三方根下的路径不在它的守备范围, 不该被截半判死。
+_PY_PATH_RE = re.compile(r"(?<![\w/])(?:backend/)?(?:services|scripts|tests)/[\w/]+\.py")
 _SERVICES_IMPORT_RE = re.compile(r"(?:from|import)\s+services\.([a-zA-Z0-9_.]+)")
 # D 扫: 注册表 dataclass 的 module="services.X"/"scripts.X"/"routers.X" 字符串字面量 (= 或 :)
 _MODULE_LITERAL_RE = re.compile(r"""\bmodule\s*[=:]\s*["']((?:services|scripts|routers)\.[\w.]+)["']""")

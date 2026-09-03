@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """check_doc_runtime_state — 人工文档里写死运行时状态的对账门 (goal.md P2.1)。
 
-owner: backend/config/doc_runtime_state.yaml + docs/README.md 文档生命周期节。
+owner: backend/config/doc_runtime_state.yaml + 本文件 docstring。
 
 **根因** (2026-08-10 → 08-11 两次实测): `check_doc_drift` 报 `stale_count=0` 的同时,
 `goal.md` 写 `accepted daily→20260721`、`PROJECT_INDEX` 写 `→20260720`, 而真相源是
@@ -9,7 +9,7 @@ owner: backend/config/doc_runtime_state.yaml + docs/README.md 文档生命周期
 代码路径, 不查语义与时效**。2026-08-10 那轮手工清理过一次, 两周后同一份 PROJECT_INDEX
 仍有三处漏网 + 一处自相矛盾的计数。**靠人扫必漏, 所以要机器扫。**
 
-**判据** (docs/README.md 一句话): 这个值会不会因为系统正常跑一次日更就变?
+**判据** (一句话): 这个值会不会因为系统正常跑一次日更就变?
 会变 = 运行时状态, 只能指向真相源; 不会变 = 不变量, 写死是对的。
 
 **机制 — 默认禁止 + 显式豁免, 不做语义猜测**:

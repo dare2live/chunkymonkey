@@ -1,6 +1,6 @@
 # margin_pulse_promote.yaml — F4 pulse serve→accepted cutover (rzrqye)
 #
-# Owner: docs/MASTER_TOPLEVEL_DESIGN.md (Tier0 external_aggregate) + goal.md F4
+# Owner: 本文件 (Tier0 external_aggregate)
 # Pulse builder + sentiment promote_gate must call load_margin_pulse_promote_config
 # before treating rzrqye as accepted external_aggregate.
 #

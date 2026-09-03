@@ -9,8 +9,8 @@ every same-day re-click a new batch.
 (``accepted_partition.contract_hash/config_hash`` — restamped whenever the
 fingerprint algorithm changes), never by ``ingest_batch``'s frozen landing seal:
 after a restamp the frozen values no longer equal the live contract, and filtering
-on them silently turned every skip into a re-land (docs/engineering_governance.md
-§15.6).
+on them silently turned every skip into a re-land
+(git log --grep landing_seal_vs_contract_restamp).
 """
 from __future__ import annotations
 

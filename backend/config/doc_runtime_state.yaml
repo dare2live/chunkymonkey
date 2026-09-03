@@ -1,6 +1,6 @@
 # doc_runtime_state.yaml — 人工文档里「写死运行时状态」的对账政策 (L1 契约层)
 #
-# Owner: docs/README.md 文档生命周期节 + docs/engineering_governance.md §14.1。
+# Owner: 本文件 + backend/scripts/check_doc_runtime_state.py docstring。
 # 消费方: backend/scripts/check_doc_runtime_state.py (scaffold 组门 + scaffold-fix)。
 #
 # **为什么是「默认禁止 + 显式豁免」而不是「智能判断」** (2026-08-11 实证):
@@ -26,13 +26,13 @@ scan_files:
   - goal.md
   - AGENTS.md
   - PROJECT_INDEX.md
-  - docs/README.md
-  - docs/MASTER_TOPLEVEL_DESIGN.md
-  - docs/engineering_governance.md
-  - docs/strategy_validation_contract.md
+  # docs/*.md 四份 (README/MASTER_TOPLEVEL_DESIGN/engineering_governance/
+  # strategy_validation_contract) 2026-09-04 从扫描面移除, 连同下面对应的
+  # file_exemptions 三条一起——本门(连同这份 yaml + check_doc_runtime_state.py)
+  # 随 A2.4 一并退役, 这里先不再喂它一个即将消失的目标 (§6.10 A 类)。
 
 # 全局契约常量: 这些日期不会因为跑一次日更而变, 在任何文档里出现都合法。
-# 加一条前先自问 docs/README 的那句判据: 它会不会因为系统正常跑一次日更就变?
+# 加一条前先自问本文件头注的那句判据: 它会不会因为系统正常跑一次日更就变?
 global_constants:
   - value: "20190102"
     reason: "accepted nominal OHLCV 契约起点 (goal.md 已裁决的常量)"
@@ -61,15 +61,6 @@ file_exemptions:
   - file: PROJECT_INDEX.md
     value: "20260804"
     reason: "2026-08-11 修复说明里引用的真相源实测值 (记录当时差距的证据, 非当前声明)"
-  - file: docs/README.md
-    value: "20260721"
-    reason: "文档生命周期判据的反例引文 (演示什么叫写死状态)"
-  - file: docs/README.md
-    value: "20260720"
-    reason: "同上"
-  - file: docs/README.md
-    value: "20260804"
-    reason: "同上"
 
 # 前沿对账: 文档里未豁免的日期若落在 (契约起点, live frontier) 之间, 极可能是
 # 一份写死的旧前沿 —— 报告时附上真相源的当前值, 让人一眼看出差多少。

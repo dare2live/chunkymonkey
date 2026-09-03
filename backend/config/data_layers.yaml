@@ -1,5 +1,5 @@
 version: 1
-_doc: 'Legacy physical-layer registry (NONCONFORMING target architecture). 现有审计、健康度和血缘仍消费它，故 Phase0 保留；L2/L3/L4 等 wiped 词汇仅为兼容旧门，不代表目标业务 Tier。Phase1 迁入模块 contract/data contract 后删除兼容项。目标业务 Tier/传输轴语义只见 docs/MASTER_TOPLEVEL_DESIGN.md。'
+_doc: 'Legacy physical-layer registry (NONCONFORMING target architecture). 现有审计、健康度和血缘仍消费它，故 Phase0 保留；L2/L3/L4 等 wiped 词汇仅为兼容旧门，不代表目标业务 Tier。Phase1 迁入模块 contract/data contract 后删除兼容项。目标业务 Tier/传输轴语义只见本文件与 backend/services/data_access/。'
 # asset_class (2026-06-28 加工分两种, 用户决议): A/B 映射到 layer (不另起 per-table 字段, 奥卡姆)。
 #   客观划线 = "确定性 PIT 重排 vs 含前瞻/策略假设" (非主观"展示vs策略"):
 #   - raw : L0 vendor 镜像 (不加工)

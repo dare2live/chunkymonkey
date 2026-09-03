@@ -429,19 +429,19 @@ else
 fi
 
 # (Step 3.5 旧 leakage audit gate 已删 2026-07-02: 触发实体与 verifier 同时退役。
-#   safe_commit 不因此声称策略泄漏已验证；策略发布必须另走 docs/strategy_validation_contract.md。)
+#   safe_commit 不因此声称策略泄漏已验证；策略发布必须另走独立契约 (git log --grep strategy_validation)。)
 
 
 # 3.6 旧消费方 leakage gate 已随当时的特征/策略 serving 层退役。
 #   当前尚无 StrategyRelease，因此本地提交门不冒充 PIT/发布证书。
 
-# 3.7 散落死闸已退役；当前 gate owner=docs/engineering_governance.md + live scripts/tests：
+# 3.7 散落死闸已退役；当前 gate owner=governance_gates.yaml + live scripts/tests：
 #   check_experiment_harness.py 本体 + 被守护的 harness 层(phaseD_signal_eval.py/experiment_store.py)
 #   + 当时的 conditional-alpha owner 文档均已随 2026-06-28 reset 删除。原有
 #   -f 存在性守卫已优雅跳过多日(非报错), 但触发条件(backend/scripts/experiment_*.py 被 staged)
 #   本身也已被 check_serve_read_layer.py D4(feature-from-l2)硬性禁止(该目录不许有 experiment_*.py
 #   文件存在), 双重确认这块永不会再触发, 整块死代码物删而非继续留守卫。
-#   当前策略研究/发布边界 owner=docs/strategy_validation_contract.md。
+#   当前策略研究/发布边界 owner=本文件历史注释 (git log --grep strategy_validation)。
 
 # 3.8 沙盒隔离门 (实验室产物只留实验室, 2026-06-21 立; 4+次隔离失守根治):
 # C1 backend引用sandbox(FAIL) / C2 控制面嵌未promote(confirmed_by_owner=0)实验结果(WARN) / C3 探索runner漏主脚本(FAIL)。

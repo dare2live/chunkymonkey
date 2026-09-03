@@ -1,6 +1,6 @@
 """文档治理执法器 — 新旧文档混用的机械防线 (2026-06-12, 用户点名建机制).
 
-默认语义 (docs/README.md 状态标头契约节为 owner):
+默认语义 (本文件为 owner):
   - 控制面 (goal.md / AGENTS.md / PROJECT_INDEX.md / docs/*.md) = live
   - CLAUDE.md 是 legacy Claude artifact, 不属于 Codex 活控制面
   - FEATURE_MAP.md = generated projection: 参与引用/CLI 漂移检查, 不计人类 active docs 数量
@@ -152,7 +152,7 @@ def _analysis_dir_failure(root: Path) -> str | None:
     commit message, 一次性实测证据移 `data/audit/historical/`。留着空目录不设门, 下一次
     「先放这儿回头再整理」就会让它长回来 —— 那正是第二套规则文档的复辟路径。
 
-    要重新启用它必须显式改本门 + `docs/README.md` 生命周期表, 不能靠往里丢文件既成事实。
+    要重新启用它必须显式改本门, 不能靠往里丢文件既成事实。
     """
     d = root / "analysis"
     if not d.exists():

@@ -3,7 +3,7 @@
 Read-only projection of live tips for defer/blocked families. Does not mutate
 inventory YAML; writes an evidence artifact that RX preflight can cite.
 
-Authority: docs/MASTER_TOPLEVEL_DESIGN.md §9.1 (因子族边界) + strategy_validation_contract.md §3.1 (窗口对齐) (K3).
+Authority: 本文件 + factor_family_inventory.yaml (因子族边界, 窗口对齐) (K3).
 """
 from __future__ import annotations
 

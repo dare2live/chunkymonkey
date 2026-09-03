@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""申万行业 **深史 PIT as-of 视图** builder (owner=docs/MASTER_TOPLEVEL_DESIGN.md §6.2)。
+"""申万行业 **深史 PIT as-of 视图** builder (owner=本文件)。
 
 本脚本只建 SW namespace 的 v_sw_industry_pit，供明确声明 SW taxonomy 的消费者使用。
 它不是 DC namespace 的深史兜底；两者只能通过显式、版本化 crosswalk 比较。

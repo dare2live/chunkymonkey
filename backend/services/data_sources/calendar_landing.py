@@ -272,7 +272,7 @@ class LandingStamp:
     契约指纹算法一变 (2c4af4a08 把 source/api 移出 config_hash), accepted_partition /
     canonical_* 跟着当前契约重打, 而落地封印停在当时 —— 拿活契约去重算旧批次的封印
     必然 BATCH_EVIDENCE_MISMATCH (2026-09-02 活体故障的第三层)。
-    见 docs/engineering_governance.md §15.6。
+    见本文件同型注释 (git log --grep landing_seal_vs_contract_restamp)。
     """
 
     contract_version: str

@@ -1,7 +1,7 @@
 # sandbox/ — 可整体删除的隔离探索区
 
 这里仅承载一次性 runner、草稿、中间结果和 scratch 数据。它不是 Tier3 research runtime，
-也不拥有项目结论；当前架构与验证契约以 `docs/` 下的 owner 文档为准。
+也不拥有项目结论；当前架构与验证契约以项目根 `../CLAUDE.md` 与 `../goal.md` 为准。
 
 ## 边界
 

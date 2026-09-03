@@ -17,7 +17,7 @@ snapshot 重生」，但普通的 `build` 只重生工作树 —— 两者不一
 (git checkout-index --all 导出暂存索引到临时目录, 在那棵树上跑 build) 补上这条命令, 结果
 写回工作树 data/lineage/graph.json 并提示 git add —— 提交的东西保证就是门会算出的东西。
 
-owner: docs/MASTER_TOPLEVEL_DESIGN.md + docs/engineering_governance.md + services/lineage/。
+owner: services/lineage/ + governance_gates.yaml 的 lineage_drift 门。
 """
 from __future__ import annotations
 

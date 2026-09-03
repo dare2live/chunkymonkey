@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Static check: closed-loop inventory process_steps are planned + executed.
 
-Authority: docs/MASTER_TOPLEVEL_DESIGN.md §5.8 (派生新鲜度闭环法)
+Authority: backend/services/pipeline/closed_loop.py (派生新鲜度闭环法, 法条正文见该模块 docstring)
 Exit 0 PASS; 1 FAIL.
 """
 from __future__ import annotations

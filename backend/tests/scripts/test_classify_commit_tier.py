@@ -23,7 +23,7 @@ def test_live_policy_validates() -> None:
 
 def test_l1_docs_only() -> None:
     result = clas.classify(
-        ["goal.md", "docs/README.md", "sandbox/probe.md"],
+        ["goal.md", "PROJECT_INDEX.md", "sandbox/probe.md"],
         scan_content=False,
     )
     assert result["tier"] == "L1"
@@ -66,7 +66,7 @@ def test_mixed_docs_and_service_is_l3() -> None:
 def test_pit_file_in_docs_commit_escalates() -> None:
     """Bad case: PIT/writer surface mixed into a docs-looking set → L3."""
     result = clas.classify(
-        ["docs/README.md", "backend/services/data_sources/nominal_ohlcv_acceptance.py"],
+        ["PROJECT_INDEX.md", "backend/services/data_sources/nominal_ohlcv_acceptance.py"],
         scan_content=False,
     )
     assert result["tier"] == "L3"
@@ -97,7 +97,7 @@ def test_feature_map_alone_is_l3() -> None:
 def test_deletion_forces_l3() -> None:
     policy = clas.load_policy(POLICY)
     clas.validate_policy(policy)
-    result = clas.classify_paths([("D", "docs/README.md")], policy, scan_content=False)
+    result = clas.classify_paths([("D", "PROJECT_INDEX.md")], policy, scan_content=False)
     assert result["tier"] == "L3"
     assert any(r.startswith("status_D:") for r in result["reasons"])
 

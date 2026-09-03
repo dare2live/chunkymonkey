@@ -373,8 +373,8 @@ def dataset_contract_from_spec(domain: str, spec: Mapping[str, Any]) -> DatasetC
         )
     # 2026-09-01: **source / api 不参与 config_hash** (excluded below, kept out of
     # the spread). 它们是传输轴 (从哪取), 不是语义轴 (数据是什么)。同一手术已在
-    # nominal_ohlcv_contract.py / stock_st_contract.py 做过 (docs/engineering_governance.md
-    # §15.5) —— 让取数地址参与语义指纹, 会把"换个供应商取同样的数据"误判成"契约变更",
+    # nominal_ohlcv_contract.py / stock_st_contract.py 做过
+    # (git log --grep source_api_transport_axis) —— 让取数地址参与语义指纹, 会把"换个供应商取同样的数据"误判成"契约变更",
     # 让 margin_acceptance.py 的严格 hash 相等校验拒读全部既有 accepted 分区。语义变更仍被
     # 完整覆盖: schema_hash(字段/类型/单位) + grain + partition_by + availability_policy +
     # batch_completeness + canonical_table/compatibility_table + coverage_start +

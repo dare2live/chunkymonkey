@@ -4,7 +4,7 @@ MAX(ann_date) can leap while mid partitions remain only in
 ``raw_tushare_stk_holdertrade``. Due-set law is shared
 ``plan_partition_catchup`` (source\\accepted, P≤watermark — not tip+1).
 
-Evidence: ``docs/MASTER_TOPLEVEL_DESIGN.md §5.7 (分区补洞法)``.
+Evidence: ``backend/services/data_sources/frontier_decision.py`` (分区补洞法, 集合差 due-set 全文法条).
 """
 from __future__ import annotations
 

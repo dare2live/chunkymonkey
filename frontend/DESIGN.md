@@ -1,8 +1,8 @@
 # ChunkyMonkey 前端设计方案
 
 > 状态：live · 本文件是前端面的唯一设计 owner。
-> 归属（依 `docs/README.md` 生命周期表）：架构与契约语义归 `docs/MASTER_TOPLEVEL_DESIGN.md`，验证纪律归
-> `docs/strategy_validation_contract.md`，工程纪律归 `docs/engineering_governance.md`；本文只拥有
+> 归属：架构、验证、工程纪律统一归项目根 `../CLAUDE.md`（机器执法看
+> `../backend/config/governance_gates.yaml`）；本文只拥有
 > **界面信息架构、视觉系统、页面↔端点映射、展示诚实性约定**，不转述任何 Tier 语义。
 > 站点根：`frontend/app/`（无构建步；FastAPI 挂 `/app/`）。Kimi 的单页 HTML 只是设计样稿，
 > 不是产品形态 —— 每个标签是独立网页，共享视觉与导航。

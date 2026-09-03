@@ -84,7 +84,7 @@ def test_non_risky_text_change_does_not_require_review(tmp_path, monkeypatch) ->
 
 def test_l1_docs_skip_rule10_without_approval(tmp_path, monkeypatch) -> None:
     """WP1: machine L1 (docs/analysis only) does not require Codex-Reviewed."""
-    assert _run(tmp_path, monkeypatch, "docs board update evidence\n", ["goal.md", "docs/README.md"]) == 0
+    assert _run(tmp_path, monkeypatch, "docs board update evidence\n", ["goal.md", "sandbox/probe.md"]) == 0
 
 
 def test_l1_mixed_with_service_stays_l3_but_no_longer_blocks(tmp_path, monkeypatch) -> None:

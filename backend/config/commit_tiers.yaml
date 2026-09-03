@@ -1,4 +1,4 @@
-# Commit tier policy (WP1 tiered safe_commit; owner = docs/engineering_governance.md §14).
+# Commit tier policy (WP1 tiered safe_commit; owner = 本文件 + classify_commit_tier.py).
 #
 # safe_commit.sh 与 commit-msg hook 通过 backend/scripts/classify_commit_tier.py
 # 消费本政策。语义:

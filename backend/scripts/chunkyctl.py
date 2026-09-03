@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ChunkyMonkey operations CLI (owner: AGENTS.md + engineering governance).
+"""ChunkyMonkey operations CLI (owner: CLAUDE.md).
 
 This surface intentionally stays small. It exposes the live manual-only Tier0/ops checks:
   1. tooling_gate  — `moth assert` (二进制; 原 moth_snapshot.py 已删, 改直调 CLI)

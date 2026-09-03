@@ -1,4 +1,4 @@
-# SERVE 读侧 entity registry — owner=docs/MASTER_TOPLEVEL_DESIGN.md §3.1/§5.1
+# SERVE 读侧 entity registry — owner=本文件 + backend/services/data_access/__init__.py
 #
 # 唯一取数声明处 (不变量4 单概念单真相源): 非成员消费者禁内联 FROM raw_* (check_serve_read_layer D1 + moth serve-read-layer-doors 守; 2026-07-08 收口后 D1 全量扫 backend/services+scripts, 见 data_module_members.yaml)。
 # PIT 锚 + 口径清洗由读层强制 (不变量1 统一主键+PIT锚)。

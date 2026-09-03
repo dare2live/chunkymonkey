@@ -183,7 +183,7 @@ cross_source_consistency:
     tier3_in_canonical_view: "block downstream build."
 
 deprecation:
-  sop_document: docs/engineering_governance.md
+  sop_document: CLAUDE.md  # 本文件整体 SUPERSEDED/历史参考且运行时不加载 (见头注); 该键本身也未被 config/data_governance.py 读取 (只 safe_load), 指向仍需保持非悬空
   retention_preference: delete_not_archive
   retired_sources_delete:
     - akshare_sina

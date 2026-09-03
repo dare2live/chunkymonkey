@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Legacy experiment evidence store builder; current owner=docs/strategy_validation_contract.md。
+"""Legacy experiment evidence store builder; retired paradigm, see git log --grep experiment_store。
 
 在隔离的 experiment_store.duckdb 中建 4 张历史 evidence 表:
 verdict / ic_scan / lineage / pit_audit。幂等 CREATE IF NOT EXISTS。

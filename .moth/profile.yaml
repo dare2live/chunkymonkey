@@ -5,39 +5,24 @@ name: chunkymonkey
 repo_path: .
 codegraph_root: .
 evidence_paths:
-  agents: AGENTS.md
   goal: goal.md
-  architecture: docs/MASTER_TOPLEVEL_DESIGN.md
-  strategy_validation: docs/strategy_validation_contract.md
-  engineering_governance: docs/engineering_governance.md
-  docs_map: docs/README.md
-  feature_map: FEATURE_MAP.md
-  # Codex global AGENTS + skills live under ~/.codex — moth 0.3.0 require_repo_local
-  # rejects absolute paths outside the checkout (breaks staged-snapshot safe_commit).
-  # Agents still read those skills via $skill paths; do not reintroduce absolute evidence_paths.
-  docs: docs
+  rules: CLAUDE.md
+  sandbox: sandbox/README.md
 instruction_sources:
   active:
-    - AGENTS.md
+    - CLAUDE.md
     - goal.md
-    - docs/
-    - Codex skills
     - live tooling output
   context_only:
     - chunkyctl history
-  ignored_by_default:
-    - CLAUDE.md
-  legacy_exception: Open CLAUDE.md only when the user explicitly requests historical comparison or migration.
+  ignored_by_default: []
 notes: >
   Controller-first ChunkyMonkey profile. Moth owns shared tooling state such as
-  dirty worktree, CodeGraph, complexity, and evidence path discovery, including
-  the local Codex skills that govern startup/local-ops and Rule 10 review. Repo
-  audit scripts and chunkyctl own business gates and local execution-surface
-  checks such as data integrity, taxonomy/PIT, strategy promotion, data health,
-  and launchd/cron/installer references to retired or missing entrypoints.
-  goal.md is the compact live controller board; the three owner contracts under
-  docs/ define architecture, validation, and engineering; history has no file —
-  query it with `scripts/chunkyctl history --grep <term>` / `--eras` (git is the
-  original, the retired ledger was a lagging hand copy).
+  dirty worktree, CodeGraph, complexity, and evidence path discovery. Repo audit
+  scripts and chunkyctl own business gates and local execution-surface checks
+  such as data integrity, taxonomy/PIT, strategy promotion, and data health.
+  goal.md is the compact live controller board and CLAUDE.md is the sole
+  project rules file; history has no file — query it with `scripts/chunkyctl
+  history --grep <term>` / `--eras` (git is the original).
 assertion_packs:
   - .moth/assertions/claims.yaml

@@ -1,6 +1,6 @@
 """测试公共夹具.
 
-docs/engineering_governance.md §5: 测试必须用与生产一致的 DB 引擎。
+测试必须用与生产一致的 DB 引擎 (CLAUDE.md 红线 2 / 数据 6)。
 本文件提供 ``duck_mem()`` 辅助, 内部走 ``services.duck_adapter.connect(':memory:')``,
 返回的对象支持 execute/executemany/executescript/cursor/fetchall/fetchone/
 commit/rollback/close + Row dict 索引。新测试不要引入其它内存数据库替身。

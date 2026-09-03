@@ -1,6 +1,6 @@
 # governance_gates.yaml — 门的分布策略 (L1 契约层; goal.md「治理体系重构」P1)
 #
-# Owner: docs/engineering_governance.md §14 (交付纪律) + 本文件。
+# Owner: 本文件。
 # 消费方 (代码读, 不是文档抄):
 #   - scripts/safe_commit.sh          经 backend/scripts/gate_policy.py 取分组 → 阻断/warn/不跑
 #   - backend/services/pipeline/store.py  取 runtime_checks → daily_update 运行时自检

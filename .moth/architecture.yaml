@@ -4,18 +4,12 @@
 # 每条 locator 写入前都已验证文件真实存在; 指不到的东西不许出现在声明里。
 schema_version: moth.architecture-declaration.v1
 evidence:
-- id: master-design
+- id: rules-contract
   kind: architecture_document
-  path: docs/MASTER_TOPLEVEL_DESIGN.md
-- id: engineering-governance
+  path: CLAUDE.md
+- id: gate-registry
   kind: architecture_document
-  path: docs/engineering_governance.md
-- id: strategy-validation
-  kind: architecture_document
-  path: docs/strategy_validation_contract.md
-- id: agents-contract
-  kind: architecture_document
-  path: AGENTS.md
+  path: backend/config/governance_gates.yaml
 current:
   complete: false
   entities:
@@ -26,8 +20,8 @@ current:
       control; land then accept typed partitions.
     locator: backend/services/data_sources/sync_runner.py
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
   - id: service:availability-resolver
     kind: service
     name: Availability resolver
@@ -35,8 +29,8 @@ current:
       that every sync path must consume.
     locator: backend/services/data_sources/availability.py
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
   - id: service:serve-read-layer
     kind: service
     name: SERVE read layer
@@ -44,8 +38,8 @@ current:
       are gated.
     locator: backend/services/data_access/resolver.py
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
   - id: service:daily-pipeline
     kind: service
     name: Daily update pipeline
@@ -53,16 +47,16 @@ current:
       and system_health self-checks.
     locator: backend/services/pipeline/run_outcome.py
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
   - id: service:project-status
     kind: service
     name: Live status projection
     responsibility: Single live-query entry for L2 state; zero files, nothing hand-written.
     locator: backend/services/project_status.py
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
   - id: service:governance-gates
     kind: service
     name: Commit gate registry
@@ -70,16 +64,16 @@ current:
       gate names are machine-reconciled.
     locator: backend/config/governance_gates.yaml
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
   - id: application:api
     kind: application
     name: Decision-assist API
     responsibility: FastAPI application mounting the live routers and the observation frontend site.
     locator: backend/main.py
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
   - id: application:cli
     kind: application
     name: chunkyctl control plane
@@ -87,8 +81,8 @@ current:
       doctor.'
     locator: backend/scripts/chunkyctl.py
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
   relations: []
   flows: []
   state_machines: []
@@ -102,8 +96,8 @@ desired:
       control; land then accept typed partitions.
     locator: backend/services/data_sources/sync_runner.py
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
     expectation: REQUIRED
   - id: service:availability-resolver
     kind: service
@@ -112,8 +106,8 @@ desired:
       that every sync path must consume.
     locator: backend/services/data_sources/availability.py
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
     expectation: REQUIRED
   - id: service:serve-read-layer
     kind: service
@@ -122,8 +116,8 @@ desired:
       are gated.
     locator: backend/services/data_access/resolver.py
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
     expectation: REQUIRED
   - id: service:daily-pipeline
     kind: service
@@ -132,8 +126,8 @@ desired:
       and system_health self-checks.
     locator: backend/services/pipeline/run_outcome.py
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
     expectation: REQUIRED
   - id: service:project-status
     kind: service
@@ -141,8 +135,8 @@ desired:
     responsibility: Single live-query entry for L2 state; zero files, nothing hand-written.
     locator: backend/services/project_status.py
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
     expectation: REQUIRED
   - id: service:governance-gates
     kind: service
@@ -151,8 +145,8 @@ desired:
       gate names are machine-reconciled.
     locator: backend/config/governance_gates.yaml
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
     expectation: REQUIRED
   - id: application:api
     kind: application
@@ -160,8 +154,8 @@ desired:
     responsibility: FastAPI application mounting the live routers and the observation frontend site.
     locator: backend/main.py
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
     expectation: REQUIRED
   - id: application:cli
     kind: application
@@ -170,8 +164,8 @@ desired:
       doctor.'
     locator: backend/scripts/chunkyctl.py
     evidence_ids:
-    - master-design
-    - engineering-governance
+    - rules-contract
+    - gate-registry
     expectation: REQUIRED
   relations: []
   flows: []

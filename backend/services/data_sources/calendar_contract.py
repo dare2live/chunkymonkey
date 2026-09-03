@@ -248,8 +248,8 @@ def _expected_hashes(
     scope: CalendarPopulationScope,
 ) -> tuple[str, str]:
     # 2026-09-01: source/api 不参与 config_hash —— 同型手术见
-    # nominal_ohlcv_contract.py / stock_st_contract.py 及
-    # docs/engineering_governance.md §15.5。它们是传输轴 (从哪取), 不是语义轴
+    # nominal_ohlcv_contract.py / stock_st_contract.py
+    # (git log --grep source_api_transport_axis)。它们是传输轴 (从哪取), 不是语义轴
     # (数据是什么); formal_boundaries.py 开篇即 "Transport axis only. Business tiers
     # must not own these seams."。让取数地址参与语义指纹, 会把"换个供应商取同样的日历"
     # 误判成"契约变更", 拒读既有 accepted 分区 (trade_cal 实测 accepted_partition 里

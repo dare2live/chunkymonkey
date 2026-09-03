@@ -5,7 +5,7 @@ This module enforces:
 2. optional single-touch consume via ``research_prereg_store`` tokens.
 
 It does **not** claim a full StrategyRelease runtime or multi-writer DB ledger.
-Those remain requirements in ``docs/strategy_validation_contract.md``.
+Those remain requirements of the (retired) StrategyRelease paradigm — see git log --grep holdout_guard.
 """
 from __future__ import annotations
 

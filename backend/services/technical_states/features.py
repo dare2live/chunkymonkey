@@ -1,6 +1,6 @@
 """technical_states.features — K线特征 (12 沿用 + 3 新增) + 周期 resample (只见已闭合 bar)。
 
-股票状态特征 (契约: docs/MASTER_TOPLEVEL_DESIGN.md §7; 历史证据: technical_states_audit_20260702.json):
+股票状态特征 (契约: 本文件 + backend/config/technical_states.yaml; 历史证据: technical_states_audit_20260702.json):
 - 12 维窗口逻辑直接搬运旧实现 (审查 keeps: 日线特征窗口 PIT 截断 0 diff) + 3 新特征 (H8):
   rv_pctile (已实现波动率滚动分位) / pth (52周高贴近度, George-Hwang) / rs_ratio (Mansfield RS vs 基准)。
 - 按审查裁决修正:

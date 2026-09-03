@@ -1,4 +1,4 @@
-# segments.yaml — 股票分层规则 (owner=docs/MASTER_TOPLEVEL_DESIGN.md Tier1)
+# segments.yaml — 股票分层规则 (owner=本文件, Tier1)
 # 用户定调: 分层前置在所有策略之前, 属数据变量加工, 每天数据获取之后跑。
 # 单一计算点: 所有策略的 cell 定义 / 画像维度 / edge 筛选器从 dim_stock_segment_daily 取, 禁各自算。
 # 分位法 (非绝对阈值): 市值/换手按当日全市场分位分段 — 自适应跨年市值水平漂移 (2019 vs 2026)。

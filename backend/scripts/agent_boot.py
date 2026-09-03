@@ -192,9 +192,9 @@ def collect(repo: Path = REPO, run: Runner | None = None) -> dict[str, Any]:
         "enforcement": "projection_only_not_truth",
         "sections": sections,
         "read_next": [
-            "goal.md (hand-written objective/裁决/禁令/下一步)",
+            "CLAUDE.md (项目规则)",
+            "goal.md (目标与判据)",
             "scripts/chunkyctl status (L2 运行时状态现查: 前沿/滞后/水位/cutover/告警)",
-            "docs/README.md → 按任务读唯一 owner 文档",
             "history: `chunkyctl history --grep <term>` / `--eras` (git 即原件)",
         ],
         # Thin §15 reminder (projection only; not a gate).

@@ -1567,6 +1567,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/pipeline/closed_loop.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/pipeline/margin_catchup_acquire.py",
       "kind": "consume",
       "src": "table:org_holding.accepted_partition"
@@ -8905,8 +8911,8 @@
     }
   ],
   "meta": {
-    "edge_count": 1439,
-    "generated_at": "2026-09-03T19:27:05.489936+00:00",
+    "edge_count": 1440,
+    "generated_at": "2026-09-03T20:29:50.154769+00:00",
     "node_count": 506,
     "version": 2
   },

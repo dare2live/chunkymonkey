@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""数据层级执法器 (owner=docs/MASTER_TOPLEVEL_DESIGN.md §3-§5)。
+"""数据层级执法器 (owner=本文件 + data_layers.yaml)。
 
 固化"层级声明化"纪律, 根治本次 reset 暴露的"层级隐式 → 反复推导 + 耦合无法分离"问题:
   1. 每张活表必须在 backend/config/data_layers.yaml 声明 layer; 未声明 = FAIL (强制新表声明分层)。

@@ -2201,7 +2201,7 @@ AUTHORIZED_SECURITY_DAY_MAX_WINDOW_DAYS = 40
 # 提成模块级常量是为了让 check_continuity_integrity 能 import 同一份真相 ——
 # 此前它按 hardcode 假设所有域都能 --drain, 给出的补拉命令对这两个域跑不通
 # (2026-08-17 实测: 照它的提示跑得到 SyncWindowError)。
-# NOTE: 归属仍是代码而非 YAML, 与 docs/engineering_governance.md §7(配置与 hardcoding)
+# NOTE: 归属仍是代码而非 YAML, 与 CLAUDE.md 红线 11(配置与 hardcoding)
 # 相悖; 搬进 registry 是独立的一步。
 AUTHORIZED_SHORT_WINDOW_DOMAINS = frozenset({"daily", "stock_st"})
 

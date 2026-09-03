@@ -5,8 +5,7 @@
 > 边界复核：2026-07-16
 
 本文件是 `bestchoice/` 的唯一边界与证据清单。项目级权威仍是
-`../AGENTS.md`、`../goal.md`、`../docs/MASTER_TOPLEVEL_DESIGN.md` 和
-`../docs/strategy_validation_contract.md`；本子树没有独立 goal、agent、handoff、
+`../CLAUDE.md` 和 `../goal.md`；本子树没有独立 goal、agent、handoff、
 恢复流程、自动跑批或发布权限。
 
 `evidence_manifest.json` 是本清单的机器可校验镜像，不是第二份业务规则；
