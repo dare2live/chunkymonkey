@@ -87,7 +87,20 @@ def check_c2() -> list[str]:
             c.close()
         unpromoted = [r[0] for r in rows if r[0]]
     except Exception as e:
-        return [f"UNVERIFIED: experiment_store 不可读 ({str(e)[:60]})"]
+        # 2026-09-03: 区分「库不存在」与「库存在但读不了」。
+        #   本检查问的是「控制面文档有没有嵌入未 promote 的 run_id」。库**不存在**时,
+        #   一个 run_id 都不存在, 也就没有任何文档能嵌入未 promote 的 run_id —— 这不是违规,
+        #   是问题不成立。原实现把两者都判成 UNVERIFIED 并阻断, 犯的是「门问的是我能不能核实,
+        #   却把不能核实当成了违规」。
+        #   后果实测: data/*.duckdb 在 .gitignore:25, 该库不在版本控制, 全仓只有
+        #   build_experiment_store.py 能造它 → **任何 fresh clone 都提交不了**
+        #   (safe_commit.sh:31 set -o pipefail, 管道会传播本脚本的退出码, 实测阻断)。
+        #   而库存在却读不了 (损坏/权限/schema 不符) 是真的不能核实, 仍然 fail-closed。
+        from services.database_manifest import get_database_manifest
+
+        if not get_database_manifest().path_for("experiment_store").exists():
+            return []
+        return [f"UNVERIFIED: experiment_store 存在但不可读 ({str(e)[:60]})"]
     hits = []
     for p in control_doc_paths(REPO):
         d = p.relative_to(REPO).as_posix()
@@ -121,6 +134,7 @@ def main() -> int:
         for x in c2:
             print(f"    {x}", flush=True)
         print("    探索结论不得进入控制面；须按现行 Tier3 contract 重做并独立复核。", flush=True)
+        print("    注意: C2 非空即阻断提交 (main 返回 1), 名字里的 WARN 是历史遗留措辞。", flush=True)
     else:
         print("[C2 OK] 控制面文档 0 未-promote 实验结果", flush=True)
     return 1 if (fail or c2) else 0

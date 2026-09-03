@@ -55,3 +55,51 @@ def test_c2_warning_is_blocking_and_never_reported_as_pass(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "[C2 WARN]" in output
     assert "[C2 OK]" not in output
+
+
+def _force_store_unreadable(monkeypatch, store_path):
+    """让 connect_ro 抛错逼 check_c2 走 except 分支; 并把 manifest 指向给定路径。
+
+    路径经 database_manifest 解析 (而非 REPO 拼字面量) —— 硬编码 duckdb 路径会被
+    check_rule_compliance 的 DB 边界检查挡下, 那道门是对的。
+    """
+    import services.data_access.resolver as resolver
+    import services.database_manifest as dbm
+
+    def _boom(alias):
+        raise RuntimeError("IO Error: simulated")
+
+    class _FakeManifest:
+        def path_for(self, alias):
+            assert alias == "experiment_store"
+            return store_path
+
+    monkeypatch.setattr(resolver, "connect_ro", _boom)
+    monkeypatch.setattr(dbm, "get_database_manifest", lambda: _FakeManifest())
+
+
+def test_c2_missing_store_is_not_a_violation(monkeypatch, tmp_path):
+    """库**不存在** → 一个 run_id 都不存在 → 没有文档能嵌入未 promote 的 run_id → 放行。
+
+    2026-09-03 加。原实现把「库不存在」判成 UNVERIFIED 并阻断, 犯的是
+    「门问的是我能不能核实, 却把不能核实当成了违规」。
+    实测后果: data/*.duckdb 在 .gitignore, 该库不在版本控制, 全仓只有
+    build_experiment_store.py 能造它 → 任何 fresh clone 都提交不了
+    (safe_commit.sh 有 set -o pipefail, 会传播本脚本退出码)。
+    """
+    _force_store_unreadable(monkeypatch, tmp_path / "data" / "experiment_store.duckdb")
+    assert sandbox_gate.check_c2() == []
+
+
+def test_c2_present_but_unreadable_still_fails_closed(monkeypatch, tmp_path):
+    """库**存在却读不了** (损坏/权限/schema 不符) 是真的不能核实 → 仍然阻断。
+
+    与上一条配对: 修复只放宽「不存在」这一种情形, 不许顺手把 fail-closed 整个拆掉。
+    """
+    (tmp_path / "data").mkdir()
+    store = tmp_path / "data" / "experiment_store.duckdb"
+    store.write_text("not a duckdb file")
+    _force_store_unreadable(monkeypatch, store)
+    out = sandbox_gate.check_c2()
+    assert out and "UNVERIFIED" in out[0]
+    assert "存在但不可读" in out[0]
