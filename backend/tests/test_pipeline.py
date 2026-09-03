@@ -26,6 +26,56 @@ def _isolated_pipeline_runtime_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(context, "DEGRADED_FLAG", tmp_path / "pipeline-alert.flag")
 
 
+
+# ── on_demand 缺口自愈测试的两个共用桩 (2026-09-03) ─────────────────────────────
+# 背景: 下面几个 formal on_demand 测试把 `services.duck_adapter.connect` 整个换成一个
+# 只支持 fetchone 的桩。那是**霰弹式** patch —— 进程里任何开库的代码都会拿到它, 包括
+# `sync_runner.trading_days()` 走的 `resolver.dim_read_conn(None, "dim_trading_calendar")`,
+# 而它调的是 `.fetchall()` → AttributeError。
+#
+# 更麻烦的是它顺序依赖: `resolver.py:12` 写的是
+# `from services.duck_adapter import connect as duck_connect`(导入时绑定), 所以只有当
+# resolver **恰好在 monkeypatch 生效期间首次导入**时才会绑到桩上。单跑本文件 → 绑桩 → 6 红;
+# 与更大 suite 同跑(resolver 已被别的文件先导入) → 绑真函数 → 只剩 3 红。
+# 也就是说其中 3 个测试此前是**靠别的测试的副作用**才绿的。
+#
+# 正解不是给桩补 fetchall, 而是**让日历根本不经过 DB**: 注入确定交易日历。
+# acquire.py:373-379 的注释在 2026-08-22 就为同一件事写过结论
+# (「本地因为有真实 reference.duckdb 且真实日历恰好与 fixture 日期吻合而『碰巧绿』」),
+# 当时给 `_recent_unaccepted_days` 加了 `trading_days_fn` 注入参数, 但
+# `_sync_formal_on_demand_security_days` 调它时没把这个参数穿透过去, 所以从编排入口
+# 进来的测试注入不了 —— 改用 monkeypatch 模块属性(实测有效; 那条注释里说「patch 根本
+# 没生效」指的是 patch sys.modules, 不是 patch 模块属性)。
+def _stub_trading_days(monkeypatch, sync_runner, days):
+    """注入确定交易日历, 让被测代码不依赖真实 reference.duckdb。"""
+    monkeypatch.setattr(sync_runner, "trading_days", lambda *_a, **_k: list(days))
+
+
+class _AcceptedExceptConn:
+    """accepted_partition 桩: 除 `missing` 里的日子外, 其余分区都算已接受。
+
+    `_accepted_partition_exists` 判的是 `fetchone() is not None`, 参数是
+    [dataset_id, partition_value] —— 所以按 partition_value 判即可精确表达
+    「只缺这几天」。原实现一律返回 None(= 一天都没接受过), 与
+    「pulls_single_missing_eligible_day」这类测试名直接矛盾: gap-heal 会把窗口内
+    每一天都当成洞, 断言 2 次调用实际得到 20 次。
+    """
+
+    def __init__(self, missing):
+        self._missing = {str(x) for x in missing}
+
+    def execute(self, _sql, params=None):
+        pv = str((params or [None, None])[-1])
+        row = None if pv in self._missing else (1,)
+        return SimpleNamespace(
+            fetchone=lambda: row,
+            fetchall=lambda: ([] if row is None else [row]),
+        )
+
+    def close(self):
+        pass
+
+
 def _disabled_trade_calendar_registry():
     return {
         "defaults": {},
@@ -1096,13 +1146,18 @@ def test_formal_on_demand_catchup_skips_when_latest_accepted(monkeypatch, tmp_pa
     }
     calls = []
 
+    # 本测试的意图是"最新日已接受 → 一次都不拉", 桩返回真值(全部已接受)与之自洽;
+    # 唯一缺的是确定日历 (见文件上方 _stub_trading_days 注释)。
     class _Conn:
         def execute(self, *_a, **_k):
-            return SimpleNamespace(fetchone=lambda: {"ok": 1})
+            return SimpleNamespace(
+                fetchone=lambda: {"ok": 1}, fetchall=lambda: [({"ok": 1},)]
+            )
 
         def close(self):
             pass
 
+    _stub_trading_days(monkeypatch, sync_runner, ["20260717", "20260720", "20260721"])
     monkeypatch.setattr(sync_runner, "load_registry", lambda: registry)
     monkeypatch.setattr(sync_runner, "domain_spec", lambda reg, domain: reg["domains"][domain])
     monkeypatch.setattr(
@@ -1118,7 +1173,8 @@ def test_formal_on_demand_catchup_skips_when_latest_accepted(monkeypatch, tmp_pa
         lambda *a, **k: calls.append((a, k)) or {"status": "ok", "failed_batches": 0},
     )
     monkeypatch.setattr(
-        "services.duck_adapter.connect", lambda *_a, **_k: _Conn()
+        "services.duck_adapter.connect",
+        lambda *_a, **_k: _AcceptedExceptConn({"20260722"}),
     )
     ctx = PipelineContext(date="20260721", log_path=tmp_path / "run.log")
     try:
@@ -1215,13 +1271,10 @@ def test_formal_on_demand_catchup_pulls_single_missing_eligible_day(
     }
     calls = []
 
-    class _Conn:
-        def execute(self, *_a, **_k):
-            return SimpleNamespace(fetchone=lambda: None)
-
-        def close(self):
-            pass
-
+    # 测试名与断言都说"只缺 eligible_end 那一天 → 每域各拉一次"。原实现的桩一律返回 None
+    # (= 一天都没接受过), 于是 2026-08-21 加的 gap-heal 把窗口内每一天都当成洞,
+    # 断言 2 次实际得到 20 次。改用按 partition_value 判的桩, 让"只缺一天"能被精确表达。
+    _stub_trading_days(monkeypatch, sync_runner, ["20260717", "20260720", "20260721"])
     monkeypatch.setattr(sync_runner, "load_registry", lambda: registry)
     monkeypatch.setattr(sync_runner, "domain_spec", lambda reg, domain: reg["domains"][domain])
     monkeypatch.setattr(
@@ -1238,7 +1291,8 @@ def test_formal_on_demand_catchup_pulls_single_missing_eligible_day(
         or {"domain": domain, "status": "ok", "failed_batches": 0, "rows": 1},
     )
     monkeypatch.setattr(
-        "services.duck_adapter.connect", lambda *_a, **_k: _Conn()
+        "services.duck_adapter.connect",
+        lambda *_a, **_k: _AcceptedExceptConn({"20260721"}),
     )
     ctx = PipelineContext(date="20260721", log_path=tmp_path / "run.log")
     try:
@@ -1282,13 +1336,9 @@ def test_formal_on_demand_catchup_soft_skips_pending_publish(
         }
     }
 
-    class _Conn:
-        def execute(self, *_a, **_k):
-            return SimpleNamespace(fetchone=lambda: None)
-
-        def close(self):
-            pass
-
+    # 2026-09-03: 断言 outcomes 全为 pending_publish ⇒ 只测 eligible 日, 不混 gap-heal。
+    # 原桩一律返回 None(= 一天都没接受过), gap-heal 会把窗口内每天都当成洞。
+    _stub_trading_days(monkeypatch, sync_runner, ["20260720", "20260721", "20260722"])
     monkeypatch.setattr(sync_runner, "load_registry", lambda: registry)
     monkeypatch.setattr(
         sync_runner, "domain_spec", lambda reg, domain: reg["domains"][domain]
@@ -1318,7 +1368,8 @@ def test_formal_on_demand_catchup_soft_skips_pending_publish(
 
     monkeypatch.setattr(sync_runner, "run_domain", _run)
     monkeypatch.setattr(
-        "services.duck_adapter.connect", lambda *_a, **_k: _Conn()
+        "services.duck_adapter.connect",
+        lambda *_a, **_k: _AcceptedExceptConn({"20260722"}),
     )
     ctx = PipelineContext(date="20260722", log_path=tmp_path / "run.log")
     try:
@@ -1365,13 +1416,9 @@ def test_formal_hard_fail_degrades_not_raises_and_continues_sibling(
         }
     }
 
-    class _Conn:
-        def execute(self, *_a, **_k):
-            return SimpleNamespace(fetchone=lambda: None)
-
-        def close(self):
-            pass
-
+    # 2026-09-03: 断言 seen == [daily, stock_st] ⇒ 每域恰好一次。
+    # 原桩一律返回 None(= 一天都没接受过), gap-heal 会把窗口内每天都当成洞。
+    _stub_trading_days(monkeypatch, sync_runner, ["20260720", "20260721", "20260722"])
     monkeypatch.setattr(sync_runner, "load_registry", lambda: registry)
     monkeypatch.setattr(
         sync_runner, "domain_spec", lambda reg, domain: reg["domains"][domain]
@@ -1405,7 +1452,8 @@ def test_formal_hard_fail_degrades_not_raises_and_continues_sibling(
 
     monkeypatch.setattr(sync_runner, "run_domain", _run)
     monkeypatch.setattr(
-        "services.duck_adapter.connect", lambda *_a, **_k: _Conn()
+        "services.duck_adapter.connect",
+        lambda *_a, **_k: _AcceptedExceptConn({"20260722"}),
     )
     ctx = PipelineContext(date="20260722", log_path=tmp_path / "run.log")
     try:
@@ -1823,6 +1871,15 @@ def test_post_acquire_sla_replaces_preflight_alert_after_accepted_repair(
     outputs = []
 
     def fake_run(cmd, **kwargs):
+        # 2026-09-03: 本桩拦的是**全部** subprocess 调用, 不只 update_watermark_sla.py。
+        # store.run_store 的 system_health 自检还会调 check_cutover_effective.py --json-out
+        # (注意是 --json-out, 不是 --json-output —— 两个脚本参数名本来就不同),
+        # 原实现无守卫直接 cmd.index("--json-output") → ValueError: '--json-output' is not in list,
+        # 被 store 吞成 "subprocess 异常" 并让本测试红。
+        # 同文件 test_post_acquire_sla_only_when_alert_persists 的同款桩早就有这道守卫,
+        # 两处只修了一处。
+        if "--json-output" not in cmd:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
         output_arg = cmd[cmd.index("--json-output") + 1]
         outputs.append(output_arg)
         output_path = Path(kwargs["cwd"]) / output_arg

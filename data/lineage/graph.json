@@ -1969,6 +1969,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_pipeline.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_pipeline_state_sensors.py",
       "kind": "consume",
       "src": "table:org_holding.accepted_partition"
@@ -3320,6 +3326,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_continuity_guard.py",
+      "kind": "consume",
+      "src": "table:smartmoney.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_pipeline.py",
       "kind": "consume",
       "src": "table:smartmoney.accepted_partition"
     },
@@ -6638,6 +6650,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_continuity_guard.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_pipeline.py",
       "kind": "consume",
       "src": "table:tushare_raw.accepted_partition"
     },
@@ -11053,8 +11071,8 @@
     }
   ],
   "meta": {
-    "edge_count": 1797,
-    "generated_at": "2026-09-03T13:35:27.394307+00:00",
+    "edge_count": 1800,
+    "generated_at": "2026-09-03T13:58:15.162009+00:00",
     "node_count": 536,
     "version": 2
   },
