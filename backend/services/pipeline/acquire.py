@@ -41,7 +41,17 @@ def run_acquire(ctx: PipelineContext) -> None:
     # 独立 stage 入口也必须走与全链相同的授权硬门；全链已探针时复用 ctx 缓存。
     from .preflight import ensure_pipeline_sync_ready, ensure_tushare_authorized
     ensure_pipeline_sync_ready(ctx)
-    ensure_tushare_authorized(ctx)
+    from services.data_sources.sources.tushare import TuShareAuthorizationError
+    try:
+        ensure_tushare_authorized(ctx)
+    except TuShareAuthorizationError as exc:
+        # 2026-09-10 tushare 到期不续期整改: 授权阻断只降级, 不再让 ACQUIRE 整体流产——
+        # 下方 drain / formal on-demand (daily=tdxhub, stock_st=stock_st_derive,
+        # stock_basic=fuyao, top_list/top_inst=miaoxiang 等) 已是非 tushare 源, 照常采集。
+        ctx.degraded(
+            f"tushare authorization_blocked: {exc.reason} "
+            "(tushare 源域本次跳过, 非 tushare 源域照常采集)"
+        )
     ctx.log("=== ① 获取 ACQUIRE (纯采集 →L0, 不计算) ===")
     if ctx.dry:
         ctx.log("DRY: 跳过实际 sync (获取阶段全是写操作)")
@@ -655,14 +665,23 @@ def _sync_registry_drain(ctx: PipelineContext) -> list[dict]:
         # stderr already streamed live; append the final stdout JSON evidence.
         ctx._log_fh.write(stdout_data or ""); ctx._log_fh.flush()
     if returncode == 3:
-        from services.data_sources.sources.tushare import (
-            AUTH_FAILURE_REASONS,
-            TuShareAuthorizationError,
-        )
+        from services.data_sources.sources.tushare import AUTH_FAILURE_REASONS
 
         output = (stdout_data or "") + (stderr_data or "")
         reason = next((item for item in AUTH_FAILURE_REASONS if item in output), "auth_denied")
-        raise TuShareAuthorizationError(reason)
+        # 2026-09-10 tushare 到期不续期整改: sync_runner --all-due --drain 的授权探针是
+        # 整批一次性的 (无 per-domain 粒度) —— 批内当前仍有 31/34 个 tushare 源自动域,
+        # 探针一失败整批本轮全部延后 (代价: 批内少数非 tushare 自动域 stock_basic/fuyao,
+        # top_list+top_inst/miaoxiang 本轮也被连累跳过; 拆 sync_runner 的批内探针粒度不在
+        # 本次改动范围, 见调用方注释)。但不再 raise 熄火整条 daily_update 链: 下方 formal
+        # on-demand daily/stock_st (tdxhub/stock_st_derive, 独立于本批, 不受影响) 和
+        # calendar/active-stock 步骤照常继续。
+        ctx.degraded(
+            f"sync_registry drain authorization_blocked: {reason} "
+            "(--all-due 批次本轮跳过, 含少数非 tushare 自动域; "
+            "formal on-demand daily/stock_st 走独立非 tushare 通道不受影响)"
+        )
+        return []
     try:
         results = json.loads(stdout_data or "")
     except (TypeError, ValueError) as exc:

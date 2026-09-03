@@ -2761,6 +2761,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/test_pipeline.py",
+      "kind": "consume",
+      "src": "table:reference.dim_trading_calendar"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/test_rally_gt.py",
       "kind": "consume",
       "src": "table:reference.dim_trading_calendar"
@@ -11047,8 +11053,8 @@
     }
   ],
   "meta": {
-    "edge_count": 1796,
-    "generated_at": "2026-09-02T22:20:30.164254+00:00",
+    "edge_count": 1797,
+    "generated_at": "2026-09-03T13:35:27.394307+00:00",
     "node_count": 536,
     "version": 2
   },

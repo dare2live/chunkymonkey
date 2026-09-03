@@ -135,6 +135,47 @@ def _auth_probe_timeout_seconds() -> float:
     return float(value)
 
 
+def tushare_dependent_domains(registry: dict[str, Any] | None) -> list[str] | None:
+    """Registry domains ``run_acquire`` could touch this run whose source is tushare.
+
+    2026-09-10 tushare 授权到期不续期整改: 探针曾对**每次** pipeline 运行硬性无条件触发
+    (preflight.run_preflight / acquire.run_acquire 各调一次), 与"这次到底要不要 tushare"
+    无关 —— 到期当天会连累已切非 tushare 的域 (tdxhub 日线 / fuyao stock_basic /
+    stock_st_derive / calendar_rule / miaoxiang top_list,top_inst) 一起熄火。
+
+    先例 ``sync_runner._cli_skips_provider_authorization`` 已解过同一问题 (CLI 单次
+    --domain/--all-due 调用), 本函数是它在 pipeline 全链场景下的对应: pipeline 没有
+    CLI args 可读 (daily_update 隐式跑全部 "enabled" 域, 不是某一个 --domain), 所以直接
+    扫 registry 全表, 按 execution_policy.mode=="enabled" 圈出**本次可能被 run_acquire
+    触碰到的域全集** —— 这一步刻意不去复刻 acquire.py 的调用图 (drain 走
+    automatic_domains, formal on-demand daily/stock_st 是另一条路径, margin/trade_cal
+    又是各自的 on_demand 分支), 因为那份清单会随 acquire.py 演进悄悄腐烂 (漏一个新加的
+    on_demand 域 = 静默判错); "enabled" 是唯一不随调用图变化的稳定信号，且宁可判多
+    (fail-safe 天然更保守，不会更危险)。
+
+    返回 ``None`` 表示"判不出" (registry 缺失/畸形/某域 execution_policy 或 source 解析
+    失败) —— 调用方必须把 ``None`` 当"就当需要 tushare"处理 (fail-safe: 有歧义永远走探测,
+    不走跳过；与 ``_cli_skips_provider_authorization`` 同一条铁律的镜像)。
+    """
+    if registry is None:
+        return None
+    domains = registry.get("domains")
+    if not isinstance(domains, dict) or not domains:
+        return None
+    from services.data_sources.sync_runner import domain_spec, execution_policy_for_spec
+
+    try:
+        tushare_domains = []
+        for name in domains:
+            spec = domain_spec(registry, name)
+            policy = execution_policy_for_spec(spec)
+            if policy.mode == "enabled" and spec.get("source") == "tushare":
+                tushare_domains.append(str(name))
+    except Exception:
+        return None
+    return tushare_domains
+
+
 def ensure_tushare_authorized(ctx: PipelineContext) -> dict[str, Any] | None:
     """Run the single account probe for sync-capable flows and cache its sanitized result."""
     if ctx.skip_sync:
@@ -142,11 +183,28 @@ def ensure_tushare_authorized(ctx: PipelineContext) -> dict[str, Any] | None:
         return None
     if ctx.tushare_auth_status is not None:
         return ctx.tushare_auth_status
+    if ctx.tushare_auth_blocked_reason is not None:
+        # 本次 run 内已经探测过且被拒 — 结论不会变, 复用不重打网络探针。
+        raise TuShareAuthorizationError(ctx.tushare_auth_blocked_reason)
+
+    from services.data_sources.sync_runner import load_registry
+    try:
+        registry_for_scope = load_registry()
+    except Exception:
+        registry_for_scope = None
+    due_tushare_domains = tushare_dependent_domains(registry_for_scope)
+    if due_tushare_domains is not None and not due_tushare_domains:
+        ctx.log("--- Authorization: SKIP (本次无 tushare 源域 due, registry 全表核实) ---")
+        return None
 
     warning_days = _auth_expiry_warning_days(ctx)
-    status = probe_authorization(
-        TuShareSource(), timeout_seconds=_auth_probe_timeout_seconds()
-    )
+    try:
+        status = probe_authorization(
+            TuShareSource(), timeout_seconds=_auth_probe_timeout_seconds()
+        )
+    except TuShareAuthorizationError as exc:
+        ctx.tushare_auth_blocked_reason = exc.reason
+        raise
     ctx.tushare_auth_status = status
     opened_at = status["opened_at"]
     expires_at = status["expires_at"]
@@ -265,7 +323,17 @@ def run_preflight(ctx: PipelineContext) -> None:
     ensure_pipeline_sync_ready(ctx)
     # 日历是所有 eligible-end/gap 判断的真相源；先验伪本地地基，再调用外部 provider。
     ensure_calendar_ready(ctx, allow_repair=not ctx.dry and not ctx.skip_sync)
-    ensure_tushare_authorized(ctx)
+    try:
+        ensure_tushare_authorized(ctx)
+    except TuShareAuthorizationError as exc:
+        # 2026-09-10 tushare 到期不续期整改: 授权阻断只降级 tushare 源域, 不再熄火整链——
+        # watermark SLA 检查(与 tushare 无关)和四阶段(许多域已切非 tushare)照常继续。
+        # 消息刻意不含 "AUTH BLOCK" / "PREFLIGHT BLOCK" 等 run_outcome._HARD_RE 关键字,
+        # 否则仍会被判 hard_fail exit 3 —— 那正是本次要拆掉的硬门。
+        ctx.degraded(
+            f"tushare authorization_blocked: {exc.reason} "
+            "(tushare 源域本次跳过; watermark SLA 检查与四阶段照常继续)"
+        )
     ctx.log("--- Preflight: watermark SLA 新鲜度检查 ---")
 
     # Step 1a: before/readiness 证据。alert 可能由本次 acquire 修复，最终 verdict 留给 Store 重算。

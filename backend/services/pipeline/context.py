@@ -35,6 +35,10 @@ class PipelineContext:
     log_path: Path | None = None
     auth_expiry_warning_days: int | None = None
     tushare_auth_status: dict[str, Any] | None = None
+    # 2026-09 tushare 到期不续期整改: 本次运行内已探测且被拒的 reason (auth_expired 等)。
+    # 命中后同一 run 内重复调用 ensure_tushare_authorized 直接复用结论, 不重复打网络探针
+    # (preflight/acquire 现各调一次, 结论不会在同一次 run 内变化)。
+    tushare_auth_blocked_reason: str | None = None
     writer_lease_id: str | None = None
     writer_lock_fd: int | None = None
     degraded_msgs: list[str] = field(default_factory=list)

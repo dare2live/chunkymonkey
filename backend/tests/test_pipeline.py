@@ -43,6 +43,281 @@ def _disabled_trade_calendar_registry():
     }
 
 
+# ── 2026-09-10 tushare 授权到期不续期整改: 三种 registry 形状 fixture ──────────
+# (供 ensure_tushare_authorized / tushare_dependent_domains 的三种验收场景复用；
+#  测试必须自带 fixture, 不许借真实 sync_registry.yaml 的当前状态过关 —— 那会随
+#  域迁移悄悄改变含义, 见 feedback-test-must-carry-its-own-fixture。)
+
+
+def _no_tushare_domain_registry():
+    """全部 enabled 域源已切非 tushare (daily=tdxhub, stock_st=stock_st_derive) — 场景1。"""
+    return {
+        "defaults": {},
+        "domains": {
+            "daily": {
+                "execution_policy": {"mode": "enabled", "reason": "authorized_manual_generation"},
+                "source": "tdxhub",
+            },
+            "stock_st": {
+                "execution_policy": {"mode": "enabled", "reason": "authorized_manual_generation"},
+                "source": "stock_st_derive",
+            },
+            # disabled 的 tushare 域必须不计入 (mode 过滤是否生效的反向证据)。
+            "frozen_tushare_domain": {
+                "execution_policy": {"mode": "disabled", "reason": "frozen"},
+                "source": "tushare",
+            },
+        },
+    }
+
+
+def _tushare_domain_due_registry():
+    """混合注册表: 一个 enabled tushare 域仍 due, 一个 enabled 非 tushare 域也 due — 场景2。"""
+    return {
+        "defaults": {"auth_expiry_warn_days": 14, "auth_probe_timeout_seconds": 10},
+        "domains": {
+            "daily_basic": {
+                "execution_policy": {"mode": "enabled", "reason": "automatic"},
+                "source": "tushare",
+            },
+            "daily": {
+                "execution_policy": {"mode": "enabled", "reason": "authorized_manual_generation"},
+                "source": "tdxhub",
+            },
+        },
+    }
+
+
+def _unresolvable_source_registry():
+    """execution_policy 畸形 (漏必填键) → domain_spec/execution_policy_for_spec 必抛错 — 场景3。"""
+    return {
+        "defaults": {"auth_expiry_warn_days": 14, "auth_probe_timeout_seconds": 10},
+        "domains": {
+            "mystery_domain": {
+                # 故意漏 execution_policy: 触发 fail-safe (判不出 = 当作需要 tushare)。
+                "source": "tushare",
+            },
+        },
+    }
+
+
+# ── tushare_dependent_domains: 域集判定单元测试 (每条含反向验证) ──────────────
+
+
+def test_tushare_dependent_domains_empty_when_no_enabled_domain_is_tushare():
+    from services.pipeline.preflight import tushare_dependent_domains
+
+    result = tushare_dependent_domains(_no_tushare_domain_registry())
+    assert result == [], "非 tushare 源域(tdxhub/stock_st_derive)不得计入"
+
+
+def test_tushare_dependent_domains_lists_only_the_tushare_sourced_domain():
+    from services.pipeline.preflight import tushare_dependent_domains
+
+    result = tushare_dependent_domains(_tushare_domain_due_registry())
+    assert result == ["daily_basic"], "只有 source=tushare 的域该入选"
+    assert "daily" not in result, "反向验证: 非 tushare 源域(daily/tdxhub)不得混入"
+
+
+def test_tushare_dependent_domains_ignores_disabled_tushare_domain():
+    """反向验证: mode=disabled 的 tushare 域即便 source=tushare 也不计入 (mode 过滤生效)。"""
+    from services.pipeline.preflight import tushare_dependent_domains
+
+    registry = {
+        "defaults": {},
+        "domains": {
+            "frozen": {
+                "execution_policy": {"mode": "disabled", "reason": "frozen"},
+                "source": "tushare",
+            },
+        },
+    }
+    assert tushare_dependent_domains(registry) == []
+
+
+def test_tushare_dependent_domains_fails_safe_to_none_on_malformed_domain():
+    from services.pipeline.preflight import tushare_dependent_domains
+
+    assert tushare_dependent_domains(_unresolvable_source_registry()) is None
+
+
+def test_tushare_dependent_domains_fails_safe_to_none_on_missing_registry():
+    from services.pipeline.preflight import tushare_dependent_domains
+
+    assert tushare_dependent_domains(None) is None
+
+
+def test_tushare_dependent_domains_fails_safe_to_none_on_empty_domains():
+    from services.pipeline.preflight import tushare_dependent_domains
+
+    assert tushare_dependent_domains({"defaults": {}, "domains": {}}) is None
+    assert tushare_dependent_domains({"defaults": {}}) is None, "domains 键整个缺失同样判不出"
+
+
+# ── ensure_tushare_authorized: 验收断言 1/2/3 (每条含反向验证) ──────────────
+
+
+def test_ensure_tushare_authorized_skips_probe_when_no_tushare_domain_due(monkeypatch, tmp_path):
+    """验收断言1: 无 tushare 源域 due -> 不探测 (--today 20260911 模拟到期后场景)。"""
+    from services.data_sources import sync_runner
+    from services.pipeline import preflight
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(sync_runner, "load_registry", _no_tushare_domain_registry)
+
+    class ForbiddenSource:
+        def __init__(self):
+            raise AssertionError("probe must not run when no tushare domain is due")
+
+    monkeypatch.setattr(preflight, "TuShareSource", ForbiddenSource)
+    ctx = PipelineContext(date="20260911", log_path=tmp_path / "run.log")
+    try:
+        result = preflight.ensure_tushare_authorized(ctx)
+    finally:
+        ctx.close()
+
+    assert result is None
+    assert ctx.tushare_auth_status is None
+    assert ctx.degraded_msgs == []
+    assert "本次无 tushare 源域 due" in (tmp_path / "run.log").read_text()
+
+
+def test_ensure_tushare_authorized_probes_and_blocks_when_tushare_domain_due_and_expired(
+    monkeypatch, tmp_path
+):
+    """验收断言2 (反向于上一条): 有 tushare 域 due 且过期 -> 照常探测且照实抛出阻断。"""
+    from services.data_sources import sync_runner
+    from services.pipeline import preflight
+    from services.pipeline.context import PipelineContext
+    from services.data_sources.sources.tushare import TuShareAuthorizationError
+
+    monkeypatch.setattr(sync_runner, "load_registry", _tushare_domain_due_registry)
+    calls = []
+
+    class ExpiredSource:
+        def authorization_status(self):
+            calls.append("user")
+            raise TuShareAuthorizationError("auth_expired")
+
+    monkeypatch.setattr(preflight, "TuShareSource", ExpiredSource)
+    ctx = PipelineContext(date="20260911", log_path=tmp_path / "run.log")
+    try:
+        with pytest.raises(TuShareAuthorizationError, match="auth_expired"):
+            preflight.ensure_tushare_authorized(ctx)
+    finally:
+        ctx.close()
+
+    assert calls == ["user"], "tushare 域 due 时必须真的探测, 不能因为顺带存在非 tushare 域就跳过"
+    assert ctx.tushare_auth_status is None
+    assert ctx.tushare_auth_blocked_reason == "auth_expired"
+
+
+def test_ensure_tushare_authorized_still_probes_when_domain_source_unresolvable(
+    monkeypatch, tmp_path
+):
+    """验收断言3 (fail-safe 反向验证): registry 判不出源 -> 仍然探测, 不许跳过。"""
+    from services.data_sources import sync_runner
+    from services.pipeline import preflight
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(sync_runner, "load_registry", _unresolvable_source_registry)
+    calls = []
+    status = {
+        "opened_at": datetime(2026, 6, 17, tzinfo=ZoneInfo("Asia/Shanghai")),
+        "expires_at": datetime(2099, 8, 12, tzinfo=ZoneInfo("Asia/Shanghai")),
+        "remaining_weeks": 4,
+    }
+
+    class SpySource:
+        def authorization_status(self):
+            calls.append("user")
+            return status
+
+    monkeypatch.setattr(preflight, "TuShareSource", SpySource)
+    ctx = PipelineContext(
+        date="20260911", log_path=tmp_path / "run.log", auth_expiry_warning_days=14
+    )
+    try:
+        preflight.ensure_tushare_authorized(ctx)
+    finally:
+        ctx.close()
+
+    assert calls == ["user"], "registry 域源解析不出时必须保持探测, 不许静默跳过"
+    assert ctx.tushare_auth_status == status
+
+
+def test_ensure_tushare_authorized_still_probes_when_registry_itself_unloadable(
+    monkeypatch, tmp_path
+):
+    """fail-safe 反向验证的另一半: load_registry() 本身抛错时必须绝不静默跳过(不返回 None)。
+
+    本函数内部对 load_registry() 有 try/except 保护 (registry_for_scope=None ->
+    tushare_dependent_domains(None) -> None -> 判不出走探测); 但 registry 若整体
+    读不出, _auth_probe_timeout_seconds() 自己那次 load_registry() 调用(此函数无
+    fail-safe 包装, 本次改动范围外) 会先炸出 RuntimeError —— 这仍然满足"不静默跳过"
+    的底线: 宁可报错也不能悄悄放行成 SKIP。
+    """
+    from services.data_sources import sync_runner
+    from services.pipeline import preflight
+    from services.pipeline.context import PipelineContext
+
+    def _boom():
+        raise RuntimeError("registry file corrupt")
+
+    monkeypatch.setattr(sync_runner, "load_registry", _boom)
+    calls = []
+
+    class ForbiddenSource:
+        # 构造本身无害 (probe_authorization(TuShareSource(), timeout_seconds=...) 里
+        # TuShareSource() 先于 _auth_probe_timeout_seconds() 求值); 真正不许发生的是
+        # authorization_status() 被调用 —— timeout 计算会先炸, probe_authorization
+        # 整体都不会被进入。
+        def authorization_status(self):
+            calls.append("user")
+            raise AssertionError("must not be reached in this failure mode")
+
+    monkeypatch.setattr(preflight, "TuShareSource", ForbiddenSource)
+    ctx = PipelineContext(
+        date="20260911", log_path=tmp_path / "run.log", auth_expiry_warning_days=14
+    )
+    try:
+        with pytest.raises(RuntimeError, match="registry file corrupt"):
+            preflight.ensure_tushare_authorized(ctx)
+    finally:
+        ctx.close()
+
+    assert calls == [], "provider 的 authorization_status 不该被触达 —— timeout 配置先炸"
+    assert ctx.tushare_auth_status is None, "绝不能把读不出 registry 悄悄当成 SKIP 成功"
+
+
+def test_ensure_tushare_authorized_caches_blocked_reason_without_reprobing(monkeypatch, tmp_path):
+    """同一次 run 内重复调用: 被拒结论要复用, 不许对每次调用都重新打网络探针。"""
+    from services.data_sources import sync_runner
+    from services.pipeline import preflight
+    from services.pipeline.context import PipelineContext
+    from services.data_sources.sources.tushare import TuShareAuthorizationError
+
+    monkeypatch.setattr(sync_runner, "load_registry", _tushare_domain_due_registry)
+    calls = []
+
+    class ExpiredSource:
+        def authorization_status(self):
+            calls.append("user")
+            raise TuShareAuthorizationError("auth_expired")
+
+    monkeypatch.setattr(preflight, "TuShareSource", ExpiredSource)
+    ctx = PipelineContext(date="20260911", log_path=tmp_path / "run.log")
+    try:
+        with pytest.raises(TuShareAuthorizationError):
+            preflight.ensure_tushare_authorized(ctx)
+        with pytest.raises(TuShareAuthorizationError):
+            preflight.ensure_tushare_authorized(ctx)
+    finally:
+        ctx.close()
+
+    assert calls == ["user"], "第二次调用必须复用缓存的 blocked reason, 不重打探针"
+
+
 def test_pipeline_package_imports():
     """各阶段模块 + 入口可 import (catch port 笔误 / 死引用)。"""
     from services.pipeline import acquire, clean, context, preflight, process, run, store
@@ -169,12 +444,19 @@ def test_independent_stage_writer_busy_refuses_before_stage(monkeypatch, tmp_pat
 
 
 def test_independent_acquire_authorization_block_is_exit_three(monkeypatch, tmp_path):
+    """chunkyctl pipeline acquire (独立单阶段触发) 未随本次整改改动, 仍是硬 exit 3 ——
+
+    与 daily_update 全链新语义(降级续跑)不一致, 是本次已知未处理的残留(见改动报告);
+    这里只补一个显式 tushare 域 fixture(测试不许借真实 registry 状态过关), 断言本身不变。
+    """
     from services import writer_lock as lock_mod
+    from services.data_sources import sync_runner
     from services.data_sources.sources.tushare import TuShareAuthorizationError
     from services.pipeline import preflight, stage_runner
     from services.pipeline.context import PipelineContext
 
     monkeypatch.setenv(lock_mod.WRITER_LOCK_PATH_ENV, str(tmp_path / "writer.lock"))
+    monkeypatch.setattr(sync_runner, "load_registry", _tushare_domain_due_registry)
     monkeypatch.setattr(
         stage_runner,
         "PipelineContext",
@@ -227,7 +509,13 @@ def test_run_no_flags_parses(monkeypatch, tmp_path):
         "状态记录必须被 stub 捕获而非写真库 (捕获顺序同时验证阶段链)"
 
 
-def test_run_auth_hard_block_skips_all_stages_and_exits_three(monkeypatch, tmp_path):
+def test_run_auth_block_degrades_and_still_runs_all_stages(monkeypatch, tmp_path):
+    """2026-09-10 tushare 到期不续期整改: run.py 的 TuShareAuthorizationError 兜底
+
+    从"exit 3 + 四阶段未启动"改成"降级 + 四阶段继续"。本测试直接让 run_preflight 抛出
+    (模拟 run_preflight/run_acquire 内部吸收失手的防御性兜底路径, 不依赖真实 registry/探针),
+    钉住 run.py 这一层新语义: 不再硬 exit 3, 不再跳过任何阶段。
+    """
     from services.data_sources.sources.tushare import TuShareAuthorizationError
     from services.pipeline import run as run_mod
     from services.pipeline.context import PipelineContext
@@ -249,10 +537,144 @@ def test_run_auth_hard_block_skips_all_stages_and_exits_three(monkeypatch, tmp_p
 
     rc = run_mod.main(["--dry", "--date", "20260101"])
 
-    assert rc == 3
-    assert called == []
-    assert "auth_denied" in (tmp_path / "run.log").read_text()
-    assert "auth_denied" in (tmp_path / "flag").read_text()
+    assert rc != 3, "授权阻断不再是硬 exit 3"
+    assert called == ["run_acquire", "run_clean", "run_process", "run_store"], (
+        "四阶段必须全部启动, 一个都不许因授权阻断被跳过"
+    )
+    log_text = (tmp_path / "run.log").read_text()
+    flag_text = (tmp_path / "flag").read_text()
+    assert "auth_denied" in log_text and "authorization_blocked" in log_text
+    assert "auth_denied" in flag_text and "authorization_blocked" in flag_text
+    # 反向验证: 降级消息不能带 "AUTH BLOCK" 等 run_outcome._HARD_RE 字样,
+    # 否则即便四阶段跑了, run_outcome 仍会把它误判回 hard_fail exit 3。
+    assert "AUTH BLOCK" not in log_text.upper().replace("AUTHORIZATION_BLOCKED", "")
+
+
+def test_run_end_to_end_skips_probe_and_all_stages_start_when_no_tushare_domain_due(
+    monkeypatch, tmp_path
+):
+    """验收断言1 端到端: --date 20260911 干跑, registry 全 enabled 域已非 tushare 源
+
+    -> 不探测 (TuShareSource 若被实例化即失败); exit != 3; 四阶段全部有启动记录。
+    这是最贴近真实 "--today 20260911" 场景的用例: run_preflight/ensure_tushare_authorized
+    走真代码 (不 mock 掉), 只 mock 掉 registry + 四个阶段体 + 无关的日历/SLA 子进程。
+    """
+    from services.data_sources import sync_runner
+    from services.pipeline import preflight, run as run_mod
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(sync_runner, "load_registry", _no_tushare_domain_registry)
+    monkeypatch.setattr(preflight, "ensure_pipeline_sync_ready", lambda _c: None)
+    monkeypatch.setattr(preflight, "ensure_calendar_ready", lambda *_a, **_k: None)
+    monkeypatch.setattr(preflight, "run_watermark_sla_check", lambda *_a, **_k: 0)
+
+    class ForbiddenSource:
+        def __init__(self):
+            raise AssertionError("tushare probe must not run when no tushare domain is due")
+
+    monkeypatch.setattr(preflight, "TuShareSource", ForbiddenSource)
+    monkeypatch.setattr(
+        run_mod,
+        "PipelineContext",
+        lambda **kw: PipelineContext(**{**kw, "log_path": tmp_path / "run.log"}),
+    )
+    monkeypatch.setattr("services.pipeline.context.DEGRADED_FLAG", tmp_path / "flag")
+    started = []
+    for name in ("run_acquire", "run_clean", "run_process", "run_store"):
+        monkeypatch.setattr(run_mod, name, lambda ctx, _n=name: started.append(_n))
+
+    rc = run_mod.main(["--dry", "--date", "20260911"])
+
+    assert rc != 3
+    assert started == ["run_acquire", "run_clean", "run_process", "run_store"]
+    assert "本次无 tushare 源域 due" in (tmp_path / "run.log").read_text()
+
+
+def test_run_end_to_end_degrades_not_hard_when_tushare_domain_due_and_expired(
+    monkeypatch, tmp_path
+):
+    """验收断言2 端到端: --date 20260911 干跑, registry 有一个仍 due 的 tushare 域且过期
+
+    -> 探针真的跑了且被拒 (authorization_blocked 落 degraded); exit != 3; 四阶段全部
+    有启动记录 (非 tushare 域/后续阶段不因这一个域被牵连熄火)。
+    """
+    from services.data_sources import sync_runner
+    from services.data_sources.sources.tushare import TuShareAuthorizationError
+    from services.pipeline import preflight, run as run_mod
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(sync_runner, "load_registry", _tushare_domain_due_registry)
+    monkeypatch.setattr(preflight, "ensure_pipeline_sync_ready", lambda _c: None)
+    monkeypatch.setattr(preflight, "ensure_calendar_ready", lambda *_a, **_k: None)
+    monkeypatch.setattr(preflight, "run_watermark_sla_check", lambda *_a, **_k: 0)
+
+    calls = []
+
+    class ExpiredSource:
+        def authorization_status(self):
+            calls.append("user")
+            raise TuShareAuthorizationError("auth_expired")
+
+    monkeypatch.setattr(preflight, "TuShareSource", ExpiredSource)
+    monkeypatch.setattr(
+        run_mod,
+        "PipelineContext",
+        lambda **kw: PipelineContext(**{**kw, "log_path": tmp_path / "run.log"}),
+    )
+    monkeypatch.setattr("services.pipeline.context.DEGRADED_FLAG", tmp_path / "flag")
+    started = []
+    for name in ("run_acquire", "run_clean", "run_process", "run_store"):
+        monkeypatch.setattr(run_mod, name, lambda ctx, _n=name: started.append(_n))
+
+    rc = run_mod.main(["--dry", "--date", "20260911"])
+
+    assert calls == ["user"], "有 tushare 域 due 时必须真的探测"
+    assert rc != 3
+    assert started == ["run_acquire", "run_clean", "run_process", "run_store"]
+    log_text = (tmp_path / "run.log").read_text()
+    assert "authorization_blocked" in log_text and "auth_expired" in log_text
+
+
+def test_run_end_to_end_today_behavior_unchanged_when_auth_not_expired(monkeypatch, tmp_path):
+    """验收断言4: 今天(授权未到期)行为不变 —— 正常 probe、正常通过、四阶段启动、无降级。"""
+    from services.data_sources import sync_runner
+    from services.pipeline import preflight, run as run_mod
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(sync_runner, "load_registry", _tushare_domain_due_registry)
+    monkeypatch.setattr(preflight, "ensure_pipeline_sync_ready", lambda _c: None)
+    monkeypatch.setattr(preflight, "ensure_calendar_ready", lambda *_a, **_k: None)
+    monkeypatch.setattr(preflight, "run_watermark_sla_check", lambda *_a, **_k: 0)
+
+    calls = []
+    status = {
+        "opened_at": datetime(2026, 6, 17, tzinfo=ZoneInfo("Asia/Shanghai")),
+        "expires_at": datetime(2099, 8, 12, tzinfo=ZoneInfo("Asia/Shanghai")),
+        "remaining_weeks": 4,
+    }
+
+    class HealthySource:
+        def authorization_status(self):
+            calls.append("user")
+            return status
+
+    monkeypatch.setattr(preflight, "TuShareSource", HealthySource)
+    monkeypatch.setattr(
+        run_mod,
+        "PipelineContext",
+        lambda **kw: PipelineContext(**{**kw, "log_path": tmp_path / "run.log"}),
+    )
+    monkeypatch.setattr("services.pipeline.context.DEGRADED_FLAG", tmp_path / "flag")
+    started = []
+    for name in ("run_acquire", "run_clean", "run_process", "run_store"):
+        monkeypatch.setattr(run_mod, name, lambda ctx, _n=name: started.append(_n))
+
+    rc = run_mod.main(["--dry", "--date", "20260908"])
+
+    assert calls == ["user"]
+    assert rc == 0
+    assert started == ["run_acquire", "run_clean", "run_process", "run_store"]
+    assert "authorization_blocked" not in (tmp_path / "run.log").read_text()
 
 
 def test_run_calendar_hard_block_skips_all_stages_and_exits_four(monkeypatch, tmp_path):
@@ -1050,6 +1472,149 @@ def test_acquire_runs_registry_drain_before_formal_and_despite_formal_hard(
     assert any("formal daily" in msg for msg in ctx.degraded_msgs)
 
 
+def test_acquire_continues_non_tushare_steps_when_top_level_auth_blocked(
+    monkeypatch, tmp_path
+):
+    """验收断言2 (acquire 层): 顶层探针被拒不得让 ACQUIRE 整体流产——
+
+    drain/formal/calendar/active 这些非 tushare 步骤必须照常尝试, 且该次授权阻断要
+    以含 'authorization_blocked' 字样的 degraded 记录下来 (可 grep 追责, 不是静默吞)。
+    """
+    from services.data_sources.sources.tushare import TuShareAuthorizationError
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    order: list[str] = []
+
+    monkeypatch.setattr(
+        "services.pipeline.preflight.ensure_pipeline_sync_ready", lambda _c: None
+    )
+
+    def _blocked(_ctx):
+        raise TuShareAuthorizationError("auth_expired")
+
+    monkeypatch.setattr("services.pipeline.preflight.ensure_tushare_authorized", _blocked)
+    monkeypatch.setattr(acquire, "_sync_holders_aif10", lambda _c: order.append("holders"))
+    monkeypatch.setattr(acquire, "_sync_qfii", lambda: order.append("qfii"))
+    monkeypatch.setattr(acquire, "_sync_org_holding", lambda _c: order.append("org"))
+    monkeypatch.setattr(acquire, "_sync_registry_drain", lambda _c: order.append("drain") or [])
+    monkeypatch.setattr(
+        acquire,
+        "_sync_formal_on_demand_security_days",
+        lambda ctx: order.append("formal") or [],
+    )
+    monkeypatch.setattr(acquire, "_build_trading_calendar", lambda: order.append("calendar"))
+    monkeypatch.setattr(
+        acquire, "_refresh_active_a_stock_master", lambda _c: order.append("active")
+    )
+    # margin/frozen-observe 是既有、与本次授权改动无关的两步, 但都会触真 DB (dim_trading_calendar);
+    # 与 test_acquire_runs_registry_drain_before_formal_and_despite_formal_hard 同理隔离掉,
+    # 否则本测试单独跑绿、混进全文件顺序跑会被同一个预置的真 DB/state 依赖问题带崩 (pre-existing,
+    # 不是本次改动引入 —— 见改动报告"发现但未修"一节)。
+    monkeypatch.setattr(
+        "services.pipeline.margin_catchup_acquire.run_margin_bounded_catchup", lambda _c: []
+    )
+    monkeypatch.setattr(
+        "services.pipeline.frozen_domain_observe.observe_frozen_on_demand_domains", lambda _c: []
+    )
+
+    ctx = PipelineContext(date="20260911", log_path=tmp_path / "run.log")
+    try:
+        acquire.run_acquire(ctx)  # 不应抛出 — 授权阻断只降级
+    finally:
+        ctx.close()
+
+    assert order == ["holders", "qfii", "org", "drain", "formal", "calendar", "active"], (
+        "顶层授权阻断不得让任何一步被跳过"
+    )
+    assert any(
+        "authorization_blocked" in msg and "auth_expired" in msg for msg in ctx.degraded_msgs
+    )
+
+
+def test_acquire_top_level_auth_success_leaves_no_authorization_blocked_message(
+    monkeypatch, tmp_path
+):
+    """反向验证: 授权正常时不得凭空产生 authorization_blocked 降级消息。"""
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(
+        "services.pipeline.preflight.ensure_pipeline_sync_ready", lambda _c: None
+    )
+    monkeypatch.setattr(
+        "services.pipeline.preflight.ensure_tushare_authorized", lambda _c: None
+    )
+    monkeypatch.setattr(acquire, "_sync_holders_aif10", lambda _c: None)
+    monkeypatch.setattr(acquire, "_sync_qfii", lambda: None)
+    monkeypatch.setattr(acquire, "_sync_org_holding", lambda _c: None)
+    monkeypatch.setattr(acquire, "_sync_registry_drain", lambda _c: [])
+    monkeypatch.setattr(acquire, "_sync_formal_on_demand_security_days", lambda ctx: [])
+    monkeypatch.setattr(acquire, "_build_trading_calendar", lambda: None)
+    monkeypatch.setattr(acquire, "_refresh_active_a_stock_master", lambda _c: None)
+    monkeypatch.setattr(
+        "services.pipeline.margin_catchup_acquire.run_margin_bounded_catchup", lambda _c: []
+    )
+    monkeypatch.setattr(
+        "services.pipeline.frozen_domain_observe.observe_frozen_on_demand_domains", lambda _c: []
+    )
+
+    ctx = PipelineContext(date="20260911", log_path=tmp_path / "run.log")
+    try:
+        acquire.run_acquire(ctx)
+    finally:
+        ctx.close()
+
+    assert not any("authorization_blocked" in msg for msg in ctx.degraded_msgs)
+
+
+def test_sync_registry_drain_degrades_not_raises_on_batch_auth_block(monkeypatch, tmp_path):
+    """验收断言2 (drain 层): --all-due --drain 整批探针被拒时 degrade + 返回空列表, 不 raise。
+
+    这是 _sync_registry_drain 本身 (非顶层探针) 的授权阻断路径 —— 子进程 exit 3。
+    """
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    def _fake_drain_subprocess(_ctx, _cmd):
+        import json
+
+        payload = json.dumps({"status": "authorization_blocked", "reason": "auth_expired"})
+        return 3, payload, ""
+
+    monkeypatch.setattr(acquire, "_run_drain_subprocess", _fake_drain_subprocess)
+    ctx = PipelineContext(date="20260911", log_path=tmp_path / "run.log")
+    try:
+        results = acquire._sync_registry_drain(ctx)  # 不应抛出
+    finally:
+        ctx.close()
+
+    assert results == []
+    assert any(
+        "authorization_blocked" in msg and "auth_expired" in msg for msg in ctx.degraded_msgs
+    )
+
+
+def test_sync_registry_drain_raises_tier0_on_non_auth_bad_output(monkeypatch, tmp_path):
+    """反向验证: returncode==3 才是授权阻断专属通道——非 3 的坏输出仍要走原有 Tier0AcquireError,
+
+    不能因为新增的 degrade 分支而连带把其它坏路径也悄悄咽掉。
+    """
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    def _fake_drain_subprocess(_ctx, _cmd):
+        return 1, "not-json{{{", ""
+
+    monkeypatch.setattr(acquire, "_run_drain_subprocess", _fake_drain_subprocess)
+    ctx = PipelineContext(date="20260911", log_path=tmp_path / "run.log")
+    try:
+        with pytest.raises(acquire.Tier0AcquireError):
+            acquire._sync_registry_drain(ctx)
+    finally:
+        ctx.close()
+
+
 def test_unrelated_sync_failure_degrades_only_after_margin_gate_passes(
     monkeypatch, tmp_path
 ):
@@ -1202,6 +1767,7 @@ def test_margin_pipeline_gate_blocks_typed_readiness_failure(monkeypatch, tmp_pa
 
 
 def test_preflight_dry_run_still_probes_auth_and_caches_sanitized_status(monkeypatch, tmp_path):
+    from services.data_sources import sync_runner
     from services.pipeline import preflight
     from services.pipeline.context import PipelineContext
 
@@ -1217,6 +1783,9 @@ def test_preflight_dry_run_still_probes_auth_and_caches_sanitized_status(monkeyp
             calls.append("user")
             return status
 
+    # 测试必须自带 fixture, 不许借真实 sync_registry.yaml 当前是否还有 tushare 源域过关
+    # (那会随域迁移悄悄改变含义) —— 显式给一个仍 due 的 tushare 域。
+    monkeypatch.setattr(sync_runner, "load_registry", _tushare_domain_due_registry)
     monkeypatch.setattr(preflight, "TuShareSource", FakeSource)
     monkeypatch.setattr(preflight, "ensure_pipeline_sync_ready", lambda _ctx: None)
     monkeypatch.setattr(
@@ -1424,6 +1993,7 @@ def test_authorization_probe_uses_configured_socket_timeout_and_restores_it(monk
 
 
 def test_independent_acquire_dry_run_cannot_bypass_auth_probe(monkeypatch, tmp_path):
+    from services.data_sources import sync_runner
     from services.pipeline import acquire, preflight
     from services.pipeline.context import PipelineContext
 
@@ -1439,6 +2009,8 @@ def test_independent_acquire_dry_run_cannot_bypass_auth_probe(monkeypatch, tmp_p
             calls.append("user")
             return status
 
+    # 显式给一个仍 due 的 tushare 域 (测试自带 fixture, 不借真实 registry 当前状态过关)。
+    monkeypatch.setattr(sync_runner, "load_registry", _tushare_domain_due_registry)
     monkeypatch.setattr(preflight, "TuShareSource", FakeSource)
     monkeypatch.setattr(preflight, "ensure_pipeline_sync_ready", lambda _ctx: None)
     ctx = PipelineContext(
@@ -1476,6 +2048,7 @@ def test_skip_sync_skips_authorization_probe(monkeypatch, tmp_path):
 
 
 def test_authorization_expiry_warning_uses_single_injected_threshold(monkeypatch, tmp_path):
+    from services.data_sources import sync_runner
     from services.pipeline import preflight
     from services.pipeline.context import PipelineContext
 
@@ -1491,6 +2064,8 @@ def test_authorization_expiry_warning_uses_single_injected_threshold(monkeypatch
         def authorization_status(self):
             return status
 
+    # 显式给一个仍 due 的 tushare 域 (测试自带 fixture, 不借真实 registry 当前状态过关)。
+    monkeypatch.setattr(sync_runner, "load_registry", _tushare_domain_due_registry)
     monkeypatch.setattr(preflight, "TuShareSource", FakeSource)
     ctx = PipelineContext(
         date="20260101",

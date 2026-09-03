@@ -103,10 +103,14 @@ def _run_locked(
         try:
             run_preflight(ctx)                      # gate (授权 + SLA); 非4阶段之一不记状态
         except TuShareAuthorizationError as exc:
-            ctx.degraded(f"AUTH BLOCK: {exc.reason} (四阶段未启动; exit 3)")
-            rc = _finalize_exit(ctx, hard_exit_code=3)
-            ctx.log(f"=== daily_update HARD_FAIL auth (exit {rc}) ===")
-            return rc
+            # 2026-09-10 tushare 到期不续期整改: run_preflight 内部已把授权阻断吸收成
+            # degraded 并继续 (SLA 检查/四阶段不因 tushare 熄火) —— 这里是防御性兜底,
+            # 正常路径不应触发。仍降级而非硬 exit 3, 与 run_preflight/run_acquire 语义一致；
+            # 消息不含 "AUTH BLOCK" 等 run_outcome._HARD_RE 关键字, 否则照样会被判 hard_fail。
+            ctx.degraded(
+                f"tushare authorization_blocked (preflight fallback): {exc.reason} "
+                "(四阶段继续, 不熄火)"
+            )
         except PipelinePreflightError as exc:
             ctx.degraded(f"PREFLIGHT BLOCK: {exc.reason} (四阶段未启动; exit 4)")
             rc = _finalize_exit(ctx, hard_exit_code=4)
@@ -115,10 +119,12 @@ def _run_locked(
         try:
             run_and_record(ctx, "acquire", run_acquire)  # ① 获取 →L0  (+best-effort 记阶段状态)
         except TuShareAuthorizationError as exc:
-            ctx.degraded(f"AUTH BLOCK during acquire: {exc.reason} (后续阶段未启动; exit 3)")
-            rc = _finalize_exit(ctx, hard_exit_code=3)
-            ctx.log(f"=== daily_update HARD_FAIL auth-acquire (exit {rc}) ===")
-            return rc
+            # 同上防御性兜底: run_acquire 内部(顶层探针 + drain 授权阻断)已吸收该异常并
+            # 降级续跑非 tushare 域; 走到这里说明某处遗漏捕获, 仍不应熄火 clean/process/store。
+            ctx.degraded(
+                f"tushare authorization_blocked (acquire fallback): {exc.reason} "
+                "(后续阶段继续, 不熄火)"
+            )
         except Tier0AcquireError as exc:
             ctx.degraded(f"TIER0 BLOCK during acquire: {exc} (后续阶段未启动; exit 5)")
             rc = _finalize_exit(ctx, hard_exit_code=5)
