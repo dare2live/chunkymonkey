@@ -171,11 +171,17 @@ if gate_enabled project_index_sync; then
 if [[ ! -f "$STAGED_BACKEND/scripts/check_project_index_sync.py" ]]; then
     echo "ERROR: staged snapshot 缺 check_project_index_sync.py，拒绝用 worktree 版本代验。"
     gate_fail project_index_sync 2
-elif ! PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_project_index_sync.py" 2>&1 | tail -5; then
+else
+    # 2026-09-03: 原为 `| tail -5`, 把违规清单截掉只留末尾通用建议 (同 Step 3 实证)。
+    # 改成整段输出 —— 检查器输出有界, 截断省下的那点行数远不值"看不见真原因"的代价。
+    PI_OUT="$(PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_project_index_sync.py" 2>&1)" && PI_RC=0 || PI_RC=$?
+    printf '%s\n' "$PI_OUT"
+if [[ $PI_RC -ne 0 ]]; then
     echo
     echo "ERROR: PROJECT_INDEX.md 未同步."
     echo "修法: 更新 PROJECT_INDEX.md 对应活索引节 (历史叙事写 ledger, 不进 INDEX changelog) + git add PROJECT_INDEX.md"
     gate_fail project_index_sync 2
+fi
 fi
 else
     echo "[commit-tier] skip project_index_sync (tier=$COMMIT_TIER)"
@@ -318,10 +324,18 @@ if gate_enabled rule_compliance; then
 if [[ ! -f "$STAGED_BACKEND/scripts/check_rule_compliance.py" ]]; then
     echo "ERROR: staged snapshot 缺 check_rule_compliance.py，拒绝用 worktree 版本代验。"
     gate_fail rule_compliance 3
-elif ! PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_rule_compliance.py" 2>&1 | tail -5; then
+else
+    # 2026-09-03: 原为 `| tail -5`。实证 —— 一次 DB 边界违规 (硬编码 duckdb 路径) 的完整输出 28 行,
+    # 违规内容在第 3-5 行, tail -5 只显示第 24-28 行, 即末尾那句
+    # "根因: Rule 6 (Measured not Estimated) 任何参数/阈值/权重必须有 backtest 证据" ——
+    # 而那次改动一个阈值都没有。门说的话和它实际抓的东西不是一回事, 排查因此多花一轮。
+    RC_OUT="$(PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_rule_compliance.py" 2>&1)" && RC_RC=0 || RC_RC=$?
+    printf '%s\n' "$RC_OUT"
+if [[ $RC_RC -ne 0 ]]; then
     echo
     echo "ERROR: rule compliance 失败. 见上 error."
     gate_fail rule_compliance 3
+fi
 fi
 else
     echo "[commit-tier] skip rule_compliance (tier=$COMMIT_TIER)"
