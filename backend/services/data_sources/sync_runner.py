@@ -2268,33 +2268,6 @@ def _require_authorized_short_trade_date_window(
     return days
 
 
-def _require_authorized_single_trade_date(
-    domain: str,
-    *,
-    backfill: bool,
-    resume: bool,
-    start: str | None,
-    end: str | None,
-    max_dates: int | None,
-) -> str:
-    """Backward-compatible single-day resolver (start must equal end)."""
-
-    days = _require_authorized_short_trade_date_window(
-        domain,
-        backfill=backfill,
-        resume=resume,
-        start=start,
-        end=end,
-        max_dates=max_dates,
-    )
-    if len(days) != 1 or days[0] != str(start).replace("-", ""):
-        raise SyncWindowError(
-            f"domain={domain} authorized single-day helper requires start==end; "
-            f"got start={start} end={end} days={days}"
-        )
-    return days[0]
-
-
 def _publish_security_day_short_window(
     domain: str,
     spec: dict[str, Any],

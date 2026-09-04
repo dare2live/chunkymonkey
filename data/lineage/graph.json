@@ -2149,6 +2149,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/godfile_baseline.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.raw_org_holding_aif10"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/disclosure_boundaries.py",
       "kind": "consume",
       "src": "table:org_holding.raw_org_holding_aif10"
@@ -8905,9 +8911,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1439,
-    "generated_at": "2026-09-04T00:09:30.355295+00:00",
-    "node_count": 505,
+    "edge_count": 1440,
+    "generated_at": "2026-09-04T00:55:27.834287+00:00",
+    "node_count": 506,
     "version": 2
   },
   "nodes": [
@@ -8989,6 +8995,14 @@
         "path": "backend/config/foundation_done.yaml"
       },
       "id": "consumer:backend/config/foundation_done.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/godfile_baseline.yaml"
+      },
+      "id": "consumer:backend/config/godfile_baseline.yaml",
       "kind": "consumer"
     },
     {

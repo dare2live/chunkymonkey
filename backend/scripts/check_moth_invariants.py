@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""把 moth 的一次运行结果分流成两个裁决: 数据不变量(阻断) vs 棘轮/脚手架(提示)。
+"""把 moth 的一次运行结果分流成两个裁决: severity: blocking 的(阻断) vs 其余(提示)。
+
+阻断组原本只装数据不变量; 2026-09-04 起也装代码结构棘轮
+(minimal-module-no-new-godfile —— god-file 集合相对基线的对称差)。
 
 owner: backend/config/governance_gates.yaml (gates: moth_invariants / moth)
 断言与其 severity 的 owner: .moth/assertions/claims.yaml
@@ -97,7 +100,9 @@ def main(argv: list[str] | None = None) -> int:
                   "要么声明丢了, 要么分级被抹平; 不当作通过", file=sys.stderr)
             return 2
         bad = [r for r in rows if str(r.get("id")) in blocking and _failed(r)]
-        label = f"{len(blocking)} 条数据不变量"
+        # 2026-09-04 起本组不只是数据: minimal-module-no-new-godfile 是代码结构棘轮。
+        # 措辞跟着实际内容走, 不让文案漂出行为。
+        label = f"{len(blocking)} 条阻断级断言"
 
     if bad:
         print(f"[moth-invariants] FAIL: {label} 里 {len(bad)} 条未闭合:", file=sys.stderr)

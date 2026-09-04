@@ -145,10 +145,11 @@ assertions:
     command: ["bash", "-c", "grep -c 'include_router' backend/main.py"]
     expect: {op: "<=", value: 45}
   - id: minimal-module-no-new-godfile
-    claim: "god-file (>800行) 存量 ratchet <=3；observed count 由 live 命令给出，上界不冒充当前实测"
+    claim: "backend 非测试 .py 中 >800 行的文件集合必须逐字等于 backend/config/godfile_baseline.yaml；observed = 对称差条数(新越线的 + 已降到线下该从基线删的, 两个方向都红)。红了看是哪个文件: 该 yaml 头注给了 comm 命令。2026-09-04 由 count<=3 改成集合比对 —— 原上界立于 2026-06-14(当时实测 23 个), 是目标不是棘轮; 目标当闸只有一种输出(红), 对每次提交都一样, 不携带本次 diff 的信息, 故已红三周无人动。"
     type: shell
-    command: ["bash", "-c", "find backend -name '*.py' -not -path '*/__pycache__/*' -not -path '*/tests/*' | xargs wc -l 2>/dev/null | awk '$1>800 && $2!=\"total\"{n++} END{print n+0}'"]
-    expect: {op: "<=", value: 3}
+    severity: blocking
+    command: ["bash", "-c", "comm -3 <(find backend -name '*.py' -not -path '*/__pycache__/*' -not -path '*/tests/*' | xargs wc -l 2>/dev/null | awk '$1>800 && $2!=\"total\"{print $2}' | sort) <(awk '$1==\"-\" && $2==\"path:\"{print $3}' backend/config/godfile_baseline.yaml | sort) | wc -l | tr -d ' '"]
+    expect: {op: "==", value: 0}
   - id: watermark-refresher-wired
     claim: "kline 水位刷新器接在 daily_update 管线 store 阶段 (2026-06-13 修孤儿化; 2026-06-23 重设计后接线在 pipeline/store.py 而非 daily_update.sh; 检查器写器两器官缺一即水位卡死)"
     type: shell

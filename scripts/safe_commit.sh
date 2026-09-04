@@ -209,7 +209,8 @@ if [[ -f "$STAGED_INDEX_DIR/.moth/profile.yaml" ]]; then
         # assert 一挂时**永远不再执行** —— 耦合检查连同它的发现一起消失且无任何信号。
         # (2026-08-11 B3 实测发现的检测面回退; 由 test_moth_gate_runs_coupling_even_when_assert_fails 锁定)
         # moth 只跑**一次**, 两个门读同一份 JSON —— 分级不该为它付第二次运行成本(实测 8.2s)。
-        # moth_invariants(diff_correctness, 阻断) = 只判标了 severity: blocking 的数据不变量;
+        # moth_invariants(diff_correctness, 阻断) = 只判标了 severity: blocking 的断言
+        #   (数据不变量 + 2026-09-04 起的 god-file 集合棘轮);
         # moth(scaffold, warn-only)             = 判全部, 含棘轮与脚手架。
         # 2026-08-14 立此分流的理由: 此前 38 条断言按整体继承 moth 的 scaffold 分组,
         # 于是「日历起点回退」「dc_member 静默截断」这类**数据此刻就是错的**的断言
@@ -244,7 +245,7 @@ if [[ -f "$STAGED_INDEX_DIR/.moth/profile.yaml" ]]; then
             gate_fail moth 2
         fi
         if [[ "$MOTH_INV_RC" != "0" ]]; then
-            echo "ERROR: moth 数据不变量未闭合 (或无法判定) —— 这不是脚手架陈旧, 是数据此刻不对。"
+            echo "ERROR: moth 阻断级断言未闭合 (或无法判定) —— 这不是脚手架陈旧, 是此刻真有东西不对。"
             gate_fail moth_invariants 2
         fi
     fi

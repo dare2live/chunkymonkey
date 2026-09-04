@@ -103,7 +103,7 @@ commit_gates:
       判据只有一条: 违反它意味着**数据/平台此刻就是错的**, 而不是「登记没跟上」——
       阈值棘轮(表数/索引数/体量带)刻意不在此列, 拿它挡提交正是 P1 要消灭的张力。
     object: ".moth/**"
-    invariant: "moth assert JSON 里标 severity: blocking 的数据不变量全部通过"
+    invariant: "moth assert JSON 里标 severity: blocking 的断言全部通过 —— 数据不变量, 外加 2026-09-04 起的 god-file 集合棘轮 (minimal-module-no-new-godfile, 代码结构类; 本组原文只写「数据不变量」, 加它时同步放宽了这句, 不让行为漂出声明)"
     kill_when: "keep_forever: 只要 .moth profile 还在版本控制里"
     paradigm: engineering
   moth:
