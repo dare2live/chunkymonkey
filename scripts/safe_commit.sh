@@ -79,6 +79,21 @@ for db in "$(pwd)"/data/*.duckdb; do
     [[ -e "$db" ]] || continue
     ln -s "$db" "$STAGED_INDEX_DIR/data/$(basename "$db")"
 done
+# 同一个理由, 另一处 gitignored 但快照里的检查确实需要的东西:
+# bestchoice/analysis/*.csv 共 26 MB, 2026-09-01 `02d39cfd3` 为压仓库体积移出跟踪。
+# 但 moth 断言 bestchoice-frozen-evidence 跑的是 verify_frozen_evidence.py 的 sha256 校验,
+# 而快照是 `git checkout-index` 出来的 —— 只有跟踪文件。于是那条断言从那天起在**每一次提交**
+# 的快照里都 error("missing frozen artifact"), 25 次提交无一例外; 因为 moth 是 warn-only,
+# 这行红成了固定噪声, 还会盖住快照里真正的 moth 失败。
+# 它问的是「这台机器上的冻结包完不完整」, 却跑在一个那个包不可能存在的地方。
+# 修法与上面 DuckDB 同款: 只读暴露, 不改判据、不放宽校验。
+if [[ -d "$(pwd)/bestchoice/analysis" ]]; then
+    mkdir -p "$STAGED_INDEX_DIR/bestchoice/analysis"
+    for f in "$(pwd)"/bestchoice/analysis/*.csv; do
+        [[ -e "$f" ]] || continue
+        ln -sf "$f" "$STAGED_INDEX_DIR/bestchoice/analysis/$(basename "$f")"
+    done
+fi
 
 # 1.5 Commit tier classification (fail-closed → L3 full gates)
 echo
