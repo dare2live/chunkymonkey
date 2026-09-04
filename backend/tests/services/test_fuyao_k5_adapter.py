@@ -59,7 +59,7 @@ def _registry() -> dict:
 
 def test_live_adapter_freeze_still_guards_unmigrated_domains() -> None:
     # 2026-09-01 授权换源: daily 已从 LIVE_ADAPTER(tushare) 迁到 tdxhub, 故本测试改用
-    # margin 取样 —— 它是最后一个仍挂 tushare 的 formal 域 (日落台账裁决 accept_outage)。
+    # margin 取样 —— 它是最后一个仍挂 tushare 的 formal 域 (日落台账裁决 freeze)。
     # 守卫本身不变: 它挡的是"往 formal 域塞未授权 adapter", 与哪个域用它无关。
     assert LIVE_ADAPTER == "tushare"
     assert require_live_adapter("tushare", domain="margin") == "tushare"

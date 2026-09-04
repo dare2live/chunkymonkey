@@ -82,7 +82,7 @@ class MarginLandingBatch:
     fragments: Iterable[MarginFragment]
     # 2026-09-01 换源审查: 这个 "tushare" 默认值**有意保留**, 与 SecurityDayLandingBatch
     # 形似但风险不同 —— 那个被 daily 与 stock_st 共用、而两域已不同源(tdxhub / stock_st_derive),
-    # 漏传会拿到**错误的源**, 故已删除默认值; 本类只服务 margin 单域, 且该域裁决 accept_outage
+    # 漏传会拿到**错误的源**, 故已删除默认值; 本类只服务 margin 单域, 且该域裁决 freeze
     # (三源均无交易所级两融汇总: 妙想只能经指数实体代理, 口径偏差 7-33% 非同一产品 ——
     # 见 tushare_sunset.yaml margin 条目), 不存在"选错源"的可能, 默认值只是冗余。
     # 实测删除它会让 77 个既有测试转红, 为一个冗余付这个代价不划算。

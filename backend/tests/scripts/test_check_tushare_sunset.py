@@ -333,7 +333,9 @@ class TestDecisionValidation:
     """检查 0: decision 值域校验 (task A)。
 
     真实台账实测: 42 个域里存在 unknown/retire/accept_outage 三个 legend 未定义的值，
-    而旧代码对此零校验。这里锁住新行为: unknown 不合法、retire/accept_outage 合法、
+    而旧代码对此零校验。这里锁住新行为: unknown 不合法、retire 合法、
+    accept/accept_outage 在 2026-09-04 合并进 freeze 后**不再合法**
+    (见本类 test_accept_and_accept_outage_are_no_longer_legal)、
     缺字段与写了非法值必须报不同文案。
     """
 
