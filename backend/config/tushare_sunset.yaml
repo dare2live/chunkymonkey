@@ -95,10 +95,8 @@ domains:
       涨停池 20200623 起 (早于 TuShare limit_list_d 的 2023-01 两年半)。"
 
   moneyflow_dc:
-    decision: replace
-    replacement: eastmoney_push2
-    must_by: "2026-09-10"
-    evidence: "push2his.eastmoney.com/api/qt/stock/fflow/daykline/get 与
+    decision: freeze
+    evidence: "2026-09-04 改判 freeze (原拟替代源 eastmoney_push2, 建成 adapter 后可改回 replace): eastmoney_push2 全仓 0 处实现, 同上不现实。原 replace 证据: push2his.eastmoney.com/api/qt/stock/fflow/daykline/get 与
       raw_tushare_moneyflow_dc 同日同票**12 字段位对位匹配** (600000.SH 2026-08-28，
       金额类差 <50 元 = tushare 万元两位小数取整边界，五个 rate 字段完全相同)。
       即同一份东财数据的两个出口，非两个体系。免 key。"
@@ -162,16 +160,12 @@ domains:
     evidence: "本域是全市场每日一行的聚合流量 (north_money/south_money/hgt/sgt), **与已停更的个股北向持股 hk_hold 是两码事**, 未受其影响。零消费: 唯一读取者 northbound_market_flow.py::latest_northbound_market_flow() 全仓库**零调用方**, 是死代码; legacy_raw_plane 标 sync_orphan 且在 publication_watchlist (承认'以后可能有用但现在没人用')。在库 2,776 行 20141117-20260828 连续。四源均无市场级聚合流量等价物 (妙想只有个股持股明细 RPT_MUTUAL_STOCK_HOLDRANKN_NEW, 不同产品; ifind MCP 实测两次均返空)。"
 
   moneyflow_ind_dc:
-    decision: replace
-    replacement: eastmoney_push2
-    must_by: "2026-09-10"
-    evidence: "**活跃消费**: market_pulse.py 五处引用驱动 mart_sector_pulse_daily 板块/概念资金龙头, 经 /api/v3/pulse 到前端 flow_board?chain=dc_industry / dc_concept / heatmap / flow_stripe, 端到端确认。在库 335,161 行 20240102-20260828 无缺口。候选 eastmoney_push2 继承姊妹域 moneyflow_dc 的证据链 (12 字段位对位匹配), 项目笔记已写明'板块/市场/北向字段体系同构', **但本域 grain 从未逐日对账**——被 push2his 限流挡住。注: 资金流供应商算法属观点类, 但 push2 是**同厂商东财同算法**换出口, 不构成跨体系冒充。fallback: 9 天内测不完则降 freeze, 后果=板块资金龙头/热力图 dc chain 冻结。"
+    decision: freeze
+    evidence: "2026-09-04 改判 freeze (原拟替代源 eastmoney_push2, 建成 adapter 后可改回 replace): eastmoney_push2 全仓 0 处实现。**这是四个改判里代价最大的一个** —— market_pulse 板块/概念资金龙头会停更, 属产品三问「市场在哪」。原 replace 证据: **活跃消费**: market_pulse.py 五处引用驱动 mart_sector_pulse_daily 板块/概念资金龙头, 经 /api/v3/pulse 到前端 flow_board?chain=dc_industry / dc_concept / heatmap / flow_stripe, 端到端确认。在库 335,161 行 20240102-20260828 无缺口。候选 eastmoney_push2 继承姊妹域 moneyflow_dc 的证据链 (12 字段位对位匹配), 项目笔记已写明'板块/市场/北向字段体系同构', **但本域 grain 从未逐日对账**——被 push2his 限流挡住。注: 资金流供应商算法属观点类, 但 push2 是**同厂商东财同算法**换出口, 不构成跨体系冒充。fallback: 9 天内测不完则降 freeze, 后果=板块资金龙头/热力图 dc chain 冻结。"
 
   moneyflow_mkt_dc:
-    decision: replace
-    replacement: eastmoney_push2
-    must_by: "2026-09-10"
-    evidence: "**活跃但更薄**: market_pulse.py:802 取 mkt_net_amount 进 mart_market_pulse_daily 大盘情绪面板一列, 前端 /api/v3/pulse/sentiment 确认。属展示型消费, 无证据它 gate 任何策略信号。在库 818 行 20230417-20260828 逐年满勤。候选同 moneyflow_ind_dc (eastmoney_push2, 未测), **建议合并测试省一次限流冷却**。fallback freeze: 断流后仅该列冻结, 面板其余 9 列来自其他域不受影响。"
+    decision: freeze
+    evidence: "2026-09-04 改判 freeze (原拟替代源 eastmoney_push2, 建成 adapter 后可改回 replace): eastmoney_push2 全仓 0 处实现。原 replace 证据: **活跃但更薄**: market_pulse.py:802 取 mkt_net_amount 进 mart_market_pulse_daily 大盘情绪面板一列, 前端 /api/v3/pulse/sentiment 确认。属展示型消费, 无证据它 gate 任何策略信号。在库 818 行 20230417-20260828 逐年满勤。候选同 moneyflow_ind_dc (eastmoney_push2, 未测), **建议合并测试省一次限流冷却**。fallback freeze: 断流后仅该列冻结, 面板其余 9 列来自其他域不受影响。"
 
   report_rc:
     decision: retire
@@ -196,10 +190,8 @@ domains:
     evidence: "零消费: 下游 mart_stock_survey_activity **已于 2026-06-28 物理删除** (data_audit_rules/data_audit 双处确认), 之后是纯 landing 表; legacy_raw_plane 标 serve_l0_declared 'no formal plane'。在库 839,098 行 20210805-20260818 无缺口。候选妙想 RPT_ORG_SURVEYNEW 已实测对账两次: surv_date 与 RECEIVE_START_DATE / NOTICE_DATE 两个候选日期字段均对不齐 (jaccard 0.34 / 0.42, same_product=false)。注: 妙想覆盖面明显更宽 (1568/751 vs 本地同期 17 条), 未来若重建该功能它是更优起点, 但轴对齐需重新设计。"
 
   sw_daily:
-    decision: replace
-    replacement: ifind_shenwan_index
-    must_by: "2026-09-10"
-    evidence: "**活跃且用量重**: market_pulse.py 五处 + routers/market_pulse.py:569 驱动申万 RS 双窗/rs_rank_4w/turnover_amt_share (588 码含全级指数), 前端 pulse/heatmap|rotation|drill?chain=sw_industry 三条链路端到端确认。在库 921,483 行 20190102-20260828 无缺口。候选实测: mcp__ifind-index__sector_data 查'申万一级行业银行指数 2026-08-28'返回收盘价 8.6948 + 成交额 250.1994 亿, **确认覆盖申万 L1**。**但两点未验证**: (1) L2/L3 覆盖比例未知 (588 码里大部分是 L2/L3); (2) 该 MCP 是自然语言查询接口, **不在项目已知三 adapter 之列**, 能否变成生产级 sync adapter (授权/批量/稳定接口) 未定。注: ifind=同花顺, **与代码里的'妙想'(东财 aif10 scraper) 是不同供应商**。fallback freeze: sw_industry 三条链路冻结, 但 dc_industry/dc_concept chain 不受影响, 前端仍有一条链路可看。"
+    decision: freeze
+    evidence: "2026-09-04 改判 freeze (原拟替代源 ifind_shenwan_index, 建成 adapter 后可改回 replace): ifind 无 adapter (全仓 grep sources/ 无实现), 6 天内从零建生产级 sync adapter 与另 9 域切换并行不现实。断流后果: 申万 RS 三条链路冻结, dc_industry/dc_concept 不受影响。要恢复 replace 需先交付 adapter。原 replace 证据: **活跃且用量重**: market_pulse.py 五处 + routers/market_pulse.py:569 驱动申万 RS 双窗/rs_rank_4w/turnover_amt_share (588 码含全级指数), 前端 pulse/heatmap|rotation|drill?chain=sw_industry 三条链路端到端确认。在库 921,483 行 20190102-20260828 无缺口。候选实测: mcp__ifind-index__sector_data 查'申万一级行业银行指数 2026-08-28'返回收盘价 8.6948 + 成交额 250.1994 亿, **确认覆盖申万 L1**。**但两点未验证**: (1) L2/L3 覆盖比例未知 (588 码里大部分是 L2/L3); (2) 该 MCP 是自然语言查询接口, **不在项目已知三 adapter 之列**, 能否变成生产级 sync adapter (授权/批量/稳定接口) 未定。注: ifind=同花顺, **与代码里的'妙想'(东财 aif10 scraper) 是不同供应商**。fallback freeze: sw_industry 三条链路冻结, 但 dc_industry/dc_concept chain 不受影响, 前端仍有一条链路可看。"
 
   top_inst:
     decision: replace
