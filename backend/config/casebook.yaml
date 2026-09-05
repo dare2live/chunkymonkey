@@ -47,7 +47,39 @@ effective_n:
 
 # 策略登记。**零登记的是股票**(在 v_price_kline_qfq 里出现过即入档, 含退市);
 # 策略要一条登记, 因为它是人给的输入, 系统无从自己发现。
-strategies: {}
+#
+# kind 只有一种取值 `frozen_formula`: 求值走 bestchoice 冻结包, 经
+# services.formula_challenge.load_formula_engine() 校验 sha256 后加载。
+# **源码 hash 不在这里重复登记** —— 它是 formula_challenge.FORMULA_ENGINE_SHA256
+# 的单一真相源, 抄一份到这里迟早两处不一致。
+#
+# 通达信文本求值器**不做** (goal.md 边界段): 公式在对话里转换成 Python 后再进系统。
+strategies:
+  gs_raw_buy:
+    kind: frozen_formula
+    formula_id: gs_raw_buy
+    params: null              # null = 用公式自带默认参数; 本系统不拟合参数
+    source_ref: "bestchoice/formula_engine.py::gs_raw_buy_signals"
+  gs_pullback_confirm:
+    kind: frozen_formula
+    formula_id: gs_pullback_confirm
+    params: null
+    source_ref: "bestchoice/formula_engine.py::gs_pullback_confirm_signals"
+  ma_base_breakout:
+    kind: frozen_formula
+    formula_id: ma_base_breakout
+    params: null
+    source_ref: "bestchoice/formula_engine.py::ma_base_breakout_signals"
+  activity_breakout:
+    kind: frozen_formula
+    formula_id: activity_breakout
+    params: null
+    source_ref: "bestchoice/formula_engine.py::activity_breakout_signals"
+  volume_base_breakout:
+    kind: frozen_formula
+    formula_id: volume_base_breakout
+    params: null
+    source_ref: "bestchoice/formula_engine.py::volume_base_breakout_signals"
 
 # 情形维度字典。每个维度只登记这一次, 之后查询按它分桶。
 dimensions: {}

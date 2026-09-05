@@ -1243,6 +1243,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/casebook/signals.py",
+      "kind": "consume",
+      "src": "table:market.v_price_kline_qfq"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_audit.py",
       "kind": "consume",
       "src": "table:market.v_price_kline_qfq"
@@ -2914,6 +2920,24 @@
       "dst": "consumer:backend/tests/test_stock_dossier_api.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/brick_registry.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_case"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_case"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/casebook/signals.py",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_case"
     },
     {
       "attrs": {},
@@ -8995,9 +9019,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1454,
-    "generated_at": "2026-09-05T14:15:04.101299+00:00",
-    "node_count": 512,
+    "edge_count": 1458,
+    "generated_at": "2026-09-05T14:32:38.256838+00:00",
+    "node_count": 514,
     "version": 2
   },
   "nodes": [
@@ -9599,6 +9623,14 @@
         "path": "backend/services/casebook/outcome.py"
       },
       "id": "consumer:backend/services/casebook/outcome.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/casebook/signals.py"
+      },
+      "id": "consumer:backend/services/casebook/signals.py",
       "kind": "consumer"
     },
     {
@@ -12364,6 +12396,16 @@
         "vendor": "aif10"
       },
       "id": "table:smartmoney.canonical_top10_float_holders_period",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "smartmoney",
+        "layer": "L2_feature",
+        "status": "declared",
+        "table": "casebook_case"
+      },
+      "id": "table:smartmoney.casebook_case",
       "kind": "table"
     },
     {

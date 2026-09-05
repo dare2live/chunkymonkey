@@ -164,6 +164,7 @@ tables:
   casebook_outcome_day: L2_feature      # 每股每日 entry_open + 各 H 的 exit + 截尾标记 (8.5M 行, 全量重建 3s)
   casebook_stock_baseline: L2_feature   # base(X): 这只股"什么都不做"是什么样 (一股一行)
   casebook_market_day: L2_feature       # mkt(t): 这一天的市场环境是什么样 (一交易日一行)
+  casebook_case: L2_feature             # 信号表: 一行 = 一次触发 (strategy_id, code, date, i); 策略在引擎里唯一的贡献
   stock_watchlist: display
   paper_position: display        # Legacy NONCONFORMING 手工观察条目；非订单/成交/StrategyRelease
   paper_nav_daily: display       # Legacy qfq-close 观察估值；非 Tier4 paper execution NAV

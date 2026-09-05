@@ -218,6 +218,7 @@ feature_blocks:
       - casebook_outcome_day
       - casebook_stock_baseline
       - casebook_market_day
+      - casebook_case
     owners:
       - backend/services/casebook/outcome.py
     config_hash: casebook_window_v1_next_open_close_after_h
