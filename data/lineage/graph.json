@@ -2935,6 +2935,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/casebook/pair_stats.py",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_case"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/casebook/signals.py",
       "kind": "consume",
       "src": "table:smartmoney.casebook_case"
@@ -2954,6 +2960,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/casebook/outcome.py",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_market_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/casebook/pair_stats.py",
       "kind": "consume",
       "src": "table:smartmoney.casebook_market_day"
     },
@@ -2983,9 +2995,33 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/casebook/pair_stats.py",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_outcome_day"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/casebook/test_outcome.py",
       "kind": "consume",
       "src": "table:smartmoney.casebook_outcome_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/brick_registry.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_pair_stats"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_pair_stats"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/casebook/pair_stats.py",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_pair_stats"
     },
     {
       "attrs": {},
@@ -3002,6 +3038,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/casebook/outcome.py",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_stock_baseline"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/casebook/pair_stats.py",
       "kind": "consume",
       "src": "table:smartmoney.casebook_stock_baseline"
     },
@@ -9019,9 +9061,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1458,
-    "generated_at": "2026-09-05T14:32:38.256838+00:00",
-    "node_count": 514,
+    "edge_count": 1465,
+    "generated_at": "2026-09-05T14:42:56.025831+00:00",
+    "node_count": 516,
     "version": 2
   },
   "nodes": [
@@ -9623,6 +9665,14 @@
         "path": "backend/services/casebook/outcome.py"
       },
       "id": "consumer:backend/services/casebook/outcome.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/casebook/pair_stats.py"
+      },
+      "id": "consumer:backend/services/casebook/pair_stats.py",
       "kind": "consumer"
     },
     {
@@ -12426,6 +12476,16 @@
         "table": "casebook_outcome_day"
       },
       "id": "table:smartmoney.casebook_outcome_day",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "smartmoney",
+        "layer": "L2_feature",
+        "status": "declared",
+        "table": "casebook_pair_stats"
+      },
+      "id": "table:smartmoney.casebook_pair_stats",
       "kind": "table"
     },
     {

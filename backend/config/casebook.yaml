@@ -38,12 +38,23 @@ sample_tiers:
   comparable: 200           # >= 200 可比较
 
 effective_n:
-  method: greedy_nonoverlap # 按 bar 序, 前一个入选信号之后 > H 根的才入选; 入选数即 n_eff
-                            # 仿真验证它偏保守 1.1-1.5x(真实数据 1.9x), 不会低估
-  pair_method: harmonic     # n_pair = 调和合成(信号侧 n_eff, 基线侧 n_eff)
-  strategy_interval: month_block_bootstrap   # 策略整体的区间: 按自然月整块有放回重抽
-  bootstrap_b: 2000         # 唯一同时吃掉「同日信号相关」与「H 日窗重叠」的算法。
-                            # 跨股符号检验已退役: 它假设股票独立, 实测标准误低估 3.6x-10x
+  # A1 信号侧: 按 bar 序 i 排序, last=-inf; for i: if i > last + H → 计数+1, last=i。
+  #    = 互不重叠的持有窗个数。对任意间距都有定义; 不重叠窗在无长记忆的日收益下独立
+  #    ⇒ 它是**下界**, 只会偏保守 (仿真 i.i.d. 下偏保守 1.1-1.5x, 真实数据 1.9x)。
+  #    退役的候选: 原始 n(密集抽样下低估方差 2.4x) · n/H 或"减半"(对稀疏与成簇信号都错) ·
+  #    自相关修正(信号不等距, rho_k 无定义) · 每股块自助(每股 83 个信号块内太少)。
+  rule: greedy_nonoverlap
+  # A2 基线侧闭式: base(X) 是"每天都是信号", A1 退化成 floor((n_days-1)/(H+1))+1。
+  #    实测上限 = 最长 1,847 天 / 间隔 >10 → 168 ⇒ **本股层"可比较"对任何策略都不可达**。
+  pair: harmonic            # A3: n_pair = 1 / (1/n_eff_sig + 1/n_eff_base)
+  block: calendar_month     # A4 策略整体的区间: 按自然月整块有放回重抽
+  bootstrap_b: 2000         #    唯一同时吃掉「同日信号相关」与「H 日窗重叠」的算法
+  seed: 20260904            #    固定 seed 写进 casebook_strategy_stats, 结论可复现
+  # A5 判定按 95% 区间**半宽**分层 —— 与 sample_tiers 的 200/30/10 在 p≈0.5 下 Wilson 等价。
+  # 用半宽而不是原始 n: 同一个 n 在不同 p 下的分辨率不同, 而人要的是"这个数够不够准"。
+  tiers_pp: [6.9, 16.8, 26.3]   # <=6.9 可比较 / <=16.8 可参考 / <=26.3 样本薄 / 其余 先例不足
+  # 跨股符号检验(符号检验/Wilcoxon)**已退役**: 它假设股票独立, 而信号聚在同一批交易日,
+  # 5,000 只股不是 5,000 个观测 —— 实测其标准误比月块重抽低估 3.6x(gs_raw_buy) 到 10x(activity)。
 
 # 策略登记。**零登记的是股票**(在 v_price_kline_qfq 里出现过即入档, 含退市);
 # 策略要一条登记, 因为它是人给的输入, 系统无从自己发现。
