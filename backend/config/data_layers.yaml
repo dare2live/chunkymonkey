@@ -159,6 +159,11 @@ tables:
   fact_rally_ground_truth: L2_feature      # 正样本 episode；train data_end 必须严格早于 holdout_start
   fact_rally_negative: L2_feature          # hard-negative (同 pivot/长底 setup + fwd 完整 + 未涨; purge ±maxfwd)
   fact_rally_strata: L2_feature            # episode PIT 分层 (申万 as-of + 长底桶; B1/B2 列待锁释放回填)
+  # ── 判例查询引擎地基 (2026-09-04 services/casebook/outcome.py; writer 唯一 = 该模块) ──
+  #    与策略无关: 每股每日固定窗口结果, 所有策略共用的分母。策略只贡献信号表。
+  casebook_outcome_day: L2_feature      # 每股每日 entry_open + 各 H 的 exit + 截尾标记 (8.5M 行, 全量重建 3s)
+  casebook_stock_baseline: L2_feature   # base(X): 这只股"什么都不做"是什么样 (一股一行)
+  casebook_market_day: L2_feature       # mkt(t): 这一天的市场环境是什么样 (一交易日一行)
   stock_watchlist: display
   paper_position: display        # Legacy NONCONFORMING 手工观察条目；非订单/成交/StrategyRelease
   paper_nav_daily: display       # Legacy qfq-close 观察估值；非 Tier4 paper execution NAV

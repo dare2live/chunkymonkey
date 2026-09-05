@@ -208,6 +208,29 @@ feature_blocks:
       Enrichment ACCEPTED after E0-HIST (canonical carries fields; legacy_only
       for periods absent from canonical).
 
+  casebook_outcome_edge_v1:
+    layer: L3
+    kind: type_b_edge
+    store: feature_store
+    depends_on:
+      - price_kline_qfq_tushare
+    outputs:
+      - casebook_outcome_day
+      - casebook_stock_baseline
+      - casebook_market_day
+    owners:
+      - backend/services/casebook/outcome.py
+    config_hash: casebook_window_v1_next_open_close_after_h
+    availability_axis: post_outcome_label_research_only
+    status: declared
+    notes: >-
+      判例引擎地基, 与策略无关: 每股每日固定窗口结果 + 两个自比基线
+      (base(X) 一股一数 / mkt(t) 一天一数)。所有策略共用这一份分母, 单一计算点。
+      **按构造含未来信息** —— ret_H = close[t+1+H]/open[t+1]-1 用的是 t 之后的 K 线。
+      它是「结果」不是「特征」: 永不可进决策时点的状态或分桶维度 (CLAUDE.md 红线 1),
+      也永不 SERVE 为 Type A。入场刻意用 t+1 开盘而非 t 收盘 —— 信号 t 日收盘后才知道。
+      截尾 (窗口越过该股最后一根) 记 NULL + censored, 永不填 0 (红线 3)。
+
   rally_gt_edge_v2:
     layer: L3
     kind: type_b_edge

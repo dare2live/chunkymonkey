@@ -1171,6 +1171,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/casebook.yaml",
+      "kind": "consume",
+      "src": "table:market.v_price_kline_qfq"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/data_audit_rules.yaml",
       "kind": "consume",
       "src": "table:market.v_price_kline_qfq"
@@ -1231,6 +1237,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/casebook/outcome.py",
+      "kind": "consume",
+      "src": "table:market.v_price_kline_qfq"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_audit.py",
       "kind": "consume",
       "src": "table:market.v_price_kline_qfq"
@@ -1268,6 +1280,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/realdb/test_real_data_consistency.py",
+      "kind": "consume",
+      "src": "table:market.v_price_kline_qfq"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/casebook/test_outcome.py",
       "kind": "consume",
       "src": "table:market.v_price_kline_qfq"
     },
@@ -2896,6 +2914,72 @@
       "dst": "consumer:backend/tests/test_stock_dossier_api.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/brick_registry.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_market_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_market_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/casebook/outcome.py",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_market_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/brick_registry.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_outcome_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/casebook.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_outcome_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_outcome_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/casebook/outcome.py",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_outcome_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/casebook/test_outcome.py",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_outcome_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/brick_registry.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_stock_baseline"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_stock_baseline"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/services/casebook/outcome.py",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_stock_baseline"
     },
     {
       "attrs": {},
@@ -8911,9 +8995,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1440,
-    "generated_at": "2026-09-04T01:22:32.248312+00:00",
-    "node_count": 506,
+    "edge_count": 1454,
+    "generated_at": "2026-09-05T14:15:04.101299+00:00",
+    "node_count": 512,
     "version": 2
   },
   "nodes": [
@@ -8923,6 +9007,14 @@
         "path": "backend/config/brick_registry.yaml"
       },
       "id": "consumer:backend/config/brick_registry.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/casebook.yaml"
+      },
+      "id": "consumer:backend/config/casebook.yaml",
       "kind": "consumer"
     },
     {
@@ -9499,6 +9591,14 @@
         "path": "backend/services/calendar_builder.py"
       },
       "id": "consumer:backend/services/calendar_builder.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/casebook/outcome.py"
+      },
+      "id": "consumer:backend/services/casebook/outcome.py",
       "kind": "consumer"
     },
     {
@@ -10787,6 +10887,14 @@
         "path": "backend/tests/scripts/test_update_watermark_sla.py"
       },
       "id": "consumer:backend/tests/scripts/test_update_watermark_sla.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/casebook/test_outcome.py"
+      },
+      "id": "consumer:backend/tests/services/casebook/test_outcome.py",
       "kind": "consumer"
     },
     {
@@ -12256,6 +12364,36 @@
         "vendor": "aif10"
       },
       "id": "table:smartmoney.canonical_top10_float_holders_period",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "smartmoney",
+        "layer": "L2_feature",
+        "status": "declared",
+        "table": "casebook_market_day"
+      },
+      "id": "table:smartmoney.casebook_market_day",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "smartmoney",
+        "layer": "L2_feature",
+        "status": "declared",
+        "table": "casebook_outcome_day"
+      },
+      "id": "table:smartmoney.casebook_outcome_day",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "smartmoney",
+        "layer": "L2_feature",
+        "status": "declared",
+        "table": "casebook_stock_baseline"
+      },
+      "id": "table:smartmoney.casebook_stock_baseline",
       "kind": "table"
     },
     {

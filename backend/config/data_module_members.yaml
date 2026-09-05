@@ -20,6 +20,8 @@ member_dirs:
   - backend/services/technical_states/ # 纯函数派生 (读 SERVE 传入序列, 不直连)
   - backend/services/perf/             # 性能/并行基础设施 (shard/reducer, 导快照非消费raw)
   - backend/services/lineage/          # M5 血缘中枢 (字典+总指挥; 读 information_schema 元数据描述单一路径架构, 不变量4 自描述副产物, 非消费 PIT 数据)
+  - backend/services/casebook/        # 判例引擎地基 (2026-09-04): 从 qfq 视图物化 L2_feature 事实表与两个基线, 与 rally_gt.py / institution_profile.py 同角色 —— 数据面**生产者**, 不是 SERVE 消费者。
+                                     # 它要对 8.5M 行做窗口函数 (LEAD 取入场/出场 K 线), DataAccess.get 的行级接口不是这个形状。
 
 # scripts 文件名前缀级成员 (basename 前缀)
 member_script_prefixes:
