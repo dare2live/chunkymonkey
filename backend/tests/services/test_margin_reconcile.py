@@ -477,8 +477,15 @@ def test_reconcile_exposes_content_bound_current_landing(conn):
 
 def test_reconcile_marks_stale_or_ambiguous_landing_nonrecoverable(conn):
     _land_unresolved_partition(conn, "stale-unresolved")
+    # 2026-09-02 (owner=git log --grep 冻结落地戳与活契约比相等, commit 7b53b2bd2): 冻结落地戳
+    # (contract_hash/config_hash/source_name) 与活契约比相等的旧断言已被裁决为错误并删除——指纹
+    # 重打/换源后冻结戳必然与现算契约不等, 那是设计上允许的正常态, 不是 stale。现在唯一判 stale
+    # 的是声明身份 (contract_version, writer_id) 是否仍等于现算契约, 见
+    # margin_acceptance.prove_current_landed_margin_batch。本测试原先改 contract_hash 模拟
+    # stale, 那条路径在生产代码里已不再判 stale, 测试从 2026-09-02 起对着已作废的旧行为断言而
+    # 静默不跑 (ci_test_optional)。改判声明身份不一致, 与生产语义对齐。
     conn.execute(
-        "UPDATE ingest_batch SET contract_hash='stale' "
+        "UPDATE ingest_batch SET contract_version='0' "
         "WHERE batch_id='stale-unresolved'"
     )
 
