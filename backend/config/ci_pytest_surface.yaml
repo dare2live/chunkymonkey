@@ -173,6 +173,7 @@ blocking_paths:
 - tests/services/test_universe_st_calendar.py
 - tests/services/test_watermark_domain_frontier.py
 - tests/test_by_ann_date_equal_day_reprobe.py
+- tests/test_by_trade_date_split_by.py
 - tests/test_calendar_gate.py
 - tests/test_check_dead_references.py
 - tests/test_cx3_capability_bricks.py
@@ -357,11 +358,6 @@ ci_test_optional:
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
     review, one triage slice at a time'
 - path: tests/test_by_trade_date_fixed_params.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/test_by_trade_date_split_by.py
   reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
     ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency

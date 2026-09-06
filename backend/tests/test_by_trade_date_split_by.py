@@ -193,14 +193,34 @@ def test_split_by_respects_exact_margin_business_start_boundary(
 
 
 def test_production_margin_business_start_has_one_config_owner():
+    """required_groups_since 必须是表达"某场内市场从哪天起成为必需分片"的唯一 config owner
+    (不许 split_by.values_since / min_rows_since 之类的平行机制同时存在, 否则两处判断打架)。
+
+    2026-09-06 改写 (owner=git log --grep gap_root_cause 同型漂移): 本测试原样钉死
+    ``{"BSE": "20230213"}`` (v2 状态: BSE 于该日起纳入)。2026-07-23/24 的 Knife 1a/1b
+    (commit e6b3e44c5 / 0f5af7e80) 把 margin 冻结到 v3 (SSE+SZSE only, 缺 BSE 传输通道,
+    需 contract v3+ 才能重新纳入)——production registry 现在 required_groups_since={},
+    这是设计决定不是漂移, 原样断言从那天起就应该红, 只因本文件在 ci_test_optional 里没人
+    看见。真正该守的不变量不是"BSE 那个具体日期", 而是: **required_groups_since 里出现的
+    每个场内市场都必须是 margin_population_scope.MARGIN_ACCEPTED_VENUE_IDS (唯一真相源)
+    已接受的场内市场**——已被那道门整体禁止的市场不许在这里留一个"从某天起必需"的悬空声明,
+    那本身就是两个 config owner 打架。这样锚定后, 无论将来 BSE 是继续冻结还是在 contract v4+
+    下重新纳入(并回填新的 business_start), 本测试都不会假红。
+    """
     import yaml
+
+    from services.data_sources.margin_population_scope import MARGIN_ACCEPTED_VENUE_IDS
 
     registry = yaml.safe_load(
         (Path(__file__).resolve().parents[2] / "backend/config/sync_registry.yaml").read_text()
     )
     margin = registry["domains"]["margin"]
-    assert margin["batch_completeness"]["required_groups_since"] == {
-        "BSE": "20230213"
-    }
+    completeness = margin["batch_completeness"]
+    assert set(completeness["required_groups"]) == set(MARGIN_ACCEPTED_VENUE_IDS)
+    forbidden_since = set(completeness["required_groups_since"]) - set(MARGIN_ACCEPTED_VENUE_IDS)
+    assert not forbidden_since, (
+        f"required_groups_since 声明了 population_scope 已禁止的场内市场 {forbidden_since} "
+        "—— 两处判断打架, 只能有一个 config owner"
+    )
     assert "values_since" not in margin["split_by"]
     assert "min_rows_since" not in margin and margin["min_rows_per_batch"] == 2
