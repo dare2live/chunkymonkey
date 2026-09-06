@@ -154,6 +154,8 @@ blocking_paths:
 - tests/services/test_structure_product_recon.py
 - tests/services/test_sync_execution_policy.py
 - tests/services/test_sync_runner_20260612_fixes.py
+- tests/services/test_sync_runner_integrity.py
+- tests/services/test_sync_runner_today_catchup.py
 - tests/services/test_taxonomy_recon.py
 - tests/services/test_tdxhub_history_pagination.py
 - tests/services/test_tdxhub_host_memory.py
@@ -314,16 +316,6 @@ ci_test_optional:
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
     review, one triage slice at a time'
 - path: tests/services/test_sync_runner_drain.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/services/test_sync_runner_integrity.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/services/test_sync_runner_today_catchup.py
   reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
     ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency

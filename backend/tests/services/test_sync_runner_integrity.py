@@ -923,9 +923,14 @@ def test_formal_daily_authorized_single_day_uses_accepted_path(monkeypatch):
 
     called = {}
 
-    def _fake_publish(domain, _spec, *, trade_date):
+    def _fake_publish(domain, _spec, *, trade_date, trigger_mode="manual"):
+        # 2026-07-20 (commit 65a33edd4) 起 _publish_security_day_accepted_partition 新增
+        # trigger_mode 形参; 桩必须声明同名参数并断言收到值, 否则签名漂移只会静默变成
+        # TypeError→DEGRADED 或(更糟)悄悄吞掉调用方实参不做校验 (不断言的桩等于没打桩)。
+        assert trigger_mode == "manual", trigger_mode
         called["domain"] = domain
         called["trade_date"] = trade_date
+        called["trigger_mode"] = trigger_mode
         return {
             "domain": domain,
             "status": "ok",
@@ -937,6 +942,14 @@ def test_formal_daily_authorized_single_day_uses_accepted_path(monkeypatch):
         }
 
     monkeypatch.setattr(sr, "_publish_security_day_accepted_partition", _fake_publish)
+    # 2026-09-06: 这条测试原先没打桩 trading_days, 靠本机真实 data/reference.duckdb 把
+    # 20260717 判成交易日——本机有数据才绿, 真 CI 浅克隆没有该库会在这里 IOException
+    # (database does not exist), 而不是走到下面真正要测的 accepted-path 断言。改成跟姊妹
+    # 测试 test_formal_daily_authorized_short_window_publishes_each_trading_day 一样自带桩,
+    # 不依赖宿主环境。
+    monkeypatch.setattr(
+        sr, "trading_days", lambda start, end=None: ["20260717"]
+    )
     for name in ("_adapter", "_target_conn", "_write_batch", "_fetch_paged"):
         monkeypatch.setattr(
             sr,
@@ -947,7 +960,11 @@ def test_formal_daily_authorized_single_day_uses_accepted_path(monkeypatch):
     result = sr.run_domain(
         "daily", start="20260717", end="20260717", registry=registry
     )
-    assert called == {"domain": "daily", "trade_date": "20260717"}
+    assert called == {
+        "domain": "daily",
+        "trade_date": "20260717",
+        "trigger_mode": "manual",
+    }
     assert result["publication"] == "accepted_nominal_ohlcv_partition"
     assert result["failed_batches"] == 0
 
@@ -957,9 +974,14 @@ def test_formal_daily_authorized_short_window_publishes_each_trading_day(monkeyp
 
     registry = sr.load_registry()
     published: list[str] = []
+    published_trigger_modes: list[str] = []
 
-    def _fake_publish(domain, _spec, *, trade_date):
+    def _fake_publish(domain, _spec, *, trade_date, trigger_mode="manual"):
+        # 见上一个测试同型注释: 桩签名必须跟 _publish_security_day_accepted_partition
+        # 的真实形参一致并断言收到值, 不能只吞 **kwargs。
+        assert trigger_mode == "manual", trigger_mode
         published.append(trade_date)
+        published_trigger_modes.append(trigger_mode)
         return {
             "domain": domain,
             "status": "ok",
@@ -1003,6 +1025,7 @@ def test_formal_daily_authorized_short_window_publishes_each_trading_day(monkeyp
         "20260716",
         "20260717",
     ]
+    assert published_trigger_modes == ["manual"] * 5
     assert result["publication"] == "accepted_security_day_short_window"
     assert result["window_days_completed"] == 5
     assert result["rows"] == 50

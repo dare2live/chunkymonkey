@@ -505,13 +505,20 @@ def test_formal_margin_contract_rejects_invalid_split_groups_while_execution_fro
     }
     spec = sr.domain_spec(registry, "margin")
 
+    # 2026-07-23 (commit e6b3e44c5, Knife 1a) 起 split_by.values 校验从
+    # _formal_dataset_contract_for_spec 里那条通用的 dataset_contract_from_spec ValueError
+    # 兜底路径("dataset contract invalid: ...", reason=invalid_dataset_contract), 提前挪到了
+    # margin_ingest.contract_for_spec 调用的 margin_population_scope 专属校验里——同一段代码
+    # 现在先命中 MarginPopulationScopeError 分支, 产出更具体的
+    # "population scope invalid: ...", reason=invalid_population_scope。断言原样跟着改, 行为
+    # 本身(拒绝非法 split_by 且 fail-closed)没变, 只是判定它的层级更靠前、类型更精确。
     with pytest.raises(
         sr.PopulationScopeExecutionError,
-        match="dataset contract invalid.*split_by.values",
+        match="population scope invalid.*split_by.values",
     ) as caught:
         sr._formal_dataset_contract_for_spec(spec)
 
-    assert caught.value.reason == "invalid_dataset_contract"
+    assert caught.value.reason == "invalid_population_scope"
 
 
 def test_by_code_list_explicit_start_and_end_reach_provider(monkeypatch):
