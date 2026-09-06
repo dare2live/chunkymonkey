@@ -145,3 +145,29 @@ def test_loader_is_fail_closed(tmp_path: Path, mutate, hit: str) -> None:
     p = _write_cfg(tmp_path, mutate)
     with pytest.raises(ValueError, match=hit):
         oc.load_window(p)
+
+
+def test_adding_a_longer_horizon_must_not_shift_the_baseline(tmp_path: Path) -> None:
+    """往 horizons 里加一个更长的 H, 基线 H 必须纹丝不动。
+
+    原实现是 `horizons[len//2]` 位置取中位: (5,10,20) 给 10, 加个 60 变成 (5,10,20,60) 就给 20 ——
+    **基线 H 一变全部历史结论跟着变且不报错**。加一个可选窗口是扩展, 换基线是口径变更, 两件事。
+    """
+    raw = yaml.safe_load(oc._CONFIG.read_text(encoding="utf-8"))
+    raw["horizons"] = sorted(set(raw["horizons"]) | {60})
+    p = tmp_path / "casebook.yaml"
+    p.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
+    assert oc.load_window(p).baseline_horizon == oc.load_window().baseline_horizon
+
+
+def test_baseline_horizon_must_be_declared_and_in_horizons(tmp_path: Path) -> None:
+    for bad in (None, 7, "10"):
+        raw = yaml.safe_load(oc._CONFIG.read_text(encoding="utf-8"))
+        if bad is None:
+            raw.pop("baseline_horizon")
+        else:
+            raw["baseline_horizon"] = bad
+        p = tmp_path / "cb.yaml"
+        p.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
+        with pytest.raises(ValueError, match="baseline_horizon"):
+            oc.load_window(p)

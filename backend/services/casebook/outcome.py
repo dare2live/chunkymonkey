@@ -46,6 +46,7 @@ class CasebookWindow:
     win_rule: str
     censored_policy: str
     horizons: tuple[int, ...]
+    baseline_horizon: int
 
 
 def load_window(path: Path | None = None) -> CasebookWindow:
@@ -75,7 +76,15 @@ def load_window(path: Path | None = None) -> CasebookWindow:
         if val not in legal:
             raise ValueError(f"{src}: window.{key}={val!r} 不在合法取值 {sorted(legal)} 内")
 
+    bh = raw.get("baseline_horizon")
+    if bh not in horizons:
+        raise ValueError(
+            f"{src}: baseline_horizon={bh!r} 必须显式声明且 ∈ horizons={sorted(horizons)} —— "
+            "不按位置取中位, 否则往 horizons 加一个更长的 H 会让基线静默改口径"
+        )
+
     return CasebookWindow(
+        baseline_horizon=int(bh),
         entry=win["entry"],
         exit=win["exit"],
         win_rule=win["win_rule"],
@@ -125,12 +134,10 @@ def _valid_pred(h: int) -> str:
 def build(*, horizon_for_baseline: int | None = None) -> dict[str, Any]:
     """全量重建三张表。实测 2.4 s —— 无界回看在这里廉价, 不设计增量。
 
-    horizon_for_baseline: 基线表用哪个 H (默认取 horizons 的中位那个)。
+    horizon_for_baseline: 基线表用哪个 H (默认读 casebook.yaml 的 baseline_horizon)。
     """
     win = load_window()
-    h_base = horizon_for_baseline if horizon_for_baseline is not None else win.horizons[
-        len(win.horizons) // 2
-    ]
+    h_base = horizon_for_baseline if horizon_for_baseline is not None else win.baseline_horizon
     if h_base not in win.horizons:
         raise ValueError(f"horizon_for_baseline={h_base} 不在 horizons={win.horizons}")
 

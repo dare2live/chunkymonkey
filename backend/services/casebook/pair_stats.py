@@ -168,7 +168,7 @@ def build(*, horizon: int | None = None) -> dict[str, Any]:
     """物化 casebook_pair_stats。行数 = 策略数 x 有信号的股票数。"""
     win = load_window()
     cfg = load_effective_n()
-    h = horizon if horizon is not None else win.horizons[len(win.horizons) // 2]
+    h = horizon if horizon is not None else win.baseline_horizon
     if h not in win.horizons:
         raise ValueError(f"horizon={h} 不在 horizons={win.horizons}")
     tiers_n = load_sample_tiers()   # 本股格按 n_pair 判, 不按半宽 (见 tier_of)

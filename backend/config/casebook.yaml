@@ -24,6 +24,11 @@ version: 1
 # 固定窗口口径。改这里等于改全部历史结论, 所以它在 config 不在代码。
 horizons: [5, 10, 20]
 
+# 基线表与 pair_stats 用哪个 H。**显式写死, 不从 horizons 按位置取中位** ——
+# 原实现是 `horizons[len//2]`, 那样往 horizons 里加一个 60 就会让基线 H 从 10 静默变成 20,
+# 而基线 H 一变, 全部历史结论跟着变且不报错。加 H 是扩展, 换基线 H 是口径变更, 两件事。
+baseline_horizon: 10
+
 window:
   entry: next_open          # 信号日 t 的**下一根** K 线开盘价 —— t 日收盘后才知道信号, 当日不可成交
   exit: close_after_h       # 入场后第 H 根 K 线收盘价; 即 close[t+1+H] / open[t+1] − 1
