@@ -1515,8 +1515,9 @@ def test_acquire_runs_registry_drain_before_formal_and_despite_formal_hard(
     monkeypatch.setattr(
         acquire, "_build_trading_calendar", lambda: order.append("calendar")
     )
+    # acquire.py:124 带 ctx 调 —— 少参数会被 ctx.step 降级吞掉, 桩静默失效
     monkeypatch.setattr(
-        acquire, "_refresh_active_a_stock_master", lambda: order.append("active")
+        acquire, "_refresh_active_a_stock_master", lambda _c: order.append("active")
     )
 
     ctx = PipelineContext(date="20260722", log_path=tmp_path / "run.log")
@@ -1530,6 +1531,7 @@ def test_acquire_runs_registry_drain_before_formal_and_despite_formal_hard(
     # 桩必须承重: 不断言它就等于没打桩 —— 上面那个 0 参数的死桩正是这么藏了下来。
     assert "org" in order, "org_holding 桩没被调到 (多半是签名不匹配被降级吞了)"
     assert "holders" in order and "qfii" in order
+    assert "active" in order, "active_stock 桩没被调到 (签名不匹配?)"
     # Structural: formal hard → degraded, not Tier0AcquireError abort.
     assert any("formal daily" in msg for msg in ctx.degraded_msgs)
 

@@ -18,9 +18,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.pipeline import acquire
+from services.pipeline.context import PipelineContext
+
+# 2026-09-06: 原先这里手搓了一个 _FakeCtx。它必然漂移 —— PipelineContext 后来长出
+# delta_manifest, 假件没跟, 于是本文件长期红着; 而它不在 ci_pytest_surface.yaml 里,
+# 所以没人看见。改用**真 PipelineContext**(全默认值 dataclass, 直接可造),
+# 从此它不可能再落后于被测类。
 
 
-def test_refresh_active_a_stock_master_calls_writer_and_reports_rows(monkeypatch, capsys):
+def test_refresh_active_a_stock_master_calls_writer_and_reports_rows(monkeypatch, capsys, tmp_path):
     calls = []
 
     def _fake_refresh(conn):
@@ -30,12 +36,19 @@ def test_refresh_active_a_stock_master_calls_writer_and_reports_rows(monkeypatch
     monkeypatch.setattr(
         "services.security_master.refresh_active_a_stock_master", _fake_refresh
     )
-    acquire._refresh_active_a_stock_master()
+    # date 必填(刻意: 由 run.py 注入不取 wall-clock, 防跨午夜); log_path 隔离到 tmp
+    ctx = PipelineContext(date="20260911", log_path=tmp_path / "run.log")
+    # 前后快照读 reference 库; 库不在时函数自己 try/except 降级成 ctx.log ——
+    # 所以本测试在没有 data/ 的全新克隆里也必须能跑 (这正是它此前红的环境)。
+    acquire._refresh_active_a_stock_master(ctx)
     assert calls == [None], "writer 应被调用一次 (conn 参数已不再被内部使用, 传 None 即可)"
     assert "5211" in capsys.readouterr().out
+    # 传感器是 observer-only: 读不到就是 None, **不许伪造成空集合**(红线 3)
+    assert ctx.dim_active_codes_before is None or isinstance(ctx.dim_active_codes_before, set)
+    assert ctx.dim_active_codes_after is None or isinstance(ctx.dim_active_codes_after, set)
 
 
-def test_run_acquire_wires_active_stock_refresh_step(monkeypatch):
+def test_run_acquire_wires_active_stock_refresh_step(monkeypatch, tmp_path):
     """端到端: run_acquire 的步骤序列里必须真的包含 dim_active_a_stock 刷新这一步
     (不能只是定义了函数却没接进主流程——这正是本次要根治的 bug 模式)。"""
     calls = []
@@ -50,7 +63,8 @@ def test_run_acquire_wires_active_stock_refresh_step(monkeypatch):
         lambda ctx: calls.append("formal") or [],
     )
     monkeypatch.setattr(acquire, "_build_trading_calendar", lambda: calls.append("calendar"))
-    monkeypatch.setattr(acquire, "_refresh_active_a_stock_master", lambda: calls.append("active_stock"))
+    # acquire.py:124 带 ctx 调
+    monkeypatch.setattr(acquire, "_refresh_active_a_stock_master", lambda _c: calls.append("active_stock"))
     monkeypatch.setattr(
         "services.pipeline.preflight.ensure_pipeline_sync_ready",
         lambda ctx: None,
@@ -60,18 +74,16 @@ def test_run_acquire_wires_active_stock_refresh_step(monkeypatch):
         lambda ctx: calls.append("auth"),
     )
 
-    class _FakeCtx:
-        skip_sync = False
-        dry = False
+    # 这两步会去开 reference / tushare_raw 库; 本测试测的是**步骤顺序**不是它们,
+    # 不打桩就会在没有 data/ 的环境里炸 (同 test_pipeline 的处理)。
+    monkeypatch.setattr(
+        "services.pipeline.margin_catchup_acquire.run_margin_bounded_catchup", lambda _c: []
+    )
+    monkeypatch.setattr(
+        "services.pipeline.frozen_domain_observe.observe_frozen_on_demand_domains", lambda _c: []
+    )
 
-        def log(self, msg):
-            pass
-
-        def step(self, fn, *, degraded_msg):
-            fn()
-            return True
-
-    acquire.run_acquire(_FakeCtx())
+    acquire.run_acquire(PipelineContext(date="20260911", log_path=tmp_path / "run.log"))
     assert calls[0] == "auth", "独立 acquire 必须先过授权硬门"
     assert "active_stock" in calls, "dim_active_a_stock 刷新步骤必须真的被 run_acquire 调用"
     # Published drain before formal on_demand (structural sibling isolation).
