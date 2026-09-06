@@ -9,6 +9,7 @@ blocking_paths:
 - tests/scripts/test_build_sw_industry_view.py
 - tests/scripts/test_check_calendar_usage.py
 - tests/scripts/test_check_contract_stamp_consistency.py
+- tests/scripts/test_check_continuity_integrity_field_ownership.py
 - tests/scripts/test_check_foundation_done.py
 - tests/scripts/test_check_frozen_stamp_compare.py
 - tests/scripts/test_check_lineage_catalog_drift.py
@@ -210,11 +211,6 @@ ci_test_optional:
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
     review, one triage slice at a time'
 - path: tests/scripts/test_check_continuity_integrity.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/scripts/test_check_continuity_integrity_field_ownership.py
   reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
     ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency

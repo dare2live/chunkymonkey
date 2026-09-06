@@ -10,13 +10,19 @@
 固化成显式契约表, 任何未来把某字段读进未声明函数的改动(不管是新增读取还是误用已有字段)都会在
 这里炸——把过去只能靠人工代码审查抓的"字段挪用"错误, 变成自动 CI 门。
 
-契约区分两类字段:
+契约区分三类字段:
   - 事实型(可多个 check 共享, 表达同一个客观事实): known_empty_days(此日源端确认真空,
     对"整日缺失"和"行数骤降"两种检测都成立) / dead_groups(此组永久性消亡, 对"分组缺失"和
     "分组新鲜度"两种检测都成立)。
+  - 家族内共享判断型(同一失效模式的两个检测窗口, 显式复用同一次人工审查结论): row_dip_tolerance
+    覆盖 check_cross_section(近 60 交易日滚动窗口)与 check_cross_section_full(全历史扫描)——
+    两者判的是同一件事"行数骤降但非零", 只是窗口长短不同; check_cross_section_full 的 docstring
+    明确写了"复用同一声明, 不重新审查", 不是把判断挪用到不相关的失效模式上(2026-08-11 新增该
+    函数时曾漏改本契约表, 被 test_no_field_read_outside_its_declared_owners 抓到)。
   - 判断型(必须且只能被声明的唯一 check 使用, 是该检测方法专属的容忍判断): gap_tolerance /
-    row_dip_tolerance / data_start_reviewed / freshness_group_col。这类字段绝不允许被第二个
-    check 函数读取——今天的 bug 正是判断型字段被跨函数挪用。
+    known_group_gaps / data_start_reviewed / freshness_group_col。这类字段绝不允许被第二个
+    check 函数读取——2026-07-08 的 bug 正是这类判断型字段被跨函数挪用(gap_tolerance 被拿去
+    抑制了一个完全不同失效模式的 row_dip)。
 """
 from __future__ import annotations
 
@@ -32,11 +38,13 @@ _FILE = Path(__file__).resolve().parents[2] / "scripts" / "check_continuity_inte
 # 不在此表内的 check_* 函数一律不许读取该字段 (新增读取必须先来改这张表, 逼一次显式决策)。
 OWNERSHIP: dict[str, set[str]] = {
     # 事实型 (跨检测方法共享同一客观事实, 允许多个 owner)
-    "known_empty_days": {"check_calendar_gaps", "check_cross_section"},
+    "known_empty_days": {"check_calendar_gaps", "check_cross_section", "check_cross_section_full"},
     "dead_groups": {"check_cross_section", "check_group_freshness"},
+    # 家族内共享判断型 (同一失效模式"行数骤降"的两个检测窗口, 显式复用同一次审查结论;
+    # 家族外任何第三个函数读取仍视为挪用, 由 test_no_field_read_outside_its_declared_owners 挡)
+    "row_dip_tolerance": {"check_cross_section", "check_cross_section_full"},
     # 判断型 (检测方法专属的容忍/豁免判断, 恰好一个 owner, 不得跨函数复用)
     "gap_tolerance": {"check_calendar_gaps"},
-    "row_dip_tolerance": {"check_cross_section"},
     "known_group_gaps": {"check_cross_section"},
     "data_start_reviewed": {"check_declared_vs_actual"},
     "freshness_group_col": {"check_group_freshness"},
@@ -85,14 +93,26 @@ def test_no_field_read_outside_its_declared_owners():
 
 
 def test_judgment_fields_have_exactly_one_owner():
-    """判断型字段(容忍/豁免类判断)必须恰好 1 个 owner, 事实型字段允许 >=1 个 (双检测方法共享)。
+    """判断型字段(容忍/豁免类判断)必须恰好 1 个 owner, 事实型/家族内共享型字段允许 >=1 个。
 
     这条比上一条更严: 上一条只挡"未声明的额外读取者", 这条挡"契约表本身把判断型字段错误
-    声明成多 owner"(如果发生, 说明契约表被人手滑改宽了, 直接在这里拦, 不靠人工复查)。"""
-    judgment_fields = {"gap_tolerance", "row_dip_tolerance", "known_group_gaps",
+    声明成多 owner"(如果发生, 说明契约表被人手滑改宽了, 直接在这里拦, 不靠人工复查)。
+    row_dip_tolerance 不在此列——它是显式的家族内共享判断型(见模块 docstring), 契约表里
+    已固定为恰好 2 个 owner, 由上一条测试挡住第 3 个不相关函数的挪用。"""
+    judgment_fields = {"gap_tolerance", "known_group_gaps",
                         "data_start_reviewed", "freshness_group_col"}
     for field in judgment_fields:
         owners = OWNERSHIP[field]
         assert len(owners) == 1, (
             f"{field} 是判断型字段(容忍/豁免类), 契约声明了 {len(owners)} 个 owner {sorted(owners)}"
             f" —— 判断型字段必须恰好 1 个 owner, 多 owner 是 gap_tolerance/row_dip 同型 bug 的前兆")
+
+
+def test_row_dip_tolerance_owner_set_pinned_to_the_two_documented_functions():
+    """row_dip_tolerance 是本契约里唯一的"家族内共享判断型"字段, 豁免了上一条的"恰好 1 个
+    owner"红线——但豁免范围必须钉死在模块 docstring 里明确论证过的那两个函数, 不能再悄悄
+    扩大。第三个函数要读它, 必须先在这里改判决并写清楚"为什么它也算同一家族", 不能顺手加。"""
+    assert OWNERSHIP["row_dip_tolerance"] == {"check_cross_section", "check_cross_section_full"}, (
+        f"row_dip_tolerance 的 owner 集合被改成了 {sorted(OWNERSHIP['row_dip_tolerance'])} —— "
+        "这是唯一被豁免'恰好1个owner'红线的判断型字段, 豁免范围只覆盖模块 docstring 里论证过的"
+        "check_cross_section/check_cross_section_full 两者, 任何变化都必须重新走一次显式裁决")
