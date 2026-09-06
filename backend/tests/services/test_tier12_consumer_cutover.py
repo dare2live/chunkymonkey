@@ -103,23 +103,45 @@ def test_default_config_cutover_true_owner_opt_in() -> None:
     assert cfg.claim_project_universe is True
 
 
-def test_default_yaml_resolves_live_partition_to_accepted_cutover() -> None:
-    """On-disk default yaml + live accepts → ACCEPTED_CUTOVER (not LEGACY)."""
+def test_default_yaml_resolves_live_partition_honours_config_hash_pin() -> None:
+    """On-disk default yaml + live accepts → 两条出路必居其一, 不许第三种。
+
+    2026-09-06 改写 (同型修复见 git show 1b6c2a3ff -- test_market_pulse_tier12_read.py,
+    该文件当时同刀修过、这个姊妹测试当时漏改)。原断言是 ``cutover_allowed is True`` 等六条,
+    钉的是 **20260717/20260720 那两批当时恰好匹配 config_hash** 这个运行时状态。
+    2026-09-03 v5 形态词汇重划 (commit 1b6c2a3ff) 后 ``stock_config_for_hash()``
+    纳入了 form_vocabulary_version, 这两批 (v4 词汇下发布) 自然不再匹配现算 config_hash
+    → 原断言转红, 但系统行为完全正确 (config_hash_mismatch 是设计上要挡的洞, 不是 bug)。
+
+    真正该守的不变量是 hash 钉的契约本身: **匹配就完整消费 (且不带拒绝理由), 不匹配就
+    fail closed 回 legacy 并说明理由是 config_hash_mismatch** —— 没有第三条路 (尤其不许
+    "不匹配但照样消费")。这样无论将来是否在 v5 下重新发布这两个 partition, 都不会假红。
+    """
 
     for day in ("20260717", "20260720"):
         decision = resolve_tier12_consumer_cutover(day)
         assert isinstance(decision, Tier12ConsumerCutoverDecision)
-        assert decision.cutover_allowed is True
-        assert decision.source == "accepted_partition"
-        assert decision.status == "ACCEPTED_CUTOVER"
-        assert decision.claim_project_universe is True
-        assert decision.accepted_payload is not None
-        assert "gates_passed" in decision.reasons
-        # Enriched form fields present on cutover-ON days.
-        states = decision.accepted_payload.get("stock_states") or []
-        assert states
-        nn = sum(1 for r in states if r.get("form_name") is not None)
-        assert nn / len(states) > 0.95
+        if decision.status != "BLOCKED":
+            # 匹配路径: 必须是完整的 accepted 消费, 不许半吊子
+            assert decision.cutover_allowed is True
+            assert decision.source == "accepted_partition"
+            assert decision.status == "ACCEPTED_CUTOVER"
+            assert decision.claim_project_universe is True
+            assert decision.accepted_payload is not None
+            assert "gates_passed" in decision.reasons
+            # Enriched form fields present on cutover-ON days.
+            states = decision.accepted_payload.get("stock_states") or []
+            assert states
+            nn = sum(1 for r in states if r.get("form_name") is not None)
+            assert nn / len(states) > 0.95
+        else:
+            # fail-closed 路径: 必须说明为什么, 且不许声称 project-universe
+            assert decision.cutover_allowed is False
+            assert decision.source == "legacy_scaffold"
+            assert decision.claim_project_universe is False
+            assert decision.accepted_payload is None
+            assert "config_hash_mismatch" in decision.reasons, decision.reasons
+            assert "fail_closed_consumer_cutover" in decision.notes
 
 
 def test_default_yaml_day_without_accept_fails_closed_to_legacy() -> None:

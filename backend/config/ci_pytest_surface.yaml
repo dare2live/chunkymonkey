@@ -162,6 +162,7 @@ blocking_paths:
 - tests/services/test_tdxhub_kline_recon.py
 - tests/services/test_tdxhub_mac_capital_flow.py
 - tests/services/test_tdxhub_source_adapter.py
+- tests/services/test_tier12_consumer_cutover.py
 - tests/services/test_tier12_project_universe.py
 - tests/services/test_tier12_publish_accept.py
 - tests/services/test_tier12_publish_contract.py
@@ -321,11 +322,6 @@ ci_test_optional:
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
     review, one triage slice at a time'
 - path: tests/services/test_sync_runner_watermark_decouple.py
-  reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
-    ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
-    for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
-    review, one triage slice at a time'
-- path: tests/services/test_tier12_consumer_cutover.py
   reason: 'pre-existing CI-list gap surfaced by the 2026-07-20 Fable5 CI-tax audit (binding finding #2:
     ci.yml pytest list had drifted from the committed backend/tests/**/test_*.py surface); not triaged
     for offline-CI safety in this change, so not silently added -- promote explicitly after a live-dependency
