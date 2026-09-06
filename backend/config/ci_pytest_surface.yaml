@@ -33,6 +33,9 @@ blocking_paths:
 - tests/scripts/test_ensure_serve_read_views.py
 - tests/scripts/test_exemption_integrity.py
 - tests/scripts/test_governance_gates.py
+- tests/scripts/test_ingest_holders_raw.py
+- tests/scripts/test_check_holders_staging.py
+- tests/services/test_holders_top10_schema.py
 - tests/scripts/test_godfile_baseline.py
 - tests/services/test_frozen_evidence_local_only.py
 - tests/services/casebook/test_outcome.py

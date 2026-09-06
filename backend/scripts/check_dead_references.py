@@ -54,6 +54,14 @@ _SQL_TABLE_REF_KNOWN_SAFE: dict[tuple[str, str], str] = {
     ("scripts/audit_data_completeness.py", "dim_data_asset"):
         "F4 退役表; try/except 守护; coverage_policy 能力已被 data_health_snapshot.py "
         "读 data_layers.yaml table_health_overrides 取代, 非能力真空",
+    # 2026-09-06 Phase A: 这两张是脚本**自己在 data/scratch/ 的临时库里 CREATE 的** staging 表,
+    # 按设计永不进生产库 (Phase A 的全部价值就是「不写生产库」)。
+    # 本门想守「引用了被删掉的表」, 而它们从来没在生产库存在过 —— 缺席不是死引用的证据。
+    ("scripts/ingest_holders_raw.py", "raw_fetch"):
+        "Phase A staging 表, 由本脚本在 scratch 目录下的临时库内 CREATE (路径由 default_staging_path 生成); "
+        "validate_staging_path() 硬拒绝生产库路径 (有测试)",
+    ("scripts/ingest_holders_raw.py", "raw_rows"):
+        "同上; 列集合由 holders_top10_schema.RAW_FIELDS 生成",
 }
 
 # C 扫描的 path-token 正则: backend/ 前缀可选, services|scripts|tests 下的 .py

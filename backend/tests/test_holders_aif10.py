@@ -8,14 +8,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import duckdb  # noqa: E402
+import pytest  # noqa: E402
 
 from services.holders_aif10 import (  # noqa: E402
     _parse_change,
     _share_class,
     _clean,
     _derive_exits,
+    _derive_exits_against_canonical,
+    _dedupe_notice_rows_by_grain,
     _local_stock_codes_for_notice_date,
     _net_new_notice_since,
+    _write,
     catchup_missing_holders_notice_partitions,
     fetch_holders_top10_by_notice_date,
     formal_holders_watermark,
@@ -23,17 +27,23 @@ from services.holders_aif10 import (  # noqa: E402
     list_missing_notice_partitions_from_fact,
     sync_holders_aif10_incremental,
     DEFAULT_START_PERIOD,
+    HoldersDuplicateGrainConflictError,
+    UnknownHolderChangeStatusError,
 )
 
 
-def _raw(secu, code, end_date, name, rank, hold_num, change, ratio=1.0, stype="A股", upd="2026-06-13"):
+def _raw(secu, code, end_date, name, rank, hold_num, change, ratio=1.0, stype="A股",
+         upd="2026-06-13", holder_code=None):
     """真实形态 aif10 行."""
-    return {
+    row = {
         "SECUCODE": secu, "SECURITY_CODE": code, "SECURITY_NAME_ABBR": "测试股",
         "END_DATE": f"{end_date} 00:00:00", "HOLDER_NAME": name, "HOLDER_RANK": rank,
         "HOLD_NUM": hold_num, "HOLD_RATIO": ratio, "HOLD_NUM_CHANGE": change,
         "SHARES_TYPE": stype, "HOLDER_TYPE": "其它", "UPDATE_DATE": f"{upd} 00:00:00",
     }
+    if holder_code is not None:
+        row["HOLDER_CODE"] = holder_code
+    return row
 
 
 # ── _parse_change: HOLD_NUM_CHANGE 多态 ──────────────────────────────
@@ -44,6 +54,13 @@ def test_parse_change_polymorphic():
     assert _parse_change(-697100) == ("减持", -697100)      # 负数 = 减持
     assert _parse_change("5281895") == ("增持", 5281895)    # 字符串数字
     assert _parse_change(None) == ("未知", None)
+
+
+@pytest.mark.parametrize("bad", ["未披露", "冻结", "部分转让", "维持"])
+def test_parse_change_raises_on_unknown_status(bad):
+    """闭合取值集 fail-closed: 供应商哪天多一种取值, 抛错而不是原样存进 canonical."""
+    with pytest.raises(UnknownHolderChangeStatusError):
+        _parse_change(bad)
 
 
 def test_share_class():
@@ -109,6 +126,41 @@ def test_derive_exits_no_exit_when_stable():
     base = _clean([
         _raw("600388.SH", "600388", "2026-03-31", "A机构", 1, 100, "不变"),
         _raw("600388.SH", "600388", "2026-06-08", "A机构", 1, 100, "不变"),
+    ], start_period=DEFAULT_START_PERIOD)
+    assert _derive_exits(base) == []
+
+
+# ── _derive_exits: 身份键 holder_new = COALESCE(HOLDER_CODE, HOLDER_NAME) ────
+def test_derive_exits_identity_same_code_different_name_is_not_exit():
+    """同一 HOLDER_CODE 改名(如 国泰君安→国泰海通) 不是退出, 是同一人换了写法."""
+    base = _clean([
+        _raw("600388.SH", "600388", "2026-03-31", "国泰君安", 1, 100, "不变",
+             holder_code="ORG001"),
+        _raw("600388.SH", "600388", "2026-06-08", "国泰海通", 1, 100, "不变",
+             holder_code="ORG001"),
+    ], start_period=DEFAULT_START_PERIOD)
+    assert _derive_exits(base) == []
+
+
+def test_derive_exits_identity_same_name_different_code_is_exit():
+    """同名不同码是两个不同主体; 上一个真退出了, 不能被同名巧合掩盖."""
+    base = _clean([
+        _raw("600388.SH", "600388", "2026-03-31", "张三", 1, 100, "不变",
+             holder_code="IND001"),
+        _raw("600388.SH", "600388", "2026-06-08", "张三", 1, 100, "不变",
+             holder_code="IND002"),
+    ], start_period=DEFAULT_START_PERIOD)
+    exits = _derive_exits(base)
+    assert len(exits) == 1
+    assert exits[0]["holder_name"] == "张三"
+    assert exits[0]["is_exit_row"] is True
+
+
+def test_derive_exits_identity_falls_back_to_name_without_code():
+    """个人股东没有 HOLDER_CODE, 按 holder_name 判同一人 (既有行为不变)."""
+    base = _clean([
+        _raw("600388.SH", "600388", "2026-03-31", "李四", 1, 100, "不变"),
+        _raw("600388.SH", "600388", "2026-06-08", "李四", 1, 100, "不变"),
     ], start_period=DEFAULT_START_PERIOD)
     assert _derive_exits(base) == []
 
@@ -206,6 +258,167 @@ def test_fetch_holders_top10_by_notice_date_maps_provider_shape(monkeypatch):
     assert rows[0]["stock_code"] == "600388"
     assert rows[0]["notice_date"] == "20260717"
     assert rows[0]["is_exit_row"] is False
+
+
+def test_fetch_holders_top10_by_notice_date_dedupes_paged_duplicates(monkeypatch):
+    """翻页不稳导致的逐字重复被折叠, 不重复落地; 不同股/不同持有人不受影响."""
+    import types
+
+    def fake_fetch_all_pages(report, **kwargs):
+        del report, kwargs
+        return [
+            _raw("600388.SH", "600388", "2026-06-30", "机构甲", 1, 100, "不变",
+                 upd="2026-07-22"),
+            # 同一条记录跨页重复拉到 (分页边界随机)
+            _raw("600388.SH", "600388", "2026-06-30", "机构甲", 1, 100, "不变",
+                 upd="2026-07-22"),
+            _raw("600388.SH", "600388", "2026-06-30", "机构乙", 2, 50, "不变",
+                 upd="2026-07-22"),
+        ]
+
+    fake_mod = types.ModuleType("aif10_scraper")
+    fake_mod.fetch_all_pages = fake_fetch_all_pages
+    fake_mod.default_client = object()
+    monkeypatch.setitem(sys.modules, "aif10_scraper", fake_mod)
+
+    rows = fetch_holders_top10_by_notice_date("20260722")
+    assert len(rows) == 2
+    assert {r["holder_name"] for r in rows} == {"机构甲", "机构乙"}
+
+
+# ── _dedupe_notice_rows_by_grain: 幂等去重 + 观测 + 矛盾拒绝 ─────────────
+def test_dedupe_notice_rows_by_grain_collapses_verbatim_duplicates():
+    rows = _clean([
+        _raw("600388.SH", "600388", "2026-06-30", "机构甲", 1, 100, "不变"),
+        _raw("600388.SH", "600388", "2026-06-30", "机构甲", 1, 100, "不变"),  # 逐字重复
+        _raw("600388.SH", "600388", "2026-06-30", "机构乙", 2, 50, "不变"),
+    ], start_period=DEFAULT_START_PERIOD)
+    deduped, removed = _dedupe_notice_rows_by_grain(rows)
+    assert removed == 1
+    assert len(deduped) == 2
+    assert {r["holder_name"] for r in deduped} == {"机构甲", "机构乙"}
+    # 幂等: 对已去重的结果再跑一遍不应再丢行
+    again, removed_again = _dedupe_notice_rows_by_grain(deduped)
+    assert removed_again == 0
+    assert len(again) == 2
+
+
+def test_dedupe_notice_rows_by_grain_raises_on_conflicting_content():
+    """同 GRAIN 两行内容不同(非逐字重复) → 数据矛盾, 抛错不许任选一行."""
+    rows = _clean([
+        _raw("600388.SH", "600388", "2026-06-30", "机构甲", 1, 100, 20000, ratio=10.0),
+        _raw("600388.SH", "600388", "2026-06-30", "机构甲", 1, 200, -5000, ratio=12.0),
+    ], start_period=DEFAULT_START_PERIOD)
+    with pytest.raises(HoldersDuplicateGrainConflictError):
+        _dedupe_notice_rows_by_grain(rows)
+
+
+def test_dedupe_notice_rows_by_grain_keeps_legitimate_same_rank_tie():
+    """assign_unique_holders_row_seq docstring 自陈的合法现象: 同 rank 两个不同
+    持有人不能被当成"重复冲突"炸掉 (去重键含 holder_name, 天然不会撞上这种情况)."""
+    rows = _clean([
+        _raw("600388.SH", "600388", "2026-06-30", "机构甲", 1, 100, "不变"),
+        _raw("600388.SH", "600388", "2026-06-30", "机构乙", 1, 80, "不变"),  # 同 rank 不同人
+    ], start_period=DEFAULT_START_PERIOD)
+    deduped, removed = _dedupe_notice_rows_by_grain(rows)
+    assert removed == 0
+    assert len(deduped) == 2
+
+
+# ── _derive_exits_against_canonical: 日更单日落地退出派生 ────────────────
+def _canonical_holders_fixture():
+    con = duckdb.connect(":memory:")
+    con.execute(
+        """
+        CREATE TABLE canonical_top10_float_holders_period (
+            stock_code VARCHAR, report_date VARCHAR, notice_date VARCHAR,
+            holder_name VARCHAR, is_exit_row BOOLEAN
+        )
+        """
+    )
+    return con
+
+
+def test_derive_exits_against_canonical_finds_gone_holder():
+    con = _canonical_holders_fixture()
+    con.execute(
+        "INSERT INTO canonical_top10_float_holders_period VALUES "
+        "('600388','20260331','20260425','A机构',FALSE),"
+        "('600388','20260331','20260425','B机构',FALSE)"
+    )
+    new_rows = [{
+        "stock_code": "600388", "report_date": "20260630",
+        "notice_date": "20260722", "holder_name": "A机构", "is_exit_row": False,
+    }]
+    exits = _derive_exits_against_canonical(con, new_rows)
+    assert len(exits) == 1
+    assert exits[0]["holder_name"] == "B机构"
+    assert exits[0]["is_exit_row"] is True
+    assert exits[0]["report_date"] == "20260630"
+    assert exits[0]["change_status"] == "退出"
+
+
+def test_derive_exits_against_canonical_no_prior_period_no_op():
+    """该股 canonical 里没有更早的期 (首次落地) → 没有基准可 diff, 不产生退出行."""
+    con = _canonical_holders_fixture()
+    new_rows = [{
+        "stock_code": "600388", "report_date": "20260630",
+        "notice_date": "20260722", "holder_name": "A机构", "is_exit_row": False,
+    }]
+    assert _derive_exits_against_canonical(con, new_rows) == []
+
+
+def test_derive_exits_against_canonical_skips_when_caller_already_derived():
+    """批次里这 (stock, report_date) 已经自带退出行 (全量按股重跑路径) → 不重算/不冲突."""
+    con = _canonical_holders_fixture()
+    con.execute(
+        "INSERT INTO canonical_top10_float_holders_period VALUES "
+        "('600388','20260331','20260425','A机构',FALSE),"
+        "('600388','20260331','20260425','B机构',FALSE)"
+    )
+    rows = [
+        {"stock_code": "600388", "report_date": "20260630", "notice_date": "20260722",
+         "holder_name": "A机构", "is_exit_row": False},
+        {"stock_code": "600388", "report_date": "20260630", "notice_date": "20260722",
+         "holder_name": "B机构", "is_exit_row": True},  # 调用方已经自己算过了
+    ]
+    assert _derive_exits_against_canonical(con, rows) == []
+
+
+def test_write_merges_canonical_derived_exits(monkeypatch):
+    """_write 是所有落地路径的收口点: 日更批次没带退出行时在这里补上."""
+    con = _canonical_holders_fixture()
+    con.execute(
+        "INSERT INTO canonical_top10_float_holders_period VALUES "
+        "('600388','20260331','20260425','A机构',FALSE),"
+        "('600388','20260331','20260425','B机构',FALSE)"
+    )
+    captured: dict = {}
+
+    class _FakeOutcome:
+        def __init__(self, n):
+            self.canonical_rows = n
+
+    def fake_write_formal(_conn, rows, **_k):
+        rows = list(rows)
+        captured["rows"] = rows
+        return _FakeOutcome(len(rows))
+
+    monkeypatch.setattr(
+        "services.data_sources.disclosure_dual_write.write_holders_top10_formal_then_mirror",
+        fake_write_formal,
+    )
+    new_rows = [{
+        "stock_code": "600388", "report_date": "20260630", "notice_date": "20260722",
+        "holder_name": "A机构", "is_exit_row": False,
+    }]
+    written = _write(con, new_rows)
+    assert written == 2
+    names = {r["holder_name"] for r in captured["rows"]}
+    assert names == {"A机构", "B机构"}
+    exit_rows = [r for r in captured["rows"] if r.get("is_exit_row")]
+    assert len(exit_rows) == 1
+    assert exit_rows[0]["holder_name"] == "B机构"
 
 
 def _patch_aif10_probe(monkeypatch, update_date: str) -> None:

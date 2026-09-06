@@ -847,7 +847,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_holders_staging.py",
+      "kind": "consume",
+      "src": "table:feature_store.mart_inst_profile"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/institution_profile.py",
+      "kind": "consume",
+      "src": "table:feature_store.mart_inst_profile"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_holders_staging.py",
       "kind": "consume",
       "src": "table:feature_store.mart_inst_profile"
     },
@@ -2719,6 +2731,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/check_holders_staging.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/db_holders_landing_retention.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
@@ -2870,6 +2888,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/strategy_spec.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_holders_staging.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
     },
@@ -9061,9 +9085,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1465,
-    "generated_at": "2026-09-06T02:04:50.449202+00:00",
-    "node_count": 516,
+    "edge_count": 1469,
+    "generated_at": "2026-09-06T07:42:25.812642+00:00",
+    "node_count": 518,
     "version": 2
   },
   "nodes": [
@@ -9457,6 +9481,14 @@
         "path": "backend/scripts/check_grain_uniqueness.py"
       },
       "id": "consumer:backend/scripts/check_grain_uniqueness.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
+        "path": "backend/scripts/check_holders_staging.py"
+      },
+      "id": "consumer:backend/scripts/check_holders_staging.py",
       "kind": "consumer"
     },
     {
@@ -10913,6 +10945,14 @@
         "path": "backend/tests/scripts/test_check_grain_uniqueness.py"
       },
       "id": "consumer:backend/tests/scripts/test_check_grain_uniqueness.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/scripts/test_check_holders_staging.py"
+      },
+      "id": "consumer:backend/tests/scripts/test_check_holders_staging.py",
       "kind": "consumer"
     },
     {

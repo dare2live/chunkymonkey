@@ -96,8 +96,14 @@ def _share_class(shares_type) -> str:
     return "_"
 
 
+class UnknownHolderChangeStatusError(ValueError):
+    """HOLD_NUM_CHANGE 不在闭合取值集(新进/不变/增持/减持,+派生退出)里 —— fail-closed
+    (CLAUDE.md §11): 视为供应商 schema drift, 抛错而不是原样存进 canonical。"""
+
+
 def _parse_change(raw):
-    """HOLD_NUM_CHANGE 多态: '新进'/'不变'/正数(增持)/负数(减持) → (status, signed_shares)."""
+    """HOLD_NUM_CHANGE 多态: '新进'/'不变'/正数(增持)/负数(减持) → (status, signed_shares).
+    未知取值抛 ``UnknownHolderChangeStatusError``, 不再原样存成新状态。"""
     t = _safe_text(raw)
     if t is None:
         return "未知", None
@@ -107,7 +113,7 @@ def _parse_change(raw):
         return "不变", 0
     n = _safe_int(raw)
     if n is None:
-        return t, None
+        raise UnknownHolderChangeStatusError(f"HOLD_NUM_CHANGE={raw!r} not in closed set")
     if n > 0:
         return "增持", n
     if n < 0:
@@ -134,6 +140,9 @@ def _clean(raw: list[dict], *, start_period: str) -> list[dict]:
         holder_name = _safe_text(row.get("HOLDER_NAME"))
         if not stock_code or not report_date or not holder_name:
             continue
+        # 实测零例外 COALESCE(HOLDER_CODE,HOLDER_NAME) — process 阶段身份键, 落地白名单投影天然丢弃, 不改契约。
+        holder_code = _safe_text(row.get("HOLDER_CODE"))
+        holder_new = holder_code or holder_name
         if report_date < start_period:          # K线范围外, 不抓 (用户 2026-06-24)
             continue
         shares = _safe_int(row.get("HOLD_NUM"))
@@ -151,6 +160,7 @@ def _clean(raw: list[dict], *, start_period: str) -> list[dict]:
             "row_seq": 1,
             "holder_name": holder_name,
             "holder_name_norm": holder_name,
+            "holder_new": holder_new,  # extra key: process-stage identity only, see above
             "share_class": _share_class(row.get("SHARES_TYPE")),
             "is_secondary_class": False,
             "is_exit_row": False,
@@ -188,23 +198,29 @@ def _clean(raw: list[dict], *, start_period: str) -> list[dict]:
 
 
 # ── ③ 加工 process ───────────────────────────────────────────────────
+def _holder_identity(row: dict) -> str:
+    """期间对比「同一人」键: holder_new, 无则退回 holder_name (兼容老数据)。按
+    holder_name 判会把机构多种写法/更名(国泰君安→国泰海通)记成假「退出+新进」两条。"""
+    return row.get("holder_new") or row.get("holder_name")
+
+
 def _derive_exits(clean_rows: list[dict]) -> list[dict]:
     """period-diff: 上期在榜/本期不在 = 退出. 跟踪机构投资周期 (用户目的)."""
     from collections import defaultdict
     by_period: dict[str, dict] = defaultdict(dict)
     for r in clean_rows:
-        by_period[r["report_date"]][r["holder_name"]] = r
+        by_period[r["report_date"]][_holder_identity(r)] = r
     periods = sorted(by_period.keys())
     exits = []
     fetched_at = _utc_now()
     for i in range(1, len(periods)):
         cur, prev = periods[i], periods[i - 1]
-        cur_names = set(by_period[cur].keys())
+        cur_identities = set(by_period[cur].keys())
         # 退出在本期(cur)被获知 → 可用日=本期披露日 (任一本期在榜行的 page_update_date)
         cur_upd = next(iter(by_period[cur].values())).get("page_update_date")
         rank = 0
-        for name, prev_row in by_period[prev].items():
-            if name in cur_names:
+        for identity, prev_row in by_period[prev].items():
+            if identity in cur_identities:
                 continue
             rank += 1
             e = dict(prev_row)
@@ -256,10 +272,17 @@ def _write(conn, rows: list[dict]) -> int:
     """幂等写: formal land→accept by notice_date (formal_only; no legacy mirror).
 
     Canonical merges per notice_date so other stocks on the same partition are
-    not wiped.  Enrichment columns ride on canonical.
+    not wiped.  Enrichment columns ride on canonical. 所有落地路径的收口点, 退出行
+    派生补在这一步(见 ``_derive_exits_against_canonical``): 日更批次天生
+    is_exit_row=False 由此补上; 全量按股重跑路径已在内存算过, no-op 不冲突。
     """
     if not rows:
         return 0
+    extra_exits = _derive_exits_against_canonical(conn, rows)
+    if extra_exits:
+        from services.data_sources.holders_top10_schema import assign_unique_holders_row_seq
+
+        rows = list(rows) + assign_unique_holders_row_seq(extra_exits)
     from services.data_sources.disclosure_dual_write import (
         write_holders_top10_formal_then_mirror,
     )
@@ -327,6 +350,56 @@ def sync_holders_aif10(
     }
 
 
+class HoldersDuplicateGrainConflictError(RuntimeError):
+    """同去重键两行内容不同(非逐字重复) —— 数据矛盾, 拒绝任选一行落地 (红线3)。"""
+
+
+def _dedupe_notice_rows_by_grain(rows: list[dict]) -> tuple[list[dict], int]:
+    """折叠 by_notice_date 全市场翻页拉重的逐字重复行 (只用于这条路径, 按股探针 0 组重复).
+
+    根因: 排序键(END_DATE,HOLDER_RANK) 每期数百股并列, PAGE_SIZE=500 翻页边界随机、
+    分页代码无去重 → 同记录跨页拉重(生产库 18,036 行)。去重键 = GRAIN 去掉 row_seq、
+    换回 holder_name: row_seq 由 ``assign_unique_holders_row_seq`` 按到达顺序打号,
+    逐字重复两行会被打成不同 row_seq, 满 GRAIN 反而抓不到; 但不换回 holder_name 的话,
+    同 rank 两个不同持有人的合法并列(row_seq 正为此存在)会被误判成冲突。组内除
+    row_seq 外全同 → 判定重复保留 1 条; 内容不同 → 抛
+    ``HoldersDuplicateGrainConflictError`` 不任选一行。返回 (去重后的行, 去掉的行数)。
+    """
+    from services.data_sources.holders_top10_schema import GRAIN, assign_unique_holders_row_seq
+
+    expected = {"stock_code", "report_date", "holder_set", "holder_rank", "is_exit_row"}
+    if frozenset(GRAIN) - {"row_seq"} != expected:
+        # GRAIN 定义漂移: fail-closed 而不是悄悄按旧假设去重 (CLAUDE.md §11)。
+        raise RuntimeError(f"holders_top10_schema.GRAIN drifted from {sorted(expected)!r}; "
+                           "_dedupe_notice_rows_by_grain's key must be revisited")
+
+    groups: dict[tuple, list[dict]] = {}
+    order: list[tuple] = []
+    for row in rows:
+        key = (str(row.get("stock_code") or ""), str(row.get("report_date") or ""),
+               str(row.get("holder_set") or ""), int(row.get("holder_rank") or 0),
+               bool(row.get("is_exit_row")), str(row.get("holder_name") or ""))
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(row)
+
+    deduped: list[dict] = []
+    removed = 0
+    for key in order:
+        group = groups[key]
+        baseline = {k: v for k, v in group[0].items() if k != "row_seq"}
+        for other in group[1:]:
+            other_content = {k: v for k, v in other.items() if k != "row_seq"}
+            if other_content != baseline:
+                raise HoldersDuplicateGrainConflictError(
+                    f"grain-key={key!r}: {baseline!r} vs {other_content!r}")
+        deduped.append(group[0])
+        removed += len(group) - 1
+
+    return (assign_unique_holders_row_seq(deduped) if removed else deduped), removed
+
+
 def fetch_holders_top10_by_notice_date(notice_date: str) -> list[dict]:
     """Full-market by UPDATE_DATE (= notice_date). Formal-shaped acquire for E0 land.
 
@@ -335,6 +408,9 @@ def fetch_holders_top10_by_notice_date(notice_date: str) -> list[dict]:
     (not mass). Preserves provider response (incl. BSE); no universe exclude.
     Exit rows are process-derived elsewhere — land path returns raw clean only
     (``is_exit_row=False``). Contrasts by_ts_code per-stock sync.
+
+    Pagination here is unstable at (END_DATE, HOLDER_RANK) ties and duplicates
+    rows across pages — ``_dedupe_notice_rows_by_grain`` collapses those first.
     """
     digits = "".join(ch for ch in str(notice_date or "") if ch.isdigit())
     if len(digits) < 8:
@@ -355,7 +431,11 @@ def fetch_holders_top10_by_notice_date(notice_date: str) -> list[dict]:
         client=default_client,
     ) or []
     cleaned = _clean(raw, start_period=DEFAULT_START_PERIOD)
-    return [row for row in cleaned if row.get("notice_date") == part]
+    same_day = [row for row in cleaned if row.get("notice_date") == part]
+    deduped, removed = _dedupe_notice_rows_by_grain(same_day)
+    if removed:
+        print(f"holders_aif10: by_notice_date={part} dropped {removed} paged-duplicate rows")
+    return deduped
 
 
 def _provider_newest_update_date(
@@ -408,6 +488,65 @@ def _table_present(conn, name: str) -> bool:
         return r is not None
     except Exception:  # noqa: BLE001
         return False
+
+
+def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
+    """日更单日落地退出派生: 查 canonical 该股上一期名单做 period-diff, 只查本批
+    (stock_code,report_date), 不做全市场重扫(避免 26M 行放大重演); 跳过批次里已自带
+    退出行的组合(全量按股重跑路径已在内存用 holder_new 算过, 更准)。已知边界: canonical
+    不存 HOLDER_CODE, 跟上一期比对只能按 holder_name, 没有 holder_new 的改名防护(那部分
+    只在同批 ``_derive_exits`` 内存 diff 里生效)——仍做, 因为系统性缺失比误判风险更差。
+    """
+    if not rows:
+        return []
+    covered = {(str(r.get("stock_code") or ""), str(r.get("report_date") or ""))
+               for r in rows if r.get("is_exit_row")}
+    by_stock_period: dict[tuple, list[dict]] = {}
+    for r in rows:
+        key = (str(r.get("stock_code") or ""), str(r.get("report_date") or ""))
+        if not r.get("is_exit_row") and key[0] and key[1] and key not in covered:
+            by_stock_period.setdefault(key, []).append(r)
+    if not by_stock_period or not _table_present(conn, CANONICAL_TABLE):
+        return []
+
+    null_fields = ("share_class", "shares_text", "shares_approx", "shares_precision",
+                   "hold_amount", "hold_ratio_float", "hold_ratio_total", "hold_ratio",
+                   "hold_market_cap", "change_shares_text", "change_shares_approx",
+                   "hold_change_num", "effective_date")
+    derived: list[dict] = []
+    fetched_at = _utc_now()
+    for (stock_code, report_date), cur_rows in by_stock_period.items():
+        prev = conn.execute(
+            f"SELECT MAX(report_date) FROM {CANONICAL_TABLE} WHERE stock_code=? "
+            "AND is_exit_row=FALSE AND report_date<?", [stock_code, report_date]).fetchone()
+        prev_period = prev[0] if prev else None
+        if not prev_period:
+            continue  # 该股没有更早的已接受期, 没有基准可 diff
+        prev_rows = conn.execute(
+            f"SELECT DISTINCT holder_name FROM {CANONICAL_TABLE} WHERE stock_code=? "
+            "AND report_date=? AND is_exit_row=FALSE", [stock_code, prev_period]).fetchall()
+        prev_names = {str(r[0]) for r in prev_rows if r and r[0]}
+        cur_names = {str(r.get("holder_name") or "") for r in cur_rows}
+        gone = sorted(prev_names - cur_names)
+        if not gone:
+            continue
+        template = cur_rows[0]
+        notice = template.get("notice_date") or template.get("page_update_date")
+        for rank, name in enumerate(gone, start=1):
+            e = dict(template)
+            e.update(dict.fromkeys(null_fields))
+            e.update({
+                "holder_name": name, "holder_name_norm": name,
+                "holder_new": name,  # canonical 没存 code, 老侧身份只能是 name
+                "report_date": report_date, "is_exit_row": True,
+                "holder_rank": rank, "row_seq": 1,
+                "change_status": "退出", "hold_change": "退出",
+                "notice_date": notice, "page_update_date": notice,
+                "availability_source": "page_update_date" if notice else "fetched_at_observed",
+                "fetched_at": fetched_at, "created_at": fetched_at,
+            })
+            derived.append(e)
+    return derived
 
 
 def formal_holders_watermark(conn) -> tuple[Optional[str], str]:
