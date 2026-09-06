@@ -249,8 +249,13 @@ def test_contract_hash_is_byte_identical_to_head(head_source: str) -> None:
             import json, sys, types, importlib
             src = open({str(head_path)!r}, encoding="utf-8").read()
             m = types.ModuleType({SCHEMA_MODULE_NAME!r})
-            exec(compile(src, {str(Path(schema.__file__).resolve())!r}, "exec"), m.__dict__)
+            # 注册必须在 exec **之前**: exec 期间模块自己的 @dataclass 装饰器会回查
+            # sys.modules[cls.__module__] 来解析 KW_ONLY (dataclasses._is_type)。
+            # Python 3.13 起那里拿到 None 直接 AttributeError, 3.12 及以前不会。
+            # 2026-09-06 实测: 反过来写在 3.13.13 上必炸, 且报的是 dataclasses 内部
+            # 的 'NoneType' object has no attribute '__dict__', 与契约本身无关。
             sys.modules[{SCHEMA_MODULE_NAME!r}] = m
+            exec(compile(src, {str(Path(schema.__file__).resolve())!r}, "exec"), m.__dict__)
             c = importlib.import_module({CONTRACT_MODULE_NAME!r}).load_holders_top10_contract()
             print(json.dumps({{
                 "contract_version": c.contract_version,
