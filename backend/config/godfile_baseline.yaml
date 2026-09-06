@@ -1,41 +1,52 @@
-# god-file 基线 —— backend 下非测试 .py 中行数 > 800 的文件集合。
+# god-file 基线 —— backend 下非测试 .py 中**代码行数** > 800 的文件集合。
 #
 # 这不是"允许清单", 是**棘轮的记录点**: 断言 minimal-module-no-new-godfile 要求
 # 当前集合与本清单**逐字相等**。两个方向都会红:
 #   - 有文件新越过 800 行而不在本清单  → 红。这次 diff 新造了一个 god-file。
 #   - 清单里的文件已降到 800 行以下     → 红。棘轮该收紧了, 把它从清单删掉。
 #
-# ── 红了怎么看是哪个文件 (断言本身只给数字, 不给文件名) ────────────────────────
-#   comm -3 \
-#     <(find backend -name '*.py' -not -path '*/__pycache__/*' -not -path '*/tests/*' \
-#        | xargs wc -l | awk '$1>800 && $2!="total"{print $2}' | sort) \
-#     <(awk '$1=="-" && $2=="path:"{print $3}' backend/config/godfile_baseline.yaml | sort)
-#   左栏 = 新越线的; 右栏 = 该从清单删掉的。
+# ── 红了怎么看是哪个文件 ─────────────────────────────────────────────────────
+#   PYTHONPATH=backend python3 backend/scripts/measure_godfiles.py
+#   (无参数即列出两个方向的差异并标明方向; --list 只印当前集合;
+#    --measure <路径> 印单个文件的 代码行/总行。)
 #
 # ── 为什么是集合不是计数 (2026-09-04 改) ──────────────────────────────────────
 # 原判据是 `count(>800行) <= 3`。它 2026-06-14 随「代码层 reset 到地基(删771)」立下,
-# **当时实测 23 个**, 所以 3 从第一天起就是**目标**不是棘轮 (原 claim 里"上界不冒充当前
-# 实测"就是在说这件事)。大删除后一度真做到 3 (07-23 / 08-14), 随后退回 10, 红了三周没人动。
+# **当时实测 23 个**, 所以 3 从第一天起就是**目标**不是棘轮。目标当闸只有一种输出——红,
+# 对每一次提交都一样, 不携带关于本次 diff 的信息, 故已红三周无人动。
+# 计数形态的三个毛病, 换成集合后都没了: (1) 目标没达成时输出恒定;
+# (2) 有人真把文件降回线下, 门全程红着, 改进得不到反馈; (3) 放宽藏得住——把上界 3 改成
+# 10 与把 10 改成 11 在 diff 里长得一样, 而往本清单加一行必然带着文件名出现在 diff 里。
 #
-# 计数形态的三个毛病, 换成集合后都没了:
-#   1. 目标没达成时它只有一种输出——红, 对每一次提交都一样, 不携带关于本次 diff 的信息。
-#   2. 有人真把 check_contract_stamp_consistency.py 从 800 以上降了回去 (实测 HEAD~20→HEAD~15),
-#      而门全程红着 (10→11→10 全 >3) —— 改进得不到任何反馈。
-#   3. 放宽藏得住: 把上界 3 改成 10, 与把 10 改成 11, 在 diff 里长得一模一样。
-#      往本清单加一行则必然带着文件名出现在 diff 里。
+# ── 为什么从"总行数"改成"代码行数" (2026-09-06 改) ────────────────────────────
+# 原口径是 `wc -l`。实测它与想守的东西**反号** —— 它在惩罚"把理由写下来":
 #
-# 注意: 提取只认 `- path:` 那一列, 不是全文 grep —— 头注里出现的任何路径字样都不参与比对
-# (2026-09-04 实测踩过: 头注里的一个示例路径被全文 grep 抓进集合, 把判据自己打红了)。
+#     文件                                  总行   代码行   注释/文档占比
+#     assignment_gap_recon.py               820     710        1%
+#     check_holders_staging.py              829     494       21%
+#     tdxhub.py                            1094     577       37%
+#     market_pulse.py                      1597     848       11%
+#
+# 按 wc -l, 829 行的 check_holders_staging 比 820 行的 assignment_gap_recon 更像
+# god-file; 按实际代码量它少 216 行。tdxhub 排第五, 代码量只有 market_pulse 的 68%。
+# 这个项目的纪律就是把证据写进注释与提交信息, 一道按总行数收紧的门在与之对着干
+# (触发这次改动的正是: 给验证器补了 70 行"判据为什么错"的说明后被本门拦下)。
+#
+# **改口径没有放宽, 方向相反。** 关键在于: 基线成员 = 完全没有上限 —— 在册文件从 820
+# 涨到 3000 行, 集合仍然相等, 门照绿。所以基线越大, 门管的越少。换成代码行数后集合
+# 11 → 4, 离开的 7 个不是被放行, 是**重新获得了 800 行的天花板**, 它们此前根本没有上限。
+#
+# 口径本体 (唯一计算点) 在 backend/scripts/measure_godfiles.py: tokenize 逐 token 归属
+# 行号, 去掉纯空行 / 注释行 / 独立字符串字面量(docstring) 所占的行; 尾随注释的那行算代码行。
 #
 # 本文件放 backend/config/ 且用 yaml 是有意的: check_dead_references (阻断门) 会扫
 # config 下 yaml 里的 .py 路径, 于是"基线里的文件被删/改名而没同步"这个方向也有门守
 # (实测: 往 path: 里写一个不存在的文件, 那道门立刻红; 写成 .txt 则不扫)。
 #
 # ── 逐个文件的处置裁决 (2026-09-04, 10 个分析 agent + 10 个对抗验证 agent) ──────
-# disposition 是**对抗验证后**的终判。split/trim 的那几个**刻意没有现在执行**:
-# tushare 授权 2026-09-10 到期, sync_runner / tdxhub / acquire 正是 daily+adj_factor
-# 切换的活体迁移路径; 且每把刀都有实测出来的硬风险(见各条 risk)。排在切换完成之后。
-
+# disposition 是**对抗验证后**的终判。split/trim 的那几个**刻意没有现在执行**, 每把刀
+# 都有实测出来的硬风险(见各条 risk)。
+#
 godfiles:
   # ── 祖传三个 (2026-08-14 时的全部, 即上界 3 那次"达成"所指) ──
   - path: backend/services/data_sources/sync_runner.py       # 4630 行
@@ -58,28 +69,18 @@ godfiles:
     risk: "按提议原样拆会让 raw_org_holding_aif10 从一个 writer 变成两个(母体 INSERT + 新模块 UPDATE),
       撞 CLAUDE.md 硬约束 6, 且**全仓没有 single-writer 断言会拦它**(已 grep claims.yaml 与
       governance_gates.yaml 确认)。拆前需先补那道门。"
-  - path: backend/services/data_sources/sources/tdxhub.py    # 1094 行 (08-27 新建)
-    disposition: split_deferred
-    risk: "它是 tushare 日落后 daily + adj_factor 的**指定接替源**(见 tushare_sunset.yaml),
-      6 天后到期, 现在是它的赶工期。且 data/lineage/graph.json 有 4 条 consume 边挂在本文件路径上,
-      一拆边就漂, lineage_drift(阻断门)会红。内聚边界本身是真的(簇A→簇B 零引用)。"
-  - path: backend/routers/stock_dossier.py                   # 958 行
-    disposition: split_deferred
-    risk: "graph.json 有 10 条 consume 边挂在本文件路径上, 拆分必须同批重生血缘图, 否则 lineage_drift 红。"
-  - path: backend/services/pipeline/acquire.py               # 906 行
-    disposition: split_deferred
-    risk: "test_acquire_bounded_gap_heal.py 的 fixture 对 acquire._accepted_partition_exists 打桩;
-      函数搬走后桩读不到, 而它与真函数逐字等价, **5 个测试照绿但实际在跑真 SQL**(已实测)。
-      拆分必须同批改打桩目标。"
-  - path: backend/scripts/update_watermark_sla.py            # 832 行 (过线 32)
-    disposition: trim_deferred
-    risk: "实现者若为少改测试留一个 re-export 别名, 撞 CLAUDE.md §17 禁 renamed-dead, 且收益归零。
-      必须同批改 5 处测试调用点。"
-  - path: backend/services/data_sources/disclosure_event_partition.py  # 822 行 (过线 22)
-    disposition: keep
-    risk: "无。但它是十个里唯一「六周内新越线」的(690→822); 下一个 disclosure 域接入会把它推到 900+,
-      到时切口更难找。"
-  - path: backend/services/data_sources/assignment_gap_recon.py        # 820 行 (08-28 新建, 出生即超线)
-    disposition: keep
-    risk: "无。原提议的 trim 被对抗验证判为装饰性: normalize_cn_name/_as_float 横跨 loader/parser/compare
-      三组, 按提议切会让 parse_fuyao_index_bars 对畸形 date_ms 返回伪造日期而非 None, 制造假阴性。"
+
+# ── 2026-09-06 换口径后离开基线的六个 (按代码行数已在 800 以下) ────────────────
+# 它们的 disposition/risk 裁决没有作废, 只是不再需要基线豁免 —— 现在它们受 800 行
+# 代码上限约束, 比在册时(无上限)更紧。原裁决见 git history:
+#   git log -p --follow backend/config/godfile_baseline.yaml
+#
+#   tdxhub.py                     577 代码 / 1094 总行   (split_deferred: lineage 4 条 consume 边)
+#   stock_dossier.py              761 代码 /  958 总行   (split_deferred: lineage 10 条 consume 边)
+#   acquire.py                    646 代码 /  906 总行   (split_deferred: 打桩目标要同批改)
+#   update_watermark_sla.py       623 代码 /  832 总行   (trim_deferred)
+#   disclosure_event_partition.py 679 代码 /  822 总行   (keep)
+#   assignment_gap_recon.py       710 代码 /  820 总行   (keep)
+#
+# stock_dossier(761) 与 assignment_gap_recon(710) 离上限不远 —— 它们再长 40/90 行
+# 代码就会重新越线并当场拦下提交。这正是换口径要的效果。

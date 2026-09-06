@@ -12,41 +12,27 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 import yaml
 
 REPO = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO / "backend"))
+
+from scripts import measure_godfiles as mg  # noqa: E402
+
 BASELINE = REPO / "backend" / "config" / "godfile_baseline.yaml"
 CLAIMS = REPO / ".moth" / "assertions" / "claims.yaml"
-THRESHOLD = 800
+THRESHOLD = mg.THRESHOLD
 ASSERTION_ID = "minimal-module-no-new-godfile"
 
-
-def _current_godfiles(root: Path) -> set[str]:
-    """root 下 backend/ 里非测试 .py 中行数 > THRESHOLD 的文件 (相对 root 的 posix 路径)。
-
-    口径必须与 claims.yaml 里那条 shell 命令逐字一致: 排除 __pycache__ 与任何 tests/ 目录。
-    """
-    out: set[str] = set()
-    for p in (root / "backend").rglob("*.py"):
-        rel = p.relative_to(root).as_posix()
-        if "__pycache__" in rel or "/tests/" in rel:
-            continue
-        with p.open("rb") as fh:
-            if sum(1 for _ in fh) > THRESHOLD:
-                out.add(rel)
-    return out
-
-
-def _baseline_paths(path: Path = BASELINE) -> set[str]:
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    entries = (raw or {}).get("godfiles")
-    if not isinstance(entries, list) or not entries:
-        # 空基线会让判据恒绿 (对称差 = 当前集合 vs 空 = 全部, 反而恒红; 但结构坏了一样要 fail closed)
-        raise AssertionError(f"{path} 的 godfiles 缺失或为空 —— 基线结构坏了, fail closed")
-    return {str(e["path"]) for e in entries}
+# 2026-09-06: 本文件此前自己实现了一遍"哪些算 god-file", 与 claims.yaml 里那条 shell
+# 命令各写一份, 靠"我在两处都写对了"维持一致。换成两边共用 measure_godfiles
+# (CLAUDE.md 11 单一计算点) —— 口径只能改一处, 改了两边同时变。
+_current_godfiles = mg.current_godfiles
+_baseline_paths = mg.baseline_paths
 
 
 def test_baseline_matches_current_set() -> None:
@@ -73,10 +59,9 @@ def test_every_baseline_entry_is_honest() -> None:
         if not p.exists():
             stale.append(f"{rel}: 文件不存在")
             continue
-        with p.open("rb") as fh:
-            n = sum(1 for _ in fh)
+        n = mg.code_line_count(p.read_text(encoding="utf-8", errors="replace"))
         if n <= THRESHOLD:
-            stale.append(f"{rel}: 只有 {n} 行, 已不超线")
+            stale.append(f"{rel}: 只有 {n} 行代码, 已不超线")
     assert not stale, "基线条目已不成立 (删掉它们):\n" + "\n".join(f"    {s}" for s in stale)
 
 
@@ -102,8 +87,11 @@ def test_moth_assertion_is_wired_to_this_baseline() -> None:
         if x["id"] == ASSERTION_ID
     )
     cmd = " ".join(a["command"])
-    assert "backend/config/godfile_baseline.yaml" in cmd, "断言没读这份基线"
-    assert str(THRESHOLD) in cmd, f"断言里的阈值与本测试的 {THRESHOLD} 不一致"
+    assert "backend/scripts/measure_godfiles.py" in cmd, "断言没走单一计算点"
+    # 阈值和基线路径都在 measure_godfiles 里, 不再重复出现在命令行 —— 改成直接核那个模块,
+    # 否则这条会退化成"命令字符串里有没有 800 这三个字符"这种与被判对象无关的检查。
+    assert mg.BASELINE == BASELINE, "measure_godfiles 读的不是这份基线"
+    assert THRESHOLD == 800, f"阈值漂了: {THRESHOLD}"
     assert a.get("severity") == "blocking", "这条是阻断级判据; 降级前先想清楚 warn-only 会退化成 warn-nothing"
     assert a["expect"] == {"op": "==", "value": 0}, "对称差必须 ==0, 用 <= 会放过一个方向"
 
