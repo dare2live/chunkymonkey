@@ -22,35 +22,26 @@ REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "backend"))
 
 from scripts import check_holders_staging as vhs  # noqa: E402
+from scripts import ingest_holders_raw as ihr  # noqa: E402
 
 RAW_FIELD_NAMES = [name for name, _ in vhs.RAW_FIELDS]
-_RAW_ROW_COLS = RAW_FIELD_NAMES + ["fetch_id", "row_ordinal", "row_hash", "extra_json"]
+_RAW_ROW_COLS = RAW_FIELD_NAMES + ["fetch_id", "row_ordinal"]
 
 
 # ── fixture builders ─────────────────────────────────────────────────────────
 
 
 def _new_staging(path: Path) -> duckdb.DuckDBPyConnection:
+    """staging 表由**生产者自己的 DDL** 建, 不手搓。
+
+    2026-09-06: 手搓过一版 (page_count/row_count/fetched_at/request_json), 生产者
+    实际写的是 n_rows/requested_at/elapsed_s —— fixture 和被测对象各说各话, 22 个
+    用例一起红。调 ``ingest_holders_raw.ensure_staging_tables`` 后, 两边共用同一份
+    DDL, 这类漂移在结构上不可能再发生。
+    """
+
     conn = duckdb.connect(str(path))
-    conn.execute(
-        """
-        CREATE TABLE raw_fetch (
-          stock_code VARCHAR, fetch_id VARCHAR, status VARCHAR, error VARCHAR,
-          truncated BOOLEAN, page_count INTEGER, row_count INTEGER,
-          fetched_at VARCHAR, request_json VARCHAR
-        )
-        """
-    )
-    raw_cols_ddl = ",\n".join(f'"{name}" {typ}' for name, typ in vhs.RAW_FIELDS)
-    conn.execute(
-        f"""
-        CREATE TABLE raw_rows (
-          fetch_id VARCHAR, row_ordinal INTEGER,
-          {raw_cols_ddl},
-          row_hash VARCHAR, extra_json VARCHAR
-        )
-        """
-    )
+    ihr.ensure_staging_tables(conn)
     return conn
 
 
@@ -77,15 +68,14 @@ def _new_feat(path: Path) -> duckdb.DuckDBPyConnection:
 
 def _insert_fetch(conn, **kw) -> None:
     defaults = dict(
-        stock_code="600519",
         fetch_id="f1",
+        stock_code="600519",
+        requested_at="2026-09-06T00:00:00Z",
         status="ok",
-        error=None,
+        n_rows=1,
         truncated=False,
-        page_count=1,
-        row_count=1,
-        fetched_at="2026-09-06T00:00:00Z",
-        request_json="{}",
+        error=None,
+        elapsed_s=0.5,
     )
     defaults.update(kw)
     cols = list(defaults)
@@ -119,8 +109,6 @@ def _insert_raw_row(conn, **kw) -> None:
     defaults.update(kw)
     defaults["fetch_id"] = kw.get("fetch_id", "f1")
     defaults["row_ordinal"] = kw.get("row_ordinal", 1)
-    defaults.setdefault("row_hash", None)
-    defaults.setdefault("extra_json", None)
     conn.execute(
         f"INSERT INTO raw_rows ({', '.join(_RAW_ROW_COLS)}) VALUES ({', '.join(['?'] * len(_RAW_ROW_COLS))})",
         [defaults[c] for c in _RAW_ROW_COLS],
@@ -221,13 +209,27 @@ def test_require_staging_schema_missing_table_raises(tmp_path):
         vhs.build_connection(staging, tmp_path / "prod.duckdb", tmp_path / "feat.duckdb")
 
 
+def test_require_staging_schema_missing_raw_fetch_column_raises(tmp_path):
+    """raw_fetch 少一列就必须报出**那一列的名字**, 不是笼统"schema 不对"。"""
+
+    staging = tmp_path / "bad_fetch_staging.duckdb"
+    conn = duckdb.connect(str(staging))
+    ihr.ensure_staging_tables(conn)
+    conn.execute("ALTER TABLE raw_fetch DROP COLUMN n_rows")
+    conn.close()
+    _new_prod(tmp_path / "prod.duckdb").close()
+    _new_feat(tmp_path / "feat.duckdb").close()
+    with pytest.raises(RuntimeError, match="n_rows"):
+        vhs.build_connection(staging, tmp_path / "prod.duckdb", tmp_path / "feat.duckdb")
+
+
 def test_require_staging_schema_missing_raw_rows_column_raises(tmp_path):
     staging = tmp_path / "bad_staging.duckdb"
     conn = duckdb.connect(str(staging))
-    conn.execute(
-        "CREATE TABLE raw_fetch (stock_code VARCHAR, fetch_id VARCHAR, status VARCHAR, "
-        "error VARCHAR, truncated BOOLEAN, page_count INTEGER, row_count INTEGER)"
-    )
+    ihr.ensure_staging_tables(conn)
+    # raw_fetch 保持合法, 只把 raw_rows 打残 —— 否则 raw_fetch 先报错, 这个用例
+    # 就再也测不到它想测的那条路径 (2026-09-06 实际发生过)。
+    conn.execute("DROP TABLE raw_rows")
     conn.execute("CREATE TABLE raw_rows (fetch_id VARCHAR, row_ordinal INTEGER, SECURITY_CODE VARCHAR)")
     conn.close()
     _new_prod(tmp_path / "prod.duckdb").close()
@@ -252,7 +254,7 @@ def test_fetch_completeness_pass_on_clean_fixture(tmp_path):
 def test_fetch_completeness_fails_on_truncated(tmp_path):
     staging, prod, feat = _golden(tmp_path)
     sc = duckdb.connect(str(staging))
-    _insert_fetch(sc, stock_code="000001", fetch_id="f2", truncated=True, page_count=5)
+    _insert_fetch(sc, stock_code="000001", fetch_id="f2", truncated=True, n_rows=5)
     sc.close()
     conn = vhs.build_connection(staging, prod, feat)
     r = vhs.check_fetch_completeness(conn)
@@ -558,3 +560,30 @@ def test_main_json_exit_code_reflects_overall_status(tmp_path, capsys):
     assert rc2 == 1
     payload2 = json.loads(capsys.readouterr().out)
     assert payload2["status"] == "FAIL"
+
+
+# ── 生产者/验证器之间的列契约 ─────────────────────────────────────────────────
+
+
+def test_verifier_required_columns_are_a_subset_of_producer_ddl(tmp_path):
+    """验证器要的每一列, 生产者都必须真的写。
+
+    这两个脚本是一对接口的两端 (ingest_holders_raw 写 -> check_holders_staging 读),
+    此前只靠"我在两边都写对了"维持, 结果 n_rows/page_count 各说各话。这里用机器比,
+    任一端改列名而另一端没跟, 当场红。
+    """
+
+    conn = duckdb.connect(str(tmp_path / "contract.duckdb"))
+    ihr.ensure_staging_tables(conn)
+    fetch_cols = {r[1] for r in conn.execute("PRAGMA table_info('raw_fetch')").fetchall()}
+    rows_cols = {r[1] for r in conn.execute("PRAGMA table_info('raw_rows')").fetchall()}
+    conn.close()
+
+    assert vhs.REQUIRED_RAW_FETCH_COLUMNS <= fetch_cols, (
+        "验证器要的 raw_fetch 列生产者没写: "
+        f"{sorted(vhs.REQUIRED_RAW_FETCH_COLUMNS - fetch_cols)}"
+    )
+    assert vhs.REQUIRED_RAW_ROWS_COLUMNS <= rows_cols, (
+        "验证器要的 raw_rows 列生产者没写: "
+        f"{sorted(vhs.REQUIRED_RAW_ROWS_COLUMNS - rows_cols)}"
+    )

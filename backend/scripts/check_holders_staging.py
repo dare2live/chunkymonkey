@@ -37,8 +37,7 @@ internal 库不是 read-only, 直接 PermissionError 拒绝往下跑——不给
     status       VARCHAR NOT NULL   -- 'ok' | 'error' | 'empty'
     error        VARCHAR            -- status='error' 时填
     truncated    BOOLEAN            -- 分页在到达 max_pages 时被截断 (未确认取全) 为 TRUE
-    page_count   INTEGER
-    row_count    INTEGER
+    n_rows       INTEGER      -- 生产者列名 (非 row_count)
     fetched_at   VARCHAR
     request_json VARCHAR
 
@@ -101,7 +100,7 @@ MART_INST_PROFILE_TABLE = "mart_inst_profile"
 RAW_COL_NAMES: tuple[str, ...] = tuple(name for name, _ in RAW_FIELDS)
 
 REQUIRED_RAW_FETCH_COLUMNS = frozenset(
-    {"stock_code", "fetch_id", "status", "error", "truncated", "page_count", "row_count"}
+    {"stock_code", "fetch_id", "status", "error", "truncated", "n_rows"}
 )
 REQUIRED_RAW_ROWS_COLUMNS = frozenset({"fetch_id", "row_ordinal", *RAW_COL_NAMES})
 
@@ -246,7 +245,11 @@ def check_fetch_completeness(conn) -> dict[str, Any]:
         SELECT
           COUNT(*) FILTER (WHERE status = 'ok') AS ok_count,
           COUNT(*) FILTER (WHERE status = 'error') AS error_count,
-          COUNT(*) FILTER (WHERE status = 'empty') AS empty_count,
+          -- 2026-09-06: 生产者 ingest_holders_raw 从不写 status='empty' —— 供应商
+          -- 返回 0 行时它写的是 status='ok', n_rows=0。按 'empty' 数出来的永远是 0,
+          -- 判据问的是"有没有 empty 状态", 想守的是"有没有股票一行没取到"。改按事实
+          -- (n_rows=0) 数, 不按上游的状态词汇数。
+          COUNT(*) FILTER (WHERE COALESCE(n_rows, 0) = 0) AS empty_count,
           COUNT(*) FILTER (WHERE COALESCE(truncated, FALSE)) AS truncated_count,
           COUNT(*) AS total_count
         FROM {RAW_FETCH_TABLE}
@@ -254,6 +257,14 @@ def check_fetch_completeness(conn) -> dict[str, Any]:
     ).fetchone()
     ok_count, error_count, empty_count, truncated_count, total_count = counts
 
+    empty_rows = conn.execute(
+        f"""
+        SELECT stock_code, fetch_id, status
+        FROM {RAW_FETCH_TABLE}
+        WHERE COALESCE(n_rows, 0) = 0
+        ORDER BY stock_code
+        """
+    ).fetchall()
     error_rows = conn.execute(
         f"""
         SELECT stock_code, fetch_id, error
@@ -264,7 +275,9 @@ def check_fetch_completeness(conn) -> dict[str, Any]:
     ).fetchall()
     truncated_rows = conn.execute(
         f"""
-        SELECT stock_code, fetch_id, page_count, row_count
+        -- 2026-09-06: 生产者 ingest_holders_raw 写的是 n_rows, 且不记 page_count
+        -- (它调 fetch_pages_for_filters 只留 truncated 信号)。列名以生产者为准。
+        SELECT stock_code, fetch_id, NULL AS page_count, n_rows AS row_count
         FROM {RAW_FETCH_TABLE}
         WHERE COALESCE(truncated, FALSE)
         ORDER BY stock_code
@@ -276,6 +289,9 @@ def check_fetch_completeness(conn) -> dict[str, Any]:
         "ok_count": ok_count,
         "error_count": error_count,
         "empty_count": empty_count,
+        "empty_stocks": [
+            {"stock_code": r[0], "fetch_id": r[1], "status": r[2]} for r in empty_rows
+        ],
         "truncated_count": truncated_count,
         "error_stocks": [
             {"stock_code": r[0], "fetch_id": r[1], "error": r[2]} for r in error_rows
@@ -367,10 +383,14 @@ def check_derivation_rules(conn) -> dict[str, Any]:
     ).fetchone()
 
     rules = {
+        # 2026-09-06: unparseable 是"测不出"不是"违反规则", 并进 violations 会把
+        # 未知伪装成违例 (CLAUDE.md 红线 3: 缺失只能传播为缺失)。两者分开报,
+        # 硬门只卡 violations, unknown 单独可见不被吞。
         "is_report_matches_season_end": {
             "unparseable_end_date": season_end[0],
             "mismatch": season_end[1],
-            "violations": season_end[0] + season_end[1],
+            "violations": season_end[1],
+            "unknown": season_end[0],
         },
         "is_holdorg_matches_holder_code_present": {
             "violations": holdorg_violations,
@@ -385,11 +405,17 @@ def check_derivation_rules(conn) -> dict[str, Any]:
         "notice_date_not_after_update_date": {
             "unparseable": notice_vs_update[0],
             "violation": notice_vs_update[1],
-            "violations": notice_vs_update[0] + notice_vs_update[1],
+            "violations": notice_vs_update[1],
+            "unknown": notice_vs_update[0],
         },
     }
     total_violations = sum(r["violations"] for r in rules.values())
-    observed = {"total_violations": total_violations, "rules": rules}
+    total_unknown = sum(r.get("unknown", 0) for r in rules.values())
+    observed = {
+        "total_violations": total_violations,
+        "total_unknown": total_unknown,
+        "rules": rules,
+    }
     expected = {"total_violations": 0}
     status = "FAIL" if total_violations > 0 else "PASS"
     return _result("derivation_rules_zero_exception", status, observed, expected)
@@ -412,7 +438,30 @@ def check_raw_covers_canonical(conn) -> dict[str, Any]:
     HOLDER_RANK 缺失的 raw 行被跳过而不是像 ``_clean`` 那样退化用 idx 兜底
     (idx 依赖同一次 fetch 内的完整顺序, 内容键比对场景下没有意义) —— 跳过的
     行数在 observed 里报出来, 不吞掉。
+
+    **比对范围收在 staging 实际取到的股票上**: canonical 覆盖 5,448 只 (含已退市
+    /已退出 active universe 的历史成分), 而一次 fetch 的清单来自现查 active
+    universe, 两者本就不等。不收范围的话, 判据问的是"全市场都取到了吗", 而它
+    想守的是"取到的这些和 canonical 对得上吗" —— 前者会让任何部分取数 (含
+    --limit 试跑) 永远 FAIL, 且把"没取那只股"和"取了但对不上"混成同一个数。
+    范围外的 canonical 股票另行报 ``canonical_stocks_out_of_fetch_scope``,
+    是信息不是失败。
     """
+
+    fetched_stocks = {
+        r[0]
+        for r in conn.execute(
+            f"SELECT DISTINCT stock_code FROM {RAW_FETCH_TABLE} WHERE status = 'ok'"
+        ).fetchall()
+        if r[0] is not None
+    }
+    if not fetched_stocks:
+        return _result(
+            "raw_covers_canonical_content_keys",
+            "FAIL",
+            {"reason": "staging 没有任何 status='ok' 的 fetch 记录"},
+            {"fetched_stock_count": ">0"},
+        )
 
     canon_rows = conn.execute(
         f"""
@@ -421,7 +470,11 @@ def check_raw_covers_canonical(conn) -> dict[str, Any]:
         WHERE NOT is_exit_row
         """
     ).fetchall()
-    canon_keys = {(r[0], r[1], r[2], r[3], r[4]) for r in canon_rows}
+    canon_all_stocks = {r[0] for r in canon_rows}
+    out_of_scope = sorted(canon_all_stocks - fetched_stocks)
+    canon_keys = {
+        (r[0], r[1], r[2], r[3], r[4]) for r in canon_rows if r[0] in fetched_stocks
+    }
 
     raw_proj = conn.execute(
         f"""
@@ -444,7 +497,11 @@ def check_raw_covers_canonical(conn) -> dict[str, Any]:
     missing = sorted(canon_keys - raw_keys)
     missing_stocks = sorted({k[0] for k in missing})
     observed = {
-        "canonical_listed_content_keys": len(canon_keys),
+        "fetched_stock_count": len(fetched_stocks),
+        "canonical_stock_count": len(canon_all_stocks),
+        "canonical_stocks_out_of_fetch_scope": len(out_of_scope),
+        "canonical_stocks_out_of_fetch_scope_sample": out_of_scope[:50],
+        "canonical_listed_content_keys_in_scope": len(canon_keys),
         "raw_content_keys": len(raw_keys),
         "raw_rows_skipped_missing_key_field": skipped_unusable,
         "missing_count": len(missing),
