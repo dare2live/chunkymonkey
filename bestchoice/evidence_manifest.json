@@ -13,13 +13,21 @@
       "sha256": "c8ca8b53d47672c20884137325e5a052cf51ba9babe96f0024417e3e48fc6f54",
       "rows": 26005,
       "columns": 70,
-      "unique_key": ["stock_code", "formula_id"]
+      "unique_key": [
+        "stock_code",
+        "formula_id"
+      ],
+      "local_only": true
     },
     "analysis/stock_formula_best.csv": {
       "sha256": "333531c602d93d3ca1498425c7df17258ff9bcf61ddfbb21eeba5171bf02d3e8",
       "rows": 21302,
       "columns": 14,
-      "unique_key": ["stock_code", "formula_id"]
+      "unique_key": [
+        "stock_code",
+        "formula_id"
+      ],
+      "local_only": true
     }
   },
   "formula_ids": [

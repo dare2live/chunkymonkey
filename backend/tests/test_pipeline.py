@@ -1488,11 +1488,22 @@ def test_acquire_runs_registry_drain_before_formal_and_despite_formal_hard(
         acquire, "_sync_holders_aif10", lambda _c: order.append("holders")
     )
     monkeypatch.setattr(acquire, "_sync_qfii", lambda: order.append("qfii"))
-    monkeypatch.setattr(acquire, "_sync_org_holding", lambda: order.append("org"))
+    # acquire.py:83 是 `ctx.step(lambda: _sync_org_holding(ctx), ...)` —— 带 ctx 调。
+    # 桩少一个参数会抛 TypeError, 而 ctx.step 的降级路径把它吞成 DEGRADED,
+    # 于是**测试照绿而桩是死的**。2026-09-06 在全新克隆里才暴露 (本地 data/ 齐全时看不见)。
+    monkeypatch.setattr(acquire, "_sync_org_holding", lambda _c: order.append("org"))
     monkeypatch.setattr(
         acquire,
         "_sync_registry_drain",
         lambda _c: order.append("drain"),
+    )
+    # 本条测的是**步骤顺序**, 不是 margin 追赶。同文件另两条测试(见下方)都打了这个桩,
+    # 只有这条漏了 —— 于是它在 data/reference.duckdb 存在的机器上碰巧绿, 在全新克隆(CI)里红。
+    monkeypatch.setattr(
+        "services.pipeline.margin_catchup_acquire.run_margin_bounded_catchup", lambda _c: []
+    )
+    monkeypatch.setattr(
+        "services.pipeline.frozen_domain_observe.observe_frozen_on_demand_domains", lambda _c: []
     )
 
     def _formal(ctx):
@@ -1516,6 +1527,9 @@ def test_acquire_runs_registry_drain_before_formal_and_despite_formal_hard(
     assert order.index("drain") < order.index("formal"), order
     assert "drain" in order and "formal" in order
     assert "calendar" in order
+    # 桩必须承重: 不断言它就等于没打桩 —— 上面那个 0 参数的死桩正是这么藏了下来。
+    assert "org" in order, "org_holding 桩没被调到 (多半是签名不匹配被降级吞了)"
+    assert "holders" in order and "qfii" in order
     # Structural: formal hard → degraded, not Tier0AcquireError abort.
     assert any("formal daily" in msg for msg in ctx.degraded_msgs)
 

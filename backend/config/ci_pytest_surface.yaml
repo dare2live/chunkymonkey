@@ -34,6 +34,7 @@ blocking_paths:
 - tests/scripts/test_exemption_integrity.py
 - tests/scripts/test_governance_gates.py
 - tests/scripts/test_godfile_baseline.py
+- tests/services/test_frozen_evidence_local_only.py
 - tests/services/casebook/test_outcome.py
 - tests/services/casebook/test_pair_stats.py
 - tests/services/casebook/test_signals.py

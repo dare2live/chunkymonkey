@@ -41,7 +41,8 @@ def test_run_acquire_wires_active_stock_refresh_step(monkeypatch):
     calls = []
     monkeypatch.setattr(acquire, "_sync_holders_aif10", lambda ctx: calls.append("holders_aif10"))
     monkeypatch.setattr(acquire, "_sync_qfii", lambda: calls.append("qfii"))
-    monkeypatch.setattr(acquire, "_sync_org_holding", lambda: calls.append("org_holding"))
+    # 带 ctx 调 (acquire.py:83); 少参数会被 ctx.step 降级吞掉, 桩静默失效
+    monkeypatch.setattr(acquire, "_sync_org_holding", lambda _c: calls.append("org_holding"))
     monkeypatch.setattr(acquire, "_sync_registry_drain", lambda ctx: calls.append("drain"))
     monkeypatch.setattr(
         acquire,
