@@ -157,7 +157,7 @@ domains:
 
   moneyflow_hsgt:
     decision: retire
-    evidence: "本域是全市场每日一行的聚合流量 (north_money/south_money/hgt/sgt), **与已停更的个股北向持股 hk_hold 是两码事**, 未受其影响。零消费: 唯一读取者 northbound_market_flow.py::latest_northbound_market_flow() 全仓库**零调用方**, 是死代码; legacy_raw_plane 标 sync_orphan 且在 publication_watchlist (承认'以后可能有用但现在没人用')。在库 2,776 行 20141117-20260828 连续。四源均无市场级聚合流量等价物 (妙想只有个股持股明细 RPT_MUTUAL_STOCK_HOLDRANKN_NEW, 不同产品; ifind MCP 实测两次均返空)。"
+    evidence: "本域是全市场每日一行的聚合流量 (north_money/south_money/hgt/sgt), **与已停更的个股北向持股 hk_hold 是两码事**, 未受其影响。零消费: 唯一读取者 northbound_market_flow.py::latest_northbound_market_flow() 全仓库**零调用方**, 是死代码; legacy_raw_plane 标 sync_orphan 且在 publication_watchlist (承认'以后可能有用但现在没人用')。在库 2,776 行 20141117-20260828 连续。**「四源均无市场级聚合流量等价物」这句 2026-09-06 实测推翻**: 原结论只试了妙想/ifind/其余两源, 没试 akshare。实测 `akshare.stock_hsgt_hist_em(symbol='北向资金')` 返 2,776 行(与本域在库行数一致) × 13 列, 起点同为 20141117, 含 当日成交净买额/买入成交额/卖出成交额/历史累计净买额/当日资金流入/持股市值/领涨股 —— 覆盖本域全部四个字段且更宽; `stock_hsgt_fund_flow_summary_em` 另给当日沪股通/深股通/港股通分板块净额(实测最新 20260904)。走的是东财出口, 与妙想同厂商, 不构成跨体系冒充。故本域**有替代源, 只是当时没试到**; decision 维持 retire 的理由改为「零消费」一条, 不再是「无替代」。若日后北向研究页要用日频面, 从 akshare→东财接入即可。附: 个股级每日北向持股确已消失(实测 `stock_hsgt_hold_stock_em` 直接抛错; 妙想 RPT_MUTUAL_STOCK_HOLDRANKN_NEW 虽在 registry 标 frequency=daily, 实测只返 4 个季度末 20250930/20251231/20260331/20260630, DATE_TYPE 写「2026二季度」), 这与港交所 2024-08 改季度披露一致, **不是换源能解决的**。"
 
   moneyflow_ind_dc:
     decision: freeze
