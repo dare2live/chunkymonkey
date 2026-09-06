@@ -49,22 +49,22 @@
 #
 godfiles:
   # ── 祖传三个 (2026-08-14 时的全部, 即上界 3 那次"达成"所指) ──
-  - path: backend/services/data_sources/sync_runner.py       # 4630 行
+  - path: backend/services/data_sources/sync_runner.py       # 3712 代码行 / 4630 总行
     disposition: split_deferred
     risk: "正是 daily/adj_factor 切 tdxhub 的活体迁移路径, 六周 +528 行全是这条工期。唯一真缝是
       disclosure CLI 簇(对文件内部符号出边=0), 但搬完仍 ~4250 行, 到不了 800。排到 09-10 切换之后。
       2026-09-04 已先删掉零引用的 renamed-dead 兼容壳 _require_authorized_single_trade_date (27 行)。"
     real_issue: "sync_registry.yaml:3 宣称「零域专属代码」, 实测文件内 22 处 hardcode 域名分支、
       域专属簇约 1360 行 —— 真问题是域归属没搬进 registry, 不是行数。"
-  - path: backend/services/market_pulse.py                   # 1597 行
+  - path: backend/services/market_pulse.py                   #  848 代码行 / 1597 总行
     disposition: keep
     risk: "无。不动代码。"
-  - path: backend/scripts/check_continuity_integrity.py      # 1527 行
+  - path: backend/scripts/check_continuity_integrity.py      # 1063 代码行 / 1527 总行
     disposition: keep
     risk: "无。不动代码。"
 
   # ── 2026-08 中下旬新越线的七个 ──
-  - path: backend/services/org_holding_aif10.py              # 1519 行 (08-14 还是 797)
+  - path: backend/services/org_holding_aif10.py              # 1145 代码行 / 1519 总行 (08-14 总行还是 797)
     disposition: split_deferred
     risk: "按提议原样拆会让 raw_org_holding_aif10 从一个 writer 变成两个(母体 INSERT + 新模块 UPDATE),
       撞 CLAUDE.md 硬约束 6, 且**全仓没有 single-writer 断言会拦它**(已 grep claims.yaml 与
