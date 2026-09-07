@@ -37,18 +37,42 @@ DATASET_ID = "tier0.disclosure.top10_float_holders_period"
 LANDING_TABLE = "landing_miaoxiang_holders_top10"
 CANONICAL_TABLE = "canonical_top10_float_holders_period"
 SCHEMA_ID = "tier0.disclosure.top10_float_holders_period.canonical"
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 WRITER_ID = "services.data_sources.holders_top10_acceptance"
-CONTRACT_VERSION = "4"
+CONTRACT_VERSION = "5"
 SOURCE = "miaoxiang"
 API = "RPT_F10_EH_FREEHOLDERS"
 # Retired 2026-07-26 — table DROPped; land-from-legacy / mirror refuse.
 COMPATIBILITY_RETIRED = True
 COMPATIBILITY_TABLE = "fact_top10_holder_period"  # sentinel name only; do not SQL
 PARTITION_FIELD = "notice_date"
+# 2026-09-08: notice_date 进 GRAIN —— 一行 = (什么, 何时可知)。
+#
+# 为什么必须进: notice_date 既是 PARTITION_FIELD(:48) 又被排除在身份之外, 而它取自供应商
+# **可变**的 UPDATE_DATE (holders_aif10.py:178,213)。分区替换 (acceptance.py 的 delete_scope)
+# 只在「粒度 → 分区是函数」时成立; 供应商一改 UPDATE_DATE, 同一粒度就搬了分区,
+# 分区内删除够不到旧行, 主键撞车 —— 而日更是**整日批**, 一只股撞车 = 整天 ConstraintException
+# 事务回滚、批次留 LANDED、错误只进 errors 列表、进程照常 exit 0。
+#
+# 实测后果 (备份 pre_holders_backfill_20260907, 回填前状态):
+#   20260818 批次 landing 1,460 行 → canonical 只有 615 行 / **50 只股**(应 146), 持续 17 天
+#   20260828 批次 landing 7,356 行 → canonical **0 行 / 0 只股**(半年报高峰 516 只), 持续 10 天
+#   两个批次 rejection_code 都是 None —— 连拒批码都没有, 静静躺在 LANDED。
+#   更糟: _canonical_has_notice_partition 是 LIMIT 1 存在性检查, 0818 那种半成品日**永不重试**。
+# 发生率 0.13%(Jul-Sep 日更经手 3,774 个 A 股粒度里 5 个被改期), 每财报季约 3-6 个整天。
+#
+# 为什么不是「跨分区删旧行」: 旧行是**当时可知**不是记错 —— 供应商是 SCD-1(只留最新态,
+# 实测 staging 144,397 个粒度里 0 个有两个 UPDATE_DATE), 我们的 landing 是全世界唯一一份
+# 「0703 那天那个榜单长什么样」的记录。删掉 = 历史消失(红线 1)。所以让两版都能存。
+#
+# **读方取版规则**: notice_date 是版本轴, 读方取 `notice_date <= t` 的最新版。
+# 已按此实现且无需改动: state_sensors.py(MAX) / publish_holder_identity.py(ROW_NUMBER DESC) /
+# data_access.yaml 的 asof_col: notice_date。org_holding_announcement.py 用 MIN = 首版语义, 也对。
+# 姊妹域 stk_holdertrade 早就把 ann_date 放进了 GRAIN, 无此病。
 GRAIN = (
     "stock_code",
     "report_date",
+    "notice_date",
     "holder_set",
     "holder_rank",
     "row_seq",

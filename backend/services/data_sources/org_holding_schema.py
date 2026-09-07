@@ -17,15 +17,22 @@ DATASET_ID = "tier0.disclosure.org_holding_detail_period"
 LANDING_TABLE = "landing_miaoxiang_org_holding"
 CANONICAL_TABLE = "canonical_org_holding_detail_period"
 SCHEMA_ID = "tier0.disclosure.org_holding_detail_period.canonical"
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 WRITER_ID = "services.data_sources.org_holding_acceptance"
-CONTRACT_VERSION = "2"
+CONTRACT_VERSION = "3"
 SOURCE = "miaoxiang"
 API = "RPT_MAIN_ORGHOLDDETAIL"
 COMPATIBILITY_TABLE = "raw_org_holding_aif10"
 PARTITION_FIELD = "available_date"
+# 2026-09-08: available_date 进 GRAIN。与 holders_top10 同病(分区键不在身份里),
+# 只是本域 live 还没有 canonical 表所以一直潜伏 —— 现在改零成本, 等有了表再改要付迁移费。
+# 病理见 holders_top10_schema.GRAIN 头注: 分区替换只在「粒度 → 分区是函数」时成立;
+# 供应商一改可用日, 同一粒度就搬了分区, 分区内 DELETE 够不到旧行, 主键撞车,
+# 而日更是整日批 —— 一条撞车 = 整天回滚且静默 (holders 那边实测已丢过两整天)。
+# 姊妹域 stk_holdertrade 早就把 ann_date 放进了 GRAIN, 是三者里唯一没病的。
 GRAIN = (
     "report_date",
+    "available_date",
     "stock_code",
     "holder_code",
     "fund_derivecode",

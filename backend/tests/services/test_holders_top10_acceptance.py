@@ -576,3 +576,90 @@ def test_natural_person_without_holder_code_is_accepted(conn) -> None:
         "WHERE holder_name = '张三'"
     ).fetchone()
     assert tuple(stored) == (None, False), stored
+
+
+# ── 同粒度多版本共存 (2026-09-08, notice_date 进 GRAIN) ──────────────────────
+
+
+def test_ensure_schema_refuses_pk_that_is_not_grain(conn) -> None:
+    """漂移检查必须比主键, 不只比列集合。
+
+    2026-09-08: 此前它只问「列对不对」。GRAIN 变了而列一列没变, 于是生产表带着旧 6 列 PK
+    检查照样全绿, 直到某天两版同粒度撞车才炸 —— 「门问的问题 ≠ 它想守的东西」。
+    """
+    from services.data_sources.holders_top10_acceptance import (
+        ensure_holders_top10_acceptance_schema,
+    )
+    from services.data_sources.holders_top10_schema import SCHEMA_CONTRACT
+
+    ensure_holders_top10_acceptance_schema(conn)
+    conn.execute(f"DROP TABLE {CANONICAL_TABLE}")
+    # 手建一张列相同、但主键是旧 6 列(缺 notice_date)的表
+    old_pk = [c for c in SCHEMA_CONTRACT["primary_key"] if c != "notice_date"]
+    cols = ",\n".join(
+        f"{f['name']} {f['duckdb_type']}" for f in SCHEMA_CONTRACT["fields"]
+    )
+    conn.execute(
+        f"CREATE TABLE {CANONICAL_TABLE} ({cols}, PRIMARY KEY ({', '.join(old_pk)}))"
+    )
+    with pytest.raises(HoldersTop10AcceptanceError, match="primary key drift"):
+        ensure_holders_top10_acceptance_schema(conn)
+
+
+def test_same_grain_republished_on_later_notice_date_coexists(conn) -> None:
+    """供应商把同一报告期改挂到新公告日时, 两版必须能共存。
+
+    这是 2026-09-08 之前 5 只股 Duplicate key、以及日更两次整天丢失的直接原因:
+    notice_date 是分区键却不在 GRAIN 里, 于是 (股, 报告期) 全表只能存在于一个分区,
+    新分区写入时撞上旧分区那行, 而分区内 DELETE 够不到它。
+
+    旧版**不删** —— 它是「当时可知」不是「记错」: 供应商是 SCD-1(只留最新态),
+    我们的 landing 是唯一一份「那天那个榜单长什么样」的记录, 删掉 = 历史消失(红线 1)。
+    """
+    contract = load_holders_top10_contract()
+    handed = propagate_disclosure_execution_contract("holders_top10", contract)
+
+    def land_accept(partition, notice, suffix, observed=OBSERVED):
+        batch = HoldersTop10LandingBatch(
+            batch_id=f"holders_top10:{partition}:{suffix}",
+            partition_value=partition,
+            observed_at=observed,
+            available_at=observed,
+            rows=[_row(notice_date=notice)],
+            request={"api": "RPT_F10_EH_FREEHOLDERS", "notice_date": partition},
+        )
+        land_holders_top10_batch(conn, batch, handed, handoff=handed)
+        return accept_holders_top10_batch(conn, batch.batch_id, handed, handoff=handed)
+
+    first = land_accept(PARTITION, PARTITION, "v1")
+    assert first.status == "ACCEPTED", first.rejection_code
+
+    # 同一 (股, 报告期, rank), 供应商改挂到更晚的公告日
+    later = "20260618"
+    # 每个分区有自己的 notice cutoff, available_at 早于它会被判 FORGED_AVAILABLE_AT ——
+    # 那道闸是对的(不许伪造"我在公告前就知道了"), 所以新版要用它自己那天的时点。
+    later_observed = datetime(2026, 6, 18, 18, 0, tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(
+        timezone.utc
+    )
+    second = land_accept(later, later, "v2", observed=later_observed)
+    assert second.status == "ACCEPTED", second.rejection_code
+
+    n = conn.execute(
+        f"SELECT COUNT(*) FROM {CANONICAL_TABLE} "
+        "WHERE stock_code = '600519' AND report_date = '20260331'"
+    ).fetchone()[0]
+    assert n == 2, f"两版没共存, 只有 {n} 行"
+
+    # 旧版还在, 且它自己的分区指针没被后来那版改掉
+    old_ptr = conn.execute(
+        f"SELECT row_count FROM {ACCEPTED_TABLE} "
+        "WHERE dataset_id = ? AND partition_value = ?",
+        [DATASET_ID, PARTITION],
+    ).fetchone()
+    assert tuple(old_ptr) == (1,), old_ptr
+    new_ptr = conn.execute(
+        f"SELECT row_count FROM {ACCEPTED_TABLE} "
+        "WHERE dataset_id = ? AND partition_value = ?",
+        [DATASET_ID, later],
+    ).fetchone()
+    assert tuple(new_ptr) == (1,), new_ptr

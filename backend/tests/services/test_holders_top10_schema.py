@@ -280,7 +280,43 @@ def test_identity_columns_are_on_canonical_with_measured_null_semantics() -> Non
 
 def test_identity_promotion_bumped_both_versions() -> None:
     """改 canonical 形状必须同时抬 schema 与 contract 版本, 否则下游分不清两份数据。"""
-    assert schema.SCHEMA_VERSION == "3"
-    assert schema.CONTRACT_VERSION == "4"
+    assert schema.SCHEMA_VERSION == "4"
+    assert schema.CONTRACT_VERSION == "5"
 
 
+
+
+# ── 分区键必须在身份里 (2026-09-08) ─────────────────────────────────────────
+#
+# 根因形态: 分区替换 (accept 的 delete_scope) 只在「粒度 → 分区是函数」时成立。
+# 分区键若不在 GRAIN 里, 供应商一改它, 同一粒度就搬了分区, 分区内 DELETE 够不到旧行,
+# 主键撞车 —— 而日更是**整日批**, 一条撞车 = 整天 ConstraintException 事务回滚,
+# 批次留 LANDED, 错误只进 errors 列表, 进程照常 exit 0。
+#
+# 实测代价 (备份 pre_holders_backfill_20260907):
+#   20260818 landing 1,460 行 -> canonical 615 行 / 50 只股(应 146), 17 天
+#   20260828 landing 7,356 行 -> canonical **0 行**(半年报高峰 516 只), 10 天
+#   两个批次 rejection_code 都是 None。发生率 0.13%, 每财报季约 3-6 个整天。
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    [
+        "services.data_sources.holders_top10_schema",
+        "services.data_sources.org_holding_schema",
+        "services.data_sources.stk_holdertrade_schema",
+    ],
+)
+def test_partition_field_is_in_grain(module_name: str) -> None:
+    """三张 disclosure schema 的 PARTITION_FIELD 都必须在 GRAIN 里。
+
+    2026-09-08 之前: holders_top10 与 org_holding 红, stk_holdertrade 绿
+    (它早就把 ann_date 放进了 GRAIN, 是唯一没病的那个)。
+    """
+    import importlib
+
+    mod = importlib.import_module(module_name)
+    assert mod.PARTITION_FIELD in mod.GRAIN, (
+        f"{module_name}: PARTITION_FIELD={mod.PARTITION_FIELD!r} 不在 GRAIN={mod.GRAIN!r} 里 —— "
+        "供应商改这个字段时同一粒度会搬分区, 分区内 DELETE 够不到旧行, 整批撞车"
+    )

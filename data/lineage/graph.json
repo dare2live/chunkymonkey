@@ -2761,6 +2761,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/migrate_holders_top10_pk.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/publish_holder_identity.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
@@ -9193,9 +9199,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1487,
-    "generated_at": "2026-09-07T23:07:26.158181+00:00",
-    "node_count": 525,
+    "edge_count": 1488,
+    "generated_at": "2026-09-07T23:37:48.479337+00:00",
+    "node_count": 526,
     "version": 2
   },
   "nodes": [
@@ -9693,6 +9699,14 @@
         "path": "backend/scripts/freeze_disclosure_dataset_snapshot.py"
       },
       "id": "consumer:backend/scripts/freeze_disclosure_dataset_snapshot.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
+        "path": "backend/scripts/migrate_holders_top10_pk.py"
+      },
+      "id": "consumer:backend/scripts/migrate_holders_top10_pk.py",
       "kind": "consumer"
     },
     {

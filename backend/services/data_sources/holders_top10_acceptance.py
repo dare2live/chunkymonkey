@@ -216,6 +216,23 @@ def ensure_holders_top10_acceptance_schema(conn) -> None:
                 f"missing={sorted(expected_canonical - canonical_cols)} "
                 f"extra={sorted(canonical_cols - expected_canonical)}"
             )
+        # 2026-09-08: 主键也要比, 不只比列集合。
+        # 此前这道漂移检查只问「列对不对」, 而 GRAIN 变了列一列没变 ——
+        # 生产表带着旧 6 列 PK, 检查照样全绿, 直到某天两版同粒度撞车才炸。
+        # 这是「门问的问题 ≠ 它想守的东西」的又一例: 它想守的是「表结构与契约一致」,
+        # 实际只问了一半。加了 notice_date 进 GRAIN 之后这半边必须补上。
+        pk_rows = conn.execute(
+            "SELECT constraint_text FROM duckdb_constraints() "
+            "WHERE table_name = ? AND constraint_type = 'PRIMARY KEY'",
+            [CANONICAL_TABLE],
+        ).fetchall()
+        expected_pk = f"PRIMARY KEY({', '.join(SCHEMA_CONTRACT['primary_key'])})"
+        actual_pk = str(pk_rows[0][0]).strip() if pk_rows else "(none)"
+        if actual_pk.replace(" ", "") != expected_pk.replace(" ", ""):
+            raise HoldersTop10AcceptanceError(
+                f"{CANONICAL_TABLE} primary key drift: actual={actual_pk!r} "
+                f"expected={expected_pk!r}; run backend/scripts/migrate_holders_top10_pk.py"
+            )
         conn.execute("COMMIT")
     except Exception as primary_error:
         try:
@@ -546,8 +563,19 @@ def _reject(
     )
 
 
+# content_hash 的字段表。两个算 hash 的地方 (_canonical_content_hash 按内存批次算、
+# _partition_pointer_stats 按库内分区算) **必须用同一份**, 否则两边的 hash 不可比,
+# 而它们本来就是要互相对账的。2026-09-08 提成常量: 此前两处各抄一份, 我改 GRAIN 时
+# 只改到一处就会让「批次 hash」与「分区 hash」永久不等且没有任何东西会红。
+# notice_date 进 GRAIN 后不再重复列 —— dict 本来就按键去重, 所以 payload 与 hash 不变,
+# 去掉只是别让 SELECT 里挂一个重复列。
+_HASH_FIELDS: tuple[str, ...] = tuple(GRAIN) + tuple(
+    f for f in ("holder_name", "hold_ratio_float", "notice_date") if f not in GRAIN
+)
+
+
 def _canonical_content_hash(rows: Sequence[Mapping[str, Any]]) -> str:
-    fields = list(GRAIN) + ["holder_name", "hold_ratio_float", "notice_date"]
+    fields = list(_HASH_FIELDS)
     payload = [
         {name: row[name] for name in fields}
         for row in sorted(
@@ -566,7 +594,7 @@ def _partition_pointer_stats(conn, partition: str) -> tuple[int, str]:
     会被多只股票各自的批次分别写入, 指针若只描述最后一批, 就与 canonical 里的实际内容
     对不上。照 ``disclosure_event_partition.partition_accepted_pointer_stats`` 的形态。
     """
-    fields = list(GRAIN) + ["holder_name", "hold_ratio_float", "notice_date"]
+    fields = list(_HASH_FIELDS)
     order = ", ".join(GRAIN)
     rows = conn.execute(
         f"SELECT {', '.join(fields)} FROM {CANONICAL_TABLE} "

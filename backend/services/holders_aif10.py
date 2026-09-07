@@ -442,7 +442,13 @@ def _dedupe_notice_rows_by_grain(rows: list[dict]) -> tuple[list[dict], int]:
     """
     from services.data_sources.holders_top10_schema import GRAIN, assign_unique_holders_row_seq
 
-    expected = {"stock_code", "report_date", "holder_set", "holder_rank", "is_exit_row"}
+    # 2026-09-08: GRAIN 加了 notice_date(版本轴), 这里同步。**行为不变** ——
+    # 本函数只跑在 by_notice_date 的单日批次上 (fetch_holders_top10_by_notice_date 里
+    # `same_day` 已按 partition 过滤), notice_date 在批内恒定, 加进键不改变任何分组。
+    # 但键必须忠于 GRAIN, 这正是下面那道漂移守卫存在的意义 —— 它今天抓到了我改 GRAIN
+    # 却没回头看这里 (fable 的方案表里也漏了这一处)。
+    expected = {"stock_code", "report_date", "notice_date", "holder_set", "holder_rank",
+                "is_exit_row"}
     if frozenset(GRAIN) - {"row_seq"} != expected:
         # GRAIN 定义漂移: fail-closed 而不是悄悄按旧假设去重 (CLAUDE.md §11)。
         raise RuntimeError(f"holders_top10_schema.GRAIN drifted from {sorted(expected)!r}; "
@@ -452,6 +458,7 @@ def _dedupe_notice_rows_by_grain(rows: list[dict]) -> tuple[list[dict], int]:
     order: list[tuple] = []
     for row in rows:
         key = (str(row.get("stock_code") or ""), str(row.get("report_date") or ""),
+               str(row.get("notice_date") or ""),
                str(row.get("holder_set") or ""), int(row.get("holder_rank") or 0),
                bool(row.get("is_exit_row")), str(row.get("holder_name") or ""))
         if key not in groups:
