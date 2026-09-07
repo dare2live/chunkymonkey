@@ -10,13 +10,15 @@ from services.org_holding_truncation_audit import list_truncated_org_periods
 def test_list_truncated_flags_page_cap_signature(monkeypatch):
     con = duckdb.connect(":memory:")
     ensure_tables(con)
-    for i in range(200_000):
-        con.execute(
-            "INSERT INTO raw_org_holding_aif10 "
-            "(report_date, stock_code, holder_code, fund_derivecode) "
-            "VALUES ('2025-12-31', ?, ?, '')",
-            [f"{i % 500:06d}", f"H{i}"],
-        )
+    # 2026-09-07: 原为 Python 逐行 INSERT 200,000 次 (本文件 47.9s)。数据逐字等价 ——
+    # range(N) 给 0..N-1, printf('%06d', i % 500) 等价于 f"{i % 500:06d}"。
+    # 慢的是插入方式, 不是这个测试该被删掉。
+    con.execute(
+        "INSERT INTO raw_org_holding_aif10 "
+        "(report_date, stock_code, holder_code, fund_derivecode) "
+        "SELECT '2025-12-31', printf('%06d', i % 500), 'H' || i::VARCHAR, '' "
+        "FROM range(200000) t(i)"
+    )
     monkeypatch.setattr(
         "services.org_holding_population.max_accepted_stocks_across_partitions",
         lambda _c: 5520,
@@ -35,13 +37,12 @@ def test_list_truncated_skips_under_modern_baseline_only(monkeypatch):
     """Honest thin historical land (no page-cap) must not enter repair queue."""
     con = duckdb.connect(":memory:")
     ensure_tables(con)
-    for i in range(1000):
-        con.execute(
-            "INSERT INTO raw_org_holding_aif10 "
-            "(report_date, stock_code, holder_code, fund_derivecode) "
-            "VALUES ('2019-03-31', ?, ?, '')",
-            [f"{i % 400:06d}", f"H{i}"],
-        )
+    con.execute(
+        "INSERT INTO raw_org_holding_aif10 "
+        "(report_date, stock_code, holder_code, fund_derivecode) "
+        "SELECT '2019-03-31', printf('%06d', i % 400), 'H' || i::VARCHAR, '' "
+        "FROM range(1000) t(i)"
+    )
     monkeypatch.setattr(
         "services.org_holding_population.max_accepted_stocks_across_partitions",
         lambda _c: 5562,

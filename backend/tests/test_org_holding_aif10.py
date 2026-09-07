@@ -334,13 +334,11 @@ def test_org_holding_period_gap_under_populated_canary(monkeypatch):
             "('2026-03-31', '20260430', ?, 'H1', '')",
             [code],
         )
-    for i in range(1200):
-        con.execute(
-            "INSERT INTO raw_org_holding_aif10 "
-            "(report_date, stock_code, holder_code, fund_derivecode) "
-            "VALUES ('2026-03-31', ?, 'H1', '')",
-            [f"{i:06d}"],
-        )
+    con.execute(
+        "INSERT INTO raw_org_holding_aif10 "
+        "(report_date, stock_code, holder_code, fund_derivecode) "
+        "SELECT '2026-03-31', printf('%06d', i), 'H1', '' FROM range(1200) t(i)"
+    )
     monkeypatch.setattr(m, "latest_plannable_report_date", lambda today=None: "2026-03-31")
     monkeypatch.setattr(m, "accepted_has_org_holding_partition", lambda *_a, **_k: True)
     gap = m.org_holding_period_gap_report(
@@ -510,13 +508,13 @@ def test_org_gap_provider_truncated_signature(monkeypatch):
 
     con = duckdb.connect(":memory:")
     m.ensure_tables(con)
-    for i in range(200_000):
-        con.execute(
-            "INSERT INTO raw_org_holding_aif10 "
-            "(report_date, stock_code, holder_code, fund_derivecode) "
-            "VALUES ('2025-12-31', ?, ?, '')",
-            [f"{i % 800:06d}", f"H{i}"],
-        )
+    # 2026-09-07: 原为 Python 逐行 INSERT 200,000 次 (本文件 52.0s)。数据逐字等价。
+    con.execute(
+        "INSERT INTO raw_org_holding_aif10 "
+        "(report_date, stock_code, holder_code, fund_derivecode) "
+        "SELECT '2025-12-31', printf('%06d', i % 800), 'H' || i::VARCHAR, '' "
+        "FROM range(200000) t(i)"
+    )
     monkeypatch.setattr(
         "services.org_holding_population.max_accepted_stocks_across_partitions",
         lambda _c: 5520,
