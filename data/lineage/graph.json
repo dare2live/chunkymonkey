@@ -973,6 +973,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/adjust_factor.yaml",
+      "kind": "consume",
+      "src": "table:market.price_kline_qfq_tushare"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/brick_registry.yaml",
       "kind": "consume",
       "src": "table:market.price_kline_qfq_tushare"
@@ -5617,6 +5623,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/adjust_factor.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_adj_factor"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/brick_registry.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_adj_factor"
@@ -5653,6 +5665,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/adjust_factor.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_adj_factor"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/fuyao_kline_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_adj_factor"
@@ -5666,6 +5684,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_build_price_kline_qfq_tushare.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_adj_factor"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_adjust_factor.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_adj_factor"
     },
@@ -5794,6 +5818,12 @@
       "dst": "consumer:backend/tests/services/test_cyq_recon.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_cyq_perf"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/adjust_factor.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_daily"
     },
     {
       "attrs": {},
@@ -6283,6 +6313,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/adjust_factor.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_dividend"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_dividend"
@@ -6307,7 +6343,19 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/adjust_factor.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_dividend"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/fuyao_kline_recon.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_dividend"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_adjust_factor.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_dividend"
     },
@@ -7537,6 +7585,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/adjust_factor.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stock_basic"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stock_basic"
@@ -7580,6 +7634,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_pre_knife_audit.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_stock_basic"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_adjust_factor.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_stock_basic"
     },
@@ -9085,12 +9145,20 @@
     }
   ],
   "meta": {
-    "edge_count": 1469,
-    "generated_at": "2026-09-06T07:42:25.812642+00:00",
-    "node_count": 518,
+    "edge_count": 1479,
+    "generated_at": "2026-09-07T07:41:25.208607+00:00",
+    "node_count": 521,
     "version": 2
   },
   "nodes": [
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/adjust_factor.yaml"
+      },
+      "id": "consumer:backend/config/adjust_factor.yaml",
+      "kind": "consumer"
+    },
     {
       "attrs": {
         "ctype": "config",
@@ -9673,6 +9741,14 @@
         "path": "backend/scripts/update_watermark_sla.py"
       },
       "id": "consumer:backend/scripts/update_watermark_sla.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
+        "path": "backend/services/adjust_factor.py"
+      },
+      "id": "consumer:backend/services/adjust_factor.py",
       "kind": "consumer"
     },
     {
@@ -11041,6 +11117,14 @@
         "path": "backend/tests/services/test_acquire_bounded_gap_heal.py"
       },
       "id": "consumer:backend/tests/services/test_acquire_bounded_gap_heal.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_adjust_factor.py"
+      },
+      "id": "consumer:backend/tests/services/test_adjust_factor.py",
       "kind": "consumer"
     },
     {

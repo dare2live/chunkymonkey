@@ -53,6 +53,7 @@ blocking_paths:
 - tests/services/test_accept_frozen_landing_stamp.py
 - tests/services/test_accepted_schema.py
 - tests/services/test_acquire_bounded_gap_heal.py
+- tests/services/test_adjust_factor.py
 - tests/services/test_assignment_gap_recon.py
 - tests/services/test_availability.py
 - tests/services/test_baostock_adapter.py

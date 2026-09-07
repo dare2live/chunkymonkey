@@ -1,0 +1,87 @@
+# 自算复权因子 — 配置。owner: backend/services/adjust_factor.py。
+# typed + 未知键 fail-closed（见 adjust_factor.load_config）：读不出这份文件的调用方一律报错，
+# 不做默认值兜底 —— 阈值/口径全部只能来自这份文件，不许代码里再散落一份。
+#
+# === 算法来源 ===
+# baostock 官方《复权因子简介》"涨跌幅复权法"定义与本模块逐字一致（后复权因子 = 前一交易日
+# 收盘价 / 当日 pre_close 的历史累乘，上市首日=1）；DolphinDB 官方教程收录同一算法。
+# 不读分红表——pre_close 不是"昨天收盘价"，是交易所按官方除权除息公式已经算好的结果：
+#   除权(息)参考价 = [(前收盘价 − 每股现金红利) + 配股价 × 配股比例] ÷ (1 + 送股率 + 转增率 + 配股率)
+# 现金分红/送股/转增/配股全部已经在这一条公式里一次算完，没有先后顺序问题，所以不需要读
+# 分红表、不需要拆三类事件、不需要判税前税后。
+#
+# === 已实测（2026-09-07, 剔除北交所, 全市场 855万行 / 5447 只股）===
+#   vs raw_tushare_adj_factor（两者各自归一到首个共同交易日=1 后比相对差）:
+#     中位 ~5.7e-05、p99 ~5.8e-04 — 量级 = pre_close 两位小数舍入精度。
+#   vs canonical_nominal_ohlcv_daily.pct_chg（完全不依赖任何复权因子的自检，见
+#     adjust_factor.pct_chg_self_check 文档）:
+#     中位残差 2.4e-05 个百分点，p99 4.95e-05，仅 1 行残差达 0.065 个百分点
+#     （603005.SH 2020-03-18 — 查明是 vendor 自己的 pct_chg 字段与它自己的 close/pre_close
+#     不一致，不是本模块的 bug）。
+#   相对差 > 1% 的有 19 只股：这是实时算出的诊断结果，不是配置——分类成员是数据不是 YAML
+#   （会随 tushare 更新其 adj_factor 而过期），具体名单与归类由
+#   adjust_factor.reconcile_vs_tushare() 在调用时现查现算，本文件只声明"发现了要怎么处置"
+#   的策略（见 tushare_reconciliation 段）。
+
+version: 1
+
+# --- 除权判定阈值 ---
+# |pre_close - prev_close| <= 此值 视为"当日无除权事件"，ratio 记 1.0。
+# 单位=元（人民币价格绝对差，不用相对比例——沪深A股价格跨度从几元到几百元，相对阈值在低价股
+# 上会失之过松、在高价股上失之过紧）。
+# 校准依据：全市场 pct_chg 自检中位残差只有 2.4e-05 个百分点，远小于此阈值对应的价格噪声量级；
+# 且此阈值不会吞掉已验证的真实送转（比亚迪实测最大 ratio 3.0357，远超此阈值触发的下限）。
+ex_rights_threshold: 0.005
+
+# --- ratio 合理区间 ---
+# ratio 落在区间外 -> 该行判 unknown（ratio 记 NULL，poison 向后传播），不是自动当"数据错"
+# 删掉，也不是静默接受一个荒谬值算进复权因子。
+# min: 留出"缩股/资本公积减资"等罕见反向调整的余地（会使 ratio<1）——2026-09-07 全市场实测未
+#   发现任何 ratio<1 的样本，min 定得宽松只为兜底，不代表已实证有这类事件。
+# max: 已实测全市场最大合法 ratio = 3.0357（比亚迪真实送转），上界留安全边际，同时能拦截
+#   pre_close 异常值（如 0 或负数导致比例爆炸）导致的荒谬结果。
+ratio_bounds:
+  min: 0.2
+  max: 5.0
+
+# --- 起点策略 ---
+# 库内每只股第一行 = ratio 定义为 1（算法定义，历史更早无数据可比）。
+# 陷阱：这不等于"该股真实上市首日"。2026-09-07 实测 raw_tushare_stock_basic.list_date
+# 全表 5563 行 100% 为 NULL —— 当前完全无法核实库内首日是否等于真实上市日，也就无法判断
+# 首日之前是否发生过未被本序列捕捉的除权事件。
+start_policy:
+  mode: "data_window_first_row"
+  listing_date_source: "raw_tushare_stock_basic.list_date"
+  # listing_date_populated 一旦变 true（该列被回填）：必须重新核实库内首日是否等于真实上市日；
+  # 在此之前，后复权序列的"绝对水平"只保证 PIT 干净（不含未来数据），不保证等于"自上市以来"
+  # 的严格复权基准。这是已知限制，不是本模块可以自行修复的 bug（没有真相源可核）。
+  listing_date_populated: false
+
+# --- Universe：不新写一份规则，直接复用 backend/config/universe_rules.yaml 的白名单 ---
+# 复用方式：services.universe.sql_where_active_a_share()（board_prefixes 60/00/30/68）。
+# 这两个字段只是"声明用它"的文档锚点 + 悬空引用检测（load_config 会校验该文件真实存在）；
+# 具体前缀枚举不在本文件重复第二份，那会变成第二个真相源。
+universe:
+  reuse_config: "backend/config/universe_rules.yaml"
+  reuse_field: "include.board_prefixes"
+
+# --- 数据源 ---
+source:
+  db_alias: "tushare_raw"                        # database_manifest.yaml 里的别名（文档用途）
+  nominal_table: "canonical_nominal_ohlcv_daily"  # 唯一允许的名义 K 线输入；raw_tushare_daily 是
+                                                   # 停更表，price_kline_qfq_tushare 是派生 qfq，两者都不是本模块合法输入
+
+# --- 与 tushare adj_factor 的对账策略（只放策略，不放名单）---
+# "与 tushare 一致"只证明两者相同，不证明两者都对；tushare 的 adj_factor 在公开渠道
+# （GitHub waditu/tushare issues #1555 #1736 #924）已知存在失准/快照不一致。所以本模块以
+# pre_close 自算结果为权威，tushare 对账仅供诊断，从不据此改写/丢弃/置空自算结果。
+tushare_reconciliation:
+  enabled: true
+  # 相对差超过此阈值的股票才进入 reconcile_vs_tushare() 的返回名单，避免舍入噪声淹没真正的分歧。
+  relative_diff_alert_threshold: 0.01
+  # 谁是权威：任何与 tushare 的分歧都不反过来修改/丢弃本模块的自算值。
+  authority: "self_computed_from_pre_close"
+  # 排查不到具体原因（既找不到匹配的 raw_tushare_dividend 记录、我方 ratio 也确实非 1）的股票：
+  # 保留自算值（pre_close 仍是交易所权威字段，不能因为解释不了分歧就退回不可信），
+  # 但必须在 reconcile_vs_tushare() 的报告里显式标 unknown_cause，不许静默混入"已核实一致"的结果。
+  unresolved_disposition: "keep_self_computed_flag_unknown_cause"
