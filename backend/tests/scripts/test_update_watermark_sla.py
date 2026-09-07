@@ -121,8 +121,27 @@ def test_margin_sla_uses_registry_contract_snapshot(monkeypatch):
     assert seen[0] is planned
 
 
-def test_registered_margin_without_watermark_probes_and_alerts_on_no_acceptance():
+def test_frozen_domain_without_watermark_observes_instead_of_alerting():
+    """冻结域缺批次时: 状态必须**可区分**于活域, 且不刷 alert。
+
+    2026-09-07 改判据。本测试原名 ..._margin_..._alerts_on_no_acceptance, 断言
+    status == "NO_COMPLETE_BATCH" / alert is True —— 那是 margin **当时还是活域**时的行为。
+    margin 于 commit 01f8f41a2 按 tushare_sunset 台账切成 freeze 后必然假红。
+
+    活域侧的覆盖没有丢: 紧接其后的
+    ``test_registered_live_domain_without_watermark_still_alerts`` 用**自带的**合成 qspec
+    覆盖同一条路径, 且不依赖任何真实域当下恰好是什么状态 —— 那才是这类测试该有的写法。
+
+    这里改守一件**此前没有任何东西在守**的事: 冻结不能把缺数据变成静默。
+    状态串必须带 FROZEN 前缀 (对人对机器都可区分), alert 必须关, observe_only 必须开 ——
+    三者缺一, 「预期断流」和「真断流」就会长得一模一样。
+    """
     queries = sla._sync_registry_queries()
+    qspec = queries["sync:margin"]
+    assert qspec.get("observe_only") is True, (
+        "本测试的前提是 margin 已冻结; 若它被改回活域, 该改的是这个前提而不是断言"
+    )
+
     raw = duck_mem()
     raw.execute("CREATE TABLE raw_tushare_margin(trade_date VARCHAR)")
     raw.execute("INSERT INTO raw_tushare_margin VALUES ('20991231')")
@@ -131,16 +150,15 @@ def test_registered_margin_without_watermark_probes_and_alerts_on_no_acceptance(
         {"tushare_raw": raw},
         queries,
         "sync:margin",
-        queries["sync:margin"],
+        qspec,
         sla.date(2026, 7, 17),
     )
 
-    # Knife 1b: margin is enabled/on_demand (not execution_disabled) → alertable.
-    assert result["status"] == "NO_COMPLETE_BATCH"
+    assert result["status"].startswith("FROZEN_"), result["status"]
     assert result["probe_state"] == "no_complete_batch"
     assert result["actual_date"] is None
-    assert result["alert"] is True
-    assert result["observe_only"] is False
+    assert result["alert"] is False
+    assert result["observe_only"] is True
 
 
 def test_registered_live_domain_without_watermark_still_alerts():
@@ -276,13 +294,57 @@ def test_cx4_qfii_has_real_probe_and_disclosure_sla():
     assert 114 <= sla.SLA_DAYS_OVERRIDE["qfii_holding_quarterly"] + 3
 
 
-def test_cx4_margin_enabled_catchup_is_alertable_not_observe_only():
-    """Knife 1b: enabled bounded catchup must not hide lag behind observe_only."""
+def test_cx4_observe_only_holds_exactly_for_execution_disabled_domains():
+    """Knife 1b 的不变量版: observe_only **当且仅当** execution_policy.mode == disabled。
+
+    2026-09-07 改判据。原测试断言 ``not queries["sync:margin"].get("observe_only")``
+    外加 daily/stock_st 两个域名, 钉的是「margin 当时恰好是 enabled」这个**运行时状态**,
+    不是它想守的不变量。margin 于 commit 01f8f41a2 按 tushare_sunset 台账 decision=freeze
+    切成 disabled 后, 这条断言必然假红 —— 而 Knife 1b 想守的东西一个字没变。
+
+    改成对**全部登记域**跑双条件, 两个方向都守 (来源: update_watermark_sla.py 里
+    observe_only 的唯一赋值点, 条件就是 exec_pol["mode"] == "disabled"):
+      - disabled 却没 observe_only → 冻结域每天刷 alert, **真断流混进预期断流**;
+      - 非 disabled 却 observe_only → 活域滞后被静默吞掉, 正是 Knife 1b 要防的那件事。
+
+    写成全域扫描而不是列名单, 是因为「清单型判据」对不在册的新域没有任何约束 ——
+    新增或冻结任何域都自动进覆盖, 不需要有人记得回来改这份名单。
+    """
+    import yaml
+
+    from services.data_sources.sync_runner import domain_spec
+
+    reg = yaml.safe_load(
+        (SCRIPT_PATH.resolve().parents[1] / "config" / "sync_registry.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
     queries = sla._sync_registry_queries()
-    assert not queries["sync:margin"].get("observe_only")
-    # Live daily/ST must stay alertable (on_demand alone ≠ frozen).
-    assert not queries["sync:daily"].get("observe_only")
-    assert not queries["sync:stock_st"].get("observe_only")
+
+    violations = []
+    for name in reg["domains"]:
+        entry = queries.get(f"sync:{name}")
+        if not isinstance(entry, dict):
+            continue
+        disabled = (
+            domain_spec(reg, name).get("execution_policy") or {}
+        ).get("mode") == "disabled"
+        observe_only = bool(entry.get("observe_only"))
+        if disabled != observe_only:
+            violations.append(
+                f"{name}: execution_disabled={disabled} 但 observe_only={observe_only}"
+            )
+    assert not violations, "observe_only 与 execution_policy 脱节:\n" + "\n".join(
+        violations
+    )
+
+    # 双条件在两侧都必须真有样本, 否则「零违反」可能只是因为一侧是空集。
+    modes = {
+        name: (domain_spec(reg, name).get("execution_policy") or {}).get("mode")
+        for name in reg["domains"]
+    }
+    assert any(m == "disabled" for m in modes.values()), "无冻结域, 本测试退化为空断言"
+    assert any(m != "disabled" for m in modes.values()), "无活域, 本测试退化为空断言"
 
 
 def test_cx4_retired_sync_orphan_watermark_tombs_purge():

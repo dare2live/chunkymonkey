@@ -800,8 +800,12 @@ def test_real_registry_excludes_retired_k3_domains():
         "rule": "next_trading_session_at",
         "at": "09:00",
     }
-    assert margin["execution_policy_mode"] == "enabled"
-    assert margin["execution_policy_reason"] == "bounded_calendar_catchup"
+    # 2026-09-07 删两行。原写 == "enabled" / == "bounded_calendar_catchup", 钉的是
+    # margin 当时的**运行时策略状态**, 与本测试的主题 (K3 退役域不得再登记 / 无 data_type
+    # 分组列) 无关; margin 按 tushare_sunset 台账切成 freeze 后它必然假红。
+    # 「registry 的 execution_policy 必须与 sunset 台账裁决对得上」这条不变量已有唯一
+    # 计算点: check_tushare_sunset.py 的 validate_freeze_execution_disabled (检查 8),
+    # 两个方向都反向验证过。在这里再抄一份 = 同一判据两处实现, 迟早一处改了另一处没改。
     assert all(s["gap_tolerance"] in cci.GAP_TOLERANCE_VALUES for s in specs)
 
 

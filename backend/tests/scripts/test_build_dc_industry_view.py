@@ -1,9 +1,28 @@
 from __future__ import annotations
 
+import importlib.util
+import sys
+from pathlib import Path
+
 import pytest
 
-from backend.scripts import build_dc_industry_view
-from services.duck_adapter import connect
+REPO = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO / "backend"))
+
+from services.duck_adapter import connect  # noqa: E402
+
+# 2026-09-07: 原写 ``from backend.scripts import build_dc_industry_view``。
+# 测试跑在 PYTHONPATH=backend 下, ``backend`` 不是包根, 这行永远 ModuleNotFoundError ——
+# 该文件被搁在 ci_test_optional 里, 任何一层都不跑, 于是**它从来没有成功执行过一次**,
+# 「收集失败」和「跑过且通过」在返回码里长得一模一样。
+# 改用同目录 test_build_sw_industry_view.py 已在用的 spec_from_file_location 范式。
+_spec = importlib.util.spec_from_file_location(
+    "build_dc_industry_view",
+    REPO / "backend" / "scripts" / "build_dc_industry_view.py",
+)
+build_dc_industry_view = importlib.util.module_from_spec(_spec)
+assert _spec.loader is not None
+_spec.loader.exec_module(build_dc_industry_view)
 
 
 def _build_fixture(tmp_path, monkeypatch):
