@@ -987,3 +987,36 @@ def test_exit_derive_still_works_when_prev_period_is_v3():
     assert len(exits) == 1 and exits[0]["holder_name"] == "机构乙"
     assert exits[0]["holder_code"] == "10000002"
     assert exits[0]["is_holder_org"] is True
+
+
+def test_per_stock_path_does_not_touch_canonical_exit_derivation(monkeypatch):
+    """按股路径不得调 canonical 退出派生 —— 那是 1,002 只股拒批的根因。
+
+    2026-09-07 fable 审查 Q2: `_derive_exits_against_canonical` 的 `covered` 粒度是 (股,期),
+    设计意图却是「调用方已按股整体算过就别再算」。零退出期 + 首期(仿真 24,838 次 = 17.2%)
+    因此漏网, 跑去跟 canonical 里的 v2 上一期比。仿真证明关掉它输出一行不差。
+
+    判法照 fable 给的: 把该函数换成抛异常, 按股路径必须完全不碰它。
+    """
+    from services.holders_aif10 import sync_holders_aif10
+
+    def _must_not_be_called(*_a, **_k):
+        raise AssertionError("按股路径不该调 _derive_exits_against_canonical")
+
+    monkeypatch.setattr(
+        "services.holders_aif10._derive_exits_against_canonical", _must_not_be_called
+    )
+    rows = [
+        _raw("600000.SH", "600000", "2024-12-31", "甲", 1, 1000, "新进", holder_code="C1"),
+        _raw("600000.SH", "600000", "2025-06-30", "乙", 1, 900, "新进", holder_code="C2"),
+    ]
+    _fake_scraper(monkeypatch, {"600000": rows})
+    conn = duckdb.connect(":memory:")
+    try:
+        out = sync_holders_aif10(conn, symbols=["600000"])
+    finally:
+        conn.close()
+    assert out["errors"] == [], out["errors"]
+    assert out["ok"] == 1
+    assert out["exit_rows"] > 0, "内存派生该产出退出行(甲在下一期不在了)"
+    assert out["exit_derive_skipped"] == 0

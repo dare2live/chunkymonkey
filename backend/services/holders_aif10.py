@@ -299,7 +299,8 @@ def _write_legacy_direct(
     )
 
 
-def _write(conn, rows: list[dict], *, delete_scope: str = "partition") -> int:
+def _write(conn, rows: list[dict], *, delete_scope: str = "partition",
+           derive_exits_from_canonical: bool = True) -> int:
     """幂等写: formal land→accept by notice_date (formal_only; no legacy mirror).
 
     同一 notice_date 上其他股票不会被抹掉 —— 两种做法结果相同, 代价差 590 倍:
@@ -316,7 +317,16 @@ def _write(conn, rows: list[dict], *, delete_scope: str = "partition") -> int:
     """
     if not rows:
         return 0
-    extra_exits = _derive_exits_against_canonical(conn, rows)
+    # 2026-09-07 (fable 审查 Q2, 根因): 按股路径**根本不该**走 canonical 派生。
+    # _derive_exits_against_canonical 的 `covered` 粒度是 (股,期), 而它的设计意图是
+    # 「调用方已经按股整体算过了就别再算」。零退出期 + 首期 (仿真: 24,838 次 = 17.2%)
+    # 因此漏网, 跑去跟 canonical 里的 v2 上一期比 —— 那才是 1,002 只股拒批的根因,
+    # 上一个提交的「跳过 NULL 身份」只是把它的产物扔掉 (守卫, 不是修根因)。
+    # 仿真实测: 按股路径关掉它之后, 输出**一行不差**(canonical 路径在 v2 基线产 0 行、
+    # v3 基线产 0 行 0 skip); 少 24,838 次 ×2 次对 180 万行无索引表的查询。
+    extra_exits = (
+        _derive_exits_against_canonical(conn, rows) if derive_exits_from_canonical else []
+    )
     if extra_exits:
         from services.data_sources.holders_top10_schema import assign_unique_holders_row_seq
 
@@ -379,6 +389,7 @@ def sync_holders_aif10(
     if limit:
         symbols = symbols[:limit]
 
+    take_exit_derive_skips()  # 清掉上一轮残留, 本轮计数从零开始
     t0 = time.time()
     ok = fail = total_rows = total_exits = 0
     errors: list[str] = []
@@ -389,7 +400,11 @@ def sync_holders_aif10(
                 fail += 1
                 continue
             total_exits += sum(1 for r in rows if r["is_exit_row"])
-            total_rows += _write(conn, rows, delete_scope=delete_scope)
+            # rows 已含该股全史 + _derive_exits 内存派生 (由证据直接推出, 身份完整),
+            # 不需要也不应该再去 canonical 跟上一期 diff —— 见 _write 里的说明。
+            total_rows += _write(
+                conn, rows, delete_scope=delete_scope, derive_exits_from_canonical=False
+            )
             ok += 1
         except Exception as e:  # noqa: BLE001
             fail += 1
@@ -398,10 +413,15 @@ def sync_holders_aif10(
         if progress_every and i % progress_every == 0:
             print(f"  [aif10-holders] {i}/{len(symbols)} ok={ok} fail={fail} "
                   f"rows={total_rows} ({time.time()-t0:.0f}s)")
+    skips = take_exit_derive_skips()
     return {
         "ok": ok, "fail": fail, "rows_written": total_rows,
         "exit_rows": total_exits, "elapsed_s": round(time.time() - t0, 1),
         "start_period": start_period, "errors": errors,
+        # 按股路径关掉了 canonical 派生, 所以这里应当恒为 0 —— 不为 0 说明有调用方
+        # 传了 derive_exits_from_canonical=True。日更路径的同名计数在它自己的 result 里。
+        "exit_derive_skipped": sum(x["n"] for x in skips),
+        "exit_derive_skip_detail": skips[:20],
     }
 
 
@@ -545,6 +565,18 @@ def _table_present(conn, name: str) -> bool:
         return False
 
 
+# 退出派生因「上一期身份未记录」而跳过的记录。规则 12: 运行时计数不写进手写文件,
+# 但也不能只活在 log 里 —— 调用方要能拿到它并放进自己的 result dict。
+_EXIT_DERIVE_SKIPS: list[dict] = []
+
+
+def take_exit_derive_skips() -> list[dict]:
+    """取走并清空跳过记录 (调用方在一轮开始前清、结束后取)。"""
+    out = list(_EXIT_DERIVE_SKIPS)
+    _EXIT_DERIVE_SKIPS.clear()
+    return out
+
+
 def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
     """日更单日落地退出派生: 查 canonical 该股上一期名单做 period-diff, 只查本批
     (stock_code,report_date), 不做全市场重扫(避免 26M 行放大重演); 跳过批次里已自带
@@ -618,6 +650,12 @@ def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
         # 日更期间上一期必是 v3, 这里应当恒为 0 —— 不为 0 说明有 v2 行没被覆盖到。
         skipped_unknown = [i for i in gone if prev_by_identity[i]["is_holder_org"] is None]
         if skipped_unknown:
+            # 计数也回传给调用方: 只写 log 时它是静默的 —— 回填脚本与 ingest CLI 都没有
+            # logging.basicConfig, root 停在 WARNING, 这行一个字都打不出来 (fable 审查 Q3 末)。
+            _EXIT_DERIVE_SKIPS.append(
+                {"stock_code": stock_code, "report_date": report_date,
+                 "prev_period": prev_period, "n": len(skipped_unknown)}
+            )
             log.info(
                 "holders exit-derive skip %d holders on %s/%s: prev period %s is pre-v3 "
                 "(identity unrecorded)",
