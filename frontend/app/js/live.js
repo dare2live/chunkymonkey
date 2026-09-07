@@ -1171,7 +1171,7 @@ async function liveDossierCross(code) {
         <span class="lv-name">${cn}</span>
         <span class="lv-num" style="text-align:right">${fmtD(ao[key])}</span></div>`).join("")}
     </div>
-    <p style="margin-top:22px; font-size:11.5px; color:var(--ink-3); line-height:1.7">交集是观察证据，非买卖建议；未经 B0→B5 策略验证。</p>`;
+    <p style="margin-top:22px; font-size:11.5px; color:var(--ink-3); line-height:1.7">${esc(x.disclaimer || "")}</p>`;
 }
 document.addEventListener("click", e => {
   const b = e.target.closest("#dossier-go"); if (!b) return;
