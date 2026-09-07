@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import fnmatch
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -18,7 +19,7 @@ from typing import Any
 
 import yaml
 
-from services.duck_adapter import connect as _duck_connect
+from services.duck_adapter import audit_connect as _audit_connect
 from services.lineage.model import Edge, LineageGraph, Node
 
 REPO = Path(__file__).resolve().parents[3]
@@ -70,7 +71,10 @@ def _live_tables_by_db() -> dict[str, list[str]]:
         if not path.exists():
             continue
         try:
-            conn = _duck_connect(str(path), read_only=True)
+            # 2026-09-07: 走共享的只读审计入口 (短锁等待)。manifest 里有 7 个库 ——
+            # 写者持锁时旧写法是**每库**等满 30 秒最坏 210 秒, 而本函数的调用方
+            # (catalog_drift) 拿到异常后本就 fail-open, 等满只是白等。
+            conn = _audit_connect(str(path))
             try:
                 rows = conn.execute(
                     "SELECT table_name FROM information_schema.tables "

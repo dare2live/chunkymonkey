@@ -250,14 +250,14 @@ def _qfq_live_missing_lineage(cfg: dict[str, Any]) -> tuple[int | None, str | No
     b5 = cfg.get("b5") or {}
     try:
         from services.database_manifest import get_database_manifest
-        from services.duck_adapter import connect as duck_connect
+        from services.duck_adapter import audit_connect
 
         alias = str(b5.get("qfq_db") or "market")
         table = str(b5.get("qfq_table") or "price_kline_qfq_tushare")
         path = get_database_manifest().path_for(alias)
         if not path.is_file():
             return None, f"qfq db missing: {path}"
-        con = duck_connect(str(path), read_only=True)
+        con = audit_connect(str(path))
         try:
             row = con.execute(
                 f"""
@@ -406,7 +406,7 @@ def _e0_live_breadth(cfg: dict[str, Any]) -> tuple[dict[str, Any] | None, str | 
     e0 = cfg.get("e0_breadth") or {}
     try:
         from services.database_manifest import get_database_manifest
-        from services.duck_adapter import connect as duck_connect
+        from services.duck_adapter import audit_connect
 
         mf = get_database_manifest()
 
@@ -414,7 +414,7 @@ def _e0_live_breadth(cfg: dict[str, Any]) -> tuple[dict[str, Any] | None, str | 
             path = mf.path_for(db_alias)
             if not path.is_file():
                 raise FileNotFoundError(str(path))
-            con = duck_connect(str(path), read_only=True)
+            con = audit_connect(str(path))
             try:
                 rows = con.execute(
                     """
@@ -435,7 +435,7 @@ def _e0_live_breadth(cfg: dict[str, Any]) -> tuple[dict[str, Any] | None, str | 
         from services.org_holding_population import max_accepted_stocks_across_partitions
 
         org_path = mf.path_for(str(e0["org_db"]))
-        org_con = duck_connect(str(org_path), read_only=True)
+        org_con = audit_connect(str(org_path))
         try:
             org_max_stocks = max_accepted_stocks_across_partitions(org_con)
             from services.org_holding_pointer_integrity import (

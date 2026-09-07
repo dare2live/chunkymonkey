@@ -71,15 +71,22 @@ databases:
     return repo
 
 
-def _py(repo: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
+def _py(repo: Path, args: list[str], *, env_extra: dict | None = None
+        ) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(repo / "backend")
+    env.update(env_extra or {})
     return subprocess.run([sys.executable, *args], cwd=str(repo), text=True,
                            capture_output=True, check=False, env=env)
 
 
-def _check(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return _py(repo, [str(repo / "backend" / "scripts" / "check_lineage_catalog_drift.py"), *args])
+def _check(repo: Path, *args: str, env: dict | None = None
+           ) -> subprocess.CompletedProcess[str]:
+    return _py(
+        repo,
+        [str(repo / "backend" / "scripts" / "check_lineage_catalog_drift.py"), *args],
+        env_extra=env,
+    )
 
 
 def _make_main_db(repo: Path, tables: list[str]) -> None:
@@ -195,7 +202,10 @@ def test_fail_open_under_real_write_lock(tmp_path: Path, _rw_lock_holder) -> Non
     with pytest.raises(Exception, match="[Ll]ock"):
         duckdb.connect(str(db_path), read_only=True)
 
-    result = _check(repo)
+    # 2026-09-07: 把只读审计连接的锁等待压到 1 秒。被测行为一字不变 ——
+    # 仍然是「重试耗尽 → fail-open」这条路径, 只是不必等满默认值。
+    # 本用例此前 31.8 秒 (占全部阻断时长 17%), 其中 30 秒纯粹在等锁。
+    result = _check(repo, env={"CHUNKYMONKEY_AUDIT_LOCK_TIMEOUT": "1"})
     assert result.returncode == 0, result.stdout + result.stderr
     assert "UNVERIFIED" in result.stdout
     assert "fail-open" in result.stdout

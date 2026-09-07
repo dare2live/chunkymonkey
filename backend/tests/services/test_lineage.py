@@ -213,7 +213,7 @@ def test_catalog_scan_fails_closed_when_database_cannot_be_read(tmp_path, monkey
     )
     monkeypatch.setattr(
         builder,
-        "_duck_connect",
+        "_audit_connect",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("catalog locked")),
     )
 

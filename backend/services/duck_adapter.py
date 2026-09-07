@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -330,3 +331,41 @@ def attach_with_retry(
 def connect(db_path: str, timeout: int = 30, read_only: bool = False, attach: dict = None) -> DuckConn:
     """统一入口: 返回 DuckConn。"""
     return DuckConn(db_path, read_only=read_only, attach=attach, timeout=timeout)
+
+
+AUDIT_LOCK_TIMEOUT_ENV = "CHUNKYMONKEY_AUDIT_LOCK_TIMEOUT"
+DEFAULT_AUDIT_LOCK_TIMEOUT = 3
+
+
+def audit_lock_timeout() -> int:
+    """只读审计/检查类连接的锁等待上限(秒), 默认 3。
+
+    与写路径的 30 秒**故意不同**, 因为两者等的是不同的东西:
+      - 写路径等的是**瞬时**锁 (pipeline_lock 的 _lock_probe 建/即删, 毫秒级),
+        等 30 秒是为了不因为一次抖动就失败。
+      - 审计等的是**真写者** (日更/回填持锁数十分钟)。等 30 秒不会等到,
+        只是把失败推迟 30 秒 —— 结论一模一样, 代价是每个库 30 秒。
+
+    实测 (2026-09-07, 回填持 smartmoney 写锁时): `moth assert` 33.2s 里
+    30.2s 是单条 data-layer-integrity 断言, 而它 user CPU 只有 2.4s —— 纯等待。
+    全仓有 7 个 check_/audit 脚本共用这个默认值, 日更期间每次提交都各付一遍。
+    """
+    raw = os.environ.get(AUDIT_LOCK_TIMEOUT_ENV, "")
+    if not raw.strip():
+        return DEFAULT_AUDIT_LOCK_TIMEOUT
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{AUDIT_LOCK_TIMEOUT_ENV} 不是整数: {raw!r}") from exc
+    if value < 0:
+        raise RuntimeError(f"{AUDIT_LOCK_TIMEOUT_ENV} 不能为负: {value}")
+    return value
+
+
+def audit_connect(db_path: str, *, attach: dict = None) -> DuckConn:
+    """只读审计连接: read_only 恒真, 锁等待走 audit_lock_timeout()。
+
+    审计默认 read_only=True 是项目规则 6; 这里把它和短锁等待绑成一个入口,
+    省得每个检查脚本各写一遍、再各漏一遍 timeout。
+    """
+    return connect(db_path, timeout=audit_lock_timeout(), read_only=True, attach=attach)

@@ -401,7 +401,7 @@ def _make_default_conn_provider() -> tuple[ConnProvider, Callable[[], None]]:
     sys.path.insert(0, str(REPO / "backend"))
     import duckdb
     from services.database_manifest import get_database_manifest
-    from services.duck_adapter import connect as duck_connect
+    from services.duck_adapter import audit_connect
 
     manifest = get_database_manifest()
     cache: dict[str, Any] = {}
@@ -415,7 +415,7 @@ def _make_default_conn_provider() -> tuple[ConnProvider, Callable[[], None]]:
             # 走 duck_adapter 而非裸 duckdb.connect: DB 边界由统一入口把关 (Rule/DB boundary)。
             # 只读打开 —— 本脚本是 audit, 任何情况下都不得写库。
             try:
-                conn = duck_connect(str(path), read_only=True)
+                conn = audit_connect(str(path))
             except duckdb.Error as exc:
                 # 只吞 duckdb 自身的打开失败 (库被别的进程独占写、文件损坏), 这类在 audit 语境下
                 # 应降级为"该库不可查"而不是中断整轮扫描; 其它异常照常抛出, 不静默。

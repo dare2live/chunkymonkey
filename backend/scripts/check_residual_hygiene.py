@@ -17,7 +17,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from services.duck_adapter import connect as duck_connect  # noqa: E402
+from services.duck_adapter import audit_connect  # noqa: E402
 from services.residual_hygiene import (  # noqa: E402
     evaluate_residual_hygiene,
     load_policy,
@@ -45,7 +45,7 @@ def write_alert_flag(flag_path: Path, overall: str, findings: list[dict[str, Any
 def _conn_for_alias(alias: str):
     from services.data_access import resolver
 
-    return duck_connect(str(resolver.db_path(alias)), read_only=True)
+    return audit_connect(str(resolver.db_path(alias)))
 
 
 def main(argv: list[str] | None = None) -> int:

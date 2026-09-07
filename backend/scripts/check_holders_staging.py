@@ -74,7 +74,7 @@ BACKEND_ROOT = REPO_ROOT / "backend"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from services.duck_adapter import connect as duck_connect, DuckConn  # noqa: E402
+from services.duck_adapter import DuckConn, audit_connect  # noqa: E402
 from services.database_manifest import get_database_manifest  # noqa: E402
 from services.data_sources.holders_top10_schema import (  # noqa: E402
     CANONICAL_TABLE,
@@ -219,9 +219,8 @@ def build_connection(
     to re-check.
     """
 
-    conn = duck_connect(
+    conn = audit_connect(
         str(staging_path),
-        read_only=True,
         attach={
             PROD_ALIAS: {"path": str(prod_db_path), "read_only": True},
             FEAT_ALIAS: {"path": str(feature_store_db_path), "read_only": True},

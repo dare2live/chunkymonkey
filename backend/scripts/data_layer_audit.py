@@ -31,7 +31,7 @@ _TYPE_A_LEAK_RE = re.compile(
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "backend"))
 
-from services.duck_adapter import connect as duck_connect  # noqa: E402
+from services.duck_adapter import audit_connect  # noqa: E402
 
 REGISTRY = REPO / "backend" / "config" / "data_layers.yaml"
 MANIFEST = REPO / "backend" / "config" / "database_manifest.yaml"
@@ -62,7 +62,7 @@ def _live_tables(dbs=MANAGED_DBS) -> set[str]:
         path = _db_path(key)
         if not path.exists():
             continue  # planned/未建库跳过 (建后自动纳管)
-        c = duck_connect(str(path), read_only=True)
+        c = audit_connect(str(path))
         try:
             c.execute("SET enable_progress_bar=false")
             # 排除 _ 前缀瞬态表 (pipeline_lock 的 _lock_probe/_rw_probe 锁探针, 建/即删) —
@@ -82,7 +82,7 @@ def _columns_map(dbs=STALE_SCAN_DBS) -> dict[str, list[str]]:
         path = _db_path(key)
         if not path.exists():
             continue
-        c = duck_connect(str(path), read_only=True)
+        c = audit_connect(str(path))
         try:
             c.execute("SET enable_progress_bar=false")
             rows = c.execute(
