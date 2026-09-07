@@ -3,7 +3,9 @@ version: 2
 # Namespace is part of identity. No namespace may silently backfill or replace another.
 cross_namespace_fallback: forbidden
 
-# Four classification chains (MASTER §6.2). Namespaces are identity.
+# Four classification chains — this file is the authority (原引用 MASTER §6.2,
+# 该文档已于 2026-09-04 随文档大刀退役; 边界规则见 CLAUDE.md 规则8: 分类成员是数据不是
+# YAML, 不同体系名称相同不等于等价). Namespaces are identity.
 # Equal Chinese names are review candidates, not equivalent/broader/narrower.
 # Intersection is a product surface, not a fifth taxonomy. TDX block is not here.
 namespaces:

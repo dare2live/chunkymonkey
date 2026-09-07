@@ -70,8 +70,11 @@ databases:
     owner: research_evidence_store
     role: >-
       Existing verdict, IC-scan, artifact-lineage, and PIT-audit evidence tables.
-      It is isolated from daily_update and is not yet the complete research runtime
-      defined by strategy_validation_contract.md.
+      It is isolated from daily_update. Its former target-state spec
+      (strategy_validation_contract.md, B0→B5/StrategyRelease paradigm) retired
+      2026-09-04 along with that paradigm; no replacement contract doc exists —
+      current paradigm is 策略验证 per goal.md (判例引擎/北极星段), not a
+      staged-release runtime.
     default_open_mode: read_write
     default_attach_mode: read_only
     online: true
@@ -90,8 +93,9 @@ databases:
     role: >-
       Low-cadence event/detail store: org_holding landing/canonical/raw plus
       that dataset's ingest_batch and accepted_partition. Split = write-lock
-      vs daily facts (MASTER §5.6 cadence), not a strategy-owned database.
-      Land→accept stays atomic inside this file.
+      vs daily facts (CLAUDE.md 规则7: 拆库只因写锁/retention/owner冲突, 不按
+      加工阶段拆库 — 原引用 MASTER §5.6, 该文档已于 2026-09-04 退役),
+      not a strategy-owned database. Land→accept stays atomic inside this file.
     default_open_mode: read_write
     default_attach_mode: read_only
     online: true

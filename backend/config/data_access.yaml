@@ -21,7 +21,9 @@
 # 命名法 (数据分两类, 按"换了源水还是不是同一桶水"客观划线):
 #   - 事实类 (K线/成交/股东名册/财报数字/涨跌停): 物理世界唯一真相, 源只是通道 → entity 名禁含 vendor 字样。
 #   - 观点类 (行业/概念分类=taxonomy, 资金流单别=vendor算法): 分类体系本身是数据身份 → entity 名必须带体系名
-#     (sw_industry=申万体系 / dc_member=东财概念 / moneyflow_dc=东财单别算法)；跨体系不可按名称冒充等价，边界见 MASTER taxonomy contract。
+#     (sw_industry=申万体系 / dc_member=东财概念 / moneyflow_dc=东财单别算法)；跨体系不可按名称冒充等价，
+#     边界见 backend/config/taxonomy.yaml（namespace=identity, cross_namespace_fallback: forbidden）与 CLAUDE.md 规则8
+#     （原指 MASTER_TOPLEVEL_DESIGN.md taxonomy contract 一节，该文档已于 2026-09-04 随文档大刀退役）。
 version: 1
 
 clean_rules:

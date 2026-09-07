@@ -1,6 +1,11 @@
 # market_pulse.yaml — Tier2 市场感知阈值真相源
 # 现行边界: 本文件 + backend/services/market_pulse.py。
-# 历史设计证据: git log --grep market_pulse_design (evidence-only)。
+# 历史设计证据: analysis/market_pulse_design_20260702.md（含内部 §1-§6、"v2 增强设计"、"v3 设计"
+# 三批次内容，本文件下方多处阈值注释里的"设计文档 §N"均指此单一文档的对应节）；该文档随 analysis/
+# 目录于 2026-08-11 整体退役 (commit d1d9a272e)。找回: git log --grep market_pulse_design ,
+# 或 `git show d1d9a272e^:analysis/market_pulse_design_20260702.md`。核对结果: 已找回全文，
+# 下方各阈值的数值与依据未变（多为"设计时默认值，未标定"，非从数据反推），故各行不逐一转录全文，
+# 仅在此处统一记录出处与找回方式。
 # 用户定调: "看钱在哪里从哪里流出流向哪里 … 哪里资金悄悄的在流入、哪里悄悄在流出"。
 # 三个 namespace 并列 (vendor 自洽红线, 任何计算禁跨 namespace JOIN):
 #   dc_industry = 东财行业层级；dc_concept = 东财概念多标签；二者不可混成一个东财桶

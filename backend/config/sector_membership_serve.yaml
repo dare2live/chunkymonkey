@@ -1,6 +1,8 @@
 # sector_membership_serve.yaml — Cap CX-3 decision-facing sector membership facet
 # Thin trust wrapper over pulse membership leaf (list_sector_members).
-# Authority: goal.md「下一步」执行 backlog §2 (CX-3 DONE)
+# Authority: 本文件 + backend/services/sector_membership_serve.py（Cap CX-3，已上线可用）。
+#   原引用 goal.md「下一步」执行 backlog 一节，该节已随 goal.md 2026-08 精简（commit
+#   b28449b6a, 160→41 行）移除；结论未变，现证据 = 本服务在跑 + backend/tests/test_cx3_capability_bricks.py 覆盖。
 # DC chains: observation-date fact_dc_member_daily snapshot + SLA fail-closed.
 # SW chain: display snapshot (is_new='Y') — honesty note, not PIT (feature side uses v_sw_industry_pit).
 version: 1

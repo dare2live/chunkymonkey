@@ -1,10 +1,19 @@
 # rally_gt.yaml — D1 主升浪 GT v2 全部阈值 (判断死红线: builder 只读本文件, 零 hardcode; 修正#10)
-# owner=本文件 + d1_gt_archaeology_20260702.md (历史定义证据)
+# owner=本文件。历史定义证据原在 analysis/d1_gt_archaeology_20260702.md，该文件随 analysis/
+# 目录于 2026-08-11 整体退役（commit d1d9a272e）；内容已用 `git show d1d9a272e^:analysis/
+# d1_gt_archaeology_20260702.md` 找回核实，结论抄入本文件，不再留指向已删目录的指针。
 #
-# 证据等级标注 (考古 §4.1 照抄):
+# 证据等级标注 (照抄自上述已找回的考古文档 §4.1):
 #   [双证据]     = v1.5 归档代码常数 + parquet 实测统计逐一对上 (git e909e548~1 / archive purge_processed)
-#   [用户口述锚] = 用户定义"什么算主升浪"的猎物定义 (MASTER §5 口述), 非从数据调出的参数, 不做调参对象 (P2 拍板)
-#   [结构常数]   = 工程拍板, 无敏感性分析留档 — 修正#9: 冻结前跑 LOWWIN/BASEMIN/DDFLOOR ±25% 扰动留档 analysis/
+#   [用户口述锚] = 用户手绘图样定义的"什么算主升浪"猎物定义（长底+多头排列+平滑+底→顶>=60%），
+#                  非从数据调出的最优阈, 不做调参对象 (P2 拍板)。原引用 MASTER §5, 该文档已于
+#                  2026-09-04 随文档大刀退役, 找不回该版本 §5 原文, 但"用户口述非数据调参"这一
+#                  结论本身不依赖该文档存在, 仍然成立。
+#   [结构常数]   = 工程拍板；冻结前敏感性分析已于 2026-07-02 完成 (修正#9 关账, commit 1beb16bca),
+#                  非"无敏感性分析留档"——LOWWIN/BASEMIN/DDFLOOR ±25% 扰动结果见下方对应字段行内注,
+#                  数字原表在 analysis/d1_gt_v2_design_20260702.md, 由 commit 51cf5b3c5 删除
+#                  (不是随 analysis/ 目录退役, 那是另一批); 六个数值已抄入下方各行,
+#                  原表找回: `git show 1beb16bca` (该 commit 即敏感性留档本身)。
 #
 # holdout: data_end 不在本文件 — 唯一真相源 = holdout_policy.yaml holdout_start (builder 默认读它, 不复制)。
 
@@ -12,15 +21,15 @@ taxonomy_version: v2_20260702   # 设计 P3 拍板: 表名沿用不加 _v2 后�
 scan_start: "2019-01-01"        # [双证据] K线全史起点 (market.price_kline_qfq_tushare 2019-01-02 起)
 
 episode:
-  gain_min: 0.60           # [用户口述锚] 底→顶 >60% (MASTER §5); parquet 实测 min(gain)=0.6000
+  gain_min: 0.60           # [用户口述锚] 底→顶 >60%（用户口述定义, 见文件头说明, 非从数据调参）; parquet 实测 min(gain)=0.6000
   min_duration_days: 20    # [双证据][结构常数] 峰距底 >=20 日排单日尖峰; parquet min(peak_offset)=20
   max_forward_days: 250    # [双证据][结构常数] 底→顶前瞻上限 ~1年; parquet max(peak_offset)=250, fwd_window_len 恒 250
-  pivot_low_window: 20     # [双证据][结构常数] 波段底确认窗 (前后 20 日最低, LOWWIN)
-  base_min_days: 40        # [双证据][结构常数] 长底 >=40 日贴底盘整; parquet min(base_days)=40
+  pivot_low_window: 20     # [双证据][结构常数] 波段底确认窗 (前后 20 日最低, LOWWIN); 敏感性 ±25%(15/25)→episode +1.4%/−1.4%, 稳健 (2026-07-02 冻结前实测, 基线 5,636 episode)
+  base_min_days: 40        # [双证据][结构常数] 长底 >=40 日贴底盘整; parquet min(base_days)=40; 敏感性 ±25%(30/50)→+11.7%/−10.9%, 单调稳健 (同批实测)
   base_lookback_days: 120  # [双证据][结构常数] 长底回看窗 (底前 120 日, BASE_LOOKBACK)
   base_band_low: 0.85      # [结构常数] 贴底带下界 (close ∈ 底low*[0.85,1.25] = 用户图"长期横盘"的翻译)
   base_band_high: 1.25     # [结构常数] 贴底带上界
-  dd_floor: -0.30          # [双证据][结构常数] 拉升路径 max_dd 下限 (平滑无深调); parquet min(path_max_dd)=-0.2999
+  dd_floor: -0.30          # [双证据][结构常数] 拉升路径 max_dd 下限 (平滑无深调); parquet min(path_max_dd)=-0.2999; 敏感性 ±25%(-0.225/-0.375)→episode −37.0%/+20.0%, 全定义中最敏感参数 ("平滑拉升"语义的直接翻译, 敏感≠错) — 依赖 GT 集合的下游结论若对 dd_floor 敏感须注明 (同批实测)
   bull_align_mode: any_day # P1 拍板: v2 首版保持 v1.5 ∃-日读法 (拉升期 [bottom..peak] 内存在某日 MA5>10>20>30>60);
                            # 改读法 = taxonomy_version 变更, 历史不可比 — 敏感性并测 min_ratio 变体后由用户拍板 (修正#5)
   warmup_bars: 60          # [结构常数] 扫描起点 max(pivot_low_window, warmup_bars): MA60 需 60 根热身 (v1.5 同)

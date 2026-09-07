@@ -3,7 +3,10 @@
 # Purpose: keep non-blocking residuals from drifting forever under daily_update.
 # This is NOT Continuity READY cosmetics and does NOT clear honest WARN/UNTRUSTED.
 #
-# Authority: goal.md「下一步」执行 backlog F9
+# Authority: 本文件 + backend/services/residual_hygiene.py + check_residual_hygiene.py（已上线在跑，
+#   见下方 Wire 与 data/audit/residual_hygiene_*.json 历次输出）。原引用 goal.md「下一步」执行
+#   backlog 一节，goal.md 已于 2026-08 精简（commit b28449b6a, 160→41 行）移除该节；此处 F9 与
+#   foundation_done.yaml 已退役的「F9 strategy-pause」是两件不同的事，本机制未受那次退役影响。
 # Wire: acquire type_b post-evaluate + store Step 2.985 check_residual_hygiene.py
 # Fail closed for update consumption (degraded + ALERT flag); does not block code commits.
 

@@ -1,5 +1,8 @@
 # decision_intersection.yaml — Cap 4D Tier3 product surface (NOT Tier0/Tier2 truth)
-# Authority: 本文件 + backend/services/decision_intersection.py (产品能力边界, Cap D); FOUNDATION §2
+# Authority: 本文件 + backend/services/decision_intersection.py (产品能力边界, Cap D 已上线可用 —
+#   原引用 analysis/FOUNDATION_EXECUTION_PLAN.md §2 "Cap A/B/D/E dossier usable: FIXED" 快照,
+#   该目录已于 2026-08-11 随 analysis/ 整体退役, 回不来了; 结论未变, 现证据 = 本服务在跑 +
+#   backend/tests/test_decision_intersection.py 单测覆盖)
 #            + 2026-07-22 sw_industry 3-chain residual clear
 # Reads mart_sector_pulse_daily (via moneyflow_assist board) + fact_dc_member_daily
 # + v_sw_industry_pit (L1→member PIT rollup); never writes labels back to accepted.
@@ -7,7 +10,7 @@
 # (mirrors /pulse/strongest honesty).
 version: 1
 surface_version: decision_intersection_strongest_v1
-disclaimer: "东财行业∩概念∩申万行业三条强势链的会员交集，非买卖指令；未经 B0→B5 策略验证；沿用 moneyflow_assist 行为标签。同花顺是第四条分类链的观察日镜头，不进本交集（交集是产品不是第五套分类）。"
+disclaimer: "东财行业∩概念∩申万行业三条强势链的会员交集，非买卖指令；本系统只做策略验证：回答触发后历史上发生过什么、什么情形下表现更好，不产出策略、不判定策略是否达标；沿用 moneyflow_assist 行为标签。同花顺是第四条分类链的观察日镜头，不进本交集（交集是产品不是第五套分类）。"
 
 # Behaviors counted as inflow "strength" evidence when selecting sectors for
 # intersection (see moneyflow_assist.yaml regime_to_behavior for the map).

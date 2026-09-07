@@ -816,8 +816,9 @@ domains:
     target_table: raw_tushare_report_rc
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, report_date, org_name, report_title, quarter]
-    page_limit: 1500   # 2026-07-08/09 根因深查第二轮(23域page_limit横向扫描, owner=analysis/
-      # gap_root_cause_20260708.md)实锤: 该接口裸调硬顶3000行(20210428裸调=3000, 分页拉到3736,
+    page_limit: 1500   # 2026-07-08/09 根因深查第二轮(23域page_limit横向扫描, owner=git log
+      # --grep gap_root_cause; 原引用 analysis/gap_root_cause_20260708.md, 该目录已于
+      # 2026-08-11 随 analysis/ 整体退役)实锤: 该接口裸调硬顶3000行(20210428裸调=3000, 分页拉到3736,
       # 缺失19.7%), 本地库多个日期恰好卡在整数3000印证同型截断。1500分页安全边际(远低于硬顶),
       # 已激活 _fetch_paged 既有分页防线。此为 by_ann_date 修复(周末数据)之后独立发现的第二个
       # 根因, 全历史需再次重新分页回填(见下方 backfill 记录)。
@@ -868,8 +869,9 @@ domains:
     target_table: raw_tushare_stk_surv
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, surv_date, rece_org]
-    batch_mode: by_ann_date   # 2026-07-09 根因修复(全审计HIGH#1, owner=analysis/
-      # gap_root_cause_20260708.md): 接口 trade_date 参数实际过滤的是 surv_date(调研日, 真实
+    batch_mode: by_ann_date   # 2026-07-09 根因修复(全审计HIGH#1, owner=git log --grep
+      # gap_root_cause; 原引用 analysis/gap_root_cause_20260708.md, 该目录已于 2026-08-11
+      # 随 analysis/ 整体退役): 接口 trade_date 参数实际过滤的是 surv_date(调研日, 真实
       # 日历日概念——业绩说明会/机构调研常落周末), 原 by_trade_date 只在交易日历枚举 → 全部
       # 周末调研自建域(2021-08)起结构性漏采(本地77万行星期分布周末恒0行; vendor实测财报季
       # 周末 20231028/20250427 均返400行=恰撞裸调硬顶, 真实量≥400/天)。2026-07-08 的

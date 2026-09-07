@@ -58,8 +58,12 @@ v3 (2026-07-03, 契约=设计文档 "v3 设计" v3.1-v3.5):
 
 Type A (确定性 PIT 重排): t 日行只用 <= t 数据 (rolling window 尾对齐, streak 逐日递推),
 无策略阈值判断; 全部阈值读 config/market_pulse.yaml (代码零 hardcode)。
-感知层只描述现状, 不给买卖暗示；任何过滤器或 flow_regime 增益必须进入 Tier3
-B0→B5 消融，本层零 alpha claim。
+感知层只描述现状, 不给买卖暗示；本层零 alpha claim。
+"某个过滤器 / flow_regime 带来增益" 这类说法不在本层回答, 也不由本层证明:
+交给判例引擎 (backend/services/casebook/ + config/casebook.yaml) —— 把它当触发条件,
+查历史全部触发点的前向结果, 与**同股自比基线**比, 格内先例不足时报「先例不足」。
+(原写 "必须进入 Tier3 B0→B5 消融"; 该梯子随 docs/strategy_validation_contract.md
+于 2026-09-04 退役, 现行范式见 goal.md 北极星段。)
 
 产出表 (smartmoney, display 层):
   - mart_sector_pulse_daily  板块×日 (chain 字段隔离两链)
