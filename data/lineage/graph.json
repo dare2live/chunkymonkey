@@ -2761,6 +2761,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/publish_holder_identity.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/update_watermark_sla.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
@@ -3135,6 +3141,24 @@
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
       "kind": "consume",
+      "src": "table:smartmoney.dim_holder_identity"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_grain_uniqueness.py",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_holder_identity"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/publish_holder_identity.py",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_holder_identity"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
       "src": "table:smartmoney.dim_liquidity_threshold"
     },
     {
@@ -3302,6 +3326,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/build_dc_industry_view.py",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_stock_dc_industry"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/publish_holder_identity.py",
       "kind": "consume",
       "src": "table:smartmoney.dim_stock_dc_industry"
     },
@@ -9163,9 +9193,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1482,
-    "generated_at": "2026-09-07T13:45:35.252211+00:00",
-    "node_count": 523,
+    "edge_count": 1487,
+    "generated_at": "2026-09-07T23:07:26.158181+00:00",
+    "node_count": 525,
     "version": 2
   },
   "nodes": [
@@ -9711,6 +9741,14 @@
         "path": "backend/scripts/publish_fact_top_inst_seat_daily.py"
       },
       "id": "consumer:backend/scripts/publish_fact_top_inst_seat_daily.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
+        "path": "backend/scripts/publish_holder_identity.py"
+      },
+      "id": "consumer:backend/scripts/publish_holder_identity.py",
       "kind": "consumer"
     },
     {
@@ -12664,6 +12702,16 @@
         "table": "dim_fee_schedule"
       },
       "id": "table:smartmoney.dim_fee_schedule",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "smartmoney",
+        "layer": "L1_foundation",
+        "status": "declared",
+        "table": "dim_holder_identity"
+      },
+      "id": "table:smartmoney.dim_holder_identity",
       "kind": "table"
     },
     {

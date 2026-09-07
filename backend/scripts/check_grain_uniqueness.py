@@ -41,6 +41,9 @@ REGISTRY_PATH = REPO / "backend" / "config" / "sync_registry.yaml"
 # DDL/契约 docstring, 此处集中镜像供持续审计 — 改 builder 键结构必须同步本表):
 MART_GRAINS: list[tuple[str, str, list[str]]] = [
     # (db_alias, table, grain)
+    # 一码一行是本表的**全部契约** —— publish_holder_identity.py 自己也断言
+    # COUNT(*) == COUNT(DISTINCT holder_code), 这里是第二道(它管的是重跑后仍成立)。
+    ("smartmoney", "dim_holder_identity", ["holder_code"]),
     ("smartmoney", "dim_stock_segment_daily", ["stock_code", "trade_date"]),          # services/segments.py B1
     ("smartmoney", "fact_stock_form_daily", ["stock_code", "trade_date"]),            # services/technical_states B2
     ("smartmoney", "fact_stock_limit_daily", ["trade_date", "ts_code", "limit"]),     # services/stock_limit_publish.py brick B2

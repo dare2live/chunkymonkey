@@ -120,6 +120,13 @@ tables:
   # dim_all_ever_listed / dim_listing_status 2026-07-07 整表退役:
   # 前者无存活 writer 冻结 10+ 周, 后者 0 业务读者且唯一 builder 无生产调用方;
   # 历史裁决索引见 chunkyctl history。
+  # 一码一实体的展示名, 由 canonical_top10_float_holders_period 纯读派生
+  # (writer: backend/scripts/publish_holder_identity.py, 红线 6 单 writer)。
+  # **当前快照, 不是 PIT 维度**: display_name 取 notice_date 最新那次的原始名字,
+  # 禁止 JOIN 进历史行渲染(那是用之后的状态改写历史归属, 红线 1)。
+  # 股票页的十大股东列表按公告原样展示, 用 canonical 自己的 holder_name, 不经过本表。
+  # 同款先例见下方 dim_stock_dc_industry。
+  dim_holder_identity: L1_foundation
   dim_fee_schedule: L1_foundation
   dim_liquidity_threshold: L1_foundation
   dim_market_segment: L1_foundation
