@@ -545,9 +545,22 @@ def _table_present(conn, name: str) -> bool:
 def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
     """日更单日落地退出派生: 查 canonical 该股上一期名单做 period-diff, 只查本批
     (stock_code,report_date), 不做全市场重扫(避免 26M 行放大重演); 跳过批次里已自带
-    退出行的组合(全量按股重跑路径已在内存用 holder_new 算过, 更准)。已知边界: canonical
-    不存 HOLDER_CODE, 跟上一期比对只能按 holder_name, 没有 holder_new 的改名防护(那部分
-    只在同批 ``_derive_exits`` 内存 diff 里生效)——仍做, 因为系统性缺失比误判风险更差。
+    退出行的组合(全量按股重跑路径已在内存用 holder_new 算过, 更准)。
+
+    2026-09-07 修两处, 都是 canonical 拿到 holder_code 之后才可能修的:
+
+    1. **退出行曾经带着别人的 code**(数据污染, 本次回填实测 21,453 行 = 带码退出行的
+       11.2%)。原实现 ``e = dict(template)`` 拿当期**第一行**做模板, 之后只覆盖
+       holder_name, 于是 holder_code / is_holder_org 留着模板行的值 ——
+       「胡利平」因此挂上了香港中央结算的码 10671586, 那个码下面一度挂着 172 种名字
+       (含中信证券、高瓴资本、以及一个自然人)。
+       canonical 此前不存 code 时这个模板复制无害; 加了 code 之后它变成污染路径。
+       现在退出者带**自己的** code/is_holder_org, 从 canonical 上一期原样取。
+
+    2. **改名防护**。原 docstring 写「canonical 不存 HOLDER_CODE, 比对只能按 holder_name,
+       没有 holder_new 的改名防护」—— 那句话在 2026-09-07 之前是对的。现在按
+       ``COALESCE(holder_code, holder_name)`` 比对(与内存路径 ``_holder_identity`` 同口径),
+       机构改名不再被记成「退出 + 新进」两条假事件。实测同一 code 用过多个名字的有 4,467 个。
     """
     if not rows:
         return []
@@ -575,21 +588,39 @@ def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
         if not prev_period:
             continue  # 该股没有更早的已接受期, 没有基准可 diff
         prev_rows = conn.execute(
-            f"SELECT DISTINCT holder_name FROM {CANONICAL_TABLE} WHERE stock_code=? "
-            "AND report_date=? AND is_exit_row=FALSE", [stock_code, prev_period]).fetchall()
-        prev_names = {str(r[0]) for r in prev_rows if r and r[0]}
-        cur_names = {str(r.get("holder_name") or "") for r in cur_rows}
-        gone = sorted(prev_names - cur_names)
+            f"SELECT DISTINCT holder_name, holder_code, is_holder_org FROM {CANONICAL_TABLE} "
+            "WHERE stock_code=? AND report_date=? AND is_exit_row=FALSE",
+            [stock_code, prev_period]).fetchall()
+        # 身份键与内存路径 _holder_identity 同口径: 有 code 用 code, 没有退回 name。
+        prev_by_identity = {
+            (str(r[1]) if r[1] else str(r[0])): {
+                "holder_name": str(r[0]),
+                "holder_code": str(r[1]) if r[1] else None,
+                "is_holder_org": r[2],
+            }
+            for r in prev_rows if r and r[0]
+        }
+        cur_identities = {
+            str(r.get("holder_code") or "") or str(r.get("holder_name") or "")
+            for r in cur_rows
+        }
+        gone = sorted(set(prev_by_identity) - cur_identities)
         if not gone:
             continue
         template = cur_rows[0]
         notice = template.get("notice_date") or template.get("page_update_date")
-        for rank, name in enumerate(gone, start=1):
+        for rank, identity in enumerate(gone, start=1):
+            src = prev_by_identity[identity]
             e = dict(template)
             e.update(dict.fromkeys(null_fields))
             e.update({
-                "holder_name": name, "holder_name_norm": name,
-                "holder_new": name,  # canonical 没存 code, 老侧身份只能是 name
+                "holder_name": src["holder_name"], "holder_name_norm": src["holder_name"],
+                # 退出者带**自己的**身份, 不是模板行的 —— 模板只提供 stock/notice 这类
+                # 与持有人无关的字段。2026-09-07 之前这三行不存在, 于是退出行继承了
+                # cur_rows[0] 的 code, 实测污染 21,453 行。
+                "holder_code": src["holder_code"],
+                "is_holder_org": src["is_holder_org"],
+                "holder_new": identity,
                 "report_date": report_date, "is_exit_row": True,
                 "holder_rank": rank, "row_seq": 1,
                 "change_status": "退出", "hold_change": "退出",

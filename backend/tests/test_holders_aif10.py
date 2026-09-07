@@ -182,7 +182,11 @@ def _wm_fixture():
         """
         CREATE TABLE canonical_top10_float_holders_period (
             stock_code VARCHAR, report_date VARCHAR, notice_date VARCHAR,
-            holder_name VARCHAR, is_exit_row BOOLEAN
+            holder_name VARCHAR, is_exit_row BOOLEAN,
+            -- 2026-09-07 schema v3: 身份键。桩表最小化但**必须**含这两列 ——
+            -- _derive_exits_against_canonical 从 canonical 取退出者自己的 code,
+            -- 少了它就不是在测生产行为。
+            holder_code VARCHAR, is_holder_org BOOLEAN
         )
         """
     )
@@ -192,7 +196,8 @@ def _wm_fixture():
 def test_formal_watermark_prefers_canonical_notice_frontier():
     con = _wm_fixture()
     con.execute(
-        "INSERT INTO canonical_top10_float_holders_period VALUES "
+        "INSERT INTO canonical_top10_float_holders_period "
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row) VALUES "
         "('600519','20260630','20260722','机构甲',FALSE),"
         "('600519','20260331','20260425','机构甲',FALSE)"
     )
@@ -212,7 +217,8 @@ def test_net_new_notice_since_splits_amplification_from_new():
     con = _wm_fixture()
     # Full-history rewrite would touch 20260331 too; net-new only counts > wm.
     con.execute(
-        "INSERT INTO canonical_top10_float_holders_period VALUES "
+        "INSERT INTO canonical_top10_float_holders_period "
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row) VALUES "
         "('600519','20260630','20260722','机构甲',FALSE),"
         "('600519','20260630','20260721','机构乙',FALSE),"
         "('600519','20260331','20260425','机构甲',FALSE)"
@@ -342,7 +348,11 @@ def _canonical_holders_fixture():
         """
         CREATE TABLE canonical_top10_float_holders_period (
             stock_code VARCHAR, report_date VARCHAR, notice_date VARCHAR,
-            holder_name VARCHAR, is_exit_row BOOLEAN
+            holder_name VARCHAR, is_exit_row BOOLEAN,
+            -- 2026-09-07 schema v3: 身份键。桩表最小化但**必须**含这两列 ——
+            -- _derive_exits_against_canonical 从 canonical 取退出者自己的 code,
+            -- 少了它就不是在测生产行为。
+            holder_code VARCHAR, is_holder_org BOOLEAN
         )
         """
     )
@@ -352,7 +362,8 @@ def _canonical_holders_fixture():
 def test_derive_exits_against_canonical_finds_gone_holder():
     con = _canonical_holders_fixture()
     con.execute(
-        "INSERT INTO canonical_top10_float_holders_period VALUES "
+        "INSERT INTO canonical_top10_float_holders_period "
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row) VALUES "
         "('600388','20260331','20260425','A机构',FALSE),"
         "('600388','20260331','20260425','B机构',FALSE)"
     )
@@ -382,7 +393,8 @@ def test_derive_exits_against_canonical_skips_when_caller_already_derived():
     """批次里这 (stock, report_date) 已经自带退出行 (全量按股重跑路径) → 不重算/不冲突."""
     con = _canonical_holders_fixture()
     con.execute(
-        "INSERT INTO canonical_top10_float_holders_period VALUES "
+        "INSERT INTO canonical_top10_float_holders_period "
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row) VALUES "
         "('600388','20260331','20260425','A机构',FALSE),"
         "('600388','20260331','20260425','B机构',FALSE)"
     )
@@ -399,7 +411,8 @@ def test_write_merges_canonical_derived_exits(monkeypatch):
     """_write 是所有落地路径的收口点: 日更批次没带退出行时在这里补上."""
     con = _canonical_holders_fixture()
     con.execute(
-        "INSERT INTO canonical_top10_float_holders_period VALUES "
+        "INSERT INTO canonical_top10_float_holders_period "
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row) VALUES "
         "('600388','20260331','20260425','A机构',FALSE),"
         "('600388','20260331','20260425','B机构',FALSE)"
     )
@@ -600,7 +613,8 @@ def test_incremental_advance_window_is_by_notice_only(monkeypatch):
 def test_local_stock_codes_for_notice_date_reads_canonical():
     con = _wm_fixture()
     con.execute(
-        "INSERT INTO canonical_top10_float_holders_period VALUES "
+        "INSERT INTO canonical_top10_float_holders_period "
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row) VALUES "
         "('600346','20260630','20260723','机构甲',FALSE),"
         "('600346','20260630','20260723','机构乙',FALSE),"
         "('688116','20260630','20260722','机构丙',FALSE)"
@@ -617,7 +631,11 @@ def _notice_hole_fixture():
         """
         CREATE TABLE canonical_top10_float_holders_period (
             stock_code VARCHAR, report_date VARCHAR, notice_date VARCHAR,
-            holder_name VARCHAR, is_exit_row BOOLEAN
+            holder_name VARCHAR, is_exit_row BOOLEAN,
+            -- 2026-09-07 schema v3: 身份键。桩表最小化但**必须**含这两列 ——
+            -- _derive_exits_against_canonical 从 canonical 取退出者自己的 code,
+            -- 少了它就不是在测生产行为。
+            holder_code VARCHAR, is_holder_org BOOLEAN
         )
         """
     )
@@ -643,7 +661,8 @@ def test_forward_by_notice_lands_absent_days_only(monkeypatch):
     """Provider ahead: holdernumber-class by_notice, skip days already in canonical."""
     con = _notice_hole_fixture()
     con.execute(
-        "INSERT INTO canonical_top10_float_holders_period VALUES "
+        "INSERT INTO canonical_top10_float_holders_period "
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row) VALUES "
         "('600519','20260331','20260722','机构甲',FALSE)"
     )
     fetched: list[str] = []
@@ -830,3 +849,80 @@ def test_cli_returns_zero_on_real_success(monkeypatch):
     """正常成功仍然退出 0 —— 证明上面两条不是把所有情况都判失败。"""
     rc = _run_cli(monkeypatch, {"ok": 100, "fail": 2, "rows_written": 4321, "errors": []})
     assert rc == 0
+
+
+# ── 退出行必须带**自己**的身份 (2026-09-07 回归测试) ────────────────────────────
+#
+# 这是今天真实发生过的数据污染的回归测试, 不是假想场景。
+# _derive_exits_against_canonical 原用 `e = dict(template)` 拿当期第一行做模板,
+# 之后只覆盖 holder_name —— holder_code 留着模板行的值。canonical 此前不存 code 时
+# 这无害; 我 2026-09-07 把 code 提上 canonical 之后, 它变成污染路径:
+# 回填实测 21,453 行退出行带着别人的码 (占带码退出行 11.2%),
+# 码 10671586「香港中央结算」下面一度挂着 172 种名字, 含中信证券、高瓴资本、以及一个自然人。
+
+
+def _canon_with_identity(monkeypatch):
+    con = duckdb.connect(":memory:")
+    con.execute(
+        """
+        CREATE TABLE canonical_top10_float_holders_period (
+            stock_code VARCHAR, report_date VARCHAR, notice_date VARCHAR,
+            holder_name VARCHAR, is_exit_row BOOLEAN,
+            holder_code VARCHAR, is_holder_org BOOLEAN
+        )
+        """
+    )
+    return con
+
+
+def test_derived_exit_row_carries_the_departed_holders_own_code():
+    """退出者带自己的 code, 不是模板行(当期第一行)的 code。"""
+    con = _canon_with_identity(None)
+    # 上一期: 香港中央结算(有码) + 胡利平(个人无码)
+    con.execute(
+        "INSERT INTO canonical_top10_float_holders_period "
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row, holder_code, is_holder_org) "
+        "VALUES ('600887','20220630','20220820','香港中央结算有限公司',FALSE,'10671586',TRUE),"
+        "       ('600887','20220630','20220820','胡利平',FALSE,NULL,FALSE)"
+    )
+    # 本期: 只剩香港中央结算 → 胡利平退出。模板行(cur_rows[0])带的是 10671586。
+    cur = [{
+        "stock_code": "600887", "report_date": "20220930", "notice_date": "20221028",
+        "page_update_date": "20221028", "holder_name": "香港中央结算有限公司",
+        "holder_code": "10671586", "is_holder_org": True,
+        "holder_set": "free", "holder_rank": 1, "row_seq": 1, "is_exit_row": False,
+    }]
+    exits = _derive_exits_against_canonical(con, cur)
+    con.close()
+
+    assert len(exits) == 1, exits
+    e = exits[0]
+    assert e["holder_name"] == "胡利平"
+    assert e["holder_code"] is None, (
+        f"退出行拿到了 {e['holder_code']!r} —— 那是模板行(香港中央结算)的码, "
+        "个人本来就没有码。这正是 2026-09-07 污染 21,453 行的那个缺陷"
+    )
+    assert e["is_holder_org"] is False
+
+
+def test_rename_with_same_code_is_not_a_false_exit():
+    """同一 code 改名不该被记成「退出 + 新进」两条假事件。
+
+    实测同一 code 用过多个名字的有 4,467 个 —— 按名字比对会为每一次改名造一条假退出。
+    canonical 拿到 code 之后这条才修得掉 (原 docstring 明说「只能按 holder_name」)。
+    """
+    con = _canon_with_identity(None)
+    con.execute(
+        "INSERT INTO canonical_top10_float_holders_period "
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row, holder_code, is_holder_org) "
+        "VALUES ('601211','20220630','20220820','国泰君安证券股份有限公司',FALSE,'10099999',TRUE)"
+    )
+    cur = [{
+        "stock_code": "601211", "report_date": "20220930", "notice_date": "20221028",
+        "page_update_date": "20221028", "holder_name": "国泰海通证券股份有限公司",  # 改名, 同码
+        "holder_code": "10099999", "is_holder_org": True,
+        "holder_set": "free", "holder_rank": 1, "row_seq": 1, "is_exit_row": False,
+    }]
+    exits = _derive_exits_against_canonical(con, cur)
+    con.close()
+    assert exits == [], f"同码改名被误判成退出: {exits}"

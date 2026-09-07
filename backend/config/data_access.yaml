@@ -270,7 +270,13 @@ entities:
     code_col: stock_code
     asof_col: notice_date
     asof_format: yyyymmdd
-    columns: [stock_code, report_date, notice_date, holder_set, holder_rank, holder_name_norm, hold_ratio_float, change_status, hold_change_num, is_exit_row]
+    # 2026-09-07 补 holder_code / is_holder_org (canonical schema v3 / contract v4)。
+    # 这里的 columns 是 **SELECT 投影**不是文档 (drivers/generic.py:30 直接拼成列清单),
+    # 所以漏了它们, 经 data_access 读这张表的消费方就看不到身份键 —— 加那两列的全部意义
+    # (机构档案按 code 聚合而不是按名字) 在 serve 层会整条断掉。
+    # holder_code 可空(个人无编码), is_holder_org 可空(v2 遗留行身份未记录) —— 三态语义
+    # 见 holders_top10_schema.py 的字段注释, 消费方必须按三态判, 不许把 NULL 当"没有"。
+    columns: [stock_code, report_date, notice_date, holder_set, holder_rank, holder_name_norm, holder_code, is_holder_org, hold_ratio_float, change_status, hold_change_num, is_exit_row]
     vendor: aif10
     available_after: ann_date
 
