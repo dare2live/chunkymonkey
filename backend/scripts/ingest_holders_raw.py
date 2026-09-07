@@ -97,6 +97,13 @@ def validate_staging_path(path: Path) -> Path:
 
 
 # ── staging schema (raw_fetch / raw_rows) ───────────────────────────
+#
+# 2026-09-07: 表名提成常量。此前它在本文件里硬编码 5 处, 而 backfill_holders_top10
+# _from_staging.py 又抄了一份 —— check_dead_references 的 E 扫正是这样抓到的
+# (它在**消费方**看到字面 `FROM raw_rows`, 而这张表只存在于 scratch 快照库,
+#  不在任何登记的生产库里)。表名归生产者所有, 消费方 import, 只此一处。
+RAW_FETCH_TABLE = "raw_fetch"
+RAW_ROWS_TABLE = "raw_rows"
 _RAW_FETCH_DDL = """
 CREATE TABLE IF NOT EXISTS raw_fetch (
     fetch_id VARCHAR PRIMARY KEY,
@@ -118,14 +125,14 @@ def _raw_rows_ddl() -> str:
     cols += [f'"{name}" {duckdb_type}' for name, duckdb_type in RAW_FIELDS]
     body = ",\n    ".join(cols)
     return (
-        "CREATE TABLE IF NOT EXISTS raw_rows (\n    "
+        f"CREATE TABLE IF NOT EXISTS {RAW_ROWS_TABLE} (\n    "
         + body
         + ",\n    PRIMARY KEY (fetch_id, row_ordinal)\n)"
     )
 
 
 _RAW_ROWS_INSERT_SQL = (
-    "INSERT INTO raw_rows (fetch_id, row_ordinal, "
+    f"INSERT INTO {RAW_ROWS_TABLE} (fetch_id, row_ordinal, "
     + ", ".join(f'"{n}"' for n in _RAW_ROW_NAMES)
     + ") VALUES ("
     + ", ".join(["?"] * (2 + len(_RAW_ROW_NAMES)))
@@ -183,7 +190,7 @@ def _write_stock_result(
     「决定要写就必须写干净」。
     """
     requested_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    conn.execute("DELETE FROM raw_rows WHERE fetch_id = ?", [fetch.fetch_id])
+    conn.execute(f"DELETE FROM {RAW_ROWS_TABLE} WHERE fetch_id = ?", [fetch.fetch_id])
     conn.execute("DELETE FROM raw_fetch WHERE fetch_id = ?", [fetch.fetch_id])
     conn.execute(
         "INSERT INTO raw_fetch (fetch_id, stock_code, requested_at, status, "

@@ -33,13 +33,23 @@ from services.holders_aif10 import (  # noqa: E402
 
 
 def _raw(secu, code, end_date, name, rank, hold_num, change, ratio=1.0, stype="A股",
-         upd="2026-06-13", holder_code=None):
-    """真实形态 aif10 行."""
+         upd="2026-06-13", holder_code=None, is_holdorg=None):
+    """真实形态 aif10 行.
+
+    2026-09-07 补 IS_HOLDORG。它此前不在 fixture 里, 但真实 RPT_F10_EH_FREEHOLDERS
+    响应**每行都有**(实测 2018-12-31 起 1,449,322 行零缺失), 而 canonical v3 用它解释
+    holder_code 的 NULL。缺省值按实测的供应商行为推: 给了 holder_code 就是机构,
+    没给就是个人 —— 实测两侧无例外 (机构 829,249 行 code 空 0 条; 个人 620,073 行
+    code 空 620,073 条)。这不是为了让测试变绿而编的默认值, 是照抄供应商的真实边界。
+    """
     row = {
         "SECUCODE": secu, "SECURITY_CODE": code, "SECURITY_NAME_ABBR": "测试股",
         "END_DATE": f"{end_date} 00:00:00", "HOLDER_NAME": name, "HOLDER_RANK": rank,
         "HOLD_NUM": hold_num, "HOLD_RATIO": ratio, "HOLD_NUM_CHANGE": change,
         "SHARES_TYPE": stype, "HOLDER_TYPE": "其它", "UPDATE_DATE": f"{upd} 00:00:00",
+        "IS_HOLDORG": (1 if holder_code is not None else 0)
+        if is_holdorg is None
+        else is_holdorg,
     }
     if holder_code is not None:
         row["HOLDER_CODE"] = holder_code

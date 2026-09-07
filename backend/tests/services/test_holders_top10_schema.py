@@ -161,16 +161,19 @@ def test_raw_fields_not_folded_into_schema_payload() -> None:
     # _SCHEMA_PAYLOAD fields are always our lowercase canonical names — a
     # healthy schema has zero exact-string overlap between the two sets.
     assert schema_field_names.isdisjoint(raw_field_names)
-    assert len(schema._SCHEMA_PAYLOAD["fields"]) == 21
+    # 2026-09-07 删掉这里的 `== 21`: 字段数的唯一判据是
+    # test_schema_payload_field_count_is_23, 抄第二份迟早一处改了另一处没改
+    # (本次就是这样红的)。本测试的真判据是上面那行 disjoint —— RAW_FIELDS 没被折进契约。
     assert "raw_fields" not in schema._SCHEMA_PAYLOAD
 
 
-# ── T1b backward: canonical schema is byte-identical to pre-T1 git HEAD ────
-
-
-def test_schema_version_and_contract_version_match_head() -> None:
-    assert schema.SCHEMA_VERSION == "2"
-    assert schema.CONTRACT_VERSION == "3"
+# ── T1b backward: 未经证据的 schema 抢跑不许再发生 ──────────────────────────
+#
+# 2026-09-07: 删掉 test_schema_version_and_contract_version_match_head
+# (原断言 SCHEMA_VERSION == "2" / CONTRACT_VERSION == "3")。版本号的唯一判据现在是
+# test_identity_promotion_bumped_both_versions —— 两处各写一份版本号, 就是本次红的原因。
+# 下面这条 (PROVIDER_EXT_FIELDS / LINEAGE_FIELDS 不得复活) 仍然有效且与本次改动无关:
+# 本次只加了两个能指着实测数字说清理由的列, 没有把 T1b 那 6 个 ext 字段带回来。
 
 
 def test_provider_ext_and_lineage_constants_were_removed() -> None:
@@ -188,7 +191,11 @@ def test_provider_ext_and_lineage_constants_were_removed() -> None:
 def test_canonical_row_fields_is_provider_plus_enrichment_only() -> None:
     assert schema.CANONICAL_ROW_FIELDS == schema.PROVIDER_FIELDS + schema.ENRICHMENT_FIELDS
     assert "raw_row_hash" not in schema.CANONICAL_ROW_FIELDS
-    assert "holder_code" not in schema.CANONICAL_ROW_FIELDS
+    # 2026-09-07 反号: 此前断言 "holder_code" **不在** canonical —— 那是 T1b 回退留下的闸,
+    # 意思是「Phase A 拿出证据之前不许提升」。证据已到 (见下方 test_identity_columns_...),
+    # 业主已拍板, 故这里改成断言它**在**。
+    assert "holder_code" in schema.CANONICAL_ROW_FIELDS
+    assert "is_holder_org" in schema.CANONICAL_ROW_FIELDS
 
 
 def test_holder_new_is_not_promoted_to_a_canonical_field() -> None:
@@ -200,84 +207,79 @@ def test_holder_new_is_not_promoted_to_a_canonical_field() -> None:
     assert "holder_new" not in field_names
 
 
-def test_schema_payload_field_count_is_21_not_27() -> None:
-    assert len(schema._SCHEMA_PAYLOAD["fields"]) == 21
+def test_schema_payload_field_count_is_23() -> None:
+    """21 -> 23 (2026-09-07, schema v3): +holder_code +is_holder_org。
+
+    仍然不是 T1b 那次想加的 27 —— 那次一口气加了 6 个 ext 字段, 没有任何证据说明
+    哪些值得上 canonical。这次只加两个, 且两个都能指着实测数字说清为什么。
+    """
+    assert len(schema._SCHEMA_PAYLOAD["fields"]) == 23
 
 
-@pytest.mark.parametrize("name", ["PROVIDER_FIELDS", "ENRICHMENT_FIELDS", "GRAIN"])
-def test_legacy_constant_is_byte_identical_to_git_head(name: str, head_source: str) -> None:
-    current_source = Path(schema.__file__).read_text(encoding="utf-8")
-    old_segment = _source_segment(head_source, name)
-    new_segment = _source_segment(current_source, name)
-    assert old_segment == new_segment, (
-        f"{name} changed from git HEAD — holders_top10_schema.py must not "
-        "touch PROVIDER_FIELDS/ENRICHMENT_FIELDS/GRAIN"
+# ── 身份列: 固定形状断言, 不比 git HEAD ───────────────────────────────────────
+#
+# 2026-09-07 退役三个 "byte_identical_to_git_head" 测试
+# (test_legacy_constant_is_byte_identical_to_git_head[PROVIDER_FIELDS/ENRICHMENT_FIELDS/GRAIN]
+#  / test_schema_payload_fields_are_byte_identical_to_head
+#  / test_contract_hash_is_byte_identical_to_head)。
+#
+# 它们锚在 `git show HEAD`, 也就是**会移动的**基准: 改动一提交, HEAD 就等于工作树,
+# 三个断言全部变成同义反复, 永远绿。它们真正起过的作用只有一次 —— 拦住 T1b 那次
+# 「Phase A 证据到齐之前就往 canonical 加 6 个 ext 字段」的抢跑。那个用途已经完成:
+# Phase A 跑完了, 证据在下面这个测试里, 业主拍了板。
+#
+# 留一个锚在移动基准上的闸 = 门问的问题(和上次提交比有没有变)不是它想守的东西
+# (canonical 契约有没有被无证据地改)。换成固定形状断言: 不依赖 git, 任何一次
+# 意外改动 —— 包括把这两列删掉、改可空性、改 null 语义 —— 都会红。
+
+
+def test_identity_columns_are_on_canonical_with_measured_null_semantics() -> None:
+    """holder_code / is_holder_org 的形状与 null 语义, 连同它们的实测依据。
+
+    为什么要有 holder_code (Phase A 实测, 2018-12-31 起全市场 1,449,322 行):
+      - 同一 code 用过多个名字: 4,467 个 code / 291,819 行 (35.2%)。
+        只按 holder_name 聚合会把**一个**实体拆成多个 —— code 10671586「香港中央结算」
+        有 9 种写法 (含繁体「結算」、(A股)/(沪股通) 后缀、"中心"/"公司"), 51,499 行;
+        code 510500 有 9 种, 其中一种把连字符写成汉字「一」。
+      - 同一名字对应多个 code: 116 个名字 / 60,832 行 (7.3%)。
+        只按名字聚合会把**不同**实体并成一个 (Morgan Stanley 2 个码)。
+
+    为什么 holder_code 可空、而 is_holder_org 不可空:
+      供应商只给机构编码, 个人恒空, 边界干净无例外 ——
+      IS_HOLDORG=1 的 829,249 行里 holder_code 空 0 行 (0.0%);
+      IS_HOLDORG=0 的 620,073 行里空 620,073 行 (100.0%)。
+      所以那 42.8% 的空**不是**「测不出」, 是「个人本来就没有」。
+      没有 is_holder_org 这一列, 两者分不开 —— 红线 3 要求缺失可辨识。
+    """
+    fields = {f["name"]: f for f in schema.SCHEMA_CONTRACT["fields"]}
+
+    code = fields["holder_code"]
+    assert code["duckdb_type"] == "VARCHAR"
+    assert code["nullable"] is True
+    assert code["origin"] == "provider"
+    assert code["null_semantics"] == "structural_absent_for_natural_person", (
+        "holder_code 的空必须标成结构性缺席; 标成 unknown/forbidden 都会让"
+        "「个人无编码」和「机构没取到」分不开"
     )
 
+    org = fields["is_holder_org"]
+    assert org["duckdb_type"] == "BOOLEAN"
+    assert org["nullable"] is False, (
+        "is_holder_org 是 holder_code 那一列 NULL 的唯一解释项, 它自己不能是 NULL"
+    )
+    assert org["null_semantics"] == "forbidden"
+    assert org["origin"] == "provider"
 
-def test_schema_payload_fields_are_byte_identical_to_head(head_source: str) -> None:
-    """Machine proof that the canonical contract did not change: every
-    entry in ``_SCHEMA_PAYLOAD['fields']`` — count, order, and dict content —
-    matches the pre-T1 committed version exactly (21 items, not 27)."""
-
-    old_module = types.ModuleType(SCHEMA_MODULE_NAME)
-    exec(compile(head_source, str(Path(schema.__file__).resolve()), "exec"), old_module.__dict__)  # noqa: S102
-
-    old_fields = [dict(f) for f in old_module.SCHEMA_CONTRACT["fields"]]
-    new_fields = [dict(f) for f in schema.SCHEMA_CONTRACT["fields"]]
-
-    assert len(old_fields) == 21
-    assert new_fields == old_fields
+    # 两列都在 PROVIDER 段而不是 ENRICHMENT 段: 它们是供应商原样给的, 不是我们算的。
+    assert "holder_code" in schema.PROVIDER_FIELDS
+    assert "is_holder_org" in schema.PROVIDER_FIELDS
+    assert "holder_code" not in schema.ENRICHMENT_FIELDS
+    assert "is_holder_org" not in schema.ENRICHMENT_FIELDS
 
 
-def test_contract_hash_is_byte_identical_to_head(head_source: str) -> None:
-    """load_holders_top10_contract()'s contract_hash must be UNCHANGED from
-    pre-T1 HEAD — this is the machine proof that no undone schema change
-    rode into the tree. Computed by actually re-running the unmodified
-    holders_top10_contract.py against a stand-in module built from git
-    HEAD's schema source (not a hand-rolled re-implementation of the
-    hashing logic)."""
+def test_identity_promotion_bumped_both_versions() -> None:
+    """改 canonical 形状必须同时抬 schema 与 contract 版本, 否则下游分不清两份数据。"""
+    assert schema.SCHEMA_VERSION == "3"
+    assert schema.CONTRACT_VERSION == "4"
 
-    # 2026-09-06: 原实现把替身模块塞进 sys.modules 再 import 契约模块, 即使 finally 还原,
-    # 还原方式是**重新 import** —— 生成新的模块对象, 而下游已 `from ... import` 过符号的模块
-    # 仍持有旧引用。实测污染: 本文件先跑, 之后 test_holders_top10_acceptance.py 红 6 条;
-    # 单独跑却全绿。换 sys.modules 这类机制天生全局, 还原不干净 —— 改成子进程隔离。
-    with tempfile.TemporaryDirectory() as td:
-        head_path = Path(td) / "head_schema.py"
-        head_path.write_text(head_source, encoding="utf-8")
-        probe = textwrap.dedent(f"""
-            import json, sys, types, importlib
-            src = open({str(head_path)!r}, encoding="utf-8").read()
-            m = types.ModuleType({SCHEMA_MODULE_NAME!r})
-            # 注册必须在 exec **之前**: exec 期间模块自己的 @dataclass 装饰器会回查
-            # sys.modules[cls.__module__] 来解析 KW_ONLY (dataclasses._is_type)。
-            # Python 3.13 起那里拿到 None 直接 AttributeError, 3.12 及以前不会。
-            # 2026-09-06 实测: 反过来写在 3.13.13 上必炸, 且报的是 dataclasses 内部
-            # 的 'NoneType' object has no attribute '__dict__', 与契约本身无关。
-            sys.modules[{SCHEMA_MODULE_NAME!r}] = m
-            exec(compile(src, {str(Path(schema.__file__).resolve())!r}, "exec"), m.__dict__)
-            c = importlib.import_module({CONTRACT_MODULE_NAME!r}).load_holders_top10_contract()
-            print(json.dumps({{
-                "contract_version": c.contract_version,
-                "schema_hash": c.schema_hash,
-                "contract_hash": c.contract_hash,
-                "config_hash": c.config_hash,
-            }}))
-            """)
-        env = dict(os.environ, PYTHONPATH="backend")
-        res = subprocess.run(
-            [sys.executable, "-c", probe],
-            cwd=str(Path(schema.__file__).resolve().parents[3]), capture_output=True, text=True, env=env,
-        )
-        assert res.returncode == 0, f"HEAD 契约探针子进程失败: {res.stderr[-800:]}"
-        old_contract = SimpleNamespace(**json.loads(res.stdout.strip().splitlines()[-1]))
 
-    from services.data_sources.holders_top10_contract import load_holders_top10_contract
-
-    new_contract = load_holders_top10_contract()
-
-    assert old_contract.contract_version == "3"
-    assert new_contract.contract_version == "3"
-    assert new_contract.schema_hash == old_contract.schema_hash
-    assert new_contract.contract_hash == old_contract.contract_hash
-    assert new_contract.config_hash == old_contract.config_hash

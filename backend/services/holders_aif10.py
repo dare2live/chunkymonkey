@@ -96,6 +96,29 @@ def _share_class(shares_type) -> str:
     return "_"
 
 
+def _is_holder_org(v) -> bool:
+    """IS_HOLDORG -> bool。供应商给 1/0 (或其字符串形态), 实测零缺失。
+
+    2026-09-07: 它是 holder_code 那一列 NULL 的**唯一解释项** —— 供应商只给机构编码,
+    个人恒空 (实测 2018-12-31 起: 机构 829,249 行空 0 条; 个人 620,073 行空 620,073 条,
+    边界无例外)。没有这一列, canonical 上一个 NULL 的 holder_code 就分不清
+    「个人本来就没有」和「机构但没取到」, 违红线 3 (缺失必须可辨识)。
+    所以这里**不做兜底猜测**: 认不出的取值直接抛, 不静默当 False。
+    """
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        if int(v) in (0, 1):
+            return bool(int(v))
+        raise ValueError(f"IS_HOLDORG 数值越界: {v!r}")
+    text = str(v).strip() if v is not None else ""
+    if text in ("1", "true", "True", "TRUE"):
+        return True
+    if text in ("0", "false", "False", "FALSE"):
+        return False
+    raise ValueError(f"IS_HOLDORG 无法判定: {v!r}")
+
+
 class UnknownHolderChangeStatusError(ValueError):
     """HOLD_NUM_CHANGE 不在闭合取值集(新进/不变/增持/减持,+派生退出)里 —— fail-closed
     (CLAUDE.md §11): 视为供应商 schema drift, 抛错而不是原样存进 canonical。"""
@@ -160,6 +183,11 @@ def _clean(raw: list[dict], *, start_period: str) -> list[dict]:
             "row_seq": 1,
             "holder_name": holder_name,
             "holder_name_norm": holder_name,
+            # 2026-09-07 提升上 canonical (schema v3 / contract v4)。此前只做
+            # process 阶段身份键、落地时被白名单投影丢弃, 于是 canonical 上只有名字 ——
+            # 而名字在 35.2% 的行上不是稳定身份 (同码改名 4,467 个 code)。
+            "holder_code": holder_code or None,
+            "is_holder_org": _is_holder_org(row.get("IS_HOLDORG")),
             "holder_new": holder_new,  # extra key: process-stage identity only, see above
             "share_class": _share_class(row.get("SHARES_TYPE")),
             "is_secondary_class": False,

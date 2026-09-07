@@ -49,6 +49,12 @@ def _row(**overrides):
         "holder_rank": 1,
         "row_seq": 1,
         "holder_name": "香港中央结算有限公司",
+        # schema v3 / contract v4 (2026-09-07): 身份键上 canonical。
+        # 默认值挑的就是那个最能说明问题的实体 —— 实测 code 10671586 在
+        # 2018-12-31 起的数据里用过 9 种写法 (含繁体「結算」、(A股)/(沪股通) 后缀、
+        # "中心"/"公司"), 共 51,499 行。只按 holder_name 聚合会把它拆成 9 个假实体。
+        "holder_code": "10671586",
+        "is_holder_org": True,
         "hold_ratio_float": 7.12,
         "notice_date": PARTITION,
         "is_exit_row": False,

@@ -284,6 +284,28 @@ def _validate_provider_row(
         raise HoldersTop10ValidationError(
             "INVALID_EXIT_FLAG", "is_exit_row must be bool"
         )
+    # schema v3 / contract v4 (2026-09-07): 身份键上 canonical。
+    # is_holder_org 与 is_exit_row 同样严 —— 它是 holder_code 那一列 NULL 的唯一解释项,
+    # 松掉它, canonical 上的空 holder_code 就分不清「个人」和「机构但没取到」。
+    is_org = row.get("is_holder_org")
+    if not isinstance(is_org, bool):
+        raise HoldersTop10ValidationError(
+            "INVALID_HOLDER_ORG_FLAG", f"is_holder_org must be bool; got {is_org!r}"
+        )
+    holder_code_raw = row.get("holder_code")
+    holder_code = (
+        None
+        if holder_code_raw is None or str(holder_code_raw).strip() == ""
+        else str(holder_code_raw).strip()
+    )
+    # 供应商只给机构编码, 个人恒空 —— 实测 2018-12-31 起两侧无例外
+    # (机构 829,249 行空 0 条 / 个人 620,073 行空 620,073 条)。
+    # 机构却没有 code = 供应商行为变了, 这时候静默放行会让身份键悄悄退化成名字。
+    if is_org and holder_code is None:
+        raise HoldersTop10ValidationError(
+            "MISSING_ORG_HOLDER_CODE",
+            f"is_holder_org=True 但 holder_code 为空 (holder_name={holder_name!r})",
+        )
     enrichment: dict[str, Any] = {}
     for name in ENRICHMENT_FIELDS:
         value = row.get(name)
@@ -315,6 +337,8 @@ def _validate_provider_row(
         "holder_rank": holder_rank,
         "row_seq": row_seq,
         "holder_name": holder_name,
+        "holder_code": holder_code,
+        "is_holder_org": is_org,
         "hold_ratio_float": ratio,
         "notice_date": notice_compact,
         "is_exit_row": is_exit,

@@ -60,6 +60,8 @@ def _holders_row(**overrides):
         "holder_name_norm": "香港中央结算有限公司",
         "share_class": "A",
         "is_secondary_class": False,
+        "holder_code": "10671586",
+        "is_holder_org": True,
         "is_exit_row": False,
         "shares_text": None,
         "shares_approx": 100,

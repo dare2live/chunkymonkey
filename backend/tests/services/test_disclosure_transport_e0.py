@@ -68,6 +68,8 @@ def _holders_row(**overrides):
         "holder_type": None,
         "hold_ratio_float": 7.12,
         "notice_date": PARTITION_HOLDERS,
+        "holder_code": "10671586",
+        "is_holder_org": True,
         "is_exit_row": False,
     }
     base.update(overrides)
@@ -290,6 +292,8 @@ def test_assign_unique_holders_row_seq_breaks_rank_collisions() -> None:
             "holder_set": "free",
             "holder_rank": 3,
             "row_seq": 1,
+            "holder_code": "10671586",
+            "is_holder_org": True,
             "is_exit_row": False,
             "holder_name": "乙",
             "hold_ratio_float": 1.0,
@@ -301,6 +305,8 @@ def test_assign_unique_holders_row_seq_breaks_rank_collisions() -> None:
             "holder_set": "free",
             "holder_rank": 3,
             "row_seq": 1,
+            "holder_code": "10671586",
+            "is_holder_org": True,
             "is_exit_row": False,
             "holder_name": "甲",
             "hold_ratio_float": 2.0,

@@ -37,9 +37,9 @@ DATASET_ID = "tier0.disclosure.top10_float_holders_period"
 LANDING_TABLE = "landing_miaoxiang_holders_top10"
 CANONICAL_TABLE = "canonical_top10_float_holders_period"
 SCHEMA_ID = "tier0.disclosure.top10_float_holders_period.canonical"
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 WRITER_ID = "services.data_sources.holders_top10_acceptance"
-CONTRACT_VERSION = "3"
+CONTRACT_VERSION = "4"
 SOURCE = "miaoxiang"
 API = "RPT_F10_EH_FREEHOLDERS"
 # Retired 2026-07-26 — table DROPped; land-from-legacy / mirror refuse.
@@ -106,6 +106,8 @@ PROVIDER_FIELDS = (
     "holder_rank",
     "row_seq",
     "holder_name",
+    "holder_code",
+    "is_holder_org",
     "hold_ratio_float",
     "notice_date",
     "is_exit_row",
@@ -283,6 +285,40 @@ _SCHEMA_PAYLOAD: dict[str, Any] = {
             "duckdb_type": "VARCHAR",
             "nullable": False,
             "unit": "holder_name_label",
+            "null_semantics": "forbidden",
+            "origin": "provider",
+        },
+        {
+            # 2026-09-07 提升上 canonical。这是 schema docstring 里说的那个
+            # 「a decision for *after* Phase A's read-only staging run」——
+            # Phase A 的证据到齐了 (2018-12-31 起 1,449,322 行全市场):
+            #   同一 code 用过多个名字: 4,467 个 code / 291,819 行 (35.2%)
+            #     —— 只按 holder_name 聚合会把**一个**实体拆成多个。实例:
+            #        code 10671586「香港中央结算」有 9 种写法 (含繁体「結算」、
+            #        (A股)/(沪股通) 后缀、"中心"/"公司"), 51,499 行;
+            #        code 510500 有 9 种, 其中一种把连字符写成汉字「一」。
+            #   同一名字对应多个 code: 116 个名字 / 60,832 行 (7.3%)
+            #     —— 只按名字聚合会把**不同**实体并成一个 (Morgan Stanley 2 个码)。
+            # 机构档案/股票档案/关系网络全部以 holder_code 为身份键, 没有这一列就没有地基。
+            "name": "holder_code",
+            "duckdb_type": "VARCHAR",
+            "nullable": True,
+            "unit": "provider_holder_code",
+            # 空**不是**「测不出」: 供应商只给机构编码, 个人恒空。实测 2018-12-31 起
+            # IS_HOLDORG=1 的 829,249 行里 holder_code 空 0 行 (0.0%),
+            # IS_HOLDORG=0 的 620,073 行里空 620,073 行 (100.0%) —— 边界干净无例外。
+            # 判「这行为什么没有 code」只看 is_holder_org, 不猜。
+            "null_semantics": "structural_absent_for_natural_person",
+            "origin": "provider",
+        },
+        {
+            # 与 holder_code 成对: 没有它, NULL 的 holder_code 就分不清
+            # 「个人(本来就没有)」和「机构但没取到(真缺失)」—— 红线 3 要求缺失可辨识。
+            # 实测 IS_HOLDORG 本身零缺失, 故 nullable=False。
+            "name": "is_holder_org",
+            "duckdb_type": "BOOLEAN",
+            "nullable": False,
+            "unit": "provider_holder_is_organization",
             "null_semantics": "forbidden",
             "origin": "provider",
         },

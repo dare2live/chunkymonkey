@@ -136,6 +136,9 @@ def _holders_row(**overrides) -> dict:
         "holder_name": "香港中央结算有限公司",
         "hold_ratio_float": 7.12,
         "notice_date": HOLDERS_PARTITION,
+        # schema v3 / contract v4 (2026-09-07): 身份键上 canonical。
+        "holder_code": "10671586",
+        "is_holder_org": True,
         "is_exit_row": False,
     }
     base.update(overrides)

@@ -2731,6 +2731,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/scripts/backfill_holders_top10_from_staging.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/scripts/check_foundation_done.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
@@ -3014,6 +3020,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.casebook_outcome_day"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/backfill_holders_top10_from_staging.py",
       "kind": "consume",
       "src": "table:smartmoney.casebook_outcome_day"
     },
@@ -9145,9 +9157,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1479,
-    "generated_at": "2026-09-07T07:41:25.208607+00:00",
-    "node_count": 521,
+    "edge_count": 1481,
+    "generated_at": "2026-09-07T11:07:39.727769+00:00",
+    "node_count": 522,
     "version": 2
   },
   "nodes": [
@@ -9477,6 +9489,14 @@
         "path": "backend/scripts/audit_date_bounds.py"
       },
       "id": "consumer:backend/scripts/audit_date_bounds.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
+        "path": "backend/scripts/backfill_holders_top10_from_staging.py"
+      },
+      "id": "consumer:backend/scripts/backfill_holders_top10_from_staging.py",
       "kind": "consumer"
     },
     {
