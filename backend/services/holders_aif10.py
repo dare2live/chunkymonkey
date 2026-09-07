@@ -15,11 +15,14 @@
 """
 from __future__ import annotations
 
+import logging
 import time
 from datetime import datetime, timezone
 from typing import Iterable, Optional
 
 from services.data_sources.sibling_repos import ensure_import_path
+
+log = logging.getLogger(__name__)
 
 ensure_import_path("miaoxiang")
 
@@ -605,6 +608,22 @@ def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
             for r in cur_rows
         }
         gone = sorted(set(prev_by_identity) - cur_identities)
+        # 上一期是 v2 遗留行时 is_holder_org 为 NULL(当时这一列不存在, 身份未记录)。
+        # 造不出合规的 v3 退出行 —— accept 侧要求它必须是 bool (INVALID_HOLDER_ORG_FLAG)。
+        # 三条路只有跳过是诚实的:
+        #   放宽校验 -> 让「身份未判的行」重新能写进来, 正是那道门要挡的;
+        #   按名字猜 org/个人 -> 红线 3 禁止 (缺失不许填,不许 fallback);
+        #   跳过 -> 少一条**派生**行, 而派生物可从证据重生成 (红线 4)。
+        # 计数不静默: 回填期间上一期几乎都是 v2, 跳过量应当很大且随回填推进归零;
+        # 日更期间上一期必是 v3, 这里应当恒为 0 —— 不为 0 说明有 v2 行没被覆盖到。
+        skipped_unknown = [i for i in gone if prev_by_identity[i]["is_holder_org"] is None]
+        if skipped_unknown:
+            log.info(
+                "holders exit-derive skip %d holders on %s/%s: prev period %s is pre-v3 "
+                "(identity unrecorded)",
+                len(skipped_unknown), stock_code, report_date, prev_period,
+            )
+        gone = [i for i in gone if prev_by_identity[i]["is_holder_org"] is not None]
         if not gone:
             continue
         template = cur_rows[0]

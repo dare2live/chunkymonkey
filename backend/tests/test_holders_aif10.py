@@ -363,13 +363,14 @@ def test_derive_exits_against_canonical_finds_gone_holder():
     con = _canonical_holders_fixture()
     con.execute(
         "INSERT INTO canonical_top10_float_holders_period "
-        "(stock_code, report_date, notice_date, holder_name, is_exit_row) VALUES "
-        "('600388','20260331','20260425','A机构',FALSE),"
-        "('600388','20260331','20260425','B机构',FALSE)"
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row, holder_code, is_holder_org) VALUES "
+        "('600388','20260331','20260425','A机构',FALSE,'10000001',TRUE),"
+        "('600388','20260331','20260425','B机构',FALSE,'10000002',TRUE)"
     )
     new_rows = [{
         "stock_code": "600388", "report_date": "20260630",
         "notice_date": "20260722", "holder_name": "A机构", "is_exit_row": False,
+        "holder_code": "10000001", "is_holder_org": True,
     }]
     exits = _derive_exits_against_canonical(con, new_rows)
     assert len(exits) == 1
@@ -385,6 +386,7 @@ def test_derive_exits_against_canonical_no_prior_period_no_op():
     new_rows = [{
         "stock_code": "600388", "report_date": "20260630",
         "notice_date": "20260722", "holder_name": "A机构", "is_exit_row": False,
+        "holder_code": "10000001", "is_holder_org": True,
     }]
     assert _derive_exits_against_canonical(con, new_rows) == []
 
@@ -394,15 +396,17 @@ def test_derive_exits_against_canonical_skips_when_caller_already_derived():
     con = _canonical_holders_fixture()
     con.execute(
         "INSERT INTO canonical_top10_float_holders_period "
-        "(stock_code, report_date, notice_date, holder_name, is_exit_row) VALUES "
-        "('600388','20260331','20260425','A机构',FALSE),"
-        "('600388','20260331','20260425','B机构',FALSE)"
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row, holder_code, is_holder_org) VALUES "
+        "('600388','20260331','20260425','A机构',FALSE,'10000001',TRUE),"
+        "('600388','20260331','20260425','B机构',FALSE,'10000002',TRUE)"
     )
     rows = [
         {"stock_code": "600388", "report_date": "20260630", "notice_date": "20260722",
-         "holder_name": "A机构", "is_exit_row": False},
+         "holder_name": "A机构", "is_exit_row": False,
+         "holder_code": "10000001", "is_holder_org": True},
         {"stock_code": "600388", "report_date": "20260630", "notice_date": "20260722",
-         "holder_name": "B机构", "is_exit_row": True},  # 调用方已经自己算过了
+         "holder_name": "B机构", "is_exit_row": True,
+         "holder_code": "10000002", "is_holder_org": True},  # 调用方已经自己算过了
     ]
     assert _derive_exits_against_canonical(con, rows) == []
 
@@ -412,9 +416,9 @@ def test_write_merges_canonical_derived_exits(monkeypatch):
     con = _canonical_holders_fixture()
     con.execute(
         "INSERT INTO canonical_top10_float_holders_period "
-        "(stock_code, report_date, notice_date, holder_name, is_exit_row) VALUES "
-        "('600388','20260331','20260425','A机构',FALSE),"
-        "('600388','20260331','20260425','B机构',FALSE)"
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row, holder_code, is_holder_org) VALUES "
+        "('600388','20260331','20260425','A机构',FALSE,'10000001',TRUE),"
+        "('600388','20260331','20260425','B机构',FALSE,'10000002',TRUE)"
     )
     captured: dict = {}
 
@@ -434,6 +438,7 @@ def test_write_merges_canonical_derived_exits(monkeypatch):
     new_rows = [{
         "stock_code": "600388", "report_date": "20260630", "notice_date": "20260722",
         "holder_name": "A机构", "is_exit_row": False,
+        "holder_code": "10000001", "is_holder_org": True,
     }]
     written = _write(con, new_rows)
     assert written == 2
@@ -614,10 +619,10 @@ def test_local_stock_codes_for_notice_date_reads_canonical():
     con = _wm_fixture()
     con.execute(
         "INSERT INTO canonical_top10_float_holders_period "
-        "(stock_code, report_date, notice_date, holder_name, is_exit_row) VALUES "
-        "('600346','20260630','20260723','机构甲',FALSE),"
-        "('600346','20260630','20260723','机构乙',FALSE),"
-        "('688116','20260630','20260722','机构丙',FALSE)"
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row, holder_code, is_holder_org) VALUES "
+        "('600346','20260630','20260723','机构甲',FALSE,'10000011',TRUE),"
+        "('600346','20260630','20260723','机构乙',FALSE,'10000012',TRUE),"
+        "('688116','20260630','20260722','机构丙',FALSE,'10000013',TRUE)"
     )
     assert _local_stock_codes_for_notice_date(con, "20260723") == {"600346"}
     assert _local_stock_codes_for_notice_date(con, "20260722") == {"688116"}
@@ -926,3 +931,59 @@ def test_rename_with_same_code_is_not_a_false_exit():
     exits = _derive_exits_against_canonical(con, cur)
     con.close()
     assert exits == [], f"同码改名被误判成退出: {exits}"
+
+
+def test_exit_derive_skips_when_prev_period_predates_identity_columns():
+    """上一期是 v2 遗留行(is_holder_org 为 NULL)时跳过, 不拒批也不猜。
+
+    2026-09-07 实测: 我把退出行改成「带自己的身份」之后, 全量重跑 1500 只股里
+    1002 只失败(67%), 全是 INVALID_HOLDER_ORG_FLAG —— 因为退出行从 canonical 上一期
+    取到的 is_holder_org 是 NULL(v2 遗留行当时没有这一列), 而 accept 侧要求它是 bool。
+
+    三条路只有跳过是诚实的:
+      放宽 accept 校验 -> 让「身份未判的行」重新能写进来, 正是那道门要挡的;
+      按名字猜 org/个人 -> 红线 3 禁止 (缺失不许填、不许 fallback);
+      跳过 -> 少一条**派生**行, 而派生物可从证据重生成 (红线 4)。
+    """
+    con = _canon_with_identity(None)
+    # 上一期两行都是 v2 形态: 有名字, 无 code 无 is_holder_org
+    con.execute(
+        "INSERT INTO canonical_top10_float_holders_period "
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row) VALUES "
+        "('600388','20260331','20260425','老机构甲',FALSE),"
+        "('600388','20260331','20260425','老机构乙',FALSE)"
+    )
+    cur = [{
+        "stock_code": "600388", "report_date": "20260630", "notice_date": "20260722",
+        "page_update_date": "20260722", "holder_name": "老机构甲",
+        "holder_code": "10000001", "is_holder_org": True,
+        "holder_set": "free", "holder_rank": 1, "row_seq": 1, "is_exit_row": False,
+    }]
+    exits = _derive_exits_against_canonical(con, cur)
+    con.close()
+    assert exits == [], (
+        f"上一期身份未记录却仍派生了退出行: {[e['holder_name'] for e in exits]} —— "
+        "它们的 is_holder_org 会是 NULL, accept 侧必然 INVALID_HOLDER_ORG_FLAG 拒批整批"
+    )
+
+
+def test_exit_derive_still_works_when_prev_period_is_v3():
+    """对照: 上一期是 v3 行时照常派生 —— 证明上一条不是把所有情况都跳过了。"""
+    con = _canon_with_identity(None)
+    con.execute(
+        "INSERT INTO canonical_top10_float_holders_period "
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row, holder_code, is_holder_org) "
+        "VALUES ('600388','20260331','20260425','机构甲',FALSE,'10000001',TRUE),"
+        "       ('600388','20260331','20260425','机构乙',FALSE,'10000002',TRUE)"
+    )
+    cur = [{
+        "stock_code": "600388", "report_date": "20260630", "notice_date": "20260722",
+        "page_update_date": "20260722", "holder_name": "机构甲",
+        "holder_code": "10000001", "is_holder_org": True,
+        "holder_set": "free", "holder_rank": 1, "row_seq": 1, "is_exit_row": False,
+    }]
+    exits = _derive_exits_against_canonical(con, cur)
+    con.close()
+    assert len(exits) == 1 and exits[0]["holder_name"] == "机构乙"
+    assert exits[0]["holder_code"] == "10000002"
+    assert exits[0]["is_holder_org"] is True
