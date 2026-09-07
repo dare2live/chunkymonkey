@@ -316,10 +316,25 @@ def sync_holders_aif10(
     start_period: str = DEFAULT_START_PERIOD,
     limit: int = 0,
     progress_every: int = 200,
+    delete_scope: str = "stocks_in_batch",
 ) -> dict:
     """编排 获取→清洗→加工→存储, formal land→accept → canonical (source='miaoxiang').
 
     symbols=None → 全 active universe; 否则只跑指定股 (调试/增量)。
+
+    ``delete_scope`` 默认 ``"stocks_in_batch"`` 而不是 ``_write`` 的 ``"partition"``:
+    本函数**结构上就是逐股**的 (``for sym in symbols`` 里一次写一只股的行), 拿到的批次
+    永远不是某个 notice_date 的完整内容。用 ``"partition"`` 会在写第二只股时把第一只股
+    刚写进同一公告日的行删掉, 跑完只剩最后一只 —— 参数留在签名上只为让调用方能显式覆盖,
+    不是让它有第二个合理取值。
+
+    2026-09-07: 本行此前写 ``delete_scope=delete_scope`` 却没有这个参数, 即
+    ``NameError``。它没被任何测试抓到, 因为 ``sync_holders_aif10`` 在测试里**只作为
+    monkeypatch 的目标**出现 (``test_holders_aif10.py`` 五处 setattr), 从未被真正执行。
+    更坏的是失败形态: 异常被逐股 catch 进 ``errors`` (上限 20 条), 函数正常返回,
+    CLI 打印 ``DONE`` 并退出 0 —— 5,447 只股全失败与全成功在退出码上一模一样。
+    故本次同时加 ``ok == 0 and fail > 0`` 的显式失败 (见 ingest_holders_aif10.py)
+    与一个真正调用本函数的测试。
     """
     from aif10_scraper import default_client
     client = default_client  # 模块级实例 (非工厂)

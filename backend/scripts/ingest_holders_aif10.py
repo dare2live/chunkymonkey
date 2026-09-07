@@ -57,6 +57,31 @@ def main() -> int:
         )
     finally:
         conn.close()
+
+    ok = int(result.get("ok") or 0)
+    fail = int(result.get("fail") or 0)
+    rows = int(result.get("rows_written") or 0)
+
+    # 2026-09-07: 此前无论结果如何都 print DONE 并 return 0。
+    # sync_holders_aif10 把异常逐股 catch 进 result["errors"](上限 20 条) 后正常返回,
+    # 于是「5,447 只股全失败、写了 0 行」与「全部成功」在退出码上完全一样 ——
+    # 实测撞到过: delete_scope 未定义导致每只股 NameError, 函数照常返回、CLI 照常 DONE。
+    # 判据放在这里而不是函数里: 函数的逐股容错本身是对的(单只股失败不该中断全场),
+    # 错的是**没有任何一层把「一只都没成」翻译成失败**。
+    if fail and not ok:
+        print(
+            f"[aif10-holders] FAILED 全部 {fail} 只股均失败, 写入 0 行; "
+            f"前几条错误: {result.get('errors', [])[:5]}",
+            file=sys.stderr,
+        )
+        return 1
+    if ok and not rows:
+        print(
+            f"[aif10-holders] FAILED {ok} 只股报告成功却写入 0 行 —— "
+            "成功计数与落库量脱节, 不当成功处理",
+            file=sys.stderr,
+        )
+        return 1
     print(f"[aif10-holders] DONE {result}")
     return 0
 

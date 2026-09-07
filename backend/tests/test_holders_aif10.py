@@ -684,3 +684,139 @@ def test_incremental_skip_does_not_run_retired_fact_catchup(monkeypatch):
     assert out["skipped"] is True
     assert out["skip_reason"] == "watermark_unchanged"
     assert "notice_partition_catchup" not in out
+
+
+# ── sync_holders_aif10 真执行 (2026-09-07 加) ────────────────────────────────
+#
+# 根因不是「少写了一个参数」, 是**这个函数在测试里只作为 monkeypatch 的目标出现**
+# (本文件五处 setattr("services.holders_aif10.sync_holders_aif10", ...)),
+# 从来没有被真正执行过一次。于是它函数体里的 NameError 与 3,412 个通过的测试共存。
+#
+# 下面两个测试只做一件事: 真的调用它。桩打在 aif10_scraper 上(外部依赖), 不打在被测函数上。
+
+
+def _fake_scraper(monkeypatch, rows_by_symbol):
+    """把 aif10_scraper 换成内存桩 —— 桩外部依赖, 不桩被测函数。"""
+    import types
+
+    def fetch_all_pages(_report, *, secucode, page_size=500, max_pages=0, client=None):
+        del _report, page_size, max_pages, client
+        code = str(secucode).split(".")[0]
+        return list(rows_by_symbol.get(code, []))
+
+    fake = types.ModuleType("aif10_scraper")
+    fake.fetch_all_pages = fetch_all_pages
+    fake.default_client = object()
+    monkeypatch.setitem(sys.modules, "aif10_scraper", fake)
+
+
+def test_sync_holders_aif10_actually_runs_and_writes(monkeypatch):
+    """真跑 sync_holders_aif10 —— 任何 NameError / 签名漂移都会在这里炸。"""
+    from services.holders_aif10 import sync_holders_aif10
+
+    rows = [
+        _raw("600000.SH", "600000", "2024-12-31", "股东甲", 1, 1000, "新进"),
+        _raw("600000.SH", "600000", "2024-12-31", "股东乙", 2, 900, "不变"),
+    ]
+    _fake_scraper(monkeypatch, {"600000": rows})
+    conn = duckdb.connect(":memory:")
+    try:
+        out = sync_holders_aif10(conn, symbols=["600000"])
+    finally:
+        conn.close()
+
+    assert out["errors"] == [], out["errors"]
+    assert out["ok"] == 1 and out["fail"] == 0
+    assert out["rows_written"] > 0, "报告成功却没写入任何行"
+
+
+def test_sync_holders_aif10_per_stock_landing_writes_stay_linear(monkeypatch):
+    """逐股路径的落地写入量必须与股票数**线性**, 不是平方。
+
+    2026-09-07 —— 本测试的第一版断言「两只股写完 canonical 里两只都在」, 它**抓不到**
+    要抓的东西: 实测把 delete_scope 退回 "partition" 后该断言照样绿。原因写在
+    commit 68ec40359 自己的信息里 —— 上游 disclosure_dual_write 会把同分区其他股票的行
+    读回来一起重写, 所以两种模式**结果完全相同**, 差的只有代价。
+    断言结果 = 在判一个两种模式都满足的东西 = 没在判。
+
+    真正的差异在落地写入量。同一 notice_date 上 N 只股逐股跑:
+      - stocks_in_batch: 每只只写自己 → N 行
+      - partition:       第 k 只要把前 k-1 只重写一遍 → N(N+1)/2 行
+    实测 N=6: 6 行 vs 21 行 (canonical 两边都是 6 行, 一模一样)。
+    这就是 590 倍写放大的最小可复现形态。
+    """
+    from services.holders_aif10 import CANONICAL_TABLE, sync_holders_aif10
+    from services.data_sources.holders_top10_schema import LANDING_TABLE
+
+    notice = "2025-04-20"          # 六只股同一公告日
+    stocks = [f"60000{i}" for i in range(6)]
+    _fake_scraper(
+        monkeypatch,
+        {
+            s: [_raw(f"{s}.SH", s, "2024-12-31", f"股东{s}", 1, 1000, "新进", upd=notice)]
+            for s in stocks
+        },
+    )
+
+    conn = duckdb.connect(":memory:")
+    try:
+        sync_holders_aif10(conn, symbols=stocks)
+        landing = conn.execute(f"SELECT COUNT(*) FROM {LANDING_TABLE}").fetchone()[0]
+        canonical = conn.execute(f"SELECT COUNT(*) FROM {CANONICAL_TABLE}").fetchone()[0]
+        codes = conn.execute(
+            f"SELECT COUNT(DISTINCT stock_code) FROM {CANONICAL_TABLE}"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    n = len(stocks)
+    quadratic = n * (n + 1) // 2
+    assert landing == n, (
+        f"落地写入 {landing} 行, 线性应为 {n} 行; 整分区替换会写 {quadratic} 行 —— "
+        "delete_scope 退回了 partition"
+    )
+    # 结果必须同时仍然正确, 否则「写得少」可能只是丢了数据。
+    assert canonical == n and codes == n, (canonical, codes)
+
+
+def _run_cli(monkeypatch, result):
+    """跑 ingest_holders_aif10.main(), 把 sync 换成返回固定 result 的桩。"""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "ingest_holders_aif10",
+        Path(__file__).resolve().parents[1] / "scripts" / "ingest_holders_aif10.py",
+    )
+    cli = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = cli
+    spec.loader.exec_module(cli)
+    monkeypatch.setattr(cli, "get_conn", lambda: duckdb.connect(":memory:"))
+    monkeypatch.setattr(cli, "sync_holders_aif10", lambda *_a, **_k: result)
+    monkeypatch.setattr(sys, "argv", ["ingest_holders_aif10.py", "--symbols", "600000"])
+    return cli.main()
+
+
+def test_cli_returns_nonzero_when_every_stock_failed(monkeypatch):
+    """全失败必须非零退出 —— 否则「跑了几小时写了 0 行」与「全成功」在退出码上一样。
+
+    2026-09-07: 实测撞到过这个形态。sync_holders_aif10 把异常逐股 catch 进 errors
+    (上限 20 条) 后正常返回, CLI 无条件 print DONE + return 0。当时的真实缺陷是
+    delete_scope 未定义, 每只股 NameError, 5,447 只股会全军覆没而进程报告成功。
+    """
+    rc = _run_cli(
+        monkeypatch,
+        {"ok": 0, "fail": 5447, "rows_written": 0, "errors": ["600000: NameError: ..."]},
+    )
+    assert rc == 1
+
+
+def test_cli_returns_nonzero_when_success_count_and_rows_disagree(monkeypatch):
+    """报告 ok>0 却写入 0 行 = 成功计数与落库量脱节, 同样不当成功。"""
+    rc = _run_cli(monkeypatch, {"ok": 100, "fail": 0, "rows_written": 0, "errors": []})
+    assert rc == 1
+
+
+def test_cli_returns_zero_on_real_success(monkeypatch):
+    """正常成功仍然退出 0 —— 证明上面两条不是把所有情况都判失败。"""
+    rc = _run_cli(monkeypatch, {"ok": 100, "fail": 2, "rows_written": 4321, "errors": []})
+    assert rc == 0
