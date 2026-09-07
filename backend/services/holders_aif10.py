@@ -268,13 +268,20 @@ def _write_legacy_direct(
     )
 
 
-def _write(conn, rows: list[dict]) -> int:
+def _write(conn, rows: list[dict], *, delete_scope: str = "partition") -> int:
     """幂等写: formal land→accept by notice_date (formal_only; no legacy mirror).
 
-    Canonical merges per notice_date so other stocks on the same partition are
-    not wiped.  Enrichment columns ride on canonical. 所有落地路径的收口点, 退出行
-    派生补在这一步(见 ``_derive_exits_against_canonical``): 日更批次天生
-    is_exit_row=False 由此补上; 全量按股重跑路径已在内存算过, no-op 不冲突。
+    同一 notice_date 上其他股票不会被抹掉 —— 两种做法结果相同, 代价差 590 倍:
+
+    - ``delete_scope="partition"``(默认, 日更): accept 删整个分区, 上游先把分区里
+      其他股票的行读出来拼进批次。日更按公告日全市场拉, 一个批次本就覆盖整天, 代价为零。
+    - ``delete_scope="stocks_in_batch"``(按股回填): accept 只删本批的 stock_code,
+      上游不必重读整个分区。**历史回填必须用这个** —— 2026-09-07 实测: 128,498 次
+      (股,分区) 写入、目标 1,449,322 行, 按 "partition" 做法要实际写 854,850,658 行。
+
+    Enrichment 列随 canonical 走。所有落地路径的收口点, 退出行派生补在这一步
+    (见 ``_derive_exits_against_canonical``): 日更批次天生 is_exit_row=False 由此补上;
+    全量按股重跑路径已在内存算过, no-op 不冲突。
     """
     if not rows:
         return 0
@@ -287,7 +294,9 @@ def _write(conn, rows: list[dict]) -> int:
         write_holders_top10_formal_then_mirror,
     )
 
-    outcome = write_holders_top10_formal_then_mirror(conn, rows)
+    outcome = write_holders_top10_formal_then_mirror(
+        conn, rows, delete_scope=delete_scope
+    )
     return int(outcome.canonical_rows)
 
 
@@ -334,7 +343,7 @@ def sync_holders_aif10(
                 fail += 1
                 continue
             total_exits += sum(1 for r in rows if r["is_exit_row"])
-            total_rows += _write(conn, rows)
+            total_rows += _write(conn, rows, delete_scope=delete_scope)
             ok += 1
         except Exception as e:  # noqa: BLE001
             fail += 1

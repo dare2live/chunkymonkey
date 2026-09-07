@@ -534,6 +534,25 @@ def _canonical_content_hash(rows: Sequence[Mapping[str, Any]]) -> str:
     return sha256_text(stable_json(payload))
 
 
+def _partition_pointer_stats(conn, partition: str) -> tuple[int, str]:
+    """整个 notice_date 分区现算 row_count + content_hash (给 accepted 指针用)。
+
+    2026-09-07 加。原本指针直接用本批次的 row_count/content_hash —— 那在
+    「一个分区只由一个批次构成」时成立, 按股回填打破了这个前提: 同一个 notice_date
+    会被多只股票各自的批次分别写入, 指针若只描述最后一批, 就与 canonical 里的实际内容
+    对不上。照 ``disclosure_event_partition.partition_accepted_pointer_stats`` 的形态。
+    """
+    fields = list(GRAIN) + ["holder_name", "hold_ratio_float", "notice_date"]
+    order = ", ".join(GRAIN)
+    rows = conn.execute(
+        f"SELECT {', '.join(fields)} FROM {CANONICAL_TABLE} "
+        f"WHERE notice_date = ? ORDER BY {order}",
+        [partition],
+    ).fetchall()
+    payload = [dict(zip(fields, r)) for r in rows]
+    return len(payload), sha256_text(stable_json(payload))
+
+
 def _candidate_rows(
     conn,
     batch_id: str,
@@ -597,8 +616,29 @@ def accept_holders_top10_batch(
     *,
     handoff: HoldersTop10Contract | None = None,
     after_step: Callable[[str], None] | None = None,
+    delete_scope: str = "partition",
 ) -> HoldersTop10AcceptanceOutcome:
-    """Tx-B: validate landing, then atomically replace canonical + pointer."""
+    """Tx-B: validate landing, then atomically replace canonical + pointer.
+
+    ``delete_scope`` 决定这一批替换 canonical 的**哪一块**, 必须与批次实际覆盖的范围一致:
+
+    - ``"partition"``(默认, 日更路径): 删掉整个 notice_date 分区再写回。
+      日更按公告日全市场拉, 一个批次**就是**那一天的全部内容, 所以整分区替换是对的 ——
+      某只股从重拉结果里消失时, 它的旧行应当一并消失。
+    - ``"stocks_in_batch"``(按股回填路径): 只删本批次涉及的 stock_code。
+      按股回填时一个批次只含一只股, 用 ``"partition"`` 会把同一公告日其他股票的行一起抹掉,
+      跑完 5,212 只之后每个分区只剩最后写的那一只。
+
+    2026-09-07 加。此前只有 ``"partition"`` 一种行为, 而 ``org_holding`` 早已有
+    ``merge_grains`` 与 ``canonical_delete_scope='report_dates_in_batch'`` 两级控制 ——
+    这是一个域没跟上另一个域的改进, 不是普遍缺陷 (``margin`` 按 trade_date 删没问题,
+    一个交易日就是一个批次的完整内容)。
+    """
+    if delete_scope not in {"partition", "stocks_in_batch"}:
+        raise HoldersTop10AcceptanceError(
+            f"unknown delete_scope={delete_scope!r}; "
+            "allowed={'partition', 'stocks_in_batch'}"
+        )
 
     contract = _require_handoff(contract, handoff)
     ensure_holders_top10_acceptance_schema(conn)
@@ -667,16 +707,28 @@ def accept_holders_top10_batch(
 
     conn.execute("BEGIN TRANSACTION")
     try:
-        conn.execute(
-            f"DELETE FROM {CANONICAL_TABLE} WHERE notice_date = ?",
-            [partition],
-        )
+        if delete_scope == "stocks_in_batch":
+            batch_stocks = sorted({str(row["stock_code"]) for row in canonical})
+            marks = ", ".join("?" for _ in batch_stocks)
+            conn.execute(
+                f"DELETE FROM {CANONICAL_TABLE} "
+                f"WHERE notice_date = ? AND stock_code IN ({marks})",
+                [partition, *batch_stocks],
+            )
+        else:
+            conn.execute(
+                f"DELETE FROM {CANONICAL_TABLE} WHERE notice_date = ?",
+                [partition],
+            )
         _call(after_step, "after_canonical_delete")
         conn.executemany(
             f"INSERT INTO {CANONICAL_TABLE} ({insert_cols}) VALUES ({placeholders})",
             values,
         )
         _call(after_step, "after_canonical_insert")
+        if delete_scope == "stocks_in_batch":
+            # 分区由多个批次拼成, 指针必须描述合并后的整个分区而不是最后一批。
+            row_count, content_hash = _partition_pointer_stats(conn, partition)
         conn.execute(
             f"""
             INSERT INTO {ACCEPTED_TABLE} (

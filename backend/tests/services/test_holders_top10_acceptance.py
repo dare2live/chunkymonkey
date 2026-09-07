@@ -389,3 +389,125 @@ def test_disclosure_handoff_rejects_wrong_contract_for_other_domain() -> None:
         FormalExecutionHandoffError, match="no disclosure execution consumer"
     ):
         propagate_disclosure_execution_contract("not_a_disclosure_domain", contract)
+
+
+# ── delete_scope: 一个分区由多个按股批次拼成时的替换范围 ──────────────────────
+
+
+def _land_and_accept(conn, handed, *, batch_id, rows, scope="partition"):
+    """落一批并接受, 返回 outcome。测试内小工具, 不改生产路径。"""
+    batch = HoldersTop10LandingBatch(
+        batch_id=batch_id,
+        partition_value=PARTITION,
+        observed_at=OBSERVED,
+        available_at=OBSERVED,
+        rows=rows,
+        request={"api": "RPT_F10_EH_FREEHOLDERS", "notice_date": PARTITION},
+    )
+    land_holders_top10_batch(conn, batch, handed, handoff=handed)
+    return accept_holders_top10_batch(
+        conn, batch_id, handed, handoff=handed, delete_scope=scope
+    )
+
+
+def test_stocks_in_batch_scope_keeps_other_stocks_on_same_notice_date(conn) -> None:
+    """按股回填: 两个互斥股票集先后 accept, 两组行都要在。
+
+    守的属性是「一个批次只替换它自己覆盖的股票」。默认的 partition 范围做不到这一点 ——
+    它靠上游先把整个分区读出来拼进批次来保证不丢, 代价是写放大 (2026-09-07 实测: 全量
+    历史回填目标 1,449,322 行, 按 partition 范围要实际写 854,850,658 行, 590 倍)。
+    本用例直接落两批**互不重叠**的股票, 不走上游那段合并 —— 只有 delete_scope
+    收窄到本批股票时两组才能共存。
+    """
+    contract = load_holders_top10_contract()
+    handed = propagate_disclosure_execution_contract("holders_top10", contract)
+
+    _land_and_accept(
+        conn, handed, batch_id=f"holders_top10:{PARTITION}:stock-a",
+        rows=[_row(stock_code="600519")], scope="stocks_in_batch",
+    )
+    _land_and_accept(
+        conn, handed, batch_id=f"holders_top10:{PARTITION}:stock-b",
+        rows=[_row(stock_code="000001")], scope="stocks_in_batch",
+    )
+
+    got = {
+        r[0]
+        for r in conn.execute(
+            f"SELECT DISTINCT stock_code FROM {CANONICAL_TABLE} WHERE notice_date = ?",
+            [PARTITION],
+        ).fetchall()
+    }
+    assert got == {"600519", "000001"}
+
+    # accepted 指针必须描述**合并后的整个分区**, 不是最后一批。
+    row_count = conn.execute(
+        f"SELECT row_count FROM {ACCEPTED_TABLE} "
+        f"WHERE dataset_id = ? AND partition_value = ?",
+        [DATASET_ID, PARTITION],
+    ).fetchone()[0]
+    assert row_count == 2
+
+
+def test_stocks_in_batch_scope_replaces_only_that_stock_on_second_accept(conn) -> None:
+    """同一只股二次 accept 只留后一批; 同分区其他股不受影响。"""
+    contract = load_holders_top10_contract()
+    handed = propagate_disclosure_execution_contract("holders_top10", contract)
+
+    _land_and_accept(
+        conn, handed, batch_id=f"holders_top10:{PARTITION}:other",
+        rows=[_row(stock_code="000001", holder_name="中央汇金")], scope="stocks_in_batch",
+    )
+    _land_and_accept(
+        conn, handed, batch_id=f"holders_top10:{PARTITION}:v1",
+        rows=[_row(stock_code="600519", holder_name="旧名")], scope="stocks_in_batch",
+    )
+    _land_and_accept(
+        conn, handed, batch_id=f"holders_top10:{PARTITION}:v2",
+        rows=[_row(stock_code="600519", holder_name="新名")], scope="stocks_in_batch",
+    )
+
+    rows = [
+        tuple(r)
+        for r in conn.execute(
+            f"SELECT stock_code, holder_name FROM {CANONICAL_TABLE} "
+            f"WHERE notice_date = ? ORDER BY stock_code",
+            [PARTITION],
+        ).fetchall()
+    ]
+    assert rows == [("000001", "中央汇金"), ("600519", "新名")]
+
+
+def test_partition_scope_is_still_the_default(conn) -> None:
+    """默认仍是整分区替换 —— 日更按公告日全市场拉, 一个批次就是那天的全部内容,
+    某只股从重拉结果里消失时它的旧行应当一并消失。改默认会静默改变日更语义。"""
+    contract = load_holders_top10_contract()
+    handed = propagate_disclosure_execution_contract("holders_top10", contract)
+
+    _land_and_accept(
+        conn, handed, batch_id=f"holders_top10:{PARTITION}:day-v1",
+        rows=[_row(stock_code="600519"), _row(stock_code="000001", row_seq=2)],
+    )
+    _land_and_accept(
+        conn, handed, batch_id=f"holders_top10:{PARTITION}:day-v2",
+        rows=[_row(stock_code="600519")],
+    )
+
+    got = {
+        r[0]
+        for r in conn.execute(
+            f"SELECT DISTINCT stock_code FROM {CANONICAL_TABLE} WHERE notice_date = ?",
+            [PARTITION],
+        ).fetchall()
+    }
+    assert got == {"600519"}
+
+
+def test_unknown_delete_scope_fails_closed(conn) -> None:
+    contract = load_holders_top10_contract()
+    handed = propagate_disclosure_execution_contract("holders_top10", contract)
+    with pytest.raises(HoldersTop10AcceptanceError, match="unknown delete_scope"):
+        _land_and_accept(
+            conn, handed, batch_id=f"holders_top10:{PARTITION}:bad",
+            rows=[_row()], scope="whatever",
+        )

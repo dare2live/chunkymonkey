@@ -103,8 +103,14 @@ def write_holders_top10_formal_then_mirror(
     available_at: datetime | str | None = None,
     mirror: Callable[[Any, list[dict[str, Any]]], int] | None = None,
     enable_legacy_mirror: bool = False,
+    delete_scope: str = "partition",
 ) -> DisclosureDualWriteOutcome:
-    """Publish by notice_date (stock-merge); legacy mirror only if enabled."""
+    """Publish by notice_date; ``delete_scope`` 见 accept_holders_top10_batch。
+
+    2026-09-07: docstring 原文写「stock-merge」, 而实现是整分区 DELETE ——
+    声明与实现不一致, 按股回填会把同一公告日其他股票抹掉。现在 stock-merge
+    是 delete_scope="stocks_in_batch" 才有的行为, 默认仍是整分区。
+    """
 
     from services.data_sources.disclosure_transport import (
         land_then_accept_disclosure_partition,
@@ -150,24 +156,36 @@ def write_holders_top10_formal_then_mirror(
 
     for partition, provider_rows in sorted(by_partition.items()):
         event_at = available_at or observed_at or _default_event_instant(partition)
-        # Per-stock writers must merge, not wipe other stocks on the same notice_date.
+        # 同一 notice_date 上别的股票不能被抹掉。两种做法, 结果相同代价差 590 倍:
+        #
+        #   delete_scope="partition"(默认): accept 删整个分区, 所以这里必须先把分区里
+        #     **其他股票**的行读出来拼进批次, 否则它们会随 DELETE 消失。
+        #   delete_scope="stocks_in_batch": accept 只删本批涉及的 stock_code,
+        #     其他股票的行原地不动 —— 这里就不必读、不必拼、不必重新落地一遍。
+        #
+        # 2026-09-07 实测这个代价: 按股回填 128,498 次 (股,分区) 写入, 目标 1,449,322 行,
+        # 而按 "partition" 做法实际要写 854,850,658 行 —— **放大 590 倍**
+        # (最大的分区有 1,421 只股, 写其中每一只都要把整个分区重拼一遍)。
+        # 这就是 canonical 历史回填一直做不了的真正原因; 它不是正确性问题
+        # (上面那段合并让结果一直是对的), 是写放大。
         others: list[dict[str, Any]] = []
-        try:
-            existing = conn.execute(
-                f"""
-                SELECT {", ".join(CANONICAL_ROW_FIELDS)}
-                  FROM {CANONICAL_TABLE}
-                 WHERE notice_date = ?
-                """,
-                [partition],
-            ).fetchall()
-            for existing_row in existing:
-                mapped = dict(zip(CANONICAL_ROW_FIELDS, existing_row, strict=True))
-                if str(mapped.get("stock_code") or "").strip() in stocks:
-                    continue
-                others.append(mapped)
-        except Exception:  # noqa: BLE001 — table may not exist yet
-            others = []
+        if delete_scope != "stocks_in_batch":
+            try:
+                existing = conn.execute(
+                    f"""
+                    SELECT {", ".join(CANONICAL_ROW_FIELDS)}
+                      FROM {CANONICAL_TABLE}
+                     WHERE notice_date = ?
+                    """,
+                    [partition],
+                ).fetchall()
+                for existing_row in existing:
+                    mapped = dict(zip(CANONICAL_ROW_FIELDS, existing_row, strict=True))
+                    if str(mapped.get("stock_code") or "").strip() in stocks:
+                        continue
+                    others.append(mapped)
+            except Exception:  # noqa: BLE001 — table may not exist yet
+                others = []
 
         merged = others + provider_rows
         batch_id = f"holders_top10:{partition}:{uuid4().hex[:12]}"
@@ -180,6 +198,7 @@ def write_holders_top10_formal_then_mirror(
             available_at=event_at,
             batch_id=batch_id,
             request={"api": API, "notice_date": partition, "source": SOURCE},
+            holders_delete_scope=delete_scope,
         )
         _require_accepted("holders_top10", outcome)
         # Prefer accepted/skipped batch_id (may differ from freshly minted uuid).

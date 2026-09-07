@@ -454,6 +454,7 @@ def accept_disclosure_from_landing(
     *,
     bootstrap: bool = False,
     merge_grains: bool = False,
+    holders_delete_scope: str = "partition",
 ) -> Any:
     """S2: accept one LANDED disclosure batch. Zero provider fetch."""
 
@@ -484,7 +485,9 @@ def accept_disclosure_from_landing(
         handed = propagate_disclosure_execution_contract("holders_top10", contract)
         if bootstrap:
             ensure_holders_top10_acceptance_schema(conn)
-        return accept_holders_top10_batch(conn, resolved, handed, handoff=handed)
+        return accept_holders_top10_batch(
+            conn, resolved, handed, handoff=handed, delete_scope=holders_delete_scope
+        )
 
     if domain == "org_holding":
         from services.data_sources.org_holding_acceptance import (
@@ -526,6 +529,7 @@ def land_then_accept_disclosure_partition(
     *,
     partition: str,
     rows: Sequence[Mapping[str, Any]],
+    holders_delete_scope: str = "partition",
     observed_at: datetime | str | None = None,
     available_at: datetime | str | None = None,
     batch_id: str | None = None,
@@ -547,7 +551,8 @@ def land_then_accept_disclosure_partition(
         bootstrap=bootstrap,
     )
     return accept_disclosure_from_landing(
-        domain, conn, str(batch.batch_id), bootstrap=False, merge_grains=merge_grains
+        domain, conn, str(batch.batch_id), bootstrap=False, merge_grains=merge_grains,
+        holders_delete_scope=holders_delete_scope,
     )
 
 
