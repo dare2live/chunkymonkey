@@ -68,14 +68,25 @@ def _forbidden(name: str):
 
 
 def test_live_margin_v3_bounded_catchup_stays_out_of_all_due():
+    """守: margin(v3, SSE+SZSE)绝不进 --all-due 批量重放, 只走 on_demand 有界
+    追赶。这是这条测试的名字承诺的不变量, 不是"execution_policy 字面等于
+    某个具体 dict"。
+
+    2026-09-07 tushare_sunset freeze 把 margin 从 enabled/bounded_calendar_catchup
+    转 disabled/tushare_sunset_freeze, 原字面断言假红。disabled 比
+    enabled+on_demand 更强地满足"不进 --all-due"这条属性——禁用的域根本不会被
+    任何调度路径执行, 包括 --all-due——所以断言换成直接验证这个属性本身
+    (`"margin" not in sr.automatic_domains(registry)`, 下方已有), 不再钉字面
+    值(下次冻结原因换个词还会假红)。execution_policy 本身仍必须是良构策略,
+    复用生产代码自己的校验(execution_policy_for_spec 校验不过会抛异常),
+    不重复拍第二套字面判据。
+    """
     registry = sr.load_registry()
     spec = sr.domain_spec(registry, "margin")
 
     assert spec["dataset_contract"]["contract_version"] == "3"
-    assert spec["execution_policy"] == {
-        "mode": "enabled",
-        "reason": "bounded_calendar_catchup",
-    }
+    policy = sr.execution_policy_for_spec(spec)  # raises if malformed
+    assert policy.mode in ("enabled", "disabled")
     # Catchup is on_demand — never --all-due / daily_update drain deadlock.
     assert spec.get("sync_policy") == "on_demand"
     assert "margin" not in sr.automatic_domains(registry)
@@ -397,24 +408,40 @@ def test_margin_v3_catchup_requires_explicit_start_end(monkeypatch):
         sr.run_domain("margin", registry=registry)
 
 
-def test_margin_v3_refuses_backfill_mass_replay(monkeypatch):
-    for name in ("_adapter", "_target_conn", "_smartmoney_conn"):
-        monkeypatch.setattr(sr, name, _forbidden(name))
-    registry = sr.load_registry()
-    monkeypatch.setattr(
-        sr,
-        "eligible_end_date",
-        lambda *_a, **_k: sr.DomainEligibility(
-            "20260722", True, "next_trading_session_published"
-        ),
-    )
+def test_margin_v3_refuses_backfill_mass_replay():
+    """守: margin 的日历追赶窗口校验器拒绝 --backfill/--resume(不许整段历史
+    重放)——与本文件旁边 test_margin_catchup.py 里
+    test_catchup_window_refuses_pre_coverage_start /
+    test_catchup_window_refuses_beyond_eligible_end 守的是同一个函数
+    `_require_authorized_margin_catchup_window`, 只是边界条件不同。
+
+    原来经 sr.run_domain("margin", ..., backfill=True) 走完整入口测这条, 但
+    run_domain 顶部的 `_require_execution_enabled(spec)` 现在(margin 全局
+    disabled, tushare_sunset_freeze)会抢先抛 ExecutionPolicyError, 走不到
+    margin 分支里那句 `_require_authorized_margin_catchup_window`。这不代表
+    "拒绝 --backfill"失效了——disabled 时任何窗口(含 --backfill)都在更早、更
+    强的关卡被拒。但这条测试原本要精确验证的是"窗口校验器自身"这一层, 所以
+    改成跟 sibling 用例一样直接调用该函数, 不再经过 run_domain 顶层的
+    execution_policy 网关, 也不依赖 live registry 当前是 enabled 还是 disabled
+    (该函数本身不读 execution_policy, 纯窗口校验, 与冻结状态正交)。
+
+    "run_domain 在 enabled 时是否真的把 backfill 参数传到这个校验器"这条wiring
+    事实, 由旁边 test_margin_v3_catchup_requires_explicit_start_end (同一
+    margin 分支, 同一 `_enabled_formal_margin_registry` helper, 同一校验函数,
+    只是断言另一个必填参数)已经证明过, 不会因为这次改动丢失覆盖。
+    "disabled 时 backfill 连同其他任何操作一起在 side effect 之前被拒"由
+    test_programmatic_margin_entrypoints_block_before_calendar_provider_or_db
+    单独覆盖, 也不受影响。
+    """
     with pytest.raises(sr.SyncWindowError, match="refuses --backfill"):
-        sr.run_domain(
-            "margin",
-            registry=registry,
+        sr._require_authorized_margin_catchup_window(
             backfill=True,
+            resume=False,
             start="20260717",
             end="20260722",
+            max_dates=None,
+            eligible_end="20260722",
+            coverage_start="20260717",
         )
 
 

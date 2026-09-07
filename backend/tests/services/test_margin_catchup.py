@@ -74,13 +74,47 @@ def test_land_then_accept_requires_v3(monkeypatch):
         )
 
 
-def test_drain_margin_is_inapplicable():
+def test_drain_margin_is_inapplicable(monkeypatch):
+    """守: drain_domain 对 margin 有专门分支——它只能走 bounded_calendar_catchup
+    落库, 永远不能走 legacy 日历缺口重放 (sync_runner.py ~3930, reason=
+    accepted_partition_is_bounded_calendar_catchup_only)。
+
+    2026-09-07 tushare_sunset freeze 把 margin 全局 execution_policy 转成
+    disabled 后, drain_domain 顶部的 `_require_execution_enabled(spec)` 会先
+    抛 ExecutionPolicyError, 这条分支现实中够不着——但那是更强的保证(禁用的域
+    连 drain 入口都进不去, 不只是"进去了也走不到 legacy 重放"), 不代表这条分支
+    是死代码: 它是当 margin 将来被重新 enable(例如换非 tushare 源接回两融)时,
+    唯一防止 drain 把它当成普通 by_trade_date 域重放的守卫。用注入的"假装
+    enabled"策略单独测这条分支本身, 不依赖 margin 当前在 live registry 里是不是
+    被冻结。
+    """
+    monkeypatch.setattr(
+        sr,
+        "execution_policy_for_spec",
+        lambda spec: sr.DomainExecutionPolicy(
+            mode="enabled", reason="test_forces_enabled"
+        ),
+    )
     result = sr.drain_domain("margin")
     assert result["status"] == "drain_inapplicable"
     assert "bounded_calendar_catchup" in result["reason"]
 
 
 def test_acquire_margin_catchup_plans_gap(monkeypatch, tmp_path):
+    """守: run_margin_bounded_catchup 的日历缺口规划数学——没有 v3 accepted 证据时
+    从 coverage_start 排到 eligible_end, 调 run_domain 传对 start/end/trigger_mode。
+
+    2026-09-07 tushare_sunset freeze 前, run_margin_bounded_catchup 顶部本来就有
+    `if policy.mode != "enabled": return []` 这道守卫(Knife 1b 从建这个模块起就有,
+    见 commit 0f5af7e80, 不是这次新加的)——现在 margin 全局 disabled, 这道守卫会
+    在缺口数学之前就先短路返回 []。这道守卫本身没问题(生产行为符合预期: 冻结时
+    acquire 每次都静默跳过, 不报错不重试), 但它会挡住这条测试真正想验证的东西:
+    "如果 margin 被启用, 缺口规划数学算得对不对"。这个逻辑是 margin 专属的
+    (硬编码 domain="margin"/dataset_contract), 换不了"未冻结的域", 所以改用注入
+    的 execution_policy(假装 enabled), 与生产代码那道守卫解耦, 不依赖 live
+    registry 当前是不是被冻结——冻结是可逆决策(tushare 恢复/换源都可能重新
+    enable), 这条缺口数学不能因为暂时冻结就没人测。
+    """
     from services.pipeline.context import PipelineContext
     from services.pipeline import margin_catchup_acquire
 
@@ -94,6 +128,13 @@ def test_acquire_margin_catchup_plans_gap(monkeypatch, tmp_path):
         def close(self):
             pass
 
+    monkeypatch.setattr(
+        sr,
+        "execution_policy_for_spec",
+        lambda spec: sr.DomainExecutionPolicy(
+            mode="enabled", reason="test_forces_enabled"
+        ),
+    )
     monkeypatch.setattr(
         sr,
         "eligible_end_date",
@@ -148,6 +189,13 @@ def test_acquire_margin_catchup_plans_gap(monkeypatch, tmp_path):
 
 
 def test_acquire_margin_catchup_skips_when_current(monkeypatch, tmp_path):
+    """守: 已经追平 eligible_end 时, run_margin_bounded_catchup 只 skip + 重投影
+    ops watermark, 绝不调 run_domain。同 test_acquire_margin_catchup_plans_gap
+    的形状——production 里 `policy.mode != "enabled": return []` 那道守卫(Knife
+    1b 从建库起就有)现在会在这条 skip 逻辑之前先短路, 用注入的 enabled policy
+    绕开它, 单独验证"已追平时该怎么收尾"这段逻辑本身, 不依赖 margin 当前是否
+    被 tushare_sunset 冻结。
+    """
     from services.pipeline.context import PipelineContext
     from services.pipeline import margin_catchup_acquire
 
@@ -162,6 +210,13 @@ def test_acquire_margin_catchup_skips_when_current(monkeypatch, tmp_path):
         def close(self):
             pass
 
+    monkeypatch.setattr(
+        sr,
+        "execution_policy_for_spec",
+        lambda spec: sr.DomainExecutionPolicy(
+            mode="enabled", reason="test_forces_enabled"
+        ),
+    )
     monkeypatch.setattr(
         sr,
         "eligible_end_date",
@@ -207,7 +262,13 @@ def test_acquire_margin_catchup_skips_when_current(monkeypatch, tmp_path):
 
 
 def test_acquire_margin_catchup_schedules_partial_gap(monkeypatch, tmp_path):
-    """Stale v3 local_max with later eligible_end → schedule once from next day."""
+    """Stale v3 local_max with later eligible_end → schedule once from next day.
+
+    同上两条形状: production 的 `policy.mode != "enabled": return []` 守卫
+    (Knife 1b 从建库起就有, 不是本轮新加)会在这条部分缺口调度逻辑之前先短路,
+    用注入的 enabled policy 绕开, 单独验证调度数学, 不依赖 margin 当前是否
+    被 tushare_sunset 冻结。
+    """
     from services.pipeline.context import PipelineContext
     from services.pipeline import margin_catchup_acquire
 
@@ -220,6 +281,13 @@ def test_acquire_margin_catchup_schedules_partial_gap(monkeypatch, tmp_path):
         def close(self):
             pass
 
+    monkeypatch.setattr(
+        sr,
+        "execution_policy_for_spec",
+        lambda spec: sr.DomainExecutionPolicy(
+            mode="enabled", reason="test_forces_enabled"
+        ),
+    )
     monkeypatch.setattr(
         sr,
         "eligible_end_date",

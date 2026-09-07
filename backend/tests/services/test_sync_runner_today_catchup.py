@@ -494,10 +494,40 @@ def test_on_demand_cli_requires_both_bounds_before_side_effects(
 def test_formal_margin_contract_rejects_invalid_split_groups_while_execution_frozen(
     values,
 ):
+    # 这条测试的名字本身承诺的不变量是"哪怕域被冻结(execution_frozen), 非法
+    # split_by 仍然 fail-closed 拒绝"——所以显式把 execution_policy 钉成
+    # disabled, 不再借道 live registry 当前碰巧是什么状态。2026-09-06(commit
+    # 6cd845a20)那次改动把断言换成了 population-scope 专属路径的措辞
+    # ("population scope invalid...", reason=invalid_population_scope), 但那
+    # 只是因为当时 live registry 里 margin 恰好是 enabled(Knife 1b
+    # bounded_calendar_catchup)——margin_population_scope.
+    # assert_margin_transport_matches_accepted_scope 只在 mode=="enabled" 时才
+    # 检查 split_by(见该函数 96-100 行, mode!=enabled 直接 return), 是"顺路"测到
+    # 的, 不是这条测试自己选的状态。2026-09-07 tushare_sunset freeze 把 margin
+    # 转回 disabled 就让它假红——同样的巧合以后只要 execution_policy 再切换一次
+    # 就会重演。改成显式注入 disabled, 让这条测试不再随生产 config 的 mode 摇摆。
+    #
+    # mode!=enabled 时, contract_for_spec 自己那段无条件的(不看 mode)
+    # transport_mismatches 结构性校验(margin_ingest.py:49-96)接住非法 split_by,
+    # 产出通用 ValueError → 包装成
+    # PopulationScopeExecutionError(reason=invalid_dataset_contract)。这正是
+    # 这条测试从 2026-07-18(commit 589450dcc, margin 当时因 wrong-scope 被冻结)
+    # 建立时就在验证的路径, 也是"while_execution_frozen"这个名字承诺的东西:
+    # 域被冻结时, 非法 split_by 仍然被拒绝——只是接住它的层级从"population
+    # scope 专属校验"退回到"contract 通用结构性校验"。
+    #
+    # "enabled 时这条 split_by 校验走 population-scope 专属路径、报更具体的
+    # invalid_population_scope"这条事实没有丢: 见
+    # test_margin_population_scope.py::test_enabled_mode_rejects_malformed_split_by_values
+    # (新增, 用同样的三组 values 直接测 enabled 路径, 不依赖 live registry)。
     source = sr.load_registry()
     margin = {
         **source["domains"]["margin"],
         "split_by": {"param": "exchange_id", "values": values},
+        "execution_policy": {
+            "mode": "disabled",
+            "reason": "test_execution_frozen",
+        },
     }
     registry = {
         **source,
@@ -505,20 +535,13 @@ def test_formal_margin_contract_rejects_invalid_split_groups_while_execution_fro
     }
     spec = sr.domain_spec(registry, "margin")
 
-    # 2026-07-23 (commit e6b3e44c5, Knife 1a) 起 split_by.values 校验从
-    # _formal_dataset_contract_for_spec 里那条通用的 dataset_contract_from_spec ValueError
-    # 兜底路径("dataset contract invalid: ...", reason=invalid_dataset_contract), 提前挪到了
-    # margin_ingest.contract_for_spec 调用的 margin_population_scope 专属校验里——同一段代码
-    # 现在先命中 MarginPopulationScopeError 分支, 产出更具体的
-    # "population scope invalid: ...", reason=invalid_population_scope。断言原样跟着改, 行为
-    # 本身(拒绝非法 split_by 且 fail-closed)没变, 只是判定它的层级更靠前、类型更精确。
     with pytest.raises(
         sr.PopulationScopeExecutionError,
-        match="population scope invalid.*split_by.values",
+        match="dataset contract invalid.*split_by.values",
     ) as caught:
         sr._formal_dataset_contract_for_spec(spec)
 
-    assert caught.value.reason == "invalid_population_scope"
+    assert caught.value.reason == "invalid_dataset_contract"
 
 
 def test_by_code_list_explicit_start_and_end_reach_provider(monkeypatch):

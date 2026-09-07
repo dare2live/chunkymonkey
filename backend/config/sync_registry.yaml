@@ -119,6 +119,15 @@ sources:
 domains:
   # ── P0-a: 资金流 (套一 L2 + 套二 F1 + 退出组件, 一次回填三用) ──
   moneyflow:
+    # 2026-09-07: tushare_sunset.yaml 判本域 decision: freeze (接受断流)。
+    # 那本台账是决策记录, **不是执法输入** —— check_continuity_integrity.py:602 与
+    # frozen_domain_observe.py:52 只认 execution_policy.mode=='disabled', 两者对
+    # tushare_sunset.yaml grep 命中 0。不接这根线的话, 09-11 起 continuity 会对
+    # 全部 16 个 freeze 域按「缺交易日」报 FAIL, 每天刷 alert flag ——
+    # **真断流会混在预期断流里**, 正是台账头注要防的那件事的另一种形态。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_freeze
     identity:
       kind: vendor_view
       judge: "tushare"
@@ -146,6 +155,15 @@ domains:
     min_rows_per_batch: 3000      # 2026-06-15 扩2020回补降4000->3000: 2020 universe ~3740股 (实测) < 4000 误报; 与 daily 一致, 仍防真截断
 
   moneyflow_dc:   # 2026-06-16 用户"全拉初评有用数据": 东财个股资金流 (net_amount/net_amount_rate, 补 order-size moneyflow 的东财口径)
+    # 2026-09-07: tushare_sunset.yaml 判本域 decision: freeze (接受断流)。
+    # 那本台账是决策记录, **不是执法输入** —— check_continuity_integrity.py:602 与
+    # frozen_domain_observe.py:52 只认 execution_policy.mode=='disabled', 两者对
+    # tushare_sunset.yaml grep 命中 0。不接这根线的话, 09-11 起 continuity 会对
+    # 全部 16 个 freeze 域按「缺交易日」报 FAIL, 每天刷 alert flag ——
+    # **真断流会混在预期断流里**, 正是台账头注要防的那件事的另一种形态。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_freeze
     identity:
       kind: vendor_view
       judge: "东财"
@@ -358,8 +376,8 @@ domains:
       kind: exchange_fact
       fact: "融资融券市场汇总余额 (交易所公布)"
     execution_policy:
-      mode: enabled
-      reason: bounded_calendar_catchup
+      mode: disabled  # 2026-09-07 tushare_sunset freeze 接线 (原 enabled)
+      reason: tushare_sunset_freeze  # 原: bounded_calendar_catchup
     # Knife 1b (2026-07-23): contract_version=3 transport = SSE+SZSE only.
     # v2 (BSE-in-canonical) partitions remain read-only wrong-scope evidence;
     # accepted-state reads filter to the current contract generation.
@@ -427,6 +445,15 @@ domains:
 
   # ── P0-c: regime gate 原料 (1 行/日, ROI 最高) ──
   moneyflow_mkt_dc:
+    # 2026-09-07: tushare_sunset.yaml 判本域 decision: freeze (接受断流)。
+    # 那本台账是决策记录, **不是执法输入** —— check_continuity_integrity.py:602 与
+    # frozen_domain_observe.py:52 只认 execution_policy.mode=='disabled', 两者对
+    # tushare_sunset.yaml grep 命中 0。不接这根线的话, 09-11 起 continuity 会对
+    # 全部 16 个 freeze 域按「缺交易日」报 FAIL, 每天刷 alert flag ——
+    # **真断流会混在预期断流里**, 正是台账头注要防的那件事的另一种形态。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_freeze
     identity:
       kind: vendor_view
       judge: "东财"
@@ -545,6 +572,15 @@ domains:
 
   # ── P0-d: 概念/板块域 (E8 探底实测起点; 仅经 manual pipeline/sync_runner 增量) ──
   dc_member:
+    # 2026-09-07: tushare_sunset.yaml 判本域 decision: freeze (接受断流)。
+    # 那本台账是决策记录, **不是执法输入** —— check_continuity_integrity.py:602 与
+    # frozen_domain_observe.py:52 只认 execution_policy.mode=='disabled', 两者对
+    # tushare_sunset.yaml grep 命中 0。不接这根线的话, 09-11 起 continuity 会对
+    # 全部 16 个 freeze 域按「缺交易日」报 FAIL, 每天刷 alert flag ——
+    # **真断流会混在预期断流里**, 正是台账头注要防的那件事的另一种形态。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_freeze
     identity:
       kind: vendor_view
       judge: "东财"
@@ -581,6 +617,15 @@ domains:
       "20260409": "2026-08-21 向 vendor 逐页核证: dc_member 全量 32,629 行 / 633 板块(库 32,534), 同上属 vendor 侧覆盖差异"
 
   dc_index:
+    # 2026-09-07: tushare_sunset.yaml 判本域 decision: freeze (接受断流)。
+    # 那本台账是决策记录, **不是执法输入** —— check_continuity_integrity.py:602 与
+    # frozen_domain_observe.py:52 只认 execution_policy.mode=='disabled', 两者对
+    # tushare_sunset.yaml grep 命中 0。不接这根线的话, 09-11 起 continuity 会对
+    # 全部 16 个 freeze 域按「缺交易日」报 FAIL, 每天刷 alert flag ——
+    # **真断流会混在预期断流里**, 正是台账头注要防的那件事的另一种形态。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_freeze
     identity:
       kind: vendor_view
       judge: "东财"
@@ -599,6 +644,15 @@ domains:
                                 # 1022; 400≤histmin 零幻影缺口, 原 100 比率仅 0.10 过松
 
   moneyflow_ind_dc:
+    # 2026-09-07: tushare_sunset.yaml 判本域 decision: freeze (接受断流)。
+    # 那本台账是决策记录, **不是执法输入** —— check_continuity_integrity.py:602 与
+    # frozen_domain_observe.py:52 只认 execution_policy.mode=='disabled', 两者对
+    # tushare_sunset.yaml grep 命中 0。不接这根线的话, 09-11 起 continuity 会对
+    # 全部 16 个 freeze 域按「缺交易日」报 FAIL, 每天刷 alert flag ——
+    # **真断流会混在预期断流里**, 正是台账头注要防的那件事的另一种形态。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_freeze
     identity:
       kind: vendor_view
       judge: "东财"
@@ -625,6 +679,15 @@ domains:
     # 按月分布无连续缺失窗口。不建议加 gap_tolerance(那是日期级空洞用的字段, 这里没有日期空洞)。
 
   limit_cpt_list:
+    # 2026-09-07: tushare_sunset.yaml 判本域 decision: freeze (接受断流)。
+    # 那本台账是决策记录, **不是执法输入** —— check_continuity_integrity.py:602 与
+    # frozen_domain_observe.py:52 只认 execution_policy.mode=='disabled', 两者对
+    # tushare_sunset.yaml grep 命中 0。不接这根线的话, 09-11 起 continuity 会对
+    # 全部 16 个 freeze 域按「缺交易日」报 FAIL, 每天刷 alert flag ——
+    # **真断流会混在预期断流里**, 正是台账头注要防的那件事的另一种形态。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_freeze
     identity:
       kind: vendor_view
       judge: "tushare"
@@ -879,6 +942,15 @@ domains:
       # 故删任一侧都会改变行为: 删本字段 -> 每日重探这 4 天; 删 gap_tolerance -> 缺口检查判红。
 
   dividend:
+    # 2026-09-07: tushare_sunset.yaml 判本域 decision: freeze (接受断流)。
+    # 那本台账是决策记录, **不是执法输入** —— check_continuity_integrity.py:602 与
+    # frozen_domain_observe.py:52 只认 execution_policy.mode=='disabled', 两者对
+    # tushare_sunset.yaml grep 命中 0。不接这根线的话, 09-11 起 continuity 会对
+    # 全部 16 个 freeze 域按「缺交易日」报 FAIL, 每天刷 alert flag ——
+    # **真断流会混在预期断流里**, 正是台账头注要防的那件事的另一种形态。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_freeze
     identity:
       kind: exchange_fact
       fact: "分红送转方案 (公告)"
@@ -1017,6 +1089,15 @@ domains:
 
   # ── 筹码族 (用户点名: 筹码胜率 alpha; 2026-06-12 实弹核证) ──
   cyq_perf:
+    # 2026-09-07: tushare_sunset.yaml 判本域 decision: freeze (接受断流)。
+    # 那本台账是决策记录, **不是执法输入** —— check_continuity_integrity.py:602 与
+    # frozen_domain_observe.py:52 只认 execution_policy.mode=='disabled', 两者对
+    # tushare_sunset.yaml grep 命中 0。不接这根线的话, 09-11 起 continuity 会对
+    # 全部 16 个 freeze 域按「缺交易日」报 FAIL, 每天刷 alert flag ——
+    # **真断流会混在预期断流里**, 正是台账头注要防的那件事的另一种形态。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_freeze
     identity:
       kind: vendor_view
       judge: "tushare"
@@ -1084,6 +1165,15 @@ domains:
                                     # 原 100 对 3000 级截断完全测不出(重建/回填场景静默丢 2005-2013 段)
     allow_empty_batch: false
   index_member_all:
+    # 2026-09-07: tushare_sunset.yaml 判本域 decision: freeze (接受断流)。
+    # 那本台账是决策记录, **不是执法输入** —— check_continuity_integrity.py:602 与
+    # frozen_domain_observe.py:52 只认 execution_policy.mode=='disabled', 两者对
+    # tushare_sunset.yaml grep 命中 0。不接这根线的话, 09-11 起 continuity 会对
+    # 全部 16 个 freeze 域按「缺交易日」报 FAIL, 每天刷 alert flag ——
+    # **真断流会混在预期断流里**, 正是台账头注要防的那件事的另一种形态。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_freeze
     identity:
       kind: vendor_view
       judge: "申万"
@@ -1104,6 +1194,15 @@ domains:
     allow_empty_batch: false
     fixed_params: {is_new: "Y"}    # 当前成分 (out_date NULL=仍在); 2026-06-15 显式化: is_new 默认只 Y, 历史剔除走 _hist 域
   index_member_all_hist:           # 2026-06-15 P0: 历史已剔除成分 (is_new=N, out_date 填) — 补真 PIT 区间
+    # 2026-09-07: tushare_sunset.yaml 判本域 decision: freeze (接受断流)。
+    # 那本台账是决策记录, **不是执法输入** —— check_continuity_integrity.py:602 与
+    # frozen_domain_observe.py:52 只认 execution_policy.mode=='disabled', 两者对
+    # tushare_sunset.yaml grep 命中 0。不接这根线的话, 09-11 起 continuity 会对
+    # 全部 16 个 freeze 域按「缺交易日」报 FAIL, 每天刷 alert flag ——
+    # **真断流会混在预期断流里**, 正是台账头注要防的那件事的另一种形态。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_freeze
     identity:
       kind: vendor_view
       judge: "申万"
@@ -1122,6 +1221,15 @@ domains:
     allow_empty_batch: true        # 部分 l1 可能 0 剔除 (新行业/无调整)
     fixed_params: {is_new: "N"}
   index_dailybasic:
+    # 2026-09-07: tushare_sunset.yaml 判本域 decision: freeze (接受断流)。
+    # 那本台账是决策记录, **不是执法输入** —— check_continuity_integrity.py:602 与
+    # frozen_domain_observe.py:52 只认 execution_policy.mode=='disabled', 两者对
+    # tushare_sunset.yaml grep 命中 0。不接这根线的话, 09-11 起 continuity 会对
+    # 全部 16 个 freeze 域按「缺交易日」报 FAIL, 每天刷 alert flag ——
+    # **真断流会混在预期断流里**, 正是台账头注要防的那件事的另一种形态。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_freeze
     identity:
       kind: exchange_fact
       fact: "指数日频估值 (交易所发布)"
@@ -1158,6 +1266,15 @@ domains:
 
   # ── 基本面/盈利预测族 (alpha 验证程序 S1, 2026-06-14 实弹核证 PASS: PEAD 事件因子, 最大未挖矿) ──
   forecast:
+    # 2026-09-07: tushare_sunset.yaml 判本域 decision: freeze (接受断流)。
+    # 那本台账是决策记录, **不是执法输入** —— check_continuity_integrity.py:602 与
+    # frozen_domain_observe.py:52 只认 execution_policy.mode=='disabled', 两者对
+    # tushare_sunset.yaml grep 命中 0。不接这根线的话, 09-11 起 continuity 会对
+    # 全部 16 个 freeze 域按「缺交易日」报 FAIL, 每天刷 alert flag ——
+    # **真断流会混在预期断流里**, 正是台账头注要防的那件事的另一种形态。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_freeze
     identity:
       kind: exchange_fact
       fact: "业绩预告 (公告)"
@@ -1318,6 +1435,15 @@ domains:
 
   # ── P0 (2026-06-17 tushare 选股潜力研究, owner=git log --grep tushare_alpha_potential_research): 口径对齐项目(行业=申万/概念=东财, 禁同花顺) ──
   sw_daily:   # 申万行业日线 (行业口径=申万与项目一致; sector_momentum/行业相对强弱分层; 实弹 439-587 指数/日)
+    # 2026-09-07: tushare_sunset.yaml 判本域 decision: freeze (接受断流)。
+    # 那本台账是决策记录, **不是执法输入** —— check_continuity_integrity.py:602 与
+    # frozen_domain_observe.py:52 只认 execution_policy.mode=='disabled', 两者对
+    # tushare_sunset.yaml grep 命中 0。不接这根线的话, 09-11 起 continuity 会对
+    # 全部 16 个 freeze 域按「缺交易日」报 FAIL, 每天刷 alert flag ——
+    # **真断流会混在预期断流里**, 正是台账头注要防的那件事的另一种形态。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_freeze
     identity:
       kind: exchange_fact
       fact: "申万行业指数日行情 —— 编制方案公开、成分可核, 属可核对的发布值"
@@ -1415,6 +1541,15 @@ domains:
     # accepted partition yet — same class as share_float/cyq serve_l0_declared).
 
   stk_holdertrade:   # 股东增减持 (2026-06-24 替 tdx fact_shareholder_plan_tdx_f10; 实测 ann_date 全市场71行/期)
+    # 2026-09-07: tushare_sunset.yaml 判本域 decision: freeze (接受断流)。
+    # 那本台账是决策记录, **不是执法输入** —— check_continuity_integrity.py:602 与
+    # frozen_domain_observe.py:52 只认 execution_policy.mode=='disabled', 两者对
+    # tushare_sunset.yaml grep 命中 0。不接这根线的话, 09-11 起 continuity 会对
+    # 全部 16 个 freeze 域按「缺交易日」报 FAIL, 每天刷 alert flag ——
+    # **真断流会混在预期断流里**, 正是台账头注要防的那件事的另一种形态。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_freeze
     identity:
       kind: exchange_fact
       fact: "股东增减持 (公告)"

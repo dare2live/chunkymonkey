@@ -70,12 +70,18 @@ def _write_registry(
     tushare_domains: list[str] | None = None,
     other_domains: dict | None = None,
     target_tables: dict[str, str] | None = None,
+    execution_policies: dict[str, str] | None = None,
 ) -> Path:
     """编写 sync_registry.yaml 临时文件。
 
     target_tables: {domain_name: target_table} —— 用于检查 7 (同表同判) 的用例，
     给指定域额外写一个 target_table 字段 (真实 registry 里每个域都有此字段，
     多个域指向同一张物理表时是检查 7 要抓的场景)。
+
+    execution_policies: {domain_name: mode} —— 用于检查 8 (冻结接线)。
+    2026-09-07 加: 检查 8 立起来之后，"decision: freeze 且 execution_policy 非 disabled"
+    在真实 registry 里已是**非法状态**，所以任何 freeze 域的 fixture 必须显式给出
+    execution_policy，否则它描述的是一个现实中不该存在的配置。
     """
     # 构建 domains 部分
     domains = {}
@@ -91,6 +97,14 @@ def _write_registry(
         for domain_name, target_table in target_tables.items():
             domains.setdefault(domain_name, {}).setdefault("source", "tushare")
             domains[domain_name]["target_table"] = target_table
+
+    if execution_policies:
+        for domain_name, mode in execution_policies.items():
+            domains.setdefault(domain_name, {}).setdefault("source", "tushare")
+            domains[domain_name]["execution_policy"] = {
+                "mode": mode,
+                "reason": "tushare_sunset_freeze" if mode == "disabled" else "test_fixture",
+            }
 
     # 用 YAML dump 整个结构确保格式正确
     import yaml as yaml_module
@@ -548,7 +562,14 @@ class TestDecisionExecutionDrift:
             tmp_path,
             domains={"cyq_perf": {"decision": "freeze"}},
         )
-        registry_path = _write_registry(tmp_path, tushare_domains=["cyq_perf"])
+        # 检查 8 (2026-09-07): freeze 域必须 execution_policy=disabled，
+        # 否则这个 fixture 描述的是一个现实中非法的配置。本用例测的是检查 4
+        # (漂移检测)，与检查 8 正交，所以这里给它一个合法的冻结接线。
+        registry_path = _write_registry(
+            tmp_path,
+            tushare_domains=["cyq_perf"],
+            execution_policies={"cyq_perf": "disabled"},
+        )
 
         fails, warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
         assert fails == []
@@ -837,6 +858,8 @@ class TestSameTableSameDecision:
                 "daily": "raw_tushare_daily",
                 "cyq_perf": "raw_tushare_cyq_perf",
             },
+            # 同上: 本用例测检查 7，cyq_perf 的 freeze 接线要合法才不会误触检查 8。
+            execution_policies={"cyq_perf": "disabled"},
         )
 
         fails, _warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
@@ -893,3 +916,67 @@ class TestRealConfigInvariants:
         压力，声明与实际不一致只需可见，不需要阻断)。"""
         fails, _warns = gate.run(gate.DEFAULT_SUNSET, gate.DEFAULT_REGISTRY, today=date(2026, 9, 4))
         assert fails == [], f"真实配置跑门产生 FAIL: {fails}"
+
+
+class TestFreezeExecutionDisabled:
+    """检查 8: decision: freeze 的域必须 execution_policy.mode == disabled。
+
+    为什么这条门存在: tushare_sunset.yaml 头注自称「决策记录 + 执法输入」, 实测只做到前半 ——
+    check_continuity_integrity.py:602 与 services/pipeline/frozen_domain_observe.py:52
+    判「这个域缺数据是不是预期」时只认 sync_registry 的 execution_policy, 对本台账 grep 命中 0。
+    2026-09-07 实测: 把 margin 从 disabled 改回 enabled, 全部 2,683 个阻断测试照绿 ——
+    在这道门立起来之前, 台账与运行时脱线是**完全静默**的。
+    """
+
+    def test_freeze_with_disabled_passes(self, tmp_path: Path) -> None:
+        sunset_path = _write_sunset(tmp_path, domains={"cyq_perf": {"decision": "freeze"}})
+        registry_path = _write_registry(
+            tmp_path,
+            tushare_domains=["cyq_perf"],
+            execution_policies={"cyq_perf": "disabled"},
+        )
+        fails, _warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
+        assert fails == []
+
+    def test_freeze_with_enabled_fails_and_names_the_domain(self, tmp_path: Path) -> None:
+        """反向: 台账判 freeze 而 registry 仍 enabled -> FAIL 且点名是哪个域。
+
+        点名是判据的一部分: 「红了却说不清拦你什么」正是本仓库门失效的典型形态
+        (见 feedback-gate-asks-different-question-than-it-guards)。
+        """
+        sunset_path = _write_sunset(tmp_path, domains={"cyq_perf": {"decision": "freeze"}})
+        registry_path = _write_registry(
+            tmp_path,
+            tushare_domains=["cyq_perf"],
+            execution_policies={"cyq_perf": "enabled"},
+        )
+        fails, _warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
+        assert len(fails) == 1
+        assert "cyq_perf" in fails[0]
+        assert "freeze" in fails[0]
+
+    def test_freeze_without_execution_policy_fails(self, tmp_path: Path) -> None:
+        """未声明 execution_policy 也算不合格 —— 默认是 enabled, 与显式 enabled 等价。
+
+        这条单列, 因为真实 registry 里 16 个 freeze 域中有 15 个原本就是**未声明**,
+        只有 margin 是显式 enabled。若判据只查显式 enabled, 会漏掉 15/16。
+        """
+        sunset_path = _write_sunset(tmp_path, domains={"cyq_perf": {"decision": "freeze"}})
+        registry_path = _write_registry(tmp_path, tushare_domains=["cyq_perf"])
+        fails, _warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
+        assert len(fails) == 1
+        assert "cyq_perf(mode=enabled)" in fails[0]
+
+    def test_non_freeze_decisions_are_not_required_to_be_disabled(self, tmp_path: Path) -> None:
+        """只管 freeze。replace/derive/retire 域的 execution_policy 不归本条管 ——
+        它们还要继续跑或已换源, 强制 disabled 会把正在服役的域关掉。"""
+        sunset_path = _write_sunset(
+            tmp_path,
+            domains={
+                "daily": {"decision": "replace", "replacement": "tdxhub"},
+                "trade_cal": {"decision": "derive"},
+            },
+        )
+        registry_path = _write_registry(tmp_path, tushare_domains=["daily", "trade_cal"])
+        fails, _warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
+        assert not [f for f in fails if "freeze" in f]

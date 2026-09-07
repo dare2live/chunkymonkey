@@ -57,6 +57,11 @@ frozen_at/must_by 三个新字段，门跑出 WARN fails=0——因为它压根�
 7. 同表同判: 若两个域在 sync_registry.yaml 里指向同一个 target_table (物理表)，它们的
    decision 必须相等。一张物理表不可能一半冻结一半换源。命中不一致 → **FAIL**。
 
+8. 冻结接线: decision: freeze 的域，sync_registry.yaml 里必须 execution_policy.mode ==
+   disabled。命中不一致 → **FAIL**。这条补的是台账与运行时之间那根线 ——
+   continuity/frozen_domain_observe 只认 execution_policy，对本台账 grep 命中 0；
+   不接上的话冻结域到期后会按「缺交易日」报 FAIL，真断流混在预期断流里。
+
 **关键设计约束**（不许改）: 未裁决域在到期前**只报 WARN 不 FAIL**。理由: 若设成 FAIL
 会立刻阻断所有提交 —— 过度阻断只会卡住诚实的提交者。但 WARN **必须列出全部未裁决域名**
 —— 项目教训是「warn-only 会退化成 warn-nothing」。decision 值域校验(检查 0)、闭合键集
@@ -282,6 +287,58 @@ def validate_same_table_same_decision(
     return fails
 
 
+def validate_freeze_execution_disabled(
+    sunset: dict[str, Any], registry: dict[str, Any]
+) -> list[str]:
+    """检查 8: decision: freeze 的域, registry 里必须 execution_policy.mode == disabled。
+
+    2026-09-07 加。这条补的是台账与运行时之间那根**从来没接上的线**:
+
+    ``tushare_sunset.yaml`` 头注自称「决策记录 + 执法输入」, 但实测它只做到前半 ——
+    ``check_continuity_integrity.py:602`` 与 ``services/pipeline/frozen_domain_observe.py:52``
+    判一个域是否"已冻结、缺数据属预期"时, **只认 sync_registry 的 execution_policy.mode
+    == 'disabled'**; 两者对 tushare_sunset.yaml grep 命中 0, 根本不读这本台账。
+
+    后果是双向的, 而且都是静默的:
+      - 台账判了 freeze 但 registry 仍 enabled → 到期后 continuity 对该域按「缺交易日」
+        报 FAIL, 每天刷 alert flag。16 个域一起刷时, **真断流会混在预期断流里** ——
+        正是台账头注要防的「到期后静默断流且无人知道它断了」的另一种形态。
+      - 反向: 有人把某个 freeze 域的 execution_policy 改回 enabled, 之前**没有任何东西会红**
+        (2026-09-07 实测: 把 margin 从 disabled 改回 enabled, 全部 2,683 个阻断测试照绿)。
+
+    所以这条不是"再加一道门", 是把台账真正接成执法输入。判据故意放在 sunset 门里而不是
+    continuity 里: continuity 问的是「这个域今天该不该有数据」, 本条问的是「决策和配置对不对得上」,
+    两个问题不同, 混在一起又会变成"门问的问题≠它想守的东西"。
+    """
+    fails: list[str] = []
+    domain_entries = sunset.get("domains", {})
+    registry_domains = registry.get("domains", {})
+
+    offenders: list[tuple[str, str]] = []
+    for domain_name, entry in sorted(domain_entries.items()):
+        if not isinstance(entry, dict) or entry.get("decision") != "freeze":
+            continue
+        reg_spec = registry_domains.get(domain_name)
+        if not isinstance(reg_spec, dict):
+            # 域不在 registry 里 —— 由检查 1/2 负责, 本条不重复报。
+            continue
+        policy = reg_spec.get("execution_policy") or {}
+        mode = str(policy.get("mode") or "enabled")
+        if mode != "disabled":
+            offenders.append((domain_name, mode))
+
+    if offenders:
+        detail = ", ".join(f"{name}(mode={mode})" for name, mode in offenders)
+        fails.append(
+            f"{len(offenders)} 个域台账判 decision: freeze, 但 sync_registry.yaml 里 "
+            f"execution_policy.mode 不是 disabled: {detail}。"
+            "continuity/frozen_domain_observe 只认 execution_policy, 不读本台账 —— "
+            "不接这根线的话, 冻结域到期后会按「缺交易日」报 FAIL, 真断流将混在预期断流里。"
+            "修法: 给这些域写 execution_policy: {mode: disabled, reason: tushare_sunset_freeze}。"
+        )
+    return fails
+
+
 def extract_sunset_domains(sunset: dict[str, Any]) -> dict[str, Any]:
     """从 sunset 提取所有被记录的域 (包括顶层 undecided_domains)。
     返回 dict {domain_name: (decision, status_if_any)}.
@@ -313,7 +370,7 @@ def run(
     registry_path: Path = DEFAULT_REGISTRY,
     today: date | None = None,
 ) -> tuple[list[str], list[str]]:
-    """执行八项检查 (检查 0~7)。返回 (fails, warns)。"""
+    """执行九项检查 (检查 0~8)。返回 (fails, warns)。"""
     if today is None:
         today = date.today()  # rule-compliance: ok evidence=与授权到期日比对的墙钟日期(非交易日判定/非交易决策锚), 墙钟即语义本身
 
@@ -337,6 +394,9 @@ def run(
 
     # ── 检查 7: 同表同判 ──────────────────────────────────────────────
     fails.extend(validate_same_table_same_decision(sunset, registry))
+
+    # ── 检查 8: freeze 域必须 execution_policy disabled ───────────────
+    fails.extend(validate_freeze_execution_disabled(sunset, registry))
 
     # ── 检查 1: 覆盖完整性 ────────────────────────────────────────────
     missing_from_sunset = registry_tushare - set(sunset_domains.keys())
