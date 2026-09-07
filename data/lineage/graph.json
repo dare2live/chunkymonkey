@@ -2923,6 +2923,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/services/test_holders_top10_acceptance.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_org_holding_announcement.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
@@ -9157,9 +9163,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1481,
-    "generated_at": "2026-09-07T11:07:39.727769+00:00",
-    "node_count": 522,
+    "edge_count": 1482,
+    "generated_at": "2026-09-07T11:19:10.680164+00:00",
+    "node_count": 523,
     "version": 2
   },
   "nodes": [
@@ -11361,6 +11367,14 @@
         "path": "backend/tests/services/test_holders_landing_retention.py"
       },
       "id": "consumer:backend/tests/services/test_holders_landing_retention.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/services/test_holders_top10_acceptance.py"
+      },
+      "id": "consumer:backend/tests/services/test_holders_top10_acceptance.py",
       "kind": "consumer"
     },
     {

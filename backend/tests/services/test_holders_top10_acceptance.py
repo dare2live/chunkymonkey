@@ -517,3 +517,62 @@ def test_unknown_delete_scope_fails_closed(conn) -> None:
             conn, handed, batch_id=f"holders_top10:{PARTITION}:bad",
             rows=[_row()], scope="whatever",
         )
+
+
+# ── 身份键三态 (2026-09-07, schema v3 / contract v4) ─────────────────────────
+#
+# is_holder_org 在 DDL 上可空, 只是为了不因为加一列去 drop 生产表 (610,414 行 v2 遗留,
+# 其中 6,554 行连 staging 快照都没有)。真正的约束在这条 accept 路径上 —— 下面三个测试
+# 就是「可空但安全」这句话的全部依据: v3 起写进来的行必然三态可判。
+
+
+def _land_accept(conn, row, suffix):
+    contract = load_holders_top10_contract()
+    handed = propagate_disclosure_execution_contract("holders_top10", contract)
+    batch = HoldersTop10LandingBatch(
+        batch_id=f"holders_top10:{PARTITION}:{suffix}",
+        partition_value=PARTITION,
+        observed_at=OBSERVED,
+        available_at=OBSERVED,
+        rows=[row],
+        request={"api": "RPT_F10_EH_FREEHOLDERS", "notice_date": PARTITION},
+    )
+    land_holders_top10_batch(conn, batch, handed, handoff=handed)
+    return accept_holders_top10_batch(conn, batch.batch_id, handed, handoff=handed)
+
+
+def test_null_is_holder_org_is_rejected_not_defaulted(conn) -> None:
+    """v3 起不许再写入身份未判的行 —— 这是 DDL 可空之所以安全的唯一原因。"""
+    outcome = _land_accept(conn, _row(is_holder_org=None), "null-org")
+    assert outcome.status == "REJECTED"
+    assert outcome.rejection_code == "INVALID_HOLDER_ORG_FLAG"
+
+
+def test_org_without_holder_code_is_rejected(conn) -> None:
+    """机构却没有 code = 供应商行为变了。
+
+    实测边界: IS_HOLDORG=1 的 829,249 行里 holder_code 空 0 行。静默放行会让身份键
+    悄悄退化回名字 —— 而名字在 35.2% 的行上不是身份, 正是加这一列要解决的问题。
+    """
+    outcome = _land_accept(conn, _row(is_holder_org=True, holder_code=None), "org-nocode")
+    assert outcome.status == "REJECTED"
+    assert outcome.rejection_code == "MISSING_ORG_HOLDER_CODE"
+
+
+def test_natural_person_without_holder_code_is_accepted(conn) -> None:
+    """个人无编码是**正常**的, 不是缺失 —— 供应商只给机构发码 (实测 620,073 行全空)。
+
+    这条与上一条成对: 少了它, 上一条的严格会被误读成「holder_code 必填」,
+    下一个人就会去给个人编一个假 code。
+    """
+    outcome = _land_accept(
+        conn,
+        _row(holder_name="张三", is_holder_org=False, holder_code=None),
+        "person-nocode",
+    )
+    assert outcome.status == "ACCEPTED", outcome.rejection_code
+    stored = conn.execute(
+        "SELECT holder_code, is_holder_org FROM canonical_top10_float_holders_period "
+        "WHERE holder_name = '张三'"
+    ).fetchone()
+    assert tuple(stored) == (None, False), stored

@@ -264,10 +264,11 @@ def test_identity_columns_are_on_canonical_with_measured_null_semantics() -> Non
 
     org = fields["is_holder_org"]
     assert org["duckdb_type"] == "BOOLEAN"
-    assert org["nullable"] is False, (
-        "is_holder_org 是 holder_code 那一列 NULL 的唯一解释项, 它自己不能是 NULL"
-    )
-    assert org["null_semantics"] == "forbidden"
+    # 可空只为 v2 遗留行 (生产库现有 610,414 行, 当时供应商判别没被记录, 填任何值都是猜)。
+    # v3 起写进来的行必然非空 —— 约束在 accept 侧 (_validate_provider_row 要求 bool,
+    # 否则 INVALID_HOLDER_ORG_FLAG), 不在 DDL 上。为了加一列 drop 生产表是不可逆的, 不做。
+    assert org["nullable"] is True
+    assert org["null_semantics"] == "legacy_pre_v3_row_identity_unrecorded"
     assert org["origin"] == "provider"
 
     # 两列都在 PROVIDER 段而不是 ENRICHMENT 段: 它们是供应商原样给的, 不是我们算的。

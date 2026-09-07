@@ -314,12 +314,24 @@ _SCHEMA_PAYLOAD: dict[str, Any] = {
         {
             # 与 holder_code 成对: 没有它, NULL 的 holder_code 就分不清
             # 「个人(本来就没有)」和「机构但没取到(真缺失)」—— 红线 3 要求缺失可辨识。
-            # 实测 IS_HOLDORG 本身零缺失, 故 nullable=False。
+            #
+            # nullable=True 但**只对 v2 遗留行**: 契约 v3 之前落的行, 供应商判别根本没被记录,
+            # 给它填 True/False 都是猜 (红线 3: 缺失只能传播为缺失, 不填 0 不 fallback)。
+            # 生产库里现有 610,414 行就是这种, 其中 6,554 行 (256 只股) 连 staging 快照都没有
+            # —— 89% 是 B 股(3,939 行)与北交所/新三板(~1,876 行)这类越界残留, 另 ~610 行是
+            # 已退市 A 股。为了加一列去 drop 生产表是不可逆的, 不做。
+            #
+            # 约束落在**写入路径**而不是 DDL 上: accept 侧
+            # _validate_provider_row 要求它必须是 bool, 否则 INVALID_HOLDER_ORG_FLAG 拒批,
+            # 所以 v3 起写进来的行**必然**非空。三态因此完全可判:
+            #   is_holder_org IS NULL  -> v2 遗留行, 身份未记录 (holder_code 也必为 NULL)
+            #   is_holder_org = false  -> 个人, 供应商本就不发编码
+            #   is_holder_org = true   -> 机构, holder_code 必非空 (MISSING_ORG_HOLDER_CODE 守着)
             "name": "is_holder_org",
             "duckdb_type": "BOOLEAN",
-            "nullable": False,
+            "nullable": True,
             "unit": "provider_holder_is_organization",
-            "null_semantics": "forbidden",
+            "null_semantics": "legacy_pre_v3_row_identity_unrecorded",
             "origin": "provider",
         },
         {
