@@ -130,7 +130,11 @@ commit_gates:
     group: diff_correctness
     checks: "staged diff 里的魔数 / 估算参数缺 evidence|measured|from yaml 注释"
     why: "扫的就是这次 diff 的内容；拍脑袋常数一旦进主干就成了别人的既定事实。"
-    object: "rule:magic_number"
+    # 2026-09-07 订正: rule:magic_number 那条检查已随 7bc2dd991 删掉,
+    # check_rule_compliance.py 里 grep 命中 0 —— 登记指着一条不存在的规则。
+    # 门实际还在查的是 DB 边界(裸 duckdb.connect / 硬编码 .duckdb 路径),
+    # 今天它就抓到过我三处(backfill 脚本的快照文件名/裸连接/帮助文本写死库路径)。
+    object: "rule:db_boundary"
     invariant: "staged diff 新增的魔数/估算参数/DB 边界反 pattern 必须带 evidence|measured|from yaml 注释"
     kill_when: "keep_forever: 拍脑袋常数一旦进主干就是既定事实, 工程卫生"
     paradigm: engineering
@@ -249,13 +253,19 @@ commit_gates:
 
   no_emoji:
     group: diff_correctness
-    checks: "staged diff 里的 emoji (代码 / yaml / markdown / commit body)"
+    checks: "staged diff 里的 emoji (代码 / yaml / markdown)。**不含 commit message** —— 见 invariant"
     why: >-
       扫的就是这次 diff 的内容, 静态可判。owner 的硬偏好(全项目不用 emoji);
       2026-08-11 之前它只活在 git hook 里 —— **登记表之外的执法点**, 意味着
       `safe_commit` 路径根本不查它, 而两条路径给出不同结果正是 P1 要消灭的。
     object: "rule:no_emoji"
-    invariant: "staged diff (代码/yaml/markdown/commit body) 不含 emoji"
+    # 2026-09-07 订正: 原写「代码/yaml/markdown/commit body」, 但 commit body **从未被扫过** ——
+    # check_no_emoji.py:91 只跑 git diff --cached, safe_commit.sh:807 调它时不传任何参数,
+    # $MSG 只在 safe_commit.sh:862 的 git commit -m 用过一次。判据错了但守的东西
+    # (业主明示硬偏好: 全项目不用 emoji, 含 commit message) 是真的 -> 改判据不删门。
+    # 把 message 真正接进来是独立一步(要改 safe_commit.sh 本身, 单独测), 不在本次订正里。
+    # 另: configs/git-hooks/pre-commit 那条路结构上就拿不到 message(pre-commit 阶段它还不存在)。
+    invariant: "staged diff (代码/yaml/markdown) 不含 emoji; commit message 目前无自动执法"
     kill_when: "keep_forever: owner 全项目硬偏好"
     paradigm: engineering
 
@@ -333,7 +343,10 @@ runtime_checks:
       F6 accept breadth)报出真实数据缺口。2026-08-14 从 commit 路径移来: 实测该脚本全量
       39.2s 而 --skip-live 仅 0.37s, 即 83% 的 moth 开销花在这两个 DuckDB 探测上, 而它们
       查的是「数据地基够不够」不是「这次 diff 对不对」—— 受害时刻是跑日更, 门就该装在日更里。
-      commit 路径仍跑静态契约面(moth 的 foundation-done-f1-f10 带 --skip-live)。
+      commit 路径仍跑静态契约面 —— 入口是 .github/workflows/ci.yml:72 (实读确认)。
+      2026-09-07 订正: 原写「moth 的 foundation-done-f1-f10 带 --skip-live」,
+      而 .moth/assertions/claims.yaml 与 .moth/profile.yaml 里都没有这个 assertion pack
+      (grep 命中 0)。指着一个不存在的执法点, 会让人以为 commit 路径有它其实没有。
     skip_when_dry: true
 
   - id: cutover_effective

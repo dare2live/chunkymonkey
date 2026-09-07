@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Pre-commit hook: 禁止 emoji 出现在代码/yaml/markdown/commit body.
+"""Pre-commit hook: 禁止 emoji 出现在**已暂存的 diff** (代码/yaml/markdown)。
+
+2026-09-07 订正 docstring: 原写「/commit body」, 但本脚本只跑 git diff --cached
+(见下方 _staged_diffs), commit message **从来没被扫过** —— 调用方 safe_commit.sh:807
+不传任何参数。业主的硬偏好确实包含 commit message, 但那需要把 $MSG 传进来,
+是独立一步; 在那之前这里不该声称自己在查。
 
 根因: 用户 firm preference (memory feedback_no_emoji): "项目全局不用 emoji (代码/UI/文档/commit message 全部)".
 
