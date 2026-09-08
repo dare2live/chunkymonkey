@@ -111,9 +111,10 @@ grain key, 上述碰撞组里**总能找到一行**在 buy/sell/net_buy/reason �
 ``get_v1(report_name, *, page, page_size, sort_columns, sort_types, columns,
 secucode, extra_filters) -> {"pages": int, "data": list[dict], "count": int}``
 这一个方法, 与 ``aif10_scraper.client.AIF10Client.get_v1`` 同签名)。不传时首次
-调用才真实 import ``aif10_scraper`` 并 ``ensure_import_path("miaoxiang")``
-(sibling repo 不存在也不报错 —— ``ensure_import_path`` 默认 ``strict=False``),
-测试因此从不触网、也不要求 sibling checkout 存在 (CI 浅克隆无此目录)。
+调用才真实 import ``aif10_scraper``。测试因此从不触网。
+(2026-09-08 前 aif10_scraper 在 sibling repo 里, 这里要先 ``ensure_import_path("miaoxiang")``
+且默认 ``strict=False`` 以免 CI 浅克隆无此目录时报错; 包已并入 ``backend/aif10_scraper``,
+PYTHONPATH=backend 直接可见, 那层间接与它的"不存在也不报错"语义一并退役。)
 """
 from __future__ import annotations
 
@@ -124,7 +125,6 @@ from services.data_sources.pagination_integrity import (
     EASTMONEY_V1_MAX_PAGES_PER_QUERY,
     assess_paginated_land,
 )
-from services.data_sources.sibling_repos import ensure_import_path
 
 ALIAS = "miaoxiang"
 
@@ -331,7 +331,6 @@ class MiaoxiangSource:
         if self._client_factory is not None:
             self._client = self._client_factory()
             return self._client
-        ensure_import_path("miaoxiang")
         from aif10_scraper.client import AIF10Client  # noqa: E402
 
         self._client = AIF10Client()

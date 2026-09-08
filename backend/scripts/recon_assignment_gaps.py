@@ -58,7 +58,6 @@ from services.data_sources.fuyao_kline_recon import (  # noqa: E402
     load_fuyao_events,
     load_fuyao_kline,
 )
-from services.data_sources.sibling_repos import ensure_import_path  # noqa: E402
 from services.data_sources.sources.fuyao import (  # noqa: E402
     FuyaoRestError,
     resolve_api_key,
@@ -126,7 +125,6 @@ def _fetch_fuyao_tickers(api_key: str, *, timeout: float) -> dict[str, Any]:
 def _miaoxiang_pages(report_name: str, *, extra_filters: list[str] | None = None,
                      secucode: str | None = None, page_size: int = 500,
                      max_pages: int = 8) -> dict[str, Any]:
-    ensure_import_path("miaoxiang")
     from aif10_scraper.client import AIF10Client  # noqa: E402
     from aif10_scraper.registry import get_report  # noqa: E402
 

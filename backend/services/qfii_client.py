@@ -155,9 +155,7 @@ def latest_plannable_report_date(today: Optional[date] = None) -> Optional[str]:
 
 def _fetch_qfii_aif10(report_date_yyyymmdd: str, symbol: str):
     """主源: 妙想 RPT_DMSK_HOLDERS (P6.3 已迁)."""
-    from services.data_sources.sibling_repos import ensure_import_path
 
-    ensure_import_path("miaoxiang")
     from aif10_scraper import fetch_all_pages
     end_iso = f"{report_date_yyyymmdd[:4]}-{report_date_yyyymmdd[4:6]}-{report_date_yyyymmdd[6:]}"
     return fetch_all_pages(

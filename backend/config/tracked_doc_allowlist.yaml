@@ -11,6 +11,7 @@ tracked_md:
 # 并入范围/许可/继承的约束)。这类文件每并入一个 sibling 就会新增一份, 每次都该来改这一行:
 # "仓里有一份别人的代码"必须是显式登记的, 不是悄悄多出来的。
 - CLAUDE.md
+- backend/aif10_scraper/VENDOR.md
 - backend/marketdb/VENDOR.md
 - bestchoice/FROZEN.md
 - bestchoice/README.md

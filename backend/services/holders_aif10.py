@@ -20,11 +20,9 @@ import time
 from datetime import datetime, timezone
 from typing import Iterable, Optional
 
-from services.data_sources.sibling_repos import ensure_import_path
 
 log = logging.getLogger(__name__)
 
-ensure_import_path("miaoxiang")
 
 REPORT_FREE = "RPT_F10_EH_FREEHOLDERS"   # 十大流通股东
 PAGE_SIZE = 500                          # SQL LIMIT-like 单页上限 (东财 datacenter 支持)

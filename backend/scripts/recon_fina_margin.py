@@ -32,7 +32,6 @@ from services.data_sources.fina_margin_recon import (  # noqa: E402
     load_landing_income,
     load_margin_detail_sum,
 )
-from services.data_sources.sibling_repos import ensure_import_path  # noqa: E402
 from services.duck_adapter import connect  # noqa: E402
 
 DEFAULT_CODES = ("600519.SH", "000001.SZ")
@@ -54,7 +53,6 @@ def _fetch_miaoxiang_v1(report_name: str, secucode: str, *, page_size: int) -> d
     ``aif10_scraper.client.get_v0`` reads top-level ``data`` (often null)
     and returns []. Live JSON keeps rows in ``result.data``; v1 unwraps that.
     """
-    ensure_import_path("miaoxiang")
     from aif10_scraper.client import AIF10Client  # noqa: E402
     from aif10_scraper.registry import get_report  # noqa: E402
 

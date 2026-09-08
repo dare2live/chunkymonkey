@@ -24,9 +24,7 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Any, Optional
 
-from services.data_sources.sibling_repos import ensure_import_path
 
-ensure_import_path("miaoxiang")
 
 logger = logging.getLogger("cm-api")
 

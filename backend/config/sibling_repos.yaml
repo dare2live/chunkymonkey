@@ -1,18 +1,15 @@
 version: 1
-# Vendor/protocol checkouts live next to chunkymonkey under Documents/M/stock/.
-# This file is the only path registry. Do not copy those trees into this repo
-# and do not scatter sys.path inserts in acquire clients.
+# 仍以 sibling 形态存在的 vendor/protocol checkout, 位置在 Documents/M/stock/ 下。
+# 本文件是它们唯一的路径登记表: 不要在 acquire 客户端里散落 sys.path insert。
+#
+# 在册 != 应该一直在册。使用面小且上游停更的第三方, 按使用闭包并入 backend/ 更好——
+# 已并入: backend/marketdb (fuyao)、backend/aif10_scraper (miaoxiang), 各带 VENDOR.md。
+# 判据是"同一个包会不会在这台机器上有第二份": sibling 目录 + pip 装的拷贝并存时,
+# 拿到哪份取决于 sys.path 顺序, 两条路径都不报错。并入 backend/ 后结构上只剩一份。
 #
 # Override root: CHUNKY_STOCK_ROOT (tests). Default = parent of this git root.
 
 repos:
-  miaoxiang:
-    dirname: miaoxiang
-    role: eastmoney_aif10_http_client
-    required: true
-    pythonpath:
-      - .
-    required_marker: aif10_scraper/client.py
   tdxhub:
     dirname: tdxhub
     role: tdx_protocol_hub

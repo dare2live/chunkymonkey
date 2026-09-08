@@ -1,7 +1,11 @@
-"""Sibling vendor/protocol checkouts (miaoxiang / tdxhub / fuyao).
+"""Sibling vendor/protocol checkouts —— 在册的看 ``config/sibling_repos.yaml``.
 
-Physical trees live next to this git root under ``Documents/M/stock/``.
-Chunkymonkey imports from those trees; it does not vendor copies.
+物理树在本 git 根旁边的 ``Documents/M/stock/`` 下, chunkymonkey 从那里 import。
+
+2026-09-08 起这不再是唯一形态: 使用面小且上游停更的(fuyao 的 marketdb、
+miaoxiang 的 aif10_scraper)已按使用闭包并入 ``backend/``。判据是"同一个包会不会
+在这台机器上有第二份" —— sibling + pip editable/wheel 两份并存时, 拿到哪份取决于
+sys.path 顺序, 而两条路径都不报错。留在本登记表里的, 是仍以 sibling 形态存在的那些。
 """
 from __future__ import annotations
 
@@ -148,8 +152,9 @@ def ensure_import_path(
 ) -> Path:
     """Put sibling pythonpath dirs on ``sys.path``. Return the checkout root.
 
-    ``strict=False`` matches the old miaoxiang insert (path may not exist yet).
-    ``strict=True`` is for live Fuyao dump calls that must have the checkout.
+    ``strict=False``: 目录可以还不存在(只插 sys.path, 不校验)。
+    ``strict=True``: 缺目录直接 FileNotFoundError —— 给必须有 checkout 才能跑的调用方
+    (现在只剩 tdxhub 协议层)。
     """
     catalog = repos or get_sibling_repos()
     root = catalog.path_for(alias)

@@ -46,9 +46,9 @@ from typing import Any, Sequence
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-# 顺序有意义: 触发 services.holders_aif10 顶部的
-# ``ensure_import_path("miaoxiang")`` 副作用, 后面对 aif10_scraper.* 的 import
-# 才保证能找到那个 sibling checkout (不自己重复一遍路径拼接逻辑)。
+# 2026-09-08 前这里的 import 顺序有意义: 要先触发 services.holders_aif10 顶部的
+# ``ensure_import_path("miaoxiang")`` 副作用, 后面对 aif10_scraper.* 的 import 才找得到那个
+# sibling checkout。aif10_scraper 已并入 backend/, PYTHONPATH=backend 直接可见, 顺序不再有副作用意义。
 from services.holders_aif10 import PAGE_SIZE, REPORT_FREE, _secucode  # noqa: E402
 from services.data_sources.holders_top10_schema import (  # noqa: E402
     RAW_FIELDS,

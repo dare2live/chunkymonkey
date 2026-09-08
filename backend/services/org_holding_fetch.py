@@ -3,9 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from services.data_sources.sibling_repos import ensure_import_path
 
-ensure_import_path("miaoxiang")
 
 REPORT_NAME = "RPT_MAIN_ORGHOLDDETAIL"
 PAGE_SIZE = 2000

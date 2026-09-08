@@ -226,9 +226,7 @@ def discover_fundflow_report_names() -> tuple[str, ...]:
     """Registry siblings that look like fund-flow, excluding cashflow/raise."""
     names = list(EASTMONEY_FLOW_CANDIDATES)
     try:
-        from services.data_sources.sibling_repos import ensure_import_path
 
-        ensure_import_path("miaoxiang")
         from aif10_scraper.registry import REPORTS  # noqa: E402
     except Exception:  # noqa: BLE001 — probe still has the K2 candidate list
         return tuple(dict.fromkeys(names))

@@ -15,26 +15,28 @@ def test_sibling_repos_yaml_names_the_remaining_stock_checkouts():
     就该逼人来改这一行, 否则"登记表里还写着但目录已经没了"会静默存在。
     """
     catalog = load_sibling_repos()
-    assert set(catalog.repos) == {"miaoxiang", "tdxhub", "tushare"}
-    assert catalog.require("miaoxiang").required is True
+    assert set(catalog.repos) == {"tdxhub", "tushare"}
+    assert catalog.require("tdxhub").required is True
     assert catalog.require("tushare").required is False
 
 
 def test_sibling_repos_prefers_stock_root_then_nested(tmp_path):
+    """两处都有同名目录时取 stock 根那份 —— 原用例拿 miaoxiang 当样本, 它已并入。
+
+    换成 tdxhub 不只是换个名字: 这条优先级正是"同一个包有两份拷贝"的来源, 而
+    tdxhub 恰好是本机唯一还有第二份的那个(用户 site 里一份 pip 装的)。
+    """
     stock = tmp_path / "stock"
     repo = stock / "chunkymonkey"
-    nested = repo / "miaoxiang"
-    sibling = stock / "miaoxiang"
-    nested.mkdir(parents=True)
-    (nested / "aif10_scraper").mkdir()
-    (nested / "aif10_scraper" / "client.py").write_text("# nested\n", encoding="utf-8")
-    sibling.mkdir()
-    (sibling / "aif10_scraper").mkdir()
-    (sibling / "aif10_scraper" / "client.py").write_text("# sibling\n", encoding="utf-8")
+    nested = repo / "tdxhub"
+    sibling = stock / "tdxhub"
+    for root, tag in ((nested, "nested"), (sibling, "sibling")):
+        (root / "tdxhub").mkdir(parents=True)
+        (root / "tdxhub" / "quotes.py").write_text(f"# {tag}\n", encoding="utf-8")
 
     catalog = load_sibling_repos(repo_root=repo, stock_root=stock)
-    assert catalog.path_for("miaoxiang") == sibling
-    assert catalog.is_present("miaoxiang") is True
+    assert catalog.path_for("tdxhub") == sibling
+    assert catalog.is_present("tdxhub") is True
 
 
 def test_ensure_import_path_adds_declared_subdirectory(tmp_path):
@@ -75,8 +77,25 @@ def test_ensure_import_path_raises_when_required_missing(tmp_path):
     repo = stock / "chunkymonkey"
     repo.mkdir(parents=True)
     catalog = load_sibling_repos(repo_root=repo, stock_root=stock)
-    with pytest.raises(FileNotFoundError, match="miaoxiang"):
-        ensure_import_path("miaoxiang", repos=catalog, strict=True)
+    with pytest.raises(FileNotFoundError, match="tdxhub"):
+        ensure_import_path("tdxhub", repos=catalog, strict=True)
+
+
+def test_vendored_aif10_scraper_resolves_in_repo_not_from_editable_install():
+    """aif10_scraper 必须解析到 backend/aif10_scraper。
+
+    2026-09-08 并入前它是 `pip install -e` 装的(指向 sibling), 于是"包在哪"有两个答案。
+    并入同批卸掉了 editable 安装 —— 这条断言防的是它被重新装回来: 一旦 editable 复活,
+    仓内代码与 sibling 里的旧版本谁生效就又取决于 sys.path 顺序了。
+    """
+    import aif10_scraper
+    from aif10_scraper.registry import get_report  # noqa: F401
+
+    repo_root = Path(__file__).resolve().parents[3]
+    resolved = Path(aif10_scraper.__file__).resolve()
+    assert resolved == (repo_root / "backend" / "aif10_scraper" / "__init__.py").resolve(), (
+        f"aif10_scraper 解析到了仓外: {resolved}"
+    )
 
 
 def test_vendored_marketdb_resolves_in_repo_not_from_site_packages():
