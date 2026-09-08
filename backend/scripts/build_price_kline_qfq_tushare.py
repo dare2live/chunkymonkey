@@ -1,679 +1,269 @@
-"""Build the current TuShare qfq analysis series and run post-build sanity checks.
+"""Build the current TuShare-history qfq (前复权) analysis序列 — 全量 DROP+CTAS。
 
-This output is a derived serving/research input. It is not nominal execution-price truth.
-Method = latest-factor rebase qfq; each rebuild stamps batch_id / ingested_at /
-factor_as_of so consumers can pin a rebuild snapshot (historical levels rewrite when
-latest adj_factor changes — typed method, not missing lineage).
+派生 serving/research 面, 非 nominal execution-price truth。每次重建戳
+batch_id/ingested_at/factor_as_of/config_hash。
 
-daily_update Step 2.96 rebuilds price_kline_qfq_tushare in the market DuckDB.
-Default mode = incremental when the table exists:
-  - stocks whose latest adj_factor *value* changed → rewrite full history
-  - unchanged f_latest → append only new trade_dates (do not UPDATE historical
-    rows just because adj *date* moved — that rewrites ~8.5M rows/day and
-    leaves ~25% free blocks; factor_as_of on old rows stays the write-time stamp)
-  - never leave stale pre-rebase levels (silent wrong history banned)
-Full DROP+CTAS remains available via --full (and is used when the table is missing).
-Post-rebuild compact: always after full CTAS; after incremental when
-pragma_database_size free_blocks% >= COMPACT_FREE_PCT (escape: --no-compact /
-CHUNKY_QFQ_SKIP_COMPACT=1). DELETE/UPDATE still fragment; skipping compact
-because "incremental isn't DROP+CTAS" is how the market alias quietly grew.
+2026-09-08 重写 (raw_tushare_adj_factor 冻结于 20260828, tushare 授权 09-10 到期硬停):
+  - 因子改自算 services.adjust_factor.hfq_sql, 不再 JOIN raw_tushare_adj_factor。
+  - OHLCV 唯一来源 canonical_nominal_ohlcv_daily; legacy raw_tushare_daily UNION 兜底与
+    --allow-legacy-fill 一并删除 (accepted 已覆盖全窗, 兜底不再需要)。
+  - 增量路径整段删除 (实测全量 CTAS ~4.6s/840MB, 增量 5 张 temp 表已不划算)。
+  - 锚点改为「该股自己最后一根 K 线的 hfq_factor」而非任何全局 max 日期 —— 旧版锚在
+    raw_tushare_adj_factor 各自 per-code 最新行, 该表在个别股票退市/停牌后仍被刷出晚于该股
+    最后一条 canonical K 线的因子行, 致锚定日错位 (600069.SH 等 6 股末行偏离 nominal 达
+    89.7%)。自算因子只依赖 canonical 自身, 每只股"最后一行"天然就是它自己的最后一行, 两表
+    覆盖范围不同这个前提被消灭, 而非打补丁绕过。
 
-前复权 (qfq rebased to latest): qfq = nominal × adj_factor / adj_factor_latest_per_stock。
-  nominal (S7 default): accepted canonical_nominal_ohlcv_daily only.
-  nominal (--allow-legacy-fill): canonical ∪ legacy raw_tushare_daily
-  返回 (收益) = qfq[t]/qfq[t-1] = 含分红总收益 (PIT: f[t] 除权日即知)。
-  单位: volume 手×100=股, amount 千元×1000=元。
+qfq[t] = nominal[t] × hfq_factor[t] / hfq_factor[该股最后一行]; hfq_factor 定义见
+services.adjust_factor (baostock"涨跌幅复权法": ratio[t]=close[t-1]/pre_close[t], 首日=1,
+hfq_factor=∏ratio)。单位: volume 手×100=股, amount 千元×1000=元 (field_dictionary.yaml)。
+
+缺失传播 (红线3): 某股某日 ratio 不可算 (pre_close/close 缺失或越界) → 该股此后 hfq_factor
+全 NULL, 行仍保留、价格列 NULL、ratio_status 说明原因, 不做 latest fallback、不填 0。
+
+--from-accepted / --full 现恒为空操作 flag, 只为兼容 scripts/chunkyctl 帮助文案与
+backend/services/derive_runtime.py 现有调用保留, 不再改变输出。
 """
 from __future__ import annotations
 
 import argparse
 import importlib.util
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "backend"))
 
+from services.adjust_factor import AdjustFactorConfig, hfq_sql, load_config  # noqa: E402
 from services.duck_adapter import connect  # noqa: E402
+from services.universe import sql_where_active_a_share  # noqa: E402
 
-MARKET_DB = "data/market.duckdb"  # rule-compliance: ok evidence=回测K线库 (与 experiment_l0_baseline _db('market') 同库, 一次性 build 脚本)
-TUSHARE_DB = str(REPO / "data" / "tushare_raw.duckdb")  # rule-compliance: ok evidence=tushare raw 源库 (ATTACH read-only, 一次性 build 脚本)
+MARKET_DB = "data/market.duckdb"  # rule-compliance: ok evidence=回测K线库, 一次性 build 脚本
+TUSHARE_DB = str(REPO / "data" / "tushare_raw.duckdb")  # rule-compliance: ok evidence=tushare raw 源库 (ATTACH read-only)
 TARGET = "price_kline_qfq_tushare"
-START = "20190101"  # rule-compliance: ok evidence=raw_tushare_daily 实测起点 2019-01-02 (全量回测窗起点)
-# DROP+CTAS / bulk DELETE / whole-table UPDATE leave free blocks; CHECKPOINT does not shrink.
-# Compact after full rebuild always; after incremental when free_blocks% >= this band.
+SOURCE_RELATION = "tr.canonical_nominal_ohlcv_daily"
+# 真相源起点防护: 真实数据 2019-01-02 起, 此处只是防未来上游误回填更早历史时悄悄扩窗。
+START_DATE = "2019-01-01"
 _COMPACT_SCRIPT = REPO / "backend" / "scripts" / "db_compact.py"
-COMPACT_FREE_PCT = 10.0
-
-BuildMode = Literal["full", "incremental", "auto"]
-
-# Accepted canonical wins on overlap; legacy raw fills pre-canary history only.
-# Project-universe whitelist: qfq is 沪深A analysis surface — never copy BJ/B.
-from services.universe import sql_where_active_a_share as _sql_ashare
-
-_NOMINAL_SOURCE_CTE = f"""
-nominal AS (
-    SELECT
-        c.ts_code,
-        strftime(c.trade_date, '%Y%m%d') AS trade_date,
-        c.open, c.high, c.low, c.close, c.vol, c.amount
-    FROM tr.canonical_nominal_ohlcv_daily c
-    WHERE c.trade_date >= DATE '2019-01-01'
-      AND {_sql_ashare("c.ts_code")}
-    UNION ALL
-    SELECT
-        r.ts_code, r.trade_date, r.open, r.high, r.low, r.close, r.vol, r.amount
-    FROM tr.raw_tushare_daily r
-    WHERE r.trade_date >= '{START}'
-      AND {_sql_ashare("r.ts_code")}
-      AND NOT EXISTS (
-          SELECT 1
-          FROM tr.canonical_nominal_ohlcv_daily c
-          WHERE c.ts_code = r.ts_code
-            AND strftime(c.trade_date, '%Y%m%d') = r.trade_date
-      )
-)
-"""
-
-# S5: accepted-only derive — no legacy raw nominal fill (adj_factor still from raw table).
-_NOMINAL_SOURCE_CTE_FROM_ACCEPTED = f"""
-nominal AS (
-    SELECT
-        c.ts_code,
-        strftime(c.trade_date, '%Y%m%d') AS trade_date,
-        c.open, c.high, c.low, c.close, c.vol, c.amount
-    FROM tr.canonical_nominal_ohlcv_daily c
-    WHERE c.trade_date >= DATE '2019-01-01'
-      AND {_sql_ashare("c.ts_code")}
-)
-"""
 
 
-def nominal_source_cte(*, from_accepted: bool = True) -> str:
-    """Return nominal CTE; default skips legacy raw fill (S7)."""
-
-    if from_accepted:
-        return _NOMINAL_SOURCE_CTE_FROM_ACCEPTED
-    return _NOMINAL_SOURCE_CTE
+def _sql_literal(value: str) -> str:
+    return value.replace("'", "''")
 
 
-def _default_batch_id(*, from_accepted: bool, ingested_at: str, mode: str) -> str:
-    src = "from_accepted" if from_accepted else "legacy_fill"
-    stamp = (
-        ingested_at.replace("-", "")
-        .replace(":", "")
-        .replace("T", "")
-        .replace("Z", "")
-    )
-    return f"qfq:{stamp}:{src}:{mode}"
+def _default_batch_id(ingested_at: str) -> str:
+    stamp = ingested_at.replace("-", "").replace(":", "").replace("T", "").replace("Z", "")
+    return f"qfq:{stamp}:self_computed_full"
 
 
-def _factor_as_of_expr(alias: str = "l") -> str:
+def _rebase(col: str) -> str:
+    """col × 行级 hfq_factor / 该股锚定(自己最后一行)因子; 因子链任一环 unknown 则 NULL。"""
     return (
-        f"substr(replace(CAST({alias}.factor_as_of_ymd AS VARCHAR), '-', ''), 1, 4)||'-'"
-        f"||substr(replace(CAST({alias}.factor_as_of_ymd AS VARCHAR), '-', ''), 5, 2)||'-'"
-        f"||substr(replace(CAST({alias}.factor_as_of_ymd AS VARCHAR), '-', ''), 7, 2)"
+        f"CASE WHEN h.hfq_factor IS NULL OR lt.latest_factor IS NULL OR lt.latest_factor = 0 "
+        f"THEN NULL ELSE {col} * h.hfq_factor / lt.latest_factor END"
     )
 
 
-def _qfq_select_sql(
-    *,
-    bid_sql: str,
-    built_sql: str,
-    from_accepted: bool,
-    code_predicate: str | None = None,
-    date_gt_iso: str | None = None,
-) -> str:
-    """Shared SELECT body for full / rewrite / append slices."""
-
-    nominal_cte = nominal_source_cte(from_accepted=from_accepted)
-    preds = [
-        f"d.trade_date >= '{START}'",
-        "d.close > 0",
-        "a.adj_factor > 0",
-        "l.f_latest > 0",
-    ]
-    if code_predicate:
-        preds.append(code_predicate)
-    if date_gt_iso:
-        # trade_date is YYYYMMDD; compare to ISO date as compact.
-        compact = date_gt_iso.replace("-", "")
-        preds.append(f"d.trade_date > '{compact}'")
-    where = " AND ".join(preds)
+def build_select_sql(cfg: AdjustFactorConfig, *, batch_id: str, ingested_at: str) -> str:
+    """全量 SELECT: 因子来自 adjust_factor.hfq_sql (自算), OHLCV 来自 canonical。"""
+    hfq = hfq_sql(cfg, SOURCE_RELATION)
+    bid_sql = _sql_literal(batch_id)
+    built_sql = _sql_literal(ingested_at)
+    chash_sql = _sql_literal(cfg.config_hash)
     return f"""
-        WITH {nominal_cte},
-        latest AS (
-            SELECT ts_code, adj_factor AS f_latest, trade_date AS factor_as_of_ymd FROM (
-                SELECT ts_code, adj_factor, trade_date,
-                       ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) rn
-                FROM tr.raw_tushare_adj_factor) WHERE rn = 1
-        )
-        SELECT
-            substr(d.ts_code, 1, 6) AS code,
-            substr(d.trade_date,1,4)||'-'||substr(d.trade_date,5,2)||'-'||substr(d.trade_date,7,2) AS date,
-            d.open  * a.adj_factor / l.f_latest AS open,
-            d.high  * a.adj_factor / l.f_latest AS high,
-            d.low   * a.adj_factor / l.f_latest AS low,
-            d.close * a.adj_factor / l.f_latest AS close,
-            d.vol * 100.0 AS volume,
-            d.amount * 1000.0 AS amount,
-            '{bid_sql}' AS batch_id,
-            CAST('{built_sql}' AS TIMESTAMP) AS ingested_at,
-            {_factor_as_of_expr("l")} AS factor_as_of
-        FROM nominal d
-        JOIN tr.raw_tushare_adj_factor a ON d.ts_code = a.ts_code AND d.trade_date = a.trade_date
-        JOIN latest l ON d.ts_code = l.ts_code
-        WHERE {where}
+    WITH hfq AS (
+        {hfq}
+    ),
+    latest AS (
+        SELECT ts_code, hfq_factor AS latest_factor, trade_date AS anchor_date
+        FROM hfq
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) = 1
+    )
+    SELECT
+        substr(h.ts_code, 1, 6)              AS code,
+        strftime(h.trade_date, '%Y-%m-%d')   AS date,
+        {_rebase('c.open')}                  AS open,
+        {_rebase('c.high')}                  AS high,
+        {_rebase('c.low')}                   AS low,
+        {_rebase('h.close')}                 AS close,
+        c.vol    * 100.0                     AS volume,
+        c.amount * 1000.0                    AS amount,
+        h.ratio_status                       AS ratio_status,
+        h.hfq_factor                         AS hfq_factor,
+        '{bid_sql}'                          AS batch_id,
+        CAST('{built_sql}' AS TIMESTAMP)     AS ingested_at,
+        strftime(lt.anchor_date, '%Y-%m-%d') AS factor_as_of,
+        '{chash_sql}'                        AS config_hash
+    FROM hfq h
+    JOIN latest lt
+      ON lt.ts_code = h.ts_code
+    JOIN {SOURCE_RELATION} c
+      ON c.ts_code = h.ts_code AND c.trade_date = h.trade_date
+    WHERE h.trade_date >= DATE '{START_DATE}'
     """
-
-
-def _table_exists(conn, name: str) -> bool:
-    row = conn.execute(
-        """
-        SELECT 1 FROM information_schema.tables
-         WHERE table_schema = 'main' AND table_name = ?
-         LIMIT 1
-        """,
-        [name],
-    ).fetchone()
-    return row is not None
-
-
-def _has_lineage_columns(conn) -> bool:
-    cols = {
-        str(r[0] if not hasattr(r, "keys") else r["column_name"]).lower()
-        for r in conn.execute(
-            """
-            SELECT column_name FROM information_schema.columns
-             WHERE table_schema = 'main' AND table_name = ?
-            """,
-            [TARGET],
-        ).fetchall()
-    }
-    return {"batch_id", "ingested_at", "factor_as_of", "code", "date", "close"} <= cols
 
 
 def build_full(
     conn,
     *,
-    from_accepted: bool = True,
+    cfg: AdjustFactorConfig | None = None,
     batch_id: str | None = None,
     ingested_at: str | None = None,
 ) -> dict[str, Any]:
-    """DROP+CTAS full rebuild (latest-adj semantics)."""
-
+    """唯一构建路径: DROP+CTAS+索引 (增量/rewrite 判定已删——实测全量仅 ~4.6s/840MB)。"""
+    cfg = cfg or load_config()
     built_at = ingested_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    bid = batch_id or _default_batch_id(
-        from_accepted=from_accepted, ingested_at=built_at, mode="full"
-    )
-    bid_sql = bid.replace("'", "''")
-    built_sql = built_at.replace("'", "''")
-
+    bid = batch_id or _default_batch_id(built_at)
     conn.execute(f"ATTACH IF NOT EXISTS '{TUSHARE_DB}' AS tr (READ_ONLY)")
     conn.execute(f"DROP TABLE IF EXISTS {TARGET}")
     conn.execute(
-        f"CREATE TABLE {TARGET} AS {_qfq_select_sql(bid_sql=bid_sql, built_sql=built_sql, from_accepted=from_accepted)}"
+        f"CREATE TABLE {TARGET} AS {build_select_sql(cfg, batch_id=bid, ingested_at=built_at)}"
     )
-    n = int(conn.execute(f"SELECT count(*) FROM {TARGET}").fetchone()[0])
     conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{TARGET}_cd ON {TARGET}(code, date)")
-    return {
-        "mode": "full",
-        "rows": n,
-        "batch_id": bid,
-        "rewritten_codes": None,
-        "appended_rows": None,
-    }
+    n = int(conn.execute(f"SELECT count(*) FROM {TARGET}").fetchone()[0])
+    return {"rows": n, "batch_id": bid, "ingested_at": built_at, "config_hash": cfg.config_hash}
 
 
-def build_incremental(
-    conn,
-    *,
-    from_accepted: bool = True,
-    batch_id: str | None = None,
-    ingested_at: str | None = None,
-) -> dict[str, Any]:
-    """Incremental rebuild with correct latest-adj semantics.
+def cross_check(conn) -> dict[str, Any]:
+    """4 条集合级自完整性检查 (2026-09-08 重写 — 全部比集合/等式, 不比 MAX/COUNT 门面数字)。"""
+    active_pred = sql_where_active_a_share("ts_code")
 
-    - factor_as_of change for a stock → DELETE all rows for that code, reinsert
-      full history (prevents silent stale pre-rebase levels).
-    - unchanged factor → append only dates after local max(date).
-    - new codes → insert full history.
-    Falls back to full when the table is missing or lacks lineage columns.
-    """
-
-    if not _table_exists(conn, TARGET) or not _has_lineage_columns(conn):
-        return build_full(
-            conn,
-            from_accepted=from_accepted,
-            batch_id=batch_id,
-            ingested_at=ingested_at,
+    # 1) (code,date) 集合恒等于 canonical A股 >= START_DATE 的集合 —— 比集合不比 COUNT,
+    #    同计数、不同成员的退化会被 COUNT 放过, 这里的 EXCEPT 抓得住。
+    set_diff = conn.execute(f"""
+        WITH canonical_set AS (
+            SELECT DISTINCT substr(ts_code, 1, 6) AS code, strftime(trade_date, '%Y-%m-%d') AS date
+            FROM {SOURCE_RELATION}
+            WHERE trade_date >= DATE '{START_DATE}' AND {active_pred}
+        ),
+        qfq_set AS (
+            SELECT DISTINCT code, date FROM {TARGET}
         )
-
-    built_at = ingested_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    bid = batch_id or _default_batch_id(
-        from_accepted=from_accepted, ingested_at=built_at, mode="incremental"
-    )
-    bid_sql = bid.replace("'", "''")
-    built_sql = built_at.replace("'", "''")
-
-    conn.execute(f"ATTACH IF NOT EXISTS '{TUSHARE_DB}' AS tr (READ_ONLY)")
-
-    conn.execute("DROP TABLE IF EXISTS _qfq_latest_factor")
-    conn.execute(
-        f"""
-        CREATE TEMP TABLE _qfq_latest_factor AS
         SELECT
-            substr(ts_code, 1, 6) AS code,
-            f_latest,
-            {_factor_as_of_expr("x")} AS factor_as_of
-        FROM (
-            SELECT ts_code, adj_factor AS f_latest, trade_date AS factor_as_of_ymd,
-                   ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) rn
-            FROM tr.raw_tushare_adj_factor
-        ) x
-        WHERE rn = 1
-        """
-    )
-
-    conn.execute("DROP TABLE IF EXISTS _qfq_existing")
-    conn.execute(
-        f"""
-        CREATE TEMP TABLE _qfq_existing AS
-        SELECT code,
-               max(factor_as_of) AS factor_as_of,
-               max(date) AS max_date
-          FROM {TARGET}
-         GROUP BY code
-        """
-    )
-
-    # f_latest value at the previously stamped factor_as_of (value drift ⇒ rewrite).
-    conn.execute("DROP TABLE IF EXISTS _qfq_prior_f")
-    conn.execute(
-        """
-        CREATE TEMP TABLE _qfq_prior_f AS
-        SELECT e.code, a.adj_factor AS f_prior
-          FROM _qfq_existing e
-          JOIN tr.raw_tushare_adj_factor a
-            ON substr(a.ts_code, 1, 6) = e.code
-           AND substr(replace(CAST(a.trade_date AS VARCHAR), '-', ''), 1, 8)
-               = replace(e.factor_as_of, '-', '')
-        """
-    )
-
-    conn.execute("DROP TABLE IF EXISTS _qfq_rewrite_codes")
-    conn.execute(
-        """
-        CREATE TEMP TABLE _qfq_rewrite_codes AS
-        SELECT l.code
-          FROM _qfq_latest_factor l
-          LEFT JOIN _qfq_existing e ON e.code = l.code
-          LEFT JOIN _qfq_prior_f p ON p.code = l.code
-         WHERE e.code IS NULL
-            OR p.f_prior IS NULL
-            OR abs(l.f_latest - p.f_prior) > 1e-12
-        """
-    )
-    rewritten = int(
-        conn.execute("SELECT count(*) FROM _qfq_rewrite_codes").fetchone()[0]
-    )
-
-    if rewritten:
-        conn.execute(
-            f"""
-            DELETE FROM {TARGET}
-             WHERE code IN (SELECT code FROM _qfq_rewrite_codes)
-            """
-        )
-        pred = (
-            "substr(d.ts_code, 1, 6) IN (SELECT code FROM _qfq_rewrite_codes)"
-        )
-        conn.execute(
-            f"""
-            INSERT INTO {TARGET}
-            {_qfq_select_sql(
-                bid_sql=bid_sql,
-                built_sql=built_sql,
-                from_accepted=from_accepted,
-                code_predicate=pred,
-            )}
-            """
-        )
-
-    # Append new dates for factor-stable existing codes (set-based; date-gated).
-    before_n = int(conn.execute(f"SELECT count(*) FROM {TARGET}").fetchone()[0])
-    conn.execute("DROP TABLE IF EXISTS _qfq_stable")
-    conn.execute(
-        """
-        CREATE TEMP TABLE _qfq_stable AS
-        SELECT e.code, e.max_date,
-               replace(e.max_date, '-', '') AS max_ymd
-          FROM _qfq_existing e
-          JOIN _qfq_latest_factor l ON l.code = e.code
-         WHERE e.code NOT IN (SELECT code FROM _qfq_rewrite_codes)
-        """
-    )
-    stable_n = int(conn.execute("SELECT count(*) FROM _qfq_stable").fetchone()[0])
-    if stable_n:
-        # Append only. Do not stamp a new factor_as_of/batch_id onto unchanged
-        # history — f_latest value is the rewrite trigger, not the adj date.
-        nominal_cte = nominal_source_cte(from_accepted=from_accepted)
-        conn.execute(
-            f"""
-            INSERT INTO {TARGET}
-            WITH {nominal_cte},
-            latest AS (
-                SELECT ts_code, adj_factor AS f_latest, trade_date AS factor_as_of_ymd FROM (
-                    SELECT ts_code, adj_factor, trade_date,
-                           ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) rn
-                    FROM tr.raw_tushare_adj_factor) WHERE rn = 1
-            )
-            SELECT
-                substr(d.ts_code, 1, 6) AS code,
-                substr(d.trade_date,1,4)||'-'||substr(d.trade_date,5,2)||'-'||substr(d.trade_date,7,2) AS date,
-                d.open  * a.adj_factor / l.f_latest AS open,
-                d.high  * a.adj_factor / l.f_latest AS high,
-                d.low   * a.adj_factor / l.f_latest AS low,
-                d.close * a.adj_factor / l.f_latest AS close,
-                d.vol * 100.0 AS volume,
-                d.amount * 1000.0 AS amount,
-                '{bid_sql}' AS batch_id,
-                CAST('{built_sql}' AS TIMESTAMP) AS ingested_at,
-                {_factor_as_of_expr("l")} AS factor_as_of
-            FROM nominal d
-            JOIN _qfq_stable st ON st.code = substr(d.ts_code, 1, 6)
-            JOIN tr.raw_tushare_adj_factor a ON d.ts_code = a.ts_code AND d.trade_date = a.trade_date
-            JOIN latest l ON d.ts_code = l.ts_code
-            WHERE d.trade_date >= '{START}'
-              AND d.trade_date > st.max_ymd
-              AND d.close > 0 AND a.adj_factor > 0 AND l.f_latest > 0
-            """
-        )
-    after_n = int(conn.execute(f"SELECT count(*) FROM {TARGET}").fetchone()[0])
-    appended = max(0, after_n - before_n)
-
-    conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{TARGET}_cd ON {TARGET}(code, date)")
-    n = int(conn.execute(f"SELECT count(*) FROM {TARGET}").fetchone()[0])
-    return {
-        "mode": "incremental",
-        "rows": n,
-        "batch_id": bid,
-        "rewritten_codes": rewritten,
-        "appended_rows": appended,
-    }
-
-
-def build(
-    conn,
-    *,
-    from_accepted: bool = True,
-    batch_id: str | None = None,
-    ingested_at: str | None = None,
-    mode: BuildMode = "auto",
-) -> int:
-    """Build qfq table. Returns row count (compat). See build_detail for mode stats."""
-
-    detail = build_detail(
-        conn,
-        from_accepted=from_accepted,
-        batch_id=batch_id,
-        ingested_at=ingested_at,
-        mode=mode,
-    )
-    build.last_detail = detail  # type: ignore[attr-defined]
-    return int(detail["rows"])
-
-
-def build_detail(
-    conn,
-    *,
-    from_accepted: bool = True,
-    batch_id: str | None = None,
-    ingested_at: str | None = None,
-    mode: BuildMode = "auto",
-) -> dict[str, Any]:
-    """Build with explicit mode accounting."""
-
-    resolved: BuildMode = mode
-    if mode == "auto":
-        resolved = (
-            "incremental"
-            if _table_exists(conn, TARGET) and _has_lineage_columns(conn)
-            else "full"
-        )
-    if resolved == "incremental":
-        return build_incremental(
-            conn,
-            from_accepted=from_accepted,
-            batch_id=batch_id,
-            ingested_at=ingested_at,
-        )
-    return build_full(
-        conn,
-        from_accepted=from_accepted,
-        batch_id=batch_id,
-        ingested_at=ingested_at,
-    )
-
-
-# measured: 2026-07-02 实测基线 8,319,172 行 / 5,431 股; floor 留 ~10% 缓冲防日常波动误报
-MIN_ROWS = 7_500_000
-# S7 from-accepted after daily-only expand to 20190102: same span as legacy fill.
-MIN_ROWS_FROM_ACCEPTED = 7_500_000
-MIN_CODES = 5_000
-
-
-def cross_check(conn) -> dict:
-    """重建后自完整性 sanity (2026-07-02 批7 重写 — 死闸修复)。"""
-    row = conn.execute(f"""
-        SELECT count(*)                                        AS n_rows,
-               count(DISTINCT code)                            AS n_codes,
-               max(date)                                       AS max_date,
-               sum(CASE WHEN close IS NULL OR close <= 0
-                         OR high < low THEN 1 ELSE 0 END)      AS n_bad_price,
-               sum(CASE WHEN batch_id IS NULL OR ingested_at IS NULL
-                         OR factor_as_of IS NULL THEN 1 ELSE 0 END) AS n_missing_lineage
-        FROM {TARGET}
+            (SELECT count(*) FROM (SELECT code, date FROM canonical_set EXCEPT SELECT code, date FROM qfq_set)),
+            (SELECT count(*) FROM (SELECT code, date FROM qfq_set EXCEPT SELECT code, date FROM canonical_set))
     """).fetchone()
+
+    # 2) 每股末行 close == 该日 nominal close (锚点定义的直接推论; 容差 1e-9)。
+    anchor_mismatch_n = conn.execute(f"""
+        WITH qfq_last AS (
+            SELECT code, close FROM (
+                SELECT code, close, ROW_NUMBER() OVER (PARTITION BY code ORDER BY date DESC) rn
+                FROM {TARGET}
+            ) WHERE rn = 1
+        ),
+        nominal_last AS (
+            SELECT code, close FROM (
+                SELECT substr(ts_code, 1, 6) AS code, close,
+                       ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) rn
+                FROM {SOURCE_RELATION}
+                WHERE {active_pred}
+            ) WHERE rn = 1
+        )
+        SELECT count(*)
+        FROM qfq_last q JOIN nominal_last n ON n.code = q.code
+        WHERE q.close IS NULL OR n.close IS NULL OR abs(q.close - n.close) > 1e-9
+    """).fetchone()[0]
+
+    # 3) hfq_factor 为 NULL 的行数 (今天全市场无此情形; >0 说明因子链断裂扩大, 需查)。
+    null_factor_n = conn.execute(f"SELECT count(*) FROM {TARGET} WHERE hfq_factor IS NULL").fetchone()[0]
+
+    # 4) max(date) 对齐真相源。
+    dates = conn.execute(f"""
+        SELECT (SELECT max(date) FROM {TARGET}),
+               (SELECT strftime(max(trade_date), '%Y-%m-%d') FROM {SOURCE_RELATION})
+    """).fetchone()
+
     return {
-        "n_rows": row[0],
-        "n_codes": row[1],
-        "max_date": row[2],
-        "n_bad_price": row[3],
-        "n_missing_lineage": row[4],
+        "set_missing_in_qfq": int(set_diff[0]),
+        "set_extra_in_qfq": int(set_diff[1]),
+        "anchor_close_mismatch_n": int(anchor_mismatch_n),
+        "null_factor_n": int(null_factor_n),
+        "qfq_max_date": dates[0],
+        "canonical_max_date": dates[1],
     }
 
 
-def _load_db_compact():
+def compact_market_after_ctas() -> int:
+    """DROP+CTAS 后回收空闲块。只对生产 market 路径生效 (MARKET_DB 被测试重定向时跳过)。"""
     spec = importlib.util.spec_from_file_location("db_compact", _COMPACT_SCRIPT)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load db_compact at {_COMPACT_SCRIPT}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    assert spec is not None and spec.loader is not None
+    compact = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(compact)
 
-
-def compact_market_after_ctas(*, remove_bak: bool = True) -> int:
-    """Reclaim free blocks after DROP+CTAS. Caller must close market writers first.
-
-    Only runs against the production market path from database_manifest (skip if
-    MARKET_DB was redirected, e.g. tests/tmp).
-    """
-
-    compact = _load_db_compact()
     prod = Path(compact._db_path("market")).resolve()
     market_path = Path(MARKET_DB)
-    if not market_path.is_absolute():
-        market_path = (REPO / market_path).resolve()
-    else:
-        market_path = market_path.resolve()
+    market_path = (market_path if market_path.is_absolute() else (REPO / market_path)).resolve()
     if market_path != prod:
-        print(
-            f"[compact] skip — MARKET_DB={market_path} != production {prod}",
-            flush=True,
-        )
+        print(f"[compact] skip — MARKET_DB={market_path} != production {prod}", flush=True)
         return 0
     rc = int(compact.run("market", execute=True))
     if rc != 0:
         return rc
-    if remove_bak:
-        bak = prod.with_name(f"{prod.stem}_precompact_bak{prod.suffix}")
-        if bak.exists():
-            bak.unlink()
-            print(f"[compact] removed {bak}", flush=True)
-    return 0
-
-
-def market_free_block_pct(db_path: str | Path | None = None) -> float | None:
-    """Live free_blocks / total_blocks percent, or None if unreadable."""
-    path = Path(db_path or MARKET_DB)
-    if not path.is_absolute():
-        path = (REPO / path).resolve()
-    if not path.exists():
-        return None
-    conn = connect(str(path), read_only=True)
-    try:
-        row = conn.execute(
-            "SELECT 100.0 * free_blocks / nullif(total_blocks, 0) "
-            "FROM pragma_database_size()"
-        ).fetchone()
-    except Exception:  # noqa: BLE001
-        return None
-    finally:
-        conn.close()
-    if not row or row[0] is None:
-        return None
-    return float(row[0])
-
-
-def maybe_compact_market(*, used_mode: str, skip: bool, rebuilt: bool) -> int:
-    """Reclaim free blocks after a successful rebuild. Caller must close writers."""
-    if not rebuilt:
-        return 0
-    if skip:
-        print("[compact] skipped (--no-compact or CHUNKY_QFQ_SKIP_COMPACT)", flush=True)
-        return 0
-    if used_mode == "full":
-        return compact_market_after_ctas(remove_bak=True)
-    pct = market_free_block_pct()
-    if pct is None:
-        print("[compact] skip — pragma_database_size unreadable", flush=True)
-        return 0
-    if pct + 1e-9 >= COMPACT_FREE_PCT:
-        print(
-            f"[compact] incremental free_blocks={pct:.2f}% ≥ {COMPACT_FREE_PCT:g}%",
-            flush=True,
-        )
-        return compact_market_after_ctas(remove_bak=True)
-    print(
-        f"[compact] skipped (incremental free_blocks={pct:.2f}% < {COMPACT_FREE_PCT:g}%)",
-        flush=True,
-    )
+    bak = prod.with_name(f"{prod.stem}_precompact_bak{prod.suffix}")
+    if bak.exists():
+        bak.unlink()
+        print(f"[compact] removed {bak}", flush=True)
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--check-only", action="store_true")  # rule-compliance: ok evidence=只对账不重建
-    ap.add_argument(
-        "--no-compact",
-        action="store_true",
-        help="Skip market db_compact (default: compact after full rebuild, and after incremental when free_blocks% is high)",
-    )
+    ap.add_argument("--check-only", action="store_true", help="只对账不重建")
     ap.add_argument(
         "--full",
         action="store_true",
-        help="Force DROP+CTAS full rebuild (default: incremental when table exists)",
+        help="兼容旧 CLI — 全量 DROP+CTAS 现在是唯一行为, 本 flag 不改变任何输出",
     )
     ap.add_argument(
-        "--incremental",
-        action="store_true",
-        help="Force incremental path (falls back to full if table missing)",
-    )
-    mode = ap.add_mutually_exclusive_group()
-    mode.add_argument(
         "--from-accepted",
         action="store_true",
-        help=(
-            "S7 default: rebuild qfq from accepted canonical_nominal_ohlcv_daily only "
-            "(no legacy raw_tushare_daily fill). Does not run inside accept."
-        ),
-    )
-    mode.add_argument(
-        "--allow-legacy-fill",
-        action="store_true",
-        help="S7 escape: canonical ∪ legacy raw_tushare_daily fill (pre-accepted history)",
+        help="兼容旧 CLI — OHLCV 现恒等于 accepted canonical_nominal_ohlcv_daily, 本 flag 不改变任何输出",
     )
     args = ap.parse_args(argv)
-    from_accepted = not bool(args.allow_legacy_fill)
-    if args.full and args.incremental:
-        print("[verdict] FAIL mutually exclusive --full and --incremental", flush=True)
-        return 2
-    build_mode: BuildMode = "auto"
-    if args.full:
-        build_mode = "full"
-    elif args.incremental:
-        build_mode = "incremental"
 
     rebuilt = False
-    used_mode = "none"
     detail: dict[str, Any] = {}
     conn = connect(MARKET_DB, read_only=False)
     try:
+        conn.execute(f"ATTACH IF NOT EXISTS '{TUSHARE_DB}' AS tr (READ_ONLY)")  # cross_check reads canonical too
         if not args.check_only:
-            detail = build_detail(conn, from_accepted=from_accepted, mode=build_mode)
-            used_mode = str(detail["mode"])
+            detail = build_full(conn)
             rebuilt = True
-            mode_name = "from_accepted" if from_accepted else "canonical_plus_legacy_fill"
-            r = conn.execute(
-                f"SELECT min(date),max(date),count(DISTINCT code), "
-                f"count(DISTINCT batch_id), min(factor_as_of), max(factor_as_of) "
-                f"FROM {TARGET}"
-            ).fetchone()
             print(
-                f"[build] {TARGET}: {detail['rows']:,} 行 | {r[0]}~{r[1]} | {r[2]} 股 | "
-                f"mode={mode_name}/{used_mode} | batches={r[3]} | "
-                f"factor_as_of={r[4]}~{r[5]} | "
-                f"rewritten_codes={detail.get('rewritten_codes')} "
-                f"appended_rows={detail.get('appended_rows')}",
+                f"[build] {TARGET}: {detail['rows']:,} 行 | batch_id={detail['batch_id']} | "
+                f"config_hash={detail['config_hash'][:12]}…",
                 flush=True,
             )
         cc = cross_check(conn)
         conn.execute("CHECKPOINT")
     finally:
         conn.close()
+
     print(
-        f"[sanity] {TARGET}: rows={cc['n_rows']:,} codes={cc['n_codes']:,} "
-        f"max_date={cc['max_date']} bad_price={cc['n_bad_price']:,} "
-        f"missing_lineage={cc['n_missing_lineage']:,}"
+        f"[sanity] set_missing={cc['set_missing_in_qfq']} set_extra={cc['set_extra_in_qfq']} "
+        f"anchor_mismatch={cc['anchor_close_mismatch_n']} null_factor={cc['null_factor_n']} "
+        f"qfq_max={cc['qfq_max_date']} canonical_max={cc['canonical_max_date']}",
+        flush=True,
     )
-    min_rows = MIN_ROWS_FROM_ACCEPTED if from_accepted else MIN_ROWS
     ok = (
-        cc["n_rows"] >= min_rows
-        and cc["n_codes"] >= MIN_CODES
-        and cc["n_bad_price"] == 0
-        and cc["n_missing_lineage"] == 0
+        cc["set_missing_in_qfq"] == 0
+        and cc["set_extra_in_qfq"] == 0
+        and cc["anchor_close_mismatch_n"] == 0
+        and cc["null_factor_n"] == 0
+        and cc["qfq_max_date"] == cc["canonical_max_date"]
     )
-    print(
-        f"[verdict] {'PASS 自完整性检查通过' if ok else 'REVIEW 行数/覆盖缩水或含非法价格/缺 lineage, 先查再消费'}"
-    )
+    print(f"[verdict] {'PASS 自完整性检查通过' if ok else 'REVIEW 集合/锚点/因子/日期对不齐, 先查再消费'}")
     if not ok:
         return 2
-    skip_compact = bool(args.no_compact) or os.environ.get(
-        "CHUNKY_QFQ_SKIP_COMPACT", ""
-    ).strip() in {"1", "true", "TRUE", "yes", "YES"}
-    crc = maybe_compact_market(
-        used_mode=used_mode, skip=skip_compact, rebuilt=rebuilt
-    )
-    if crc != 0:
-        print(
-            f"[compact] FAIL rc={crc} — qfq rows OK but free-block residual remains",
-            flush=True,
-        )
-        return 3
+
+    if rebuilt:
+        crc = compact_market_after_ctas()
+        if crc != 0:
+            print(f"[compact] FAIL rc={crc} — qfq rows OK but free-block residual remains", flush=True)
+            return 3
     return 0
 
 

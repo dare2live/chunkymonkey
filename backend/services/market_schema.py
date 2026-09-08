@@ -38,15 +38,16 @@ from __future__ import annotations
 #   裁决/tdxhub"任一词, 故改引现存 owner, 勿再引已不存在的原文。实测 ingest_batch 2026-08-31
 #   批次 tier0.market_data.nominal_ohlcv_daily 的 source_name 已是 tdxhub。price_kline_qfq_tushare
 #   未透传 canonical 的 ingest_batch_id, 本表/本视图故不掌握逐行真实供货商, 不再假冒常量骗自己。
-#   source_name 改 NULL (诚实缺口, 呼应上面第 22 行 mio: unknown > 假填); 复权因子仍恒定锁死
-#   raw_tushare_adj_factor (JOIN 见 build_price_kline_qfq_tushare.py) 未变, 这才是 2026-06-22
-#   真正要防的回归 (tdxhub 自算 adj_factor 系统性错, 见上); 该不变量现由
-#   .moth/assertions/claims.yaml 的 qfq-lineage-guard 断言守 (解析真实 JOIN 图 + ingest_batch
-#   全历史真血缘, 不再查字符串 presence 或已知不可能查到东西的字面量列)。真实逐行供货商查
-#   ingest_batch, 不查本视图。注: tushare_sunset.yaml 的 domains.adj_factor 已裁决 replace->
-#   tdxhub (must_by 2026-09-10), 但尚无 status:done —— 该域一旦切换完成, 本注释与
-#   qfq-lineage-guard 的期望物理表集合都要同步改, 否则会重演本次修的同一种病 (门锁死昨天的
-#   真相, 见门顶 claim 开头)。
+#   source_name 改 NULL (诚实缺口, 呼应上面第 22 行 mio: unknown > 假填)。
+#   2026-09-08 换心: domains.adj_factor 由 replace->tdxhub 改判 derive (status:done), 复权因子
+#   不再来自任何供应商表, 改由 services/adjust_factor.py 从 canonical_nominal_ohlcv_daily
+#   .pre_close 自算 (ratio[t]=close[t-1]/pre_close[t])。2026-06-22 要防的回归 (tdxhub 自算
+#   adj_factor 把因子当乘数用反, 分叉最高 89%) 与此不是一回事, 黑名单原样保留。
+#   qfq-lineage-guard 同日改两处: 期望物理表集合 -> {canonical_nominal_ohlcv_daily}; 判据从
+#   "正则扫源码文本找 d.<col> * 分子/分母 AS <col> 且恰好 8 次" 改成 "import builder 调
+#   build_select_sql() 拿到实际要跑的 SQL 再解析" —— 旧问法实际在问"作者有没有按我预期的写法
+#   写", 换个写法它就以「解析器假设失效」退出, 而那时真正的血缘是对的。
+#   真实逐行供货商查 ingest_batch, 不查本视图。
 PRICE_KLINE_QFQ_TUSHARE_DDL = """
 CREATE TABLE IF NOT EXISTS price_kline_qfq_tushare (
     code   TEXT NOT NULL,
@@ -57,9 +58,12 @@ CREATE TABLE IF NOT EXISTS price_kline_qfq_tushare (
     close  REAL,
     volume REAL,
     amount REAL,
+    ratio_status TEXT,
+    hfq_factor REAL,
     batch_id TEXT,
     ingested_at TIMESTAMP,
     factor_as_of TEXT,
+    config_hash TEXT,
     PRIMARY KEY (code, date)
 );
 """

@@ -339,6 +339,66 @@ def validate_freeze_execution_disabled(
     return fails
 
 
+def validate_done_domain_stops_fetching_tushare(
+    sunset: dict[str, Any], registry: dict[str, Any]
+) -> list[str]:
+    """检查 9: status: done 的域, 不许还开着从 tushare 取数。
+
+    2026-09-08 加, 是检查 8 的另一半。检查 8 守 decision: freeze, 但 freeze 只是四种
+    裁决之一 —— replace / derive / retire 做完之后同样不该再从 tushare 拉, 而那半边此前
+    没有任何东西守。
+
+    实测触发它的那次: adj_factor 当天由 replace->tdxhub 改判 derive 并写上 status: done
+    (复权因子改由 services/adjust_factor.py 从 canonical.pre_close 自算, 不再 JOIN 任何
+    供应商因子表)。但 sync_registry 里该域没写 execution_policy, 于是继承 defaults 的
+    ``{mode: enabled, reason: active}`` + ``source: tushare`` —— 台账说"做完了、不用它了",
+    配置说"每天照拉"。09-10 授权到期后这会变成每天一次失败告警, 而那个域早已不需要。
+    当时 sunset 门跑出来是 rc=0: **声明与配置可以完全相反而全绿**。
+
+    判据故意只认 ``status == "done"``, 不认"decision 已经写了但还没做"。同一批实测里有
+    8 个域是「裁决说要停 tushare + 配置仍 enabled」的同一形状, 但其中 7 个 status 是空的 ——
+    它们的 enabled **是对的**, 因为替换/推导压根还没做, 到期前本来就该继续拉。
+    同一形状装着相反的处置, 整档搬会把"还没做完"误判成"配置错了"。
+
+    ``source`` 也必须一起看: trade_cal 是 decision: derive + status: done + mode: enabled,
+    但它的 source 已经从 tushare 换成了 calendar_rule (自己的生成运行时) —— 那是做对了,
+    不该报。所以本条问的是「宣布做完了, 却还开着从 **tushare** 取」。
+    """
+    fails: list[str] = []
+    domain_entries = sunset.get("domains", {})
+    registry_domains = registry.get("domains", {})
+    defaults_mode = str(
+        ((registry.get("defaults") or {}).get("execution_policy") or {}).get("mode")
+        or "enabled"
+    )
+
+    offenders: list[tuple[str, str]] = []
+    for domain_name, entry in sorted(domain_entries.items()):
+        if not isinstance(entry, dict) or entry.get("status") != "done":
+            continue
+        reg_spec = registry_domains.get(domain_name)
+        if not isinstance(reg_spec, dict):
+            continue
+        if str(reg_spec.get("source") or "") != "tushare":
+            continue  # 已经换走源 (如 trade_cal -> calendar_rule) = 做对了
+        policy = reg_spec.get("execution_policy") or {}
+        mode = str(policy.get("mode") or defaults_mode)
+        if mode != "disabled":
+            offenders.append((domain_name, str(entry.get("decision") or "?")))
+
+    if offenders:
+        detail = ", ".join(f"{name}(decision={dec})" for name, dec in offenders)
+        fails.append(
+            f"{len(offenders)} 个域台账写了 status: done, 但 sync_registry.yaml 里仍是 "
+            f"source: tushare 且 execution_policy.mode != disabled: {detail}。"
+            "「做完了」和「还在从要退役的供应商取数」不能同时为真 —— 授权到期后这会变成"
+            "每天一次失败告警, 而该域早已不需要。"
+            "修法: 换源的域把 source 改成新来源; 自算/退役的域写 "
+            "execution_policy: {mode: disabled, reason: tushare_sunset_<decision>}。"
+        )
+    return fails
+
+
 def extract_sunset_domains(sunset: dict[str, Any]) -> dict[str, Any]:
     """从 sunset 提取所有被记录的域 (包括顶层 undecided_domains)。
     返回 dict {domain_name: (decision, status_if_any)}.
@@ -397,6 +457,7 @@ def run(
 
     # ── 检查 8: freeze 域必须 execution_policy disabled ───────────────
     fails.extend(validate_freeze_execution_disabled(sunset, registry))
+    fails.extend(validate_done_domain_stops_fetching_tushare(sunset, registry))
 
     # ── 检查 1: 覆盖完整性 ────────────────────────────────────────────
     missing_from_sunset = registry_tushare - set(sunset_domains.keys())

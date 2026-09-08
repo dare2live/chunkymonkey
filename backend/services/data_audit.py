@@ -214,10 +214,16 @@ def _check_kline_completeness(conn: duckdb.DuckDBPyConnection) -> CheckResult:
 
     2026-06-24 cry-wolf 修复: 旧口径拿 clean 比"全交易日历"(隐含假设每股每交易日都有数据)→ 停牌/退市股
     被当缺口, 实测 1711股/31.5% 误报 (感知死: 门长期红被无视, 真缺口溜过 = 真金白银隐患)。
-    正解 = clean-vs-source: M2 的职责是无损变换 raw_tushare_daily→qfq, 该验的是"clean 丢了 source 有的行吗",
+    正解 = clean-vs-source: M2 的职责是无损变换 raw→qfq, 该验的是"clean 丢了 source 有的行吗",
     与停牌/退市/日历无关 (源本就没有停牌日 = 合法非缺口)。实测新口径 0 丢失行。
     M1(acquire) 的"是否拉全 tushare" 由 sync watermark/drain 守 (另一阶段的门), 不在此 calendar 比对。
     口径证据: git log --grep kline_completeness_crywolf_fix
+
+    2026-09-08 source_raw_table 改判 raw_tushare_daily → canonical_nominal_ohlcv_daily: 前者已
+    冻结在 20260716 (tushare 授权到期前最后一次同步), 之后任何 clean 丢行本门都看不见 (下面的
+    EXCEPT 已经是逐 (code,date) 集合比对, 不是 COUNT/MAX 聚合判据——真正的病是比错了 source, 不
+    是判据形状)。实测: 生产 qfq 表整缺 2026-08-12/08-13 两天 (10,257 行/5,128 只股), 旧配置下
+    本门全程绿。canonical_nominal_ohlcv_daily 才是当前持续更新的名义 OHLCV 真相面。
     """
     cfg = AUDIT_RULES.get("kline_checks", {})
     table = _to_str(cfg.get("source_table"), "market.v_price_kline_qfq")   # clean (serving) 表
@@ -226,9 +232,17 @@ def _check_kline_completeness(conn: duckdb.DuckDBPyConnection) -> CheckResult:
     date_col = _to_str(cfg.get("date_column"), "date")
     code_col = _to_str(cfg.get("stock_code_column"), "code")
     sample_limit = _to_int(cfg.get("sample_limit"), 5)
-    src_table = _to_str(cfg.get("source_raw_table"), "raw_tushare_daily")   # raw 源 (clean 上游)
+    src_table = _to_str(cfg.get("source_raw_table"), "canonical_nominal_ohlcv_daily")   # raw 源 (clean 上游)
     src_code = _to_str(cfg.get("source_raw_code_column"), "ts_code")
     src_date = _to_str(cfg.get("source_raw_date_column"), "trade_date")
+    # date_kind 显式声明 source_raw_date_column 的物理类型, 用对应的显式转换对齐到 YYYYMMDD——
+    # 不靠隐式转换 (canonical_nominal_ohlcv_daily.trade_date 是原生 DATE; 已冻结弃用的
+    # raw_tushare_daily.trade_date 是 YYYYMMDD 字符串, 取值保留只为向后兼容旧 fixture)。
+    src_date_kind = _to_str(cfg.get("source_raw_date_kind"), "date_type")
+    if src_date_kind == "yyyymmdd_string":
+        src_date_expr = src_date
+    else:
+        src_date_expr = f"strftime({src_date}, '%Y%m%d')"
 
     # lost = source 有但 clean 没有的 (code, date) = clean 丢了 source 行 (M2 变换不无损)。
     # split_part 去 ts_code 后缀 (.SZ/.SH) 对齐 clean.code; clean.date(VARCHAR '2026-01-02') 去横线对齐 raw(YYYYMMDD)。
@@ -236,7 +250,7 @@ def _check_kline_completeness(conn: duckdb.DuckDBPyConnection) -> CheckResult:
     try:
         rows = conn.execute(f"""
             WITH src AS (
-                SELECT split_part({src_code}, '.', 1) AS code, {src_date} AS d
+                SELECT split_part({src_code}, '.', 1) AS code, {src_date_expr} AS d
                 FROM tushare_raw.{src_table}
             ),
             cln AS (

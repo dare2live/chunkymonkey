@@ -28,7 +28,12 @@ class CapabilitySourcePolicy:
 DEFAULT_POLICIES: dict[str, CapabilitySourcePolicy] = {
     "kline_daily": CapabilitySourcePolicy(
         name="kline_daily",
-        primary="tushare",  # 2026-06-28: tdxhub 退役, tushare 唯一源
+        # 2026-06-28~2026-09-08: tdxhub 曾退役, tushare 唯一源。2026-09-08 起改判——
+        # 名义 OHLCV 供货商转回通达信 (tushare_sunset.yaml domains.daily,
+        # decision=replace/replacement=tdxhub/status=done@2026-09-01, 实测
+        # ingest_batch 2026-08-31 起 source_name=tdxhub); 复权因子改自算
+        # (tushare_sunset.yaml domains.adj_factor decision=derive), 不再依赖任何供应商。
+        primary="tdxhub",
         fallback=(),  # 单一供应商, akshare fallback 退役
         analysis_relation="market.v_price_kline_qfq",
         allow_fallback_for_latest_gap=False,

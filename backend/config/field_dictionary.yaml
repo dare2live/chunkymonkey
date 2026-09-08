@@ -51,11 +51,15 @@ databases:
         close:   {type: DOUBLE, unit: CNY, description: "收盘价"}
         volume:
           type: DOUBLE
-          unit: "股 (tushare 单源; builder 已 vol手×100=股 归一, 2026-07-02 批7 更新)"
+          unit: "股 (builder 已 vol手×100=股 归一, 2026-07-02 批7 更新)"
           warning: |
             历史: 旧多源期 MIXED (tdxhub=手/akshare_sina=股) 曾致 paper_sim NAV 1.6M 暴跌 360K
             (Phase ψ.β.align bug)。现 v_price_kline_qfq 唯一源 = price_kline_qfq_tushare
             (build_price_kline_qfq_tushare 统一 手×100=股, 千元×1000=元), 单位歧义已消。
+            2026-06-15~2026-09-08 nominal OHLCV 单源 = tushare。2026-09-08 起改判: nominal
+            供货商转向通达信 (tushare_sunset.yaml domains.daily, decision=replace/
+            replacement=tdxhub/status=done@2026-09-01), 复权因子改自算
+            (services/adjust_factor.py, domains.adj_factor decision=derive)。
         amount:  {type: DOUBLE, unit: CNY, description: "成交额"}
       notes:
         - "前复权 (qfq): 复权因子 PIT 仍是 latest, 严格意义有未来函数 (§11.5 #13)"

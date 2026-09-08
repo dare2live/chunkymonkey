@@ -1,10 +1,15 @@
 version: 1
 
-# 当前 qfq 分析序列只由 TuShare raw+adj_factor 派生，无跨供应商 fallback。
-# 它是 research/serving read surface，不是 nominal execution truth，也不是 Tier0 AcceptedPartition。
+# 2026-09-08 前: 当前 qfq 分析序列只由 TuShare raw+adj_factor 派生，无跨供应商 fallback。
+# 2026-09-08 起: 名义 OHLCV 供货商已按裁决从 tushare 转向通达信 (tushare_sunset.yaml
+# domains.daily, decision=replace/replacement=tdxhub/status=done@2026-09-01, 实测
+# ingest_batch 2026-08-31 起 source_name=tdxhub); 复权因子改自算 (services/adjust_factor.py,
+# tushare_sunset.yaml domains.adj_factor decision=derive)，不再依赖任何供应商因子表。
+# 仍无跨供应商 fallback。它是 research/serving read surface，不是 nominal execution truth，
+# 也不是 Tier0 AcceptedPartition。
 capabilities:
   kline_daily:
-    primary: tushare
+    primary: tdxhub
     fallback: []
     analysis_relation: market.v_price_kline_qfq
     allow_fallback_for_latest_gap: false

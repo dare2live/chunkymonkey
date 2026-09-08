@@ -33,7 +33,7 @@ Usage:
   scripts/chunkyctl sync --domain holders_top10|org_holding|stk_holdertrade --land-then-accept --from-local-raw --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl sync --domain holders_top10|stk_holdertrade --land-then-accept --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl sync --domain daily|stock_st --land-then-accept [--from-local-raw] --start YYYYMMDD --end YYYYMMDD
-  scripts/chunkyctl derive qfq|form [--from-accepted|--allow-legacy-fill] [--rebuild|--check-only]
+  scripts/chunkyctl derive qfq|form [--from-accepted] [--allow-legacy-fill: form only] [--rebuild|--check-only]
   scripts/chunkyctl derive rally-gt [--data-end YYYYMMDD]
   scripts/chunkyctl pipeline acquire|clean|process|store [--force]
   scripts/chunkyctl lineage build | impact <table> | provenance <table> | dead | show <table>
@@ -46,7 +46,7 @@ Examples:
   scripts/chunkyctl sync --domain daily --accept-from-landing --batch-id 'daily:20260115:...'
   scripts/chunkyctl derive qfq
   scripts/chunkyctl derive form --rebuild
-  scripts/chunkyctl derive qfq --allow-legacy-fill
+  scripts/chunkyctl derive form --allow-legacy-fill
   scripts/chunkyctl derive rally-gt
   scripts/chunkyctl derive rally-gt --data-end 20250531
 

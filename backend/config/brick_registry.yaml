@@ -35,38 +35,42 @@ reference_nodes:
   canonical_top10_float_holders_period:
     layer: L1
     kind: accepted_canonical
-  # adj_factor consumed by qfq derive; still L1-ish vendor fact, not an L2 brick yet
-  adj_factor:
-    layer: L1
-    kind: corporate_action_factor
 
 bricks:
   price_kline_qfq_tushare:
     layer: L2
     kind: primitive
-    depends_on: [accepted_nominal_ohlcv_daily, adj_factor]
+    depends_on: [accepted_nominal_ohlcv_daily]
     outputs: [price_kline_qfq_tushare, kline_qfq]
     owners:
       - backend/scripts/build_price_kline_qfq_tushare.py
-    config_hash: derive_qfq_from_accepted_v2_lineage
+    config_hash: derive_qfq_self_computed_factor_v3
     availability_axis: available_at
     status: declared
     lineage:
-      method: latest_factor_rebase_qfq
-      as_of_policy: rebuild_snapshot_latest_adj_factor_per_stock
+      method: pre_close_chain_rebase_to_own_last_bar
+      as_of_policy: anchor_at_each_stock_own_last_bar
       nominal_source: accepted_canonical_nominal_ohlcv_daily
-      factor_source: raw_tushare_adj_factor
-      physical_lineage_columns: [batch_id, ingested_at, factor_as_of]
+      factor_source: services.adjust_factor.hfq_sql(canonical_nominal_ohlcv_daily.pre_close)
+      physical_lineage_columns: [batch_id, ingested_at, factor_as_of, config_hash]
       read_placeholders: []
       trust: LINEAGE_OK
       not_execution_truth: true
       method_note: >-
-        Historical OHLC levels rewrite on each full rebuild when latest
-        adj_factor changes; pin batch_id/factor_as_of for reproducibility.
-        Method is typed, not a missing-lineage defect.
+        2026-09-08: factor no longer read from any vendor table. ratio[t] =
+        close[t-1]/pre_close[t] over the same canonical source that supplies
+        OHLCV, so one truth source feeds every column. Anchor is each stock's
+        OWN last bar, not a global max date -- the previous global anchor put
+        delisted names on a rebasing date after their final bar (600069.SH:
+        nominal 0.28 vs qfq 2.72, 89.7% apart).
+        Historical qfq levels still rewrite when a new bar carries a corporate
+        action, but under self-computation that rewrite is exactly one constant
+        per stock, so any ratio/ordering consumer is invariant to it. Typed
+        method, not a missing-lineage defect.
     notes: >-
-      S5/S7 derive --from-accepted; physical lineage on rebuild path;
-      not execution truth; B5 residual = Type-B enrichment PARTIAL only
+      derive is full DROP+CTAS (~10s); incremental path retired 2026-09-08 along
+      with the vendor adj_factor JOIN. Not execution truth; B5 residual = Type-B
+      enrichment PARTIAL only
 
   fact_stock_form_daily:
     layer: L2

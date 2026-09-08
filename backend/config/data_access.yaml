@@ -39,7 +39,12 @@ entities:
     asof_col: date
     asof_format: iso
     columns: [code, date, open, high, low, close, volume, amount]
-    vendor: tushare
+    # 2026-09-08 前 vendor 写死 tushare; 名义 OHLCV 供货商已按裁决从 tushare 转向通达信
+    # (tushare_sunset.yaml domains.daily, decision=replace/replacement=tdxhub/status=done
+    # @2026-09-01, 实测 ingest_batch 2026-08-31 起 source_name=tdxhub), 复权因子也已改自算
+    # (不再是任何供应商) —— 见 services/market_schema.py:29-40 注释与
+    # tushare_sunset.yaml domains.adj_factor (decision=derive)。
+    vendor: tdxhub
     available_after: eod
 
   moneyflow:

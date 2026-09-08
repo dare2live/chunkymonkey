@@ -166,7 +166,12 @@ tables:
   fact_index_daily: L1_foundation  # 2026-07-21 brick B2: index×trade_date close publication; writer=index_daily_publish; paper/RS/tech/inst; raw_tushare_index_daily=rebuild input
   fact_top_inst_seat_daily: L1_foundation  # 2026-07-21 brick B2: LHB seat grain (trade_date×ts_code×exalter×side); writer=top_inst_seat_publish; pulse/inst; raw_tushare_top_inst=rebuild input
   fact_dc_member_daily: L1_foundation  # 2026-07-21 brick B1: DC observation-date membership PIT (trade_date×board×con); writer=dc_member_publish; pulse/serve leaf; raw_tushare_dc_member=rebuild input; NOT range PIT
-  price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-15 tushare 前复权 K线 (回测主源, §4.3; build_price_kline_qfq_tushare.py 从 raw_tushare_daily×adj_factor 建 2019+)
+  price_kline_qfq_tushare: L1k_kline_intermediate   # 2026-06-15 前复权 K线 (回测主源, §4.3)。
+    # 2026-06-15~2026-09-08: build_price_kline_qfq_tushare.py 从 raw_tushare_daily×adj_factor 建 2019+。
+    # 2026-09-08 起改判: nominal 输入切到 canonical_nominal_ohlcv_daily (tushare_sunset.yaml
+    # domains.daily decision=replace/replacement=tdxhub/status=done), 复权因子改自算
+    # (services/adjust_factor.py, domains.adj_factor decision=derive), 不再依赖
+    # raw_tushare_daily/raw_tushare_adj_factor (均已冻结)。
   # ── edge 层第一批 (2026-07-02 机构画像引擎 promote, 探索弧 inst_follow E1/E2; feature_store 库) ──
   period_windows: L2_feature               # 披露窗口三方案价 (institution_profile.build_period_windows)
   fact_inst_episode: L2_feature            # 机构×股票 episode (成本/收益/alpha/PIT行业/被动标记)

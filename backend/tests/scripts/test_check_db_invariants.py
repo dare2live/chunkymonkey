@@ -69,7 +69,7 @@ def test_load_db_invariants_production_yaml_has_all_12(real_specs):
         "bloat_ratio_smartmoney", "bloat_ratio_market", "bloat_ratio_org_holding",
         "bloat_ratio_feature_store", "bloat_ratio_tushare_raw",
         "calendar_projection_faithful", "holders_dates_compact",
-        "qfq_lineage_stamped", "qfq_factor_current", "nominal_ohlcv_accepted_sources",
+        "qfq_lineage_stamped", "qfq_anchor_is_own_last_bar", "nominal_ohlcv_accepted_sources",
         "org_pointer_rowcount_matches_canonical", "holders_pointer_rowcount_matches_canonical",
     }
     for spec_id, s in real_specs.items():
@@ -313,8 +313,9 @@ def test_qfq_lineage_stamped_pass_all_filled(real_specs):
     c = _market_conn()
     try:
         c.execute(
-            "INSERT INTO price_kline_qfq_tushare VALUES "
-            "('000001','2026-08-26',1,1,1,1,1,1,'b1', now(), '2026-08-26')"
+            "INSERT INTO price_kline_qfq_tushare "
+            "(code, date, batch_id, ingested_at, factor_as_of) "
+            "VALUES ('000001','2026-08-26','b1', now(), '2026-08-26')"
         )
         r = cdi.evaluate_spec(real_specs["qfq_lineage_stamped"], c)
         assert r == {**r, "status": "PASS", "checked": 1, "value": 0}
@@ -326,8 +327,9 @@ def test_qfq_lineage_stamped_fail_on_null_factor_as_of(real_specs):
     c = _market_conn()
     try:
         c.execute(
-            "INSERT INTO price_kline_qfq_tushare VALUES "
-            "('000001','2026-08-26',1,1,1,1,1,1,'b1', now(), NULL)"
+            "INSERT INTO price_kline_qfq_tushare "
+            "(code, date, batch_id, ingested_at, factor_as_of) "
+            "VALUES ('000001','2026-08-26','b1', now(), NULL)"
         )
         r = cdi.evaluate_spec(real_specs["qfq_lineage_stamped"], c)
         assert r["status"] == "FAIL" and r["checked"] == 1 and r["value"] == 1
@@ -335,61 +337,60 @@ def test_qfq_lineage_stamped_fail_on_null_factor_as_of(real_specs):
         c.close()
 
 
-# ── 5. qfq_factor_current (建表函数: market DDL + 内存 tr.raw_tushare_adj_factor;
-# 后者无固定 writer schema, 见文件头注) ──────────────────────────────────────────
+# ── 5. qfq_anchor_is_own_last_bar (建表函数: 只需 market DDL —— 判据不再碰任何
+# 供应商表, 2026-09-08 换心后复权因子自算, 见 db_invariants.yaml 该条 why) ──────
 
-def _qfq_factor_conn():
+def _qfq_anchor_conn():
     from services import market_schema
 
-    c = duck_connect(":memory:", attach={"tr": {"path": ":memory:", "read_only": False}})
+    c = duck_connect(":memory:")
     c.execute(market_schema.PRICE_KLINE_QFQ_TUSHARE_DDL)
-    c.execute(
-        "CREATE TABLE tr.raw_tushare_adj_factor "
-        "(ts_code VARCHAR, trade_date VARCHAR, adj_factor DOUBLE, built_at VARCHAR)"
-    )
     return c
 
 
-def test_qfq_factor_current_pass_when_date_lags_but_value_equal(real_specs):
-    """日期落后但值相等 → PASS——这是与执行计划"factor_as_of>=最近除权日"写法的分水岭。"""
-    c = _qfq_factor_conn()
+def _put(c, code: str, date: str, anchor: str) -> None:
+    c.execute(
+        "INSERT INTO price_kline_qfq_tushare (code, date, factor_as_of) VALUES (?, ?, ?)",
+        [code, date, anchor],
+    )
+
+
+def test_qfq_anchor_pass_when_anchor_is_own_last_bar(real_specs):
+    """锚点 = 该股自己最后一根 —— 含"早已退市、锚点停在退市那天"这种正常情形。"""
+    c = _qfq_anchor_conn()
     try:
-        c.execute(
-            "INSERT INTO price_kline_qfq_tushare (code, date, factor_as_of) "
-            "VALUES ('000001', '2026-08-26', '2026-08-26')"
-        )
-        c.execute("INSERT INTO tr.raw_tushare_adj_factor VALUES ('000001.SZ','20260826',1.0,'t')")
-        c.execute("INSERT INTO tr.raw_tushare_adj_factor VALUES ('000001.SZ','20260828',1.0,'t')")
-        r = cdi.evaluate_spec(real_specs["qfq_factor_current"], c)
-        assert r == {**r, "status": "PASS", "checked": 1, "value": 0}
+        _put(c, "000001", "2026-08-27", "2026-08-28")
+        _put(c, "000001", "2026-08-28", "2026-08-28")
+        # 退市股: 末根 2024-03-05, 锚点也在 2024-03-05 → 合规 (不因为"日期老"就判红)
+        _put(c, "000005", "2024-03-04", "2024-03-05")
+        _put(c, "000005", "2024-03-05", "2024-03-05")
+        r = cdi.evaluate_spec(real_specs["qfq_anchor_is_own_last_bar"], c)
+        assert r == {**r, "status": "PASS", "checked": 2, "value": 0}
     finally:
         c.close()
 
 
-def test_qfq_factor_current_fail_when_latest_value_drifts(real_specs):
-    c = _qfq_factor_conn()
+def test_qfq_anchor_fail_when_anchor_drifts_past_own_last_bar(real_specs):
+    """旧全局 max 锚点的形态: 股票 2024-03-05 就没了, 锚点却飘到 2024-04-25
+    (600069.SH 真实案例: 2020-08-20 退市, nominal 0.28 而旧 qfq 2.72, 差 89.7%)。"""
+    c = _qfq_anchor_conn()
     try:
-        c.execute(
-            "INSERT INTO price_kline_qfq_tushare (code, date, factor_as_of) "
-            "VALUES ('000001', '2026-08-26', '2026-08-26')"
-        )
-        c.execute("INSERT INTO tr.raw_tushare_adj_factor VALUES ('000001.SZ','20260826',1.0,'t')")
-        c.execute("INSERT INTO tr.raw_tushare_adj_factor VALUES ('000001.SZ','20260828',1.1,'t')")
-        r = cdi.evaluate_spec(real_specs["qfq_factor_current"], c)
+        _put(c, "000005", "2024-03-04", "2024-04-25")
+        _put(c, "000005", "2024-03-05", "2024-04-25")
+        r = cdi.evaluate_spec(real_specs["qfq_anchor_is_own_last_bar"], c)
         assert r["status"] == "FAIL" and r["checked"] == 1 and r["value"] == 1
     finally:
         c.close()
 
 
-def test_qfq_factor_current_fail_when_adj_factor_entirely_missing(real_specs):
-    """"qfq 有、adj 没有"的股票同样判违规, 不能因为查不到就放行。"""
-    c = _qfq_factor_conn()
+def test_qfq_anchor_fail_when_one_stock_carries_two_anchors(real_specs):
+    """增量 append 的形态: 旧行留上次锚、新行写当次锚 —— 一只股半旧半新。
+    切换前实测 5,447 只里 5,193 只是这个形态。"""
+    c = _qfq_anchor_conn()
     try:
-        c.execute(
-            "INSERT INTO price_kline_qfq_tushare (code, date, factor_as_of) "
-            "VALUES ('000001', '2026-08-26', '2026-08-26')"
-        )
-        r = cdi.evaluate_spec(real_specs["qfq_factor_current"], c)
+        _put(c, "000001", "2026-08-26", "2026-08-26")   # 上一次 build 写的
+        _put(c, "000001", "2026-08-28", "2026-08-28")   # 增量 append 写的
+        r = cdi.evaluate_spec(real_specs["qfq_anchor_is_own_last_bar"], c)
         assert r["status"] == "FAIL" and r["checked"] == 1 and r["value"] == 1
     finally:
         c.close()

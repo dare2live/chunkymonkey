@@ -71,12 +71,19 @@ def _write_registry(
     other_domains: dict | None = None,
     target_tables: dict[str, str] | None = None,
     execution_policies: dict[str, str] | None = None,
+    done_domains: list[str] | None = None,
 ) -> Path:
     """编写 sync_registry.yaml 临时文件。
 
     target_tables: {domain_name: target_table} —— 用于检查 7 (同表同判) 的用例，
     给指定域额外写一个 target_table 字段 (真实 registry 里每个域都有此字段，
     多个域指向同一张物理表时是检查 7 要抓的场景)。
+
+    done_domains: [domain_name] —— 用于检查 9 (2026-09-08 加)。检查 9 立起来之后，
+    "sunset 标 status: done 且 registry 仍 source: tushare + execution_policy 非 disabled"
+    在真实 registry 里已是**非法状态**。本文件里有若干用例把某个域标成 status: done 纯粹是
+    为了消音 (隔离检查 4 的裁决执行度 WARN)，那些 fixture 因此描述了一个现实中不该存在的
+    配置，须用本参数补齐 —— 与检查 8 落地时对 freeze fixture 的处置同因同法。
 
     execution_policies: {domain_name: mode} —— 用于检查 8 (冻结接线)。
     2026-09-07 加: 检查 8 立起来之后，"decision: freeze 且 execution_policy 非 disabled"
@@ -97,6 +104,14 @@ def _write_registry(
         for domain_name, target_table in target_tables.items():
             domains.setdefault(domain_name, {}).setdefault("source", "tushare")
             domains[domain_name]["target_table"] = target_table
+
+    if done_domains:
+        for domain_name in done_domains:
+            domains.setdefault(domain_name, {}).setdefault("source", "tushare")
+            domains[domain_name]["execution_policy"] = {
+                "mode": "disabled",
+                "reason": "tushare_sunset_done",
+            }
 
     if execution_policies:
         for domain_name, mode in execution_policies.items():
@@ -127,7 +142,7 @@ class TestCoverageComplete:
                 "stock_st": {"decision": "replace", "replacement": "baostock", "status": "done"},
             },
         )
-        registry_path = _write_registry(tmp_path, tushare_domains=["daily", "stock_st"])
+        registry_path = _write_registry(tmp_path, tushare_domains=["daily", "stock_st"], done_domains=["daily", "stock_st"])
 
         fails, warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
         assert fails == []
@@ -166,6 +181,7 @@ class TestReverseCleanup:
             tmp_path,
             tushare_domains=["daily"],
             other_domains={"old_domain": "fuyao"},  # 已非 tushare
+            done_domains=["daily"],
         )
 
         fails, warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
@@ -191,6 +207,7 @@ class TestReverseCleanup:
             tmp_path,
             tushare_domains=["daily"],
             other_domains={"old_domain": "fuyao"},
+            done_domains=["daily"],
         )
 
         fails, warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
@@ -212,7 +229,7 @@ class TestExpirationCountdown:
             },
             undecided=[],
         )
-        registry_path = _write_registry(tmp_path, tushare_domains=["daily"])
+        registry_path = _write_registry(tmp_path, tushare_domains=["daily"], done_domains=["daily"])
 
         fails, warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
         assert fails == []
@@ -229,7 +246,7 @@ class TestExpirationCountdown:
             },
             undecided=["domain_a", "domain_b", "domain_c"],
         )
-        registry_path = _write_registry(tmp_path, tushare_domains=["daily"])
+        registry_path = _write_registry(tmp_path, tushare_domains=["daily"], done_domains=["daily"])
 
         fails, warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
         assert fails == []
@@ -305,7 +322,7 @@ class TestExpirationCountdown:
             },
             undecided=[],
         )
-        registry_path = _write_registry(tmp_path, tushare_domains=["daily"])
+        registry_path = _write_registry(tmp_path, tushare_domains=["daily"], done_domains=["daily"])
 
         fails, warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
         assert fails == []
@@ -469,7 +486,8 @@ class TestUndecidedUnion:
             undecided=[],  # 列表故意留空 — 复现生产态
         )
         registry_path = _write_registry(
-            tmp_path, tushare_domains=["daily", "orphan_undecided"]
+            tmp_path, tushare_domains=["daily", "orphan_undecided"],
+            done_domains=["daily"],
         )
 
         fails, warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
@@ -490,7 +508,7 @@ class TestUndecidedUnion:
             },
             undecided=["dual_listed", "list_only"],
         )
-        registry_path = _write_registry(tmp_path, tushare_domains=["daily"])
+        registry_path = _write_registry(tmp_path, tushare_domains=["daily"], done_domains=["daily"])
 
         fails, warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
         assert fails == []
@@ -543,14 +561,21 @@ class TestDecisionExecutionDrift:
         assert any("stk_limit" in w for w in warns)
 
     def test_status_done_suppresses_drift_warn(self, tmp_path: Path) -> None:
-        """已标 status: done 不算漂移，即便 registry 里仍是 tushare (不该发生，但至少不重复报)。"""
+        """已标 status: done 不算漂移 (检查 4 只催"还没做的"，不重复报已做完的)。
+
+        原注写的是"即便 registry 里仍是 tushare (不该发生，但至少不重复报)" —— 2026-09-08
+        起那个"不该发生"由检查 9 真正执法了 (status: done + source: tushare +
+        execution_policy 非 disabled = FAIL)，所以本用例的 fixture 现在必须把 daily 补成
+        合法配置。检查 4 与检查 9 问的不是同一件事: 前者问"这个域的退役做了没"，
+        后者问"既然说做完了，配置停了没"。
+        """
         sunset_path = _write_sunset(
             tmp_path,
             domains={
                 "daily": {"decision": "replace", "replacement": "tdxhub", "status": "done"},
             },
         )
-        registry_path = _write_registry(tmp_path, tushare_domains=["daily"])
+        registry_path = _write_registry(tmp_path, tushare_domains=["daily"], done_domains=["daily"])
 
         fails, warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
         assert fails == []
@@ -664,7 +689,7 @@ class TestKnownKeys:
                 },
             },
         )
-        registry_path = _write_registry(tmp_path, tushare_domains=["daily"])
+        registry_path = _write_registry(tmp_path, tushare_domains=["daily"], done_domains=["daily"])
 
         fails, _warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
         assert gate.validate_known_keys(gate.load_sunset(sunset_path)) == []
@@ -770,7 +795,7 @@ class TestFieldDecisionMatrix:
                 "stk_limit": {"decision": "derive", "status": "done", "done_at": "2026-09-01"},
             },
         )
-        registry_path = _write_registry(tmp_path, tushare_domains=["stk_limit"])
+        registry_path = _write_registry(tmp_path, tushare_domains=["stk_limit"], done_domains=["stk_limit"])
 
         fails, _warns = gate.run(sunset_path, registry_path, today=date(2026, 8, 31))
         assert [f for f in fails if "status" in f or "done_at" in f] == []
@@ -916,6 +941,89 @@ class TestRealConfigInvariants:
         压力，声明与实际不一致只需可见，不需要阻断)。"""
         fails, _warns = gate.run(gate.DEFAULT_SUNSET, gate.DEFAULT_REGISTRY, today=date(2026, 9, 4))
         assert fails == [], f"真实配置跑门产生 FAIL: {fails}"
+
+
+class TestDoneDomainStopsFetchingTushare:
+    """检查 9: status: done 的域不许还开着从 tushare 取数 (检查 8 的另一半)。
+
+    检查 8 只守 decision: freeze。2026-09-08 adj_factor 由 replace->tdxhub 改判 derive
+    并写上 status: done (改自算, 不再 JOIN 任何供应商因子表), 但 sync_registry 里它没写
+    execution_policy → 继承 defaults 的 enabled/active + source: tushare。
+    台账说"做完了不用它了", 配置说"每天照拉", 而当时门跑出来 rc=0 ——
+    **声明与配置可以完全相反而全绿**。
+    """
+
+    def test_done_with_disabled_passes(self, tmp_path: Path) -> None:
+        sunset_path = _write_sunset(
+            tmp_path,
+            domains={"adj_factor": {"decision": "derive", "status": "done"}},
+        )
+        registry_path = _write_registry(
+            tmp_path, tushare_domains=["adj_factor"],
+            execution_policies={"adj_factor": "disabled"},
+        )
+        fails, _warns = gate.run(sunset_path, registry_path, today=date(2026, 9, 8))
+        assert fails == []
+
+    def test_done_still_enabled_on_tushare_fails_and_names_the_domain(self, tmp_path: Path) -> None:
+        sunset_path = _write_sunset(
+            tmp_path,
+            domains={"adj_factor": {"decision": "derive", "status": "done"}},
+        )
+        registry_path = _write_registry(
+            tmp_path, tushare_domains=["adj_factor"],
+            execution_policies={"adj_factor": "enabled"},
+        )
+        fails, _warns = gate.run(sunset_path, registry_path, today=date(2026, 9, 8))
+        hit = [f for f in fails if "status: done" in f]
+        assert len(hit) == 1
+        assert "adj_factor" in hit[0]
+
+    def test_done_without_execution_policy_fails(self, tmp_path: Path) -> None:
+        """未声明 = 继承 defaults 的 enabled —— 这正是 adj_factor 当天的真实状态。
+
+        若判据只查显式 enabled, 现实中最常见的那种(压根没写)会整个漏掉。
+        """
+        sunset_path = _write_sunset(
+            tmp_path,
+            domains={"adj_factor": {"decision": "derive", "status": "done"}},
+        )
+        registry_path = _write_registry(tmp_path, tushare_domains=["adj_factor"])
+        fails, _warns = gate.run(sunset_path, registry_path, today=date(2026, 9, 8))
+        assert [f for f in fails if "adj_factor" in f and "status: done" in f]
+
+    def test_done_after_switching_source_away_from_tushare_passes(self, tmp_path: Path) -> None:
+        """换源做对了的形态不该被罚: trade_cal 是 derive + done + mode: enabled,
+        但 source 已从 tushare 换成 calendar_rule (自己的生成运行时)。
+        本条问的是「宣布做完了却还开着从 **tushare** 取」, 不是「done 就必须 disabled」。
+        """
+        sunset_path = _write_sunset(
+            tmp_path,
+            domains={"trade_cal": {"decision": "derive", "status": "done"}},
+        )
+        registry_path = _write_registry(
+            tmp_path, other_domains={"trade_cal": "calendar_rule"},
+        )
+        fails, _warns = gate.run(sunset_path, registry_path, today=date(2026, 9, 8))
+        assert not [f for f in fails if "status: done" in f]
+
+    def test_decided_but_not_done_is_not_punished(self, tmp_path: Path) -> None:
+        """同一形状装着相反的处置 —— 这是本条最容易写错的地方。
+
+        实测那天有 8 个域是「裁决说要停 tushare + 配置仍 enabled」, 但其中 7 个
+        status 是空的: 替换/推导压根还没做, 到期前它们本来就该继续拉, enabled 是**对的**。
+        整档按形状搬会把"还没做完"误判成"配置错了"。
+        """
+        sunset_path = _write_sunset(
+            tmp_path,
+            domains={
+                "suspend_d": {"decision": "derive"},
+                "report_rc": {"decision": "retire"},
+            },
+        )
+        registry_path = _write_registry(tmp_path, tushare_domains=["suspend_d", "report_rc"])
+        fails, _warns = gate.run(sunset_path, registry_path, today=date(2026, 9, 8))
+        assert not [f for f in fails if "status: done" in f]
 
 
 class TestFreezeExecutionDisabled:

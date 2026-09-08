@@ -81,11 +81,16 @@ domains:
     done_at: "2026-09-01"
 
   adj_factor:
-    decision: replace
-    replacement: tdxhub
-    must_by: "2026-09-10"
-    evidence: "通达信 xdxr() 提供除权除息事件 (600000 有 88 条)，已在
-      TdxhubSource._adjusted_pre_close 生产代码中用于逐日复权，机制已跑通。"
+    decision: derive
+    replacement: adjust_factor_pre_close_rule
+    status: done
+    done_at: "2026-09-08"
+    evidence: "2026-09-08 改判 replace→derive: 实际做法不是换供应商, 是自算——不再依赖任何供应商
+      因子表。复权因子由 services/adjust_factor.py 从 canonical_nominal_ohlcv_daily.pre_close
+      按公开规则推导 (ratio[t] = close[t-1] / pre_close[t]), 不依赖 raw_tushare_adj_factor
+      (已冻结在 20260828)。该规则的输入 pre_close 本身已带除权调整——tdxhub 供货的 pre_close
+      经交易所口径调整 (sources/tdxhub.py:964 _adjusted_pre_close, 公式在 :695), 2026-08-31
+      实测 4 只股 pre_close ≠ 前收 (含 000423.SZ −2.728%), 调整确认生效。"
 
   limit_list_d:
     decision: replace

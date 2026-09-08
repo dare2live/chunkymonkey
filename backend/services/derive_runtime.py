@@ -67,7 +67,10 @@ def _run_qfq(*, from_accepted: bool, check_only: bool) -> dict[str, Any]:
         "from_accepted": bool(from_accepted),
         "check_only": bool(check_only),
         "returncode": rc,
-        "mode": "from_accepted" if from_accepted else "canonical_plus_legacy_fill",
+        # 2026-09-08: qfq 只剩一种模式 —— OHLCV 恒来自 accepted canonical, 因子自算。
+        # 此前这里在 from_accepted=False 时报 "canonical_plus_legacy_fill", 而 _run_qfq
+        # 从来就没把该 flag 传给 builder, 那个 mode 值描述的是一条不存在的路径。
+        "mode": "from_accepted",
     }
 
 

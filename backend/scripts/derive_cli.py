@@ -51,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument(
         "--allow-legacy-fill",
         action="store_true",
-        help="S7 escape: canonical ∪ legacy raw_tushare_daily fill (pre-accepted history)",
+        help="form only (2026-09-08 起): canonical ∪ legacy raw_tushare_daily fill; qfq 的该路径已退役",
     )
     ap.add_argument(
         "--rebuild",
@@ -92,6 +92,14 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--rebuild applies to form only")
     if args.target == "form" and args.check_only:
         ap.error("--check-only applies to qfq only")
+    if args.target == "qfq" and args.allow_legacy_fill:
+        # 2026-09-08: qfq 的 legacy-fill 路径随增量路径一起退役 —— OHLCV 恒来自 canonical。
+        # 响亮失败而不是静默无效: 谁带着这个 flag 来, 就是指望它做点什么。
+        ap.error(
+            "--allow-legacy-fill no longer applies to qfq: the legacy raw_tushare_daily "
+            "fill path was retired 2026-09-08 (nominal is always accepted canonical). "
+            "Drop the flag; form still accepts it."
+        )
     # Default = from_accepted (S7). Only --allow-legacy-fill opts out.
     from_accepted = not bool(args.allow_legacy_fill)
     try:

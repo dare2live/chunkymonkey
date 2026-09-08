@@ -13,9 +13,19 @@ kline_checks:
   # 正解 = clean-vs-source: M2(clean)的职责是无损变换 raw→qfq, 该验"clean 丢了 source 有的行吗",
   # 与停牌/退市/日历无关 (源本就没停牌日=合法)。实测新口径 0 丢失行。M1(acquire)的"拉全tushare"由
   # sync watermark/drain 守 (另一阶段门), 不在此 calendar 比对。历史口径证据=git log --grep kline_completeness_crywolf_fix
-  source_raw_table: raw_tushare_daily      # clean 的上游源 (build_price_kline_qfq_tushare 从它×adj_factor 建); 在 tushare_raw 库
+  # 2026-09-08 改判 raw_tushare_daily → canonical_nominal_ohlcv_daily: 实测 raw_tushare_daily 已
+  # 冻结在 20260716 (tushare 授权到期前最后一次同步), 07-16 之后 clean 侧任何丢行本门都看不见
+  # (EXCEPT 集合比对本身没问题——src 里压根没有那天的行可比, 不是"比 COUNT 被糊弄"的那种病, 是
+  # 比错了 source)。实测生产 qfq 表整缺 2026-08-12/08-13 两天 (10,257 行/5,128 只股), 本门全程绿。
+  # canonical_nominal_ohlcv_daily 是当前唯一持续更新的名义 OHLCV 真相面 (build_price_kline_qfq_tushare
+  # --from-accepted 默认输入), 才是"clean 有没有丢 source 行"该问的那个 source。
+  source_raw_table: canonical_nominal_ohlcv_daily   # clean 的上游源; 在 tushare_raw 库
   source_raw_code_column: ts_code          # 带后缀 .SZ/.SH, 比对去后缀对齐 clean.code
-  source_raw_date_column: trade_date       # YYYYMMDD
+  source_raw_date_column: trade_date
+  # date_kind: canonical_nominal_ohlcv_daily.trade_date 是原生 DATE 类型 → date_type (显式 strftime
+  # 到 YYYYMMDD, 不靠隐式转换); raw_tushare_daily.trade_date 是 YYYYMMDD 字符串 → yyyymmdd_string
+  # (该表已冻结弃用为本门 source, 取值保留只为向后兼容旧 fixture/测试)。
+  source_raw_date_kind: date_type
   completeness_threshold: 0.0              # 保留: 新口径下 = 任何 clean 丢失 source 行即 FAIL (无损要求, 此时 0.0 正确)
   gap_max_days: 5
   board_prefixes:

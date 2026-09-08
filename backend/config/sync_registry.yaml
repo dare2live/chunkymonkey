@@ -983,11 +983,24 @@ domains:
 
   adj_factor:
     identity:
-      kind: undecided
-      blocked_by: "可由 dividend + 价格推导, 但复权因子口径各家有差异; 2026-06-22 那次自算事故证明的是『实现写错了』(因子当乘数用反, 分叉89%) 而非『不可自算』—— 需一次真实口径核对才能定 derived_rule vs vendor_view"
+      kind: derived_rule
+      fact: "复权因子 = close[t-1]/pre_close[t] (services/adjust_factor.py 自算, 输入
+        canonical_nominal_ohlcv_daily.pre_close); 2026-09-08 口径核对完成——2026-06-22
+        那次自算事故证明的是『实现写错了』(因子当乘数用反, 分叉89%) 而非『不可自算』,
+        真实口径核对见 tushare_sunset.yaml domains.adj_factor (decision: derive,
+        replacement: adjust_factor_pre_close_rule)，解除本条此前的 undecided/blocked_by"
     source: tushare
     api: adj_factor
     target_table: raw_tushare_adj_factor
+    # 2026-09-08: tushare_sunset 判 derive/status:done 后本域不再取数 —— 复权因子由
+    # build_price_kline_qfq_tushare 在 derive 时用 services/adjust_factor.py 从
+    # canonical.pre_close 现算, 没有独立取数运行时可切 (对比 trade_cal 是换 source 到
+    # calendar_rule 后保持 enabled)。不显式 disabled 就会继承 defaults 的 enabled/active,
+    # 于是 09-10 授权到期后每天去拉一个已经不需要的域并告警。
+    # raw_tushare_adj_factor 冻结在 20260828, 保留为历史/对账副本 (legacy_raw_plane.yaml)。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_derive
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, trade_date]
     batch_mode: by_trade_date

@@ -62,9 +62,15 @@ pulse_flow_builder_entities:
 tables:
   raw_tushare_adj_factor:
     role: compatibility
-    kind: derive_input
+    kind: sync_orphan
     publication_surface: price_kline_qfq_tushare
-    note: "S7: qfq derive publication owns analysis surface; raw adj = rebuild input residual (no formal corp-action accept yet)"
+    note: "2026-09-08 换心: 本表不再是任何 derive 的输入 (build_price_kline_qfq_tushare.py 改自算
+      services.adjust_factor 从 canonical.pre_close 推, 不再 JOIN 本表), 故 kind derive_input →
+      sync_orphan; 表冻结在 20260828 (tushare 授权 09-10 到期)。role 仍是 compatibility 而不是
+      ssot —— 顶注对 ssot 的定义是「production still treats this raw table as truth」, 而换源后
+      生产恰恰不再把它当真相了, 改 ssot 是把方向弄反。publication_surface 保留且比以前更成立:
+      复权因子现在由 price_kline_qfq_tushare.hfq_factor 列发布, 本表降为该事实的历史/对账副本
+      (services/adjust_factor.py 自检 + fuyao/tdx 对账脚本读它, 是读供应商当年的说法, 不是读真相)"
 
   raw_tushare_balancesheet:
     role: ssot

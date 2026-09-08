@@ -80,7 +80,9 @@ def test_provenance_envelope():
     p = res.provenance
     assert p["source_entity"] == "kline_qfq"
     assert p["source_table"] == "market.price_kline_qfq_tushare"
-    assert p["vendor"] == "tushare"
+    # 2026-09-08 起 nominal OHLCV 供货商 tushare -> tdxhub (tushare_sunset.yaml domains.daily
+    # decision=replace/status=done); 复权因子改自算, 不再依赖任何供应商。
+    assert p["vendor"] == "tdxhub"
     assert p["asof_anchor"] == "date"
     assert p["as_of"] == "2026-05-05"
     assert p["compute_fn"] is None   # 厂商现成 raw entity, 非派生

@@ -330,10 +330,13 @@ def test_b5_live_registry_covers_type_b_and_qfq_physical_lineage() -> None:
     assert qfq.partial_reasons == ()
     assert qfq.lineage is not None
     assert qfq.lineage.get("trust") == "LINEAGE_OK"
+    # 2026-09-08 自算换心新增 config_hash: 它是物理落库的血统列 (哪份 adjust_factor.yaml
+    # 算出了这一行), 与 batch_id/ingested_at/factor_as_of 同类, 故进本集合。
     assert set(qfq.lineage.get("physical_lineage_columns") or []) == {
         "batch_id",
         "ingested_at",
         "factor_as_of",
+        "config_hash",
     }
     assert qfq.lineage.get("read_placeholders") in (None, [], ())
     assert qfq.lineage.get("not_execution_truth") is True

@@ -155,150 +155,84 @@ assertions:
     expect: {op: "==", value: 0}
   - id: qfq-lineage-guard
     severity: blocking
-    claim: "2026-09-01 改自 qfq-serving-tushare-only(该断言查 v_price_kline_qfq.source_name<>'tushare', 但 source_name 是视图字面量非物理列, count 数学上恒为0, 从建立起未真查过任何东西, 见 market_schema.py 同日注). source_name 已改诚实置 NULL, 断言改查两处真血缘: ①复权因子恒定锁死 raw_tushare_adj_factor, 不复活 2026-06-22 移除的 akshare/tdxhub 自算 qfq 兜底(该算法系统性错, 把复权因子当乘数用反, 复权价分叉最高89%, 见 market_schema.py); ②供给 canonical_nominal_ohlcv_daily 的 tier0.market_data.nominal_ohlcv_daily 全历史 ACCEPTED 批次供货商须在裁决允许集 {tushare, tdxhub} 内(通达信=主源, tushare=断前过渡)。同日 (2026-09-01) 二次收紧, 因该门本身被审计实证仍半恒绿(fable5, 在 scratchpad 副本上实跑, 非推测): (a) 静态半边原先只查 'raw_tushare_adj_factor' 这个字符串是否在全文件出现——该字符串本就在 docstring/其余 CTE 里出现 6 次, 主服务 JOIN 被换成野表(如 raw_patch_adjf)、或用 COALESCE(备用源, a.adj_factor) 掺入第二物理表兜底, 两者字符串仍在, 门照样绿; 现改为解析 build_price_kline_qfq_tushare.py 里两处真正生成 qfq 价格列(open/high/low/close)的 JOIN/CTE 图, 抽出复权因子实际来源的物理表集合, 断言严格等于 {raw_tushare_adj_factor}——只认真 JOIN, docstring/重建路径提及不算数; (b) 45 天窗直接去掉改全历史扫描(实测: ingest_batch 全库 7,406 行, 属该 dataset_id 的仅 2,021 条, 全历史 DISTINCT ACCEPTED source_name 现状恰为 {tushare, tdxhub}, 去窗零成本, 堵死'窗外裁决外批次隐形'的缺陷, 窗内对照组此前已正确变红证明 DB 半边机制本身是真门, 缺陷只在窗宽)。原引『日K三源裁决(goal.md 2026-08-31 业主拍板勿回滚)』现已悬空——那段文本随 09-01 goal.md 160→41 行瘦身重写(commit b28449b6a)被删, goal.md 现全文查不到'三源/裁决/tdxhub'任一词; 该裁决现由 backend/config/tushare_sunset.yaml 的 domains.daily(decision=replace/replacement=tdxhub/status=done@2026-09-01, {tushare,tdxhub} 允许集的现行依据)与 domains.adj_factor(decision=replace/replacement=tdxhub/must_by=2026-09-10, 尚无 status:done——故此刻仍锁 raw_tushare_adj_factor 合规; 该域一旦切换完成, 本断言的期望物理表集合需同步改, 否则重演'门锁死昨天真相'的同一种病)记录, 引用改指此处而非已不存在的原文。命中禁用模式、JOIN 物理表集合不等于期望集合、或出现裁决外供货商即FAIL；qfq 仍非 nominal/execution truth；physical lineage=batch_id/ingested_at/factor_as_of on rebuild 不变"
+    claim: "2026-09-08 换心重写。历史: 本断言 09-01 改自 qfq-serving-tushare-only (那条查 v_price_kline_qfq.source_name<>'tushare', 而 source_name 是视图字面量非物理列, count 数学上恒为 0, 从建立起没真查过任何东西); 09-01 又二次收紧, 把静态半边从「全文找 'raw_tushare_adj_factor' 这个字符串」改成「解析源码里两处生成 qfq 价格列的 JOIN/CTE 图, 抽出因子来源物理表集合, 严格等于 {raw_tushare_adj_factor}」, 并把 45 天窗去掉改全历史扫 ingest_batch。当时的 claim 里写明「该域一旦切换完成, 本断言的期望物理表集合需同步改, 否则重演门锁死昨天真相的同一种病」—— 今天就是那一天。 || 本次改两处。(1) 期望集合 {raw_tushare_adj_factor} -> {canonical_nominal_ohlcv_daily}: tushare_sunset.yaml 的 domains.adj_factor 09-08 由 replace->tdxhub 改判 derive(status:done), 复权因子不再来自任何供应商表, 改由 services/adjust_factor.py 从 canonical 的 pre_close 自算 (ratio[t]=close[t-1]/pre_close[t])。(2) 判据从「正则扫源码文本」改成「import builder 调纯函数 build_select_sql() 拿到实际要跑的那条 SQL 再解析」—— 旧问法要求源码里恰好出现 8 次 d.<col> * 分子 / 分母 AS <col>, 它实际在问「作者有没有按我预期的写法写」, 而想守的是「因子来自哪张物理表」。新 builder 的表达式由 _rebase() 拼装, 旧正则会匹配 0 次并以「解析器假设失效」退出, 而那时真正的血缘恰恰是对的 —— 门问的问题和它想守的东西不是一回事。 || 判据同时变强: 自算的全部要义是「一个真相源喂所有列」, 所以直接断言「生成 SQL 里出现的物理表集合 == {canonical_nominal_ohlcv_daily}」+「每个 FROM/JOIN 目标必须是同句 CTE 或那张唯一物理表」。多出任何第二张表, 按定义就是供应商因子表/兜底源/COALESCE 备胎混进来了 —— 一条等式覆盖了旧门要靠别名递归解析才能抓的三种情形, 且不再依赖作者写法。黑名单半边(2026-06-22 移除的 akshare/tdxhub 自算 qfq 兜底: 把复权因子当乘数用反, 复权价分叉最高 89%)原样保留 —— 禁的是那个具体算法, 不是「自算」这件事。ingest_batch 半边(全历史扫 tier0.market_data.nominal_ohlcv_daily 的 ACCEPTED source_name ∈ {tushare, tdxhub})一字未改。 || 命中黑名单、物理表集合不等于期望、出现计划外 FROM/JOIN 目标、builder 无法 import 或函数签名变了、或出现裁决外供货商, 任一即 FAIL (import 失败不吞异常 —— 查不了不等于通过)。qfq 仍非 nominal/execution truth。"
     type: shell
     command:
       - bash
       - -c
       - |
         cd $(git rev-parse --show-toplevel) && .venv/bin/python3 - <<'PY'
-        import pathlib, re, sys, duckdb
+        import importlib.util, pathlib, re, sys, duckdb
 
-        build_src = pathlib.Path(
-            "backend/scripts/build_price_kline_qfq_tushare.py"
-        ).read_text(encoding="utf-8")
+        REPO = pathlib.Path(".").resolve()
+        BUILDER = REPO / "backend" / "scripts" / "build_price_kline_qfq_tushare.py"
 
-        # 黑名单不变: 已知系统性算错的 qfq 自算兜底模式, 全文任何位置(含注释)都不许复活。
-        forbidden = re.compile(
-            r"price_kline_tdxhub|akshare|tdxhub_adj_factor|adj_factor_tdxhub", re.I
-        )
-        hit = forbidden.search(build_src)
+        # ── 半边一: 黑名单 (全文任何位置, 含注释) ──────────────────────────────
+        # 2026-06-22 移除的 akshare/tdxhub 自算 qfq 兜底系统性错 (把复权因子当乘数用反,
+        # 复权价分叉最高 89%)。它与 2026-09-08 起的自算不是一回事: 后者从 canonical.pre_close
+        # 推 ratio, 前者是拿供应商因子反向用。禁的是那个具体算法, 不是"自算"这件事。
+        FORBIDDEN = re.compile(r"price_kline_tdxhub|akshare|tdxhub_adj_factor|adj_factor_tdxhub", re.I)
+        src = BUILDER.read_text(encoding="utf-8")
+        hit = FORBIDDEN.search(src)
         if hit:
             sys.exit(f"复活被禁的 qfq 兜底模式: {hit.group(0)!r}")
 
-        # 结构半边 (2026-09-01 收紧): 不再查字符串是否出现, 改解析真实 JOIN/CTE 图——
-        # 只有 qfq 价格列 (open/high/low/close) 计算表达式里真正参与相乘的物理表才算数,
-        # docstring / 未参与计算的 CTE / 重建路径里的同名字符串一律不算。
-        EXPECTED_FACTOR_TABLES = {"raw_tushare_adj_factor"}
+        # ── 半边二: 解析**真正要跑的那条 SQL**, 不是生成它的源码文本 ────────────
+        # 2026-09-08 重写。旧判据用正则在源码里找 `d.<col> * 分子 / 分母 AS <col>` 且要求恰好
+        # 出现 8 次, 于是它其实在问"作者有没有按我预期的写法写", 而想守的是"因子来自哪张物理表"。
+        # 换源后表达式改由 _rebase() 拼装, 正则匹配 0 次 —— 门会以"解析器假设失效"退出, 而那时
+        # 真正的血缘其实是对的。现在改成 import 模块、调纯函数拿到实际 SQL 再解析: 作者怎么写
+        # 源码都无所谓, 问的是最终执行的东西。
+        #
+        # 判据也随之变强。自算的全部要义是「一个真相源喂所有列」, 所以:
+        #   生成 SQL 里出现的物理表集合  ==  {canonical_nominal_ohlcv_daily}
+        # 多出任何第二张表, 按定义就是供应商因子表 / 兜底源 / COALESCE 备胎混进来了 ——
+        # 这一条同时覆盖了旧门要靠别名递归解析才能抓的三种情形。
+        EXPECTED_PHYSICAL_TABLES = {"canonical_nominal_ohlcv_daily"}
 
-        def _balanced_span(text: str, open_idx: int) -> int:
-            depth = 0
-            i = open_idx
-            while i < len(text):
-                if text[i] == "(":
-                    depth += 1
-                elif text[i] == ")":
-                    depth -= 1
-                    if depth == 0:
-                        return i + 1
-                i += 1
-            raise ValueError("unbalanced parens")
+        sys.path.insert(0, str(REPO / "backend"))
+        spec = importlib.util.spec_from_file_location("_qfq_builder", BUILDER)
+        if spec is None or spec.loader is None:
+            sys.exit(f"无法加载 builder 模块: {BUILDER}")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)          # import 失败即 FAIL, 不吞异常
+        sql = mod.build_select_sql(mod.load_config(), batch_id="_gate", ingested_at="1970-01-01T00:00:00Z")
 
-        JOIN_RE = re.compile(r"\bJOIN\s+(tr\.\w+|\w+)\s+(\w+)\b")
+        attach_alias = mod.SOURCE_RELATION.split(".", 1)[0] if "." in mod.SOURCE_RELATION else None
+        if not attach_alias:
+            sys.exit(f"SOURCE_RELATION 不再是 <alias>.<table> 形状: {mod.SOURCE_RELATION!r}")
+        observed = set(re.findall(rf"\b{re.escape(attach_alias)}\.(\w+)\b", sql))
+        if observed != EXPECTED_PHYSICAL_TABLES:
+            sys.exit("qfq 生成 SQL 的物理表集合与期望不符: "
+                     f"observed={sorted(observed)} expected={sorted(EXPECTED_PHYSICAL_TABLES)}")
 
-        def _local_maps(scope_text: str):
-            """在单条 SQL 语句的局部文本里建 alias/CTE 解析表 —— 不用全文件表,
-            因为同一别名(如 `l`)在文件不同 SQL 语句里可能绑定到不同东西
-            (价格生成语句里的 `l`=latest CTE; 别处判断改写代码的辅助查询里
-            也有 `l`=_qfq_latest_factor 临时表), 全局合并会把两者错误地并到一起。
-            """
-            alias_to_source: dict[str, set[str]] = {}
-            for src, alias in JOIN_RE.findall(scope_text):
-                alias_to_source.setdefault(alias, set()).add(src)
-            cte_bodies: dict[str, list[str]] = {}
-            for m in re.finditer(r"\b(\w+)\s+AS\s*\(", scope_text):
-                name = m.group(1)
-                open_idx = m.end() - 1
-                try:
-                    end_idx = _balanced_span(scope_text, open_idx)
-                except ValueError:
-                    continue
-                cte_bodies.setdefault(name, []).append(scope_text[m.end():end_idx - 1])
-            return alias_to_source, cte_bodies
+        # 每个 FROM/JOIN 目标必须是同句 CTE 或那张唯一物理表 —— 堵住"用别的 attach 别名
+        # 或裸表名引第二个源"这条绕过 (上面的 alias 正则只看得见 tr.*)。
+        cte_names = set(re.findall(r"(?:WITH|,)\s*(\w+)\s+AS\s*\(", sql, re.I))
+        targets = set(re.findall(r"\b(?:FROM|JOIN)\s+([\w.]+)", sql, re.I))
+        strays = {t for t in targets if t not in cte_names and t != mod.SOURCE_RELATION}
+        if strays:
+            sys.exit(f"qfq 生成 SQL 出现计划外的 FROM/JOIN 目标: {sorted(strays)} "
+                     f"(合法 = 同句 CTE {sorted(cte_names)} 或 {mod.SOURCE_RELATION})")
 
-        def resolve(token: str, alias_to_source, cte_bodies, _seen: frozenset = frozenset()) -> set[str]:
-            """token 是一个 alias 或 CTE/表名, 递归解析到物理 (tr.) 表集合。"""
-            if token in _seen:
-                return set()
-            _seen = _seen | {token}
-            if token.startswith("tr."):
-                return {token[3:]}
-            out: set[str] = set()
-            for src in alias_to_source.get(token, ()):
-                out |= resolve(src, alias_to_source, cte_bodies, _seen)
-            for body in cte_bodies.get(token, ()):
-                out |= set(re.findall(r"\btr\.(\w+)\b", body))
-                for src, _alias in JOIN_RE.findall(body):
-                    out |= resolve(src, alias_to_source, cte_bodies, _seen)
-            if not out:
-                return {f"<UNRESOLVED:{token}>"}
-            return out
-
-        # 每条真正的 SQL 语句都是文件里独立的一个三引号字符串字面量
-        # (f\"\"\"...\"\"\"), 用它天然做作用域边界 —— 不跨语句合并别名表。
-        sql_spans = [
-            (m.start(), m.end(), m.group(1))
-            for m in re.finditer(r'f?"""(.*?)"""', build_src, re.DOTALL)
-        ]
-
-        def _scope_for(pos: int) -> str | None:
-            for start, end, text in sql_spans:
-                if start <= pos < end:
-                    return text
-            return None
-
-        # qfq 价格列的唯一生成模式: d.<col> * <分子> / <分母> AS (open|high|low|close)
-        # (2 处代码路径 x 4 列 = 预期 8 处; 数量漂移说明生成结构变了, 解析器需人工复核)
-        price_expr_re = re.compile(
-            r"d\.(?P<base>open|high|low|close)\s*\*\s*(?P<num>.+?)\s*/\s*(?P<den>.+?)"
-            r"\s+AS\s+(?P=base)\b",
-            re.DOTALL,
-        )
-        matches = list(price_expr_re.finditer(build_src))
-        if len(matches) != 8:
-            sys.exit(
-                f"qfq 价格计算表达式数量={len(matches)} (预期 8 = 2 处代码路径 x 4 价格列), "
-                "生成结构已变, 解析器假设失效需人工复核"
-            )
-
-        observed_tables: set[str] = set()
-        for m in matches:
-            scope_text = _scope_for(m.start())
-            if scope_text is None:
-                observed_tables.add("<NO_ENCLOSING_SQL_LITERAL>")
-                continue
-            alias_to_source, cte_bodies = _local_maps(scope_text)
-            expr_text = f"{m.group('num')} {m.group('den')}"
-            aliases = {a for a, _col in re.findall(r"\b(\w+)\.(\w+)\b", expr_text) if a != "d"}
-            if not aliases:
-                observed_tables.add("<NO_FACTOR_ALIAS_FOUND>")
-                continue
-            for alias in aliases:
-                observed_tables |= resolve(alias, alias_to_source, cte_bodies)
-
-        if observed_tables != EXPECTED_FACTOR_TABLES:
-            sys.exit(
-                "qfq 复权因子实际 JOIN 的物理表集合与期望不符: "
-                f"observed={sorted(observed_tables)} expected={sorted(EXPECTED_FACTOR_TABLES)}"
-            )
-
-        # ingest_batch 真血缘 (2026-09-01 去 45 天窗, 改全历史扫描——见 claim 里的实测)
+        # ── 半边三: ingest_batch 真血缘 (全历史扫描, 与 2026-09-01 版一致, 未改) ──
         con = duckdb.connect("data/tushare_raw.duckdb", read_only=True)
         try:
             rows = con.execute(
                 "SELECT DISTINCT source_name FROM ingest_batch "
-                "WHERE dataset_id = 'tier0.market_data.nominal_ohlcv_daily' "
-                "AND status = 'ACCEPTED'"
+                "WHERE dataset_id = 'tier0.market_data.nominal_ohlcv_daily' AND status = 'ACCEPTED'"
             ).fetchall()
         finally:
             con.close()
-        sanctioned = {"tushare", "tdxhub"}
-        bad = sorted({r[0] for r in rows} - sanctioned)
+        bad = sorted({r[0] for r in rows} - {"tushare", "tdxhub"})
         if bad:
             sys.exit(f"nominal_ohlcv_daily 出现裁决外供货商: {bad}")
+
         print("QFQ_LINEAGE_GUARD_OK")
         PY
-    expect: {op: regex, pattern: "QFQ_LINEAGE_GUARD_OK"}
+    expect:
+      op: regex
+      pattern: QFQ_LINEAGE_GUARD_OK
   - id: factor-family-inventory-gate
     claim: "因子族 inventory 结构门：families 必填字段+typed enums；defer/blocked 须 reason；bricks∈brick_registry；sync_domains∈sync_registry∪serve_derive source_domains∪miaoxiang acquire；gate_matrix 引用存在 family_id。owner=backend/scripts/check_factor_family_inventory.py + factor_family_inventory.yaml；权威=本文件 + factor_family_inventory.yaml (因子族边界, 窗口对齐)"
     type: shell

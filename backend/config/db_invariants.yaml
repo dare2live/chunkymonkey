@@ -226,63 +226,57 @@ invariants:
 
   # ── 9: qfq 用的复权因子与该股 adj_factor 最新值一致 (新收——批3"factor_as_of>=最近
   # 除权日"是错的问法, 见下方 why) ─────────────────────────────────────────────────
-  - id: qfq_factor_current
+  - id: qfq_anchor_is_own_last_bar
     db: market
-    attach:
-      tr: tushare_raw
+    attach: {}
     invariant: >-
-      对 price_kline_qfq_tushare 里每只股, 其 factor_as_of 当日在
-      raw_tushare_adj_factor 里查到的 adj_factor 值, 必须等于该股 adj_factor 全历史
-      最新一条 (max trade_date) 的值——比值不比日期, builder 只在值漂移时才重算整只股
-      (build_price_kline_qfq_tushare.py:239-244), 按日期比会对"值没变只是日期滞后"的
-      正常情况天天误报。adj_factor 完全查不到该股时同样判违规 (不能因为查不到就放行)。
+      price_kline_qfq_tushare 里每只股的 factor_as_of, 必须等于该股在本表自己的
+      MAX(date)——即复权锚点钉在这只股自己最后一根 K 线上, 不是任何全局最新日期。
     sql: |
-      WITH qfq_code AS (
-        SELECT code, MAX(factor_as_of) AS factor_as_of
+      WITH per_code AS (
+        SELECT code,
+               MAX(date) AS own_last_bar,
+               MIN(factor_as_of) AS min_anchor,
+               MAX(factor_as_of) AS max_anchor
           FROM price_kline_qfq_tushare
          GROUP BY code
-      ),
-      used AS (
-        SELECT qc.code,
-               (SELECT a.adj_factor FROM tr.raw_tushare_adj_factor a
-                 WHERE substr(a.ts_code, 1, 6) = qc.code
-                   AND a.trade_date = replace(qc.factor_as_of, '-', '')
-                 LIMIT 1) AS used_factor
-          FROM qfq_code qc
-      ),
-      latest AS (
-        SELECT code, adj_factor AS latest_factor FROM (
-          SELECT substr(ts_code, 1, 6) AS code, adj_factor,
-                 ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) AS rn
-            FROM tr.raw_tushare_adj_factor
-        ) WHERE rn = 1
       )
-      SELECT (SELECT COUNT(*) FROM qfq_code) AS checked,
-             (SELECT COUNT(*) FROM used u
-                LEFT JOIN latest l ON l.code = u.code
-               WHERE l.latest_factor IS NULL
-                  OR u.used_factor IS DISTINCT FROM l.latest_factor) AS value
+      SELECT COUNT(*) AS checked,
+             COUNT(*) FILTER (
+               WHERE min_anchor IS DISTINCT FROM max_anchor
+                  OR max_anchor IS DISTINCT FROM own_last_bar
+             ) AS value
+        FROM per_code
     op: "=="
     expect: 0
     allow_empty: false
     why: >-
-      这是"复权价从除权日起开始错"的直接判据。执行计划里"factor_as_of >= 最近除权日"
-      是错的问法——实测 14 只股 factor_as_of 停在旧日期而 adj_factor 有更新的日期,
-      但因子值全等 (builder 只在值变时重算整只股), 按日期比会天天误报这 14 条。
-      边界诚实写明: adj_factor 表整体冻结时本条仍绿 (两边一起冻), 它守的是"qfq 用了
-      我们手里的最新因子"不是"手里的因子是真相"; 后者由 continuity 的
-      calendar_gaps(adj_factor) 报——除非 adj_factor 被 tushare_sunset.yaml 判
-      freeze/继续 replace 到 tdxhub 后 continuity 转 observe_*, 届时本条与 09-10 后的
-      新一手源要同步改表名, 否则会锁死昨天的真相 (与 market_schema.py 里 qfq-lineage
-      -guard 注释同一条提醒)。
+      2026-09-08 换心时整条替换掉原 qfq_factor_current。原条目问的是"qfq 用的
+      adj_factor 值等不等于 raw_tushare_adj_factor 里最新那条", 前提是
+      "builder 只在因子值漂移时才重算整只股"——而那条增量重写逻辑当天连同整个增量
+      路径一起删了 (现在恒为 DROP+CTAS 全量), 供应商因子表也不再参与计算。所以它
+      问的问题和它守的东西是一起消失的, 只改 tr. 表名会留下一条形似在判、实则无对象
+      的判据。
+      新条目守的是换源后真正会错的地方: 锚点。旧实现取"因子表内全局 max trade_date",
+      对退市/长期停牌股会锚到该股最后一根 K 线之后 —— 实测 6/5,447 只股末行 close
+      偏离当日 nominal >0.1%, 极端 600069.SH (2020-08-20 退市) nominal 0.28 而 qfq
+      2.72, 差 89.7%。新实现锚在该股自己最后一行, 本条把"锚对了"钉成机器可判。
+      顺带守住"同一只股不能出现两个 anchor"(min != max 即整只股半旧半新) —— 这一支
+      是本条落地当天现查出来的, 此前没人知道: 增量 append 给新行写当次锚、旧行留上次锚,
+      实测 5,447 只股里 5,193 只锚点跨两个日期 (如 000001 跨 2026-08-26..08-28)。
+      因子值没变时数值仍自洽, 但 factor_as_of 存在的意义就是"消费方能钉住重建快照",
+      95% 的行标错了它就没在履行这个职责。
+      切换前实测三分: 同股两锚 5,193 / 锚≠末根 157 / 正确 97 —— 全量 CTAS 后应为
+      0/0/5447, 这就是本条的双向验证 (红那一边是现货, 不是构造出来的)。
+      边界: 本条只问自洽, 不问因子算得对不对 —— 后者由 builder 的 cross_check
+      (末行 close == nominal close, 1e-9) 在写入时刻 fail-closed。
     fix: >-
-      PYTHONPATH=backend python backend/scripts/build_price_kline_qfq_tushare.py --full
-      (强制全量重建, 按最新 adj_factor 值重新计算所有股票的 factor_as_of)
+      PYTHONPATH=backend python backend/scripts/build_price_kline_qfq_tushare.py
+      (DROP+CTAS 全量重建, 锚点由 latest CTE 按每股自己最后一行统一重算)
     kill_when: >-
-      adj_factor 一手源从 raw_tushare_adj_factor 切换到 tdxhub xdxr 且
-      build_price_kline_qfq_tushare.py 的 JOIN 目标同步改表名后, 本条 tr. 表名跟着改
-      (改不到就是表不存在 → UNVERIFIED, 不会静默绿); 该域一旦 freeze 则本条与
-      continuity 的 adj_factor 检测一起重新评审是否继续有意义。
+      price_kline_qfq_tushare 退役 (方案 C: 物理表改 append-only hfq + qfq 降为视图)
+      后本条随表一起删——届时"锚点"不再物化, 而是视图查询时算, 该守的变成
+      "hfq 行写下即不变", 那是另一条判据。
 
   # ── 10: nominal 日 K ACCEPTED 批次供货商都在裁决允许集内 (moth qfq-lineage-guard 的
   # DB 半边) ─────────────────────────────────────────────────────────────────────

@@ -38,19 +38,22 @@ def test_s7_derive_runtime_defaults_to_from_accepted() -> None:
     assert dr.run_derive.__kwdefaults__["from_accepted"] is True
 
 
-def test_s7_qfq_default_nominal_excludes_legacy_raw() -> None:
-    mod = _load_qfq_mod()
-    cte = mod.nominal_source_cte()  # default
-    assert "canonical_nominal_ohlcv_daily" in cte
-    assert "raw_tushare_daily" not in cte
-    assert "UNION ALL" not in cte
+def test_s7_qfq_nominal_source_is_canonical_only() -> None:
+    """2026-09-08 换心后 OHLCV 恒来自 canonical, 不再有 legacy raw 兜底可切。
 
-
-def test_s7_qfq_allow_legacy_fill_restores_union() -> None:
+    原来这里是两条用例: 一条验默认排除 legacy raw, 一条验 from_accepted=False 会
+    恢复 raw_tushare_daily UNION。后者测的机制当天连同 nominal_source_cte() 整个删了
+    (增量路径 + legacy-fill 一并退役, builder 恒为 DROP+CTAS), 故随主语一起退役;
+    前者的语义仍在, 换成对实际生成的 SQL 断言 —— 现在不存在"两态可切", 是结构性的
+    单一来源, 比原来的 flag 断言更强。
+    """
     mod = _load_qfq_mod()
-    cte = mod.nominal_source_cte(from_accepted=False)
-    assert "raw_tushare_daily" in cte
-    assert "UNION ALL" in cte
+    assert not hasattr(mod, "nominal_source_cte")
+    sql = mod.build_select_sql(mod.load_config(), batch_id="t", ingested_at="1970-01-01T00:00:00Z")
+    assert "canonical_nominal_ohlcv_daily" in sql
+    assert "raw_tushare_daily" not in sql
+    assert "raw_tushare_adj_factor" not in sql
+    assert "UNION ALL" not in sql
 
 
 def test_s7_form_library_defaults_to_from_accepted() -> None:
@@ -195,7 +198,13 @@ def test_s7_derive_runtime_still_bans_acquire_imports() -> None:
 
 
 def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
-    """S7 inventory: 20 ssot / 1 fill / 22 compat / 3 retired (holdernumber restored)."""
+    """S7 inventory: 20 ssot / 1 fill / 22 compat / 3 retired (holdernumber restored).
+
+    2026-09-08 自算换心只动 raw_tushare_adj_factor 的 kind (derive_input → sync_orphan,
+    它不再是任何 derive 的输入), role 仍是 compatibility —— 顶注定义 ssot 是
+    「production still treats this raw table as truth」, 换源后生产恰恰不再拿它当真相,
+    升 ssot 会把方向弄反。故本组计数不变。
+    """
 
     mod = _load_check_mod()
     counts = mod.role_counts()
@@ -236,6 +245,9 @@ def test_s7_residual_ssot_map_is_typed_hard_stops_only() -> None:
             "stk_holdernumber",
             "stk_surv",
         },
+        # adj_factor 不在此: 2026-09-08 换心后它的 kind 是 sync_orphan, 但 role 仍是
+        # compatibility (本 map 只收 role=ssot 的), 见
+        # test_s7_adj_factor_is_compatibility_sync_orphan_after_self_derive_switch。
         "sync_orphan": {
             "balancesheet",
             "dividend",
@@ -244,7 +256,9 @@ def test_s7_residual_ssot_map_is_typed_hard_stops_only() -> None:
         },
     }
     assert by_kind == expected, by_kind
-    assert sum(len(v) for v in by_kind.values()) == 14
+    # (2026-09-08 删掉原来紧跟其后的 `sum(len(v) for v in by_kind.values()) == N`:
+    #  上一行已经把成员钉死, 这个和就被 expected 完全决定, 它永远不可能独立失败 ——
+    #  不判任何东西, 只会在每次成员变动时跟着要人改数字。)
     retired = {
         table.removeprefix("raw_tushare_")
         for table, meta in inv["tables"].items()
@@ -660,15 +674,33 @@ def test_s7_stock_basic_identity_publication_is_dim() -> None:
     assert "FROM raw_tushare_stock_basic" not in src
 
 
-def test_s7_adj_factor_derive_publication_is_qfq() -> None:
-    """qfq table owns analysis surface; raw adj_factor = derive rebuild input."""
+def test_s7_adj_factor_is_compatibility_sync_orphan_after_self_derive_switch() -> None:
+    """2026-09-08 自算换心后 raw_tushare_adj_factor 的正确分类。
+
+    kind 变了: derive_input → sync_orphan —— build_price_kline_qfq_tushare.py 已改自算
+    (services.adjust_factor 从 canonical.pre_close 推 ratio), 不再 JOIN 本表, 它不再是
+    任何 derive 的输入; 表也冻结在 20260828。
+
+    role **没变**, 仍是 compatibility。legacy_raw_plane.yaml 顶注对 ssot 的定义是
+    「production still treats this raw table as truth」—— 换源后生产恰恰不再拿它当真相,
+    把它升成 ssot 是把方向弄反了 (本轮实际发生过这个误判, 连带 5 个计数断言与
+    check_foundation_done 的墙计数一起转红, 是它们把方向错误顶了回来)。
+
+    publication_surface 保留且比换源前更成立: 复权因子现在由
+    price_kline_qfq_tushare.hfq_factor 列发布, 本表降为该事实的历史副本, 只被自检/对账
+    读取 —— 那是读「供应商当年的说法」, 不是读真相。
+    """
 
     mod = _load_check_mod()
     inv = mod._load_yaml(mod.INVENTORY_YAML)
     meta = inv["tables"]["raw_tushare_adj_factor"]
     assert meta["role"] == "compatibility"
-    assert meta.get("kind") == "derive_input"
+    assert meta.get("kind") == "sync_orphan"
     assert meta.get("publication_surface") == "price_kline_qfq_tushare"
+
+    da = mod._load_yaml(mod.DATA_ACCESS_YAML)
+    entity_tables = {v.get("table") for v in (da.get("entities") or {}).values() if isinstance(v, dict)}
+    assert "raw_tushare_adj_factor" not in entity_tables
 
 
 def test_s7_gate_allows_membership_compat_with_publication_surface(
