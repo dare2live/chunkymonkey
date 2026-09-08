@@ -336,6 +336,28 @@ runtime_checks:
       (grain 声明不足或 MERGE 幂等破坏; 批内去重会把它升级成静默销毁)
     skip_when_dry: true
 
+  - id: db_invariants
+    # S4 (2026-09-08): 12 条 SQL-only 数据不变量 (bloat×5 / calendar 忠实投影 / holders
+    # 日期格式 / qfq 血统戳+因子当下性 / nominal 供货商裁决集 / org+holders 指针↔分区)。
+    # runtime-native, 不承接自任何 commit_gates 条目 (与 cutover_effective 同,
+    # from_gate: null)。三态退出码 (0 全 PASS / 1 有 FAIL / 3 无 FAIL 但有 UNVERIFIED)
+    # 由 backend/scripts/check_db_invariants.py 自身保证; run_runtime_checks 只看
+    # exit!=0 记 status=fail, 但把原始 exit 码存进 rows[].exit, 区分度不丢
+    # (governance_gates.py:run_runtime_checks)。详见
+    # backend/config/db_invariants.yaml 顶注 + 每条 why/fix/kill_when。
+    from_gate: null
+    script: backend/scripts/check_db_invariants.py
+    args:
+      - "--alert-flag"
+      - "/tmp/chunkymonkey_ALERT_db_invariants.flag"
+      - "--json-out"
+      - "data/audit/db_invariants_{date}.json"
+    degraded_msg: >-
+      system_health db_invariants 非 PASS — 某条数据不变量 FAIL(exit 1) 或
+      UNVERIFIED(exit 3: 库不可达/表缺/空对账/NULL), 两者都不是 PASS; 逐条状态见
+      data/audit/db_invariants_{date}.json + ALERT_db_invariants.flag
+    skip_when_dry: false
+
   - id: foundation_live
     from_gate: null
     script: backend/scripts/check_foundation_done.py

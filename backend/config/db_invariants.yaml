@@ -1,0 +1,383 @@
+# db_invariants.yaml — DuckDB 只读数据不变量登记表 (S4, 2026-09-08)
+#
+# 唯一真相源: /private/tmp/.../fable_s4_db_invariants.md (§0-§7)。本文件只描述
+# 「查什么、比什么」——不描述"怎么跑"(连接/超时/退出码在 backend/scripts/check_db_invariants.py)。
+# 执行顺序 = 本文件条目顺序 (各条独立, 无依赖, 随便排)。
+#
+# 每条键集合必须恰等于 {id, db, attach, invariant, sql, op, expect, allow_empty, why, fix,
+# kill_when} (attach 允许省略, 省略等价于 {})；出现 kind/type/callable/script/timeout/
+# depends_on 任一键 = plugin bus (CLAUDE.md 红线 11), 加载期直接报错。
+#
+# sql 必须恰返回两列 checked, value (运行时按列名校验, 不看顺序):
+#   checked = 这次真比对了多少对象 (行/分区/批次/块); ==0 且 allow_empty:false → UNVERIFIED
+#   value   = 用来跟 expect 比的量; IS NULL → UNVERIFIED
+# 三态: PASS / FAIL / UNVERIFIED (查不了本身不算过, 见 backend/scripts/check_db_invariants.py 顶注)。
+
+version: 1
+
+invariants:
+  # ── 1-5: 五个业务库死块占比 (DELETE/UPDATE 后没 compact 的膨胀; reference 只 33 块,
+  # 比值对小库无意义, 不收——与 moth 原 5 条 bloat 一致范围) ──────────────────────────
+  - id: bloat_ratio_smartmoney
+    db: smartmoney
+    attach: {}
+    invariant: >-
+      smartmoney.duckdb 的 pragma_database_size() free_blocks/total_blocks 死块占比
+      低于 10% (运维阈值, 非当前实测值)
+    sql: |
+      SELECT total_blocks AS checked,
+             ROUND(100.0 * free_blocks / NULLIF(total_blocks, 0), 4) AS value
+        FROM pragma_database_size()
+       WHERE database_name = current_database()
+    op: "<"
+    expect: 10
+    allow_empty: false
+    why: >-
+      08-26 qfq 全表 UPDATE 曾把 market 打到 ~25% free_blocks (claims.yaml 注释); 10% 是
+      事故量级不是日常噪音——smartmoney 正常在 0.03%~5% 波动, 离阈值一个数量级, 只在
+      "没做 compact" 这一个动作上红。与 duckdb_compact.COMPACT_FREE_PCT=10.0
+      (backend/services/duckdb_compact.py:18, feature_store 自动 compact 触发线) 是
+      两个语义 (告警线 vs 触发线), 不合并。
+    fix: "PYTHONPATH=backend python backend/scripts/db_compact.py --db smartmoney --execute"
+    kill_when: "smartmoney 拆库/退役时随库一起删"
+
+  - id: bloat_ratio_market
+    db: market
+    attach: {}
+    invariant: >-
+      market.duckdb 的 pragma_database_size() free_blocks/total_blocks 死块占比
+      低于 10%
+    sql: |
+      SELECT total_blocks AS checked,
+             ROUND(100.0 * free_blocks / NULLIF(total_blocks, 0), 4) AS value
+        FROM pragma_database_size()
+       WHERE database_name = current_database()
+    op: "<"
+    expect: 10
+    allow_empty: false
+    why: "同 bloat_ratio_smartmoney——本库正是 08-26 那次全表 UPDATE 事故的受害库。"
+    fix: "PYTHONPATH=backend python backend/scripts/db_compact.py --db market --execute"
+    kill_when: "market 拆库/退役时随库一起删"
+
+  - id: bloat_ratio_org_holding
+    db: org_holding
+    attach: {}
+    invariant: >-
+      org_holding.duckdb 的 pragma_database_size() free_blocks/total_blocks 死块占比
+      低于 10%
+    sql: |
+      SELECT total_blocks AS checked,
+             ROUND(100.0 * free_blocks / NULLIF(total_blocks, 0), 4) AS value
+        FROM pragma_database_size()
+       WHERE database_name = current_database()
+    op: "<"
+    expect: 10
+    allow_empty: false
+    why: "同 bloat_ratio_smartmoney; 事故量级阈值, 非日常噪音。"
+    fix: "PYTHONPATH=backend python backend/scripts/db_compact.py --db org_holding --execute"
+    kill_when: "org_holding 拆库/退役时随库一起删"
+
+  - id: bloat_ratio_feature_store
+    db: feature_store
+    attach: {}
+    invariant: >-
+      feature_store.duckdb 的 pragma_database_size() free_blocks/total_blocks 死块占比
+      低于 10%
+    sql: |
+      SELECT total_blocks AS checked,
+             ROUND(100.0 * free_blocks / NULLIF(total_blocks, 0), 4) AS value
+        FROM pragma_database_size()
+       WHERE database_name = current_database()
+    op: "<"
+    expect: 10
+    allow_empty: false
+    why: "同 bloat_ratio_smartmoney; feature_store 已有独立自动 compact 触发线, 本条是告警线。"
+    fix: "PYTHONPATH=backend python backend/scripts/db_compact.py --db feature_store --execute"
+    kill_when: "feature_store 拆库/退役时随库一起删"
+
+  - id: bloat_ratio_tushare_raw
+    db: tushare_raw
+    attach: {}
+    invariant: >-
+      tushare_raw.duckdb 的 pragma_database_size() free_blocks/total_blocks 死块占比
+      低于 25% (写面库, compact 不进日常, 阈值沿用 moth 原值)
+    sql: |
+      SELECT total_blocks AS checked,
+             ROUND(100.0 * free_blocks / NULLIF(total_blocks, 0), 4) AS value
+        FROM pragma_database_size()
+       WHERE database_name = current_database()
+    op: "<"
+    expect: 25
+    allow_empty: false
+    why: >-
+      tushare_raw 是逐日新增写面 (raw_tushare_* 全量镜像), compact 不进日常节奏,
+      沿用 moth 原 25% 阈值而非其余库的 10%。
+    fix: "PYTHONPATH=backend python backend/scripts/db_compact.py --db tushare_raw --execute"
+    kill_when: "tushare_raw 拆库/退役时随库一起删"
+
+  # ── 6: 日历 serve 投影对 accepted 真相面的忠实性 (替换 moth calendar-floor 等值钉) ──
+  - id: calendar_projection_faithful
+    db: reference
+    attach:
+      tr: tushare_raw
+    invariant: >-
+      dim_trading_calendar(is_trading=1) 与 tushare_raw 最新 accepted 代际
+      (canonical_sse_trading_calendar_generation, exchange=SSE, is_open=1, 从 dim 现有
+      floor 起) 的交易日集合对称差为 0——dim 是 canonical 的忠实投影, 不回退/不漂移。
+      accepted 指针缺失时 value 显式为 NULL (UNVERIFIED, 不是"当前无回退所以 PASS")。
+    sql: |
+      WITH gen AS (
+        SELECT batch_id
+          FROM tr.accepted_partition
+         WHERE dataset_id = 'tier0.reference.sse_trading_calendar_generation'
+         ORDER BY accepted_at DESC LIMIT 1
+      ),
+      dim AS (
+        SELECT trade_date AS d FROM dim_trading_calendar WHERE is_trading = 1
+      ),
+      floor_cte AS (
+        SELECT COALESCE(MIN(d), '') AS f FROM dim
+      ),
+      canonical_open AS (
+        SELECT DISTINCT CAST(c.cal_date AS VARCHAR) AS c
+          FROM tr.canonical_sse_trading_calendar_generation c
+          JOIN gen ON c.generation_id = gen.batch_id
+         WHERE c.exchange = 'SSE' AND c.is_open = 1
+      ),
+      canonical_from_floor AS (
+        SELECT c FROM canonical_open, floor_cte WHERE c >= floor_cte.f
+      ),
+      diff AS (
+        SELECT COUNT(*) AS n
+          FROM dim FULL OUTER JOIN canonical_from_floor ON dim.d = canonical_from_floor.c
+         WHERE dim.d IS NULL OR canonical_from_floor.c IS NULL
+      )
+      SELECT (SELECT COUNT(*) FROM dim) AS checked,
+             CASE WHEN (SELECT COUNT(*) FROM gen) = 0 THEN NULL
+                  ELSE (SELECT n FROM diff) END AS value
+    op: "=="
+    expect: 0
+    allow_empty: false
+    why: >-
+      原 moth calendar-floor 钉 min=='2005-01-04' 是把运行时测量值钉成常量; 回退管道
+      (2023 年那次 clamp 走的 raw_tushare_trade_cal 中间层) 已删, calendar_builder.py
+      现在只从 accepted 代际增量构建。真问题是"dim 是不是 canonical 的忠实投影"——
+      canonical 修订 open→closed 而 dim 没删、或有人手改 dim 都会被本条抓到, 静默方向
+      是"真交易日不在 dim"(该日起所有 by_trade_date 域漏拉, continuity 也用 dim 判
+      expected, 永远不报)。
+    fix: >-
+      PYTHONPATH=backend python -c
+      "from services.calendar_builder import build_latest; print(build_latest())"
+      (增量补洞/向未来延伸; accepted 修订 open→closed 时会自动删除对应 dim 日)
+    kill_when: "calendar_builder 改为直接消费视图不再落 dim_trading_calendar 时删"
+
+  # ── 7: holders 日期键单一格式 (收紧 moth holder-report-date-single-format) ──────────
+  - id: holders_dates_compact
+    db: smartmoney
+    attach: {}
+    invariant: >-
+      canonical_top10_float_holders_period 的 report_date/notice_date 均为
+      YYYYMMDD 八位数字 (不含 '-'/'/' 或其它分隔符/空格)——双真相源回潮的指纹
+    sql: |
+      SELECT count(*) AS checked,
+             count(*) FILTER (
+               WHERE NOT regexp_matches(report_date, '^[0-9]{8}$')
+                  OR NOT regexp_matches(notice_date, '^[0-9]{8}$')
+             ) AS value
+        FROM canonical_top10_float_holders_period
+    op: "=="
+    expect: 0
+    allow_empty: false
+    why: >-
+      原 moth 判据只问"含不含 '-'"——'2024/03/31'、'2024331'、带空格都能放行。改问
+      regexp 全字符匹配, 且把 2026-09-08 进 GRAIN 的 notice_date (分区键+身份的一部分)
+      一并纳入, 不只查 report_date。格式不由 DDL 强制 (列是 VARCHAR), 不是鲨鱼报告。
+    fix: >-
+      定位违规行 (SELECT * FROM canonical_top10_float_holders_period WHERE NOT
+      regexp_matches(report_date,'^[0-9]{8}$') OR NOT
+      regexp_matches(notice_date,'^[0-9]{8}$')), 按其 notice_date 分区重新走
+      services.data_sources.holders_top10_acceptance 的 land→accept; 无自动修复脚本。
+    kill_when: "report_date/notice_date 改用 DATE 类型物理约束格式时删"
+
+  # ── 8: qfq 血统戳三列非空 (承接 F4-live) ────────────────────────────────────────
+  - id: qfq_lineage_stamped
+    db: market
+    attach: {}
+    invariant: >-
+      price_kline_qfq_tushare 每行 batch_id/ingested_at/factor_as_of 三列均非空——
+      消费者能钉重建快照, 增量重建能识别旧行
+    sql: |
+      SELECT count(*) AS checked,
+             count(*) FILTER (
+               WHERE batch_id IS NULL OR ingested_at IS NULL OR factor_as_of IS NULL
+             ) AS value
+        FROM price_kline_qfq_tushare
+    op: "=="
+    expect: 0
+    allow_empty: false
+    why: >-
+      根治形态其实是 DDL NOT NULL (market_schema.py:60-62 现在可空)——三列 SET NOT NULL
+      落地后本条直接删 (见 kill_when)。在那之前, 缺戳的行既钉不了重建快照也让增量
+      重建认不出旧行, 留本条兜底。
+    fix: >-
+      PYTHONPATH=backend python backend/scripts/build_price_kline_qfq_tushare.py --full
+      (DROP+CTAS 全量重建, 三列由建表逻辑统一重写)
+    kill_when: "price_kline_qfq_tushare.batch_id/ingested_at/factor_as_of 三列 SET NOT NULL 落地即删"
+
+  # ── 9: qfq 用的复权因子与该股 adj_factor 最新值一致 (新收——批3"factor_as_of>=最近
+  # 除权日"是错的问法, 见下方 why) ─────────────────────────────────────────────────
+  - id: qfq_factor_current
+    db: market
+    attach:
+      tr: tushare_raw
+    invariant: >-
+      对 price_kline_qfq_tushare 里每只股, 其 factor_as_of 当日在
+      raw_tushare_adj_factor 里查到的 adj_factor 值, 必须等于该股 adj_factor 全历史
+      最新一条 (max trade_date) 的值——比值不比日期, builder 只在值漂移时才重算整只股
+      (build_price_kline_qfq_tushare.py:239-244), 按日期比会对"值没变只是日期滞后"的
+      正常情况天天误报。adj_factor 完全查不到该股时同样判违规 (不能因为查不到就放行)。
+    sql: |
+      WITH qfq_code AS (
+        SELECT code, MAX(factor_as_of) AS factor_as_of
+          FROM price_kline_qfq_tushare
+         GROUP BY code
+      ),
+      used AS (
+        SELECT qc.code,
+               (SELECT a.adj_factor FROM tr.raw_tushare_adj_factor a
+                 WHERE substr(a.ts_code, 1, 6) = qc.code
+                   AND a.trade_date = replace(qc.factor_as_of, '-', '')
+                 LIMIT 1) AS used_factor
+          FROM qfq_code qc
+      ),
+      latest AS (
+        SELECT code, adj_factor AS latest_factor FROM (
+          SELECT substr(ts_code, 1, 6) AS code, adj_factor,
+                 ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) AS rn
+            FROM tr.raw_tushare_adj_factor
+        ) WHERE rn = 1
+      )
+      SELECT (SELECT COUNT(*) FROM qfq_code) AS checked,
+             (SELECT COUNT(*) FROM used u
+                LEFT JOIN latest l ON l.code = u.code
+               WHERE l.latest_factor IS NULL
+                  OR u.used_factor IS DISTINCT FROM l.latest_factor) AS value
+    op: "=="
+    expect: 0
+    allow_empty: false
+    why: >-
+      这是"复权价从除权日起开始错"的直接判据。执行计划里"factor_as_of >= 最近除权日"
+      是错的问法——实测 14 只股 factor_as_of 停在旧日期而 adj_factor 有更新的日期,
+      但因子值全等 (builder 只在值变时重算整只股), 按日期比会天天误报这 14 条。
+      边界诚实写明: adj_factor 表整体冻结时本条仍绿 (两边一起冻), 它守的是"qfq 用了
+      我们手里的最新因子"不是"手里的因子是真相"; 后者由 continuity 的
+      calendar_gaps(adj_factor) 报——除非 adj_factor 被 tushare_sunset.yaml 判
+      freeze/继续 replace 到 tdxhub 后 continuity 转 observe_*, 届时本条与 09-10 后的
+      新一手源要同步改表名, 否则会锁死昨天的真相 (与 market_schema.py 里 qfq-lineage
+      -guard 注释同一条提醒)。
+    fix: >-
+      PYTHONPATH=backend python backend/scripts/build_price_kline_qfq_tushare.py --full
+      (强制全量重建, 按最新 adj_factor 值重新计算所有股票的 factor_as_of)
+    kill_when: >-
+      adj_factor 一手源从 raw_tushare_adj_factor 切换到 tdxhub xdxr 且
+      build_price_kline_qfq_tushare.py 的 JOIN 目标同步改表名后, 本条 tr. 表名跟着改
+      (改不到就是表不存在 → UNVERIFIED, 不会静默绿); 该域一旦 freeze 则本条与
+      continuity 的 adj_factor 检测一起重新评审是否继续有意义。
+
+  # ── 10: nominal 日 K ACCEPTED 批次供货商都在裁决允许集内 (moth qfq-lineage-guard 的
+  # DB 半边) ─────────────────────────────────────────────────────────────────────
+  - id: nominal_ohlcv_accepted_sources
+    db: tushare_raw
+    attach: {}
+    invariant: >-
+      ingest_batch 里 dataset_id=tier0.market_data.nominal_ohlcv_daily 且
+      status=ACCEPTED 的批次, source_name 必须 ∈ {tushare, tdxhub} (裁决允许集,
+      R3 与 tushare_sunset.yaml domains.daily.replacement 锁链)——全历史不设窗
+      (2026-09-01 已论证去窗零成本)
+    sql: |
+      SELECT COUNT(*) AS checked,
+             COUNT(*) FILTER (WHERE source_name NOT IN ('tushare', 'tdxhub')) AS value
+        FROM ingest_batch
+       WHERE dataset_id = 'tier0.market_data.nominal_ohlcv_daily' AND status = 'ACCEPTED'
+    op: "=="
+    expect: 0
+    allow_empty: false
+    why: >-
+      守的是"有没有裁决外的 adapter 被接进来"，不是"adapter 诚实"——source_name 是
+      writer 自报的标签，本条看不穿冒名。tushare 是历史 2,020 批 (永久合法)；tdxhub
+      是 tushare_sunset.yaml domains.daily 裁决 replace 后的替代源 (must_by
+      2026-09-10, 2026-09-01 已 done)。静态半边 (build 脚本 JOIN 图解析) 按方案进
+      test_build_price_kline_qfq_tushare.py, 不在本表。
+    fix: >-
+      定位该 batch_id 对应 source_name 的写入路径
+      (services.data_sources.nominal_ohlcv_acceptance), 核实是否为已裁决替代源之外
+      误接入的 adapter; 若确认误接入需先诊断影响面再决定 reject/重跑, 无自动修复脚本。
+    kill_when: "tushare_sunset.yaml domains.daily 再次裁决新替代源时, 本条允许集同步改"
+
+  # ── 11-12: accepted_partition 指针 row_count 与 canonical 当前内容集合相等 (F6-live
+  # 只收 row_count 半边; content_hash 半边今天 1,157/1,157 不等且今天没有任何读者校验它,
+  # 不收——见 §3.11) ────────────────────────────────────────────────────────────────
+  - id: org_pointer_rowcount_matches_canonical
+    db: org_holding
+    attach: {}
+    invariant: >-
+      accepted_partition 每个 org 指针的 row_count == canonical 该 available_date
+      分区当前行数, 且两边分区集合相等 (指针不撒谎, 描述的是整个分区不是最后一批)
+    sql: |
+      WITH ptr AS (SELECT replace(CAST(partition_value AS VARCHAR), '-', '') pv, row_count
+                     FROM accepted_partition
+                    WHERE dataset_id = 'tier0.disclosure.org_holding_detail_period'),
+           can AS (SELECT replace(CAST(available_date AS VARCHAR), '-', '') pv, count(*) n
+                     FROM canonical_org_holding_detail_period GROUP BY 1)
+      SELECT (SELECT count(*) FROM ptr) AS checked,
+             count(*) FILTER (WHERE p.pv IS NULL OR c.pv IS NULL OR p.row_count <> c.n) AS value
+        FROM ptr p FULL OUTER JOIN can c USING (pv)
+    op: "=="
+    expect: 0
+    allow_empty: false
+    why: >-
+      07-27 (9a02683e5) 真事故: 22 分区里 8 个指针只描述最后一批。这问的是"指针 vs
+      现在的表"(受害时刻)，不是"指针 vs 当时的批次"(09-02 已明确否决)。聚合量相等能
+      被"少一分区多一分区"掩盖, 所以用 FULL OUTER JOIN 逐分区比, 不是比总和。
+      content_hash 半边 (今天用 writer 自己的函数现算, 1,157/1,157 不等) 不收:
+      需要 Python 现算属 R4 红线, 且今天全仓 grep 无任何读者校验 org 的
+      content_hash——真正该装的位置是未来那个读者(装在受害时刻), 不是日更。
+    fix: >-
+      PYTHONPATH=backend python -c
+      "from services.org_holding_aif10 import refresh_org_holding_partition_pointers as f; print(f(...))"
+      (对不上的 available_date 分区重算 row_count/content_hash 后 UPDATE 指针)
+    kill_when: "org canonical 改为按指针原子发布 (指针与分区同事务写) 时删"
+
+  - id: holders_pointer_rowcount_matches_canonical
+    db: smartmoney
+    attach: {}
+    invariant: >-
+      accepted_partition 每个 holders 指针的 row_count == canonical 该 notice_date
+      分区当前行数, 且两边分区集合相等
+    sql: |
+      WITH ptr AS (SELECT replace(CAST(partition_value AS VARCHAR), '-', '') pv, row_count
+                     FROM accepted_partition
+                    WHERE dataset_id = 'tier0.disclosure.top10_float_holders_period'),
+           can AS (SELECT replace(CAST(notice_date AS VARCHAR), '-', '') pv, count(*) n
+                     FROM canonical_top10_float_holders_period GROUP BY 1)
+      SELECT (SELECT count(*) FROM ptr) AS checked,
+             count(*) FILTER (WHERE p.pv IS NULL OR c.pv IS NULL OR p.row_count <> c.n) AS value
+        FROM ptr p FULL OUTER JOIN can c USING (pv)
+    op: "=="
+    expect: 0
+    allow_empty: false
+    why: >-
+      与 org_pointer_rowcount_matches_canonical 同形, 分区键换成 notice_date。holders
+      是主线正在动的表 (按股回填、2026-09-08 GRAIN 改动)——
+      _partition_pointer_stats (holders_top10_acceptance.py:589) 2026-09-07 才补上
+      "整分区而非本批"语义, 与 org 07-27 事故同型, 它现在没有任何静态门。
+      content_hash 半边同 org 不收——今天 1,992 个指针里 4 个 (07-24 09:26-09:27 盖的)
+      hash 已过期, 09-08 回填重盖了 1,988 个仍漏 4 个, 但仍是需要 Python 现算才能查的
+      东西 (R4 红线), 且暂无消费方读它。
+    fix: >-
+      定位对不上的 notice_date 分区, 照
+      disclosure_event_partition.partition_accepted_pointer_stats 的算法现算
+      row_count/content_hash 后 UPDATE accepted_partition 对应行 (holders 暂无独立
+      公开的一键重盖脚本, 参照 org_holding_aif10.refresh_org_holding_partition_pointers
+      的写法手写等价 UPDATE, 或走一次该 notice_date 分区的重新 land→accept)。
+    kill_when: "holders canonical 改为按指针原子发布 (指针与分区同事务写) 时删"

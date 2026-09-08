@@ -1003,6 +1003,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/db_invariants.yaml",
+      "kind": "consume",
+      "src": "table:market.price_kline_qfq_tushare"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/field_dictionary.yaml",
       "kind": "consume",
       "src": "table:market.price_kline_qfq_tushare"
@@ -1112,6 +1118,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/technical_states/__init__.py",
+      "kind": "consume",
+      "src": "table:market.price_kline_qfq_tushare"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_db_invariants.py",
       "kind": "consume",
       "src": "table:market.price_kline_qfq_tushare"
     },
@@ -1376,6 +1388,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/database_manifest.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/db_invariants.yaml",
       "kind": "consume",
       "src": "table:org_holding.accepted_partition"
     },
@@ -1675,6 +1693,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_db_invariants.py",
+      "kind": "consume",
+      "src": "table:org_holding.accepted_partition"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_check_frozen_stamp_compare.py",
       "kind": "consume",
       "src": "table:org_holding.accepted_partition"
@@ -1879,6 +1903,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/db_invariants.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.canonical_org_holding_detail_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/data_sources/org_holding_schema.py",
       "kind": "consume",
       "src": "table:org_holding.canonical_org_holding_detail_period"
@@ -1892,6 +1922,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/institution_profile.py",
+      "kind": "consume",
+      "src": "table:org_holding.canonical_org_holding_detail_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_db_invariants.py",
       "kind": "consume",
       "src": "table:org_holding.canonical_org_holding_detail_period"
     },
@@ -1922,6 +1958,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/database_manifest.yaml",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/db_invariants.yaml",
       "kind": "consume",
       "src": "table:org_holding.ingest_batch"
     },
@@ -2024,6 +2066,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_check_contract_stamp_consistency.py",
+      "kind": "consume",
+      "src": "table:org_holding.ingest_batch"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_db_invariants.py",
       "kind": "consume",
       "src": "table:org_holding.ingest_batch"
     },
@@ -2467,6 +2515,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/db_invariants.yaml",
+      "kind": "consume",
+      "src": "table:reference.dim_trading_calendar"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/residual_hygiene.yaml",
       "kind": "consume",
       "src": "table:reference.dim_trading_calendar"
@@ -2593,6 +2647,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_db_invariants.py",
+      "kind": "consume",
+      "src": "table:reference.dim_trading_calendar"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_calendar_frozen_landing_stamp.py",
       "kind": "consume",
       "src": "table:reference.dim_trading_calendar"
@@ -2714,6 +2774,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/db_invariants.yaml",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
     },
@@ -2924,6 +2990,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/services/strategy_spec.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_db_invariants.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
     },
@@ -5767,6 +5839,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/db_invariants.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_adj_factor"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_adj_factor"
@@ -5816,6 +5894,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/scripts/test_build_price_kline_qfq_tushare.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_adj_factor"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/scripts/test_check_db_invariants.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_adj_factor"
     },
@@ -8119,6 +8203,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/db_invariants.yaml",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_trade_cal"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/config/legacy_raw_plane.yaml",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_trade_cal"
@@ -9283,9 +9373,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1502,
-    "generated_at": "2026-09-08T01:41:28.225507+00:00",
-    "node_count": 533,
+    "edge_count": 1517,
+    "generated_at": "2026-09-08T04:45:51.159578+00:00",
+    "node_count": 535,
     "version": 2
   },
   "nodes": [
@@ -9359,6 +9449,14 @@
         "path": "backend/config/database_manifest.yaml"
       },
       "id": "consumer:backend/config/database_manifest.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/db_invariants.yaml"
+      },
+      "id": "consumer:backend/config/db_invariants.yaml",
       "kind": "consumer"
     },
     {
@@ -11191,6 +11289,14 @@
         "path": "backend/tests/scripts/test_check_contract_stamp_consistency.py"
       },
       "id": "consumer:backend/tests/scripts/test_check_contract_stamp_consistency.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/scripts/test_check_db_invariants.py"
+      },
+      "id": "consumer:backend/tests/scripts/test_check_db_invariants.py",
       "kind": "consumer"
     },
     {
