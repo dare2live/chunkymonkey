@@ -26,7 +26,11 @@ presets:
 
 entities:
   - match: regex
-    pattern: '^.+-自有资金(\([^)]+\))?$'
+    # 2026-09-08 破折号放宽 [-–—]: 实测 canonical 里 133 个含"自有资金"的名字中,
+    # 华泰金融控股(香港)有限公司–自有资金 用的是 en-dash(–) 而非连字符, 现行正则漏掉它
+    # (1 行)。放宽是忠实修补不是放松: 合伙企业那 41 个(宁波中煜自有资金投资合伙企业 等)
+    # 放宽后**仍然不匹配**, 因为它们没有"-自有资金"这个后缀形式 —— 顶注声明的排除完好。
+    pattern: '^.+[-–—]自有资金(\([^)]+\))?$'
     tag: own_funds_account
     evidence:
       - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm
@@ -37,7 +41,7 @@ entities:
     evidence:
       - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm
   - match: regex
-    pattern: '^.+-客户资金.*$'
+    pattern: '^.+[-–—]客户资金.*$'
     tag: client_funds_account
     evidence:
       - https://www.gov.cn/zhengce/2016-03/28/content_5059134.htm

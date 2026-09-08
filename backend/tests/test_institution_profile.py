@@ -145,7 +145,14 @@ def _sql_conn():
         row_seq INTEGER, holder_name TEXT, hold_ratio_float DOUBLE, notice_date TEXT,
         is_exit_row BOOLEAN, holder_name_norm TEXT, share_class TEXT,
         shares_approx BIGINT, change_status TEXT, hold_change_num DOUBLE,
-        holder_type TEXT);
+        holder_type TEXT,
+        -- 2026-09-08 Step 4: 身份三桶的输入列
+        holder_code TEXT, is_holder_org BOOLEAN);
+    -- 自然人白名单 (牛散名录)。build_episodes 对它 fail closed: 缺表即拒绝继续,
+    -- 所以 fixture 必须显式给出 —— "还没建名录"与"名录里没有这个人"是两件事。
+    CREATE TABLE sm.dim_holder_name_tag (
+        holder_name TEXT, tag TEXT, known_from TEXT,
+        identity_confidence TEXT, identity_grade TEXT);
     CREATE TABLE period_windows (
         stock_code TEXT, report_date TEXT, prev_period TEXT, w_start TEXT, w_end TEXT,
         c1_vwap DOUBLE, c2_eod DOUBLE, c3_lhb DOUBLE, c3_eff DOUBLE);
@@ -161,18 +168,31 @@ def _sql_conn():
     return c
 
 
-_HOLDER_ROW_N = 15  # 列数与上方 canonical fixture DDL 一致
+# 具名列而非位置: DDL 加列时位置 INSERT 会当场炸 (本轮第三次踩), 物理列顺序不是契约。
+_HOLDER_COLS = (
+    "stock_code", "report_date", "holder_set", "holder_rank", "row_seq", "holder_name",
+    "hold_ratio_float", "notice_date", "is_exit_row", "holder_name_norm", "share_class",
+    "shares_approx", "change_status", "hold_change_num", "holder_type",
+    "holder_code", "is_holder_org",
+)
+_HOLDER_ROW_N = len(_HOLDER_COLS)
+_HOLDER_INSERT = (
+    "INSERT INTO sm.canonical_top10_float_holders_period ("
+    + ", ".join(_HOLDER_COLS) + ") VALUES (" + ",".join("?" * _HOLDER_ROW_N) + ")"
+)
 
 
 def test_build_episodes_filters_non_a_share_class():
     """share_class != 'A' (B/H 股行) 混入 A 股 qfq 价计价 = 价格错配 → 源查询硬滤。"""
     c = _sql_conn()
     try:
-        c.executemany(f"INSERT INTO sm.canonical_top10_float_holders_period VALUES ({','.join('?' * _HOLDER_ROW_N)})", [
-            ("600000", "20240331", "free", 1, 1, "基金一号", 1.0, "20240430", False, "基金一号", "A", 100, "新进", None, "基金"),
-            ("600000", "20240630", "free", 1, 1, "基金一号", 1.0, "20240730", True, "基金一号", "A", 100, "退出", -100, "基金"),
-            ("600000", "20240331", "free", 2, 1, "港资股东", 1.0, "20240430", False, "港资股东", "H", 50, "新进", None, "QFII"),
-            ("600000", "20240331", "free", 3, 1, "B股东", 1.0, "20240430", False, "B股东", "B", 50, "新进", None, "法人"),
+        c.execute("INSERT INTO sm.dim_holder_name_tag VALUES "
+                  "('章建平','niusan','20260820','no_evidence_either_way','name_only_untrusted')")
+        c.executemany(_HOLDER_INSERT, [
+            ("600000", "20240331", "free", 1, 1, "基金一号", 1.0, "20240430", False, "基金一号", "A", 100, "新进", None, "基金", "C1", True),
+            ("600000", "20240630", "free", 1, 1, "基金一号", 1.0, "20240730", True, "基金一号", "A", 100, "退出", -100, "基金", "C1", True),
+            ("600000", "20240331", "free", 2, 1, "港资股东", 1.0, "20240430", False, "港资股东", "H", 50, "新进", None, "QFII", "C2", True),
+            ("600000", "20240331", "free", 3, 1, "B股东", 1.0, "20240430", False, "B股东", "B", 50, "新进", None, "法人", "C3", True),
         ])
         build_episodes(c)
         holders = {r[0] for r in c.execute("SELECT DISTINCT holder FROM fact_inst_episode").fetchall()}
@@ -188,9 +208,14 @@ def test_build_episodes_dedups_source_duplicate_keys():
     修前双行双计 → 修2c 语义下第二行还会 supersede 出 2 个 episode。"""
     c = _sql_conn()
     try:
-        c.executemany(f"INSERT INTO sm.canonical_top10_float_holders_period VALUES ({','.join('?' * _HOLDER_ROW_N)})", [
-            ("600000", "20240331", "free", 5, 1, "基金二号", 1.0, "20240430", False, "基金二号", "A", 100, "新进", None, "基金"),
-            ("600000", "20240331", "free", 6, 1, "基金二号", 1.0, "20240430", False, "基金二号", "A", 999, "新进", None, "基金"),
+        c.execute("INSERT INTO sm.dim_holder_name_tag VALUES "
+                  "('章建平','niusan','20260820','no_evidence_either_way','name_only_untrusted')")
+        c.executemany(_HOLDER_INSERT, [
+            # 同一持有人的重复行必须给**同一个 holder_code** —— 去重的前提就是它们是同一身份。
+            # (2026-09-08 补这两列时先按 rank 给了 C5/C6, 于是两行成了两个身份、去不掉重,
+            #  测试当场抓住。这正是它该抓的: 身份键错了, 去重就失效。)
+            ("600000", "20240331", "free", 5, 1, "基金二号", 1.0, "20240430", False, "基金二号", "A", 100, "新进", None, "基金", "C5", True),
+            ("600000", "20240331", "free", 6, 1, "基金二号", 1.0, "20240430", False, "基金二号", "A", 999, "新进", None, "基金", "C5", True),
         ])
         build_episodes(c)
         rows = c.execute("SELECT status, shares FROM fact_inst_episode WHERE holder = '基金二号'").fetchall()
@@ -213,32 +238,40 @@ def test_build_profiles_includes_holding_only_and_keeps_metrics_null():
                 holder VARCHAR, stock VARCHAR, holder_type VARCHAR,
                 open_date VARCHAR, close_date VARCHAR, status VARCHAR,
                 seeded BOOLEAN, is_passive BOOLEAN,
-                ret_c1 DOUBLE, alpha_c1 DOUBLE, sw_l1_at_open VARCHAR
+                ret_c1 DOUBLE, alpha_c1 DOUBLE, sw_l1_at_open VARCHAR,
+                -- 2026-09-08 Step 4: 档案按 identity_key 聚而非按显示名 ——
+                -- 同名不同身份按名字聚会被合成一个档案, 正是换键要消灭的。
+                identity_key VARCHAR, identity_kind VARCHAR, identity_grade VARCHAR
             )
         """)
         c.executemany(
-            "INSERT INTO fact_inst_episode VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO fact_inst_episode "
+            "(holder, stock, holder_type, open_date, close_date, status, seeded, "
+            " is_passive, ret_c1, alpha_c1, sw_l1_at_open, identity_key) "
+            # identity_key := holder: 本用例测的是"每个 holder 出一行档案", 身份分层不是
+            # 它的被测对象; 用 holder 当 key 保持它原来的语义, 不引入无关的分桶。
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             [
                 # rankable closed ×11 → ranked
                 *[
                     ("牛散A", f"60000{i}", "个人", "20200101", "20200630",
-                     "closed", False, False, 0.1, 0.05, "银行")
+                     "closed", False, False, 0.1, 0.05, "银行", "牛散A")
                     for i in range(11)
                 ],
                 # holding only → display, metrics NULL
                 ("持有中B", "600100", "基金", "20240101", None,
-                 "holding", False, False, None, None, "煤炭"),
+                 "holding", False, False, None, None, "煤炭", "持有中B"),
                 # passive only → display, metrics_status=passive_product
                 ("被动ETF", "600200", "基金", "20240101", "20240630",
-                 "closed", False, True, 0.2, 0.1, "电子"),
+                 "closed", False, True, 0.2, 0.1, "电子", "被动ETF"),
                 # empty name → dropped
                 ("", "600300", "个人", "20240101", None,
-                 "holding", False, False, None, None, None),
+                 "holding", False, False, None, None, None, ""),
                 (None, "600301", "个人", "20240101", None,
-                 "holding", False, False, None, None, None),
+                 "holding", False, False, None, None, None, None),
                 # seeded closed only → no_closed_alpha (not rankable)
                 ("种子C", "600400", "个人", "20200101", "20200630",
-                 "closed", True, False, 0.3, 0.2, "医药"),
+                 "closed", True, False, 0.3, 0.2, "医药", "种子C"),
             ],
         )
         out = build_profiles(c)

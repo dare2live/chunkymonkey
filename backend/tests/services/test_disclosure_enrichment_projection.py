@@ -36,17 +36,25 @@ def test_projection_is_canonical_only() -> None:
                 holder_rank INTEGER, row_seq INTEGER, holder_name VARCHAR,
                 hold_ratio_float DOUBLE, notice_date VARCHAR, is_exit_row BOOLEAN,
                 holder_name_norm VARCHAR, share_class VARCHAR, shares_approx BIGINT,
-                change_status VARCHAR, hold_change_num DOUBLE, holder_type VARCHAR
+                change_status VARCHAR, hold_change_num DOUBLE, holder_type VARCHAR,
+                -- 2026-09-08 Step 4: 身份三桶的输入列
+                holder_code VARCHAR, is_holder_org BOOLEAN
             )
             """
         )
         conn.execute(
             f"""
-            INSERT INTO {CANONICAL_TABLE} VALUES
+            -- 具名列而非位置: DDL 加列时位置 INSERT 会当场炸 (本轮第三次踩),
+            -- 物理列顺序不是契约。
+            INSERT INTO {CANONICAL_TABLE}
+            (stock_code, report_date, holder_set, holder_rank, row_seq, holder_name,
+             hold_ratio_float, notice_date, is_exit_row, holder_name_norm, share_class,
+             shares_approx, change_status, hold_change_num, holder_type,
+             holder_code, is_holder_org) VALUES
             ('600000','20240331','free',1,1,'基金一号',1.0,'20240430',false,
-             '基金一号','A',100,'新进',NULL,'基金'),
+             '基金一号','A',100,'新进',NULL,'基金','C0001',true),
             ('600000','20240630','free',1,1,'基金一号',1.0,'20240730',true,
-             '基金一号','A',100,'退出',-100,'基金')
+             '基金一号','A',100,'退出',-100,'基金','C0001',true)
             """
         )
         sql = holders_episode_events_sql()

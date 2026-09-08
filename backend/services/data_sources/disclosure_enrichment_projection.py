@@ -53,6 +53,12 @@ _EPISODE_FIELDS: tuple[str, ...] = (
     "share_class",
     "holder_rank",
     "row_seq",
+    # 2026-09-08 身份三桶 (Step 4): 单一计算点在 holders_episode_events_sql, 消费方不许自己再判。
+    "holder_code",
+    "is_holder_org",
+    "identity_key",
+    "identity_kind",
+    "identity_grade",
 )
 
 
@@ -149,7 +155,40 @@ def holders_episode_events_sql(
         COALESCE(c.share_class, 'A') AS share_class,
         c.holder_rank AS holder_rank,
         c.row_seq AS row_seq,
-        CAST(NULL AS VARCHAR) AS raw_hash
+        CAST(NULL AS VARCHAR) AS raw_hash,
+        c.holder_code AS holder_code,
+        c.is_holder_org AS is_holder_org,
+        -- ── 身份三桶 (2026-09-08 Step 4) ──────────────────────────────────────────
+        -- 为什么在这里算而不是让消费方各自判: 这是「谁是同一个持有人」的定义, 属单一计算点
+        -- (CLAUDE.md 规则5)。institution_profile 之前用 holder_name_norm 当键 —— 名字不是稳定
+        -- 身份(同实体多写法 / 不同实体同名), 实测 episode 里 124,874 个名字只有 33% 能对上
+        -- dim_holder_identity。
+        --
+        -- 分桶依据是**实测**不是约定:
+        --   有码 829,249 行 -> is_holder_org 恒为 TRUE (0 例外) => 有码即机构, 不需要名字层
+        --   无码 626,147 行 -> is_holder_org=FALSE 620,073 / IS NULL 6,074
+        -- 第三桶(NULL)是 schema v3 之前落的行, 当时没记这一列; 落地层 payload_json 里
+        -- **也没有** IS_HOLDORG(实测 2,518,717 行 0 命中, 它存的是已规范化字段), 所以
+        -- 无法从任何已存证据恢复 —— 只能用供应商自己给的 holder_type 当代理。
+        -- 代理的准确度实测过: 在 1,449,322 行已知身份上, holder_type='个人' 与
+        -- is_holder_org=FALSE 只有 551 行分歧(0.038%)。够用, 但**不假装它同样确定** ——
+        -- identity_grade 把它与前两桶区分开, 消费方要收紧时有得可判(红线 3: 测不出标 unknown)。
+        CASE
+            WHEN c.holder_code IS NOT NULL THEN 'code:' || c.holder_code
+            ELSE 'name:' || COALESCE(c.holder_name_norm, c.holder_name)
+        END AS identity_key,
+        CASE
+            WHEN c.holder_code IS NOT NULL THEN 'institution'
+            WHEN c.is_holder_org THEN 'institution'
+            WHEN c.is_holder_org IS NOT NULL THEN 'person'
+            WHEN c.holder_type = '个人' THEN 'person'
+            ELSE 'institution'
+        END AS identity_kind,
+        CASE
+            WHEN c.holder_code IS NOT NULL THEN 'vendor_code'
+            WHEN c.is_holder_org IS NOT NULL THEN 'vendor_org_flag'
+            ELSE 'holder_type_proxy'
+        END AS identity_grade
     FROM {canon} AS c
     """
 

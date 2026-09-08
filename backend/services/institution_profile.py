@@ -43,6 +43,7 @@ from services.data_sources.disclosure_enrichment_projection import (
     holders_episode_events_sql,
     holders_period_keys_sql,
 )
+from services.holder_capital_role import classify_capital_role
 from services.research_identity import annotate_holder
 from services.data_sources.holders_top10_schema import (
     CANONICAL_TABLE as HOLDERS_CANONICAL,
@@ -251,6 +252,24 @@ _EPISODE_COLS = [
 ]
 
 
+def _load_person_allowlist(con) -> frozenset[str]:
+    """自然人白名单 = dim_holder_name_tag 里在册的名字 (业主拍板的 9 人牛散名录)。
+
+    从**已发布的表**读而不是 import publish 脚本的内嵌名录: 那张表是这条链的 accepted 面,
+    脚本内嵌的是它的生产者。消费生产者 = 绕过 accepted 层(红线 4 依赖只向下)。
+
+    表缺失/为空一律返回空集合让调用方 fail closed —— "还没建名录"与"名录里没有这个人"
+    是两件事, 不许静默退化成"收全部自然人"。
+    """
+    try:
+        rows = con.execute(
+            "SELECT DISTINCT holder_name FROM sm.dim_holder_name_tag WHERE tag = 'niusan'"
+        ).fetchall()
+    except Exception:  # noqa: BLE001 — 表不存在时返回空, 由调用方拒绝继续
+        return frozenset()
+    return frozenset(str(r[0]) for r in rows if r[0])
+
+
 def build_episodes(con) -> dict:
     """事件流 → fact_inst_episode (含 alpha/被动标记/PIT 行业)。"""
     # share_class='A' (2026-07-03 审计修2a): B/H 股行混入 A 股 qfq 价计价 = 价格错配, 硬滤;
@@ -260,19 +279,79 @@ def build_episodes(con) -> dict:
     events = holders_episode_events_sql(
         canonical_qual=f"sm.{HOLDERS_CANONICAL}",
     )
+
+    # ── 资金角色切分 (2026-09-08, 业主点名) ──────────────────────────────────────
+    # 同一个 holder_code 下的「-自有资金」与「-客户资金」是**经济上不同的行为主体**:
+    # 前者是机构自己的判断, 后者是代客。只按码合并会把它们并成一个"机构", 毁掉信号。
+    # 实测: 10088552(华泰金融控股香港) 一个码下同时挂着自有资金 360 行 / 客户资金 93 行 /
+    # 无标注 11 行。全库这样的码只有 1 个 —— 少, 但性质是真的, 且随新数据会再出现。
+    #
+    # 反过来, 排版差异必须合: 10137791(J.P.Morgan) 一个码下 12 种写法, 其中 11 种是自有资金,
+    # 差别是 "Secur ities" / "Securitie s" / "JP.Morgan" 这类错字, 还有 en-dash 与连字符之别。
+    # 所以判据不能是"名字不同就分开", 只能按**资金角色**这一个语义轴分。
+    #
+    # 角色分类走 holder_capital_role.py(读 holder_capital_role.yaml 的 typed 词表 + 政策依据
+    # URL), 不在 SQL 里重写一遍正则 —— 那样 YAML 就不再是单一真相源。
+    role_rows = con.execute(
+        f"SELECT DISTINCT COALESCE(holder_name_norm, holder_name) FROM sm.{HOLDERS_CANONICAL}"
+        " WHERE NOT is_exit_row"
+    ).fetchall()
+    role_pairs = []
+    for (nm,) in role_rows:
+        if not nm:
+            continue
+        tags = classify_capital_role(str(nm)).tags
+        role = next((t for t in ("own_funds_account", "client_funds_account") if t in tags), None)
+        if role:
+            role_pairs.append((str(nm), role))
+    con.execute("CREATE OR REPLACE TABLE _ep_capital_role (holder_name VARCHAR, capital_role VARCHAR)")
+    if role_pairs:
+        con.executemany("INSERT INTO _ep_capital_role VALUES (?, ?)", role_pairs)
+
+    # 有角色的名字, identity_key 追加 '#<role>'; 无角色的原样(不引入 '#none' 这种假区分)。
+    events = f"""
+        SELECT h.* EXCLUDE (identity_key),
+               h.identity_key || COALESCE('#' || r.capital_role, '') AS identity_key
+          FROM ({events}) AS h
+          LEFT JOIN _ep_capital_role r ON r.holder_name = h.holder_name_norm
+    """
+    # ── 身份键 (2026-09-08 Step 4) ────────────────────────────────────────────────
+    # 原来用 holder_name_norm 当键。名字不是稳定身份: 同实体多写法、不同实体同名。
+    # 实测: episode 里 124,874 个名字只有 33% 能对上 dim_holder_identity。
+    # 现在用 identity_key(单一计算点在 holders_episode_events_sql), 并按 kind 分流:
+    #
+    #   institution -> 全收。有码 829,249 行的 42,927 个身份**恰好等于**
+    #                  dim_holder_identity 的行数, 覆盖完整。
+    #   person      -> 只收 dim_holder_name_tag 里在册的名字(业主拍板的 9 人牛散名录)。
+    #                  其余 77,000+ 个自然人是一次性出现、无跟随价值, 收进来只会让
+    #                  "机构档案"名不副实。这会砍掉约 47% 的 episode 行 —— 是有意的。
+    #
+    # 白名单从**已发布的 dim_holder_name_tag 读**, 不 import publish 脚本的内嵌名录:
+    # 那张表是这条链的 accepted 面, 且带 known_from —— PIT 约束(标签只在公开知名之后可用)
+    # 要靠它, 见下面 known_from 的处理。表不存在时 fail closed(不静默退化成"收全部人")。
+    person_allow = _load_person_allowlist(con)
+    if not person_allow:
+        raise ValueError(
+            "dim_holder_name_tag 为空或不存在 —— 自然人白名单是 Step 4 的硬前置, "
+            "缺它就分不清'这个人该进档案'和'我们还没建名录', 拒绝静默收全部自然人"
+        )
+    allow_sql = ", ".join(f"'{n}'" for n in sorted(person_allow))
+
     rows = con.execute(f"""
-        SELECT h.holder_name_norm, h.stock_code, h.report_date, h.change_status, h.is_exit_row,
+        SELECT h.identity_key, h.stock_code, h.report_date, h.change_status, h.is_exit_row,
                h.shares_approx, h.hold_change_num, h.holder_type, h.notice_date,
                w.c1_vwap, w.c2_eod, w.c3_eff
         FROM ({events}) AS h
         JOIN period_windows w ON w.stock_code = h.stock_code AND w.report_date = h.report_date
-        WHERE h.holder_name_norm IS NOT NULL AND length(h.report_date) = 8
+        WHERE h.identity_key IS NOT NULL AND length(h.report_date) = 8
           AND h.share_class = 'A'
+          AND (h.identity_kind = 'institution'
+               OR h.holder_name_norm IN ({allow_sql}))
         QUALIFY ROW_NUMBER() OVER (
-            PARTITION BY h.holder_name_norm, h.stock_code, h.report_date, h.is_exit_row
+            PARTITION BY h.identity_key, h.stock_code, h.report_date, h.is_exit_row
             ORDER BY h.holder_rank NULLS LAST, h.row_seq,
                      COALESCE(h.notice_date, '') DESC, COALESCE(h.raw_hash, '')) = 1
-        ORDER BY h.holder_name_norm, h.stock_code, h.report_date, h.is_exit_row
+        ORDER BY h.identity_key, h.stock_code, h.report_date, h.is_exit_row
     """).fetchall()
     episodes, stats = run_episode_state_machine(rows)
 
@@ -287,29 +366,84 @@ def build_episodes(con) -> dict:
         f"INSERT INTO _ep_raw VALUES ({','.join('?' * len(_EPISODE_COLS))})",
         [[ep.get(c) for c in _EPISODE_COLS] for ep in episodes])
 
+    # 身份维 (2026-09-08 Step 4): identity_key -> (kind, grade, 显示名)。
+    # holder 列现在存的是 identity_key(code:xxx / name:xxx), 不是人可读的名字, 所以
+    # 显示名必须单独带出来 —— 否则前端与被动判定都拿不到名字。
+    # 同一个 identity_key 可能对应多种名字写法(这正是换键要解决的问题), 取最近一次公告的写法
+    # 当 display: 它是"这个身份现在叫什么", 不是历史唯一真名。
+    # 牛散的 PIT 边界与身份置信度 (2026-09-08 Step 4): 做成**数据属性**不做隐藏过滤。
+    # known_from = 该人公开知名之日。这 9 个人是 2026 年从网络调研挑出来的, 挑他们的理由
+    # 恰恰是他们后来出名了 —— 拿他们知名之前的持仓做跟随回测就是"跟随事后被证明做对的人",
+    # 是选择偏差(同 feedback-param-selection-peek)。所以给每段标 niusan_usable_at_open,
+    # 消费方自己决定收不收, 而不是在这里悄悄 WHERE 掉: 悄悄过滤会让"先例不足"看起来像
+    # "没有先例", 两者要能区分。
+    # identity_confidence 同理带出来: 实测徐开东既是唯一 suspected_multiple, 又是身份标志
+    # 未记录(holder_type_proxy)的 —— 两个独立信号都说"不知道这是谁", 默认不该进跟随池。
+    con.execute("""
+    CREATE OR REPLACE TABLE _ep_niusan AS
+    SELECT holder_name, ANY_VALUE(known_from) AS known_from,
+           ANY_VALUE(identity_confidence) AS identity_confidence,
+           ANY_VALUE(identity_grade) AS niusan_identity_grade
+      FROM sm.dim_holder_name_tag WHERE tag = 'niusan' GROUP BY holder_name
+    """)
+
+    con.execute(f"""
+    CREATE OR REPLACE TABLE _ep_identity AS
+    SELECT identity_key,
+           any_value(identity_kind)  AS identity_kind,
+           any_value(identity_grade) AS identity_grade,
+           any_value(holder_name_norm) AS holder_display,
+           COUNT(DISTINCT holder_name_norm) AS n_name_variants
+      FROM ({events}) AS h
+     WHERE h.identity_key IS NOT NULL
+     GROUP BY identity_key
+    """)
+
     # 富化: ret/alpha (closed) + 被动标记 + PIT 行业 (as-of 建仓日)
-    passive_pred = " OR ".join(f"holder LIKE '{p}'" for p in PASSIVE_NAME_PATTERNS)
+    # 被动判定改打在 holder_display 上: PASSIVE_NAME_PATTERNS 是**名字**模式(指数基金/ETF 之类),
+    # 换键后 holder 是 identity_key, 拿它去 LIKE 名字模式会恒为假 —— 静默把所有被动持仓
+    # 判成主动。这一处是换键最容易漏的连带点。
+    passive_pred = " OR ".join(f"i.holder_display LIKE '{p}'" for p in PASSIVE_NAME_PATTERNS)
     con.execute(f"""
     CREATE OR REPLACE TABLE fact_inst_episode AS
     WITH bench AS (
         SELECT trade_date, close FROM {_tr_entity("index_daily")} WHERE ts_code = '000300.SH'
     ), base AS (
-        SELECT *,
-               CASE WHEN status='closed' AND cost_c1 > 0 AND peak_shares > 0
-                    THEN realized_c1 / (cost_c1 * peak_shares) END AS ret_c1,
+        -- identity_key 只做**内部分组**, 对外 holder 仍是显示名。
+        -- 换键的目的是"同一实体的多种写法要聚成一个 episode 序列", 不是"把名字换成码"。
+        -- 实测下游把 holder 当名字用得很深: stock_dossier 路由 / mart_inst_profile /
+        -- 三处 annotate_holder(row['holder'])。把 holder 换成 'code:10671586' 会让整个
+        -- 档案服务面产出垃圾, 而那不是本次要解决的问题。
+        -- 所以: 分组按 identity_key(已在状态机里生效), 输出 holder = 该身份的显示名,
+        -- identity_key/kind/grade 作为新列并存, 想按真身份查的消费方有得可用。
+        SELECT e.* EXCLUDE (holder),
+               i.holder_display AS holder,
+               e.holder         AS identity_key,
+               i.identity_kind, i.identity_grade, i.n_name_variants,
+               n.known_from            AS niusan_known_from,
+               n.identity_confidence   AS niusan_identity_confidence,
+               -- NULL = 不是牛散(机构); TRUE/FALSE = 是牛散且这一段在/不在其知名之后。
+               -- known_from 为空(徐开东)时判 FALSE: 没有起点就没有 PIT 干净的区间。
+               CASE WHEN n.holder_name IS NULL THEN NULL
+                    WHEN n.known_from IS NULL THEN FALSE
+                    ELSE e.open_date >= n.known_from END AS niusan_usable_at_open,
+               CASE WHEN e.status='closed' AND e.cost_c1 > 0 AND e.peak_shares > 0
+                    THEN e.realized_c1 / (e.cost_c1 * e.peak_shares) END AS ret_c1,
                ({passive_pred}) AS is_passive
-        FROM _ep_raw
+        FROM _ep_raw e
+        JOIN _ep_identity i ON i.identity_key = e.holder
+        LEFT JOIN _ep_niusan n ON n.holder_name = i.holder_display
     ), bo AS (
         SELECT b.*, x.close AS bench_open
         FROM base b LEFT JOIN bench x ON x.trade_date <= b.open_date
-        QUALIFY ROW_NUMBER() OVER (PARTITION BY b.holder, b.stock, b.open_date, b.status
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY b.identity_key, b.stock, b.open_date, b.status
                                    ORDER BY x.trade_date DESC) = 1
     ), ba AS (
         SELECT bo.*,
                CASE WHEN bo.status='closed' AND bo.bench_open > 0 AND bo.ret_c1 IS NOT NULL
                     THEN bo.ret_c1 - (x.close / bo.bench_open - 1) END AS alpha_c1
         FROM bo LEFT JOIN bench x ON bo.close_date IS NOT NULL AND x.trade_date <= bo.close_date
-        QUALIFY ROW_NUMBER() OVER (PARTITION BY bo.holder, bo.stock, bo.open_date, bo.status
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY bo.identity_key, bo.stock, bo.open_date, bo.status
                                    ORDER BY x.trade_date DESC) = 1
     )
     SELECT * FROM ba
@@ -355,7 +489,15 @@ def build_profiles(con) -> dict[str, int]:
         FROM fact_inst_episode
         WHERE holder IS NOT NULL AND length(trim(CAST(holder AS VARCHAR))) > 0
     )
-    SELECT holder,
+    -- 2026-09-08 Step 4: 按 identity_key 聚, 不按显示名。
+    -- 原来 GROUP BY holder(显示名) 会把两个同名不同身份的持有人合成一个档案 —— 而
+    -- "同实体多写法 / 不同实体同名"正是换键要解决的那件事, 在这里按名字聚等于把它放回去。
+    -- holder 仍出显示名(下游 get_profile/路由/annotate_holder 全按名字取), identity_key
+    -- 与 kind/grade 并存, 想按真身份查的消费方有得可用。
+    SELECT ANY_VALUE(holder) AS holder,
+           identity_key,
+           ANY_VALUE(identity_kind)  AS identity_kind,
+           ANY_VALUE(identity_grade) AS identity_grade,
            ANY_VALUE(holder_type) AS holder_type,
            COUNT(*) FILTER (WHERE {rankable}) AS n_closed,
            median(alpha_c1) FILTER (WHERE {rankable}) AS median_alpha,
@@ -379,26 +521,29 @@ def build_profiles(con) -> dict[str, int]:
                ELSE 'no_closed_alpha'
            END AS metrics_status
     FROM base
-    GROUP BY holder
+    GROUP BY identity_key
     """)
     con.execute(f"""
     CREATE OR REPLACE TABLE mart_inst_profile_dim AS
     WITH dims AS (
-        SELECT holder, 'industry_pit' AS dim_type, COALESCE(sw_l1_at_open,'未知') AS dim_value, alpha_c1
+        SELECT identity_key, holder, 'industry_pit' AS dim_type,
+               COALESCE(sw_l1_at_open,'未知') AS dim_value, alpha_c1
         FROM fact_inst_episode WHERE {rankable}
         UNION ALL
-        SELECT holder, 'year', substr(open_date,1,4), alpha_c1
+        SELECT identity_key, holder, 'year', substr(open_date,1,4), alpha_c1
         FROM fact_inst_episode WHERE {rankable}
         UNION ALL
-        SELECT holder, 'holder_type', COALESCE(holder_type,'未知'), alpha_c1
+        SELECT identity_key, holder, 'holder_type', COALESCE(holder_type,'未知'), alpha_c1
         FROM fact_inst_episode WHERE {rankable}
     )
-    SELECT holder, dim_type, dim_value,
+    SELECT ANY_VALUE(holder) AS holder, identity_key, dim_type, dim_value,
            COUNT(*) AS n_closed,
            median(alpha_c1) AS median_alpha,
            SUM(CASE WHEN alpha_c1 > 0 THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS win_rate_alpha,
            COUNT(*) < {MIN_EPISODES} AS low_sample
-    FROM dims GROUP BY 1, 2, 3
+    -- 显式列名而非位置: 上面加了 identity_key 一列, 位置 GROUP BY 1,2,3 会当场错位
+    -- (与本轮早先那次位置 INSERT 同形 —— 物理顺序不是契约)。
+    FROM dims GROUP BY identity_key, dim_type, dim_value
     """)
     return {
         "profiles": con.execute("SELECT COUNT(*) FROM mart_inst_profile").fetchone()[0],
