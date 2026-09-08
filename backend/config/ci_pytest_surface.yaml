@@ -189,6 +189,7 @@ blocking_paths:
 - tests/services/test_tdxhub_mac_capital_flow.py
 - tests/services/test_tdxhub_source_adapter.py
 - tests/services/test_tdxhub_volume_range_guard.py
+- tests/services/test_tdxhub_protocol_helper_volume.py
 - tests/services/test_tier12_consumer_cutover.py
 - tests/services/test_tier12_form_enrich.py
 - tests/services/test_tier12_nominal_canary.py

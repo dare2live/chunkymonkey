@@ -50,3 +50,17 @@ chunkymonkey 一行都没用到。要用新功能就回上游取, 别在这里�
 DuckDB into chunkymonkey**。它说的是上游那个 **DuckDB 数据库文件**, 不是这些 Python 代码 ——
 并入代码不解除这条约束: 数据仍然只能经 land -> accept 进本仓的库, 不许把别人的库文件
 直接搬进来当真相源(红线 4 依赖只向下)。删登记条目时把这句一起搬到这里, 免得它随条目消失。
+
+## 并入后的自查（重新同步上游时也跑一遍）
+
+```
+grep -rnE '(^|[^/A-Za-z])(docs|tests|scripts|stress)/[A-Za-z0-9_./-]+\.(py|md|json)' \
+  backend/marketdb | grep -v 'backend/' | grep -v 上游
+```
+
+输出必须为空：每条路径引用要么带 `backend/` 前缀且文件真存在，要么在同一行明标
+`上游@<SHA>`。并入只带 package 不带 `tests/` `docs/` `scripts/`，所以上游指向那些目录的
+docstring 到了本仓就是悬空的 —— 2026-09-08 三包并入时实测中了 4 处（其中 2 处在上游本来
+就悬空：它们指的 `docs/eastmoney-aif10-spec.md` 从未存在过）。
+
+这是手跑的规则不是门 —— 门分不清「历史提及」与「路径声明」，硬做会假阳性（红线 13）。

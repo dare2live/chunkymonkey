@@ -18,6 +18,13 @@
 #   availability_policy formal dataset 的 typed 发布时间契约 (axis/rule/at)，是 eligibility 唯一 owner
 #   execution_policy typed 执行许可 (mode/reason)；disabled 域仍可只读加载契约与状态，但任何 sync 入口必须在副作用前阻断
 #   data_start     回填起点 (E8 探底/文档实测)
+#
+# 源级限流字段的规则 (2026-09-09 立): sources.<源> 的 rate_limit 有值必附「实测日期 + 数字
+#   + 一手源」; **无值也必附「为何无」的同样三件**。理由是实证: 妙想这条「不声明 rate_limit」
+#   的结论对了四个月, 但它的依据(单 IP 并发压测)一直只存在于另一个仓的一份未提交删除里 ——
+#   业主问「并发上限是多少」时, 本仓答不出, 而答案其实早就测过。规则与它的依据不许分居。
+#   这条无法机器验证 (门只能查「有没有一段文字」, 查不了「文字是否真实/齐全」), 所以按红线 13
+#   写进本头注当规则, 不做成门。
 #   freshness_sla_trading_days  落后超过 N 交易日 = audit FAIL
 #   min_rows_per_batch  单批最低行数 sanity (低于即可疑, 0 行必重试)
 #
@@ -60,7 +67,18 @@ sources:
     target_db: tushare_raw
     # 不在此声明 rate_limit: 妙想走 aif10_scraper 自带的客户端 (已内建 3 次退避重试),
     # 限流由该客户端承担, 与 tdxhub / stock_st_derive / calendar_rule 同 —— 它们也都不在
-    # sources 层声明限流。2026-09-02 P1 channels 改造地基收口: tdxhub / stock_st_derive /
+    # sources 层声明限流。
+    # 2026-09-09 补上「为何无」的实测依据 (原来只有结论没有依据, 而依据躺在另一个仓的未提交
+    # 删除里 —— 业主问过并发上限, 答案在那份 md 里, 没人找得到)。实测 2026-04-27, 单 IP,
+    # 上游 dare2live/aif10-scraper@a1501e3 STRESS_TEST_RESULTS.md:
+    #   concurrency 1/2/5/10/20/30/50/100 全部 200 OK, **未触发 rc=100, 服务端不限流**;
+    #   甜蜜点 20 (26.2 页/秒, 13K 行/秒), 30+ 反而变慢 —— 天花板是客户端 TCP 连接池 +
+    #   服务端排队拥塞, 不是限流; 全量 1473 页从顺序 ~7min 降到并发 20 的 48s (8.7x)。
+    #   datacenter 子域**不在**东财反爬黑名单 (与 push2his 相反, 后者用户 IP 直接被拒)。
+    # 为什么不据此写 max_concurrency: 20 —— 实测 aif10_scraper.fetch_all_pages_concurrent
+    # 在 backend/ 里零调用方 (生产只走 fetch_all_pages / fetch_all_pages_sharded), 没有
+    # loader 读的 typed 键是「台账自称执法输入、实际没接线」, 比注释更糟(注释不假装执法)。
+    # 出现调用方那天按上面 sources.tushare.rate_limit 同形加键。2026-09-02 P1 channels 改造地基收口: tdxhub / stock_st_derive /
     # calendar_rule 三个源已补齐 sources 层条目 (kind + target_db), 不再靠 domains 层显式
     # target_db 兜底一致性; 本条 target_db 声明的位置仍是三者共同遵循的正确形状。
   tushare:

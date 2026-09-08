@@ -60,6 +60,20 @@ setup 三帧、各 parser)是对客户端行为的逐字转写, 不是规范实�
 本仓这份的对账锚点是上面那个 commit SHA, 不是"sibling 目录里现在长什么样" —— 上游
 之后再提交, 这份不会自动跟, 也不该自动跟。重新同步先读下面「与上游的差异」。
 
+**身份（2026-09-09 定）**: 上游仓自 `e2516d5` 起是**只读归档**；`backend/tdxhub` 是
+fork of record，唯一真相。不再 re-vendor。理由是分叉已经既成：下面「与上游的差异」有
+六类行为改动上游没有对应 commit，每次 re-vendor 都要重打一遍补丁；而且「定期从 sibling
+同步」正是本次并入要消灭的那个结构（同一台机器两份、拿到哪份取决于代码路径）的换装版。
+真要重新同步，「与上游的差异」那一节就是 re-apply 清单。
+
+实测这次分叉的代价（用上游 `tests/` 打本仓这份，2026-09-09）：
+上游 152 passed / 1 failed（`test_md5sum_success`，**上游先天失败，与并入无关**，基线复现）
+本仓 143 passed / 10 failed —— 差值恰好 9 个，全是 `tests/utils/test_holiday*.py` 的
+`No module named 'tdxhub.utils.holiday'`，即下面记的那次删除。删模块，它的测试跟着走。
+反过来更值得记：删 `k()/ohlc()/get_k_data()`、去掉约 20 处字面量默认值、删 `demjson.py`、
+收窄 5 处 except、`print` 加守卫、ext parser 不再补日期 —— **上游一个测试都没红**。
+也就是那条 wall-clock K 线路径在上游从来没有测试覆盖。
+
 **待办(不在本次范围)**: `tdxhub.holders`(2,786 行, 已并入)是上游按「十大流通股东最新
 增量主源」写的, 配套 harness 是上游 `scripts/holders_universe_{fetch,consolidate}.py` 与
 `holders_e2e_verify.py`。要用它得走本仓的 DB 边界 / PIT / universe 门, 是一次真接入,
@@ -122,3 +136,29 @@ CLI 用户看得见), 所以处置不同。三处加了 `# rule-compliance: ok e
 **`version.py` / `protocol/version.py`: `print` 加 `__main__` 守卫**
 原本是模块顶层的裸 `print(__version__)` —— import 这个模块就往 stdout 吐一行, 会污染
 任何解析 stdout 的调用方。`python -m tdxhub.version` 的行为不变。
+
+## 并入后的自查（重新同步上游时也跑一遍）
+
+```
+grep -rnE '(^|[^/A-Za-z])(docs|tests|scripts|stress)/[A-Za-z0-9_./-]+\.(py|md|json)' \
+  backend/tdxhub | grep -v 'backend/' | grep -v 上游
+```
+
+输出必须为空：每条路径引用要么带 `backend/` 前缀且文件真存在，要么在同一行明标
+`上游@<SHA>`。并入只带 package 不带 `tests/` `docs/` `scripts/`，所以上游指向那些目录的
+docstring 到了本仓就是悬空的 —— 2026-09-08 三包并入时实测中了 4 处（其中 2 处在上游本来
+就悬空：它们指的 `docs/eastmoney-aif10-spec.md` 从未存在过）。
+
+这是手跑的规则不是门 —— 门分不清「历史提及」与「路径声明」，硬做会假阳性（红线 13）。
+
+**`protocol/helper.py` 的 docstring 指向本仓测试路径**
+上游写「回归锁见 `tests/test_protocol_helper_volume.py`」，而并入只带 package 不带
+`tests/`，到本仓就是悬空引用。同批把上游那 66 行搬成
+`backend/tests/services/test_tdxhub_protocol_helper_volume.py` 并列入 blocking 列表，
+docstring 改指它。
+
+为什么必须搬而不是靠 `test_tdxhub_volume_range_guard.py`：那道测的是
+`_reject_impossible_quantity`，**消费边界**上的不变量（任何源产出物理不可能的量都要响亮
+失败），它不 import `get_volume`。实测（缺陷注入，2026-09-09）：摘掉 `helper.py` 的
+`if vol == 0: return 0.0` 两行后，新搬的锁 **2 failed**，而 range_guard **12 passed 全绿**。
+两者守的不是同一件事——解码器正确性 vs 消费边界不变量，不能互相替代。

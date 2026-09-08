@@ -62,7 +62,7 @@ def get_volume(vol):
 
     2026-09-08 实测发现: 消费方 chunkymonkey 的 canonical_nominal_ohlcv_daily 里有 6 行
     (2026-08-31 的停牌股) vol=2**-127、amount=2**-127/1000, 即本函数对全零输入的输出。
-    回归锁见 tests/test_protocol_helper_volume.py。
+    回归锁见 backend/tests/services/test_tdxhub_protocol_helper_volume.py。
 
     :param vol: 4 字节小端整数原样
     :return: 解码后的量; 输入为 0 时返回 0.0

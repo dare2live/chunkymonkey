@@ -11,7 +11,11 @@
 - api: v0 / v1 (大部分 v1)
 - v0_sty: v0 接口必传 sty 参数
 
-完整字段表见 docs/eastmoney-aif10-spec.md.
+完整字段表与接口清单: 上游 dare2live/aif10-scraper@8326cb9 的
+``600519_F10_data_source_report.md``(附录 A)。并入本仓时改 —— 原文指的
+``docs/eastmoney-aif10-spec.md`` 在上游历史里从未存在过, 见 __init__.py 的同款说明。
+该报告附录 A 里有 4 个 reportName 本注册表没有(见 VENDOR.md「上游未并入的证据」),
+需要时先重新探测再登记 —— 不照抄一行表格发明 ReportSpec。
 """
 from __future__ import annotations
 

@@ -7,7 +7,19 @@
 - RPT_F10_EH_HOLDERNUM: 1473 页 × 500 = 736323 行 → 顺序 7 min
 - RPT_PCF10_INDUSTRY_CVALUE: 90 页 × 500 = 44651 行 → 顺序 30s
 
-并发能加速但单 IP 有限流, 见 stress/concurrency_test.py.
+并发实测(上游 dare2live/aif10-scraper@a1501e3 ``STRESS_TEST_RESULTS.md``, 未并入):
+单 IP、concurrency 1/2/5/10/20/30/50/100 全部 200 OK, **没有触发 rc=100 / rate-limit,
+服务端不限流**; 甜蜜点 20(26.2 页/秒, 13K 行/秒), 30+ 反而变慢 —— 天花板是客户端 TCP
+连接池 + 服务端处理排队, 不是限流。datacenter 子域不在东财反爬黑名单(与 push2his 相反)。
+
+并入本仓时改: 原文写「并发能加速但**单 IP 有限流**, 见 上游@a1501e3 stress/concurrency_test.py」——
+那是压测**前**的假设(那个脚本的验收标准就是「最高 QPS 不触发 rc=100」), 而压测结论正好
+相反。指向的 stress/ 目录也没并入。一句被自己的证据否掉的话留在这里, 下一个人会据此
+不敢开并发。
+
+注: 本仓生产路径只走 ``fetch_all_pages`` / ``fetch_all_pages_sharded``, 实测
+``fetch_all_pages_concurrent`` 在 backend/ 里零调用方, 所以 sync_registry.yaml 的
+sources.miaoxiang 不声明 max_concurrency(没有 loader 读的 typed 键是假执法)。
 """
 from __future__ import annotations
 

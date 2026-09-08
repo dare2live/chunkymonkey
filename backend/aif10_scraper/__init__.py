@@ -1,6 +1,10 @@
 """aif10_scraper: 东方财富妙想 F10 全量解析项目.
 
-完整 spec 见 docs/eastmoney-aif10-spec.md.
+字段表与接口清单的一手出处: 上游 dare2live/aif10-scraper@8326cb9 的
+``600519_F10_data_source_report.md``(2026-04-27 逐栏目 DevTools 抓包, 附录 A 是完整接口清单)。
+并入本仓时改: 原文写「完整 spec 见 docs/eastmoney-aif10-spec.md」, 而**那个文件在上游历史里
+从未存在过**(实测 git log --all --diff-filter=A -- docs/ 只有 p6_probe.json) —— 上游这处
+docstring 本身就是悬空的, 不是并入造成的。
 """
 
 __version__ = "0.1.0"

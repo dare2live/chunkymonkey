@@ -57,3 +57,37 @@ backend/scripts/{ingest_holders_raw,recon_assignment_gaps,recon_fina_margin}.py
 本项目全局禁 emoji（no_emoji 门）。`subname` 只在 `orm/ddl.py` 生成一行 SQL 注释时用到，
 不参与任何匹配，改字面量无行为影响；上游拿它标「重点报表」的语义用 `[重点]` 保留。
 （这里写码点不写字符本身：no_emoji 门问的是「staged 内容里有没有」，不问是不是在描述它。）
+
+## 上游未并入的证据（一手源，指向 commit 不指向工作树）
+
+上游仓有三份文件承载本包的实测出处，**没有**并入本仓（并入范围只含 package）。它们
+在上游 GitHub 上永久可解析，所以这里只留指针；同时列出「本仓无法自己重新得到」的部分。
+
+| 文件 | 上游 commit | 内容 | 本仓是否已有等价物 |
+|---|---|---|---|
+| `600519_F10_data_source_report.md` | `8326cb9` | 881 行，F10 十四个一级模块 / 50+ 二级子栏目逐栏目 DevTools 抓包；附录 A 是完整接口清单 | 主体已升级为 `registry.py` 的 74 条 `ReportSpec`（比 markdown 表格更强的机器可读形式）。**缺 4 个**，见下 |
+| `STRESS_TEST_RESULTS.md` | `a1501e3` | 92 行，2026-04-27 单 IP 并发实测曲线 | **无等价物**，数字已抄进 `batch.py` 头注与 `sync_registry.yaml` 的 `sources.miaoxiang` 注释 |
+| `docs/p6_probe.json` | `a1501e3` | 684 行，600519.SH 上 20 条 report 的探测记录 | 端点身份 20/20 全在 `registry.py`；100 页上限本仓 2026-07-24 独立复测过（`pagination_integrity.py`）；字段快照本来就该现场重探（`orm/type_infer.py` 是运行时推断） |
+
+**附录 A 有而 `registry.py` 没有的 4 个 reportName**（要用先重新探测再登记，不照抄一行
+表格发明 `ReportSpec` —— `key` / `date_field` / `frequency` / `sort_columns` 报告里都没给）：
+
+    RPTA_DATA_IF_INDICATOR
+    RPTA_DATA_IF_LINECHART
+    RPT_CUSTOM_DMSK_TREND
+    RPT_NORTH_ORG_HOLDDETAIL_NEW
+
+另有 `stress/concurrency_test.py`（109 行，压测 harness）也未并入 —— 注意它是压测**前**
+写的，验收标准写着「最高 QPS 不触发 rc=100」，而 `STRESS_TEST_RESULTS.md` 的结论是**根本
+没有限流**。`batch.py` 原头注抄的是那个假设不是结论，并入时已改。
+
+## 并入后的自查（重新同步上游时也跑一遍）
+
+```
+grep -rnE '(^|[^/A-Za-z])(docs|tests|scripts|stress)/[A-Za-z0-9_./-]+\.(py|md|json)' \
+  backend/aif10_scraper | grep -v 'backend/' | grep -v 上游
+```
+
+输出必须为空：每条路径引用要么带 `backend/` 前缀且文件真存在，要么在同一行明标
+`上游@<SHA>`。这是手跑的规则不是门 —— 门分不清「历史提及」与「路径声明」，硬做会假阳性
+（红线 13：无法机器验证的写进规则，不写进闸）。
