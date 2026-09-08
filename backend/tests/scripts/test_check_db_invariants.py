@@ -70,6 +70,9 @@ def test_load_db_invariants_production_yaml_has_all_12(real_specs):
         "bloat_ratio_feature_store", "bloat_ratio_tushare_raw",
         "calendar_projection_faithful", "holders_dates_compact",
         "qfq_lineage_stamped", "qfq_anchor_is_own_last_bar", "nominal_ohlcv_accepted_sources",
+        "section9_dims_live_in_reference", "reference_dims_have_primary_key",
+        "section9_dims_absent_from_smartmoney", "dc_member_no_truncation_signature",
+        "calendar_floor_not_truncated",
         "org_pointer_rowcount_matches_canonical", "holders_pointer_rowcount_matches_canonical",
     }
     for spec_id, s in real_specs.items():
@@ -784,3 +787,130 @@ def test_main_returns_2_on_config_error(tmp_path, monkeypatch):
 def test_main_returns_2_when_registry_file_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(cdi, "CONFIG_PATH", tmp_path / "does_not_exist.yaml")
     assert cdi.main([]) == 2
+
+
+# ── 7. 2026-09-08 从 moth 迁入的 5 条 (S7 前置)。搬家理由见 db_invariants.yaml 顶部
+# 那段注释: 它们问的是「数据现在对不对」, 却装在提交路径上。 ────────────────────
+
+def _ref_conn(*, with_active=True, with_calendar=True, calendar_floor="2005-01-04"):
+    """最小 reference 库: 两张 §9 dim, 都带 PRIMARY KEY (合法基线)。"""
+    c = duck_connect(":memory:")
+    if with_active:
+        c.execute("CREATE TABLE dim_active_a_stock (code VARCHAR PRIMARY KEY)")
+        c.execute("INSERT INTO dim_active_a_stock VALUES ('000001')")
+    if with_calendar:
+        c.execute("CREATE TABLE dim_trading_calendar "
+                  "(trade_date VARCHAR PRIMARY KEY, is_trading INTEGER)")
+        c.execute("INSERT INTO dim_trading_calendar VALUES (?, 1), ('2026-01-05', 1)",
+                  [calendar_floor])
+    return c
+
+
+def test_section9_dims_present_passes(real_specs):
+    c = _ref_conn()
+    try:
+        r = cdi.evaluate_spec(real_specs["section9_dims_live_in_reference"], c)
+        assert r == {**r, "status": "PASS", "checked": 2, "value": 0}
+    finally:
+        c.close()
+
+
+def test_section9_dims_missing_one_fails(real_specs):
+    """population 是「期望的两个名字」, 不是「库里有几张表」—— 所以少一张时
+    checked 仍是 2, value 是 1。判据形状要能说清"少了几个", 不是"数出来不等于 2"。"""
+    c = _ref_conn(with_active=False)
+    try:
+        r = cdi.evaluate_spec(real_specs["section9_dims_live_in_reference"], c)
+        assert r["status"] == "FAIL" and r["checked"] == 2 and r["value"] == 1
+    finally:
+        c.close()
+
+
+def test_reference_dims_missing_pk_fails(real_specs):
+    """与上一条分开: 表在但没 PK 是 DDL 漏约束(要 ALTER), 表不在是迁移丢失(要重建),
+    处置不同, 混进一个 value 里红了说不清该干什么。"""
+    c = duck_connect(":memory:")
+    try:
+        c.execute("CREATE TABLE dim_active_a_stock (code VARCHAR PRIMARY KEY)")
+        c.execute("CREATE TABLE dim_trading_calendar (trade_date VARCHAR, is_trading INTEGER)")
+        r = cdi.evaluate_spec(real_specs["reference_dims_have_primary_key"], c)
+        assert r["status"] == "FAIL" and r["checked"] == 2 and r["value"] == 1
+    finally:
+        c.close()
+
+
+def test_section9_dims_absent_from_smartmoney(real_specs):
+    """三联的第三条。只查 reference 有、不排除 smartmoney 也有 = 双写不是拆库。"""
+    spec = real_specs["section9_dims_absent_from_smartmoney"]
+    clean = duck_connect(":memory:")
+    try:
+        clean.execute("CREATE TABLE unrelated (x INTEGER)")
+        r = cdi.evaluate_spec(spec, clean)
+        assert r == {**r, "status": "PASS", "checked": 2, "value": 0}
+    finally:
+        clean.close()
+    dirty = duck_connect(":memory:")
+    try:
+        dirty.execute("CREATE TABLE dim_active_a_stock (code VARCHAR)")
+        r = cdi.evaluate_spec(spec, dirty)
+        assert r["status"] == "FAIL" and r["checked"] == 2 and r["value"] == 1
+    finally:
+        dirty.close()
+
+
+def _dc_conn(days):
+    c = duck_connect(":memory:")
+    c.execute("CREATE TABLE raw_tushare_dc_member (trade_date VARCHAR, con_code VARCHAR)")
+    for d, n in days:
+        c.execute("INSERT INTO raw_tushare_dc_member "
+                  "SELECT ?, CAST(i AS VARCHAR) FROM range(?) t(i)", [d, n])
+    return c
+
+
+def test_dc_member_truncation_signature_fails(real_specs):
+    """整 5000 倍 = 分页未翻到底的签名 (2026-06-12 实测的静默截断)。"""
+    c = _dc_conn([("20260101", 5000), ("20260102", 4321)])
+    try:
+        r = cdi.evaluate_spec(real_specs["dc_member_no_truncation_signature"], c)
+        assert r["status"] == "FAIL" and r["checked"] == 2 and r["value"] == 1
+    finally:
+        c.close()
+
+
+def test_dc_member_normal_days_pass(real_specs):
+    c = _dc_conn([("20260102", 4321), ("20260103", 4999)])
+    try:
+        r = cdi.evaluate_spec(real_specs["dc_member_no_truncation_signature"], c)
+        assert r == {**r, "status": "PASS", "checked": 2, "value": 0}
+    finally:
+        c.close()
+
+
+def test_dc_member_empty_table_is_unverified_not_pass(real_specs):
+    """空对账不算过 —— 原 moth 版是"数出来等于 0", 表清空时它会判通过。
+    这正是整个 db_invariants 存在的理由。"""
+    c = _dc_conn([])
+    try:
+        r = cdi.evaluate_spec(real_specs["dc_member_no_truncation_signature"], c)
+        assert r["status"] == "UNVERIFIED" and r["checked"] == 0
+    finally:
+        c.close()
+
+
+def test_calendar_floor_truncation_fails(real_specs):
+    """本条是弱形式(钉字面量), 留着的理由是同库那条"更强"的看不见这类缺陷:
+    calendar_projection_faithful 的 floor 取自 dim 自己, dim 被削掉一截时 floor
+    跟着动, 对称差仍为 0。副本注入实测: 删日历 2010 前 1,215 行 → 本条 FAIL,
+    那条 PASS(checked 5343->4128)。"""
+    ok = _ref_conn(calendar_floor="2005-01-04")
+    try:
+        r = cdi.evaluate_spec(real_specs["calendar_floor_not_truncated"], ok)
+        assert r == {**r, "status": "PASS", "checked": 1, "value": 0}
+    finally:
+        ok.close()
+    cut = _ref_conn(calendar_floor="2010-01-04")
+    try:
+        r = cdi.evaluate_spec(real_specs["calendar_floor_not_truncated"], cut)
+        assert r["status"] == "FAIL" and r["checked"] == 1 and r["value"] == 1
+    finally:
+        cut.close()

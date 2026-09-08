@@ -24,77 +24,6 @@ assertions:
     type: file_size
     path: data/smartmoney.duckdb
     expect: {op: between, low: 200000000, high: 26000000000}
-  - id: smartmoney-bloat-ratio
-    severity: blocking
-    claim: "smartmoney 死块占比 < 10%。绝对体量带是棘轮 (9→12→15→20→26GB), 对「DELETE/UPDATE 完没 compact」瞎。2026-08-26: qfq 增量一次全表 UPDATE 把 market 从 0.03% 打回 ~25%, 25% 阈值会放过这次事故, 故各库死块带降到 10%。超阈: `python backend/scripts/db_compact.py --db smartmoney --execute`。"
-    type: duckdb_sql
-    database: data/smartmoney.duckdb
-    query: "SELECT CAST(round(100.0 * free_blocks / nullif(total_blocks, 0), 2) AS DOUBLE) FROM pragma_database_size()"
-    expect: {op: "<", value: 10.0}
-  - id: market-bloat-ratio
-    severity: blocking
-    claim: "market.duckdb 死块占比 < 10%。2026-08-26 qfq 增量在跳过 compact 的假设下把 free_blocks 从 0.03% 打到 ~25% (全表 stamp factor_as_of); size-band 看不到这件事。超阈: `python backend/scripts/db_compact.py --db market --execute`。"
-    type: duckdb_sql
-    database: data/market.duckdb
-    query: "SELECT CAST(round(100.0 * free_blocks / nullif(total_blocks, 0), 2) AS DOUBLE) FROM pragma_database_size()"
-    expect: {op: "<", value: 10.0}
-  - id: org-holding-bloat-ratio
-    severity: blocking
-    claim: "org_holding.duckdb 死块占比 < 10%。拆库后若断言仍只盯 smartmoney, 新文件膨胀不会被发现。超阈: `python backend/scripts/db_compact.py --db org_holding --execute`。"
-    type: duckdb_sql
-    database: data/org_holding.duckdb
-    query: "SELECT CAST(round(100.0 * free_blocks / nullif(total_blocks, 0), 2) AS DOUBLE) FROM pragma_database_size()"
-    expect: {op: "<", value: 10.0}
-  - id: tushare-raw-bloat-ratio
-    claim: "tushare_raw.duckdb 死块占比 < 25% (写面, compact 不进日常回收, 但仍要看见膨胀)。超阈先 owner 判断再 `db_compact.py --db tushare_raw --execute`。"
-    type: duckdb_sql
-    database: data/tushare_raw.duckdb
-    query: "SELECT CAST(round(100.0 * free_blocks / nullif(total_blocks, 0), 2) AS DOUBLE) FROM pragma_database_size()"
-    expect: {op: "<", value: 25.0}
-  - id: feature-store-bloat-ratio
-    severity: blocking
-    claim: "feature_store.duckdb 死块占比 < 10%。institution_profile / rally_gt 是 DROP+CREATE+CHECKPOINT，CHECKPOINT 不回收块。超阈: `python backend/scripts/db_compact.py --db feature_store --execute`。"
-    type: duckdb_sql
-    database: data/feature_store.duckdb
-    query: "SELECT CAST(round(100.0 * free_blocks / nullif(total_blocks, 0), 2) AS DOUBLE) FROM pragma_database_size()"
-    expect: {op: "<", value: 10.0}
-  - id: calendar-floor
-    severity: blocking
-    claim: "交易日历起点 == 2005-01-04 (2026-06-12 扩展+七项验证 PASS; 回退 = 静默 clamp 复发)。2026-06-27 §9 拆库: dim_trading_calendar 迁 reference.duckdb, 断言库改 reference"
-    type: duckdb_sql
-    database: data/reference.duckdb
-    query: "SELECT CAST(min(trade_date) AS VARCHAR) FROM dim_trading_calendar"
-    expect: {op: "==", value: "2005-01-04"}
-  - id: section9-dims-in-reference
-    severity: blocking
-    claim: "§9 reference 拆库: 2 dim (active/trading_calendar) 全在 reference.duckdb (2026-06-27 Stage E 迁移真相源; 缺=迁移丢失/回滚)。原 4 dim 含 all_ever_listed/listing_status 2026-07-07 整表退役物删 (0 存活 writer / 0 业务读者), 断言集从 4 缩至 2, 见 git log --grep dim_all_ever_listed"
-    type: duckdb_sql
-    database: data/reference.duckdb
-    query: "SELECT count(*) FROM duckdb_tables() WHERE table_name IN ('dim_active_a_stock','dim_trading_calendar')"
-    expect: {op: "==", value: 2}
-  - id: reference-dims-have-pk
-    severity: blocking
-    claim: "不变量#1 主键: reference 2 dim (active/trading_calendar) 全有 DB 强制 PRIMARY KEY (2026-06-28 修 §9 迁移丢 PK 缺口; <2 = de-facto 唯一退化, 真主键不变量破; 2026-07-07 all_ever_listed/listing_status 退役后集合缩至 2)"
-    type: duckdb_sql
-    database: data/reference.duckdb
-    query: "SELECT count(DISTINCT table_name) FROM duckdb_constraints() WHERE constraint_type='PRIMARY KEY' AND table_name IN ('dim_active_a_stock','dim_trading_calendar')"
-    expect: {op: "==", value: 2}
-  - id: section9-dims-absent-smartmoney
-    severity: blocking
-    claim: "§9 reference 拆库: 2 dim (active/trading_calendar) 已从 smartmoney 物删, 不得重建 (2026-06-27 Stage E; >0 = schema-init DDL 重建路径回潮 undo 物删, 不变量#2 读写边界破; 2026-07-07 all_ever_listed/listing_status 从此断言集移除因表本身已整体退役非仅迁库)"
-    type: duckdb_sql
-    database: data/smartmoney.duckdb
-    query: "SELECT count(*) FROM duckdb_tables() WHERE table_name IN ('dim_active_a_stock','dim_trading_calendar')"
-    expect: {op: "==", value: 0}
-  # retired-db-retained 断言已移除 (2026-06-13 用户授权提前删 v1 旧库 34G — 新库稳定一日重负载验证通过,
-  # 回滚窗提前关; 按断言自身契约"到期人工删除后移除本断言"执行)
-  - id: dc-member-truncation-pin
-    severity: blocking
-    claim: "dc_member 近 30 日无整 5000 行截断签名 (2026-06-12 发现静默截断; chain9 分页重拉后应转绿)"
-    type: duckdb_sql
-    database: data/tushare_raw.duckdb
-    query: "SELECT count(*) FROM (SELECT trade_date, count(*) AS n FROM raw_tushare_dc_member GROUP BY 1 ORDER BY 1 DESC LIMIT 30) WHERE n % 5000 = 0"
-    expect: {op: "==", value: 0}
   - id: watermark-utc-contract
     claim: "source_watermarks.py 保留 UTC 口径警示头注 (两次 UTC 误读事故防线)"
     type: shell
@@ -146,13 +75,6 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -c 'def enable_sandbox_guard\\|class SandboxBoundaryError\\|def read_only_main' backend/services/sandbox_guard.py"]
     expect: {op: ">=", value: 3}
-  - id: holder-report-date-single-format
-    severity: blocking
-    claim: "canonical_top10_float_holders_period report_date 全 YYYYMMDD 单格式 (holders fact DROPPED 2026-07-26; 守 formal SSOT 归一. >0 = ISO 复发=双真相源回潮)"
-    type: duckdb_sql
-    database: data/smartmoney.duckdb
-    query: "SELECT count(*) FROM canonical_top10_float_holders_period WHERE CAST(report_date AS VARCHAR) LIKE '%-%'"
-    expect: {op: "==", value: 0}
   - id: qfq-lineage-guard
     severity: blocking
     claim: "2026-09-08 换心重写。历史: 本断言 09-01 改自 qfq-serving-tushare-only (那条查 v_price_kline_qfq.source_name<>'tushare', 而 source_name 是视图字面量非物理列, count 数学上恒为 0, 从建立起没真查过任何东西); 09-01 又二次收紧, 把静态半边从「全文找 'raw_tushare_adj_factor' 这个字符串」改成「解析源码里两处生成 qfq 价格列的 JOIN/CTE 图, 抽出因子来源物理表集合, 严格等于 {raw_tushare_adj_factor}」, 并把 45 天窗去掉改全历史扫 ingest_batch。当时的 claim 里写明「该域一旦切换完成, 本断言的期望物理表集合需同步改, 否则重演门锁死昨天真相的同一种病」—— 今天就是那一天。 || 本次改两处。(1) 期望集合 {raw_tushare_adj_factor} -> {canonical_nominal_ohlcv_daily}: tushare_sunset.yaml 的 domains.adj_factor 09-08 由 replace->tdxhub 改判 derive(status:done), 复权因子不再来自任何供应商表, 改由 services/adjust_factor.py 从 canonical 的 pre_close 自算 (ratio[t]=close[t-1]/pre_close[t])。(2) 判据从「正则扫源码文本」改成「import builder 调纯函数 build_select_sql() 拿到实际要跑的那条 SQL 再解析」—— 旧问法要求源码里恰好出现 8 次 d.<col> * 分子 / 分母 AS <col>, 它实际在问「作者有没有按我预期的写法写」, 而想守的是「因子来自哪张物理表」。新 builder 的表达式由 _rebase() 拼装, 旧正则会匹配 0 次并以「解析器假设失效」退出, 而那时真正的血缘恰恰是对的 —— 门问的问题和它想守的东西不是一回事。 || 判据同时变强: 自算的全部要义是「一个真相源喂所有列」, 所以直接断言「生成 SQL 里出现的物理表集合 == {canonical_nominal_ohlcv_daily}」+「每个 FROM/JOIN 目标必须是同句 CTE 或那张唯一物理表」。多出任何第二张表, 按定义就是供应商因子表/兜底源/COALESCE 备胎混进来了 —— 一条等式覆盖了旧门要靠别名递归解析才能抓的三种情形, 且不再依赖作者写法。黑名单半边(2026-06-22 移除的 akshare/tdxhub 自算 qfq 兜底: 把复权因子当乘数用反, 复权价分叉最高 89%)原样保留 —— 禁的是那个具体算法, 不是「自算」这件事。ingest_batch 半边(全历史扫 tier0.market_data.nominal_ohlcv_daily 的 ACCEPTED source_name ∈ {tushare, tdxhub})一字未改。 || 命中黑名单、物理表集合不等于期望、出现计划外 FROM/JOIN 目标、builder 无法 import 或函数签名变了、或出现裁决外供货商, 任一即 FAIL (import 失败不吞异常 —— 查不了不等于通过)。qfq 仍非 nominal/execution truth。"
@@ -162,7 +84,7 @@ assertions:
       - -c
       - |
         cd $(git rev-parse --show-toplevel) && .venv/bin/python3 - <<'PY'
-        import importlib.util, pathlib, re, sys, duckdb
+        import importlib.util, pathlib, re, sys
 
         REPO = pathlib.Path(".").resolve()
         BUILDER = REPO / "backend" / "scripts" / "build_price_kline_qfq_tushare.py"
@@ -215,19 +137,13 @@ assertions:
             sys.exit(f"qfq 生成 SQL 出现计划外的 FROM/JOIN 目标: {sorted(strays)} "
                      f"(合法 = 同句 CTE {sorted(cte_names)} 或 {mod.SOURCE_RELATION})")
 
-        # ── 半边三: ingest_batch 真血缘 (全历史扫描, 与 2026-09-01 版一致, 未改) ──
-        con = duckdb.connect("data/tushare_raw.duckdb", read_only=True)
-        try:
-            rows = con.execute(
-                "SELECT DISTINCT source_name FROM ingest_batch "
-                "WHERE dataset_id = 'tier0.market_data.nominal_ohlcv_daily' AND status = 'ACCEPTED'"
-            ).fetchall()
-        finally:
-            con.close()
-        bad = sorted({r[0] for r in rows} - {"tushare", "tdxhub"})
-        if bad:
-            sys.exit(f"nominal_ohlcv_daily 出现裁决外供货商: {bad}")
-
+        # 半边三 (ingest_batch 供货商裁决集) 已于 2026-09-08 迁到 runtime_checks 的
+        # db_invariants.nominal_ohlcv_accepted_sources —— 口径逐字相同(同 dataset_id /
+        # 同 status=ACCEPTED / 同许可集 {tushare, tdxhub}), 且那边多报 checked, 空集合
+        # 会判 UNVERIFIED 而不是 PASS。留在这里的唯一后果是让一道**提交门**去开活库:
+        # 别人跑重建持写锁时它拿不到锁, 于是一次只改注释的提交也红, 而那与本次 diff 无关。
+        # 摘掉后本门不再碰任何 .duckdb, 只解析 builder 实际生成的 SQL —— 纯 diff 正确性,
+        # 与它所在的提交路径终于是同一个问题。
         print("QFQ_LINEAGE_GUARD_OK")
         PY
     expect:

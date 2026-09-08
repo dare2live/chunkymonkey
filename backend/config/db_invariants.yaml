@@ -375,3 +375,176 @@ invariants:
       公开的一键重盖脚本, 参照 org_holding_aif10.refresh_org_holding_partition_pointers
       的写法手写等价 UPDATE, 或走一次该 notice_date 分区的重新 land→accept)。
     kill_when: "holders canonical 改为按指针原子发布 (指针与分区同事务写) 时删"
+
+  # ── 13-16: 2026-09-08 从 moth .moth/assertions/claims.yaml 迁入 (S7 前置)。
+  # 原因不是"再加四道门", 是这四条问的都是「数据现在对不对」, 却装在**提交路径**上:
+  #   - 一次只改注释的提交, 会因为别人正在跑重建(持 DuckDB 写锁)而红, 而它红了并不说明
+  #     这次 diff 有任何问题 —— 门问的问题和它想守的东西不是一回事。
+  #   - 反向更糟: 提交时全绿只证明"提交那一刻数据是对的", 不证明它明天还对。而数据会自己
+  #     变坏(停更/迟到/写坏), 提交却不是每天发生。
+  # 搬到 runtime_checks 后两头都对: 每天查, 且不再阻断无关的提交。
+  # 判据形状同时从"裸 count 等于 N"改成"population + 违规数", 空集合会判 UNVERIFIED 而非 PASS。
+  # ─────────────────────────────────────────────────────────────────────────────
+  - id: section9_dims_live_in_reference
+    db: reference
+    attach: {}
+    invariant: >-
+      §9 拆库后的 2 张 dim (dim_active_a_stock / dim_trading_calendar) 必须都在
+      reference.duckdb 里 —— 缺任何一张 = 2026-06-27 Stage E 迁移丢失或被回滚。
+    sql: |
+      WITH expected(name) AS (
+        VALUES ('dim_active_a_stock'), ('dim_trading_calendar')
+      )
+      SELECT COUNT(*) AS checked,
+             COUNT(*) FILTER (
+               WHERE name NOT IN (SELECT table_name FROM duckdb_tables())
+             ) AS value
+        FROM expected
+    op: "=="
+    expect: 0
+    allow_empty: false
+    why: >-
+      2026-09-08 从 moth section9-dims-in-reference 迁入 (原判据 count(*)==2)。
+      原集合是 4 张, dim_all_ever_listed / listing_status 于 2026-07-07 整表退役物删
+      (0 存活 writer / 0 业务读者), 缩至 2, 见 git log --grep dim_all_ever_listed。
+      改成 population(=期望的 2 个名字) + 缺失数, 而不是"数出来等于 2":
+      后者在表被换成同名不同物时仍成立, 且没有 population 概念, 空扫描无法与通过区分。
+    fix: >-
+      查 2026-06-27 Stage E 迁移是否被回滚; 缺的那张要从 §9 迁移路径重建, 不许在
+      smartmoney 里就地新建(那会同时踩下面 section9_dims_absent_from_smartmoney)
+    kill_when: >-
+      §9 拆库结论被推翻(例如 reference 库整体退役)时本条随之删; 只增删 dim 不需要动它,
+      改上面 expected 那两行即可。
+
+  - id: reference_dims_have_primary_key
+    db: reference
+    attach: {}
+    invariant: >-
+      reference 的 2 张 dim 必须都有 DB 强制 PRIMARY KEY —— 少一个 = 退化成
+      de-facto 唯一, 真主键不变量已破。
+    sql: |
+      WITH expected(name) AS (
+        VALUES ('dim_active_a_stock'), ('dim_trading_calendar')
+      )
+      SELECT COUNT(*) AS checked,
+             COUNT(*) FILTER (
+               WHERE name NOT IN (
+                 SELECT table_name FROM duckdb_constraints()
+                  WHERE constraint_type = 'PRIMARY KEY'
+               )
+             ) AS value
+        FROM expected
+    op: "=="
+    expect: 0
+    allow_empty: false
+    why: >-
+      2026-09-08 从 moth reference-dims-have-pk 迁入。2026-06-28 修 §9 迁移丢 PK 的缺口时
+      立的: 迁表时 CREATE TABLE AS SELECT 不带约束, 于是"看起来唯一"但 DB 不拦重复写入。
+      与上一条分开而不是合并成"存在且有PK": 两者处置不同 —— 表不在是迁移丢失(要重建),
+      有表无 PK 是 DDL 漏了约束(要 ALTER), 混在一个 value 里红了说不清该干什么。
+    fix: "ALTER TABLE <缺的那张> ADD PRIMARY KEY (...); 主键列见 market_schema / reference 建表处"
+    kill_when: "同 section9_dims_live_in_reference"
+
+  - id: section9_dims_absent_from_smartmoney
+    db: smartmoney
+    attach: {}
+    invariant: >-
+      §9 拆库后, 那 2 张 dim 不得在 smartmoney.duckdb 里重新出现 —— 出现即
+      schema-init 的 DDL 重建路径回潮, 把 2026-06-27 的物删 undo 掉, 读写边界破。
+    sql: |
+      WITH forbidden(name) AS (
+        VALUES ('dim_active_a_stock'), ('dim_trading_calendar')
+      )
+      SELECT COUNT(*) AS checked,
+             COUNT(*) FILTER (
+               WHERE name IN (SELECT table_name FROM duckdb_tables())
+             ) AS value
+        FROM forbidden
+    op: "=="
+    expect: 0
+    allow_empty: false
+    why: >-
+      2026-09-08 从 moth section9-dims-absent-smartmoney 迁入 (原判据 count(*)==0)。
+      这一条与上面两条是一组三联: reference 里必须有 + 必须有 PK + smartmoney 里必须没有。
+      单独任何一条都守不住"拆库真的发生了": 只查 reference 有, 不排除 smartmoney 也有
+      (那是双写不是拆库); 只查 smartmoney 没有, 不排除 reference 也没有(那是数据没了)。
+      checked 恒为 2 是有意的 —— population 是"被禁的名字", 不是"库里的表"。
+    fix: >-
+      找到重建它的那条 DDL 路径(通常在某个 ensure_*_schema)并删掉; 消费方改读
+      reference.<dim>, 不要在 smartmoney 里就地建同名表
+    kill_when: "同 section9_dims_live_in_reference"
+
+  - id: dc_member_no_truncation_signature
+    db: tushare_raw
+    attach: {}
+    invariant: >-
+      raw_tushare_dc_member 里, 没有任何一个交易日的行数恰好是 5000 的整数倍 ——
+      那是分页未翻到底的截断签名 (2026-06-12 实测发现的静默截断)。
+    sql: |
+      WITH per_day AS (
+        SELECT trade_date, COUNT(*) AS n
+          FROM raw_tushare_dc_member
+         GROUP BY trade_date
+      )
+      SELECT COUNT(*) AS checked,
+             COUNT(*) FILTER (WHERE n % 5000 = 0) AS value
+        FROM per_day
+    op: "=="
+    expect: 0
+    allow_empty: false
+    why: >-
+      2026-09-08 从 moth dc-member-truncation-pin 迁入, 并顺手改掉两处口径:
+      (1) 原判据只看**最近 30 天** (ORDER BY trade_date DESC LIMIT 30)。dc_member 已被
+          tushare_sunset.yaml 判 freeze 且 execution_policy=disabled, 表是冻结的 ——
+          "最近 30 天"从此恒指同一批历史日期, 措辞描述的是一个不再发生的滚动窗口。
+          改成扫全史: 冻结表上这是零成本的, 而且窗外的截断此前从来没人看。
+      (2) 原判据是"数出来等于 0", 没有 population。改成 population=每个有数据的交易日,
+          于是表被清空时判 UNVERIFIED(空对账)而不是 PASS ——「查不了」不等于「通过」,
+          这正是本文件存在的理由。
+      边界诚实写明: 整 5000 倍是**签名**不是证据, 真有某天恰好 5000 条也会红(误报),
+      但冻结表上这个集合是固定的, 现在为 0, 之后再红只可能是有人改写了历史。
+    fix: >-
+      该域已 freeze, 正常不该再变。若红了先查是谁在写这张冻结表 (它不该有 writer);
+      确属历史截断残留则按 chain9 分页重拉的老路子补, 但要先解除 freeze 裁决。
+    kill_when: >-
+      raw_tushare_dc_member 整表退役物删后本条随表一起删 (它已是 freeze 域,
+      legacy_raw_plane.yaml 里 role=compatibility)。
+
+  - id: calendar_floor_not_truncated
+    db: reference
+    attach: {}
+    invariant: >-
+      dim_trading_calendar 的最早交易日必须仍是 2005-01-04 —— 底线被截短即所有
+      by_trade_date 域在被截掉的那段静默漏拉。
+    sql: |
+      SELECT COUNT(*) AS checked,
+             COUNT(*) FILTER (WHERE floor_date <> '2005-01-04') AS value
+        FROM (SELECT MIN(trade_date) AS floor_date FROM dim_trading_calendar)
+    op: "=="
+    expect: 0
+    allow_empty: false
+    why: >-
+      2026-09-08 从 moth calendar-floor 迁入。**它是弱形式, 如实写明**: 2005-01-04
+      在任何配置里都没有声明 —— trade_cal 域声明的是 data_start 19901219, accepted
+      生成批次也是 19901219_20261231, 而 dim 只投影 2005 起。这个"投影收窄"的底线是个
+      纯运行时值, 钉它就是钉状态, 正是本仓一贯反对的形态。
+      留着它是因为**去掉会真的丢覆盖**: 同库的 calendar_projection_faithful 看似更强,
+      但它的 floor 取自 dim 自己 (`SELECT MIN(d) FROM dim` 再拿它去截 canonical), 所以
+      dim 被截短时 floor 跟着一起动, 对称差仍为 0, 门照绿。那条判据能抓"canonical 修订了
+      而 dim 没跟"、抓不到"dim 自己被削掉一截"。而后者的静默方向恰恰更糟: continuity 也
+      用 dim 判 expected, 被削掉的那段从此在任何地方都不会被当成"该有数据"。
+      **注入实测 (2026-09-08, 副本上做, 不是推理)**: 在 reference 副本里
+      `DELETE FROM dim_trading_calendar WHERE trade_date < '2010-01-01'` (删 1,215 行) ——
+        calendar_floor_not_truncated   FAIL  checked=1     value=1
+        calendar_projection_faithful   PASS  checked=4128  value=0
+      后者的 checked 从 5343 掉到 4128 却仍判 PASS。这就是"看似更强的判据看不见的那一类"
+      的现货证据: 如果按"已被更强的覆盖"把本条删掉, 等于把唯一能抓这类缺陷的东西关掉。
+      正解不是这条, 是把"投影底线"写进声明 (sync_registry 的 trade_cal 或一个 projection
+      policy 字段), 然后判据比声明而不是比字面量。在那之前, 一个诚实的弱判据 >
+      一个漂亮但看不见这类缺陷的强判据。
+    fix: >-
+      查是谁删了 dim_trading_calendar 的早期行 (它只该由 calendar_builder 从 accepted
+      代际增量构建, 没有删除路径); 用 chunkyctl sync --domain trade_cal 重建
+    kill_when: >-
+      "投影底线"落到配置声明里之后, 本条改成"比声明"并删掉这里的字面量 2005-01-04;
+      或 dim_trading_calendar 退役时随表删。
