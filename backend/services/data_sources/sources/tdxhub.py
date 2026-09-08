@@ -31,7 +31,6 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
-from services.data_sources.sibling_repos import ensure_import_path
 from services.data_sources.tdxhub_kline_recon import fetch_unadjusted_bars
 
 logger = logging.getLogger("data_sources.tdxhub")
@@ -49,10 +48,6 @@ HQ_HOSTS_PROVENANCE = (
 ALIAS = "tdxhub"
 _SMOKE_MARKET = 0
 _SMOKE_CODE = "000001"  # rule-compliance: ok evidence=tdx-hq-handshake-ping-sz000001
-
-
-def tdxhub_root() -> Path:
-    return ensure_import_path(ALIAS, strict=True)
 
 
 def parse_hq_server(raw: str) -> tuple[str, int]:
@@ -93,8 +88,7 @@ def is_hq_transport_error(exc: BaseException) -> bool:
 
 def _hq_host_table() -> list[tuple[str, str, int]]:
     """Frozen official-name snapshot in tdxhub.consts. Not the live client catalog."""
-    ensure_import_path(ALIAS, strict=True)
-    from tdxhub.consts import HQ_HOSTS  # noqa: E402
+    from tdxhub.consts import HQ_HOSTS
 
     return [(str(name), str(ip), int(port)) for name, ip, port in HQ_HOSTS]
 
@@ -108,8 +102,7 @@ def load_connect_cfg_hq(path: str | Path) -> list[tuple[str, int]]:
     cfg = Path(path)
     if not cfg.is_file():
         raise FileNotFoundError(f"TDX connect.cfg not found: {cfg}")
-    ensure_import_path(ALIAS, strict=True)
-    from tdxhub.server import parse_connect_cfg  # noqa: E402
+    from tdxhub.server import parse_connect_cfg
 
     groups = parse_connect_cfg(cfg)
     return [(str(ip), int(port)) for _name, ip, port in groups.get("HQ") or []]
@@ -354,9 +347,8 @@ def open_quotes(server: tuple[str, int], *, timeout: float = 8.0):
     Does not write that file. ``raise_exception=True`` so empty/None is not
     a silent success. Tries daily categories 9 then 4.
     """
-    ensure_import_path(ALIAS, strict=True)
-    from tdxhub import config  # noqa: E402
-    from tdxhub.quotes import Quotes  # noqa: E402
+    from tdxhub import config
+    from tdxhub.quotes import Quotes
 
     config.setup()
     bestip = config.get("BESTIP")
@@ -427,8 +419,7 @@ def quotes_client(
 
 
 def reader_client(*, tdxdir: str | Path, **kwargs: Any):
-    ensure_import_path(ALIAS, strict=True)
-    from tdxhub.reader import Reader  # noqa: E402
+    from tdxhub.reader import Reader
 
     return Reader.factory(market="std", tdxdir=str(tdxdir), **kwargs)
 
@@ -1124,6 +1115,5 @@ __all__ = [
     "reader_client",
     "remember_good_host",
     "tcp_open",
-    "tdxhub_root",
     "xdxr",
 ]

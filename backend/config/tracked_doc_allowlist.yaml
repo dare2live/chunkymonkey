@@ -13,6 +13,7 @@ tracked_md:
 - CLAUDE.md
 - backend/aif10_scraper/VENDOR.md
 - backend/marketdb/VENDOR.md
+- backend/tdxhub/VENDOR.md
 - bestchoice/FROZEN.md
 - bestchoice/README.md
 - frontend/DESIGN.md

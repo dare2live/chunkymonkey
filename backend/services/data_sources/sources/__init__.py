@@ -1,7 +1,8 @@
 """Built-in source adapters.
 
-Physical checkouts: backend/config/sibling_repos.yaml (tdxhub / tushare)。
-已并入本仓的第三方使用闭包: backend/marketdb (fuyao)、backend/aif10_scraper (miaoxiang)，各自带 VENDOR.md 记上游 commit。
+第三方协议/抓取层已全部并入本仓, 各带 VENDOR.md 记上游 commit 与本地差异:
+backend/marketdb (fuyao)、backend/aif10_scraper (miaoxiang)、backend/tdxhub。
+sibling checkout 机制(sibling_repos.py/yaml)随之退役。
 - tushare  TuShare Pro via tinyshare (K线/财务/行业/资金流/龙虎榜 top_list/调研 stk_surv)
 - miaoxiang 东财 aif10 datacenter (十大流通股东/QFII/机构持仓明细)
 - fuyao    同花顺官方 REST/dump（FuyaoSource.fetch_raw；不进他们的 marketdb DuckDB；qfq 禁 SSOT）

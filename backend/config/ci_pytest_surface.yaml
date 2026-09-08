@@ -163,7 +163,7 @@ blocking_paths:
 - tests/services/test_sandbox_guard.py
 - tests/services/test_security_day_acquire_s4.py
 - tests/services/test_security_day_transport_modularity.py
-- tests/services/test_sibling_repos.py
+- tests/services/test_vendored_packages.py
 - tests/services/test_snapshot_nominal_bind.py
 - tests/services/test_stk_holdertrade_acceptance.py
 - tests/services/test_stk_holdertrade_catchup.py

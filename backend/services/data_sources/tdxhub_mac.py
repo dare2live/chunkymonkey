@@ -17,7 +17,6 @@ import struct
 import zlib
 from typing import Any
 
-from services.data_sources.sibling_repos import ensure_import_path
 from services.data_sources.sources.tdxhub import (
     _SMOKE_CODE,
     _SMOKE_MARKET,
@@ -60,8 +59,7 @@ def setup_command_bytes() -> tuple[bytes, bytes, bytes]:
 
 def tdxhub_setup_command_bytes() -> tuple[bytes, bytes, bytes]:
     """Byte-equal lock against tdxhub SetupCmd1/2/3 drift."""
-    ensure_import_path("tdxhub", strict=True)
-    from tdxhub.protocol.parser.setup_commands import (  # noqa: E402
+    from tdxhub.protocol.parser.setup_commands import (
         SetupCmd1,
         SetupCmd2,
         SetupCmd3,
