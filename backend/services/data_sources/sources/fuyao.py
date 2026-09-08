@@ -24,9 +24,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from services.data_sources.sibling_repos import ensure_import_path
 
-ALIAS = "fuyao"
 API_BASE_URL = "https://fuyao.aicubes.cn"
 _SHANGHAI = timezone(timedelta(hours=8))
 MAX_PAGE_SIZE = 200
@@ -90,13 +88,8 @@ class FuyaoMissingFieldsError(ValueError):
     """A required vendor field was absent from a landed row."""
 
 
-def fuyao_root() -> Path:
-    return ensure_import_path(ALIAS, strict=True)
-
-
 def dump_downloader(*, api_key: str, cache_dir: Path, **kwargs: Any):
     """Official Parquet dump client (daily-k / daily-k-10d / adjustment-factors)."""
-    ensure_import_path(ALIAS, strict=True)
     from marketdb.providers.dump import DumpDownloader  # noqa: E402
 
     return DumpDownloader(
@@ -108,7 +101,6 @@ def dump_downloader(*, api_key: str, cache_dir: Path, **kwargs: Any):
 
 
 def dump_kinds():
-    ensure_import_path(ALIAS, strict=True)
     from marketdb.providers.dump import DownloadKind  # noqa: E402
 
     return DownloadKind
@@ -116,7 +108,6 @@ def dump_kinds():
 
 def resolve_api_key() -> str | None:
     """Env ``HITHINK_FINANCE_API_KEY`` then official user-level credentials.env."""
-    ensure_import_path(ALIAS, strict=True)
     from marketdb.credentials import resolve_api_key as _resolve  # noqa: E402
 
     return _resolve()
@@ -550,7 +541,6 @@ class FuyaoSource:
 
 
 __all__ = [
-    "ALIAS",
     "API_BASE_URL",
     "AUCTION_API_PATHS",
     "FuyaoMissingFieldsError",
@@ -574,7 +564,6 @@ __all__ = [
     "flatten_auction_benchmark",
     "flatten_auction_snapshot",
     "flatten_limit_pool_items",
-    "fuyao_root",
     "normalize_ticker_rows",
     "resolve_api_key",
     "resolve_api_path",

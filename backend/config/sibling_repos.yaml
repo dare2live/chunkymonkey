@@ -20,17 +20,6 @@ repos:
     pythonpath:
       - .
     required_marker: tdxhub/quotes.py
-  fuyao:
-    dirname: fuyao
-    role: hithink_finance_official
-    upstream: https://github.com/HiThink-Tech/Financial-API.git
-    required: true
-    pythonpath:
-      - python
-    required_marker: python/marketdb/providers/dump.py
-    notes:
-      - Official dump downloader is marketdb.providers.dump.DumpDownloader
-      - Do not vendor their marketdb DuckDB into chunkymonkey
   tushare:
     dirname: tushare
     role: tushare_account_workspace

@@ -7,7 +7,11 @@ purpose: '仓库允许被 git 跟踪的文档白名单。判据数据化, 不 ha
   git 跟踪**, 留在本清单里这道门就永远红。移走不丢保护: 冻结证据的真牙是 bestchoice/scripts/verify_frozen_evidence.py 的 sha256 校验 (验磁盘内容不验跟踪状态),
   已双向实测——往 stock_formula_best.csv 追加一个字节即报 "sha256 mismatch", 复原即 ok。本门管跟踪集合, 那个门管内容, 不重叠。'
 tracked_md:
+# 2026-09-08: backend/marketdb/VENDOR.md —— 并入外部代码时的出处记录(上游 URL/commit/
+# 并入范围/许可/继承的约束)。这类文件每并入一个 sibling 就会新增一份, 每次都该来改这一行:
+# "仓里有一份别人的代码"必须是显式登记的, 不是悄悄多出来的。
 - CLAUDE.md
+- backend/marketdb/VENDOR.md
 - bestchoice/FROZEN.md
 - bestchoice/README.md
 - frontend/DESIGN.md
