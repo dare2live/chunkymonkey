@@ -574,6 +574,12 @@ def _table_present(conn, name: str) -> bool:
 
 # 退出派生因「上一期身份未记录」而跳过的记录。规则 12: 运行时计数不写进手写文件,
 # 但也不能只活在 log 里 —— 调用方要能拿到它并放进自己的 result dict。
+# 退出行要从上一期**原样带出**的持仓字段(不置空)。理由见 _derive_exits_against_canonical
+# 里 null_fields 处的长注释: 它们的定义就是「退出前最后一次真实披露的值」。
+CARRY_FIELDS: tuple[str, ...] = (
+    "hold_ratio_float", "shares_approx", "hold_amount", "hold_market_cap",
+)
+
 _EXIT_DERIVE_SKIPS: list[dict] = []
 
 
@@ -616,9 +622,24 @@ def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
     if not by_stock_period or not _table_present(conn, CANONICAL_TABLE):
         return []
 
-    null_fields = ("share_class", "shares_text", "shares_approx", "shares_precision",
-                   "hold_amount", "hold_ratio_float", "hold_ratio_total", "hold_ratio",
-                   "hold_market_cap", "change_shares_text", "change_shares_approx",
+    # 2026-09-08: hold_ratio_float / shares_approx / hold_amount / hold_market_cap
+    # 从这里移出去 —— 它们要带出上一期的值, 不置空。
+    #
+    # 内存路径 _derive_exits (`e = dict(prev_row)`) 一直是原样带出的; canonical 路径置空
+    # 是 2026-09-06 引入本函数时的疏漏(提交信息没提要改这几个字段的语义, null_fields 也没留理由),
+    # 不是深思后的重新裁决 —— 结果是同一种派生行两套语义, 在回填边界日翻转。
+    #
+    # 「退出行的持股比例」有明确含义: **退出前最后一次真实披露的比例**, 是历史事实,
+    # 只用过去数据不违红线 1; 也不是红线 3 管的那种缺失(红线 3 管「该观测到却没观测到」,
+    # 而退出行本身是派生行, 它这几个字段的定义就是「上一期值」)。
+    # 置 0 会撒谎(暗示比例真是 0); 置 NULL 对唯一的消费方是静默降级 ——
+    # stock_dossier.py:389-396 注释明文写着契约「hold_ratio_float = 上期在榜占比(最后已知)」,
+    # 界面会从有数字变空白。只有原样带出同时满足「不撒谎」与「消费方能用」。
+    # 核实过没有消费方把它当「当期真实持仓」加总: institution_follow_b4_measure.py:202
+    # 在打分前就把 is_exit_row 整体剔除; institution_profile.py:265 只透传不做运算。
+    null_fields = ("share_class", "shares_text", "shares_precision",
+                   "hold_ratio_total", "hold_ratio",
+                   "change_shares_text", "change_shares_approx",
                    "hold_change_num", "effective_date")
     derived: list[dict] = []
     fetched_at = _utc_now()
@@ -626,19 +647,46 @@ def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
         prev = conn.execute(
             f"SELECT MAX(report_date) FROM {CANONICAL_TABLE} WHERE stock_code=? "
             "AND is_exit_row=FALSE AND report_date<?", [stock_code, report_date]).fetchone()
-        prev_period = prev[0] if prev else None
+        db_prev = prev[0] if prev else None
+
+        # 2026-09-08: 同批双期链式派生。
+        # 上面那句只看 **canonical 已接受**的上一期, 完全看不到同一批次里更早的那期。
+        # 年报 + 一季报同日披露时(staging 实测 15,881 个 (股,UPDATE_DATE) 对同日双期,
+        # 约 2,500/年, 占相邻期对 10.8%), 后一期永远拿 canonical 里更老的那期当基准,
+        # 于是「上一期在榜、本期不在」的那些持有人的退出被整个吞掉。
+        # 复现: canonical 有 20230930{A,B}, 批次含 20231231{A,C} + 20240331{A,B}
+        #   修前 -> [(20231231,B)]          20240331 拿 20230930 当基准, C 的退出被吞
+        #   修后 -> [(20231231,B), (20240331,C)]
+        batch_prev = max(
+            (k[1] for k in by_stock_period
+             if k[0] == stock_code and k[1] < report_date),
+            default=None,
+        )
+        use_batch = batch_prev is not None and (db_prev is None or batch_prev > db_prev)
+        prev_period = batch_prev if use_batch else db_prev
         if not prev_period:
-            continue  # 该股没有更早的已接受期, 没有基准可 diff
-        prev_rows = conn.execute(
-            f"SELECT DISTINCT holder_name, holder_code, is_holder_org FROM {CANONICAL_TABLE} "
-            "WHERE stock_code=? AND report_date=? AND is_exit_row=FALSE",
-            [stock_code, prev_period]).fetchall()
+            continue  # 该股没有更早的期(库里和批内都没有), 没有基准可 diff
+
+        if use_batch:
+            # 批内那期的行自带身份与持仓字段, 不必回查表(它还没落库)。
+            prev_rows = [
+                (r.get("holder_name"), r.get("holder_code"), r.get("is_holder_org"),
+                 *(r.get(f) for f in CARRY_FIELDS))
+                for r in by_stock_period[(stock_code, prev_period)]
+            ]
+        else:
+            prev_rows = conn.execute(
+                f"SELECT DISTINCT holder_name, holder_code, is_holder_org, "
+                f"{', '.join(CARRY_FIELDS)} FROM {CANONICAL_TABLE} "
+                "WHERE stock_code=? AND report_date=? AND is_exit_row=FALSE",
+                [stock_code, prev_period]).fetchall()
         # 身份键与内存路径 _holder_identity 同口径: 有 code 用 code, 没有退回 name。
         prev_by_identity = {
             (str(r[1]) if r[1] else str(r[0])): {
                 "holder_name": str(r[0]),
                 "holder_code": str(r[1]) if r[1] else None,
                 "is_holder_org": r[2],
+                **{f: r[3 + i] for i, f in enumerate(CARRY_FIELDS)},
             }
             for r in prev_rows if r and r[0]
         }
@@ -654,7 +702,14 @@ def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
         #   按名字猜 org/个人 -> 红线 3 禁止 (缺失不许填,不许 fallback);
         #   跳过 -> 少一条**派生**行, 而派生物可从证据重生成 (红线 4)。
         # 计数不静默: 回填期间上一期几乎都是 v2, 跳过量应当很大且随回填推进归零;
-        # 日更期间上一期必是 v3, 这里应当恒为 0 —— 不为 0 说明有 v2 行没被覆盖到。
+        # 2026-09-08 更正解读: 非 0 **不等于**「有 v2 行没被覆盖到」。
+        # 真机制是 accept 侧 DELETE 按 notice_date=partition 划范围, 供应商把同一
+        # (股,期) 改派到别的公告日时, 旧行留在一个此后任何批次都不会再落地的分区里 ——
+        # 那不是「没轮到覆盖」, 是这条 DELETE 的作用域结构性够不到它, 且日更也会触发,
+        # 不是回填期独有的历史欠账。(notice_date 已于 2026-09-08 进 GRAIN, 两版现在共存
+        # 不再互相挡路; 但旧版身份未记录时仍会走到这里被跳过。)
+        # 非 0 时该查的是「该 identity 在 canonical 里是否横跨多个 notice_date」,
+        # 而不是假设「该刷一遍了」。
         skipped_unknown = [i for i in gone if prev_by_identity[i]["is_holder_org"] is None]
         if skipped_unknown:
             # 计数也回传给调用方: 只写 log 时它是静默的 —— 回填脚本与 ingest CLI 都没有
@@ -684,6 +739,8 @@ def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
                 # cur_rows[0] 的 code, 实测污染 21,453 行。
                 "holder_code": src["holder_code"],
                 "is_holder_org": src["is_holder_org"],
+                # 退出前最后一次真实披露的持仓, 见上方 null_fields 处的裁决。
+                **{f: src[f] for f in CARRY_FIELDS},
                 "holder_new": identity,
                 "report_date": report_date, "is_exit_row": True,
                 "holder_rank": rank, "row_seq": 1,

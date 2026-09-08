@@ -186,7 +186,10 @@ def _wm_fixture():
             -- 2026-09-07 schema v3: 身份键。桩表最小化但**必须**含这两列 ——
             -- _derive_exits_against_canonical 从 canonical 取退出者自己的 code,
             -- 少了它就不是在测生产行为。
-            holder_code VARCHAR, is_holder_org BOOLEAN
+            holder_code VARCHAR, is_holder_org BOOLEAN,
+            -- 2026-09-08: 退出行要原样带出的持仓字段 (CARRY_FIELDS)。
+            hold_ratio_float DOUBLE, shares_approx BIGINT,
+            hold_amount DOUBLE, hold_market_cap DOUBLE
         )
         """
     )
@@ -352,7 +355,10 @@ def _canonical_holders_fixture():
             -- 2026-09-07 schema v3: 身份键。桩表最小化但**必须**含这两列 ——
             -- _derive_exits_against_canonical 从 canonical 取退出者自己的 code,
             -- 少了它就不是在测生产行为。
-            holder_code VARCHAR, is_holder_org BOOLEAN
+            holder_code VARCHAR, is_holder_org BOOLEAN,
+            -- 2026-09-08: 退出行要原样带出的持仓字段 (CARRY_FIELDS)。
+            hold_ratio_float DOUBLE, shares_approx BIGINT,
+            hold_amount DOUBLE, hold_market_cap DOUBLE
         )
         """
     )
@@ -640,7 +646,10 @@ def _notice_hole_fixture():
             -- 2026-09-07 schema v3: 身份键。桩表最小化但**必须**含这两列 ——
             -- _derive_exits_against_canonical 从 canonical 取退出者自己的 code,
             -- 少了它就不是在测生产行为。
-            holder_code VARCHAR, is_holder_org BOOLEAN
+            holder_code VARCHAR, is_holder_org BOOLEAN,
+            -- 2026-09-08: 退出行要原样带出的持仓字段 (CARRY_FIELDS)。
+            hold_ratio_float DOUBLE, shares_approx BIGINT,
+            hold_amount DOUBLE, hold_market_cap DOUBLE
         )
         """
     )
@@ -873,7 +882,9 @@ def _canon_with_identity(monkeypatch):
         CREATE TABLE canonical_top10_float_holders_period (
             stock_code VARCHAR, report_date VARCHAR, notice_date VARCHAR,
             holder_name VARCHAR, is_exit_row BOOLEAN,
-            holder_code VARCHAR, is_holder_org BOOLEAN
+            holder_code VARCHAR, is_holder_org BOOLEAN,
+            hold_ratio_float DOUBLE, shares_approx BIGINT,
+            hold_amount DOUBLE, hold_market_cap DOUBLE
         )
         """
     )
@@ -1020,3 +1031,80 @@ def test_per_stock_path_does_not_touch_canonical_exit_derivation(monkeypatch):
     assert out["ok"] == 1
     assert out["exit_rows"] > 0, "内存派生该产出退出行(甲在下一期不在了)"
     assert out["exit_derive_skipped"] == 0
+
+
+def test_same_batch_two_periods_chain_derivation():
+    """同批双期: 后一期必须以**批内**前一期为基准, 不是 canonical 里更老的那期。
+
+    2026-09-08。原实现只查 canonical 已接受的上一期, 完全看不到同批次里更早的那期。
+    年报 + 一季报同日披露时(staging 实测 15,881 个 (股,UPDATE_DATE) 对同日双期,
+    约 2,500/年, 占相邻期对 10.8%), 后一期永远拿 canonical 里更老的那期当基准,
+    「上一期在榜、本期不在」的退出被整个吞掉。
+
+    canonical 有 20230930{A,B}; 批次含 20231231{A,C} + 20240331{A,B}:
+      修前 -> [(20231231,B)]            20240331 拿 20230930{A,B} 比, "什么都没少"
+      修后 -> [(20231231,B), (20240331,C)]
+    """
+    con = _canon_with_identity(None)
+    con.execute(
+        "INSERT INTO canonical_top10_float_holders_period "
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row, holder_code, is_holder_org) "
+        "VALUES ('600000','20230930','20231020','A',FALSE,'CA',TRUE),"
+        "       ('600000','20230930','20231020','B',FALSE,'CB',TRUE)"
+    )
+
+    def r(period, name, code):
+        return {
+            "stock_code": "600000", "report_date": period, "notice_date": "20240425",
+            "page_update_date": "20240425", "holder_name": name,
+            "holder_code": code, "is_holder_org": True,
+            "holder_set": "free", "holder_rank": 1, "row_seq": 1, "is_exit_row": False,
+        }
+
+    rows = [r("20231231", "A", "CA"), r("20231231", "C", "CC"),
+            r("20240331", "A", "CA"), r("20240331", "B", "CB")]
+    got = sorted(
+        (e["report_date"], e["holder_name"])
+        for e in _derive_exits_against_canonical(con, rows)
+    )
+    con.close()
+    assert got == [("20231231", "B"), ("20240331", "C")], (
+        f"得到 {got} —— 缺 ('20240331','C') 说明 20240331 仍拿 canonical 里的 20230930 当基准, "
+        "同批次里的 20231231 没被看到"
+    )
+
+
+def test_derived_exit_row_carries_last_known_position():
+    """退出行带出**退出前最后一次真实披露**的持仓, 不置 NULL。
+
+    2026-09-08 裁决。内存路径 _derive_exits 一直原样带出, canonical 路径置空是
+    2026-09-06 引入本函数时的疏漏 —— 同一种派生行两套语义, 在回填边界日翻转。
+    唯一消费方 stock_dossier.py:389-396 的注释明文写着契约
+    「hold_ratio_float = 上期在榜占比(最后已知)」, 置 NULL 会让界面从有数字变空白。
+    置 0 更糟 —— 那是撒谎(暗示比例真的是 0)。
+    """
+    con = _canon_with_identity(None)
+    con.execute(
+        "INSERT INTO canonical_top10_float_holders_period "
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row, holder_code, "
+        " is_holder_org, hold_ratio_float, shares_approx, hold_amount, hold_market_cap) "
+        "VALUES ('600000','20240331','20240425','留守',FALSE,'C1',TRUE,0.11,1000,1000.0,9.0),"
+        "       ('600000','20240331','20240425','离场',FALSE,'C2',TRUE,0.05,2000,2000.0,7.0)"
+    )
+    cur = [{
+        "stock_code": "600000", "report_date": "20240630", "notice_date": "20240820",
+        "page_update_date": "20240820", "holder_name": "留守",
+        "holder_code": "C1", "is_holder_org": True,
+        "holder_set": "free", "holder_rank": 1, "row_seq": 1, "is_exit_row": False,
+    }]
+    exits = _derive_exits_against_canonical(con, cur)
+    con.close()
+    assert len(exits) == 1 and exits[0]["holder_name"] == "离场"
+    e = exits[0]
+    assert e["hold_ratio_float"] == 0.05, f"ratio 被置成了 {e['hold_ratio_float']!r}"
+    assert e["shares_approx"] == 2000
+    assert e["hold_amount"] == 2000.0
+    assert e["hold_market_cap"] == 7.0
+    # 变化量字段仍该置空/改写 —— 带出的是「最后已知持仓」, 不是「本期变化」。
+    assert e["change_status"] == "退出"
+    assert e["hold_change_num"] is None
