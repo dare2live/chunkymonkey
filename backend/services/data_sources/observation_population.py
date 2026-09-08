@@ -81,6 +81,9 @@ class ObservationMembership:
     universe_policy_hash: str
     st_member_count: int
     excluded_board_count: int
+    # 2026-09-08: 分区里有行、但当日没有成交(activity_field <= 0)而被排除的只数。
+    # 对 2026-08-28 及以前恒为 0(tushare 七年不落停牌行), 从通达信 2026-08-31 起才非零。
+    excluded_no_activity_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -116,6 +119,15 @@ class ObservationPopulationReadiness:
 CalendarLoader = Callable[[datetime, UniversePolicy], CalendarTruth]
 PartitionLoader = Callable[
     [date, datetime, UniversePolicy], tuple[AcceptedPartitionRef, frozenset[str]]
+]
+# nominal 日 K 单独一个形状: (ref, 全部成员, 有成交的成员)。
+# 不把第三项塞进 PartitionLoader 是因为 stock_st 共用它, 而"是不是 ST"与"有没有成交"无关 ——
+# 两个域本来就不同, 让类型说出这件事, 而不是给 st 一个恒等于全集的假字段。
+# 全部成员仍要与 accepted 指针 row_count 对账(_prove_membership_parity), 所以两个集合都要传:
+# 前者证完整性, 后者判"谁算在交易"。
+NominalPartitionLoader = Callable[
+    [date, datetime, UniversePolicy],
+    tuple[AcceptedPartitionRef, frozenset[str], frozenset[str]],
 ]
 
 
@@ -222,6 +234,7 @@ def load_accepted_nominal_kline_membership(
             accepted_at=part.accepted_at,
         ),
         part.ts_codes,
+        part.active_ts_codes,
     )
 
 
@@ -334,7 +347,7 @@ def resolve_traded_on_observation_date(
     policy: UniversePolicy,
     *,
     calendar_loader: CalendarLoader | None = None,
-    nominal_kline_loader: PartitionLoader | None = None,
+    nominal_kline_loader: NominalPartitionLoader | None = None,
     st_membership_loader: PartitionLoader | None = None,
 ) -> ObservationMembership:
     """Resolve one day's project-universe membership from accepted sources only."""
@@ -364,9 +377,9 @@ def resolve_traded_on_observation_date(
     except CalendarTruthUnavailable as exc:
         raise ObservationPopulationUnavailable(exc.status, exc.reason) from exc
 
-    kline_ref, traded = (nominal_kline_loader or load_accepted_nominal_kline_membership)(
-        day, cutoff, policy
-    )
+    kline_ref, traded, traded_active = (
+        nominal_kline_loader or load_accepted_nominal_kline_membership
+    )(day, cutoff, policy)
     st_ref, st_members = (st_membership_loader or load_accepted_st_membership)(
         day, cutoff, policy
     )
@@ -401,11 +414,21 @@ def resolve_traded_on_observation_date(
 
     eligible: list[str] = []
     excluded_board = 0
+    excluded_no_activity = 0
     for ts_code in sorted(traded):
         code = str(ts_code).strip()
         # ST/*ST remain 沪深A — do not denylist via stock_st membership.
         if not _board_prefix_allowed(code, policy):
             excluded_board += 1
+            continue
+        # 2026-09-08: 分区里有行 != 当日在交易。通达信自 2026-08-31 起把停牌日也落成一行
+        # (四价=前收, vol=0), tushare 七年是整行不落 —— 同一只股 000635.SZ 08-28 无行、
+        # 08-31 有行, 同样是停牌, 差别只在供货商。判据原本靠"停牌日没有行"才等价于
+        # "在交易", 换源后这个等价消失。这里把它显式化, 于是判据不再依赖某个供货商的
+        # 行发射策略 —— 后续在同花顺/通达信/东方财富之间换源时无需逐源做去停牌转换。
+        # 对 2026-08-28 及以前完全 no-op: 全表 8,595,304 行里 vol=0 与 vol IS NULL 各 0 行。
+        if code not in traded_active:
+            excluded_no_activity += 1
             continue
         eligible.append(code)
 
@@ -423,6 +446,7 @@ def resolve_traded_on_observation_date(
         universe_policy_hash=policy.config_hash,
         st_member_count=st_in_universe,
         excluded_board_count=excluded_board,
+        excluded_no_activity_count=excluded_no_activity,
     )
 
 
@@ -487,7 +511,7 @@ def evaluate_observation_population_readiness(
     decision_time: datetime | None = None,
     observation_date: date | None = None,
     calendar_loader: CalendarLoader | None = None,
-    nominal_kline_loader: PartitionLoader | None = None,
+    nominal_kline_loader: NominalPartitionLoader | None = None,
     st_membership_loader: PartitionLoader | None = None,
 ) -> ObservationPopulationReadiness:
     """Evaluate whether the three accepted sources can prove the daily gate.

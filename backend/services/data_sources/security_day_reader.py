@@ -151,6 +151,27 @@ def load_accepted_security_day_partition(
         rebuilt.append(item)
     if canonical_content_hash(rebuilt, domain.provider_fields) != str(content_hash):
         raise SecurityDayError("accepted_partition_content_hash_mismatch")
+    # 活跃子集: domain.activity_field > 0 的成员。**必须在 content_hash 校验之后派生**——
+    # 这样它与 ts_codes 同源同证, 而不是另开一次读取(两次读取可能不一致, 那正是本项目
+    # 反复栽过的形态)。域没声明 activity_field 时两者恒等, 不引入任何新语义。
+    #
+    # 为什么不在上面的 ts_codes 查询里直接加 WHERE: ts_codes 要与 accepted 指针的
+    # row_count 对账(见上方 accepted_partition_row_count_mismatch), 过滤会当场撞碎那条
+    # 完整性证明。分区层的职责是"逐行忠实 + 可验", 判"谁算真的发生了"是策略层的事。
+    if domain.activity_field is None:
+        active_ts_codes = ts_codes
+    else:
+        if domain.activity_field not in domain.provider_fields:
+            raise SecurityDayError(
+                f"activity_field_not_in_provider_fields field={domain.activity_field} "
+                f"domain={domain.domain}"
+            )
+        active_ts_codes = frozenset(
+            str(item["ts_code"])
+            for item in rebuilt
+            if item.get(domain.activity_field) is not None
+            and float(item[domain.activity_field]) > 0
+        )
     return SecurityDayAcceptedPartition(
         dataset_id=domain.dataset_id,
         partition_value=partition,
@@ -162,6 +183,7 @@ def load_accepted_security_day_partition(
         available_at=available,
         accepted_at=accepted,
         ts_codes=ts_codes,
+        active_ts_codes=active_ts_codes,
     )
 
 

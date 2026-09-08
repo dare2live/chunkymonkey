@@ -72,7 +72,11 @@ def test_universe_policy_snapshot_is_immutable_and_complete():
     from services.universe import UNIVERSE_POLICY
 
     assert UNIVERSE_POLICY.policy_id == "active_a_share_trading_universe"
-    assert UNIVERSE_POLICY.policy_version == 4
+    # 2026-09-08 v4 -> v5: eligibility 实现加了"当日有成交"这条轴 (停牌行随通达信换源
+    # 开始落库, "有行"不再等价于"在交易")。本断言钉的是**契约**不是运行时测量值 ——
+    # policy_version 与 eligibility_rule 都进 _semantic_hash 的载荷, 是策略身份的一部分,
+    # 所以它该在每次判据语义变更时被逼着一起改。详见 universe_rules.yaml policy 注。
+    assert UNIVERSE_POLICY.policy_version == 5
     assert UNIVERSE_POLICY.allowed_board_prefixes == ("60", "00", "30", "68")
     assert UNIVERSE_POLICY.allowed_exchange_ids == ("SSE", "SZSE")
     assert [

@@ -97,6 +97,12 @@ class SecurityDayDomain:
     min_rows: int
     schema_payload: Mapping[str, Any]
     schema_hash: str
+    # 2026-09-08: 声明「哪个数值字段 > 0 才算这一行真的发生了」。None = 该域没有活跃度概念
+    # (如 stock_st: 是不是 ST 与有没有成交无关)。
+    # 立此字段的原因: 供货商换到通达信后, 停牌日开始被落成一行 (tushare 七年从不落),
+    # 于是「有名义 K 线 = 在交易」这个 universe 判据在不改规则的情况下改变了含义。
+    # 判据要说它真正的意思, 而不同域的"真正发生了"是不同字段, 所以进 domain 规格不硬编码。
+    activity_field: str | None = None
 
     @property
     def availability_policy(self) -> AvailabilityPolicy:
@@ -163,6 +169,10 @@ class SecurityDayAcceptedPartition:
     available_at: datetime
     accepted_at: datetime
     ts_codes: frozenset[str]
+    # 分区里**全部**成员 (与 row_count / content_hash 对账的那一个, 不许过滤)。
+    # active_ts_codes 是它的子集: domain.activity_field > 0 的那些。域没声明 activity_field
+    # 时两者恒等。派生自同一批已过 content_hash 校验的行, 所以它和 ts_codes 同源同证。
+    active_ts_codes: frozenset[str]
 
 
 def _canonical_column_sql(field: Mapping[str, Any]) -> str:

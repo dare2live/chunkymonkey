@@ -630,6 +630,41 @@ class TdxhubDailyBatchError(RuntimeError):
     """单日全市场成功率低于阈值 —— 拒绝静默半批入库, 见 ``TdxhubSource.fetch_raw``。"""
 
 
+# A 股最小成交单位是 1 手。解码结果落在 (0, 1) 手是**物理上不可能**的, 只可能是解码伪影。
+# 2026-09-08 实证: tdxhub/protocol/helper.py 的 get_volume() 是通达信私有浮点的反汇编逐字
+# 转写(变量名 dbl_xmm6 / dw_ecx 即 x86 寄存器名, 沿 tdxpy -> mootdx vendor 而来), 它对
+# **全零字段**(= 这根 bar 没有成交)会返回 2**-127 = 5.877471754111438e-39 而不是 0.0 ——
+# 隐含前导 1 那一项在 logpoint=0 时没有被抑制。那 6 个值原样落进了
+# canonical_nominal_ohlcv_daily(2026-08-31), 再被服务视图的 volume>=1e-6 静默滤掉,
+# 与"停牌整行缺失"完全同形; 而 technical_states 读的是**裸表**, log(5.877e-37)=-83.4
+# 让 zvol 变成 -520(声明值域 [-5,5])并落进了 fact_stock_form_daily。
+#
+# 上游那个零点已修(tdxhub e2516d5, get_volume(0) -> 0.0), 但本校验独立于它:
+# 它防的是**任何供货商、任何未来解码路径**产出物理不可能的量。响亮失败而不是就地纠正 ——
+# 我们知道 2**-127 该是 0, 但不知道下一个伪影该是什么, 猜一个值就是在编数据(红线 3)。
+_MIN_TRADEABLE_LOT = 1.0
+
+
+def _reject_impossible_quantity(*, vol: float, ts_code: str, target: date) -> float:
+    if vol != vol:  # NaN
+        raise TdxhubDailyBatchError(
+            f"tdx_decoded_volume_is_nan ts_code={ts_code} date={target.isoformat()}"
+        )
+    if vol < 0:
+        raise TdxhubDailyBatchError(
+            f"tdx_decoded_volume_negative ts_code={ts_code} "
+            f"date={target.isoformat()} vol={vol!r}"
+        )
+    if 0 < vol < _MIN_TRADEABLE_LOT:
+        raise TdxhubDailyBatchError(
+            f"tdx_decoded_volume_below_one_lot ts_code={ts_code} "
+            f"date={target.isoformat()} vol={vol!r} —— A股最小成交 1 手, "
+            "落在 (0,1) 手只可能是解码伪影(如 get_volume 的 2**-127 零点), "
+            "不落库也不就地纠正: 不知道它本该是什么就不许编"
+        )
+    return vol
+
+
 class TdxhubSource:
     """sync_runner 调用约定: ``fetch_raw(api, **params) -> list[dict]``。
 
@@ -1007,7 +1042,7 @@ class TdxhubSource:
         high = float(today_bar[3])
         low = float(today_bar[4])
         close = float(today_bar[5])
-        vol = float(today_bar[6])
+        vol = _reject_impossible_quantity(vol=float(today_bar[6]), ts_code=ts_code, target=target)
         amount = float(today_bar[7]) / 1000.0  # 坑 3: 元 -> 千元
         if prev_close_raw is None:
             # 新股上市首日 (或窗口内确实没有更早成交日): 退化为当日 open, 不崩。

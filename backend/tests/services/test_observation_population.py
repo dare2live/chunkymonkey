@@ -78,7 +78,8 @@ def _open_calendar():
 
 def test_policy_truth_sources_align_with_accepted_dataset_ids() -> None:
     policy = _policy()
-    assert policy.policy_version == 4
+    # v5 起 eligibility 多一条"当日有成交"轴, 见 universe_rules.yaml policy 注。
+    assert policy.policy_version == 5
     assert policy.trading_calendar_source == CALENDAR_DATASET_ID
     assert policy.nominal_kline_source == NOMINAL_KLINE_DATASET_ID
     assert policy.st_membership_source == ST_MEMBERSHIP_DATASET_ID
@@ -182,7 +183,7 @@ def test_resolve_keeps_st_and_excludes_wrong_board_with_injected_accepted_source
         DECISION,
         policy,
         calendar_loader=lambda *_: _open_calendar(),
-        nominal_kline_loader=lambda *_: (kline_ref, traded),
+        nominal_kline_loader=lambda *_: (kline_ref, traded, traded),
         st_membership_loader=lambda *_: (st_ref, st_members),
     )
 
@@ -191,6 +192,89 @@ def test_resolve_keeps_st_and_excludes_wrong_board_with_injected_accepted_source
     assert membership.excluded_board_count == 1
     assert membership.calendar_generation_id == "cal-gen-1"
     assert membership.universe_policy_hash == policy.config_hash
+
+
+def test_row_present_but_no_volume_is_excluded_from_universe() -> None:
+    """分区里有行 != 当日在交易 (2026-09-08 换源后新增的排除轴)。
+
+    通达信自 2026-08-31 起把停牌日也落成一行(四价=前收, vol=0), tushare 七年是整行不落。
+    实证: 000635.SZ 08-28 停牌无行(tushare)、08-31 停牌有行(通达信) —— 同股同状况,
+    差别只在供货商。原判据「观察日有名义日 K 线」靠"停牌日没有行"才等价于"在交易",
+    换源后等价消失, 停牌股会被当成在交易进 universe(红线 2)。
+
+    这里锁的是: 全量成员仍与 row_count 对账(完整性证明不动), 但只有 active 子集进 universe。
+    """
+    policy = _policy()
+    # 3 只都在分区里(row_count=3, parity 必须过), 但 600001.SH 当日无成交
+    all_members = frozenset({"000001.SZ", "600000.SH", "600001.SH"})
+    active = frozenset({"000001.SZ", "600000.SH"})
+    kline_ref = _partition(NOMINAL_KLINE_DATASET_ID, OPEN_DAY, rows=len(all_members))
+    st_ref = _partition(ST_MEMBERSHIP_DATASET_ID, OPEN_DAY, rows=1)
+
+    membership = resolve_traded_on_observation_date(
+        OPEN_DAY,
+        DECISION,
+        policy,
+        calendar_loader=lambda *_: _open_calendar(),
+        nominal_kline_loader=lambda *_: (kline_ref, all_members, active),
+        st_membership_loader=lambda *_: (st_ref, frozenset({"000001.SZ"})),
+    )
+    assert membership.ts_codes == ("000001.SZ", "600000.SH")
+    assert "600001.SH" not in membership.ts_codes
+    assert membership.excluded_no_activity_count == 1
+    assert membership.excluded_board_count == 0
+
+
+def test_all_members_active_is_unchanged_from_before() -> None:
+    """反方向: 全部成员都有成交时, 行为与加这条轴之前逐字相同。
+
+    这一条锁的是"对七年历史 no-op" —— 实测 canonical_nominal_ohlcv_daily 全表
+    8,595,304 行里 vol=0 与 vol IS NULL 各 0 行, 即 2026-08-28 及以前 active 恒等于全集。
+    没有这条用例, 新排除轴一旦误伤就只能靠人眼发现。
+    """
+    policy = _policy()
+    members = frozenset({"000001.SZ", "600000.SH", "600001.SH"})
+    kline_ref = _partition(NOMINAL_KLINE_DATASET_ID, OPEN_DAY, rows=len(members))
+    st_ref = _partition(ST_MEMBERSHIP_DATASET_ID, OPEN_DAY, rows=1)
+
+    membership = resolve_traded_on_observation_date(
+        OPEN_DAY,
+        DECISION,
+        policy,
+        calendar_loader=lambda *_: _open_calendar(),
+        nominal_kline_loader=lambda *_: (kline_ref, members, members),
+        st_membership_loader=lambda *_: (st_ref, frozenset({"000001.SZ"})),
+    )
+    assert membership.ts_codes == ("000001.SZ", "600000.SH", "600001.SH")
+    assert membership.excluded_no_activity_count == 0
+
+
+def test_activity_exclusion_does_not_weaken_row_count_parity() -> None:
+    """active 子集不参与完整性证明 —— parity 仍按全量成员对 row_count。
+
+    这条防的是一种很容易犯的实现错误: 把过滤下沉到分区层, 于是 row_count 与成员数
+    对不上时反而"自动对上了", 完整性证明被悄悄拆掉。
+    """
+    policy = _policy()
+    # 指针说 3 行, 但全量成员只给 2 个 -> 必须 BLOCKED, 与 active 是什么无关
+    with pytest.raises(ObservationPopulationUnavailable) as caught:
+        resolve_traded_on_observation_date(
+            OPEN_DAY,
+            DECISION,
+            policy,
+            calendar_loader=lambda *_: _open_calendar(),
+            nominal_kline_loader=lambda *_: (
+                _partition(NOMINAL_KLINE_DATASET_ID, OPEN_DAY, rows=3),
+                frozenset({"600000.SH", "000001.SZ"}),
+                frozenset({"600000.SH"}),
+            ),
+            st_membership_loader=lambda *_: (
+                _partition(ST_MEMBERSHIP_DATASET_ID, OPEN_DAY, rows=1),
+                frozenset({"000001.SZ"}),
+            ),
+        )
+    assert caught.value.status == "BLOCKED"
+    assert "row_count_membership_parity_failed" in caught.value.reason
 
 
 def test_closed_observation_day_is_blocked() -> None:
@@ -203,6 +287,7 @@ def test_closed_observation_day_is_blocked() -> None:
             calendar_loader=lambda *_: _open_calendar(),
             nominal_kline_loader=lambda *_: (
                 _partition(NOMINAL_KLINE_DATASET_ID, CLOSED_DAY),
+                frozenset({"600000.SH"}),
                 frozenset({"600000.SH"}),
             ),
             st_membership_loader=lambda *_: (
@@ -238,6 +323,7 @@ def test_zero_row_kline_partition_is_blocked() -> None:
             nominal_kline_loader=lambda *_: (
                 _partition(NOMINAL_KLINE_DATASET_ID, OPEN_DAY, rows=0),
                 frozenset(),
+                frozenset(),
             ),
             st_membership_loader=lambda *_: (
                 _partition(ST_MEMBERSHIP_DATASET_ID, OPEN_DAY, rows=1),
@@ -265,6 +351,7 @@ def test_zero_row_st_partition_is_blocked() -> None:
             nominal_kline_loader=lambda *_: (
                 _partition(NOMINAL_KLINE_DATASET_ID, OPEN_DAY, rows=2),
                 frozenset({"600000.SH", "000001.SZ"}),
+                frozenset({"600000.SH", "000001.SZ"}),
             ),
             st_membership_loader=lambda *_: (
                 _partition(ST_MEMBERSHIP_DATASET_ID, OPEN_DAY, rows=0),
@@ -286,6 +373,7 @@ def test_row_count_membership_parity_is_required() -> None:
             nominal_kline_loader=lambda *_: (
                 _partition(NOMINAL_KLINE_DATASET_ID, OPEN_DAY, rows=100),
                 frozenset({"600000.SH"}),
+                frozenset({"600000.SH"}),
             ),
             st_membership_loader=lambda *_: (
                 _partition(ST_MEMBERSHIP_DATASET_ID, OPEN_DAY, rows=1),
@@ -304,6 +392,7 @@ def test_row_count_membership_parity_is_required() -> None:
             calendar_loader=lambda *_: _open_calendar(),
             nominal_kline_loader=lambda *_: (
                 _partition(NOMINAL_KLINE_DATASET_ID, OPEN_DAY, rows=1),
+                frozenset({"600000.SH"}),
                 frozenset({"600000.SH"}),
             ),
             st_membership_loader=lambda *_: (
@@ -335,7 +424,11 @@ def test_partition_not_visible_at_decision_time_is_not_evaluated() -> None:
             DECISION,
             policy,
             calendar_loader=lambda *_: _open_calendar(),
-            nominal_kline_loader=lambda *_: (future_ref, frozenset({"600000.SH"})),
+            nominal_kline_loader=lambda *_: (
+                future_ref,
+                frozenset({"600000.SH"}),
+                frozenset({"600000.SH"}),
+            ),
             st_membership_loader=lambda *_: (
                 _partition(ST_MEMBERSHIP_DATASET_ID, OPEN_DAY, rows=1),
                 frozenset({"600001.SH"}),

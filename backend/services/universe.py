@@ -2,7 +2,7 @@
 
 第一性原理: 名义 K 线 + 交易日历是发布 eligibility 的事实基础，
 不能用今天的快照重写历史。正式口径是 ``traded_on_observation_date``：
-观察日有名义日 K 线且 board∈沪深A 白名单才进入当日项目股票池（**含 ST/*ST**）。
+观察日有名义日 K 线、**当日有成交**、且 board∈沪深A 白名单才进入当日项目股票池（**含 ST/*ST**）。
 ``stock_st`` 是独立 PIT membership 证据（谁在何时是 ST），不是 denylist。
 ``get_active_universe`` 与 ``assert_universe_clean`` 只是迁移前的当前态/静态前缀
 helper，不构成完整 PIT 发布门；正式路径必须消费同一次执行绑定的 UniversePolicy
@@ -10,7 +10,13 @@ helper，不构成完整 PIT 发布门；正式路径必须消费同一次执行
 
 项目口径排除规则 (owner 2026-07-22):
   1. 前缀不是 60/00/30/68 → 排除 (B股/北交所BJ/三板/ETF)
-  2. 观察日无名义日 K 线 → 排除 (停牌/已退市/尚未上市)
+  2. 观察日无名义日 K 线 → 排除 (已退市/尚未上市)
+  2b. 有行但当日无成交 (domain.activity_field <= 0) → 排除 (停牌)。2026-09-08 加:
+      tushare 七年是停牌整行不落, 规则 2 恰好也覆盖了停牌; 通达信自 2026-08-31 起把停牌日
+      落成一行(四价=前收, vol=0), 规则 2 不再覆盖它, 故显式化为 2b。
+      判据落点是 observation_population.resolve_traded_on_observation_date 的策略层循环,
+      **不在分区层过滤** —— 分区成员要与 accepted 指针 row_count 对账, 在那里过滤会撞碎
+      那条完整性证明。谁算"真的成交了"由 domain.activity_field 声明, 不硬编码。
   不按 ST/*ST 名称或 stock_st 成员踢出沪深A。
 """
 from __future__ import annotations

@@ -1,12 +1,19 @@
 # 股票 Universe 规则配置 — 所有判断逻辑数据化, 不硬编码在代码里
 #
-# 第一性原理: K 线有交易 = 在交易. 没有 = 不在.
+# 第一性原理: 当日**有成交** = 在交易. 没有 = 不在.
 # 奥卡姆剃刀: 不需要中间表 (dim_all_ever_listed), K 线就是真相源.
+#
+# 2026-09-08 措辞更正: 原文写的是「K 线**有** = 在交易」。那句话在 tushare 供货的七年里
+# 恰好成立 —— 因为它停牌日**整行不落**, 于是"有行"与"有成交"是同一件事。通达信自
+# 2026-08-31 起把停牌日也落成一行(四价=前收, vol=0), 两者当场分家。实证:
+# 000635.SZ 08-28 停牌无行、08-31 停牌有行, 同股同状况, 差别只在供货商。
+# 所以第一性原理本身没错, 错的是把"有行"当成了它的等价表述。
 #
 # === 真相源优先级 ===
 # 正式日期真相 = accepted SSE calendar generation（非 dim_trading_calendar serve projection）。
 # 正式股票日级人口 = traded_on_observation_date（accepted 名义K ∩ board 白名单；**含 ST/*ST**）。
-# 排除 = 非 60/00/30/68（B/BJ/三板/ETF 等）+ 观察日无名义 K（停牌/退市/未上市）。
+# 排除 = 非 60/00/30/68（B/BJ/三板/ETF 等）+ 观察日无名义 K（退市/未上市）
+#        + 有行但当日无成交（停牌, 2026-09-08 起显式化, 见 policy.version 5 注）。
 # stock_st = 独立「谁在何时是 ST」membership 证据，不是 universe denylist。
 # legacy assert_universe_clean/check_universe_filter 静态前缀审计 ≠ 完整 PIT 门；
 # row-level 证明见 observation_population.resolve_traded_on_observation_date。
@@ -14,7 +21,25 @@
 
 policy:
   id: "active_a_share_trading_universe"
-  version: 4
+  # v4 -> v5 (2026-09-08): eligibility 的**实现**从"观察日有名义日 K 线"改成
+  # "观察日有名义日 K 线**且当日有成交**"。规则名 traded_on_observation_date 一字未改 ——
+  # 它一直描述的就是"当日在交易", 变的是实现终于忠实于这个名字(见文件头的措辞更正)。
+  #
+  # 为什么选这条路而不是"在适配器里丢弃停牌行": 后续要在同花顺/通达信/东方财富之间换源,
+  # 每接一个源都做一次"去停牌"转换就是 N 个适配器 N 次出错机会; 判据说清"有成交才算交易"
+  # 之后, 它不再依赖任何供货商的行发射策略。
+  #
+  # 对历史完全 no-op: canonical_nominal_ohlcv_daily 全表 8,595,304 行(2019-01-02~2026-08-31)
+  # 里 vol=0 与 vol IS NULL 各 0 行, 落在 (0,1手) 的只有 2026-08-31 的 6 行。
+  # 即 v4 与 v5 对 2026-08-28 及以前的每一天产出同一个池。
+  # 版本仍必须 bump: eligibility_rule 与 policy_version 都进 universe._semantic_hash 的载荷,
+  # 判据函数变了而身份不变, 就是"声明与实际漂移"。
+  #
+  # "谁算真的成交了"由 domain 规格声明(nominal_ohlcv_schema.DOMAIN.activity_field='vol'),
+  # 不在本文件硬编码 —— 不同域的"真的发生了"是不同字段(stock_st 就没有这个概念)。
+  # 判据落点在 observation_population 的**策略层**, 不在分区层: 分区成员要与 accepted
+  # 指针 row_count 对账, 在那里过滤会撞碎完整性证明。
+  version: 5
 
 # --- 包含规则 (白名单, 只有这些前缀才进 universe) ---
 include:

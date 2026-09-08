@@ -385,7 +385,7 @@ def test_stock_st_and_ohlcv_resolver_end_to_end(conn) -> None:
         part = load_accepted_nominal_ohlcv_membership_from_conn(
             conn, observation_date, decision_time
         )
-        return _as_ref(part), part.ts_codes
+        return _as_ref(part), part.ts_codes, part.active_ts_codes
 
     def st_loader(observation_date, decision_time, _policy):
         part = load_accepted_stock_st_membership_from_conn(

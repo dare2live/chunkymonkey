@@ -58,5 +58,10 @@ for arg in "$@"; do
 done
 [[ "$EXPECT_DATE" == "1" ]] && { echo "ERROR: --date 缺少值" >&2; exit 2; }
 
-# shellcheck disable=SC2086 — 故意非引号展开: 空 ARGS → 0 参; "--dry" → 1 参 (flag 无空格安全)
+# 故意非引号展开: 空 ARGS → 0 参; "--dry" → 1 参 (flag 无空格安全)。
+# 说明必须与指令分行: shellcheck 的 disable= 只认逗号分隔的错误码, 同行再跟自然语言会
+# 报 SC1125(error)。2026-09-08 实测过它到底影响什么 —— 抑制本身是**生效**的(把指令整条
+# 删掉 SC2086 就会冒出来, 保留坏形式则不会), 坏的只是多一条 error 级告警, 接进 CI 即红。
+# 分行后 SC1125 消失且 SC2086 仍被抑制, 行为一字未改。
+# shellcheck disable=SC2086
 exec env PYTHONPATH=backend python -m services.pipeline.run $ARGS
