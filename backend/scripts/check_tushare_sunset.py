@@ -533,8 +533,15 @@ def run(
 
     # ── 检查 4: 裁决执行度 (声明 vs 实际的漂移) ──────────────────────
     # 检查 2 只查一个方向 (已换源却没标 done)。这里查反方向: 台账已经裁决要换
-    # (replace/derive) 却 registry 里源还没换。报 WARN 不 FAIL —— 业主已解除断流时限
-    # 压力，这条检查的价值是让"声明与实际不一致"可见，不是催今天必须切换。
+    # (replace/derive) 却 registry 里源还没换。报 WARN 不 FAIL —— 这条检查的价值是让
+    # "声明与实际不一致"可见，不是催今天必须切换。
+    #
+    # 2026-09-09 改措辞: 原文写"这是台账落后于计划、不是今天要断流"。那句话在写下的那天
+    # 是对的，到 09-09 就成了假的 —— **把一个相对时间判断写死在门的输出里**，它会随日期
+    # 漂移成谎，而门本身不会红。门的输出被人当结论读，所以它只该陈述可验证的事实
+    # (哪几个域、声明的替代源是什么)，不该替读者判断"急不急"。
+    # 同批按业主口径去掉"断流/兜底"这类以旧供货商为基准的措辞: 一个域要么有源要么没有，
+    # 不存在"从某个源断流"这回事。
     raw_domain_entries = sunset.get("domains", {})
     drifted: list[tuple[str, str]] = []
     for domain_name, (decision, status) in sunset_domains.items():
@@ -551,9 +558,10 @@ def run(
     if drifted:
         drifted.sort(key=lambda pair: pair[0])
         warns.append(
-            f"声明与实际的漂移（非紧急，仅供可见性）: {len(drifted)} 个域在 "
-            "tushare_sunset.yaml 里已裁决 replace/derive 但未标 status: done，"
-            "registry 里 source 仍是 tushare。这是台账落后于计划、不是今天要断流：\n  "
+            f"声明与实际的漂移（仅供可见性）: {len(drifted)} 个域已裁决 replace/derive "
+            "但未标 status: done，registry 里声明的源仍是那个已退役的供货商 —— 也就是"
+            "这些域现在没有在服务它们的源。台账写的替代源见下，是否已实测可切看各域 "
+            "evidence：\n  "
             + "\n  ".join(f"- {name} -> {label}" for name, label in drifted)
         )
 
