@@ -90,7 +90,7 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
         "print(json.dumps({'tier':'L3','gates':["
         "'staged_worktree_parity','doc_allowlist','brick_registry','legacy_raw_plane','moth','moth_invariants','rule_compliance',"
         "'sandbox_isolation','serve_read_layer','calendar_usage',"
-        "'population_contract','lineage_drift','dead_references',"
+        "'population_contract','dead_references',"
         "'grain_uniqueness','continuity','no_emoji','config_refs','tushare_sunset'],"
         "'reasons':['fixture_l3'],'paths':[]}))\n",
     )
@@ -146,8 +146,6 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
            "print('[brick-registry] stub PASS')\nraise SystemExit(0)\n")
     _write(repo / "backend" / "scripts" / "check_legacy_raw_plane.py",
            "print('[legacy-raw-plane] stub PASS')\nraise SystemExit(0)\n")
-    _write(repo / "backend" / "scripts" / "check_lineage_drift.py",
-           "print('[lineage-drift] stub PASS')\nraise SystemExit(0)\n")
     _write(repo / "README.md", "seed\n")
 
     assert _run(["git", "init"], repo).returncode == 0
@@ -200,31 +198,6 @@ def _safe_commit_no_push(repo: Path, message: str) -> subprocess.CompletedProces
     return _run(["bash", "scripts/safe_commit.sh", message], repo, env=env)
 
 
-def _stage_lineage_fixture(repo: Path, *, source: str, rendered: str) -> None:
-    _write(
-        repo / "backend" / "scripts" / "check_lineage_drift.py",
-        """from pathlib import Path
-
-root = Path(__file__).resolve().parents[2]
-expected = f"lineage:{(root / 'LINEAGE_SOURCE.txt').read_text(encoding='utf-8').strip()}\\n"
-actual = (root / 'data' / 'lineage' / 'graph.json').read_text(encoding='utf-8')
-raise SystemExit(0 if actual == expected else 1)
-""",
-    )
-    _write(repo / "LINEAGE_SOURCE.txt", source)
-    _write(repo / "data" / "lineage" / "graph.json", rendered)
-    assert _run(
-        [
-            "git",
-            "add",
-            "backend/scripts/check_lineage_drift.py",
-            "LINEAGE_SOURCE.txt",
-            "data/lineage/graph.json",
-        ],
-        repo,
-    ).returncode == 0
-
-
 @pytest.mark.parametrize(
     "gate,script",
     [
@@ -260,28 +233,6 @@ def test_system_health_gates_are_not_run_at_commit(tmp_path: Path) -> None:
     for gate in ("grain_uniqueness", "continuity"):
         assert f"skip {gate}" in result.stdout, f"{gate} 应在 commit 路径被跳过"
     assert "LIVE DATA READINESS" not in result.stdout, "commit 不再产生任何 readiness 声明"
-
-def test_stale_staged_lineage_graph_blocks_commit(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-    _stage_lineage_fixture(repo, source="v2\n", rendered="lineage:v1\n")
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 5
-    assert "staged 血缘图" in result.stdout
-
-
-def test_lineage_gate_ignores_unstaged_worktree_change(tmp_path: Path) -> None:
-    repo = _make_repo_with_staged_python(tmp_path)
-    _stage_lineage_fixture(repo, source="v2\n", rendered="lineage:v2\n")
-    _write(repo / "LINEAGE_SOURCE.txt", "v3-unstaged\n")
-
-    result = _safe_commit(repo, "test audit\nCodex-Reviewed: APPROVE")
-
-    assert result.returncode == 0
-    assert "staged snapshot PASS" in result.stdout
-    assert "SAFE_COMMIT_DRY_RUN=1" in result.stdout
-
 
 def test_moth_gate_runs_from_exported_staged_snapshot(tmp_path: Path) -> None:
     repo = _make_repo_with_staged_python(tmp_path)

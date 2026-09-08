@@ -1,13 +1,15 @@
 """血缘 活库↔登记表 差 (K4 check_datasets_registry 雏形) — runtime system_health, 只报不拦。
 
-背景 (#4 #12(i), 2026-09-04): 提交门 check_lineage_drift 改成纯登记表函数 (catalog=False,
-不连活库) 之后, 活库真实表集合与登记表 (sync_registry/data_layers/data_access/
+背景 (#4 #12(i), 2026-09-04): 当时的提交门 check_lineage_drift 改成纯登记表函数
+(catalog=False, 不连活库) 之后 —— 该门已于 2026-09-08 随 graph.json 去跟踪一并退役 ——
+活库真实表集合与登记表 (sync_registry/data_layers/data_access/
 database_manifest) 声明表集合之间的差 ([arch] 审计: 36 幽灵/32 孤儿量级) 就没有任何门再报
 了 —— 本检查补这个洞。这个差是"数据地基今天有没有漂"的事实观测, 不是"这次 commit 对不对",
 所以装在 daily_update 运行时自检里 (system_health), 不装回提交路径。
 
-与 2026-08-11 被撤出 runtime_checks 的旧检查不是同一个东西 (governance_gates.yaml 的
-lineage_drift.why 字段记录了那次撤销的理由): 旧检查比的是「提交版 graph.json vs 重生结果」,
+与 2026-08-11 被撤出 runtime_checks 的旧检查不是同一个东西 (那次撤销的理由当时记在
+governance_gates.yaml 的 lineage_drift.why 字段, 该门已于 2026-09-08 退役, 理由见当次提交):
+旧检查比的是「提交版 graph.json vs 重生结果」,
 报的是"有没有人重生血缘"这种**开发者状态**, 与数据健康无关。本检查比的是「活库真实表 vs
 登记表声明表」, 两边都是系统当下的**事实**, 与谁有没有跑过 build 完全无关 —— 是数据/配置
 完整性观测, 性质上更接近 dead_references 的 E 扫 (表存在性审计) 而不是那次被撤销的检查。

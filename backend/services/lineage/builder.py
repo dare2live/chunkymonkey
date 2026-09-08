@@ -261,8 +261,9 @@ def _git_grep_entity_consumers(entity: str) -> list[str]:
 
 
 def build_lineage_graph(catalog: bool = False) -> LineageGraph:
-    """catalog=False (默认, #12(i)): 表节点纯从登记表枚举, 不连任何 .duckdb —— 提交门
-    lineage_drift 用这个模式, 是暂存树的纯函数, 写者持锁/日更建新表都不影响它。
+    """catalog=False (默认, #12(i)): 表节点纯从登记表枚举, 不连任何 .duckdb ——
+    纯函数, 写者持锁/日更建新表都不影响它, 所以 check_continuity_integrity 的下游消费方
+    查询用这个模式现算 (2026-09-08 起; 此前是已退役的提交门 lineage_drift 在用)。
     catalog=True (--with-catalog): 额外读 information_schema, 给交互式
     impact/provenance/dead 查询或诊断用; 活库 vs 登记表的差由 catalog_drift() 单独算,
     不靠这个模式的 node status 字段推断。

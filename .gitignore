@@ -70,3 +70,4 @@ bestchoice/analysis/*.csv
 data/lineage/phase_e_experiment_verdicts/b1.json
 data/lineage/phase_e_experiment_verdicts/b2.json
 data/lineage/phase_e_experiment_verdicts/b4.json
+data/lineage/graph.json

@@ -354,7 +354,8 @@ if __name__ == "__main__":
 #     如果没打全, 错误状态在 git commit 落地那一刻就已经完整存在 (下一个 pull 这份代码的
 #     人立刻就会读到一个自相矛盾的契约声明), 不需要等"系统跑起来"才发作。这与已经登记为
 #     diff_correctness 的 lineage_drift 同型 ("漂移的成因是这次 diff 改了 registry/schema
-#     却没重生血缘——纯 diff 正确性"), 也与 moth_invariants 同型 ("违反它意味着数据/平台
+#     却没重生血缘——纯 diff 正确性"; 该门已于 2026-09-08 退役, 此处仅作分类推理的历史例证),
+#     也与 moth_invariants 同型 ("违反它意味着数据/平台
 #     此刻就是错的")。
 #   - 触发条件本身就是"诊断变量"而非"数据地基是否健康"的问题: 只在 staged diff 命中契约
 #     定义文件时才做实质检查 (见文件头 TRIGGER_PATH_GLOBS 建议), 其余绝大多数 commit

@@ -2,8 +2,9 @@
 
 自足 fixture (feedback-test-must-carry-its-own-fixture): 真实 services/lineage/* +
 scripts/check_lineage_catalog_drift.py 原样拷进 tmp 仓库, 微型 registry + 真实
-(临时) .duckdb 文件 —— 这条门本来就要连库, fixture 不能像 check_lineage_drift 那样
-完全绕开 DuckDB。
+(临时) .duckdb 文件 —— 这条门本来就要连库, fixture 不能像 2026-09-04 当时那道
+build_lineage_graph(catalog=False) 提交门那样完全绕开 DuckDB (该提交门已于
+2026-09-08 随 data/lineage/graph.json 去跟踪一并退役)。
 
 覆盖: PASS(一致) / DEGRADED(有 ghost/orphan, 退出码 1) / --json-out 落盘 /
 fail-open(某库不可达时 UNVERIFIED 退出 0, 不当阻断)。fail-open 用**真实** RW 写锁
@@ -209,54 +210,3 @@ def test_fail_open_under_real_write_lock(tmp_path: Path, _rw_lock_holder) -> Non
     assert result.returncode == 0, result.stdout + result.stderr
     assert "UNVERIFIED" in result.stdout
     assert "fail-open" in result.stdout
-
-
-def test_check_lineage_drift_gate_unaffected_by_the_same_lock(tmp_path: Path, _rw_lock_holder) -> None:
-    """对照: 同一把锁下, 提交门 check_lineage_drift.py (catalog=False) 完全不受影响
-    ——它压根不摸这个数据库。用真实 check_lineage_drift.py + lineage_cli.py 搭一个
-    最小的自足 repo 来证明 (与 test_check_lineage_drift.py 的 fixture 同款, 这里只加
-    一个真实 .duckdb 文件和锁)。"""
-    repo = tmp_path / "gate_repo"
-    lineage_dst = repo / "backend" / "services" / "lineage"
-    lineage_dst.mkdir(parents=True)
-    for name in ("__init__.py", "builder.py", "model.py", "query.py"):
-        (lineage_dst / name).write_text((LINEAGE_SRC / name).read_text(encoding="utf-8"), encoding="utf-8")
-    services_dir = repo / "backend" / "services"
-    (services_dir / "duck_adapter.py").write_text(DUCK_ADAPTER_SRC.read_text(encoding="utf-8"), encoding="utf-8")
-    (services_dir / "__init__.py").write_text("", encoding="utf-8")
-    scripts_dir = repo / "backend" / "scripts"
-    scripts_dir.mkdir(parents=True)
-    check_drift_src = REPO_ROOT / "backend" / "scripts" / "check_lineage_drift.py"
-    (scripts_dir / "check_lineage_drift.py").write_text(check_drift_src.read_text(encoding="utf-8"), encoding="utf-8")
-    lineage_cli_src = REPO_ROOT / "backend" / "scripts" / "lineage_cli.py"
-    (scripts_dir / "lineage_cli.py").write_text(lineage_cli_src.read_text(encoding="utf-8"), encoding="utf-8")
-
-    _write(repo / "backend" / "config" / "database_manifest.yaml",
-           "version: 1\ndatabases:\n  main:\n    path: data/main.duckdb\n")
-    _write(repo / "backend" / "config" / "sync_registry.yaml", "version: 1\ndefaults: {}\nsources: {}\ndomains: {}\n")
-    _write(repo / "backend" / "config" / "data_layers.yaml", "version: 1\ntables:\n  dim_registered: L1_foundation\n")
-    _write(repo / "backend" / "config" / "data_access.yaml", "version: 1\nentities: {}\n")
-    _write(repo / "assets" / ".keep", "")
-    _write(repo / "scripts" / ".keep", "")
-    (repo / "data").mkdir(parents=True, exist_ok=True)
-    db_path = repo / "data" / "main.duckdb"
-    conn = duckdb.connect(str(db_path))
-    conn.execute("CREATE TABLE dim_registered (id INTEGER)")
-    conn.close()
-
-    _run(["git", "init", "-q"], repo)
-    _run(["git", "config", "user.email", "t@t"], repo)
-    _run(["git", "config", "user.name", "t"], repo)
-    assert _run(["git", "add", "-A"], repo).returncode == 0
-    assert _run(["git", "commit", "-q", "-m", "init"], repo).returncode == 0
-
-    build = _py(repo, [str(scripts_dir / "lineage_cli.py"), "build"])
-    assert build.returncode == 0, build.stdout + build.stderr
-    assert _run(["git", "add", "data/lineage/graph.json"], repo).returncode == 0
-    assert _run(["git", "commit", "-q", "-m", "graph"], repo).returncode == 0
-
-    _rw_lock_holder(db_path)
-
-    result = _py(repo, [str(scripts_dir / "check_lineage_drift.py")])
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "PASS" in result.stdout

@@ -359,18 +359,19 @@ def _result(check: str, spec: dict, status: str, detail: str, fix_hint: str = ""
 # 先 CAST 再 replace 能同时吃 DATE 型(真相面)与 VARCHAR 型(legacy/测试 fixture)两种基准表。
 _REF_TABLES = {"daily": "canonical_nominal_ohlcv_daily"}
 
-# 血缘图 (data/lineage/graph.json, 449 节点/1271 边) 惰性加载 + 模块级缓存,
-# 一个进程只读一次盘 (2026-08-22 FAIL 附下游消费方接线)。哨兵用独立 bool 标记
-# "是否已尝试过", 而非拿 None 兼当"未加载"和"加载失败", 否则两种状态混淆。
+# 血缘图现算 (build_lineage_graph(catalog=False), 不连任何 .duckdb) + 模块级缓存,
+# 一个进程只算一次 (2026-08-22 FAIL 附下游消费方接线; 2026-09-08 随 data/lineage/graph.json
+# 去跟踪改为现算, 不再读盘)。哨兵用独立 bool 标记"是否已尝试过", 而非拿 None 兼当
+# "未加载"和"加载失败", 否则两种状态混淆。
 _LINEAGE_GRAPH_LOAD_ATTEMPTED = False
 _LINEAGE_GRAPH_CACHE: Any = None
 
 
 def _load_lineage_graph_cached() -> Any | None:
-    """读 data/lineage/graph.json 一次并缓存; 读不到/格式变了都吞成 None。
+    """现算血缘图一次并缓存 (build_lineage_graph(catalog=False)); 构建失败都吞成 None。
 
     调用方 (_downstream_impact) 外层还有一层 try/except 兜底, 这里的 try/except
-    只是为了让"没查到"和"缓存到坏结果" 不混在一起 —— 加载失败不缓存异常对象,
+    只是为了让"没查到"和"缓存到坏结果" 不混在一起 —— 构建失败不缓存异常对象,
     缓存 None, 下次直接短路不重试 (图不会在同一进程内变好)。
     """
     global _LINEAGE_GRAPH_LOAD_ATTEMPTED, _LINEAGE_GRAPH_CACHE
@@ -378,13 +379,10 @@ def _load_lineage_graph_cached() -> Any | None:
         return _LINEAGE_GRAPH_CACHE
     _LINEAGE_GRAPH_LOAD_ATTEMPTED = True
     try:
-        from services.lineage.model import LineageGraph
+        from services.lineage.builder import build_lineage_graph
 
-        graph_path = REPO / "data" / "lineage" / "graph.json"
-        _LINEAGE_GRAPH_CACHE = LineageGraph.from_dict(
-            json.loads(graph_path.read_text(encoding="utf-8"))
-        )
-    except Exception:  # noqa: BLE001 — 图缺失/格式变化都不该拖垮本门
+        _LINEAGE_GRAPH_CACHE = build_lineage_graph(catalog=False)
+    except Exception:  # noqa: BLE001 — 构建失败/依赖变化都不该拖垮本门
         _LINEAGE_GRAPH_CACHE = None
     return _LINEAGE_GRAPH_CACHE
 

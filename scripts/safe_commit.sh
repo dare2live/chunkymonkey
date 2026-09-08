@@ -99,7 +99,7 @@ fi
 echo
 echo "=== Step 1.5: commit tier classification ==="
 COMMIT_TIER="L3"
-COMMIT_TIER_GATES="staged_worktree_parity doc_allowlist brick_registry legacy_raw_plane moth moth_invariants rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract lineage_drift dead_references grain_uniqueness continuity no_emoji config_refs repo_blob_size tushare_sunset"
+COMMIT_TIER_GATES="staged_worktree_parity doc_allowlist brick_registry legacy_raw_plane moth moth_invariants rule_compliance ci_pytest sandbox_isolation serve_read_layer calendar_usage population_contract dead_references grain_uniqueness continuity no_emoji config_refs repo_blob_size tushare_sunset"
 if [[ -f "backend/scripts/classify_commit_tier.py" && -f "backend/config/commit_tiers.yaml" ]]; then
     if COMMIT_TIER_JSON=$(PYTHONPATH=backend "$PY" backend/scripts/classify_commit_tier.py 2>/tmp/cm_tier_err.out); then
         if parsed=$("$PY" -c '
@@ -482,29 +482,6 @@ then
 fi
 else
     echo "[commit-tier] skip population_contract (tier=$COMMIT_TIER)"
-fi
-
-# 3.96 血缘漂移门: 每次提交都用同一 staged snapshot 重建对账 (#12(i) 2026-09-04 起不再读
-# 活库 —— 纯暂存树函数, 日更建新表 / 写者持锁都不影响它)。
-# 普通 consumer 删除同样会改变 consume edge，不能靠结构文件 regex 猜触发面。
-echo
-echo "=== Step 3.96: lineage drift (staged snapshot, blocking) ==="
-if gate_enabled lineage_drift; then
-if [[ ! -f "$STAGED_BACKEND/scripts/check_lineage_drift.py" ]]; then
-    echo "ERROR: staged snapshot 缺 check_lineage_drift.py。"
-    gate_fail lineage_drift 5
-# CHUNKYMONKEY_REAL_REPO: 门跑在 STAGED_INDEX_DIR 的一次性 checkout 里, 它自己的 __file__
-# 算不出真实工作树 —— 显式传真实 $(pwd), 门的诊断(iii-b) 才能问对 "index vs worktree"
-# (见 check_lineage_drift.py 模块 docstring)。
-elif CHUNKYMONKEY_REAL_REPO="$(pwd)" PYTHONPATH="$STAGED_BACKEND" "$PY" "$STAGED_BACKEND/scripts/check_lineage_drift.py"; then
-    echo "[lineage-drift] staged snapshot PASS"
-else
-    echo "ERROR: staged 血缘图与 staged source/config 漂移 (详见上方节点/边增删 + 未暂存输入清单)。"
-    echo "正解: chunkyctl lineage build --from-index (从 exact staged snapshot 重生) 后 git add data/lineage/graph.json。"
-    gate_fail lineage_drift 5
-fi
-else
-    echo "[commit-tier] skip lineage_drift (tier=$COMMIT_TIER)"
 fi
 
 # 3.97 死引用硬门 (2026-06-28 根因根治): 删模块/表/文件后引用方必须同步清。
