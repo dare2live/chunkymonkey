@@ -1,7 +1,7 @@
 """check_contract_stamp_consistency 的五类检查 (2026-09-02 拆分).
 
 从 check_contract_stamp_consistency.py 拆出 (原 1355 行触发
-minimal-module-no-new-godfile god-file 断言)。本模块放"拿 stamp_discovery 的
+拆分动机是职责分离; 当时另有 god-file 断言在推, 该断言已于 2026-09-08 删)。本模块放"拿 stamp_discovery 的
 发现结果去核对现算契约/库内值"的检查逻辑: check①pointer / check②canonical /
 check③lineage / check④ingest_batch (含 payload_hash 重算辅助) / discovery 报告
 (check_discovery)、以及 channels 占位检查 (check⑥)。

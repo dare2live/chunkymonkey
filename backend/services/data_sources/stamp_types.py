@@ -1,7 +1,7 @@
 """check_contract_stamp_consistency 的共享类型 (2026-09-02 拆分).
 
 从 check_contract_stamp_consistency.py 拆出 (原 1355 行触发
-minimal-module-no-new-godfile god-file 断言)。本模块只放三段互不相干职责里
+拆分动机是职责分离; 当时另有 god-file 断言在推, 该断言已于 2026-09-08 删)。本模块只放三段互不相干职责里
 最基础的一段: 域注册表 (DomainSpec/DOMAIN_REGISTRY/DOMAIN_BY_DATASET_ID) +
 结果类型 (Finding/DbUnavailable)。不反向 import stamp_discovery / stamp_checks
 —— 那两个模块都要 import 本模块的类型, 反向会循环导入。

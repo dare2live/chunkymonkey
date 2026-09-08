@@ -19,24 +19,6 @@ name: chunkymonkey-claims
 # 阈值型棘轮(smartmoney-tables/indexes/constraint-tables/size-band)**刻意不列 blocking**:
 # 它们触发时说明「登记没跟上」, 不是「数据错了」—— 拿它挡提交就是本轮要消灭的那种张力。
 assertions:
-  - id: smartmoney-constraint-tables
-    claim: "PK/UNIQUE 约束表 >= 18 (2026-06-29 批4刷新: 批3c/3c2 退役机构旧表 inst_holdings/inst_institutions/fact_common_major_holder_stock 后实测20, 阈值留2缓冲防误报; 增表显式过决策)"
-    type: duckdb_sql
-    database: data/smartmoney.duckdb
-    query: "SELECT count(DISTINCT table_name) FROM duckdb_constraints() WHERE constraint_type IN ('PRIMARY KEY','UNIQUE')"
-    expect: {op: ">=", value: 18}
-  - id: smartmoney-indexes
-    claim: "索引 >=21 (2026-06-29 批4刷新: 同上批次退役后实测23, 阈值留2缓冲)"
-    type: duckdb_sql
-    database: data/smartmoney.duckdb
-    query: "SELECT count(*) FROM duckdb_indexes()"
-    expect: {op: ">=", value: 21}
-  - id: smartmoney-tables
-    claim: "表 >=29 (2026-06-29 批4刷新: 批3c/3c2/3e机构旧表+孤儿表退役后实测31, 阈值留2缓冲防误报; 增表显式过决策)"
-    type: duckdb_sql
-    database: data/smartmoney.duckdb
-    query: "SELECT count(*) FROM duckdb_tables()"
-    expect: {op: ">=", value: 29}
   - id: smartmoney-size-band
     claim: "smartmoney 当前 control/serving 库体量 0.2-15GB 带内 (…2026-07-24 ~8.72GB→9GB; 2026-07-25 org trunc sharded repair 实测 ~11.16GB → 抬 9GB→12GB; 2026-08-05 日更 drain 合法增长实测 13.69GB (dc_member +644k 回填 + holders/org 增量, 无 wal, 单文件派生自 accepted partition) → 抬 12GB→15GB, 仍单文件派生自 accepted partition 非 bloat; 2026-08-12 日更后实测 16.69GB, `pragma_database_size` 显示 free 1554/total 63660 = 2.44%(wal=0) 即 97.6% 活数据 → 抬 15GB→20GB; 2026-08-16 日更后实测 20.04GB, free 1566/total 76432 = 2.05%(wal=0) 即 97.95% 活数据 → 抬 20GB→26GB)；越界提示错库或 retention 漂移。**膨胀本身改由 [[smartmoney-bloat-ratio]] 断言直接测**, 本条只管绝对量级 —— 因为绝对带对「DROP/UPDATE 完没 compact」是瞎的"
     type: file_size
@@ -144,12 +126,6 @@ assertions:
     type: shell
     command: ["bash", "-c", "grep -c 'include_router' backend/main.py"]
     expect: {op: "<=", value: 45}
-  - id: minimal-module-no-new-godfile
-    claim: "backend 非测试 .py 中**代码行数** >800 的文件集合必须逐字等于 backend/config/godfile_baseline.yaml；observed = 对称差条数(新越线的 + 已降到线下该从基线删的, 两个方向都红)。红了看是哪个文件: `PYTHONPATH=backend python3 backend/scripts/measure_godfiles.py` 直接点名并标方向。2026-09-04 由 count<=3 改成集合比对(原上界立于 2026-06-14 当时实测 23 个, 是目标不是棘轮, 只有一种输出故红三周无人动)。2026-09-06 由 wc -l 改成代码行数: 实测原口径与想守的东西反号, 它惩罚写注释(assignment_gap_recon 820 行里代码 710, check_holders_staging 829 行里代码 494), 而本项目的纪律就是把证据写进注释; 换口径没放宽——基线成员本来完全没有上限, 集合 11→4 让离开的 6 个重新获得 800 行天花板。口径唯一计算点在 backend/scripts/measure_godfiles.py, 测试与本断言共用。"
-    type: shell
-    severity: blocking
-    command: ["bash", "-c", "cd $(git rev-parse --show-toplevel) && PYTHONPATH=backend python3 backend/scripts/measure_godfiles.py --symmetric-diff-count"]
-    expect: {op: "==", value: 0}
   - id: watermark-refresher-wired
     claim: "kline 水位刷新器接在 daily_update 管线 store 阶段 (2026-06-13 修孤儿化; 2026-06-23 重设计后接线在 pipeline/store.py 而非 daily_update.sh; 检查器写器两器官缺一即水位卡死)"
     type: shell

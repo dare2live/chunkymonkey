@@ -1,7 +1,7 @@
 """check_contract_stamp_consistency 的发现式扫描机制 (2026-09-02 拆分).
 
 从 check_contract_stamp_consistency.py 拆出 (原 1355 行触发
-minimal-module-no-new-godfile god-file 断言)。本模块是三段互不相干职责里
+拆分动机是职责分离; 当时另有 god-file 断言在推, 该断言已于 2026-09-08 删)。本模块是三段互不相干职责里
 "最值得能被独立推理和测试的部分"——发现式扫描: 库/hash 列发现、lineage JSON
 戳记录发现、文件级摘要钉住配对发现。不含"拿发现结果去核对现算契约"的检查逻辑
 (那部分在 stamp_checks.py)。

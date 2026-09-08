@@ -452,7 +452,8 @@ def _apply_watermark_reconcile(
 
 
 # 交易日距离的 owner 是 services.calendar (交易日历真相源的既有 owner) ——
-# 它可复用且不该长在脚本里; 就地实现会让本文件越过 800 行 godfile 线,
+# 它可复用且不该长在脚本里 (当时还有 800 行 god-file 线在推, 该棘轮已于 2026-09-08 删,
+# 但「可复用的东西不该长在脚本里」这条理由与行数无关, 仍然成立),
 # 而那时抬棘轮就是橡皮图章(本仓刚批评过同款)。
 from services.calendar import (  # noqa: E402
     load_trading_days as _load_trading_days_from,
