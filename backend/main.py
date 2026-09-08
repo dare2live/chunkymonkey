@@ -154,6 +154,11 @@ app.include_router(stock_screener_router, prefix="/api/v3/screener", tags=["stoc
 from routers.strategy_lab import router as strategy_lab_router
 app.include_router(strategy_lab_router, prefix="/api/v3/lab", tags=["strategy_lab"])
 
+# 北向资金研究页: 香港中央结算(北向持仓境内代理人)十大流通股东季度序列 + 市场广度；季度级参考
+# 读数, 非日频资金流, 不进策略信号。做不了什么见 services/northbound_research.py 模块 docstring。
+from routers.northbound_research import router as northbound_research_router
+app.include_router(northbound_research_router, prefix="/api/v3/northbound", tags=["northbound_research"])
+
 # (退役 routers: market_perception/bestchoice/perception_legacy/signals_v2 等 2026-06-14~28 删, 详 ledger + git史)
 
 # 设置选项相关的API (比如开启/关闭功能模块)

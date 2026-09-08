@@ -1,0 +1,52 @@
+# 北向资金研究页 —— typed config, 未知键 fail-closed (loader: services/northbound_research.py)。
+#
+# 这一页只回答两件事 (w3 规格 §0 + b1 核验报告 §2/§3 裁定边界, 2026-09-08 定稿):
+#   1) 单股: 香港中央结算有限公司(陆股通北向持仓境内代理人)在这只股票的十大流通股东名单里,
+#      历史上每期占流通股比例多少、排第几、哪期进/哪期退 —— 季度级, PIT 锚 notice_date。
+#   2) 全市场: 每个标准季度末, 十大流通股东名单含香港中央结算的股票数 / 当期有披露的股票数,
+#      这个覆盖面按季度如何变化。
+#
+# 做不了、且本模块不建消费方的 (理由见 services/northbound_research.py 模块 docstring):
+#   - 个股逐日北向资金流 (hk_hold 已停披露)
+#   - 沪深股通十大成交活跃股 (hsgt_top10 未接入)
+#   - 北向市场每日净流入 (moneyflow_hsgt: tushare_sunset.yaml decision=retire, 零消费是现行
+#     理由, 本页一旦读它这条理由就自动失效 —— 需 owner 先改判, 不是本模块能单方绕过的)
+version: 1
+
+# services.data_access 里已注册的 entity 名 (backend/config/data_access.yaml)。
+# 本页不新注册取数域 (红线5: 能由已注册域推导的不再注册) —— canonical_top10_float_holders_period
+# 已经是 holders_top10 entity 的登记表, 直接复用。
+data_access_entity: holders_top10
+
+hkscc:
+  # 权威身份键 —— 过滤永远按这个字段, 不按名字 (HOLDER_NAME 是噪音, 见 2026-09-07
+  # commit 29a10be90: 同一 code 有 9 种历史写法, 其中 4 行还撞了另一实体的名字)。
+  holder_code: "10671586"
+  # display_name 只用于前端展示标签, 绝不参与任何过滤/JOIN 条件 —— 过滤条件永远是 holder_code。
+  display_name: "香港中央结算有限公司"
+  # 十大流通股东 (非十大股东总榜) —— canonical 目前 holder_set 只有这一个取值。
+  holder_set: "free"
+  # 10015776 = 香港中央结算(代理人)有限公司 / HKSCC Nominees Limited —— H股/CCASS 登记代理,
+  # 与陆股通北向无关, 历史上文本层面与 10671586 撞过名, 显式列出防止将来有人手滑按名字过滤。
+  excluded_holder_codes: ["10015776"]
+
+# report_date 只在这些 "MM-DD" 后缀上才算标准季度末。b1 核验报告 §3 实测: raw 层
+# END_DATE 有 2,298 个不同取值, 其中约 2.8% 落在非标准中期/补充披露日期上, 直接
+# GROUP BY 会把这些小样本噪声日期画进季度序列, 制造假的剧烈波动。
+quarter_end_suffixes: ["03-31", "06-30", "09-30", "12-31"]
+
+# 市场广度聚合的"是否仍在披露窗口内"提示阈值 —— 不是精确完成判据, 只是保守提示:
+# 若某季度末的 (决策日 - report_date) 小于这个阈值, 该季度的 coverage_pct 可能还会因为
+# 迟报公司陆续披露而继续变化, 标 in_progress 而不是当作定局。
+# 阈值参考 w3 规格 §2.3 实测的中位披露滞后 (Q1/Q3 中位 ~28-29 天, 年报中位 111 天) 打宽,
+# 不是精确到天的截止判据 —— 判"完成"仍以有没有更多迟报为准, 这里只做展示层免责提示。
+disclosure_settle_days:
+  quarterly_days: 60
+  annual_days: 150
+
+# 三个候选 Tab 的现状。stock_series/market_breadth 有扎实地基, market_flow 是治理阻塞项
+# (不是数据问题) —— 值只能是 enabled | blocked, loader 闭合校验。
+tabs:
+  stock_series: enabled
+  market_breadth: enabled
+  market_flow: blocked

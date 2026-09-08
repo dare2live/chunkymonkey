@@ -1,0 +1,86 @@
+# 机构标签(dim_holder_identity_label) + 牛散标签(dim_holder_name_tag) 的 typed 词表。
+#
+# 红线8『分类成员是数据不是 YAML』: 本文件只声明"检查什么/比较什么"(允许的维度名/
+# 等级词表/取值白名单), 不装任何具体机构码或人名 —— 那些是 backend/scripts/publish_holder_labels.py
+# 从证据 JSON(机构侧, --institution-json 传入)与脚本内嵌名录(牛散侧, 9 人, 见脚本
+# docstring §"牛散名录不在这份 YAML 里"一节)读取的数据。
+#
+# 任何键/取值不在本文件白名单内 = fail-closed(publish 脚本直接报错退出非零), 不是 warn
+# ——项目教训 feedback-warn-only-degrades-to-warn-nothing: warn-only 的豁免/短路作用域
+# 总比它意图守的范围大, 最终等于没守。
+version: 1
+
+institution_label:
+  table: dim_holder_identity_label
+  db: smartmoney
+  layer: L1_foundation
+
+  # label_dimensions._principle (w3_master_labels.json): 同一 holder_code 可以同时命中
+  # 多个维度 (地方国资 tier + 半导体 sector + 合肥系 group + 安徽 region + 国资持股平台
+  # entity_type), 这里只声明合法维度名的闭集, 具体哪个码命中哪个值不在这里。
+  allowed_dims:
+    - tier
+    - entity_type
+    - sector
+    - group
+    - region
+    - ownership
+    - decision_maker
+
+  allowed_known_from_grades:
+    - VERIFIED_EVENT
+    - VERIFIED_FIRST_NOTICE
+    - UNVERIFIED
+    - REFUSED_NULL
+
+  # 只有这两档允许把 known_from 落成非 NULL —— DDL 的 CHECK 约束是同一条规则的第二处
+  # 结构性防线(m1_label_store.md §2.0: 判据只能有一处, 但两处字面一致不算"两处判据",
+  # 是"同一条规则钉两遍防漂移", 万一 YAML 与 DDL 未来某次改动脱节, CHECK 兜底不放行)。
+  known_from_admissible_grades:
+    - VERIFIED_EVENT
+    - VERIFIED_FIRST_NOTICE
+
+  # w3_master_labels.json.code_split_rules 里指名需要按 name_pattern 再拆一层的机构码
+  # (10346801 华侨银行 / 10088552 华泰金控香港 / 10071181 高盛国际 / 10326139 中信国际投管)。
+  # 本轮发布**没有**对这 4 个码做 name_pattern 拆分——见 publish_holder_labels.py docstring
+  # "判不了 #1": 源 JSON 只给了拆分理由的散文描述, 没给可执行的 name_pattern/value 结构化字段,
+  # 从散文里正则猜子串风险太高(红线8的反面: 会员归属就该是审过的结构化数据, 不是脚本现场猜的)。
+  # 这 4 个码的 entities[] 泛化行(name_pattern='*')原样发布, 但打 review_state=review_pending,
+  # 提醒下游: 这 4 个码里少数行(如高盛国际中国基金 GSAM 那 69/1978 行)的 entity_type 已知不准。
+  split_pending_codes:
+    - "10346801"
+    - "10088552"
+    - "10071181"
+    - "10326139"
+
+niusan_tag:
+  table: dim_holder_name_tag
+  db: smartmoney
+  layer: L1_foundation
+
+  allowed_tags:
+    - niusan
+
+  allowed_valid_grades:
+    - SOURCED_RANGE          # 起止都有外部出处
+    - SOURCED_START_ONLY     # 只有起点有外部出处(仍活跃/未见退出报道)
+    - UNKNOWN_RANGE          # 外部表述本身模糊(如"1990年代""前后"), 不转换成假精确日期
+
+  allowed_known_from_grades:
+    - VERIFIED_PUBLICATION   # 能从给定出处 URL 解出具体发布日
+    - UNVERIFIED             # 有出处但解不出具体日期
+    - REFUSED_NULL           # 保留取值(与机构侧对称), 本轮无命中
+
+  known_from_admissible_grades:
+    - VERIFIED_PUBLICATION
+
+  # 业主原话: "我们没有任何证据能证明一个名字只对应一个人" —— single_person 不是
+  # "取值范围里最保守的一档", 是一个本项目不打算做的断言, 不许出现。
+  allowed_identity_confidence:
+    - proven_multiple
+    - suspected_multiple
+    - no_evidence_either_way
+  forbidden_identity_confidence:
+    - single_person
+
+  identity_grade: name_only_untrusted

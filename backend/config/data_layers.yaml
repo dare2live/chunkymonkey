@@ -127,6 +127,17 @@ tables:
   # 股票页的十大股东列表按公告原样展示, 用 canonical 自己的 holder_name, 不经过本表。
   # 同款先例见下方 dim_stock_dc_industry。
   dim_holder_identity: L1_foundation
+  # 机构标签(2026-09-08): holder_code -> 多维度标签(tier/entity_type/sector/group/region/
+  # ownership/decision_maker), 长表, PIT 门控在 known_from(NULL=research_only, 禁止进决策
+  # 查询)。writer: backend/scripts/publish_holder_labels.py。列纯度: 无 forward/score/signal,
+  # 表名含"label"不影响 —— data_layer_audit 的 Type-A 正则只扫列名不扫表名。
+  # 详见 backend/scripts/publish_holder_labels.py 模块 docstring(设计核证 + 判不了清单)。
+  dim_holder_identity_label: L1_foundation
+  # 牛散标签(2026-09-08): holder_name(个人无码, 弱身份, PK 不含 holder_code) -> tag='niusan'。
+  # 与上面机构表物理隔离(两张表不进同一排行榜/不相加/API不混同一数组), 列名故意避开
+  # "label"(niusan 表的取值列叫 tag/tag_value, 见脚本 docstring"列名坑"一节)。
+  # writer 同上一个脚本。
+  dim_holder_name_tag: L1_foundation
   dim_fee_schedule: L1_foundation
   dim_liquidity_threshold: L1_foundation
   dim_market_segment: L1_foundation

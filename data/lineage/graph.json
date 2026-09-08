@@ -2719,6 +2719,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/config/northbound_research.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/routers/stock_dossier.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
@@ -2762,6 +2768,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/scripts/publish_holder_identity.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/publish_holder_labels.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
     },
@@ -2875,6 +2887,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/northbound_research.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/services/pipeline/closed_loop.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
@@ -2948,6 +2966,12 @@
     {
       "attrs": {},
       "dst": "consumer:backend/tests/test_institution_profile.py",
+      "kind": "consume",
+      "src": "table:smartmoney.canonical_top10_float_holders_period"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/test_northbound_research.py",
       "kind": "consume",
       "src": "table:smartmoney.canonical_top10_float_holders_period"
     },
@@ -3154,6 +3178,66 @@
       "dst": "consumer:backend/scripts/publish_holder_identity.py",
       "kind": "consume",
       "src": "table:smartmoney.dim_holder_identity"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_holder_identity_label"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/holder_labels.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_holder_identity_label"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_grain_uniqueness.py",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_holder_identity_label"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/publish_holder_labels.py",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_holder_identity_label"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_holder_labels.py",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_holder_identity_label"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/data_layers.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_holder_name_tag"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/config/holder_labels.yaml",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_holder_name_tag"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/check_grain_uniqueness.py",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_holder_name_tag"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/scripts/publish_holder_labels.py",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_holder_name_tag"
+    },
+    {
+      "attrs": {},
+      "dst": "consumer:backend/tests/services/test_holder_labels.py",
+      "kind": "consume",
+      "src": "table:smartmoney.dim_holder_name_tag"
     },
     {
       "attrs": {},
@@ -7285,6 +7369,12 @@
     },
     {
       "attrs": {},
+      "dst": "consumer:backend/services/northbound_research.py",
+      "kind": "consume",
+      "src": "table:tushare_raw.raw_tushare_moneyflow_hsgt"
+    },
+    {
+      "attrs": {},
       "dst": "consumer:backend/tests/services/test_northbound_market_flow.py",
       "kind": "consume",
       "src": "table:tushare_raw.raw_tushare_moneyflow_hsgt"
@@ -9193,9 +9283,9 @@
     }
   ],
   "meta": {
-    "edge_count": 1487,
-    "generated_at": "2026-09-08T01:00:15.830409+00:00",
-    "node_count": 525,
+    "edge_count": 1502,
+    "generated_at": "2026-09-08T01:41:28.225507+00:00",
+    "node_count": 533,
     "version": 2
   },
   "nodes": [
@@ -9306,6 +9396,14 @@
     {
       "attrs": {
         "ctype": "config",
+        "path": "backend/config/holder_labels.yaml"
+      },
+      "id": "consumer:backend/config/holder_labels.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
         "path": "backend/config/legacy_raw_plane.yaml"
       },
       "id": "consumer:backend/config/legacy_raw_plane.yaml",
@@ -9333,6 +9431,14 @@
         "path": "backend/config/market_pulse.yaml"
       },
       "id": "consumer:backend/config/market_pulse.yaml",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "config",
+        "path": "backend/config/northbound_research.yaml"
+      },
+      "id": "consumer:backend/config/northbound_research.yaml",
       "kind": "consumer"
     },
     {
@@ -9749,6 +9855,14 @@
         "path": "backend/scripts/publish_holder_identity.py"
       },
       "id": "consumer:backend/scripts/publish_holder_identity.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "script",
+        "path": "backend/scripts/publish_holder_labels.py"
+      },
+      "id": "consumer:backend/scripts/publish_holder_labels.py",
       "kind": "consumer"
     },
     {
@@ -10642,6 +10756,14 @@
     {
       "attrs": {
         "ctype": "service",
+        "path": "backend/services/northbound_research.py"
+      },
+      "id": "consumer:backend/services/northbound_research.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "service",
         "path": "backend/services/org_holding_aif10.py"
       },
       "id": "consumer:backend/services/org_holding_aif10.py",
@@ -11394,6 +11516,14 @@
     {
       "attrs": {
         "ctype": "test",
+        "path": "backend/tests/services/test_holder_labels.py"
+      },
+      "id": "consumer:backend/tests/services/test_holder_labels.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
         "path": "backend/tests/services/test_holdernumber_assist.py"
       },
       "id": "consumer:backend/tests/services/test_holdernumber_assist.py",
@@ -11949,6 +12079,14 @@
         "path": "backend/tests/test_moneyflow_assist.py"
       },
       "id": "consumer:backend/tests/test_moneyflow_assist.py",
+      "kind": "consumer"
+    },
+    {
+      "attrs": {
+        "ctype": "test",
+        "path": "backend/tests/test_northbound_research.py"
+      },
+      "id": "consumer:backend/tests/test_northbound_research.py",
       "kind": "consumer"
     },
     {
@@ -12712,6 +12850,26 @@
         "table": "dim_holder_identity"
       },
       "id": "table:smartmoney.dim_holder_identity",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "smartmoney",
+        "layer": "L1_foundation",
+        "status": "declared",
+        "table": "dim_holder_identity_label"
+      },
+      "id": "table:smartmoney.dim_holder_identity_label",
+      "kind": "table"
+    },
+    {
+      "attrs": {
+        "db": "smartmoney",
+        "layer": "L1_foundation",
+        "status": "declared",
+        "table": "dim_holder_name_tag"
+      },
+      "id": "table:smartmoney.dim_holder_name_tag",
       "kind": "table"
     },
     {

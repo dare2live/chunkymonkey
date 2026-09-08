@@ -104,6 +104,7 @@ blocking_paths:
 - tests/services/test_fuyao_k5_adapter.py
 - tests/services/test_fuyao_kline_recon.py
 - tests/services/test_fuyao_tickers_list.py
+- tests/services/test_holder_labels.py
 - tests/services/test_holder_research_class.py
 - tests/services/test_holdernumber_assist.py
 - tests/services/test_holders_landing_retention.py
@@ -234,6 +235,7 @@ blocking_paths:
 - tests/test_min_rows_era_aware.py
 - tests/test_min_rows_per_batch_threshold.py
 - tests/test_moneyflow_assist.py
+- tests/test_northbound_research.py
 - tests/test_on_demand_window_gate_dead_condition.py
 - tests/test_ops_manual_run.py
 - tests/test_org_holding_aif10.py

@@ -44,6 +44,14 @@ MART_GRAINS: list[tuple[str, str, list[str]]] = [
     # 一码一行是本表的**全部契约** —— publish_holder_identity.py 自己也断言
     # COUNT(*) == COUNT(DISTINCT holder_code), 这里是第二道(它管的是重跑后仍成立)。
     ("smartmoney", "dim_holder_identity", ["holder_code"]),
+    # 机构/牛散标签(2026-09-08, backend/scripts/publish_holder_labels.py)。grain 用真实
+    # valid_from(可空)而不是 PK 里的 valid_from_pk 代理列 —— 代理列只解决"NULL 不能进
+    # DuckDB PRIMARY KEY"这一个物理问题, 对"这个 grain 有没有重复"这个业务问题, 真实列
+    # 已经够用(GROUP BY 对 NULL 归并成一组, 同一 holder_code+dim 下多条 valid_from=NULL
+    # 只可能来自同一个 REFUSED_NULL 实体, 不会跨实体碰撞——holder_code 已经是 GROUP BY 的
+    # 一部分)。
+    ("smartmoney", "dim_holder_identity_label", ["holder_code", "name_pattern", "dim", "valid_from"]),
+    ("smartmoney", "dim_holder_name_tag", ["holder_name", "tag", "valid_from"]),
     ("smartmoney", "dim_stock_segment_daily", ["stock_code", "trade_date"]),          # services/segments.py B1
     ("smartmoney", "fact_stock_form_daily", ["stock_code", "trade_date"]),            # services/technical_states B2
     ("smartmoney", "fact_stock_limit_daily", ["trade_date", "ts_code", "limit"]),     # services/stock_limit_publish.py brick B2
