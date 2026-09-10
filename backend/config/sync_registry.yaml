@@ -121,6 +121,20 @@ sources:
     # 该条目只补 kind + target_db, 不新增/不推测 rate_limit 等未实测字段。
     kind: network_vendor
     target_db: tushare_raw
+    # 2026-09-10 实测: 这个源**取数层有服务时段**, 而 domains.daily 的 availability_policy
+    # 只声明了起点 (same_day_at 18:00) 没有终点。两次实测, 不构成一个时段, 只是两个点:
+    #   - 当日白天: 握手成功 180.153.18.170:7709, get_security_bars 返真 K 线
+    #     (000001.SZ 2026-08-20..09-08 共 14 行, 最新一根 09-08 收 11.78)。
+    #   - 当日 23:27: 在册 HQ 主机 **TCP 25/25 全开** (0-10ms), 但取数层拒绝 ——
+    #     180.153.18.170 与 60.191.117.167 返 TdxFunctionCallError('calling function error'),
+    #     202.108.253.130 与 14.17.75.71 TimeoutError。三轮 x 40 主机全失败。
+    # 也就是说断在协议取数层, 不是网络也不是握手。
+    # **不据此写"夜间不可用"**: 两个点推不出边界 (measured-not-estimated)。要钉死得在不同
+    # 时刻多次采样, 而本项目 manual_only 禁 cron/launchd, 只能顺手记录每次人工运行的时刻与结果。
+    # 安全性上不构成静默风险: zero_row_policy=fail 会让 0 行当失败重试而不是静默落空 (宪法 v2 第 6 条),
+    # 所以夜里跑 daily_update 是**响亮失败**不是悄悄落空。这是可诊断性问题不是正确性问题 ——
+    # 操作者看到的是 "no handshake-ready TDX HQ after N TCP-open hosts: TdxFunctionCallError(...)",
+    # 容易被误读成"tdxhub 坏了"而去慌忙换源。
   calendar_rule:
     # 2026-09-02 P1 channels 改造地基收口新增: 本地按周一~周五减法定节假日推导, 无网络
     # 无会话 (见 trade_cal 域注释)。此前无 sources 层条目, 靠 domains.trade_cal 显式写
