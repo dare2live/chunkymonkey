@@ -39,6 +39,32 @@
 #                      落后 > SLA x 3 交易日 = FAIL — 根治"表级新鲜度探不到子榜断流"
 #   dead_groups        分组墓碑: 已裁决死亡的子榜/组列表, 分组新鲜度不再对其告警
 #   (cross_check_domain 同族交叉参照键已在用, 见 top_inst/block_trade 条目)
+#
+# grain 契约 typed 键 (2026-09-11, grain 契约 r2 §2.1/§2.2): 批内同 grain **全同行**的语义,
+#   运行时三态 + 可选 typed 键 (不做"每域必填" —— 必填会逼着把 42 域里大多数只有语义级证据的
+#   猜测写成契约; 留空 = 首次出现重复时响应式失败 + 带证据裁决, 检测点是 sync_runner
+#   ._prepare_batch_df 那一行 raise, 不是本表的键)。
+#   duplicate_rows      可选, 'event' | 'artifact'。event=全同行是独立事件 (如同价同量同席位的
+#                        两笔独立成交), 必须搭配 multiplicity_index 声明落地层派生的多重度序号列;
+#                        artifact=全同行是去重伪影 (如分页边界重复), 批内按 grain drop_duplicates。
+#                        不写此键 (缺省) = fail-closed: 批内一旦出现同 grain 全同行即报错入
+#                        failure_queue, 不静默 keep='last'。domain_spec() 在合并时用
+#                        sync_runner._duplicate_policy() 校验这两个键的耦合, 写错立即拒绝启动。
+#   multiplicity_index   仅 duplicate_rows: event 域使用: 落地层派生 (不来自供应商) 的多重度索引
+#                        列名, 批内按 grain-该列 到达顺序编 1..n。约束 (违反即 ValueError):
+#                        必须是 grain 的最后一个元素; 只能配 write_mode: replace_partition
+#                        (merge_grain 按 (key,seq) DELETE, 供应商某日行数变少时旧 seq=n 残留);
+#                        不许与 date_param/partition_by/universe_filter_col 同名; 落地表已存在但
+#                        缺该列时按 INTEGER 建列 (不是其余新列缺省的 VARCHAR), 见 sync_runner
+#                        ._write_batch 的 ADD COLUMN 分支。
+#
+# 三态作用域声明 (grain 契约 r2 §2.7): 上面两个键与 _prepare_batch_df 的三态执法作用于**所有经
+#   sync_runner._write_batch 落地的域**, 含走 _route_disclosure_formal_dual_write 的
+#   stk_holdertrade (它在 _prepare_batch_df 之后才分流, 三态先执行)。不经 _write_batch 的四路
+#   各有自己的重复契约, 这两个键对它们无意义: trade_cal (_publish_trade_cal_accepted_generation)、
+#   daily / stock_st (AUTHORIZED_SHORT_WINDOW_DOMAINS → _publish_security_day_accepted_partition)、
+#   margin (dataset_contract.writer=margin_acceptance)、holders_top10 / org_holding (aif10 writer,
+#   自带 row_seq + _dedupe_notice_rows_by_grain)。
 
 version: 1
 
@@ -229,6 +255,11 @@ domains:
     target_table: raw_tushare_limit_list_d
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     grain: [ts_code, trade_date, limit]
+    # 2026-09-11 grain 契约 r2 §5 declared duplicate_rows: artifact —— 依据 commit 2546d157
+    # 实测: 单日插 14 份逐字节复制、同 built_at (23116 重复行膨胀涨停家数 14x, 这正是
+    # sync_runner 批内去重原本要防的那个案例); 批内按 grain drop_duplicates(keep='first'),
+    # 去重删除数计入 mart_data_landing_dedup (§2.4)。
+    duplicate_rows: artifact
     batch_mode: by_trade_date
     pit_anchor: "trade_date; 盘后榜单 (文档未写时点) -> JOIN t-1"
     available_after: "18:00"
@@ -800,13 +831,31 @@ domains:
     #   静默丢弃的真实榜单 (20260825 有 4 个, 逐个核实过确为当日真实二次上榜)。
     # 已知非缺陷差异: 单边席位 vendor 返 null 而 tushare 返 0.0 (130/650 行), adapter 只对
     #   4 个金融字段零填充; 债券本就不适用的 turnover_rate/float_values 保持 None 不假填 0。
+    # 2026-09-11 grain 契约 r2 §1.3/§0.2 更正: 上面"87 个 grain key 碰撞...去重交给 sync_runner
+    #   既有的 drop_duplicates(grain, keep='last')"这段结论已被撤销。实测 7 个交易日 5,801 行:
+    #   (SECUCODE, EXPLANATION, TRADE_DIRECTION, RANK) 自然键 0 碰撞, 每块榜 RANK 恰为 1..n 连续;
+    #   旧 grain [trade_date, ts_code, exalter, side] 不含 reason/board_rank, 才把"同一席位因
+    #   不同统计窗口 (STATISTICS_DAYS) 上两个真实榜单"错认成需要 keep='last' 丢弃的重复。grain
+    #   改用交易所公布的自然键 reason(EXPLANATION)+board_rank(RANK), 不再声明 duplicate_rows
+    #   (自然键唯一, 出现重复即供应商异常 → 缺省 fail-closed 报错, 不是本域该有静默去重)。
     source: miaoxiang
     api: top_inst
     target_table: raw_tushare_top_inst
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
     universe_filter_col: ts_code     # 2026-06-28 谄媚死修: 缺此→用 grain[0]=trade_date 过滤前缀'20'整日全丢仍假报成功
-    grain: [trade_date, ts_code, exalter, side]   # 同席位同股按买卖方向分行 (字段实测在录)
+    grain: [trade_date, ts_code, reason, side, board_rank]   # 2026-09-11 原 [trade_date, ts_code,
+                                                              # exalter, side] (§0.2 实测: 折叠键须是
+                                                              # 内容 (exalter,buy,sell) 而非榜名次;
+                                                              # 落地 grain 改用交易所自然键)
     batch_mode: by_trade_date
+    write_mode: replace_partition   # 2026-09-11 新增 (原缺省 merge_grain)。陷阱: 若在
+                                     # write_mode 仍是 merge_grain 时用新 grain (含 board_rank)
+                                     # 重落, 新行 (board_rank 非空) 与旧行 (NULL) 在 grain 上不
+                                     # 相等, DELETE 不到旧行 → 同日两份且门不红 —— 本条必须先于
+                                     # 任何一次 sync 落地, 不能等重落脚本跑完再补
+    partition_by: [trade_date]      # 2026-09-11 新增
+    # 不声明 duplicate_rows: 自然键在 7 天 5,801 行上唯一 (§0.2), 出现重复即是供应商异常 →
+    #   缺省 fail-closed 报错 (event/artifact 都不适用 —— 这不是该静默处理的重复)
     # 2026-09-02 删 page_limit —— 09-01 换源妙想后 top_inst **每次取数必败**, 静默停更。
     # 机制: 妙想的分页是内部的, sources/miaoxiang.py::_reject_caller_paging 明文禁止调用方传
     # limit/offset/page/page_size; 而 sync_runner 只要见到 page_limit 就走 _fetch_paged 注入
@@ -1409,24 +1458,44 @@ domains:
     identity:
       kind: exchange_fact
       fact: "大宗交易成交 (交易所公布)"
-    source: tushare
+    source: miaoxiang   # 2026-09-11 起; adapter 内映射到 RPT_DATA_BLOCKTRADE
+                        # (物理表名不改, 与 top_inst 同约定)
     api: block_trade
     target_table: raw_tushare_block_trade
     universe_filter: true            # 2026-06-17 排除列表硬真相源: 写前丢非白名单前缀(北交所/三板)
-    grain: [ts_code, trade_date, price, vol, buyer, seller]   # 同股同日可多笔大宗 (不同价/量), 全留
+    universe_filter_col: ts_code     # 2026-09-11 新增显式声明 (top_inst 2026-06-28 同坑:
+                                      # 缺此会用 grain[0] 过滤, grain 改动后 grain[0] 仍是 ts_code
+                                      # 但显式声明更安全, 不依赖 grain 顺序)
+    # 2026-09-11 grain 契约 r2 §1.1: grain 改七列 (加 seq) + 声明事件域, 依据: 交易所逐笔 (沪
+    #   DZJYXX_L_1 / 深 CATALOGID=1265) 与妙想 RPT_DATA_BLOCKTRADE 在 2023-01-03 / 2023-06-02 /
+    #   2024-03-15 / 2025-08-05 / 2026-08-25 / 2026-08-27 六个样本日整行多重集合一致, 本地 =
+    #   交易所按六键去重的键数; 全同多笔是真实成交, 不是分页/复制伪影。
+    grain: [ts_code, trade_date, price, vol, buyer, seller, seq]   # 同股同日可多笔大宗 (不同价/量),
+                                                                    # 全留; 末位 seq = 多重度索引
+                                                                    # (全同六键行的独立成交序号)
+    duplicate_rows: event       # 新 typed 键 (§2.2 grain 契约): 批内同 grain 全同行 = 独立成交,
+                                 # 不是重复披露 (与 top_inst 那种"匿名标签碰撞"不是同一种现象)
+    multiplicity_index: seq     # 落地层派生 (不来自供应商), 批内按 grain−{seq} 到达顺序编 1..n
     batch_mode: by_trade_date
     date_param: trade_date
-    page_limit: 1000   # 2026-07-05 R4 后续排查发现: 该域此前无 page_limit 声明。实测 20250918
-                       # (源端裸调用/limit=1000,offset=0 均返回恰1000行, offset=1000 还有1行, 真实
-                       # 总量=1001) 证实存在与 top_inst 同型的单页1000上限, 无分页会静默截断。补
-                       # page_limit 激活既有 _fetch_paged 分页防线。
-                       # 2026-07-08 收口此前遗留问题: 20250918 本地179行经复核 = 1001原始行套用
-                       # universe_filter(白名单60/00/30/68)后的正确过滤结果(vendor 实测 filtered
-                       # dedup 后同为179, 0缺失) — 并非另有采集问题, 待跟进项已了结。
-                       # **2026-09-11 更正: 上面这次复核按构造必然通过** —— 是按本域 grain 去重之后再比的。
-                       # 07-03 审计 (1b94dd7a analysis/data_foundation_audit_20260703.json) 实测该日 DB 975 行 =
-                       # tushare 在线 975 行; 次日 eef8da75 按「分页边界重复」原地清理后剩 179。逐笔核对见
-                       # tushare_sunset.yaml block_trade evidence。
+    write_mode: replace_partition   # 2026-09-11 新增: 整日快照替换 (event 域必须此 write_mode,
+                                     # 否则 merge_grain 按 (key,seq) DELETE 会在供应商某日行数
+                                     # 变少时残留旧 seq=n 行, 见 sync_runner._duplicate_policy)
+    partition_by: [trade_date]      # 2026-09-11 新增
+    # page_limit: 1000  —— 2026-09-11 删除: 换源妙想, 妙想拒收 limit/offset (与 top_inst
+    #   2026-09-02 同坑), 分页在 adapter 内部处理, 不经 sync_runner._fetch_paged。
+    #   历史存档 (tushare 时代原文, 保留不删 —— 教训仍然成立, 只是换源后这道键失去载体):
+    #   2026-07-05 R4 后续排查发现: 该域此前无 page_limit 声明。实测 20250918
+    #   (源端裸调用/limit=1000,offset=0 均返回恰1000行, offset=1000 还有1行, 真实
+    #   总量=1001) 证实存在与 top_inst 同型的单页1000上限, 无分页会静默截断。补
+    #   page_limit 激活既有 _fetch_paged 分页防线。
+    #   2026-07-08 收口此前遗留问题: 20250918 本地179行经复核 = 1001原始行套用
+    #   universe_filter(白名单60/00/30/68)后的正确过滤结果(vendor 实测 filtered
+    #   dedup 后同为179, 0缺失) — 并非另有采集问题, 待跟进项已了结。
+    #   **2026-09-11 更正: 上面这次复核按构造必然通过** —— 是按本域 grain 去重之后再比的。
+    #   07-03 审计 (1b94dd7a analysis/data_foundation_audit_20260703.json) 实测该日 DB 975 行 =
+    #   tushare 在线 975 行; 次日 eef8da75 按「分页边界重复」原地清理后剩 179。逐笔核对见
+    #   tushare_sunset.yaml block_trade evidence。
     data_start: "20230101"   # 对齐 cyq_perf/panel 可用窗 (stage-conditional 测窗)
     row_dip_tolerance: true   # 2026-07-08 5 个骤降日(0521/0526/0601/0608/0702) grain-aware 核对
                               # vendor(含 price/vol/buyer/seller 全维度)逐行一致 0 缺失 — 大宗交易

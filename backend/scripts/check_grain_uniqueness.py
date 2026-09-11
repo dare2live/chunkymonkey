@@ -66,7 +66,9 @@ MART_GRAINS: list[tuple[str, str, list[str]]] = [
 
 
 def load_registry_specs(registry_path: Path | None = None) -> list[dict[str, Any]]:
-    """sync_registry 全域 → [{db, table, grain, origin}] (同表同 grain 去重; 同表异 grain 各查)。"""
+    """sync_registry 全域 → [{db, table, grain, multiplicity_index, origin}]
+    (同表同 grain 去重; 同表异 grain 各查)。multiplicity_index: 事件域声明的落地层派生
+    多重度索引列名 (grain 契约 S2, 2026-09-11); 未声明 (含 MART_GRAINS 镜像条目) 为 None。"""
     raw = yaml.safe_load((registry_path or REGISTRY_PATH).read_text(encoding="utf-8"))
     defaults = raw.get("defaults") or {}
     sources = raw.get("sources") or {}
@@ -89,21 +91,42 @@ def load_registry_specs(registry_path: Path | None = None) -> list[dict[str, Any
             continue  # 同表同 grain 多域 (index_member_all / _hist 同表 MERGE) 只查一次
         seen.add(key)
         specs.append({"db": key[0], "table": table, "grain": list(grain),
+                      "multiplicity_index": entry.get("multiplicity_index"),
                       "origin": f"sync_registry:{domain}"})
     for db, table, grain in MART_GRAINS:
-        specs.append({"db": db, "table": table, "grain": list(grain), "origin": "mart_grains"})
+        specs.append({"db": db, "table": table, "grain": list(grain),
+                      "multiplicity_index": None, "origin": "mart_grains"})
     return specs
 
 
-def check_table(conn, table: str, grain: list[str]) -> dict[str, Any]:
+_MULTIPLICITY_INDEX_INTEGER_TYPES = {
+    "INTEGER", "BIGINT", "SMALLINT", "TINYINT", "HUGEINT",
+    "UINTEGER", "UBIGINT", "USMALLINT", "UTINYINT",
+}
+
+
+def check_table(
+    conn, table: str, grain: list[str], multiplicity_index: str | None = None,
+) -> dict[str, Any]:
     """单表 grain 唯一性: {status, dup_groups, excess_rows}。表缺=skipped (域注册未拉/重建期),
-    grain 列缺=fail (schema 漂移, 与 sync_runner 缺 grain 列 raise 同语义)。"""
+    grain 列缺=fail (schema 漂移, 与 sync_runner 缺 grain 列 raise 同语义)。
+
+    声明了 multiplicity_index (事件域落地层派生的多重度索引列, grain 契约 S2) 时, 唯一性
+    通过后另查该列:
+      1. 类型: 不在整数族 (PRAGMA table_info) → fail_multiplicity_index_type
+         (VARCHAR 上 MIN/MAX 是字典序, '10' < '2', 不能当序号比)。
+      2. 连续性: 每个 (grain − multiplicity_index) 组内该列的值必须恰为 1..COUNT(*)
+         (NULL 计为坏组 = 旧契约行, 未走新落地路径) → fail_multiplicity_index_gap,
+         结果带 bad_groups。
+    两种新 fail 都在唯一性检查之后才跑 —— 本门查的是「落库表现在的样子」, 批内去重的
+    执法在 sync_runner._prepare_batch_df, 不在这里 (2026-09-11 block_trade 实证)。
+    """
     if not conn.execute(
         "SELECT 1 FROM information_schema.tables WHERE table_name = ? LIMIT 1", [table]
     ).fetchone():
         return {"status": "skipped_missing_table", "dup_groups": 0, "excess_rows": 0}
-    cols = {r[1] for r in conn.execute(f"PRAGMA table_info('{table}')").fetchall()}
-    missing = [g for g in grain if g not in cols]
+    col_types = {r[1]: r[2] for r in conn.execute(f"PRAGMA table_info('{table}')").fetchall()}
+    missing = [g for g in grain if g not in col_types]
     if missing:
         return {"status": "fail_missing_grain_cols", "dup_groups": 0, "excess_rows": 0,
                 "missing_cols": missing}
@@ -113,8 +136,29 @@ def check_table(conn, table: str, grain: list[str]) -> dict[str, Any]:
         f'SELECT COUNT(*) AS n FROM "{table}" GROUP BY {key_sql} HAVING COUNT(*) > 1)'
     ).fetchone()
     dup_groups, excess = int(row[0] or 0), int(row[1] or 0)
-    return {"status": "pass" if dup_groups == 0 else "fail_duplicate_grain",
-            "dup_groups": dup_groups, "excess_rows": excess}
+    if dup_groups:
+        return {"status": "fail_duplicate_grain", "dup_groups": dup_groups, "excess_rows": excess}
+    if multiplicity_index is None:
+        return {"status": "pass", "dup_groups": 0, "excess_rows": 0}
+    col_type = (col_types.get(multiplicity_index) or "").upper()
+    if col_type not in _MULTIPLICITY_INDEX_INTEGER_TYPES:
+        return {"status": "fail_multiplicity_index_type", "dup_groups": 0, "excess_rows": 0,
+                "multiplicity_index_type": col_type}
+    base_cols = [g for g in grain if g != multiplicity_index]
+    base_sql = ", ".join(f'"{g}"' for g in base_cols)
+    idx_sql = f'"{multiplicity_index}"'
+    bad_row = conn.execute(
+        f'SELECT COUNT(*) FROM ('
+        f'SELECT MIN({idx_sql}) AS mn, MAX({idx_sql}) AS mx, '
+        f'COUNT(*) AS n, COUNT({idx_sql}) AS nn '
+        f'FROM "{table}" GROUP BY {base_sql} '
+        f'HAVING NOT (nn = n AND mn = 1 AND mx = n))'
+    ).fetchone()
+    bad_groups = int(bad_row[0] or 0)
+    if bad_groups:
+        return {"status": "fail_multiplicity_index_gap", "dup_groups": 0, "excess_rows": 0,
+                "bad_groups": bad_groups}
+    return {"status": "pass", "dup_groups": 0, "excess_rows": 0}
 
 
 def parse_exemptions(items: list[str]) -> dict[str, str]:
@@ -139,7 +183,9 @@ def run_checks(
     strict: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """全表扫描: 返回 (results, failures)。conn_for(db_alias) 可注入 (单测内存库)。
-    exemptions: {table: 到期日 YYYYMMDD} — 未到期的 dup 降为 exempt (不 FAIL), 过期照常 FAIL。"""
+    exemptions: {table: 到期日 YYYYMMDD} — 未到期的 dup / 多重度索引断号降为 exempt
+    (不 FAIL), 过期照常 FAIL。多重度索引类型错 (fail_multiplicity_index_type) 是 schema
+    bug 不是重落期的过渡态, 不受豁免覆盖 (grain 契约 S2 §2.5.3)。"""
     exemptions = exemptions or {}
     today = today or date.today().strftime("%Y%m%d")  # rule-compliance: ok evidence=Phase ψ.5 allowlist 豁免到期日=自然日语义 (非交易日锚, 过期自动恢复 FAIL)rade-date end_date
     conns: dict[str, Any] = {}
@@ -159,8 +205,9 @@ def run_checks(
             if conn is None:
                 results.append({**spec, "status": "db_unreachable", "dup_groups": 0, "excess_rows": 0})
                 continue
-            r = check_table(conn, spec["table"], spec["grain"])
-            if r["status"] == "fail_duplicate_grain" and spec["table"] in exemptions:
+            r = check_table(conn, spec["table"], spec["grain"], spec.get("multiplicity_index"))
+            if (r["status"] in ("fail_duplicate_grain", "fail_multiplicity_index_gap")
+                    and spec["table"] in exemptions):
                 expiry = exemptions[spec["table"]]
                 if today <= expiry:
                     r = {**r, "status": "exempt_until_" + expiry}

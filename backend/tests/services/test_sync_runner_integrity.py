@@ -117,7 +117,12 @@ def test_margin_bse_write_contract_uses_margin_business_start_and_is_atomic():
 
 
 def test_min_rows_is_evaluated_after_dedup_without_dropping_universe_rows():
-    """A4: min_rows 看 landing 去重后行数；BJ 不再被写前丢弃垫/挡门。"""
+    """A4: min_rows 看 landing 去重后行数；BJ 不再被写前丢弃垫/挡门。
+
+    grain 契约 r2 T10: 两行 600000.SH 现在是全同行 (rzye 都 1.0)，域必须显式声明
+    duplicate_rows='artifact' 才允许批内 drop_duplicates —— 未声明会被三态执法
+    fail-closed 拒绝 (见 test_landing_duplicate_policy.py T1)。
+    """
     conn = connect(":memory:")
     spec = _margin_spec(
         min_rows_per_batch=3,
@@ -125,10 +130,11 @@ def test_min_rows_is_evaluated_after_dedup_without_dropping_universe_rows():
         target_table="raw_demo_landing",
         universe_filter=True,
         grain=["ts_code", "trade_date"],
+        duplicate_rows="artifact",
     )
     rows = [
         {"ts_code": "600000.SH", "trade_date": "20260714", "rzye": 1.0},
-        {"ts_code": "600000.SH", "trade_date": "20260714", "rzye": 2.0},
+        {"ts_code": "600000.SH", "trade_date": "20260714", "rzye": 1.0},
         {"ts_code": "830001.BJ", "trade_date": "20260714", "rzye": 3.0},
     ]
 

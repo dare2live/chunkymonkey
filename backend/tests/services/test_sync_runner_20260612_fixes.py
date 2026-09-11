@@ -71,7 +71,9 @@ def test_registry_surgery_contract_20260612():
     # block_trade 无声明时 20250918 实测 1001 行 (offset=1000 仍返 1 行) 恰好压线 1000 上限。
     assert d["index_dailybasic"]["page_limit"] == 3000
     assert d["share_float"]["page_limit"] == 6000
-    assert d["block_trade"]["page_limit"] == 1000
+    # 2026-09-11 block_trade 换源妙想: 妙想分页在 adapter 内部、拒收调用方 limit/offset,
+    # 该域不得再声明 page_limit (与 top_inst 2026-09-02 同坑)。
+    assert "page_limit" not in d["block_trade"]
     assert d["trade_cal"]["page_limit"] == 6000
     assert d["trade_cal"]["write_mode"] == "replace_snapshot"
     assert d["stock_basic"]["write_mode"] == "replace_snapshot"

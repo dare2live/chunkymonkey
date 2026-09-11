@@ -212,12 +212,18 @@ commit_gates:
 
   grain_uniqueness:
     group: system_health
-    checks: "全域按声明 grain GROUP BY 有无重复组 (live DuckDB)"
+    checks: >-
+      全域按声明 grain GROUP BY 有无重复组; 声明 multiplicity_index 的表另查该列
+      整数类型、非空、组内连续 1..n (live DuckDB)
     why: >-
-      查的是库里现有数据，与本次 diff 无关。grain 声明错会被批内去重升级成
-      静默销毁 —— 受害时刻是每次跑批写表，不是提交代码。
+      查的是库里现有数据, 与本次 diff 无关。它守落库表的 grain 契约 (含事件域
+      多重度索引连续性); 批内去重的执法不在这里, 在 sync_runner._prepare_batch_df
+      —— 本门放在去重下游, 对去重销毁按构造看不见 (2026-09-11 block_trade 实证)。
     object: "table:*"
-    invariant: "全域按声明 grain (sync_registry.yaml 域 + MART_GRAINS) GROUP BY 无重复组"
+    invariant: >-
+      全域按声明 grain (sync_registry.yaml 域 + MART_GRAINS) GROUP BY 无重复组;
+      声明 multiplicity_index 的表: 该列整数类型、非空, 且每个 (grain−该列) 组的
+      取值恰为 1..COUNT(*)
     kill_when: "keep_forever: 数据正确性"
     paradigm: engineering
 

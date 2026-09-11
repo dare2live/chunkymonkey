@@ -1,8 +1,10 @@
-"""check_grain_uniqueness 单测 (R1 件2, 2026-07-03).
+"""check_grain_uniqueness 单测 (R1 件2, 2026-07-03; grain 契约 S2 追加, 2026-09-11).
 
 锁: (1) dup→FAIL / 清后→PASS red-green; (2) grain 列缺 = schema 漂移 FAIL; (3) 表缺 = skip
 (注册未拉); (4) 豁免带到期日 (未到期降级 / 过期恢复 FAIL); (5) registry 解析 (默认库/同表去重
-/ mart 映射并入); (6) 生产 registry 真解析非空。
+/ mart 映射并入); (6) 生产 registry 真解析非空; (7) multiplicity_index (grain 契约 S2):
+类型非整数族 FAIL / 组内断号 FAIL / NULL 计为坏组 / 豁免覆盖断号不覆盖类型错 / registry
+透传该键 / 未声明该键的表不受影响 (原 fail_duplicate_grain 路径零新字段)。
 """
 from __future__ import annotations
 
@@ -135,3 +137,111 @@ def test_parse_exemptions_requires_expiry():
         cgu.parse_exemptions(["t"])          # 无到期日
     with pytest.raises(SystemExit):
         cgu.parse_exemptions(["t:soon"])     # 到期日非 YYYYMMDD
+
+
+# ── multiplicity_index (grain 契约 S2, 2026-09-11) ──────────────────────────
+# 表固定 grain=[a, b, seq]、index="seq"；a/b 是事件的"身份"轴 (grain − seq)，seq 是落地层
+# 派生的到达顺序。行以 (a, b, seq) 传入。
+
+
+def _conn_multiplicity(rows: list[tuple], seq_type: str = "INTEGER"):
+    c = duck_mem()
+    c.execute(f"CREATE TABLE t (a TEXT, b INTEGER, seq {seq_type})")
+    c.executemany("INSERT INTO t VALUES (?, ?, ?)", rows)
+    return c
+
+
+def test_check_table_multiplicity_index_pass():
+    """G1: seq INTEGER 且每个 (a,b) 组内恰为 1..n 连续 → pass。"""
+    c = _conn_multiplicity([("x", 1, 1), ("x", 1, 2), ("y", 2, 1)])
+    try:
+        r = cgu.check_table(c, "t", ["a", "b", "seq"], "seq")
+        assert r == {"status": "pass", "dup_groups": 0, "excess_rows": 0}
+    finally:
+        c.close()
+
+
+def test_check_table_multiplicity_index_gap():
+    """G2: 唯一性通过 (a,b,seq 全表唯一), 但 (x,1) 组 seq={1,3} 断号 (缺 2)
+    → fail_multiplicity_index_gap, bad_groups=1。"""
+    c = _conn_multiplicity([("x", 1, 1), ("x", 1, 3), ("y", 2, 1)])
+    try:
+        r = cgu.check_table(c, "t", ["a", "b", "seq"], "seq")
+        assert r["status"] == "fail_multiplicity_index_gap"
+        assert r["bad_groups"] == 1
+    finally:
+        c.close()
+
+
+def test_check_table_multiplicity_index_null_counts_as_bad_group():
+    """G3: seq NULL (旧契约行, 未走新落地路径) → COUNT(seq) < COUNT(*), 计为坏组
+    → fail_multiplicity_index_gap (不是静默通过, 也不是 fail_missing_grain_cols)。"""
+    c = _conn_multiplicity([("x", 1, None), ("y", 2, 1)])
+    try:
+        r = cgu.check_table(c, "t", ["a", "b", "seq"], "seq")
+        assert r["status"] == "fail_multiplicity_index_gap"
+        assert r["bad_groups"] == 1
+    finally:
+        c.close()
+
+
+def test_check_table_multiplicity_index_wrong_type():
+    """G4: 值本身连续 ('1','2'), 但列是 VARCHAR (字典序 MIN/MAX 会在 '10'<'2' 时假通过)
+    → fail_multiplicity_index_type, 且必须先于连续性检查跑 (这条数据若走连续性检查会通过,
+    只有类型检查能抓住它)。"""
+    c = _conn_multiplicity([("x", 1, "1"), ("x", 1, "2")], seq_type="VARCHAR")
+    try:
+        r = cgu.check_table(c, "t", ["a", "b", "seq"], "seq")
+        assert r["status"] == "fail_multiplicity_index_type"
+    finally:
+        c.close()
+
+
+def test_run_checks_exemption_covers_gap_not_type():
+    """G5: fail_multiplicity_index_gap (重落期过渡态) 受豁免覆盖降级；
+    fail_multiplicity_index_type (schema bug) 豁免不覆盖, 仍 FAIL。"""
+    today = "20260703"
+    gap_specs = [{"db": "mem", "table": "t", "grain": ["a", "b", "seq"],
+                  "multiplicity_index": "seq", "origin": "test"}]
+    results, failures = cgu.run_checks(
+        gap_specs,
+        lambda alias: _conn_multiplicity([("x", 1, 1), ("x", 1, 3), ("y", 2, 1)]),
+        exemptions={"t": "20260801"}, today=today)
+    assert not failures and results[0]["status"] == "exempt_until_20260801"
+
+    type_specs = [{"db": "mem", "table": "t", "grain": ["a", "b", "seq"],
+                   "multiplicity_index": "seq", "origin": "test"}]
+    results, failures = cgu.run_checks(
+        type_specs,
+        lambda alias: _conn_multiplicity([("x", 1, "1"), ("x", 1, "2")], seq_type="VARCHAR"),
+        exemptions={"t": "20260801"}, today=today)
+    assert len(failures) == 1 and failures[0]["status"] == "fail_multiplicity_index_type"
+
+
+def test_load_registry_specs_multiplicity_index(tmp_path):
+    """G6: registry 域声明 multiplicity_index 时原样透传; 未声明为 None。"""
+    p = tmp_path / "reg.yaml"
+    p.write_text(
+        "defaults:\n  target_db: rawdb\n"
+        "domains:\n"
+        "  a: {target_table: t_a, grain: [x, y, seq], multiplicity_index: seq}\n"
+        "  b: {target_table: t_b, grain: [k]}\n",
+        encoding="utf-8")
+    specs = cgu.load_registry_specs(p)
+    reg_specs = {s["table"]: s for s in specs if s["origin"].startswith("sync_registry")}
+    assert reg_specs["t_a"]["multiplicity_index"] == "seq"
+    assert reg_specs["t_b"]["multiplicity_index"] is None
+
+
+def test_check_table_no_multiplicity_index_is_unaffected():
+    """G7 隔离: 不声明 multiplicity_index (默认 None) 的表即使有 grain 重复, 仍走原有
+    fail_duplicate_grain 路径, 不带任何 multiplicity_index 相关新字段。"""
+    c = duck_mem()
+    try:
+        c.execute("CREATE TABLE t (a TEXT, b INTEGER)")
+        c.executemany("INSERT INTO t VALUES (?, ?)", [("x", 1), ("x", 1)])
+        r = cgu.check_table(c, "t", ["a", "b"])
+        assert r == {"status": "fail_duplicate_grain", "dup_groups": 1, "excess_rows": 1}
+        assert "bad_groups" not in r and "multiplicity_index_type" not in r
+    finally:
+        c.close()

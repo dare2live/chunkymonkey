@@ -637,6 +637,7 @@ def domain_spec(registry: dict[str, Any], domain: str) -> dict[str, Any]:
     spec.update(entry)
     spec["domain"] = domain
     spec["channels"] = _channel_views(registry, domain, entry, primary_view=spec)
+    _duplicate_policy(spec)  # 只校验 (grain 契约 r2 §2.2); fail-closed at merge time, 不改返回值
     return spec
 
 
@@ -1350,6 +1351,94 @@ def _capture_domain_sample(spec: dict[str, Any], rows: list[dict[str, Any]]) -> 
         log.warning("域样本存档失败 %s: %s", spec["domain"], str(exc)[:120])
 
 
+# grain 契约 r2 §2.1/§2.2: 批内同 grain **全同行**的语义, 运行时三态 (可选 typed 键), 不做
+# "每域必填"。不写这两个键 = kind='none' = fail-closed (批内出现全同行即报错, 不静默 drop_duplicates)。
+# 为什么不强制必填: 42 域里绝大多数只有语义级证据 (§5), 逼着现在写值等于把猜测写成契约;
+# 留空 = 首次出现重复时响亮失败 + 带着实证裁决 (memory "新成员必须有裁决" 的机械版)。
+@dataclass(frozen=True)
+class DuplicatePolicy:
+    kind: str  # 'none' | 'event' | 'artifact'
+    index_col: str | None
+
+
+class DuplicatePolicyError(BatchCompletenessError):
+    """批内同 grain 全同行, 与域声明的 duplicate_rows 语义冲突 (或域未声明) —— fail-closed.
+
+    复用 BatchCompletenessError 既有路由: run_domain/drain 对它是"该批零写入、进 failed
+    (suspect=batch_incomplete)、继续下一批", 不是 break 停域 (见 grain 契约 r2 §2.3)。
+    """
+
+
+_VALID_DUPLICATE_ROWS_KINDS = frozenset({"event", "artifact"})
+
+
+def _duplicate_policy(spec: Mapping[str, Any]) -> DuplicatePolicy:
+    """校验并解析 registry 域级 typed 键 duplicate_rows / multiplicity_index (grain 契约 r2 §2.2)。
+
+    只读校验, 不落地任何状态; 供 domain_spec() 在合并时 fail-closed 拒绝启动, 供
+    _prepare_batch_df / _write_batch 在受害时刻决定三态执法。任一违反即 ValueError:
+      - duplicate_rows 声明了但不在 {event, artifact}
+      - multiplicity_index 声明了但 duplicate_rows != 'event' (含未声明 duplicate_rows 的情形)
+      - duplicate_rows == 'event' 但无 multiplicity_index
+      - multiplicity_index 不是 grain 的最后一个元素
+      - duplicate_rows == 'event' 但 write_mode != replace_partition (merge_grain 按 (key,seq)
+        DELETE, 供应商某日行数变少时旧 seq=n 残留)
+      - multiplicity_index 与 date_param/partition_by/universe_filter_col 任一同名
+    不写这两个键 = kind='none'。
+    """
+    domain = spec.get("domain", "?")
+    duplicate_rows = spec.get("duplicate_rows")
+    index_col = spec.get("multiplicity_index")
+
+    if duplicate_rows is None and index_col is None:
+        return DuplicatePolicy(kind="none", index_col=None)
+
+    if duplicate_rows is not None and duplicate_rows not in _VALID_DUPLICATE_ROWS_KINDS:
+        raise ValueError(
+            f"{domain}: duplicate_rows 必须是 'event' 或 'artifact' 之一, 得到 {duplicate_rows!r}"
+        )
+
+    if index_col is not None and duplicate_rows != "event":
+        raise ValueError(
+            f"{domain}: multiplicity_index={index_col!r} 声明了但 duplicate_rows={duplicate_rows!r} "
+            "!= 'event' (multiplicity_index 只用于 event; artifact 域不许声明 multiplicity_index, "
+            "未声明 duplicate_rows 也不许单独声明 multiplicity_index)"
+        )
+
+    if duplicate_rows == "event":
+        if not index_col:
+            raise ValueError(
+                f"{domain}: duplicate_rows=event 缺 multiplicity_index (event 域必须声明落地层"
+                "派生的多重度索引列)"
+            )
+        grain = list(spec.get("grain") or [])
+        if not grain or grain[-1] != index_col:
+            raise ValueError(
+                f"{domain}: multiplicity_index={index_col!r} 必须是 grain 的最后一个元素, "
+                f"当前 grain={grain!r}"
+            )
+        write_mode = str(spec.get("write_mode") or "merge_grain")
+        if write_mode != "replace_partition":
+            raise ValueError(
+                f"{domain}: duplicate_rows=event 要求 write_mode=replace_partition "
+                f"(当前 write_mode={write_mode!r}) — merge_grain 按 (key,seq) DELETE, "
+                "供应商某日行数变少时旧 seq=n 残留"
+            )
+        collisions = {str(spec.get("date_param") or "")}
+        collisions.update(str(c) for c in (spec.get("partition_by") or []))
+        collisions.add(str(spec.get("universe_filter_col") or ""))
+        collisions.discard("")
+        if index_col in collisions:
+            raise ValueError(
+                f"{domain}: multiplicity_index={index_col!r} 与 date_param/partition_by/"
+                "universe_filter_col 之一同名, 不许复用"
+            )
+        return DuplicatePolicy(kind="event", index_col=index_col)
+
+    # 走到这里: duplicate_rows == 'artifact' 且 index_col 已在上面确认为 None。
+    return DuplicatePolicy(kind="artifact", index_col=None)
+
+
 def _prepare_batch_df(
     spec: dict[str, Any],
     rows: list[dict[str, Any]],
@@ -1372,17 +1461,63 @@ def _prepare_batch_df(
     df["built_at"] = datetime.now(timezone.utc).isoformat()
     table = spec["target_table"]
     grain: list[str] = list(spec["grain"])
+    policy = _duplicate_policy(spec)
+
+    # event 域: multiplicity_index 是落地层派生的多重度序号, 不是观测量 —— 供应商行里不该
+    # 已经带这一列 (grain 契约 r2 §2.3)。按 grain-{index_col} 分组, 组内到达顺序编 1..n。
+    if policy.kind == "event":
+        if policy.index_col in df.columns:
+            raise ValueError(
+                f"{table}: 供应商返回了与 multiplicity_index 同名列 {policy.index_col!r}"
+            )
+        base = [g for g in grain if g != policy.index_col]
+        missing_base = [g for g in base if g not in df.columns]
+        if missing_base:
+            raise ValueError(
+                f"{table}: api 返回缺 grain 列 {missing_base} — registry 条目或上游 schema 变了"
+            )
+        df[policy.index_col] = (
+            df.groupby(base, sort=False, dropna=False).cumcount() + 1
+        ).astype("int64")
+
     missing = [g for g in grain if g not in df.columns]
     if missing:
         raise ValueError(f"{table}: api 返回缺 grain 列 {missing} — registry 条目或上游 schema 变了")
 
-    # 批内去重 (复审 HIGH 根因, 2026-06-22): API/分页可返回同 grain 重复行 (limit_list_d 实测单日插14次,
-    # 23116 重复行膨胀涨停家数 14x)。DELETE-INSERT MERGE 只跨批去重不去批内 → 必须先 drop_duplicates(grain),
-    # 否则批内重复直接累积入库 (grain 无 DB 唯一约束兜底)。keep='last' 取最新一条。
-    _ndup = len(df)
-    df = df.drop_duplicates(subset=grain, keep="last")
-    if len(df) < _ndup:
-        log.info("[dedup] %s 批内去重 %d 行 (同 grain 重复)", table, _ndup - len(df))
+    # 批内重复三态执法 (grain 契约 r2 §2.3; 继任 2026-06-22 复审 HIGH 根因的静默 keep='last'):
+    # API/分页可返回同 grain 重复行 (limit_list_d 实测单日插14次, 23116 重复行膨胀涨停家数 14x)。
+    # DELETE-INSERT MERGE 只跨批去重不去批内。旧版本一律静默 drop_duplicates(grain, keep='last') ——
+    # 这把"同 grain 但内容不同"(grain 缺版本/身份轴) 与"同 grain 且内容全同"(去重伪影或独立
+    # 多重事件) 一视同仁盲选一条。现在按域声明的三态精细处理; 未声明 = fail-closed。
+    dup_mask = df.duplicated(subset=grain, keep=False)
+    dedup_rows = 0
+    if dup_mask.any():
+        content_cols = [c for c in df.columns if c not in grain and c != "built_at"]
+        n_groups = len(df.loc[dup_mask, grain].drop_duplicates())
+        n_full = len(df.loc[dup_mask, grain + content_cols].drop_duplicates())
+        if n_full > n_groups:
+            raise DuplicatePolicyError(
+                f"{spec['domain']}: {n_full - n_groups} 个 grain 组内容不一致 —— "
+                "grain 缺版本/身份轴, 不许 keep='last' 盲选"
+            )
+        if policy.kind == "artifact":
+            before = len(df)
+            df = df.drop_duplicates(subset=grain, keep="first")
+            dedup_rows = before - len(df)
+            log.info("[dedup] %s 批内去重 %d 行 (artifact)", table, dedup_rows)
+        else:
+            # kind == 'none': 域未声明 duplicate_rows —— 先裁决再落地。
+            # kind == 'event' 按构造不可能落到这里 (index_col 已并入 grain, 全同行不可能重复);
+            # 到达这一分支说明多重度编号逻辑本身坏了, 用 assert 钉住这个不变量。
+            assert policy.kind != "event", (
+                f"{spec['domain']}: event 域出现同 grain(含 multiplicity_index) 全同行 — "
+                "多重度编号逻辑坏了, 不是三态执法该拦的情形"
+            )
+            raise DuplicatePolicyError(
+                f"{spec['domain']}: 批内 {int(dup_mask.sum()) - n_groups} 行同 grain 全同行, "
+                "域未声明 duplicate_rows (event|artifact) —— 先裁决再落地"
+            )
+    df.attrs["dedup_rows"] = dedup_rows
 
     # A4 landing purity: validate filter-column wiring, never drop provider rows here.
     if spec.get("universe_filter"):
@@ -1710,6 +1845,7 @@ def _write_batch(
     )
     table = spec["target_table"]
     grain: list[str] = list(spec["grain"])
+    policy = _duplicate_policy(spec)
 
     # duck_adapter 包装层挡住 DataFrame replacement scan, 显式注册视图
     raw_con = getattr(conn, "_con", conn)
@@ -1757,7 +1893,17 @@ def _write_batch(
                 ).fetchall()}
                 for col in df.columns:
                     if col not in existing:
-                        conn.execute(f'ALTER TABLE {table} ADD COLUMN "{col}" VARCHAR')
+                        # 追加 A (2026-09-11, 主会话裁定): 声明了 multiplicity_index 的表, 该列
+                        # 是整数多重度序号, 不是文本 —— 走 VARCHAR 会让 check_grain_uniqueness 的
+                        # MIN/MAX 连续性判据按字典序比较 ('10' < '2')。新表由 CREATE TABLE AS
+                        # SELECT * FROM df 从 pandas int64 推断 (BIGINT), 不经这条 ALTER 分支;
+                        # 这里补的是"已存在但缺该列"的现存表 (§3.2 准备 DDL 的兜底)。
+                        col_type = (
+                            "INTEGER"
+                            if policy.index_col is not None and col == policy.index_col
+                            else "VARCHAR"
+                        )
+                        conn.execute(f'ALTER TABLE {table} ADD COLUMN "{col}" {col_type}')
                 for col, target_type in (widen_types or {}).items():
                     conn.execute(
                         f'ALTER TABLE {table} ALTER COLUMN "{col}" '
@@ -1765,6 +1911,46 @@ def _write_batch(
                     )
                 conn.execute(delete_sql)
                 conn.execute(f"INSERT INTO {table} ({cols}) SELECT {cols} FROM df")
+                if policy.kind == "artifact":
+                    # 去重删除数台账 (grain 契约 r2 §2.4): 建在目标表同库同连接同事务
+                    # (单写者纪律, 与 mart_data_deletion_record 同库同写者先例)。只在
+                    # artifact 才写 —— event/none 按构造 dedup_rows 恒为 0。
+                    conn.execute(
+                        "CREATE TABLE IF NOT EXISTS mart_data_landing_dedup ("
+                        "domain VARCHAR NOT NULL, target_table VARCHAR NOT NULL, "
+                        "batch_key VARCHAR NOT NULL, raw_rows BIGINT NOT NULL, "
+                        "landed_rows BIGINT NOT NULL, dedup_rows BIGINT NOT NULL, "
+                        "duplicate_rows_policy VARCHAR NOT NULL, built_at VARCHAR NOT NULL, "
+                        "PRIMARY KEY (domain, batch_key, built_at))"
+                    )
+                    date_col = str(
+                        spec.get("freshness_date_column")
+                        or spec.get("date_param")
+                        or "trade_date"
+                    )
+                    batch_key = ""
+                    if date_col in df.columns:
+                        observed_dates = df[date_col].dropna().astype(str).unique()
+                        if len(observed_dates) == 1:
+                            batch_key = str(observed_dates[0])
+                    built_at_value = (
+                        str(df["built_at"].iloc[0]) if "built_at" in df.columns and len(df) else ""
+                    )
+                    conn.execute(
+                        "INSERT INTO mart_data_landing_dedup "
+                        "(domain, target_table, batch_key, raw_rows, landed_rows, "
+                        "dedup_rows, duplicate_rows_policy, built_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            domain,
+                            table,
+                            batch_key,
+                            len(rows),
+                            len(df),
+                            int(df.attrs.get("dedup_rows") or 0),
+                            policy.kind,
+                            built_at_value,
+                        ],
+                    )
                 conn.execute("COMMIT")
             except Exception:
                 try:
