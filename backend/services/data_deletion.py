@@ -73,9 +73,14 @@ def record_data_deletion(
             key_value or "",
         ]
     )
+    # 不用 INSERT OR REPLACE: 它依赖 record_id 上的主键约束。2026-09-11 实测 tushare_raw / market /
+    # reference / feature_store 四个库里这张表都没有任何约束 (早年整表复制建出, CREATE TABLE IF NOT
+    # EXISTS 不会补回主键), 只有 smartmoney 有; 无主键的表上 INSERT OR REPLACE 直接 Binder Error。
+    # 先删同 record_id 再插, 有无主键都成立; 调用方在事务里调用时两句一起提交。
+    conn.execute("DELETE FROM mart_data_deletion_record WHERE record_id = ?", (record_id,))
     conn.execute(
         """
-        INSERT OR REPLACE INTO mart_data_deletion_record (
+        INSERT INTO mart_data_deletion_record (
             record_id, deletion_run_id, table_name, delete_scope,
             key_column, key_value, deleted_rows, deleted_files, deleted_bytes,
             reason, verification_json, deleted_at
