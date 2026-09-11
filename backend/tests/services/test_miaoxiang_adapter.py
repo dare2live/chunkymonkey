@@ -1,4 +1,4 @@
-"""Miaoxiang (妙想) adapter contracts for top_inst / top_list — offline only.
+"""Miaoxiang (妙想) adapter contracts for block_trade / top_inst / top_list — offline only.
 
 No live network, no sibling ``miaoxiang`` checkout required: every test injects
 a fake client implementing ``get_v1`` (same signature as
@@ -6,10 +6,9 @@ a fake client implementing ``get_v1`` (same signature as
 clone discipline (see ``feedback-test-must-carry-its-own-fixture`` lesson —
 tests must not assume a host environment they don't carry with them).
 
-Field-mapping fixtures below are lifted verbatim (key subset) from a real
-``client.get_v1(..., extra_filters=["(TRADE_DATE='2026-08-25')"])`` response
-captured 2026-08-31 (see module docstring in ``sources/miaoxiang.py`` for the
-full mapping table and provenance).
+Field-mapping fixtures below are lifted verbatim (key subset) from real
+``client.get_v1(...)`` responses captured 2026-08-31 / 2026-08-27 (see module
+docstring in ``sources/miaoxiang.py`` for the full mapping table and provenance).
 """
 from __future__ import annotations
 
@@ -20,12 +19,14 @@ from services.data_sources.sources.miaoxiang import (
     API_REPORT_NAMES,
     MAX_PAGES,
     PAGE_SIZE,
+    REPORT_BLOCK_TRADE,
     REPORT_TOP_INST,
     REPORT_TOP_LIST,
     MiaoxiangMissingFieldError,
     MiaoxiangSource,
     MiaoxiangSourceError,
     MiaoxiangTruncationError,
+    clean_block_trade_row,
     clean_top_inst_row,
     clean_top_list_row,
     compact_trade_date,
@@ -83,6 +84,22 @@ def _top_list_raw_row(**overrides) -> dict:
     return row
 
 
+def _block_trade_raw_row(**overrides) -> dict:
+    row = {
+        "SECUCODE": "300308.SZ",
+        "SECURITY_TYPE": "EQA",
+        "TRADE_UNIT": "4",
+        "TRADE_DATE": "2026-08-27 00:00:00",
+        "DEAL_PRICE": 866.12,
+        "DEAL_VOLUME": 14800,
+        "DEAL_AMT": 12818600,
+        "BUYER_NAME": "机构专用",
+        "SELLER_NAME": "机构专用",
+    }
+    row.update(overrides)
+    return row
+
+
 class _FakeClient:
     """Records every call; serves canned per-page responses for one report."""
 
@@ -121,6 +138,9 @@ def test_clean_top_inst_row_maps_all_fields():
         "sell_rate": 0.0,
         "net_buy": 34959741.0,  # from NET, not NET_BUY (stock-day net)
         "reason": "连续三个交易日内，涨幅偏离值累计达到20%的证券",
+        "board_rank": 1,
+        "stat_days": None,
+        "seat_code": "10086482",
     }
     assert "built_at" not in out  # sync_runner stamps this centrally
 
@@ -206,12 +226,164 @@ def test_clean_top_inst_row_normalizes_null_amount_to_zero():
 
 
 # ---------------------------------------------------------------------------
+# block_trade field mapping
+# ---------------------------------------------------------------------------
+
+
+def test_clean_block_trade_row_eqa():
+    """A1: EQA type with standard fields."""
+    out = clean_block_trade_row(_block_trade_raw_row(), trade_date="20260827")
+    assert out == {
+        "ts_code": "300308.SZ",
+        "trade_date": "20260827",
+        "price": 866.12,
+        "vol": pytest.approx(1.48),
+        "amount": pytest.approx(1281.86),
+        "buyer": "机构专用",
+        "seller": "机构专用",
+        "security_type": "EQA",
+        "trade_unit": "4",
+    }
+    assert "seq" not in out
+
+
+def test_clean_block_trade_row_bd0():
+    """A2: BD0 (convertible bond) with special vol calculation."""
+    out = clean_block_trade_row(
+        _block_trade_raw_row(
+            SECUCODE="123076.SZ",
+            SECURITY_TYPE="BD0",
+            TRADE_UNIT="1",
+            DEAL_PRICE=138.9,
+            DEAL_VOLUME=500,
+            DEAL_AMT=694500,
+        ),
+        trade_date="20260827",
+    )
+    assert out["ts_code"] == "123076.SZ"
+    assert out["security_type"] == "BD0"
+    assert out["vol"] == pytest.approx(0.5)  # 500*10/1e4
+    assert out["amount"] == pytest.approx(69.45)  # 694500/1e4
+
+
+def test_clean_block_trade_row_fdo():
+    """A3: FDO (fund) type."""
+    out = clean_block_trade_row(
+        _block_trade_raw_row(
+            SECUCODE="511990.SH",
+            SECURITY_TYPE="FDO",
+            TRADE_UNIT="3",
+            DEAL_PRICE=100.0,
+            DEAL_VOLUME=3000000,
+            DEAL_AMT=299994000,
+        ),
+        trade_date="20260827",
+    )
+    assert out["ts_code"] == "511990.SH"
+    assert out["security_type"] == "FDO"
+    assert out["vol"] == pytest.approx(300.0)  # 3000000/1e4
+    assert out["amount"] == pytest.approx(29999.4)  # 299994000/1e4
+
+
+def test_clean_block_trade_row_unknown_security_type():
+    """A4: Unknown security type sets vol to None, logs warning."""
+    out = clean_block_trade_row(
+        _block_trade_raw_row(
+            SECURITY_TYPE="XYZ",
+            DEAL_VOLUME=100,
+            DEAL_AMT=1000,
+        ),
+        trade_date="20260827",
+    )
+    assert out["vol"] is None
+    assert out["amount"] == pytest.approx(0.1)
+    assert out["security_type"] == "XYZ"
+
+
+def test_clean_block_trade_row_missing_buyer():
+    """A5: Missing buyer name fails closed."""
+    row = _block_trade_raw_row(BUYER_NAME="")
+    with pytest.raises(MiaoxiangMissingFieldError, match="BUYER_NAME"):
+        clean_block_trade_row(row, trade_date="20260827")
+
+
+def test_clean_block_trade_row_mismatched_date():
+    """A6: Row date differs from request date fails closed."""
+    row = _block_trade_raw_row(TRADE_DATE="2026-08-26 00:00:00")
+    with pytest.raises(MiaoxiangMissingFieldError, match="row date.*request date"):
+        clean_block_trade_row(row, trade_date="20260827")
+
+
+def test_clean_block_trade_fetch_raw_integration():
+    """A7: fetch_raw integration for block_trade via _FakeClient."""
+    page1 = {
+        "pages": 1,
+        "count": 1,
+        "data": [_block_trade_raw_row()],
+    }
+    client = _FakeClient([page1])
+    src = MiaoxiangSource(client=client)
+    rows = src.fetch_raw("block_trade", trade_date="20260827")
+
+    assert len(rows) == 1
+    assert rows[0]["ts_code"] == "300308.SZ"
+    assert rows[0]["vol"] == pytest.approx(1.48)
+
+    call = client.calls[0]
+    assert call["report_name"] == REPORT_BLOCK_TRADE
+    assert call["sort_columns"] == "SECURITY_CODE,DEAL_PRICE,DEAL_VOLUME,BUYER_NAME,SELLER_NAME"
+    assert call["sort_types"] == "1,1,1,1,1"
+    assert call["extra_filters"] == ["(TRADE_DATE='2026-08-27')"]
+
+
+def test_clean_top_inst_row_with_new_columns():
+    """A8: top_inst now includes board_rank, stat_days, reason, and seat_code columns."""
+    row = _top_inst_raw_row(STATISTICS_DAYS="2")
+    out = clean_top_inst_row(row, trade_date="20260825")
+    assert out["board_rank"] == 1
+    assert out["stat_days"] == "2"
+    assert out["reason"] == "连续三个交易日内，涨幅偏离值累计达到20%的证券"
+    # seat_code tests
+    assert clean_top_inst_row(_top_inst_raw_row(OPERATEDEPT_NAME="自然人", OPERATEDEPT_CODE="10000128629"), trade_date="20260825")["seat_code"] == "10000128629"
+    assert clean_top_inst_row(_top_inst_raw_row(OPERATEDEPT_CODE=None), trade_date="20260825")["seat_code"] is None
+
+
+def test_clean_top_inst_row_rank_variations():
+    """A9: RANK must be int and >= 1."""
+    # Missing RANK
+    row = _top_inst_raw_row()
+    del row["RANK"]
+    with pytest.raises(MiaoxiangMissingFieldError, match="RANK"):
+        clean_top_inst_row(row, trade_date="20260825")
+
+    # Non-integer RANK
+    with pytest.raises(MiaoxiangMissingFieldError, match="not a valid integer"):
+        clean_top_inst_row(_top_inst_raw_row(RANK="x"), trade_date="20260825")
+
+    # RANK < 1
+    with pytest.raises(MiaoxiangMissingFieldError, match="must be >= 1"):
+        clean_top_inst_row(_top_inst_raw_row(RANK=0), trade_date="20260825")
+
+
+def test_top_inst_sort_columns_use_natural_key_order():
+    """A10: top_inst now uses natural key order for sorting."""
+    client = _FakeClient([{"pages": 1, "count": 1, "data": [_top_inst_raw_row()]}])
+    src = MiaoxiangSource(client=client)
+    src.fetch_raw("top_inst", trade_date="20260825")
+    call = client.calls[0]
+    assert call["sort_columns"] == "SECUCODE,EXPLANATION,TRADE_DIRECTION,RANK"
+    assert call["sort_types"] == "1,1,1,1"
+
+
+# ---------------------------------------------------------------------------
 # api dispatch / caller-param rejection
 # ---------------------------------------------------------------------------
 
 
 def test_api_names_mirror_registry_values():
-    assert set(API_REPORT_NAMES) == {"top_inst", "top_list"}
+    """A11: API names include block_trade."""
+    assert set(API_REPORT_NAMES) == {"block_trade", "top_inst", "top_list"}
+    assert API_REPORT_NAMES["block_trade"] == REPORT_BLOCK_TRADE
     assert API_REPORT_NAMES["top_inst"] == REPORT_TOP_INST
     assert API_REPORT_NAMES["top_list"] == REPORT_TOP_LIST
 
@@ -282,15 +454,6 @@ def test_top_list_uses_its_own_sort_columns():
     assert call["report_name"] == REPORT_TOP_LIST
     assert call["sort_columns"] == "SECURITY_CODE,TRADE_DATE"
     assert call["sort_types"] == "1,-1"
-
-
-def test_top_inst_sort_columns_is_empty_per_registry_spec():
-    client = _FakeClient([{"pages": 1, "count": 1, "data": [_top_inst_raw_row()]}])
-    src = MiaoxiangSource(client=client)
-    src.fetch_raw("top_inst", trade_date="20260825")
-    call = client.calls[0]
-    assert call["sort_columns"] == ""
-    assert call["sort_types"] == "-1"
 
 
 # ---------------------------------------------------------------------------

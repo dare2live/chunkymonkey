@@ -1,4 +1,4 @@
-"""Miaoxiang (妙想 / 东方财富 datacenter v1) adapter — 龙虎榜两域 (top_inst / top_list).
+"""Miaoxiang (妙想 / 东方财富 datacenter v1) adapter — 三域 (block_trade / top_inst / top_list).
 
 源决策: ``backend/config/tushare_sunset.yaml`` — TuShare 授权 2026-09-10 到期不续期,
 ``top_inst``/``top_list`` 两域裁决 = replace, replacement = 妙想
@@ -19,9 +19,8 @@ sort_columns=, sort_types=)``)，不是另起炉灶。
 ``fetch_raw(api, **params) -> list[dict]``，与 ``sources/fuyao.py`` /
 ``sources/baostock.py`` / ``sources/tushare.py`` 同型。
 
-**范围声明**: 本文件只提供接入能力 (source adapter) + 落地字段映射，**不**改
-``sync_registry.yaml`` — ``top_inst``/``top_list`` 两域的 ``source:`` 仍是
-``tushare``，接线 (改 ``source:``、接 ``sync_runner._adapter()`` 分发表) 是另一刀。
+**范围声明**: 本文件只提供接入能力 (source adapter) + 落地字段映射。各域用哪个源、grain
+与写入模式由 ``sync_registry.yaml`` 声明, 不在这里。
 
 字段映射证据 (2026-08-31 逐字段实测核对, 非猜测 — 见 ``backend/scripts`` 下同日
 生成的临时核对脚本, 结论落这里):
@@ -54,6 +53,9 @@ net_buy                NET                    **不是** NET_BUY (那是整只�
                                                逐行相等; None->0.0 同 buy (未实测到
                                                真实 None 案例, 防御性对齐)
 reason                 EXPLANATION            上榜理由原文, 逐行相等
+seat_code              OPERATEDEPT_CODE       营业部代码, 证据列; 投资者类别行
+                                              (自然人/中小投资者等) 共用 10000128629,
+                                              机构专用为空
 built_at               (无 — sync_runner 落地统一生成, adapter 不返回此列)
 =====================  =====================  ==============================
 
@@ -85,6 +87,38 @@ reason                 EXPLANATION                上榜理由原文, 逐行相�
 built_at               (无 — 同上)
 =====================  =========================  ==========================
 
+``block_trade`` ← ``RPT_DATA_BLOCKTRADE`` (grain: ts_code × trade_date × price ×
+vol × buyer × seller, 多重度索引 = seq):
+
+=====================  =====================  ==============================
+目标列 (raw_tushare_block_trade)  妙想 (RPT_DATA_BLOCKTRADE)  规则 / 单位证据
+=====================  =====================  ==============================
+ts_code                SECUCODE               直通; 空 → MiaoxiangMissingFieldError
+trade_date             TRADE_DATE             compact YYYYMMDD; 行内日期与请求日
+                                               必须相同, 否则 MissingFieldError
+price                  DEAL_PRICE             float; 空 → error
+vol                    DEAL_VOLUME            按 SECURITY_TYPE 计:
+                       + SECURITY_TYPE        - EQA/FDO: DEAL_VOLUME/1e4 (万股/万份)
+                                               - BD0: DEAL_VOLUME×10/1e4 (万张; 妙想
+                                                 手=10张; 机制: DEAL_AMT/DEAL_PRICE=
+                                                 10×DEAL_VOLUME 实证 e.g. 694500/138.9
+                                                 =5000=10×500; 2023-01-03 2行BD0)
+                                               - 其它: NULL (单位unknown, log.warning)
+amount                 DEAL_AMT               DEAL_AMT/1e4 (万元), 所有类型
+buyer / seller         BUYER_NAME/SELLER_NAME 直通; 空 → error
+security_type          SECURITY_TYPE          直通 VARCHAR (证据列)
+trade_unit             TRADE_UNIT             直通 VARCHAR (证据列; 1:1 共变 EQA↔'4',
+                                               FDO↔'3', BD0↔'1')
+seq                    (不映射)               由 _prepare_batch_df 派生 (到达顺序 1..n)
+built_at               (无 — sync_runner 生成)
+=====================  =====================  ==============================
+
+不落 DAILY_RANK (一天内不唯一)。精度: vol 保留妙想精确股数/1e4 (例 131476 股 →
+13.1476), 不截精度。排序: ``_SORT_BY_API["block_trade"]`` =
+("SECURITY_CODE,DEAL_PRICE,DEAL_VOLUME,BUYER_NAME,SELLER_NAME", "1,1,1,1,1")
+(2026-09-11 实测接受)。分页/截断判定复用 ``_fetch_report_day`` (PAGE_SIZE 500,
+MAX_PAGES 20)。
+
 已知的 grain 内碰撞 (非本 adapter bug, 接线前必读): ``top_inst`` 的 registry
 grain ``[trade_date, ts_code, exalter, side]`` 在东财原始数据里**不总是唯一**——
 实测 20260825 全天 613 条原始行里 87 个 grain key 对应 >1 行, 成因两类:
@@ -105,14 +139,24 @@ grain key, 上述碰撞组里**总能找到一行**在 buy/sell/net_buy/reason �
 那是不同的真实机构, keep='last' 删掉的是真实记录。东财原始行按 (SECUCODE, EXPLANATION,
 TRADE_DIRECTION, RANK) 唯一 (130 块榜每榜 RANK 1..n 连续), 本地当日只剩 122 块榜。
 
+**2026-09-11 契约变更**: top_inst 的 grain 改为 ``[trade_date, ts_code, reason, side, board_rank]``
+(榜内名次 RANK 落为 ``board_rank``), 上述两类碰撞行全部按原样落地, 不再由批内去重取一;
+同一席位同一笔交易出现在多个榜上的合并, 在发布表 ``fact_top_inst_seat_daily`` 按内容 (席位, 买, 卖) 完成。
+另落两列证据: ``stat_days`` (STATISTICS_DAYS, 可空; 实测它不能单独用来判单日榜, 单日/多日按理由判)
+与 ``seat_code`` (OPERATEDEPT_CODE)。
+
 失败姿态 (fail-closed, 教训: 静默半批比报错更危险):
   - 未知 ``api`` / 传了 ``limit``/``offset``/``page``/``page_size`` (分页仅限
     adapter 内部, 调用方不得指定) -> ``MiaoxiangSourceError``
   - 分页落地行数 < 供应商声明 count (超容差) -> ``MiaoxiangTruncationError``
     (复用本仓 ``services/data_sources/pagination_integrity.py`` 的东财 v1
     100 页硬上限截断判定, 不重新发明)
-  - 单行缺 grain 关键字段 (SECUCODE/TRADE_DATE/OPERATEDEPT_NAME/TRADE_DIRECTION
-    之一) -> ``MiaoxiangMissingFieldError``
+  - 单行缺必填字段 (top_inst: SECUCODE/TRADE_DATE/OPERATEDEPT_NAME/TRADE_DIRECTION/
+    EXPLANATION/RANK; block_trade: SECUCODE/TRADE_DATE/DEAL_PRICE/DEAL_VOLUME/DEAL_AMT/
+    BUYER_NAME/SELLER_NAME/SECURITY_TYPE 之一), 或行内日期与请求日不符
+    -> ``MiaoxiangMissingFieldError``
+  - ``top_inst`` RANK 缺失/非整数/< 1 -> ``MiaoxiangMissingFieldError``
+    (三种情况分别判定, 便于下游定位)
   - 上游 HTTP/JSON 错误 -> ``aif10_scraper`` 客户端自带 retry(3 次, 指数退避)
     耗尽后原样抛出 ``AIF10Error``, 本 adapter 不吞
 
@@ -127,6 +171,7 @@ PYTHONPATH=backend 直接可见, 那层间接与它的"不存在也不报错"语
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any, Callable
 
@@ -135,14 +180,18 @@ from services.data_sources.pagination_integrity import (
     assess_paginated_land,
 )
 
+log = logging.getLogger(__name__)
+
 ALIAS = "miaoxiang"
 
+REPORT_BLOCK_TRADE = "RPT_DATA_BLOCKTRADE"
 REPORT_TOP_INST = "RPT_OPERATEDEPT_TRADE"
 REPORT_TOP_LIST = "RPT_DAILYBILLBOARD_DETAILSNEW"
 
-# api 名 -> 妙想 reportName。刻意用 registry 现有 `api:` 同名值 (top_inst/top_list),
+# api 名 -> 妙想 reportName。刻意用 registry 现有 `api:` 同名值 (block_trade/top_inst/top_list),
 # 接线时只需改 `source:`, 不用改 `api:` (任务边界: 接线由主线做, 这里只保证形状对上)。
 API_REPORT_NAMES: dict[str, str] = {
+    "block_trade": REPORT_BLOCK_TRADE,
     "top_inst": REPORT_TOP_INST,
     "top_list": REPORT_TOP_LIST,
 }
@@ -153,13 +202,13 @@ API_REPORT_NAMES: dict[str, str] = {
 PAGE_SIZE = 500
 MAX_PAGES = 20
 
-# 排序: 直接抄 aif10_scraper/registry.py 里这两个 ReportSpec 已登记的值 (2026-08-31
-# 读取核实), 不经 aif10_scraper.registry.get_report() 反查 —— 避免测试路径依赖
-# sibling repo 是否安装。RPT_OPERATEDEPT_TRADE 排序为空 (spec 原样如此,
-# recon_assignment_gaps.py._miaoxiang_pages 同样传空), 不影响正确性: 按单 trade_date
-# 全量分页拉取、grain 去重在 sync_runner._prepare_batch_df 完成。
+# 排序: 按各报表的自然键全序排序 (2026-09-11 实测妙想接受, 行数不变)。单日行数超过一页 (500)
+# 时, 无序分页有页边界重复/漏行的隐患, 全序排序把它封掉:
+#   block_trade -> (代码, 价, 量, 买方, 卖方); top_inst -> (代码, 理由, 方向, 榜内名次),
+#   后者 2026-09-11 实测 7 个交易日 5,801 行唯一。top_list 沿用已登记排序。
 _SORT_BY_API: dict[str, tuple[str, str]] = {
-    "top_inst": ("", "-1"),
+    "block_trade": ("SECURITY_CODE,DEAL_PRICE,DEAL_VOLUME,BUYER_NAME,SELLER_NAME", "1,1,1,1,1"),
+    "top_inst": ("SECUCODE,EXPLANATION,TRADE_DIRECTION,RANK", "1,1,1,1"),
     "top_list": ("SECURITY_CODE,TRADE_DATE", "1,-1"),
 }
 
@@ -242,8 +291,86 @@ def _amount(value: Any) -> float:
     return 0.0 if v is None else v
 
 
-_REQUIRED_TOP_INST_FIELDS = ("SECUCODE", "TRADE_DATE", "OPERATEDEPT_NAME", "TRADE_DIRECTION")
+_REQUIRED_BLOCK_TRADE_FIELDS = (
+    "SECUCODE",
+    "TRADE_DATE",
+    "DEAL_PRICE",
+    "DEAL_VOLUME",
+    "DEAL_AMT",
+    "BUYER_NAME",
+    "SELLER_NAME",
+    "SECURITY_TYPE",
+)
+_REQUIRED_TOP_INST_FIELDS = (
+    "SECUCODE",
+    "TRADE_DATE",
+    "OPERATEDEPT_NAME",
+    "TRADE_DIRECTION",
+    "EXPLANATION",
+    "RANK",
+)
 _REQUIRED_TOP_LIST_FIELDS = ("SECUCODE", "TRADE_DATE")
+
+
+def clean_block_trade_row(row: dict[str, Any], *, trade_date: str) -> dict[str, Any]:
+    """``RPT_DATA_BLOCKTRADE`` row -> ``raw_tushare_block_trade``-shaped dict.
+
+    See module docstring field-mapping table for provenance of every mapping.
+    """
+    missing = [f for f in _REQUIRED_BLOCK_TRADE_FIELDS if row.get(f) in (None, "")]
+    if missing:
+        raise MiaoxiangMissingFieldError(
+            f"RPT_DATA_BLOCKTRADE row missing grain fields {missing}"
+        )
+    ts_code = _text(row.get("SECUCODE"))
+    if not ts_code:
+        raise MiaoxiangMissingFieldError("RPT_DATA_BLOCKTRADE missing SECUCODE")
+
+    # Verify row date matches request date
+    row_date_str = _text(row.get("TRADE_DATE"))
+    if row_date_str:
+        row_trade_date = compact_trade_date(row_date_str)
+        if row_trade_date != trade_date:
+            raise MiaoxiangMissingFieldError(
+                f"RPT_DATA_BLOCKTRADE row date {row_trade_date} != request date {trade_date}"
+            )
+
+    # Vol calculation based on SECURITY_TYPE
+    security_type = _text(row.get("SECURITY_TYPE"))
+    deal_volume = _float(row.get("DEAL_VOLUME"))
+    if security_type in ("EQA", "FDO"):
+        vol = deal_volume / 1e4 if deal_volume is not None else None
+    elif security_type == "BD0":
+        vol = (deal_volume * 10 / 1e4) if deal_volume is not None else None
+    else:
+        vol = None
+        if security_type is not None:
+            log.warning(
+                "RPT_DATA_BLOCKTRADE unknown SECURITY_TYPE=%r, vol set to None",
+                security_type
+            )
+
+    buyer = _text(row.get("BUYER_NAME"))
+    seller = _text(row.get("SELLER_NAME"))
+    if not buyer or not seller:
+        raise MiaoxiangMissingFieldError(
+            "RPT_DATA_BLOCKTRADE missing BUYER_NAME or SELLER_NAME"
+        )
+
+    deal_amt = _float(row.get("DEAL_AMT"))
+    amount = deal_amt / 1e4 if deal_amt is not None else None
+
+    return {
+        "ts_code": ts_code,
+        "trade_date": trade_date,
+        "price": _float(row.get("DEAL_PRICE")),
+        "vol": vol,
+        "amount": amount,
+        "buyer": buyer,
+        "seller": seller,
+        "security_type": security_type,
+        "trade_unit": _text(row.get("TRADE_UNIT")),
+    }
 
 
 def clean_top_inst_row(row: dict[str, Any], *, trade_date: str) -> dict[str, Any]:
@@ -264,6 +391,26 @@ def clean_top_inst_row(row: dict[str, Any], *, trade_date: str) -> dict[str, Any
             f"RPT_OPERATEDEPT_TRADE bad grain values ts_code={ts_code!r} "
             f"exalter={exalter!r} side={side!r}"
         )
+
+    # Parse board_rank (RANK)
+    rank_val = row.get("RANK")
+    try:
+        board_rank = int(rank_val) if rank_val is not None else None
+    except (TypeError, ValueError):
+        raise MiaoxiangMissingFieldError(
+            f"RPT_OPERATEDEPT_TRADE RANK not a valid integer: {rank_val!r}"
+        )
+
+    if board_rank is None:
+        raise MiaoxiangMissingFieldError("RPT_OPERATEDEPT_TRADE RANK is required")
+    if board_rank < 1:
+        raise MiaoxiangMissingFieldError(
+            f"RPT_OPERATEDEPT_TRADE RANK must be >= 1, got {board_rank}"
+        )
+
+    # stat_days from STATISTICS_DAYS (can be None)
+    stat_days = _text(row.get("STATISTICS_DAYS"))
+
     return {
         "trade_date": trade_date,
         "ts_code": ts_code,
@@ -275,6 +422,9 @@ def clean_top_inst_row(row: dict[str, Any], *, trade_date: str) -> dict[str, Any
         "sell_rate": _amount(row.get("SELL_RATIO")),
         "net_buy": _amount(row.get("NET")),
         "reason": _text(row.get("EXPLANATION")),
+        "board_rank": board_rank,
+        "stat_days": stat_days,
+        "seat_code": _text(row.get("OPERATEDEPT_CODE")),
     }
 
 
@@ -308,6 +458,7 @@ def clean_top_list_row(row: dict[str, Any], *, trade_date: str) -> dict[str, Any
 
 
 _CLEANERS: dict[str, Callable[..., dict[str, Any]]] = {
+    "block_trade": clean_block_trade_row,
     "top_inst": clean_top_inst_row,
     "top_list": clean_top_list_row,
 }
@@ -420,12 +571,14 @@ __all__ = [
     "API_REPORT_NAMES",
     "MAX_PAGES",
     "PAGE_SIZE",
+    "REPORT_BLOCK_TRADE",
     "REPORT_TOP_INST",
     "REPORT_TOP_LIST",
     "MiaoxiangMissingFieldError",
     "MiaoxiangSource",
     "MiaoxiangSourceError",
     "MiaoxiangTruncationError",
+    "clean_block_trade_row",
     "clean_top_inst_row",
     "clean_top_list_row",
     "compact_trade_date",
