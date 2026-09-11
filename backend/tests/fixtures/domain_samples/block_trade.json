@@ -1,0 +1,81 @@
+{
+ "domain": "block_trade",
+ "api": "block_trade",
+ "grain": [
+  "ts_code",
+  "trade_date",
+  "price",
+  "vol",
+  "buyer",
+  "seller",
+  "seq"
+ ],
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "rows": [
+  {
+   "ts_code": "000032.SZ",
+   "trade_date": "20230103",
+   "price": 22.17,
+   "vol": 556.72,
+   "amount": 12342.57,
+   "buyer": "机构专用",
+   "seller": "中信建投证券股份有限公司北京朝阳门内大街证券营业部",
+   "security_type": "EQA",
+   "trade_unit": "4",
+   "built_at": "2026-09-11T11:37:19.127983+00:00",
+   "seq": 1
+  },
+  {
+   "ts_code": "000150.SZ",
+   "trade_date": "20230103",
+   "price": 1.37,
+   "vol": 50.0,
+   "amount": 68.5,
+   "buyer": "万联证券股份有限公司上海浦东新区世纪大道证券营业部",
+   "seller": "招商证券股份有限公司深圳南山南油大道证券营业部",
+   "security_type": "EQA",
+   "trade_unit": "4",
+   "built_at": "2026-09-11T11:37:19.127983+00:00",
+   "seq": 1
+  },
+  {
+   "ts_code": "000150.SZ",
+   "trade_date": "20230103",
+   "price": 1.37,
+   "vol": 50.0,
+   "amount": 68.5,
+   "buyer": "万联证券股份有限公司上海浦东新区世纪大道证券营业部",
+   "seller": "招商证券股份有限公司深圳南山南油大道证券营业部",
+   "security_type": "EQA",
+   "trade_unit": "4",
+   "built_at": "2026-09-11T11:37:19.127983+00:00",
+   "seq": 2
+  },
+  {
+   "ts_code": "000150.SZ",
+   "trade_date": "20230103",
+   "price": 1.37,
+   "vol": 50.0,
+   "amount": 68.5,
+   "buyer": "中信建投证券股份有限公司北京酒仙桥路证券营业部",
+   "seller": "招商证券股份有限公司深圳南山南油大道证券营业部",
+   "security_type": "EQA",
+   "trade_unit": "4",
+   "built_at": "2026-09-11T11:37:19.127983+00:00",
+   "seq": 1
+  },
+  {
+   "ts_code": "000150.SZ",
+   "trade_date": "20230103",
+   "price": 1.37,
+   "vol": 50.0,
+   "amount": 68.5,
+   "buyer": "中国中金财富证券有限公司北京北三环东路证券营业部",
+   "seller": "招商证券股份有限公司深圳南山南油大道证券营业部",
+   "security_type": "EQA",
+   "trade_unit": "4",
+   "built_at": "2026-09-11T11:37:19.127983+00:00",
+   "seq": 1
+  }
+ ]
+}
