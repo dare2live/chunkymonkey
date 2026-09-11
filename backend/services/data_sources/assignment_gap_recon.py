@@ -18,6 +18,7 @@ from services.data_sources.fina_margin_recon import (
 from services.data_sources.recon_compare import (
     SAMPLE_LIMIT,
     assert_report_identity_invariant,
+    compare_rows,
 )
 
 PRICE_ABS_TOL = 0.011
@@ -28,7 +29,7 @@ SEAT_GRAIN = "trade_date_x_ts_code_x_seat_x_side"
 DIM_TABLE = "dim_active_a_stock"
 DAILY_BASIC = "raw_tushare_daily_basic"
 TOP_LIST = "raw_tushare_top_list"
-TOP_INST_FACT = "fact_top_inst_seat_daily"
+TOP_INST_RAW = "raw_tushare_top_inst"
 HOLDERNUMBER = "raw_tushare_stk_holdernumber"
 BLOCK_TRADE = "raw_tushare_block_trade"
 SHARE_FLOAT = "raw_tushare_share_float"
@@ -468,33 +469,165 @@ def load_survey_stock_days(
     ]
 
 
-def load_block_keys(
+def load_block_trade_rows(
     con: Any,
     day: str,
     table: str = BLOCK_TRADE,
-) -> list[tuple[str, str, str]]:
+) -> list[dict[str, Any]]:
+    """Full ``ts_code, trade_date, price, vol, buyer, seller`` local raw rows
+    for one day — grain-shaped for
+    :func:`services.data_sources.recon_compare.compare_rows`'s
+    ``compare_rows(domain="block_trade")`` call (the declared grain's last
+    column, the landing-layer ``seq`` multiplicity index, is excluded from
+    the comparison key automatically — neither side needs to carry it).
+
+    2026-09-11 grain 契约 S7: replaces ``load_block_keys`` (a 4-key
+    ``(ts_code, buyer, seller)`` projection that fed ``compare_codeset`` —
+    a Python ``set`` comparison that collapsed independent identical-content
+    trades and never compared price/vol at all; see this module's and
+    ``recon_compare``'s docstrings for the incident). Buyer/seller are
+    **not** normalized here (unlike that old helper) — both sides now come
+    from the same vendor (miaoxiang) post-2026-09-11, so an exact string
+    match is the right bar. Bracket/thousands-separator normalization is
+    only needed against a *different*-format source (the exchange page —
+    see ``scripts.reland_event_domain.canon_exchange_row``).
+    """
     compact = compact_yyyymmdd(day)
     if not compact:
         return []
     dashed = f"{compact[:4]}-{compact[4:6]}-{compact[6:8]}"
     rows = con.execute(
         f"""
-        SELECT ts_code, buyer, seller
+        SELECT ts_code, trade_date, price, vol, buyer, seller
         FROM {sql_table(table)}
         WHERE replace(CAST(trade_date AS VARCHAR), '-', '') = ?
            OR CAST(trade_date AS VARCHAR) = ?
         """,
         [compact, dashed],
     ).fetchall()
-    keys = []
+    out = []
     for row in rows:
         ts = normalize_ts_code(_cell(row, 0, "ts_code"))
         if not ts:
             continue
-        buyer = normalize_cn_name(_cell(row, 1, "buyer"))
-        seller = normalize_cn_name(_cell(row, 2, "seller"))
-        keys.append((ts, buyer, seller))
-    return keys
+        out.append(
+            {
+                "ts_code": ts,
+                "trade_date": compact_yyyymmdd(_cell(row, 1, "trade_date")),
+                "price": _as_float(_cell(row, 2, "price")),
+                "vol": _as_float(_cell(row, 3, "vol")),
+                "buyer": _cell(row, 4, "buyer"),
+                "seller": _cell(row, 5, "seller"),
+            }
+        )
+    return out
+
+
+def top_inst_reland_status(con: Any, table: str = TOP_INST_RAW) -> str | None:
+    """``None`` iff ``table`` has a ``board_rank`` column (post-reland
+    schema, grain 契约 r2 §1.3) — the caller may then run a grain-level
+    compare against it. Otherwise a human-readable reason string explaining
+    why it can't yet (pre-reland: the column doesn't exist at all).
+
+    Never raises. Exists so a caller doesn't have to let a missing-column
+    DuckDB binder error stand in for "not comparable yet" — 红线 3: 缺失只能
+    传播为缺失, 不是伪造一个 identity=False 看起来像真的不一致。
+    """
+    has_col = bool(
+        con.execute(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name=? AND column_name='board_rank' LIMIT 1",
+            [table],
+        ).fetchone()
+    )
+    if not has_col:
+        return f"{table} 无 board_rank 列 (重落前旧契约表, 见 grain 契约 r2 §1.3)"
+    return None
+
+
+def load_top_inst_raw_rows(
+    con: Any,
+    day: str,
+    table: str = TOP_INST_RAW,
+) -> list[dict[str, Any]]:
+    """Full ``trade_date, ts_code, reason, side, board_rank`` local raw rows
+    for one day — grain-shaped for the sync_registry ``top_inst`` grain
+    (``[trade_date, ts_code, reason, side, board_rank]``, kind='none': no
+    declared multiplicity_index). Callers must confirm ``board_rank`` exists
+    first (:func:`top_inst_reland_status`); this raises the ordinary DuckDB
+    binder error otherwise.
+    """
+    compact = compact_yyyymmdd(day)
+    if not compact:
+        return []
+    dashed = f"{compact[:4]}-{compact[4:6]}-{compact[6:8]}"
+    rows = con.execute(
+        f"""
+        SELECT trade_date, ts_code, reason, side, board_rank
+        FROM {sql_table(table)}
+        WHERE replace(CAST(trade_date AS VARCHAR), '-', '') = ?
+           OR CAST(trade_date AS VARCHAR) = ?
+        """,
+        [compact, dashed],
+    ).fetchall()
+    out = []
+    for row in rows:
+        ts = normalize_ts_code(_cell(row, 1, "ts_code"))
+        if not ts:
+            continue
+        out.append(
+            {
+                "trade_date": compact_yyyymmdd(_cell(row, 0, "trade_date")),
+                "ts_code": ts,
+                "reason": _cell(row, 2, "reason"),
+                "side": str(_cell(row, 3, "side") or "").strip(),
+                "board_rank": _cell(row, 4, "board_rank"),
+            }
+        )
+    return out
+
+
+def compare_top_inst_vs_miaoxiang(
+    con: Any,
+    day: str,
+    miaoxiang_rows: Sequence[Mapping[str, Any]],
+    *,
+    table: str = TOP_INST_RAW,
+) -> dict[str, Any]:
+    """Row-grain recon of local ``raw_tushare_top_inst`` against
+    妙想-mapped rows, at the sync_registry ``top_inst`` grain
+    (``[trade_date, ts_code, reason, side, board_rank]``; natural key, no
+    multiplicity_index).
+
+    2026-09-11 grain 契约 S7: this replaces a prior version that compared
+    the *published* ``fact_top_inst_seat_daily`` (mart_grains) against a raw
+    妙想 mapping — a grain mismatch (the mart grain is the seat-event shape
+    S5 folds raw rows into, not the raw natural key) that would KeyError
+    once the mart grain grew board_window/event_seq columns. It also refuses
+    to compare pre-reland: a raw table with no ``board_rank`` column, or a
+    day where every landed row still has ``board_rank IS NULL`` (old
+    contract), can't be compared at this grain without either KeyError-ing
+    or silently reporting a false ``identity=False`` that reads like a real
+    mismatch instead of "can't compare yet" — 红线 3 says unknown propagates
+    as unknown, so this reports ``not_comparable_pre_reland`` instead of
+    calling ``compare_rows`` at all.
+    """
+    reason = top_inst_reland_status(con, table)
+    if reason is not None:
+        return {"status": "not_comparable_pre_reland", "reason": reason}
+    local_rows = load_top_inst_raw_rows(con, day, table)
+    if local_rows and all(r.get("board_rank") is None for r in local_rows):
+        return {
+            "status": "not_comparable_pre_reland",
+            "reason": f"{table} {day} 当日 board_rank 全 NULL (重落前旧契约行)",
+        }
+    return compare_rows(
+        domain="top_inst",
+        left_rows=local_rows,
+        right_rows=list(miaoxiang_rows),
+        left_name=table,
+        right_name="RPT_OPERATEDEPT_TRADE",
+    )
 
 
 def load_top_list_rows(
@@ -533,43 +666,6 @@ def load_top_list_rows(
     return out
 
 
-def load_top_inst_seat_rows(
-    con: Any,
-    day: str,
-    table: str = TOP_INST_FACT,
-) -> list[dict[str, Any]]:
-    """Full ``trade_date, ts_code, exalter, side`` rows for one day —
-    grain-shaped for :func:`services.data_sources.recon_compare.compare_rows`,
-    unlike the tuple-keyed helpers this replaces for that comparison."""
-    compact = compact_yyyymmdd(day)
-    if not compact:
-        return []
-    dashed = f"{compact[:4]}-{compact[4:6]}-{compact[6:8]}"
-    rows = con.execute(
-        f"""
-        SELECT trade_date, ts_code, exalter, side
-        FROM {sql_table(table)}
-        WHERE replace(CAST(trade_date AS VARCHAR), '-', '') = ?
-           OR CAST(trade_date AS VARCHAR) = ?
-        """,
-        [compact, dashed],
-    ).fetchall()
-    out = []
-    for row in rows:
-        ts = normalize_ts_code(_cell(row, 1, "ts_code"))
-        if not ts:
-            continue
-        out.append(
-            {
-                "trade_date": compact_yyyymmdd(_cell(row, 0, "trade_date")),
-                "ts_code": ts,
-                "exalter": _cell(row, 2, "exalter"),
-                "side": str(_cell(row, 3, "side") or "").strip(),
-            }
-        )
-    return out
-
-
 def miaoxiang_codes(rows: Sequence[Mapping[str, Any]]) -> list[str]:
     out = []
     for row in rows:
@@ -577,18 +673,6 @@ def miaoxiang_codes(rows: Sequence[Mapping[str, Any]]) -> list[str]:
         if ts:
             out.append(ts)
     return out
-
-
-def miaoxiang_block_keys(rows: Sequence[Mapping[str, Any]]) -> list[tuple[str, str, str]]:
-    keys = []
-    for row in rows:
-        ts = normalize_ts_code(row.get("SECUCODE"))
-        if not ts:
-            continue
-        buyer = normalize_cn_name(row.get("BUYER_NAME"))
-        seller = normalize_cn_name(row.get("SELLER_NAME"))
-        keys.append((ts, buyer, seller))
-    return keys
 
 
 def compare_holdernumber_sample(
@@ -799,10 +883,11 @@ __all__ = [
     "build_report",
     "compare_holdernumber_sample",
     "compare_index_closes",
+    "compare_top_inst_vs_miaoxiang",
     "compare_valuation_snapshot",
     "dim_to_ts_code",
     "fuyao_dump_coverage",
-    "load_block_keys",
+    "load_block_trade_rows",
     "load_codes_for_day",
     "load_dim_active_ts_codes",
     "load_holdernumber_sample",
@@ -811,9 +896,8 @@ __all__ = [
     "load_limit_up_codes",
     "load_share_float_stock_days",
     "load_survey_stock_days",
-    "load_top_inst_seat_rows",
+    "load_top_inst_raw_rows",
     "load_top_list_rows",
-    "miaoxiang_block_keys",
     "miaoxiang_codes",
     "parse_fuyao_index_bars",
     "parse_fuyao_lhb_codes",
@@ -825,4 +909,5 @@ __all__ = [
     "reject_banned_codeset_baseline",
     "shanghai_day_from_ms",
     "shanghai_midnight_ms",
+    "top_inst_reland_status",
 ]

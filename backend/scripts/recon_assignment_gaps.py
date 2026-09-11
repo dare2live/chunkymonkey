@@ -25,13 +25,13 @@ from services.data_sources.assignment_gap_recon import (  # noqa: E402
     LIMIT_FACT,
     SHARE_FLOAT,
     SURVEY,
-    TOP_INST_FACT,
     TOP_LIST,
     build_report,
     compare_holdernumber_sample,
     compare_index_closes,
+    compare_top_inst_vs_miaoxiang,
     compare_valuation_snapshot,
-    load_block_keys,
+    load_block_trade_rows,
     load_codes_for_day,
     load_dim_active_ts_codes,
     load_holdernumber_sample,
@@ -40,9 +40,7 @@ from services.data_sources.assignment_gap_recon import (  # noqa: E402
     load_limit_up_codes,
     load_share_float_stock_days,
     load_survey_stock_days,
-    load_top_inst_seat_rows,
     load_top_list_rows,
-    miaoxiang_block_keys,
     miaoxiang_codes,
     parse_fuyao_index_bars,
     parse_fuyao_lhb_codes,
@@ -67,6 +65,7 @@ from services.data_sources.sources.fuyao import (  # noqa: E402
     rest_json,
 )
 from services.data_sources.sources.miaoxiang import (  # noqa: E402
+    clean_block_trade_row,
     clean_top_inst_row,
     clean_top_list_row,
 )
@@ -211,8 +210,6 @@ def main(argv: list[str] | None = None) -> int:
     dim_codes = load_dim_active_ts_codes(ref, DIM_TABLE)
     top_list = load_codes_for_day(raw, TOP_LIST, lhb_day, date_col="trade_date")
     top_list_rows = load_top_list_rows(raw, lhb_day, TOP_LIST)
-    top_inst_rows = load_top_inst_seat_rows(sm, lhb_day, TOP_INST_FACT)
-    block_keys = load_block_keys(raw, lhb_day, BLOCK_TRADE)
     limit_u = load_limit_up_codes(sm, lhb_day, LIMIT_FACT)
     float_codes = load_share_float_stock_days(raw, lift_day, SHARE_FLOAT)
     survey_codes = load_survey_stock_days(raw, survey_day, SURVEY)
@@ -435,25 +432,24 @@ def main(argv: list[str] | None = None) -> int:
             right_rows = [
                 clean_top_inst_row(r, trade_date=lhb_day) for r in dept["rows"]
             ]
-            # 2026-09-11 改: 原先右侧先过 sync_runner._prepare_batch_df (drop_duplicates(grain))
-            # 再比 —— 那是把检查放在去重下游, 按构造几乎一定 identity=true, 看不见去重删掉了什么
-            # (实测 20260825 妙想原始 650 行被去重成 526 行, 对账却报 identity=true)。现在右侧用映射后
-            # 的原始行比, 折叠以 right_collapse 显式出现并挡住 identity。去重该不该删这些行是 grain
-            # 契约的问题, 不由对账替它决定。
-            mx["top_inst__vs__miaoxiang"] = compare_rows(
-                domain="fact_top_inst_seat_daily",
-                left_rows=top_inst_rows,
-                right_rows=right_rows,
-                left_name="fact_top_inst_seat_daily",
-                right_name="RPT_OPERATEDEPT_TRADE",
-                grain_source="mart_grains",
+            # 2026-09-11 grain 契约 S7: 比对对象从已发布的 fact_top_inst_seat_daily 改回本地
+            # raw_tushare_top_inst —— 发布表的 grain 已折叠成席位事件形状 (buy/sell/
+            # board_window/event_seq), 不是妙想原始行能直接比的自然键, 会 KeyError。且比对
+            # 要到重落完成后才有意义: 重落前 raw 表还没有 board_rank 列 (或当日全 NULL),
+            # compare_top_inst_vs_miaoxiang 会识别这种状态并报 not_comparable_pre_reland,
+            # 不冒充比出了 identity (红线 3)。
+            mx["top_inst__vs__miaoxiang"] = compare_top_inst_vs_miaoxiang(
+                raw, lhb_day, right_rows
             )
             mx["top_inst__vs__miaoxiang"]["truncated"] = dept.get("truncated")
             mx["top_inst__vs__miaoxiang"]["miaoxiang_count"] = dept.get("count")
             print(
-                "top_inst vs miaoxiang identity={identity} matched={matched} "
-                "only_left={only_left} only_right={only_right} "
-                "truncated={truncated}".format(**mx["top_inst__vs__miaoxiang"])
+                "top_inst vs miaoxiang status={status} identity={identity} "
+                "truncated={truncated}".format(
+                    status=mx["top_inst__vs__miaoxiang"].get("status"),
+                    identity=mx["top_inst__vs__miaoxiang"].get("identity"),
+                    truncated=mx["top_inst__vs__miaoxiang"].get("truncated"),
+                )
             )
         except Exception as exc:  # noqa: BLE001
             mx["top_inst__vs__miaoxiang"] = {"status": "unavailable", "error": str(exc)[:240]}
@@ -462,21 +458,28 @@ def main(argv: list[str] | None = None) -> int:
                 "RPT_DATA_BLOCKTRADE",
                 extra_filters=[f"(TRADE_DATE='{iso_lhb}')"],
             )
-            mx["block_trade__vs__miaoxiang"] = compare_codeset(
-                block_keys,
-                miaoxiang_block_keys(blk["rows"]),
-                what="trade_date_x_ts_code_x_buyer_x_seller_4key_projection",
+            right_rows = [
+                clean_block_trade_row(r, trade_date=lhb_day) for r in blk["rows"]
+            ]
+            left_rows = load_block_trade_rows(raw, lhb_day, BLOCK_TRADE)
+            # 2026-09-11 grain 契约 S7: 由 compare_codeset 的 (ts_code, buyer, seller) 四键
+            # 投影改为 compare_rows(domain="block_trade") —— 旧投影连 price/vol 都不比, 且用
+            # set 而非 Counter, 把全同六键的独立成交静默压成一行报"缺失" (见本文件与
+            # assignment_gap_recon.py 模块头注的事故记录)。block_trade 声明 grain 末列 seq
+            # 是落地层派生的到达顺序, compare_rows 会自动从比较键剔除, 两侧不需要都带 seq;
+            # 右侧不过 sync_runner._prepare_batch_df (直接是 clean_block_trade_row 的映射行)。
+            mx["block_trade__vs__miaoxiang"] = compare_rows(
+                domain="block_trade",
+                left_rows=left_rows,
+                right_rows=right_rows,
                 left_name="raw_tushare_block_trade",
                 right_name="RPT_DATA_BLOCKTRADE",
             )
             mx["block_trade__vs__miaoxiang"]["miaoxiang_count"] = blk.get("count")
-            mx["block_trade__vs__miaoxiang"]["left_rows_local"] = len(block_keys)
-            mx["block_trade__vs__miaoxiang"]["not_identity_reason"] = (
-                "no RPT_DATA_BLOCKTRADE -> raw_tushare_block_trade row mapping "
-                "exists; price/vol not compared"
-            )
+            mx["block_trade__vs__miaoxiang"]["truncated"] = blk.get("truncated")
             print(
-                "block jaccard={jaccard} left_rows_local={left_rows_local}".format(
+                "block_trade vs miaoxiang identity={identity} matched={matched} "
+                "only_left={only_left} only_right={only_right}".format(
                     **mx["block_trade__vs__miaoxiang"]
                 )
             )

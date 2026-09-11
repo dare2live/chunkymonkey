@@ -49,6 +49,7 @@ blocking_paths:
 - tests/scripts/test_manual_job_wrapper.py
 - tests/scripts/test_persist_phase_d_experiment_runs.py
 - tests/scripts/test_pre_knife_audit.py
+- tests/scripts/test_reland_event_domain.py
 - tests/scripts/test_run_ci_pytest.py
 - tests/scripts/test_safe_commit.py
 - tests/scripts/test_update_watermark_sla.py
