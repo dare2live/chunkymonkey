@@ -21,9 +21,7 @@ from services.data_sources.recon_compare import (
     compare_codeset,
     compare_rows,
 )
-from services.data_sources.sync_runner import domain_spec, load_registry
-
-REGISTRY = load_registry()
+from services.data_sources.sync_runner import domain_spec
 
 
 def _block_row(*, ts_code="600000.SH", trade_date="20260101", price=10.0,
@@ -36,6 +34,23 @@ def _block_row(*, ts_code="600000.SH", trade_date="20260101", price=10.0,
         "buyer": buyer,
         "seller": seller,
     }
+
+
+def _stub_registry(domain, *, grain, multiplicity_index=None, source="miaoxiang"):
+    """Minimal sync_registry-shaped dict for multiplicity-index tests.
+
+    Not the production registry — grain 契约 S3 用例只测 recon_compare 自己的
+    compare_key / identity 逻辑, 不读生产 yaml (规则见任务卡片第 3 条)。
+    """
+    entry: dict[str, Any] = {"source": source, "grain": list(grain)}
+    if multiplicity_index is not None:
+        # 契约耦合 (sync_runner._duplicate_policy): multiplicity_index 只能配
+        # duplicate_rows=event + write_mode=replace_partition, 否则 domain_spec 拒绝。
+        entry["multiplicity_index"] = multiplicity_index
+        entry["duplicate_rows"] = "event"
+        entry["write_mode"] = "replace_partition"
+        entry["partition_by"] = [grain[0]]
+    return {"domains": {domain: entry}}
 
 
 # ---------------------------------------------------------------- codeset --
@@ -60,6 +75,11 @@ def test_compare_codeset_empty_is_not_a_match():
 # ------------------------------------------------------------------- rows --
 
 def test_compare_rows_missing_grain_column_raises_with_column_name():
+    # Uses a stub registry (not production block_trade) so this test doesn't
+    # drift when S1 lands and adds `seq` + multiplicity_index to block_trade.
+    registry = _stub_registry(
+        "blk6", grain=["ts_code", "trade_date", "price", "vol", "buyer", "seller"]
+    )
     rows = [
         {
             "ts_code": "600000.SH",
@@ -70,23 +90,28 @@ def test_compare_rows_missing_grain_column_raises_with_column_name():
     ]
     with pytest.raises(KeyError, match="price|vol"):
         compare_rows(
-            domain="block_trade",
+            domain="blk6",
             left_rows=rows,
             right_rows=rows,
             left_name="l",
             right_name="r",
+            registry=registry,
         )
 
 
 def test_compare_rows_full_grain_mismatch_is_not_identity():
+    registry = _stub_registry(
+        "blk6", grain=["ts_code", "trade_date", "price", "vol", "buyer", "seller"]
+    )
     left = [_block_row(vol=100)]
     right = [_block_row(vol=200)]
     out = compare_rows(
-        domain="block_trade",
+        domain="blk6",
         left_rows=left,
         right_rows=right,
         left_name="l",
         right_name="r",
+        registry=registry,
     )
     assert out["identity"] is False
     assert out["only_left"] == 1
@@ -95,13 +120,17 @@ def test_compare_rows_full_grain_mismatch_is_not_identity():
 
 
 def test_compare_rows_left_collapse_is_visible_and_blocks_identity():
+    registry = _stub_registry(
+        "blk6", grain=["ts_code", "trade_date", "price", "vol", "buyer", "seller"]
+    )
     r = _block_row()
     out = compare_rows(
-        domain="block_trade",
+        domain="blk6",
         left_rows=[r, r],
         right_rows=[r],
         left_name="l",
         right_name="r",
+        registry=registry,
     )
     assert out["left_collapse"] == 1
     assert out["matched"] == 1
@@ -110,15 +139,19 @@ def test_compare_rows_left_collapse_is_visible_and_blocks_identity():
 
 
 def test_compare_rows_full_grain_match_is_identity():
+    registry = _stub_registry(
+        "blk6", grain=["ts_code", "trade_date", "price", "vol", "buyer", "seller"]
+    )
     r = _block_row()
     out = compare_rows(
-        domain="block_trade",
+        domain="blk6",
         left_rows=[r],
         right_rows=[r],
         left_name="l",
         right_name="r",
+        registry=registry,
     )
-    expected_grain = list(domain_spec(REGISTRY, "block_trade")["grain"])
+    expected_grain = list(domain_spec(registry, "blk6")["grain"])
     assert out["identity"] is True
     assert out["grain"] == expected_grain
     assert out["grain_source"] == "sync_registry"
@@ -137,9 +170,19 @@ def test_compare_rows_unknown_domain_raises_key_error():
         )
 
 
-def test_compare_rows_mart_grains_source():
+def test_compare_rows_mart_grains_source(monkeypatch):
+    # Stub MART_GRAINS (not production) so this test doesn't drift when S5
+    # lands and changes fact_top_inst_seat_daily's grain to the new six-plus
+    # event_seq shape.
+    import scripts.check_grain_uniqueness as cgu
+
+    monkeypatch.setattr(
+        cgu,
+        "MART_GRAINS",
+        [("smartmoney", "fact_stub", ["trade_date", "ts_code", "exalter", "side"])],
+    )
     out = compare_rows(
-        domain="fact_top_inst_seat_daily",
+        domain="fact_stub",
         grain_source="mart_grains",
         left_rows=[],
         right_rows=[],
@@ -162,6 +205,9 @@ def test_compare_rows_bogus_grain_source_raises_value_error():
 
 
 def test_compare_rows_canonicalizes_date_and_decimal_representations():
+    registry = _stub_registry(
+        "blk6", grain=["ts_code", "trade_date", "price", "vol", "buyer", "seller"]
+    )
     left = {
         "ts_code": "600000.SH",
         "trade_date": datetime.date(2026, 8, 25),
@@ -179,14 +225,113 @@ def test_compare_rows_canonicalizes_date_and_decimal_representations():
         "seller": "s",
     }
     out = compare_rows(
-        domain="block_trade",
+        domain="blk6",
         left_rows=[left],
         right_rows=[right],
         left_name="l",
         right_name="r",
+        registry=registry,
     )
     assert out["matched"] == 1
     assert out["identity"] is True
+
+
+# ------------------------------------------------------- multiplicity index --
+# grain 契约 S3: 一些域的 grain 末列是落地层派生的多重度索引 (如 block_trade
+# 的 seq) —— 供应商侧行不会带这一列、也不该被要求带。比较键剔除该列; 两侧在
+# 比较键上折叠对声明了 multiplicity_index 的域是预期行为, 不挡 identity。
+
+def test_compare_rows_multiplicity_index_domain_is_identity_with_collapse():
+    # R1
+    registry = _stub_registry("evt", grain=["k", "seq"], multiplicity_index="seq")
+    left = [{"k": 1, "seq": 1}, {"k": 1, "seq": 2}]
+    right = [{"k": 1}, {"k": 1}]
+    out = compare_rows(
+        domain="evt",
+        left_rows=left,
+        right_rows=right,
+        left_name="l",
+        right_name="r",
+        registry=registry,
+    )
+    assert out["identity"] is True
+    assert out["matched"] == 2
+    assert out["left_collapse"] == 1
+    assert out["right_collapse"] == 1
+    assert out["compare_key"] == ["k"]
+    assert out["multiplicity_index"] == "seq"
+    assert out["max_multiplicity_left"] == 2
+    assert out["max_multiplicity_right"] == 2
+
+
+def test_compare_rows_multiplicity_index_domain_right_short_is_not_identity():
+    # R2
+    registry = _stub_registry("evt", grain=["k", "seq"], multiplicity_index="seq")
+    left = [{"k": 1, "seq": 1}, {"k": 1, "seq": 2}]
+    right = [{"k": 1}]
+    out = compare_rows(
+        domain="evt",
+        left_rows=left,
+        right_rows=right,
+        left_name="l",
+        right_name="r",
+        registry=registry,
+    )
+    assert out["identity"] is False
+    assert out["only_left"] == 1
+
+
+def test_assert_report_identity_invariant_allows_declared_multiplicity_collapse():
+    # R4 (first half): declared multiplicity_index legitimizes the collapse.
+    assert_report_identity_invariant(
+        {
+            "x": {
+                "identity": True,
+                "grain_source": "sync_registry",
+                "multiplicity_index": "seq",
+                "left_collapse": 1,
+                "right_collapse": 1,
+            }
+        }
+    )
+
+
+def test_assert_report_identity_invariant_rejects_collapse_without_declared_index():
+    # R4 (second half): same dict, multiplicity_index None -> still raises.
+    with pytest.raises(ValueError):
+        assert_report_identity_invariant(
+            {
+                "x": {
+                    "identity": True,
+                    "grain_source": "sync_registry",
+                    "multiplicity_index": None,
+                    "left_collapse": 1,
+                    "right_collapse": 1,
+                }
+            }
+        )
+
+
+def test_compare_rows_multiplicity_index_ignores_extra_index_column_on_right():
+    # R5: right side happens to carry its own "seq" values (e.g. a raw vendor
+    # dump that still has some other ordinal) -- they must not leak into the
+    # comparison key or change the result versus R1.
+    registry = _stub_registry("evt", grain=["k", "seq"], multiplicity_index="seq")
+    left = [{"k": 1, "seq": 1}, {"k": 1, "seq": 2}]
+    right = [{"k": 1, "seq": 7}, {"k": 1, "seq": 7}]
+    out = compare_rows(
+        domain="evt",
+        left_rows=left,
+        right_rows=right,
+        left_name="l",
+        right_name="r",
+        registry=registry,
+    )
+    assert out["identity"] is True
+    assert out["matched"] == 2
+    assert out["left_collapse"] == 1
+    assert out["right_collapse"] == 1
+    assert out["compare_key"] == ["k"]
 
 
 # ------------------------------------------------------- report invariant --
@@ -254,19 +399,26 @@ def test_compare_index_closes_fuyao_duplicate_trade_date_collapses():
 # 每条都构造成「其它条件全部满足、只有被测条件在起作用」, 否则会被别的条件顺带挡住而锁不住。
 
 def test_compare_rows_equal_counters_with_collapse_are_not_identity():
+    # R3: blk6 未声明 multiplicity_index，所以折叠必须挡 identity —— the
+    # "leniency" R1 exercises is only earned by an explicit declaration.
+    registry = _stub_registry(
+        "blk6", grain=["ts_code", "trade_date", "price", "vol", "buyer", "seller"]
+    )
     r = _block_row()
     out = compare_rows(
-        domain="block_trade",
+        domain="blk6",
         left_rows=[r, r],
         right_rows=[r, r],
         left_name="l",
         right_name="r",
+        registry=registry,
     )
     assert out["matched"] == 2
     assert out["only_left"] == 0
     assert out["only_right"] == 0
     assert out["left_collapse"] == 1
     assert out["right_collapse"] == 1
+    assert out["max_multiplicity_right"] == 2
     assert out["identity"] is False
 
 

@@ -30,6 +30,19 @@ walks an arbitrary nested report and refuses any dict claiming
 ``identity=True`` unless it also carries a truthy ``grain_source`` and zero
 collapse on both sides. ``compare_codeset`` output can never trip this check
 because it has no ``identity`` key to begin with.
+
+2026-09-11 (grain 契约 S3): some domains declare grain as
+``[..., multiplicity_index]`` where the last column is a landing-layer
+arrival-order tiebreaker (e.g. ``seq`` for an event domain the vendor
+legitimately repeats identical rows for) rather than a fact the counterparty
+side can be expected to carry or agree on. ``compare_rows`` resolves that
+column via ``_resolve_grain`` (never caller-supplied — read straight off the
+domain spec), excludes it from the comparison key, and lets a domain that
+declares it collapse on that key without losing ``identity`` — collapse
+there is *expected*, not a red flag. A domain with no declared
+``multiplicity_index`` gets none of that leniency: any collapse still means
+the comparison key under-determines the rows and ``identity`` stays False.
+``assert_report_identity_invariant`` mirrors the same rule.
 """
 from __future__ import annotations
 
@@ -110,12 +123,23 @@ def compare_codeset(
 
 def _resolve_grain(
     domain: str, *, grain_source: str, registry: dict[str, Any] | None
-) -> list[str]:
+) -> tuple[list[str], str | None]:
+    """Resolve a domain's declared grain plus its multiplicity index (if any).
+
+    ``multiplicity_index`` names the grain column that is a landing-layer
+    arrival-order tiebreaker (e.g. ``seq`` for an event domain where the
+    vendor legitimately repeats an identical row) rather than a fact the
+    counterparty side can be expected to carry. It is read straight off the
+    ``sync_registry.yaml`` domain spec (``domain_spec(...).get(...)``, never
+    caller-supplied); mart-grain sources have no such concept and always
+    resolve to ``None``.
+    """
     if grain_source == "sync_registry":
         from services.data_sources.sync_runner import domain_spec, load_registry
 
         spec = domain_spec(registry or load_registry(), domain)
         grain = spec["grain"]
+        multiplicity_index = spec.get("multiplicity_index")
     elif grain_source == "mart_grains":
         from scripts.check_grain_uniqueness import MART_GRAINS
 
@@ -125,6 +149,7 @@ def _resolve_grain(
                 f"mart_grains: no grain registered for domain/table {domain!r}"
             )
         grain = match[0]
+        multiplicity_index = None
     else:
         raise ValueError(
             f"unknown grain_source {grain_source!r}; expected "
@@ -135,7 +160,7 @@ def _resolve_grain(
             f"{domain}: grain from {grain_source} must be a non-empty list, "
             f"got {grain!r}"
         )
-    return list(grain)
+    return list(grain), multiplicity_index
 
 
 def _grain_key(
@@ -168,13 +193,21 @@ def compare_rows(
     incident that motivated this module (comparing at a narrower ad-hoc key
     than the domain is actually registered under).
     """
-    grain = _resolve_grain(domain, grain_source=grain_source, registry=registry)
+    grain, multiplicity_index = _resolve_grain(
+        domain, grain_source=grain_source, registry=registry
+    )
+    # The multiplicity index (if declared) is a landing-layer arrival-order
+    # tiebreaker, not a fact either side's raw rows are expected to agree on
+    # — drop it from the comparison key so a supplier-side row missing (or
+    # carrying a different) index value doesn't KeyError or spuriously
+    # mismatch.
+    compare_key = [c for c in grain if c != multiplicity_index]
 
     left_keys = [
-        _grain_key(r, grain, domain=domain, side="left") for r in left_rows
+        _grain_key(r, compare_key, domain=domain, side="left") for r in left_rows
     ]
     right_keys = [
-        _grain_key(r, grain, domain=domain, side="right") for r in right_rows
+        _grain_key(r, compare_key, domain=domain, side="right") for r in right_rows
     ]
     left_counter: Counter = Counter(left_keys)
     right_counter: Counter = Counter(right_keys)
@@ -206,14 +239,24 @@ def compare_rows(
     only_left_sample = _sample(only_left_diff)
     only_right_sample = _sample(only_right_diff)
 
+    max_multiplicity_left = max(left_counter.values()) if left_counter else 0
+    max_multiplicity_right = max(right_counter.values()) if right_counter else 0
+
     status = "empty_recon" if (left_rows_n == 0 and right_rows_n == 0) else "compared"
+    # A domain with a declared multiplicity index is *expected* to collapse
+    # on the comparison key (that is what the index exists to disambiguate),
+    # so collapse alone must not block identity for it. A domain with no
+    # declared index has no such excuse: any collapse means the comparison
+    # key under-determines the rows, and identity stays False.
     identity = bool(
         status == "compared"
         and only_left == 0
         and only_right == 0
         and matched > 0
-        and left_collapse == 0
-        and right_collapse == 0
+        and (
+            multiplicity_index is not None
+            or (left_collapse == 0 and right_collapse == 0)
+        )
     )
 
     return {
@@ -222,6 +265,8 @@ def compare_rows(
         "domain": domain,
         "grain": grain,
         "grain_source": grain_source,
+        "compare_key": compare_key,
+        "multiplicity_index": multiplicity_index,
         "left": left_name,
         "right": right_name,
         "left_rows": left_rows_n,
@@ -230,6 +275,8 @@ def compare_rows(
         "right_keys": right_keys_n,
         "left_collapse": left_collapse,
         "right_collapse": right_collapse,
+        "max_multiplicity_left": max_multiplicity_left,
+        "max_multiplicity_right": max_multiplicity_right,
         "matched": matched,
         "only_left": only_left,
         "only_right": only_right,
@@ -242,21 +289,28 @@ def compare_rows(
 
 def assert_report_identity_invariant(report: Any) -> None:
     """Refuse any nested dict claiming ``identity=True`` without the rigor
-    that verdict requires: a declared ``grain_source`` and zero collapse on
-    both sides. Recurses through nested dict/list structures so it can be
-    called once on a whole assembled report.
+    that verdict requires: a declared ``grain_source``, and either a declared
+    ``multiplicity_index`` (collapse on the comparison key is then expected,
+    not a red flag) or zero collapse on both sides. Recurses through nested
+    dict/list structures so it can be called once on a whole assembled
+    report.
     """
 
     def _walk(node: Any, path: str) -> None:
         if isinstance(node, Mapping):
             if node.get("identity") is True:
                 grain_source = node.get("grain_source")
+                multiplicity_index = node.get("multiplicity_index")
                 left_collapse = node.get("left_collapse")
                 right_collapse = node.get("right_collapse")
-                if not grain_source or left_collapse != 0 or right_collapse != 0:
+                collapse_ok = bool(multiplicity_index) or (
+                    left_collapse == 0 and right_collapse == 0
+                )
+                if not grain_source or not collapse_ok:
                     raise ValueError(
                         "identity=True without grain-source rigor at "
                         f"{path or '<root>'}: grain_source={grain_source!r} "
+                        f"multiplicity_index={multiplicity_index!r} "
                         f"left_collapse={left_collapse!r} "
                         f"right_collapse={right_collapse!r}"
                     )
