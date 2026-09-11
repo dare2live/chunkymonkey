@@ -229,6 +229,7 @@ blocking_paths:
 - tests/test_frontend_site.py
 - tests/test_holders_aif10.py
 - tests/test_holdout_guard.py
+- tests/test_institution_profile_lhb.py
 - tests/test_institution_profile.py
 - tests/test_institution_profile_api.py
 - tests/test_kline_write_calendar_lint.py

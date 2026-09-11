@@ -307,30 +307,63 @@ def test_dossier_episode_overlay_measured_only():
 
 
 def test_dossier_lhb_seats_use_seat_research_class():
+    # Grain 契约 r2b C2 (业主 2026-09-11 批准): 发布表七列 grain (加 board_window /
+    # event_seq), 展示全部行 (single_day seat/anonymous, multi_day seat, 投资者类别行都在),
+    # 只贴标签不过滤 (红线 9 展示 != 指标) —— dossier 不 import DAILY_METRIC_FILTER_SQL。
     con = _fixture_conn()
     con.execute(
         """
         CREATE TABLE fact_top_inst_seat_daily (
-            trade_date VARCHAR, ts_code VARCHAR, exalter VARCHAR, side VARCHAR,
-            net_buy DOUBLE, available_at TIMESTAMP, source_table VARCHAR, built_at TIMESTAMP
+            trade_date VARCHAR, ts_code VARCHAR, exalter VARCHAR,
+            buy DOUBLE, sell DOUBLE, event_seq INTEGER, net_buy DOUBLE,
+            sides VARCHAR, board_count INTEGER, reasons VARCHAR,
+            board_window VARCHAR, seat_kind VARCHAR,
+            available_at TIMESTAMP, source_table VARCHAR, built_at TIMESTAMP
         )
         """
     )
     con.execute(
         """
         INSERT INTO fact_top_inst_seat_daily VALUES
-        ('20260820', '600519.SH', '机构专用', '0', 50, now(), 'raw', now()),
+        ('20260820', '600519.SH', '机构专用', 50, 0, 1, 50,
+         '0', 1, 'R1', 'single_day', 'anonymous_inst', now(), 'raw', now()),
         ('20260820', '600519.SH',
-         '国盛证券有限责任公司宁波桑田路证券营业部', '0', 20, now(), 'raw', now())
+         '国盛证券有限责任公司宁波桑田路证券营业部', 20, 0, 1, 20,
+         '0', 1, 'R1', 'single_day', 'seat', now(), 'raw', now()),
+        ('20260820', '600519.SH', '席位丙', 999, 0, 1, 999,
+         '0', 1, 'M1', 'multi_day', 'seat', now(), 'raw', now()),
+        ('20260820', '600519.SH', '自然人', 3e9, 2.9e9, 1, 1e8,
+         '0,1', 1, 'S1', 'multi_day', 'investor_category', now(), 'raw', now())
         """
     )
     body = _client(con).get("/api/v3/stock/600519/dossier").json()
     assert body["usability"]["tabs"]["lhb_seats"]["status"] == "ok"
-    rows = {r["exalter"]: r for r in body["lhb_seats"]["rows"]}
+    lhb = body["lhb_seats"]
+    assert lhb["grain"] == "trade_date x ts_code x exalter x buy x sell x board_window x event_seq"
+    rows = {r["exalter"]: r for r in lhb["rows"]}
     assert rows["机构专用"]["seat_research_class"]["tags"] == ["inst_anonymous"]
     sangtian = rows["国盛证券有限责任公司宁波桑田路证券营业部"]
     assert sangtian["display_name"] == "章盟主"
     assert sangtian["alias_kind"] == "folk"
+    # Every row carries the new typed columns.
+    for exalter in ("机构专用", "国盛证券有限责任公司宁波桑田路证券营业部", "席位丙", "自然人"):
+        row = rows[exalter]
+        assert row["board_window"] in {"single_day", "multi_day"}
+        assert row["seat_kind"] in {"seat", "anonymous_inst", "investor_category"}
+        assert row["reasons"]
+    assert rows["机构专用"]["board_window"] == "single_day"
+    assert rows["机构专用"]["seat_kind"] == "anonymous_inst"
+    assert rows["席位丙"]["board_window"] == "multi_day"
+    assert rows["自然人"]["seat_kind"] == "investor_category"
+    # Order: single_day rows first (by |net_buy| desc), multi_day non-category next,
+    # investor_category last — even though 自然人's net_buy (1e8) dwarfs everyone else's.
+    order = [r["exalter"] for r in lhb["rows"]]
+    assert order == [
+        "机构专用",
+        "国盛证券有限责任公司宁波桑田路证券营业部",
+        "席位丙",
+        "自然人",
+    ]
 
 
 def _yield_conn(con):

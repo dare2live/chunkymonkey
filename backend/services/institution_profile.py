@@ -51,6 +51,7 @@ from services.data_sources.holders_top10_schema import (
 from services.database_manifest import get_database_manifest
 from services.duck_adapter import connect as duck_connect
 from services.data_access.spec import load_registry
+from services.top_inst_seat_publish import DAILY_METRIC_FILTER_SQL
 
 logger = logging.getLogger(__name__)
 
@@ -137,11 +138,18 @@ def build_period_windows(con) -> int:
         JOIN mk.v_price_kline_qfq k ON k.code = w.stock_code AND k.date <= w.w_end
         QUALIFY ROW_NUMBER() OVER (PARTITION BY w.stock_code, w.report_date ORDER BY k.date DESC) = 1
     ), lhb AS (
+        -- C3 龙虎榜机构席位日按额加权成本 —— 业主口径 (2026-09-11 批准): D1 同股同日同席位
+        -- 买卖金额完全相同的多榜记录已在发布面 (fact_top_inst_seat_daily) 按一笔折叠 (匿名/
+        -- 机构专用同样处理, 可能少算); D2 投资者类别行不计入; D3 只计单日榜。三条口径合一为
+        -- DAILY_METRIC_FILTER_SQL (发布模块 top_inst_seat_publish 拥有, 此处 import 不复制
+        -- 字面量) —— 注意 exalter LIKE '%机构%' 单独会把「机构投资者」这个投资者类别行也
+        -- 吃进来, 所以谓词必须在这里的 JOIN 条件里也生效, 不能只信 LIKE。
         SELECT w.stock_code, w.report_date,
                SUM(k.close * ABS(t.net_buy)) / NULLIF(SUM(ABS(t.net_buy)), 0) AS c3_lhb
         FROM win_dated w
         JOIN {_tr_entity("top_inst")} t
           ON substr(t.ts_code,1,6) = w.stock_code AND t.exalter LIKE '%机构%'
+         AND {DAILY_METRIC_FILTER_SQL}
          AND strftime(strptime(t.trade_date,'%Y%m%d'),'%Y-%m-%d') > w.w_start
          AND strftime(strptime(t.trade_date,'%Y%m%d'),'%Y-%m-%d') <= w.w_end
         JOIN mk.v_price_kline_qfq k

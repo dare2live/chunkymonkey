@@ -1105,6 +1105,15 @@ function renderDossierInst(d) {
       <span class="lv-note">→</span></div>`).join("") || '<div class="msg-row"><span class="txt">本股前十大无机构画像行</span></div>'}</div>
     <div class="progress-law" style="margin-top:28px">${esc(ip.note || "")}</div>`;
 }
+function lhbSeatTags(r) {
+  // 发布表收全部席位事件; 日频净买额与成本价只计单日榜、不含投资者类别行 (2026-09-11 口径)。
+  // 档案页全部展示, 这里只把不进日频指标的行标出来。
+  const tags = [];
+  if (r.board_window === "multi_day") tags.push("多日累计榜");
+  if (r.seat_kind === "investor_category") tags.push("投资者类别汇总");
+  if (r.board_count > 1) tags.push(`${r.board_count} 个榜单`);
+  return tags.join(" · ");
+}
 function renderDossierLhb(d) {
   const el = document.getElementById("dossier-lhb"); if (!el) return;
   const lhb = d.lhb_seats || {};
@@ -1124,9 +1133,9 @@ function renderDossierLhb(d) {
       const folk = r.alias_kind === "folk" && r.display_name && r.display_name !== r.exalter;
       return `<div class="lvrow" style="grid-template-columns:1.6fr 80px 120px 1fr; cursor:default">
         <span class="lv-name">${esc(r.display_name || r.exalter)}${folk ? `<span class="tp">${esc(r.exalter)}</span>` : ""}${facetChips(seat)}</span>
-        <span class="lv-note">${esc(r.side || "—")}</span>
+        <span class="lv-note">${esc(r.sides || "—")}</span>
         <span class="lv-num ${clsSign(r.net_buy)}" style="text-align:right">${r.net_buy == null ? "—" : r.net_buy}</span>
-        <span></span></div>`;
+        <span class="lv-note">${esc(lhbSeatTags(r))}</span></div>`;
     }).join("")}</div>`;
 }
 async function liveDossierCross(code) {

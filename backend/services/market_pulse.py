@@ -31,7 +31,11 @@ v2 全市场行新列 (2026-07-02 第一批, 契约=设计文档 "v2 增强设�
   - mkt_pe / mkt_turnover: raw_tushare_index_dailybasic 取 mkt_valuation_code 行
     (pe_ttm / turnover_rate_f — TTM 口径抗财报季跳变, 自由流通换手贴情绪水位)。
   - lhb_count / lhb_inst_net: top_list 当日上榜家数 (DISTINCT ts_code, 同股多理由算 1 家) /
-    top_inst 席位净买直和 (源含游资营业部席位非纯机构, 列名沿设计契约; 同席位双向重复行去重)。
+    top_inst 日频席位净买直和。业主口径 (2026-09-11 批准, fact_top_inst_seat_daily 发布面已按此
+    折叠+分类, 见 services.top_inst_seat_publish): D1 同股同日同席位买卖金额完全相同的多榜记录
+    按一笔计 (匿名 [机构专用] 同样处理并注明可能少算); D2 投资者类别行不计入日频指标; D3 日频
+    指标只计单日榜。三条口径合一为 DAILY_METRIC_FILTER_SQL (发布模块拥有, 本文件 import 不
+    复制字面量)。
   - strongest_sectors_json: limit_cpt_list 当日最强板块榜整日 JSON (rank 升序;
     885xxx.TI 同花顺码, 禁与 dc/sw 任何链 JOIN — 独立展示卡专用)。
 
@@ -93,6 +97,7 @@ from services.taxonomy_config import (
     source_index_type,
     source_level_map,
 )
+from services.top_inst_seat_publish import DAILY_METRIC_FILTER_SQL
 from services.universe import sql_where_active_a_share
 
 logger = logging.getLogger(__name__)
@@ -738,10 +743,14 @@ def _market_sql(
         FROM {_tr_entity("top_list")} GROUP BY 1
     ),
     lhb_inst AS (
-        -- 席位净买直和 (源=top_inst 全部披露席位含游资营业部, 非纯机构 — 列名沿设计契约);
-        -- 同席位同股买/卖双榜重复披露 (side 0/1 同额) → DISTINCT 去重后再和。
+        -- 席位净买直和 —— 业主口径 (2026-09-11 批准): D1 同股同日同席位买卖金额完全相同的
+        -- 多榜记录已在发布面 (fact_top_inst_seat_daily) 按一笔折叠 (匿名/机构专用同样处理,
+        -- 可能少算); D2 投资者类别行不计入; D3 日频指标只计单日榜。折叠已在发布面完成,
+        -- 这里不再 DISTINCT (保留 DISTINCT 会把同榜两个金额相同的匿名席位误并成一个,
+        -- 详见 top_inst_seat_publish 的 event_seq)。
         SELECT trade_date, SUM(net_buy) AS lhb_inst_net
-        FROM (SELECT DISTINCT trade_date, ts_code, exalter, net_buy FROM {_tr_entity("top_inst")})
+        FROM {_tr_entity("top_inst")}
+        WHERE {DAILY_METRIC_FILTER_SQL}
         GROUP BY 1
     ),
     strongest AS (

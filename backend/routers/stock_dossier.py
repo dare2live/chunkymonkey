@@ -571,7 +571,11 @@ def _plain_to_ts(code: str) -> str:
 
 
 def _load_lhb_seats(conn, code: str) -> dict[str, Any]:
-    grain = "trade_date x ts_code x exalter x side"
+    # Grain 契约 r2b (业主 2026-09-11 批准): 发布表 fact_top_inst_seat_daily 收全部席位
+    # 事件 (单日/多日榜、投资者类别行都收), 展示 != 指标 (红线 9) —— 档案页不按
+    # DAILY_METRIC_FILTER_SQL 过滤, 全部行都显示并贴 board_window / seat_kind 标签,
+    # 由前端/本函数的排序把单日席位排前、多日榜次之、投资者类别行放最后。
+    grain = "trade_date x ts_code x exalter x buy x sell x board_window x event_seq"
     if not _table_exists(conn, "fact_top_inst_seat_daily"):
         return {
             "trade_date": None,
@@ -596,23 +600,28 @@ def _load_lhb_seats(conn, code: str) -> dict[str, Any]:
         }
     raw = conn.execute(
         """
-        SELECT exalter, side, net_buy
+        SELECT exalter, sides, net_buy, board_count, board_window, seat_kind, reasons
         FROM fact_top_inst_seat_daily
         WHERE ts_code = ? AND trade_date = ?
-        ORDER BY abs(COALESCE(net_buy, 0)) DESC, exalter
+        ORDER BY (board_window <> 'single_day'), (seat_kind = 'investor_category'),
+                 abs(COALESCE(net_buy, 0)) DESC, exalter, event_seq
         """,
         [ts_code, trade_date],
     ).fetchall()
     rows = []
-    for exalter, side, net_buy in raw:
+    for exalter, sides, net_buy, board_count, board_window, seat_kind, reasons in raw:
         name = str(exalter)
         overlay = annotate_seat(name)
         seat = overlay["seat_research_class"]
         rows.append(
             {
                 "exalter": name,
-                "side": str(side) if side is not None else None,
+                "sides": str(sides) if sides is not None else None,
                 "net_buy": float(net_buy) if net_buy is not None else None,
+                "board_count": int(board_count) if board_count is not None else None,
+                "board_window": str(board_window) if board_window is not None else None,
+                "seat_kind": str(seat_kind) if seat_kind is not None else None,
+                "reasons": str(reasons) if reasons is not None else None,
                 "display_name": seat.get("alias") or name,
                 "alias_kind": seat.get("alias_kind"),
                 "seat_research_class": seat,

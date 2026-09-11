@@ -118,7 +118,9 @@ CREATE TABLE tr.raw_tushare_index_dailybasic (
 CREATE TABLE tr.raw_tushare_top_list (
     trade_date TEXT, ts_code TEXT, name TEXT, reason TEXT);
 CREATE TABLE fact_top_inst_seat_daily (
-    trade_date TEXT, ts_code TEXT, exalter TEXT, side TEXT, net_buy DOUBLE,
+    trade_date TEXT, ts_code TEXT, exalter TEXT, buy DOUBLE, sell DOUBLE,
+    event_seq INTEGER, net_buy DOUBLE, sides TEXT, board_count INTEGER, reasons TEXT,
+    board_window TEXT, seat_kind TEXT,
     available_at TIMESTAMPTZ, source_table TEXT, built_at TIMESTAMPTZ);
 CREATE TABLE tr.raw_tushare_limit_cpt_list (
     trade_date TEXT, ts_code TEXT, name TEXT, days BIGINT, up_stat TEXT,
@@ -337,7 +339,9 @@ def _fixture_conn():
         ("000300.SH", D[0], 14.42, 3.0), ("000905.SH", D[0], 25.0, 5.0),
     ])
     # v2 龙虎榜: 600001 两个上榜理由 (家数只算 1) + 600002 → lhb_count=2;
-    # top_inst 同席位买/卖双榜重复行 (net_buy 同额) 去重后 100 + (-30) = 70
+    # top_inst 席位事件 (grain 契约 r2b, 折叠已在发布面 fact_top_inst_seat_daily 完成):
+    # 席位甲同额跨侧/跨榜已折叠为一行 (sides='0,1'), 席位乙一行 → 100 + (-30) = 70。
+    # 两行都是 single_day/seat, 不受 DAILY_METRIC_FILTER_SQL (D2/D3) 影响。
     # B2: pulse reads fact_top_inst_seat_daily (DataAccess redirect).
     c.executemany("INSERT INTO tr.raw_tushare_top_list VALUES (?, ?, ?, ?)", [
         (D[0], "600001.SH", "甲", "日涨幅偏离值达到7%"),
@@ -345,15 +349,15 @@ def _fixture_conn():
         (D[0], "600002.SZ", "乙", "日涨幅偏离值达到7%"),
     ])
     c.executemany(
-        "INSERT INTO fact_top_inst_seat_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO fact_top_inst_seat_daily VALUES "
+        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
-            (D[0], "600001.SH", "席位甲", "0", 100.0,
+            (D[0], "600001.SH", "席位甲", 100.0, 0.0, 1, 100.0, "0,1", 2, "R1|R2",
+             "single_day", "seat",
              "2026-07-17 18:00:00+08:00", "raw_tushare_top_inst",
              "2026-07-17 18:00:00+08:00"),
-            (D[0], "600001.SH", "席位甲", "1", 100.0,
-             "2026-07-17 18:00:00+08:00", "raw_tushare_top_inst",
-             "2026-07-17 18:00:00+08:00"),
-            (D[0], "600001.SH", "席位乙", "0", -30.0,
+            (D[0], "600001.SH", "席位乙", 0.0, 30.0, 1, -30.0, "0", 1, "R1",
+             "single_day", "seat",
              "2026-07-17 18:00:00+08:00", "raw_tushare_top_inst",
              "2026-07-17 18:00:00+08:00"),
         ],
@@ -1528,6 +1532,103 @@ def test_v2_margin_valuation_lhb_strongest():
         d3 = m[D[3]]
         assert d3["rzrqye"] is None and d3["mkt_pe"] is None
         assert d3["lhb_count"] is None and d3["strongest_sectors_json"] is None
+    finally:
+        c.close()
+
+
+def _replace_top_inst(c, rows):
+    """替换 _fixture_conn() 里 fact_top_inst_seat_daily 的基线两行, 换成每个 grain 契约
+    r2b 用例 (C1/C1a/C1b/C1c) 自己的隔离 fixture; ts_code 固定 600001.SH。
+
+    rows: (trade_date, exalter, buy, sell, event_seq, net_buy, sides, board_count,
+           reasons, board_window, seat_kind)
+    """
+    c.execute("DELETE FROM fact_top_inst_seat_daily")
+    c.executemany(
+        "INSERT INTO fact_top_inst_seat_daily VALUES "
+        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (trade_date, "600001.SH", exalter, buy, sell, seq, net, sides, bc, reasons,
+             window, kind, "2026-07-17 18:00:00+08:00", "raw_tushare_top_inst",
+             "2026-07-17 18:00:00+08:00")
+            for (trade_date, exalter, buy, sell, seq, net, sides, bc, reasons, window, kind)
+            in rows
+        ],
+    )
+
+
+def _lhb_inst_net(c, trade_date):
+    row = c.execute(
+        f"SELECT lhb_inst_net FROM {mp.MARKET_TABLE} WHERE trade_date = ?", [trade_date]
+    ).fetchone()
+    return row[0] if row else None
+
+
+def test_lhb_inst_c1_three_criteria_stacked():
+    """r2b §3.2 C1: D1(同额多榜折叠已在发布面完成)+D2(投资者类别行不计入)+D3(只计单日榜)
+    三条口径叠加的日合计。600001.SH/D0: 席位甲 single_day/seat net 100 + 席位乙
+    single_day/seat net -30 + 机构专用两个不同 event_seq (D1 折叠后仍是两个独立事件)
+    single_day/anonymous_inst 各 net 5 - 席位丙 multi_day/seat net 1000 (D3 排除) -
+    自然人 multi_day/investor_category net 1e8 (D2+D3 都排除) → 100-30+5+5 = 80。
+    """
+    c = _fixture_conn()
+    try:
+        _replace_top_inst(c, [
+            (D[0], "席位甲", 100.0, 0.0, 1, 100.0, "0", 1, "R1", "single_day", "seat"),
+            (D[0], "席位乙", 0.0, 30.0, 1, -30.0, "0", 1, "R1", "single_day", "seat"),
+            (D[0], "机构专用", 5.0, 0.0, 1, 5.0, "0", 1, "R1", "single_day", "anonymous_inst"),
+            (D[0], "机构专用", 5.0, 0.0, 2, 5.0, "0", 1, "R2", "single_day", "anonymous_inst"),
+            (D[0], "席位丙", 1000.0, 0.0, 1, 1000.0, "0", 1, "M1", "multi_day", "seat"),
+            (D[0], "自然人", 3e9, 2.9e9, 1, 1e8, "0,1", 1, "S1",
+             "multi_day", "investor_category"),
+        ])
+        mp.rebuild_all(conn=c, cfg=CFG)
+        assert _lhb_inst_net(c, D[0]) == pytest.approx(80.0)
+    finally:
+        c.close()
+
+
+def test_lhb_inst_c1a_multi_day_excluded_isolated():
+    """r2b §3.2 C1a: 隔离 D3 (无类别行) —— 多日榜金额必须被排除, 只剩单日榜 100。"""
+    c = _fixture_conn()
+    try:
+        _replace_top_inst(c, [
+            (D[0], "席位甲", 100.0, 0.0, 1, 100.0, "0", 1, "R1", "single_day", "seat"),
+            (D[0], "席位丙", 1000.0, 0.0, 1, 1000.0, "0", 1, "M1", "multi_day", "seat"),
+        ])
+        mp.rebuild_all(conn=c, cfg=CFG)
+        assert _lhb_inst_net(c, D[0]) == pytest.approx(100.0)
+    finally:
+        c.close()
+
+
+def test_lhb_inst_c1b_investor_category_excluded_isolated():
+    """r2b §3.2 C1b: 隔离 D2 —— 投资者类别行故意放在单日榜上 (fixture 故意放单日),
+    证明排除动作靠 seat_kind 不是靠 board_window, 只剩 100。"""
+    c = _fixture_conn()
+    try:
+        _replace_top_inst(c, [
+            (D[0], "席位甲", 100.0, 0.0, 1, 100.0, "0", 1, "R1", "single_day", "seat"),
+            (D[0], "机构投资者", 1e8, 0.0, 1, 1e8, "0", 1, "S1",
+             "single_day", "investor_category"),
+        ])
+        mp.rebuild_all(conn=c, cfg=CFG)
+        assert _lhb_inst_net(c, D[0]) == pytest.approx(100.0)
+    finally:
+        c.close()
+
+
+def test_lhb_inst_c1c_anonymous_fold_already_done_no_distinct():
+    """r2b §3.2 C1c: 隔离 D1 —— 匿名席位 (机构专用) 两个不同 event_seq、同额, 折叠已在
+    发布面完成; 消费方若还用 DISTINCT 会把两个不同事件误并成一个 (5+5 错算成 5)。"""
+    c = _fixture_conn()
+    try:
+        _replace_top_inst(c, [
+            (D[0], "机构专用", 5.0, 0.0, 1, 5.0, "0", 1, "R1", "single_day", "anonymous_inst"),
+            (D[0], "机构专用", 5.0, 0.0, 2, 5.0, "0", 1, "R2", "single_day", "anonymous_inst"),
+        ])
+        mp.rebuild_all(conn=c, cfg=CFG)
+        assert _lhb_inst_net(c, D[0]) == pytest.approx(10.0)
     finally:
         c.close()
 
