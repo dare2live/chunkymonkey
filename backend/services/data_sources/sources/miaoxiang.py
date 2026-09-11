@@ -2,10 +2,15 @@
 
 源决策: ``backend/config/tushare_sunset.yaml`` — TuShare 授权 2026-09-10 到期不续期,
 ``top_inst``/``top_list`` 两域裁决 = replace, replacement = 妙想
-``RPT_OPERATEDEPT_TRADE`` / ``RPT_DAILYBILLBOARD_DETAILSNEW``。对账证据 (2026-08-25,
-``data/audit/historical/assignment_gap_recon.json`` "lhb_seats"/"lhb_vs_top_list"):
-两域均 identity=true, jaccard=1.0 (526/526 seat keys, 60/60 codes), 精确集合对比
-非抽样。生成该对账的脚本是 ``backend/scripts/recon_assignment_gaps.py`` — 本 adapter
+``RPT_OPERATEDEPT_TRADE`` / ``RPT_DAILYBILLBOARD_DETAILSNEW``。对账 (龙虎榜日 2026-08-25, 2026-08-28 13:46 CST 跑一次): 两域键集相等 —— top_inst
+526/526 键, top_list 60/60 码。
+**2026-09-11 更正**: 那次对账把两边丢进 Python set 比投影键, 所以原写的「identity=true,
+jaccard=1.0, 精确集合对比非抽样」不成立 —— top_list 只比 (trade_date, ts_code), 丢了
+grain 里的 reason (当日本地 61 行 / 60 码); top_inst 右侧妙想 650 行被折叠成 526 键 (与下文
+「613 条原始行」未对齐, 待重跑核)。它只证键集相等, 不证逐行一致。
+出处也要照实写: 产物落在 gitignored 的 data/audit/ 下, 不在 git 里; 产出它的
+recon_assignment_gaps.py 与 assignment_gap_recon.py 当天 16:00 才首次入库 (7df71a13),
+即那份 JSON 由未提交代码生成。所以这里不再引用那个文件路径。生成该对账的脚本是 ``backend/scripts/recon_assignment_gaps.py`` — 本 adapter
 复用它已验证的调用形态 (``client.get_v1(report, page=, page_size=, extra_filters=,
 sort_columns=, sort_types=)``)，不是另起炉灶。
 
@@ -95,6 +100,10 @@ grain key, 上述碰撞组里**总能找到一行**在 buy/sell/net_buy/reason �
 ``sync_runner._prepare_batch_df`` 的 ``drop_duplicates(grain, keep='last')``
 统一职责, 不在 adapter 层重复实现; 落地时"取哪一行"由此变成确定性的
 (keep='last'), 不再是未知的 tushare 内部规则, 属于换源后行为收敛而非退化。
+**2026-09-11 更正: 上句只对一半碰撞成立。** 实测 20260825 这 87 个碰撞键里, 40 个是金额相同、
+理由不同 (同一席位双榜, 取一确实是收敛); 另 47 个全是 ``exalter='机构专用'`` 且金额不同、理由相同 ——
+那是不同的真实机构, keep='last' 删掉的是真实记录。东财原始行按 (SECUCODE, EXPLANATION,
+TRADE_DIRECTION, RANK) 唯一 (130 块榜每榜 RANK 1..n 连续), 本地当日只剩 122 块榜。
 
 失败姿态 (fail-closed, 教训: 静默半批比报错更危险):
   - 未知 ``api`` / 传了 ``limit``/``offset``/``page``/``page_size`` (分页仅限

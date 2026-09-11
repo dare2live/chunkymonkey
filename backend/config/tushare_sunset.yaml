@@ -202,7 +202,7 @@ domains:
     decision: replace
     replacement: 妙想 RPT_OPERATEDEPT_TRADE
     must_by: "2026-09-10"
-    evidence: "**活跃多消费方**: (1) market_pulse.py:739 SUM(net_buy) AS lhb_inst_net 进 mart_market_pulse_daily, 前端 pulse/sentiment; (2) 独立 B2 正式发布管线写 fact_top_inst_seat_daily, 被 check_grain_uniqueness / check_legacy_raw_plane 门禁核验。在库 1,057,771 行 20190102-20260828 无缺口。候选已实测对账 (对比对象=已发布的 fact_top_inst_seat_daily, grain=trade_date×ts_code×seat×side): **identity=true, jaccard=1.0 (526/526 完全匹配, 无截断)** —— 是精确集合对比不是抽样估计。工程范式现成 (holders_aif10.py)。9 天内建议扩对账天数确认非偶然 (当前只测 20260825 一天) 后切换。"
+    evidence: "**活跃多消费方**: (1) market_pulse.py:739 SUM(net_buy) AS lhb_inst_net 进 mart_market_pulse_daily, 前端 pulse/sentiment; (2) 独立 B2 正式发布管线写 fact_top_inst_seat_daily, 被 check_grain_uniqueness / check_legacy_raw_plane 门禁核验。在库 1,057,771 行 20190102-20260828 无缺口。候选对账 (2026-08-28 跑, 对比对象=已发布的 fact_top_inst_seat_daily, 键=trade_date×ts_code×exalter×side, 即声明 grain): 键集 526/526 相等。**2026-09-11 更正口径**: 该对账用 Python set 比较 —— 左侧本地当日 526 行=526 键 (实测无折叠), 但右侧妙想 miaoxiang_count=650 行被折叠成 526 键, 124 行的差异不在比较范围内 (碰撞成因见 sources/miaoxiang.py 头注; 头注记当日原始 613 行, 与 650 未对齐, 待按新判据重跑核)。所以 identity=true 只证键集相等, 不证逐行一致, 也不是「精确集合对比」。**2026-09-11 实测**: 妙想 20260825 原始 650 行按 (码, 理由, 方向, RANK) 唯一, 130 块榜每榜 RANK 1..n 连续; 按本域 grain (码, 席位, 方向) 碰撞 87 键 —— 47 键全为「机构专用」金额不同理由相同 (不同真实机构, 去重即删真实记录), 40 键金额相同理由不同 (同一席位双榜)。本地 raw_tushare_top_inst 当日 526 行 / 122 块榜, 比妙想少 8 块整榜。被删的 47 键正是 market_pulse lhb_inst_net (先 DISTINCT trade_date, ts_code, exalter, net_buy 再 SUM) 的输入 —— 在服务的该数字少计。grain 契约待方案。工程范式现成 (holders_aif10.py)。9 天内建议扩对账天数确认非偶然 (当前只测 20260825 一天) 后切换。"
 
     status: done
     done_at: "2026-09-01"
@@ -211,7 +211,7 @@ domains:
     decision: replace
     replacement: 妙想 RPT_DAILYBILLBOARD_DETAILSNEW
     must_by: "2026-09-10"
-    evidence: "**活跃**: market_pulse.py:734 算 lhb_count 进 mart_market_pulse_daily, 前端 pulse/sentiment 确认; 另作 top_inst 的 cross_check_domain 交叉核验落库完整性。在库 120,101 行 20190102-20260828 无缺口。候选已实测: **identity=true, jaccard=1.0 (60/60 完全匹配, 无截断)**。与 top_inst 是同一龙虎榜产品线的姊妹域, **建议一起切换**; 切换后 cross_check_domain 交叉核验要同步改成两个新源互查, 不能留一个 tushare 一个妙想各自为政。"
+    evidence: "**活跃**: market_pulse.py:734 算 lhb_count 进 mart_market_pulse_daily, 前端 pulse/sentiment 确认; 另作 top_inst 的 cross_check_domain 交叉核验落库完整性。在库 120,101 行 20190102-20260828 无缺口。候选对账 (2026-08-28 跑): 码集 60/60 相等。**2026-09-11 更正口径**: 该对账只比 (trade_date, ts_code), 丢了声明 grain 里的 reason —— 当日本地 61 行 / 60 码 / 61 个 (码, reason), 妙想 miaoxiang_count=65 行; reason 从未在对账中核对。全表按 (日, 码) 折叠 10,470/120,101=8.72% 行, 按声明 grain 折叠 0。所以 identity=true 只证码集相等, 不证行级一致。与 top_inst 是同一龙虎榜产品线的姊妹域, **建议一起切换**; 切换后 cross_check_domain 交叉核验要同步改成两个新源互查, 不能留一个 tushare 一个妙想各自为政。"
 
     status: done
     done_at: "2026-09-01"
@@ -242,7 +242,7 @@ domains:
       实测沪深300 2026-08-25: 开盘 4542.2438 / 收盘 4552.0326 / 成交额 480,421,573.87千元=4804.2157亿,
       与库内同日**逐位精确匹配**。fuyao/tdxhub 已暴露函数均无指数行情端点。
       **局限**: 只测了 6 个基准里的 1 个, 其余 5 个 (中证500/上证50/创业板指/上证指数/深证成指)
-      切换前建议补测, 但方法论已验证有效。"
+      切换前建议补测, 但方法论已验证有效。 **2026-09-11 更正两处事实 (decision/replacement 字段未动, 留业主定)**: (1) replacement 写「妙想 index_data」是供应商名错置 —— 妙想 = 东财 aif10, 其注册的 74 个 report 中 名称/模块/栏目带「指数」的 0 个 (trading 模块 8 个全是个股口径), 上文沪深300 实测用的只可能是 iFinD (同花顺); (2)「fuyao/tdxhub 已暴露函数均无指数行情端点」不成立 —— backend/tdxhub/quotes.py 有 index() 与 index_bars(); 但 tdxhub 取数层有服务时段 (见 sync_registry.yaml sources.tdxhub 两次实测), 能否当本域生产源未验。 另: 全仓只读 000300.SH 一个代码, 其余 5 个基准在 backend 里 0 个读取点。"
 
   dc_member:
     decision: freeze
@@ -319,12 +319,38 @@ domains:
     decision: replace
     replacement: 妙想 RPT_DATA_BLOCKTRADE
     must_by: "2026-09-10"
-    evidence: "本批证据最硬的一个 —— 不是推测, 是项目自己 2026-08-28 (3天前) 跑过的实测:
-      assignment_gap_recon.json 记录 block_trade vs RPT_DATA_BLOCKTRADE, grain=trade_date×ts_code×buyer×seller,
-      **jaccard=1.0, identity=true, 82/82 行精确匹配** (妙想原始 112 行经同口径过滤后与本地一致)。
-      消费方: recon 脚本(QA) + serve_read_views.yaml 注册了 v_block_trade_stock_day 但全仓库零 .py 实读
-      (声明了未接线的服务面)。在库 109,875 行 2023-01-03~2026-08-27, 5 个骤降日已 vendor 核实非采集缺陷。
-      fuyao/tdxhub 均无大宗交易端点。"
+    evidence: "**2026-09-11 原证据作废**: 原写「本批证据最硬, jaccard=1.0, identity=true, 82/82 行精确匹配」,
+      判据有缺陷 —— 那次对账只比 (trade_date, ts_code, buyer, seller) 四键且用 Python set 去重, 丢了声明 grain
+      里的 price/vol。实测全表按四键折叠 14,898/109,875=13.56% 行 (单键最多 42 笔: 603939.SH 20250805,
+      1 种价 42 种量)。按行重算 (妙想原始行 vs 本地, 2026-09-11): 20260825 本地 99 行 / 妙想 112 行, 四键集合 82=82;
+      20260827 本地 126 行 / 妙想 172 行, 四键集合 93=93, 20 个四键下两边笔数不同 (例 688328.SH 本地 6 笔 / 妙想 19 笔,
+      688252.SH 本地 4 / 妙想 15)。即两源在「谁跟谁哪天成交」上基本一致, 分歧在「同一键下有几笔」, 恰是被投影掉的轴。
+      真相面 (交易所) 已核, 见切换前置 (a)。
+      **切换前置 (业主 2026-09-11 定: 保留 replace, 先核对)**: (a) [已核 2026-09-11] 上交所 query.sse.com.cn DZJYXX_L_1 逐笔: 沪市全天 0825 交易所 73 行 / 本地 62 / 妙想 73,
+      0827 交易所 99 / 本地 63 / 妙想 99; 本地行数恰等于交易所按本域声明 grain 去重后的键数 (62/63 精确相等),
+      即落库 drop_duplicates(grain) 删掉了价/量/买/卖全同的独立成交 (交易所对这些全同行不给任何区分字段 —— 接口里的 NUM 只是查询结果行号; 例 688328 0827
+      交易所 19 行 / 6 键, 本地 6, 妙想 19)。妙想 DAILY_RANK 也不是逐股连续序号 (603115.SH 0827 为 1,3,5,7,8..17), 不能当成交身份。
+      另: 2026-07-04 提交 eef8da75 对 block_trade 等 10 域做过一次原地清理 (提交说明判为分页边界重复、
+      称「无损, 保留最新 built_at」), 各库 mart_data_deletion_record 均无 block_trade 条目;
+      例 300850.SZ 20251111 本地现 12 行, built_at 全为 2026-06-21 (原地删, 非重拉)。
+      **这次清理与前一天的审计结论相反**: 07-03 审计 (1b94dd7a analysis/data_foundation_audit_20260703.json,
+      verdict PARTIAL) 用 tushare 在线 + 东财双源实测 300850.SZ 20251111 为 37 行 (含 24 份全同: 5.0 万股 @44.17
+      机构专用→广发武汉中山路), 判为真实成交; 重复最重的 20250918/0922/0923 本地 975/585/330 行与在线逐日相等;
+      并明写「grain 追加 buyer,seller 仍会合并全同真实成交」「历史纯重复日重拉自清会物理销毁最多 5,725 行
+      真实成交 (自清=数据销毁)」, 修法给的是整日替换或加 occurrence 序号列。20250918 现为 179 行。**妙想对, 本地少计; 沿用现 grain
+      换源会原样重演**, grain 契约待方案。深市同样成立 (深交所 ShowReport CATALOGID=1265 协议交易逐笔; 两日均无盘后定价):
+      权益类 0825 交易所 33 行 / 去重 31 键 / 本地 31 / 妙想 33, 0827 交易所 59 / 49 / 本地 49 / 妙想 59,
+      笔数不等的 10 个代码逐一对上。沪深合计权益类本地少计 0825 12.3% / 0827 29.1%。深市另有可转债
+      (0825 6 行 / 0827 13 行) 在深交所债券栏目, 本地与妙想行数相同, 未对交易所核;
+      **历史日同样成立 (沪市 2025-08-05 / 2024-03-15 逐码对照交易所)**: 本地先少掉 A4 (0a9944e9, 2026-07-19)
+      之前落库写前删掉的白名单外代码 (REITs/ETF/B 股, 两天分别 5 / 10 个码); 剔除这些码后, 本地仍恰等于交易所
+      按本域 grain 去重 —— 2025-08-05 股票 112 行 / 85 键 → 本地 85 (603939 交易所 74 笔 / 47 键 → 本地 47),
+      2024-03-15 股票 53 行 / 50 键 → 本地 50。四个日期股票口径少计 5.7% / 24.1% / 15.1% / 36.4%, 少计贯穿全史。
+      妙想在这两个历史日与交易所逐项一致 (行/键/码, 连同键多笔的代码也一致) —— 按妙想回填历史在数据上可行。
+      (b) 转债成交量单位待核 (妙想 DEAL_VOLUME 与本地 vol 单位未确认); (c) RPT_DATA_BLOCKTRADE -> raw_tushare_block_trade
+      行映射尚不存在, 无映射则做不了声明 grain 对账。
+      消费方: serve_read_views.yaml 注册了 v_block_trade_stock_day 但全仓库零 .py 实读 (声明了未接线的服务面)。
+      在库 109,875 行 2023-01-03~2026-08-27, 5 个骤降日已 vendor 核实非采集缺陷。fuyao/tdxhub 均无大宗交易端点。"
 
   fina_indicator:
     decision: replace

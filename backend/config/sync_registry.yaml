@@ -1423,11 +1423,17 @@ domains:
                        # 2026-07-08 收口此前遗留问题: 20250918 本地179行经复核 = 1001原始行套用
                        # universe_filter(白名单60/00/30/68)后的正确过滤结果(vendor 实测 filtered
                        # dedup 后同为179, 0缺失) — 并非另有采集问题, 待跟进项已了结。
+                       # **2026-09-11 更正: 上面这次复核按构造必然通过** —— 是按本域 grain 去重之后再比的。
+                       # 07-03 审计 (1b94dd7a analysis/data_foundation_audit_20260703.json) 实测该日 DB 975 行 =
+                       # tushare 在线 975 行; 次日 eef8da75 按「分页边界重复」原地清理后剩 179。逐笔核对见
+                       # tushare_sunset.yaml block_trade evidence。
     data_start: "20230101"   # 对齐 cyq_perf/panel 可用窗 (stage-conditional 测窗)
     row_dip_tolerance: true   # 2026-07-08 5 个骤降日(0521/0526/0601/0608/0702) grain-aware 核对
                               # vendor(含 price/vol/buyer/seller 全维度)逐行一致 0 缺失 — 大宗交易
                               # 笔数随市场情绪日日高方差, 非缺陷(字段从 gap_tolerance 拆分, 此域
                               # 从无 calendar_gaps 问题)
+                              # **2026-09-11 更正**: 这次「全维度逐行一致 0 缺失」是在同一个 grain 上比的,
+                              # 按构造必然通过, 看不见价/量/买/卖全同的多笔被去重删掉 (见 block_trade evidence)。
     pit_anchor: "trade_date (大宗当日盘后披露); JOIN 决策日 t 用 trade_date<=t (t-1 保守)"
     available_after: "t+1"
     freshness_sla_trading_days: 5
