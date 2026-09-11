@@ -345,7 +345,9 @@ def test_s7_top_inst_seat_publication_is_fact_top_inst_seat_daily() -> None:
     ent = load_registry().entity("top_inst")
     assert ent.db == "smartmoney"
     assert ent.table == "fact_top_inst_seat_daily"
-    assert "side" in ent.columns
+    assert "sides" in ent.columns
+    assert "board_window" in ent.columns
+    assert "seat_kind" in ent.columns
     assert "exalter" in ent.columns
 
 

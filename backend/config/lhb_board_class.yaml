@@ -1,0 +1,85 @@
+# 龙虎榜榜单分类 (发布 fact_top_inst_seat_daily 时判定; 红线 11: 未知理由/未知值 fail-closed)
+# 证据: 妙想 RPT_OPERATEDEPT_TRADE 11 个交易日 8,629 行 (2019-01-02 ... 2026-08-27), 见
+# scratchpad/r2b_topinst_days.json (原始行) 与 fable_grain_contract_r2b.md §0/§2 (方法论)。
+# reasons 键集合逐字节取自该 JSON 的 EXPLANATION 去重集合 (62 个), 窗口/类别归类按 §2.1 与 §0.2-0.3
+# 的机制 (含 "连续/严重异常期间/最近3个有成交的交易日" 判多日榜; OPERATEDEPT_NAME 属投资者类别名单判类别榜),
+# 已用同一份原始数据程序化交叉核对 (窗口规则 0 例外, 类别名单 0 例外, 单日榜 stat_days 100% NULL)。
+# 不要从本文件外的任何 markdown 手抄键 —— 标点(全/半角)可能已被人工改写而与真实数据不再逐字节一致。
+version: 1
+windows: [single_day, multi_day]
+seat_kinds:
+  investor_category:            # 类别汇总伪席位: 只许出现在 investor_category_board 的榜上
+    names: [自然人, 中小投资者, 其他自然人, 机构投资者, 深股通投资者]
+  anonymous_inst:
+    names: [机构专用]
+  # 其它名称 = seat (开放类)
+checks:
+  single_day_statistics_days_must_be_null: true    # 单日榜行的 stat_days 必须为 NULL (实测 单日榜 rows 100% None)
+  investor_category_names_only_on_category_boards: true
+  category_boards_only_investor_category_names: true
+reasons:                        # 精确字符串 -> 类; 未列出的理由 = 发布 fail-closed
+  # -- 单日榜 (37) --
+  "日涨幅偏离值达到7%的前五只证券": {window: single_day}
+  "日涨幅偏离值达到7%的前5只证券": {window: single_day}
+  "日跌幅偏离值达到7%的前五只证券": {window: single_day}
+  "日跌幅偏离值达到7%的前5只证券": {window: single_day}
+  "日换手率达到20%的前5只证券": {window: single_day}
+  "日换手率达到20%的前五只证券": {window: single_day}
+  "日换手率达到30%的前5只证券": {window: single_day}
+  "日涨幅达到15%的前5只证券": {window: single_day}
+  "日跌幅达到15%的前5只证券": {window: single_day}
+  "日涨幅达到15%的前5只可转债": {window: single_day}
+  "日跌幅达到15%的前5只可转债": {window: single_day}
+  "日振幅值达到15%的前5只证券": {window: single_day}
+  "日振幅值达到15%的前五只证券": {window: single_day}
+  "日振幅值达到30%的前5只证券": {window: single_day}
+  "日振幅值达到30%的前5只可转债": {window: single_day}
+  "当日换手率达到20%的前5只股票": {window: single_day}
+  "当日收盘价涨幅达到20%的前5只股票": {window: single_day}
+  "当日收盘价跌幅达到-20%的前5只股票": {window: single_day}
+  "当日价格振幅达到30%的前5只股票": {window: single_day}
+  "当日无价格涨跌幅限制的A股，出现异常波动停牌的": {window: single_day}
+  "有价格涨跌幅限制的日收盘价格涨幅偏离值达到7%的前五只证券": {window: single_day}
+  "有价格涨跌幅限制的日收盘价格涨幅偏离值达到7%的前三只证券": {window: single_day}
+  "有价格涨跌幅限制的日收盘价格跌幅偏离值达到7%的前五只证券": {window: single_day}
+  "有价格涨跌幅限制的日收盘价格跌幅偏离值达到7%的前三只证券": {window: single_day}
+  "有价格涨跌幅限制的日收盘价格涨幅达到15%的前五只证券": {window: single_day}
+  "有价格涨跌幅限制的日收盘价格跌幅达到15%的前五只证券": {window: single_day}
+  "有价格涨跌幅限制的日换手率达到20%的前五只证券": {window: single_day}
+  "有价格涨跌幅限制的日换手率达到20%的前三只证券": {window: single_day}
+  "有价格涨跌幅限制的日换手率达到30%的前五只证券": {window: single_day}
+  "有价格涨跌幅限制的日价格振幅达到15%的前五只证券": {window: single_day}
+  "有价格涨跌幅限制的日价格振幅达到15%的前三只证券": {window: single_day}
+  "无价格涨跌幅限制的证券": {window: single_day}
+  "退市整理期": {window: single_day}
+  "退市整理的证券": {window: single_day}
+  "向不特定对象发行的可转债上市首日交易公开信息": {window: single_day}
+  "非上市首日,当日收盘价涨幅达15%的前五只可转债": {window: single_day}
+  "非上市首日,当日收盘价跌幅达15%的前五只可转债": {window: single_day}
+  # -- 多日榜 (21) --
+  "连续三个交易日内，涨幅偏离值累计达到20%的证券": {window: multi_day}
+  "连续三个交易日内，跌幅偏离值累计达到20%的证券": {window: multi_day}
+  "连续三个交易日内，涨幅偏离值累计达到30%的证券": {window: multi_day}
+  "连续三个交易日内，跌幅偏离值累计达到30%的证券": {window: multi_day}
+  "连续三个交易日内，涨幅偏离值累计达到30%的可转债": {window: multi_day}
+  "连续3个交易日内日收盘价格涨幅偏离值达到30%的可转债": {window: multi_day}
+  "连续三个交易日内，涨幅偏离值累计达到12%的ST证券、*ST证券和未完成股改证券": {window: multi_day}
+  "连续三个交易日内，跌幅偏离值累计达到12%的ST证券、*ST证券和未完成股改证券": {window: multi_day}
+  "连续三个交易日内，跌幅偏离值累计达到12%的ST证券、*ST证券": {window: multi_day}
+  "连续三个交易日内，日均换手率与前五个交易日的日均换手率的比值达到30倍，且换手率累计达20%的证券": {window: multi_day}
+  "非ST、*ST和S证券连续三个交易日内收盘价格涨幅偏离值累计达到20%的证券": {window: multi_day}
+  "非ST、*ST和S证券连续三个交易日内收盘价格跌幅偏离值累计达到20%的证券": {window: multi_day}
+  "非S证券连续三个交易日内收盘价格涨幅偏离值累计达到20%的证券": {window: multi_day}
+  "非S证券连续三个交易日内收盘价格跌幅偏离值累计达到20%的证券": {window: multi_day}
+  "ST、*ST证券连续三个交易日内收盘价格涨幅偏离值累计达到12%的证券": {window: multi_day}
+  "ST、*ST证券连续三个交易日内收盘价格跌幅偏离值累计达到12%的证券": {window: multi_day}
+  "ST、*ST和S证券连续三个交易日内收盘价格涨幅偏离值累计达到15%的证券": {window: multi_day}
+  "ST、*ST和S证券连续三个交易日内收盘价格跌幅偏离值累计达到15%的证券": {window: multi_day}
+  "有价格涨跌幅限制的连续3个交易日内收盘价格涨幅偏离值累计达到30%的证券": {window: multi_day}
+  "有价格涨跌幅限制的连续3个交易日内收盘价格跌幅偏离值累计达到30%的证券": {window: multi_day}
+  "北交所股票最近3个有成交的交易日以内收盘价涨跌幅偏离值累计达到+40%(-40%)": {window: multi_day}
+  # -- 严重异常期间 (多日 + 类别行榜, 4) --
+  "严重异常期间日收盘价格涨幅偏离值累计达到100%的证券": {window: multi_day, investor_category_board: true}
+  "严重异常期间日收盘价格跌幅偏离值累计达到50%的证券": {window: multi_day, investor_category_board: true}
+  "严重异常期间日收盘价格跌幅偏离值累计达到70%的证券": {window: multi_day, investor_category_board: true}
+  "严重异常期间4次出现负向异常波动的证券": {window: multi_day, investor_category_board: true}
