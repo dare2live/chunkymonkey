@@ -153,6 +153,7 @@ blocking_paths:
 - tests/services/test_phase_e_smoke.py
 - tests/services/test_population_scope.py
 - tests/services/test_project_status.py
+- tests/services/test_recon_compare.py
 - tests/services/test_registry_merge_chain_single_source.py
 - tests/services/test_research_identity_overlays.py
 - tests/services/test_research_prereg_store.py

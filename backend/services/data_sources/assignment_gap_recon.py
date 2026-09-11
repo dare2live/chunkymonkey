@@ -7,7 +7,7 @@ is the ruler. Empty recon is not a match. Same name is not identity.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from services.data_sources.fina_margin_recon import (
@@ -15,8 +15,11 @@ from services.data_sources.fina_margin_recon import (
     normalize_ts_code,
     sql_table,
 )
+from services.data_sources.recon_compare import (
+    SAMPLE_LIMIT,
+    assert_report_identity_invariant,
+)
 
-SAMPLE_LIMIT = 20
 PRICE_ABS_TOL = 0.011
 PE_REL_TOL = 0.02
 PE_ABS_TOL = 0.05
@@ -112,51 +115,6 @@ def _cell(row: Any, idx: int, key: str) -> Any:
     if hasattr(row, "keys") and key in row.keys():
         return row[key]
     return row[idx]
-
-
-def compare_sets(
-    left: Iterable[Any],
-    right: Iterable[Any],
-    *,
-    grain: str,
-    left_name: str,
-    right_name: str,
-    same_product: bool,
-    sample_limit: int = SAMPLE_LIMIT,
-) -> dict[str, Any]:
-    left_s = {x for x in left if x not in (None, "")}
-    right_s = {x for x in right if x not in (None, "")}
-    only_left = sorted(left_s - right_s)
-    only_right = sorted(right_s - left_s)
-    both = left_s & right_s
-    union = left_s | right_s
-    if not left_s and not right_s:
-        status = "empty_recon"
-        jaccard = None
-        identity = False
-    else:
-        status = "compared"
-        jaccard = (len(both) / len(union)) if union else None
-        identity = bool(
-            same_product and only_left == [] and only_right == [] and both
-        )
-    return {
-        "status": status,
-        "grain": grain,
-        "left": left_name,
-        "right": right_name,
-        "same_product": same_product,
-        "left_n": len(left_s),
-        "right_n": len(right_s),
-        "intersection": len(both),
-        "only_left": len(only_left),
-        "only_right": len(only_right),
-        "only_left_sample": only_left[:sample_limit],
-        "only_right_sample": only_right[:sample_limit],
-        "jaccard": jaccard,
-        "identity": identity,
-        "primary_cut": False,
-    }
 
 
 def numeric_near(left: Any, right: Any, *, rel: float, abs_tol: float) -> bool:
@@ -539,33 +497,77 @@ def load_block_keys(
     return keys
 
 
-def load_seat_keys(
+def load_top_list_rows(
     con: Any,
     day: str,
-    table: str = TOP_INST_FACT,
-) -> list[tuple[str, str, str]]:
+    table: str = TOP_LIST,
+) -> list[dict[str, Any]]:
+    """Full ``trade_date, ts_code, reason`` rows for one day — grain-shaped
+    for :func:`services.data_sources.recon_compare.compare_rows`, unlike
+    :func:`load_codes_for_day` which only returns the code set."""
     compact = compact_yyyymmdd(day)
     if not compact:
         return []
     dashed = f"{compact[:4]}-{compact[4:6]}-{compact[6:8]}"
     rows = con.execute(
         f"""
-        SELECT ts_code, exalter, side
+        SELECT trade_date, ts_code, reason
         FROM {sql_table(table)}
         WHERE replace(CAST(trade_date AS VARCHAR), '-', '') = ?
            OR CAST(trade_date AS VARCHAR) = ?
         """,
         [compact, dashed],
     ).fetchall()
-    keys = []
+    out = []
     for row in rows:
-        ts = normalize_ts_code(_cell(row, 0, "ts_code"))
+        ts = normalize_ts_code(_cell(row, 1, "ts_code"))
         if not ts:
             continue
-        seat = normalize_cn_name(_cell(row, 1, "exalter"))
-        side = str(_cell(row, 2, "side") or "").strip()
-        keys.append((ts, seat, side))
-    return keys
+        out.append(
+            {
+                "trade_date": compact_yyyymmdd(_cell(row, 0, "trade_date")),
+                "ts_code": ts,
+                "reason": _cell(row, 2, "reason"),
+            }
+        )
+    return out
+
+
+def load_top_inst_seat_rows(
+    con: Any,
+    day: str,
+    table: str = TOP_INST_FACT,
+) -> list[dict[str, Any]]:
+    """Full ``trade_date, ts_code, exalter, side`` rows for one day —
+    grain-shaped for :func:`services.data_sources.recon_compare.compare_rows`,
+    unlike the tuple-keyed helpers this replaces for that comparison."""
+    compact = compact_yyyymmdd(day)
+    if not compact:
+        return []
+    dashed = f"{compact[:4]}-{compact[4:6]}-{compact[6:8]}"
+    rows = con.execute(
+        f"""
+        SELECT trade_date, ts_code, exalter, side
+        FROM {sql_table(table)}
+        WHERE replace(CAST(trade_date AS VARCHAR), '-', '') = ?
+           OR CAST(trade_date AS VARCHAR) = ?
+        """,
+        [compact, dashed],
+    ).fetchall()
+    out = []
+    for row in rows:
+        ts = normalize_ts_code(_cell(row, 1, "ts_code"))
+        if not ts:
+            continue
+        out.append(
+            {
+                "trade_date": compact_yyyymmdd(_cell(row, 0, "trade_date")),
+                "ts_code": ts,
+                "exalter": _cell(row, 2, "exalter"),
+                "side": str(_cell(row, 3, "side") or "").strip(),
+            }
+        )
+    return out
 
 
 def miaoxiang_codes(rows: Sequence[Mapping[str, Any]]) -> list[str]:
@@ -575,18 +577,6 @@ def miaoxiang_codes(rows: Sequence[Mapping[str, Any]]) -> list[str]:
         if ts:
             out.append(ts)
     return out
-
-
-def miaoxiang_seat_keys(rows: Sequence[Mapping[str, Any]]) -> list[tuple[str, str, str]]:
-    keys = []
-    for row in rows:
-        ts = normalize_ts_code(row.get("SECUCODE"))
-        if not ts:
-            continue
-        seat = normalize_cn_name(row.get("OPERATEDEPT_NAME"))
-        side = str(row.get("TRADE_DIRECTION") or "").strip()
-        keys.append((ts, seat, side))
-    return keys
 
 
 def miaoxiang_block_keys(rows: Sequence[Mapping[str, Any]]) -> list[tuple[str, str, str]]:
@@ -646,16 +636,25 @@ def compare_index_closes(
     accepted: Sequence[Mapping[str, Any]],
     fuyao: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
-    fy = {
-        compact_yyyymmdd(r.get("trade_date")): _as_float(r.get("close"))
-        for r in fuyao
-        if compact_yyyymmdd(r.get("trade_date"))
-    }
-    acc = {
-        compact_yyyymmdd(r.get("trade_date")): _as_float(r.get("close"))
-        for r in accepted
-        if compact_yyyymmdd(r.get("trade_date"))
-    }
+    def _day_close_map(
+        rows: Sequence[Mapping[str, Any]]
+    ) -> tuple[dict[str, float | None], int]:
+        out: dict[str, float | None] = {}
+        collapse = 0
+        for r in rows:
+            day = compact_yyyymmdd(r.get("trade_date"))
+            if not day:
+                continue
+            if day in out:
+                # same compact trade_date already seen earlier in this side's
+                # rows -> this row collapses into it (grain-uniqueness proxy
+                # for a two-column x-source comparison).
+                collapse += 1
+            out[day] = _as_float(r.get("close"))
+        return out, collapse
+
+    fy, right_collapse = _day_close_map(fuyao)
+    acc, left_collapse = _day_close_map(accepted)
     days = sorted(set(fy) & set(acc))
     match = 0
     mismatch = 0
@@ -676,9 +675,17 @@ def compare_index_closes(
                 samples.append({"trade_date": day, "accepted": a, "fuyao": b})
     return {
         "status": "compared" if days else "empty_recon",
-        "identity": bool(days and mismatch == 0),
+        "identity": bool(
+            days
+            and mismatch == 0
+            and left_collapse == 0
+            and right_collapse == 0
+        ),
         "same_product": True,
         "grain": "trade_date_x_index_code_close",
+        "grain_source": "sync_registry:index_daily_benchmark",
+        "left_collapse": left_collapse,
+        "right_collapse": right_collapse,
         "intersection_days": len(days),
         "close_match": match,
         "close_mismatch": mismatch,
@@ -771,7 +778,7 @@ def parse_miaoxiang_holdernumber(
 
 
 def build_report(sections: Mapping[str, Any]) -> dict[str, Any]:
-    return {
+    report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),  # rule-compliance: ok evidence=audit metadata, not trade_date
         "primary_cut": False,
         "contract": {
@@ -783,6 +790,8 @@ def build_report(sections: Mapping[str, Any]) -> dict[str, Any]:
         "fuyao_dump_coverage": fuyao_dump_coverage(),
         **dict(sections),
     }
+    assert_report_identity_invariant(report)
+    return report
 
 
 __all__ = [
@@ -790,7 +799,6 @@ __all__ = [
     "build_report",
     "compare_holdernumber_sample",
     "compare_index_closes",
-    "compare_sets",
     "compare_valuation_snapshot",
     "dim_to_ts_code",
     "fuyao_dump_coverage",
@@ -801,12 +809,12 @@ __all__ = [
     "load_index_closes",
     "load_latest_daily_basic",
     "load_limit_up_codes",
-    "load_seat_keys",
     "load_share_float_stock_days",
     "load_survey_stock_days",
+    "load_top_inst_seat_rows",
+    "load_top_list_rows",
     "miaoxiang_block_keys",
     "miaoxiang_codes",
-    "miaoxiang_seat_keys",
     "parse_fuyao_index_bars",
     "parse_fuyao_lhb_codes",
     "parse_fuyao_limit_pool",

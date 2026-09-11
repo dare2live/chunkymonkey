@@ -11,7 +11,6 @@ from services.data_sources.assignment_gap_recon import (
     DAILY_BASIC_ABSENT_FROM_FUYAO_SNAPSHOT,
     compare_holdernumber_sample,
     compare_index_closes,
-    compare_sets,
     compare_valuation_snapshot,
     dim_to_ts_code,
     fuyao_dump_coverage,
@@ -19,7 +18,6 @@ from services.data_sources.assignment_gap_recon import (
     load_dim_active_ts_codes,
     load_limit_up_codes,
     miaoxiang_block_keys,
-    miaoxiang_seat_keys,
     normalize_cn_name,
     parse_fuyao_index_bars,
     parse_fuyao_tickers,
@@ -34,42 +32,6 @@ def test_daily_fill_is_not_codeset_ruler():
     with pytest.raises(ValueError, match="raw_tushare_daily"):
         reject_banned_codeset_baseline("raw_tushare_daily")
     assert reject_banned_codeset_baseline("dim_active_a_stock") == "dim_active_a_stock"
-
-
-def test_empty_sets_are_not_identity():
-    report = compare_sets(
-        [], [], grain="g", left_name="a", right_name="b", same_product=True
-    )
-    assert report["status"] == "empty_recon"
-    assert report["identity"] is False
-    assert report["primary_cut"] is False
-
-
-def test_equal_codeset_is_identity_only_when_same_product():
-    codes = ["600519.SH", "000001.SZ"]
-    same = compare_sets(
-        codes,
-        codes,
-        grain="listed_hs_a",
-        left_name="dim",
-        right_name="fuyao",
-        same_product=True,
-    )
-    assert same["identity"] is True
-    other = compare_sets(
-        codes, codes, grain="g", left_name="sw", right_name="ths", same_product=False
-    )
-    assert other["identity"] is False
-    extra = compare_sets(
-        codes,
-        codes + ["430047.BJ"],
-        grain="listed_hs_a",
-        left_name="dim",
-        right_name="fuyao",
-        same_product=True,
-    )
-    assert extra["identity"] is False
-    assert extra["only_right"] == 1
 
 
 def test_dim_to_ts_code_and_load():
@@ -144,6 +106,9 @@ def test_index_close_match_can_be_identity_on_sample():
     body = compare_index_closes(acc, fy)
     assert body["identity"] is True
     assert body["primary_cut"] is False
+    assert body["grain_source"]
+    assert body["left_collapse"] == 0
+    assert body["right_collapse"] == 0
     miss = compare_index_closes(acc, [{"trade_date": "20260825", "close": 1.0}])
     assert miss["identity"] is False
 
@@ -161,15 +126,6 @@ def test_shanghai_ms_and_fuyao_parsers():
         ts_code="000300.SH",
     )
     assert bars[0]["trade_date"] == "20260825"
-    assert miaoxiang_seat_keys(
-        [
-            {
-                "SECUCODE": "000017.SZ",
-                "OPERATEDEPT_NAME": "东方证券杭州",
-                "TRADE_DIRECTION": "0",
-            }
-        ]
-    ) == [("000017.SZ", "东方证券杭州", "0")]
     assert normalize_cn_name("中信证券（山东）有限责任公司青岛分公司") == normalize_cn_name(
         "中信证券(山东)有限责任公司青岛分公司"
     )

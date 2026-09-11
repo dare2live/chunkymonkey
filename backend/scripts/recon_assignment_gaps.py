@@ -30,7 +30,6 @@ from services.data_sources.assignment_gap_recon import (  # noqa: E402
     build_report,
     compare_holdernumber_sample,
     compare_index_closes,
-    compare_sets,
     compare_valuation_snapshot,
     load_block_keys,
     load_codes_for_day,
@@ -39,12 +38,12 @@ from services.data_sources.assignment_gap_recon import (  # noqa: E402
     load_index_closes,
     load_latest_daily_basic,
     load_limit_up_codes,
-    load_seat_keys,
     load_share_float_stock_days,
     load_survey_stock_days,
+    load_top_inst_seat_rows,
+    load_top_list_rows,
     miaoxiang_block_keys,
     miaoxiang_codes,
-    miaoxiang_seat_keys,
     parse_fuyao_index_bars,
     parse_fuyao_lhb_codes,
     parse_fuyao_limit_pool,
@@ -58,10 +57,18 @@ from services.data_sources.fuyao_kline_recon import (  # noqa: E402
     load_fuyao_events,
     load_fuyao_kline,
 )
+from services.data_sources.recon_compare import (  # noqa: E402
+    compare_codeset,
+    compare_rows,
+)
 from services.data_sources.sources.fuyao import (  # noqa: E402
     FuyaoRestError,
     resolve_api_key,
     rest_json,
+)
+from services.data_sources.sources.miaoxiang import (  # noqa: E402
+    clean_top_inst_row,
+    clean_top_list_row,
 )
 from services.duck_adapter import connect  # noqa: E402
 
@@ -203,7 +210,8 @@ def main(argv: list[str] | None = None) -> int:
 
     dim_codes = load_dim_active_ts_codes(ref, DIM_TABLE)
     top_list = load_codes_for_day(raw, TOP_LIST, lhb_day, date_col="trade_date")
-    seats = load_seat_keys(sm, lhb_day, TOP_INST_FACT)
+    top_list_rows = load_top_list_rows(raw, lhb_day, TOP_LIST)
+    top_inst_rows = load_top_inst_seat_rows(sm, lhb_day, TOP_INST_FACT)
     block_keys = load_block_keys(raw, lhb_day, BLOCK_TRADE)
     limit_u = load_limit_up_codes(sm, lhb_day, LIMIT_FACT)
     float_codes = load_share_float_stock_days(raw, lift_day, SHARE_FLOAT)
@@ -250,29 +258,27 @@ def main(argv: list[str] | None = None) -> int:
             if r and r[0]
         ]
         mem.close()
-        fuyao["dump_window_codeset"] = compare_sets(
+        fuyao["dump_window_codeset"] = compare_codeset(
             dim_codes,
             fy_codes,
-            grain="traded_in_dump_window_vs_listed",
+            what="traded_in_dump_window_vs_listed",
             left_name="dim_active_a_stock",
             right_name="fuyao_daily_k_10d_distinct",
-            same_product=False,
         )
         hs_dump = [c for c in fy_codes if str(c).endswith((".SH", ".SZ"))]
-        fuyao["dump_hs_codeset"] = compare_sets(
+        fuyao["dump_hs_codeset"] = compare_codeset(
             dim_codes,
             hs_dump,
-            grain="listed_hs_a_in_dump_window",
+            what="listed_hs_a_in_dump_window",
             left_name="dim_active_a_stock",
             right_name="fuyao_daily_k_10d_hs",
-            same_product=True,
         )
         print(
             "dump-window codeset jaccard={jaccard} only_dim={only_left} "
             "only_fuyao={only_right}".format(**fuyao["dump_window_codeset"])
         )
         print(
-            "dump HS vs dim identity={identity} only_dim={only_left} "
+            "dump HS vs dim jaccard={jaccard} only_dim={only_left} "
             "only_fuyao={only_right}".format(**fuyao["dump_hs_codeset"])
         )
 
@@ -283,18 +289,17 @@ def main(argv: list[str] | None = None) -> int:
     elif api_key:
         try:
             tickers = _fetch_fuyao_tickers(api_key, timeout=args.timeout)
-            fuyao["codeset"] = compare_sets(
+            fuyao["codeset"] = compare_codeset(
                 dim_codes,
                 tickers["codes"],
-                grain="listed_hs_a_snapshot",
+                what="listed_hs_a_snapshot",
                 left_name="dim_active_a_stock",
                 right_name="fuyao_meta_tickers_a_share",
-                same_product=True,
             )
             fuyao["codeset"]["fuyao_pages"] = tickers["pages"]
             print(
-                "codeset jaccard={jaccard} only_dim={only_left} only_fuyao={only_right} "
-                "identity={identity}".format(**fuyao["codeset"])
+                "codeset jaccard={jaccard} only_dim={only_left} "
+                "only_fuyao={only_right}".format(**fuyao["codeset"])
             )
         except Exception as exc:  # noqa: BLE001
             fuyao["codeset"] = _classify(exc)
@@ -323,15 +328,14 @@ def main(argv: list[str] | None = None) -> int:
                 timeout=args.timeout,
             )
             fy_lhb = parse_fuyao_lhb_codes(lhb)
-            fuyao["lhb_vs_top_list"] = compare_sets(
+            fuyao["lhb_vs_top_list"] = compare_codeset(
                 top_list,
                 fy_lhb,
-                grain="trade_date_x_ts_code",
+                what="trade_date_x_ts_code",
                 left_name="raw_tushare_top_list",
                 right_name="fuyao_dragon_tiger_list",
-                same_product=True,
             )
-            print("lhb fuyao vs top_list identity={identity} jaccard={jaccard}".format(
+            print("lhb fuyao vs top_list jaccard={jaccard}".format(
                 **fuyao["lhb_vs_top_list"]
             ))
         except Exception as exc:  # noqa: BLE001
@@ -354,15 +358,14 @@ def main(argv: list[str] | None = None) -> int:
                     timeout=args.timeout,
                 )
                 fy_limit.extend(parse_fuyao_limit_pool(more))
-            fuyao["limit_up"] = compare_sets(
+            fuyao["limit_up"] = compare_codeset(
                 limit_u,
                 fy_limit,
-                grain="trade_date_x_ts_code_limit_up",
+                what="trade_date_x_ts_code_limit_up",
                 left_name="fact_stock_limit_daily_U",
                 right_name="fuyao_limit_up_pool",
-                same_product=True,
             )
-            print("limit-up identity={identity} jaccard={jaccard}".format(**fuyao["limit_up"]))
+            print("limit-up jaccard={jaccard}".format(**fuyao["limit_up"]))
         except Exception as exc:  # noqa: BLE001
             fuyao["limit_up"] = _classify(exc)
         try:
@@ -403,59 +406,82 @@ def main(argv: list[str] | None = None) -> int:
                 "RPT_DAILYBILLBOARD_DETAILSNEW",
                 extra_filters=[f"(TRADE_DATE='{iso_lhb}')"],
             )
-            mx["lhb_vs_top_list"] = compare_sets(
-                top_list,
-                miaoxiang_codes(bill["rows"]),
-                grain="trade_date_x_ts_code",
+            right_rows = [
+                clean_top_list_row(r, trade_date=lhb_day) for r in bill["rows"]
+            ]
+            mx["top_list__vs__miaoxiang"] = compare_rows(
+                domain="top_list",
+                left_rows=top_list_rows,
+                right_rows=right_rows,
                 left_name="raw_tushare_top_list",
                 right_name="RPT_DAILYBILLBOARD_DETAILSNEW",
-                same_product=True,
             )
-            mx["lhb_vs_top_list"]["miaoxiang_count"] = bill.get("count")
-            mx["lhb_vs_top_list"]["truncated"] = bill.get("truncated")
-            print("lhb miaoxiang vs top_list identity={identity} jaccard={jaccard}".format(
-                **mx["lhb_vs_top_list"]
-            ))
+            mx["top_list__vs__miaoxiang"]["miaoxiang_count"] = bill.get("count")
+            mx["top_list__vs__miaoxiang"]["truncated"] = bill.get("truncated")
+            print(
+                "top_list vs miaoxiang identity={identity} matched={matched} "
+                "only_left={only_left} only_right={only_right}".format(
+                    **mx["top_list__vs__miaoxiang"]
+                )
+            )
         except Exception as exc:  # noqa: BLE001
-            mx["lhb_vs_top_list"] = {"status": "unavailable", "error": str(exc)[:240]}
+            mx["top_list__vs__miaoxiang"] = {"status": "unavailable", "error": str(exc)[:240]}
         try:
             dept = _miaoxiang_pages(
                 "RPT_OPERATEDEPT_TRADE",
                 extra_filters=[f"(TRADE_DATE='{iso_lhb}')"],
                 max_pages=4,
             )
-            mx["lhb_seats"] = compare_sets(
-                seats,
-                miaoxiang_seat_keys(dept["rows"]),
-                grain="trade_date_x_ts_code_x_seat_x_side",
+            right_rows = [
+                clean_top_inst_row(r, trade_date=lhb_day) for r in dept["rows"]
+            ]
+            # 2026-09-11 改: 原先右侧先过 sync_runner._prepare_batch_df (drop_duplicates(grain))
+            # 再比 —— 那是把检查放在去重下游, 按构造几乎一定 identity=true, 看不见去重删掉了什么
+            # (实测 20260825 妙想原始 650 行被去重成 526 行, 对账却报 identity=true)。现在右侧用映射后
+            # 的原始行比, 折叠以 right_collapse 显式出现并挡住 identity。去重该不该删这些行是 grain
+            # 契约的问题, 不由对账替它决定。
+            mx["top_inst__vs__miaoxiang"] = compare_rows(
+                domain="fact_top_inst_seat_daily",
+                left_rows=top_inst_rows,
+                right_rows=right_rows,
                 left_name="fact_top_inst_seat_daily",
                 right_name="RPT_OPERATEDEPT_TRADE",
-                same_product=True,
+                grain_source="mart_grains",
             )
-            mx["lhb_seats"]["truncated"] = dept.get("truncated")
-            mx["lhb_seats"]["miaoxiang_count"] = dept.get("count")
-            print("lhb seats identity={identity} jaccard={jaccard} truncated={truncated}".format(
-                **mx["lhb_seats"]
-            ))
+            mx["top_inst__vs__miaoxiang"]["truncated"] = dept.get("truncated")
+            mx["top_inst__vs__miaoxiang"]["miaoxiang_count"] = dept.get("count")
+            print(
+                "top_inst vs miaoxiang identity={identity} matched={matched} "
+                "only_left={only_left} only_right={only_right} "
+                "truncated={truncated}".format(**mx["top_inst__vs__miaoxiang"])
+            )
         except Exception as exc:  # noqa: BLE001
-            mx["lhb_seats"] = {"status": "unavailable", "error": str(exc)[:240]}
+            mx["top_inst__vs__miaoxiang"] = {"status": "unavailable", "error": str(exc)[:240]}
         try:
             blk = _miaoxiang_pages(
                 "RPT_DATA_BLOCKTRADE",
                 extra_filters=[f"(TRADE_DATE='{iso_lhb}')"],
             )
-            mx["block_trade"] = compare_sets(
+            mx["block_trade__vs__miaoxiang"] = compare_codeset(
                 block_keys,
                 miaoxiang_block_keys(blk["rows"]),
-                grain="trade_date_x_ts_code_x_buyer_x_seller",
+                what="trade_date_x_ts_code_x_buyer_x_seller_4key_projection",
                 left_name="raw_tushare_block_trade",
                 right_name="RPT_DATA_BLOCKTRADE",
-                same_product=True,
             )
-            mx["block_trade"]["miaoxiang_count"] = blk.get("count")
-            print("block identity={identity} jaccard={jaccard}".format(**mx["block_trade"]))
+            mx["block_trade__vs__miaoxiang"]["miaoxiang_count"] = blk.get("count")
+            mx["block_trade__vs__miaoxiang"]["left_rows_local"] = len(block_keys)
+            mx["block_trade__vs__miaoxiang"]["not_identity_reason"] = (
+                "no RPT_DATA_BLOCKTRADE -> raw_tushare_block_trade row mapping "
+                "exists; price/vol not compared"
+            )
+            print(
+                "block jaccard={jaccard} left_rows_local={left_rows_local}".format(
+                    **mx["block_trade__vs__miaoxiang"]
+                )
+            )
         except Exception as exc:  # noqa: BLE001
-            mx["block_trade"] = {"status": "unavailable", "error": str(exc)[:240]}
+            mx["block_trade__vs__miaoxiang"] = {"status": "unavailable", "error": str(exc)[:240]}
         try:
             hn = _miaoxiang_pages("RPT_F10_EH_HOLDERNUM", secucode=codes[0], max_pages=1)
             mx["holdernumber"] = compare_holdernumber_sample(
@@ -477,19 +503,18 @@ def main(argv: list[str] | None = None) -> int:
                 "RPTA_APP_LIFTFUTURE",
                 extra_filters=[f"(LIFT_DATE='{iso_lift}')"],
             )
-            mx["share_float"] = compare_sets(
+            mx["share_float"] = compare_codeset(
                 float_codes,
                 miaoxiang_codes(lift["rows"]),
-                grain="float_date_x_ts_code",
+                what="float_date_x_ts_code",
                 left_name="raw_tushare_share_float_holder_rows_collapsed",
                 right_name="RPTA_APP_LIFTFUTURE",
-                same_product=False,
             )
             mx["share_float"]["reason"] = (
                 "TuShare is holder-level; 妙想 LIFTFUTURE is stock-day lift aggregate"
             )
             mx["share_float"]["miaoxiang_count"] = lift.get("count")
-            print("lift stock-set jaccard={jaccard} identity={identity}".format(
+            print("lift stock-set jaccard={jaccard}".format(
                 **mx["share_float"]
             ))
         except Exception as exc:  # noqa: BLE001
@@ -506,26 +531,24 @@ def main(argv: list[str] | None = None) -> int:
                 extra_filters=[f"(NOTICE_DATE='{iso_surv}')"],
                 max_pages=6,
             )
-            mx["survey_receive_vs_surv_date"] = compare_sets(
+            mx["survey_receive_vs_surv_date"] = compare_codeset(
                 survey_codes,
                 miaoxiang_codes(rec["rows"]),
-                grain="visit_date_x_ts_code",
+                what="visit_date_x_ts_code",
                 left_name="raw_tushare_stk_surv.surv_date",
                 right_name="RPT_ORG_SURVEYNEW.RECEIVE_START_DATE",
-                same_product=False,
             )
-            mx["survey_notice_vs_surv_date"] = compare_sets(
+            mx["survey_notice_vs_surv_date"] = compare_codeset(
                 survey_codes,
                 miaoxiang_codes(notice["rows"]),
-                grain="mixed_pit_axes",
+                what="mixed_pit_axes",
                 left_name="raw_tushare_stk_surv.surv_date",
                 right_name="RPT_ORG_SURVEYNEW.NOTICE_DATE",
-                same_product=False,
             )
             mx["survey_receive_vs_surv_date"]["miaoxiang_count"] = rec.get("count")
             mx["survey_notice_vs_surv_date"]["miaoxiang_count"] = notice.get("count")
             print(
-                "survey receive jaccard={jaccard} identity={identity}".format(
+                "survey receive jaccard={jaccard}".format(
                     **mx["survey_receive_vs_surv_date"]
                 )
             )
