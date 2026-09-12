@@ -42,6 +42,12 @@ def mem(monkeypatch):
     # _ro_conn 每函数会 close — 内存库 close 后 fixture 失效, 用 no-op close 包装
     c.close_real = c.close
     c.close = lambda: None
+    # get_profile 655-660 行 active_stock_name_map(codes) 不传 conn → 必开真实
+    # reference RO (_ro_conn 被 mock 了, 这条没被 mock; test_isolation_r1.md §1.3)。
+    monkeypatch.setattr(
+        "services.security_master.active_stock_name_map",
+        lambda codes=None, conn=None: {"600000": "浦发银行"},
+    )
     yield c
     c.close_real()
 
@@ -144,6 +150,7 @@ def test_get_profile_full_contract(mem):
     p = ip.get_profile("牛散A")
     assert p["n_closed"] == 50 and len(p["dims"]) == 1 and len(p["episodes"]) == 1
     assert p["research_identity"]["trend_layers"]["national_team_stabilizer"] is False
+    assert p["episodes"][0]["name"] == "浦发银行"
     assert ip.get_profile("不存在") is None
 
 

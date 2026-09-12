@@ -26,7 +26,9 @@ from services.pipeline.context import PipelineContext
 # 从此它不可能再落后于被测类。
 
 
-def test_refresh_active_a_stock_master_calls_writer_and_reports_rows(monkeypatch, capsys, tmp_path):
+def test_refresh_active_a_stock_master_calls_writer_and_reports_rows(
+    monkeypatch, capsys, tmp_path, tmp_manifest
+):
     calls = []
 
     def _fake_refresh(conn):
@@ -38,14 +40,29 @@ def test_refresh_active_a_stock_master_calls_writer_and_reports_rows(monkeypatch
     )
     # date 必填(刻意: 由 run.py 注入不取 wall-clock, 防跨午夜); log_path 隔离到 tmp
     ctx = PipelineContext(date="20260911", log_path=tmp_path / "run.log")
-    # 前后快照读 reference 库; 库不在时函数自己 try/except 降级成 ctx.log ——
-    # 所以本测试在没有 data/ 的全新克隆里也必须能跑 (这正是它此前红的环境)。
+    # 前后各一次 resolver.connect_ro("reference") 读 dim_active_a_stock —— 不依赖宿主
+    # data/, 用 tmp_manifest 自带 reference 库 (test_isolation_r1.md §2.2A)。
+    import duckdb
+
+    ref_path = tmp_manifest.path_for("reference")
+    seed = duckdb.connect(str(ref_path))
+    try:
+        seed.execute(
+            "CREATE TABLE dim_active_a_stock "
+            "(stock_code VARCHAR, stock_name VARCHAR, updated_at TIMESTAMP)"
+        )
+        seed.execute(
+            "INSERT INTO dim_active_a_stock VALUES "
+            "('000001','A',now()),('600000','B',now())"
+        )
+    finally:
+        seed.close()
+
     acquire._refresh_active_a_stock_master(ctx)
     assert calls == [None], "writer 应被调用一次 (conn 参数已不再被内部使用, 传 None 即可)"
     assert "5211" in capsys.readouterr().out
-    # 传感器是 observer-only: 读不到就是 None, **不许伪造成空集合**(红线 3)
-    assert ctx.dim_active_codes_before is None or isinstance(ctx.dim_active_codes_before, set)
-    assert ctx.dim_active_codes_after is None or isinstance(ctx.dim_active_codes_after, set)
+    assert ctx.dim_active_codes_before == {"000001", "600000"}
+    assert ctx.dim_active_codes_after == {"000001", "600000"}
 
 
 def test_run_acquire_wires_active_stock_refresh_step(monkeypatch, tmp_path):
@@ -82,6 +99,19 @@ def test_run_acquire_wires_active_stock_refresh_step(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "services.pipeline.frozen_domain_observe.observe_frozen_on_demand_domains", lambda _c: []
     )
+    # acquire.py:95/129 两处未打桩会真的开 tushare_raw/smartmoney/reference (§1.1/§1.7):
+    # run_acquire_type_b_publish_catchup 未打桩会规划并执行 Type-B 发布 (读写生产 +
+    # 唯一未隔离过就写真实 /tmp 告警旗标的用例); _finalize_acquire_delta 未打桩会
+    # probe_dc_source_frontier (smartmoney RO + attach tushare_raw)。
+    monkeypatch.setattr(
+        "services.type_b_fact_publish_catchup.run_acquire_type_b_publish_catchup",
+        lambda ctx: calls.append("type_b") or {"status": "skipped"},
+    )
+    monkeypatch.setattr(
+        acquire,
+        "_finalize_acquire_delta",
+        lambda ctx, drain_results=None, formal_outcomes=None: calls.append("finalize"),
+    )
 
     acquire.run_acquire(PipelineContext(date="20260911", log_path=tmp_path / "run.log"))
     assert calls[0] == "auth", "独立 acquire 必须先过授权硬门"
@@ -90,3 +120,5 @@ def test_run_acquire_wires_active_stock_refresh_step(monkeypatch, tmp_path):
     assert calls.index("drain") < calls.index("formal"), calls
     # 顺序断言: 紧随 calendar 之后 (raw stock_basic 已被 drain 同步完, 立即重建派生表)
     assert calls.index("active_stock") == calls.index("calendar") + 1
+    assert calls.index("drain") < calls.index("type_b") < calls.index("formal"), calls
+    assert calls[-1] == "finalize", calls

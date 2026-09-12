@@ -18,8 +18,15 @@ def _market_path() -> str:
     return str(get_database_manifest().path_for("market"))
 
 
-def test_guard_blocks_rw_open_of_main_db():
-    """guard ON 后 read_write 打开主库 → SandboxBoundaryError (核心硬门)。"""
+def test_guard_blocks_rw_open_of_main_db(tmp_manifest):
+    """guard ON 后 read_write 打开主库 → SandboxBoundaryError (核心硬门)。
+
+    tmp_manifest: 否则 _market_path() 解到真 <repo>/data/market.duckdb, RW 打开会先被
+    livedb 守卫拦成 LiveDbAccessError 而不是 SandboxBoundaryError
+    (test_isolation_r1.md §2.2A)。
+    """
+    p = tmp_manifest.path_for("market")
+    duckdb.connect(str(p)).close()
     sandbox_guard.enable_sandbox_guard()
     with pytest.raises(sandbox_guard.SandboxBoundaryError):
         duckdb.connect(_market_path())  # 默认 read_write
@@ -27,8 +34,15 @@ def test_guard_blocks_rw_open_of_main_db():
         duckdb.connect(_market_path(), read_only=False)
 
 
-def test_guard_allows_read_only_open_of_main_db():
-    """read_only 打开主库 → 放行 (探索读主库正路)。"""
+def test_guard_allows_read_only_open_of_main_db(tmp_manifest):
+    """read_only 打开主库 → 放行 (探索读主库正路)。用 tmp_manifest 造一份最小
+    market 库, 不依赖宿主 843MB 真库 (test_isolation_r1.md §2.2A)。"""
+    p = tmp_manifest.path_for("market")
+    seed = duckdb.connect(str(p))
+    seed.execute("CREATE TABLE price_kline_qfq_tushare (x INT)")
+    seed.execute("INSERT INTO price_kline_qfq_tushare VALUES (1)")
+    seed.close()
+
     sandbox_guard.enable_sandbox_guard()
     con = duckdb.connect(_market_path(), read_only=True)
     try:
@@ -38,7 +52,12 @@ def test_guard_allows_read_only_open_of_main_db():
         con.close()
 
 
-def test_read_only_main_helper_works_and_is_read_only():
+def test_read_only_main_helper_works_and_is_read_only(tmp_manifest):
+    p = tmp_manifest.path_for("market")
+    seed = duckdb.connect(str(p))
+    seed.execute("CREATE TABLE price_kline_qfq_tushare (x INT)")
+    seed.close()
+
     sandbox_guard.enable_sandbox_guard()
     con = sandbox_guard.read_only_main("market")
     try:

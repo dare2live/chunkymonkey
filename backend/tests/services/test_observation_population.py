@@ -85,12 +85,16 @@ def test_policy_truth_sources_align_with_accepted_dataset_ids() -> None:
     assert policy.st_membership_source == ST_MEMBERSHIP_DATASET_ID
 
 
+@pytest.mark.live_db_readonly
 def test_live_kline_and_st_loaders_fail_closed_before_partition_visibility() -> None:
     """Live loaders stay fail-closed when decision_time precedes accepted visibility.
 
     After the authorized 20260717 canary, partitions may exist but must remain
     invisible to an earlier decision_time (PIT). Offline/CI without the canary
     still fail closed on missing partitions.
+
+    live_db_readonly: 有本地 tushare_raw 时读真库 accepted_partition, 无库时走
+    NOT_EVALUATED —— 两种环境都要 fail-closed, 是本用例设计意图本身。
     """
 
     policy = _policy()
@@ -438,7 +442,10 @@ def test_partition_not_visible_at_decision_time_is_not_evaluated() -> None:
     assert "not_visible_at_decision_time" in caught.value.reason
 
 
+@pytest.mark.live_db_readonly
 def test_evaluate_readiness_runs_loaders_and_stays_not_evaluated_live() -> None:
+    """live_db_readonly: calendar_loader 已注入抛错, 但 nominal/st loader 走默认路径
+    真开 tushare_raw (有库/无库都要 fail-closed)。"""
     policy = _policy()
     readiness = evaluate_observation_population_readiness(
         policy,

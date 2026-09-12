@@ -1519,6 +1519,16 @@ def test_acquire_runs_registry_drain_before_formal_and_despite_formal_hard(
     monkeypatch.setattr(
         acquire, "_refresh_active_a_stock_master", lambda _c: order.append("active")
     )
+    # acquire.py:95/129 两处未打桩会真的开 tushare_raw/smartmoney/reference (§1.1/§1.7)。
+    monkeypatch.setattr(
+        "services.type_b_fact_publish_catchup.run_acquire_type_b_publish_catchup",
+        lambda ctx: order.append("type_b") or {"status": "skipped"},
+    )
+    monkeypatch.setattr(
+        acquire,
+        "_finalize_acquire_delta",
+        lambda ctx, drain_results=None, formal_outcomes=None: order.append("finalize"),
+    )
 
     ctx = PipelineContext(date="20260722", log_path=tmp_path / "run.log")
     try:
@@ -1534,6 +1544,8 @@ def test_acquire_runs_registry_drain_before_formal_and_despite_formal_hard(
     assert "active" in order, "active_stock 桩没被调到 (签名不匹配?)"
     # Structural: formal hard → degraded, not Tier0AcquireError abort.
     assert any("formal daily" in msg for msg in ctx.degraded_msgs)
+    assert order.index("drain") < order.index("type_b") < order.index("formal"), order
+    assert order[-1] == "finalize", order
 
 
 def test_acquire_continues_non_tushare_steps_when_top_level_auth_blocked(
@@ -1581,6 +1593,15 @@ def test_acquire_continues_non_tushare_steps_when_top_level_auth_blocked(
     monkeypatch.setattr(
         "services.pipeline.frozen_domain_observe.observe_frozen_on_demand_domains", lambda _c: []
     )
+    monkeypatch.setattr(
+        "services.type_b_fact_publish_catchup.run_acquire_type_b_publish_catchup",
+        lambda ctx: order.append("type_b") or {"status": "skipped"},
+    )
+    monkeypatch.setattr(
+        acquire,
+        "_finalize_acquire_delta",
+        lambda ctx, drain_results=None, formal_outcomes=None: order.append("finalize"),
+    )
 
     ctx = PipelineContext(date="20260911", log_path=tmp_path / "run.log")
     try:
@@ -1588,9 +1609,9 @@ def test_acquire_continues_non_tushare_steps_when_top_level_auth_blocked(
     finally:
         ctx.close()
 
-    assert order == ["holders", "qfii", "org", "drain", "formal", "calendar", "active"], (
-        "顶层授权阻断不得让任何一步被跳过"
-    )
+    assert order == [
+        "holders", "qfii", "org", "drain", "type_b", "formal", "calendar", "active", "finalize",
+    ], "顶层授权阻断不得让任何一步被跳过"
     assert any(
         "authorization_blocked" in msg and "auth_expired" in msg for msg in ctx.degraded_msgs
     )
@@ -1622,6 +1643,15 @@ def test_acquire_top_level_auth_success_leaves_no_authorization_blocked_message(
     monkeypatch.setattr(
         "services.pipeline.frozen_domain_observe.observe_frozen_on_demand_domains", lambda _c: []
     )
+    monkeypatch.setattr(
+        "services.type_b_fact_publish_catchup.run_acquire_type_b_publish_catchup",
+        lambda ctx: {"status": "skipped"},
+    )
+    monkeypatch.setattr(
+        acquire,
+        "_finalize_acquire_delta",
+        lambda ctx, drain_results=None, formal_outcomes=None: None,
+    )
 
     ctx = PipelineContext(date="20260911", log_path=tmp_path / "run.log")
     try:
@@ -1629,7 +1659,9 @@ def test_acquire_top_level_auth_success_leaves_no_authorization_blocked_message(
     finally:
         ctx.close()
 
-    assert not any("authorization_blocked" in msg for msg in ctx.degraded_msgs)
+    # 今天(未打桩前) degraded_msgs 里会静默混进两条 type_b 降级消息, 测试原先只查
+    # authorization_blocked 所以照绿 —— 断言改强为完全为空, 才能证明 type_b 已被打桩。
+    assert ctx.degraded_msgs == []
 
 
 def test_sync_registry_drain_degrades_not_raises_on_batch_auth_block(monkeypatch, tmp_path):
@@ -2086,6 +2118,13 @@ def test_independent_acquire_dry_run_cannot_bypass_auth_probe(monkeypatch, tmp_p
     monkeypatch.setattr(sync_runner, "load_registry", _tushare_domain_due_registry)
     monkeypatch.setattr(preflight, "TuShareSource", FakeSource)
     monkeypatch.setattr(preflight, "ensure_pipeline_sync_ready", lambda _ctx: None)
+    # dry 路径末尾仍会调 _finalize_acquire_delta → probe_dc_source_frontier()
+    # (smartmoney RO + attach tushare_raw RO); 本测试测的是授权探针, 不是它。
+    monkeypatch.setattr(
+        acquire,
+        "_finalize_acquire_delta",
+        lambda ctx, drain_results=None, formal_outcomes=None: None,
+    )
     ctx = PipelineContext(
         dry=True,
         date="20260101",

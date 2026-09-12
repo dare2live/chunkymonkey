@@ -198,6 +198,12 @@ def test_run_domain_records_incomplete_batch_without_advancing_watermark(monkeyp
     monkeypatch.setattr(sr, "trading_days", lambda start, end=None: ["20260714"])
     monkeypatch.setattr(sr, "_record_outcome", lambda spec, **kwargs: recorded.update(kwargs))
     monkeypatch.setattr(sr.time, "sleep", lambda seconds: None)
+    # by_trade_date 分支即使给了 start 也无条件调 _last_watermark_date(domain) →
+    # _smartmoney_conn() → services.db.get_conn() 真实读写打开生产 smartmoney (幂等
+    # DDL + 一条 SELECT, 但抢写锁; test_isolation_r1.md §1.2)。用内存库顶替, 事后断言
+    # 真 DDL 路径确实跑过 (证明不是假隔离出一个从不触达的分支)。
+    ops_mem = connect(":memory:")
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: _NoClose(ops_mem))
 
     result = sr.run_domain(
         "margin_detail", start="20260714", end="20260714", registry=reg
@@ -210,6 +216,10 @@ def test_run_domain_records_incomplete_batch_without_advancing_watermark(monkeyp
         "SELECT rzye FROM raw_tushare_margin_detail WHERE ts_code='000001.SZ'"
     ).fetchone()[0]
     assert old == 20.0
+    assert ops_mem.execute(
+        "SELECT count(*) FROM information_schema.tables "
+        "WHERE table_name='mart_data_source_watermark'"
+    ).fetchone()[0] == 1
 
 
 @pytest.mark.parametrize(
@@ -893,10 +903,29 @@ def test_run_domain_records_database_write_failure(monkeypatch):
             pass
 
     monkeypatch.setattr(sr, "_target_conn", lambda spec: _Conn())
+
+    class _NoClose:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+        def close(self):
+            pass
+
+    # 同上一条: by_trade_date 分支无条件读水位, 会真开生产 smartmoney 读写。
+    ops_mem = connect(":memory:")
+    monkeypatch.setattr(sr, "_smartmoney_conn", lambda: _NoClose(ops_mem))
+
     result = sr.run_domain("probe_daily", start="20260715", end="20260715", registry=reg)
 
     assert result["failed_batches"] == 1 and result["last_date"] is None
     assert recorded["ok"] is False and recorded["last_date"] is None
+    assert ops_mem.execute(
+        "SELECT count(*) FROM information_schema.tables "
+        "WHERE table_name='mart_data_source_watermark'"
+    ).fetchone()[0] == 1
 
 
 def test_formal_daily_sync_requires_explicit_bounds_before_provider_io(monkeypatch):

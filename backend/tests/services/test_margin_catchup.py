@@ -366,6 +366,13 @@ def test_run_acquire_wires_margin_catchup(monkeypatch, tmp_path):
         "_finalize_acquire_delta",
         lambda ctx, drain_results=None, formal_outcomes=None: None,
     )
+    # acquire.py:95 run_acquire_type_b_publish_catchup(ctx) 未打桩时会真的规划并执行
+    # Type-B 发布 (smartmoney 读写 + tushare_raw/reference 只读), 抢生产写锁并在上榜理由
+    # fail-closed 后写真实告警旗标 (test_isolation_r1.md §1.1)。
+    monkeypatch.setattr(
+        "services.type_b_fact_publish_catchup.run_acquire_type_b_publish_catchup",
+        lambda ctx: {"status": "skipped", "reason": "stubbed"},
+    )
 
     import services.pipeline.margin_catchup_acquire as mca
     import services.pipeline.frozen_domain_observe as fdo

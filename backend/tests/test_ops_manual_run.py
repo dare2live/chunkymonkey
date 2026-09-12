@@ -344,6 +344,10 @@ def test_current_activity_prefers_latest_phase_over_prior_fail(tmp_path, monkeyp
         lambda: SimpleNamespace(busy=True, owner="pipeline.run", owner_pid=3299),
     )
     monkeypatch.setattr(ops_manual_run, "_is_running", lambda _spec: True)
+    # _status_payload 末尾 out["due_plan"] = _due_plan_preview() → _org_holding_due_item()
+    # → org_holding RO (真实 5GB 库); 本测试测的是 current_activity 解析, 不是 due_plan。
+    monkeypatch.setattr(ops_manual_run, "_REPO", tmp_path)
+    monkeypatch.setattr(ops_manual_run, "_org_holding_due_item", lambda: None)
 
     payload = ops_manual_run._status_payload("daily_update", spec)
     act = payload["current_activity"]

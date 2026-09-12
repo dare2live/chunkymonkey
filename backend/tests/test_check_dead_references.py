@@ -119,6 +119,7 @@ def test_scan_f_fails_for_installer_referencing_missing_plist(tmp_path):
     ]
 
 
+@pytest.mark.live_db_readonly
 def test_known_safe_list_entries_still_match_reality():
     """白名单每条必须仍然成立: (1) 引用方文件仍存在且仍引用该表名 (2) 该表仍确实不存在
     (若表后来被重建, 条目该删——白名单不能变成"曾经安全, 现在盲区")。
@@ -135,6 +136,7 @@ def test_known_safe_list_entries_still_match_reality():
         assert tbl not in live, f"表 {tbl} 现在已存在 (可能被重建), 白名单条目该删让 E 扫重新覆盖它"
 
 
+@pytest.mark.live_db_readonly
 def test_full_dead_references_gate_passes():
     """整门 (A import-services + B dead-services-ref + C config-dead-path + D module-literal
     + E sql-table-ref) 全绿。"""

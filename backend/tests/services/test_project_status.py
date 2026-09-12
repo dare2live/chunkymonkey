@@ -9,12 +9,11 @@
 """
 from __future__ import annotations
 
-from pathlib import Path
+import pytest
 
 from services import project_status as ps
 
 
-REPO = Path(__file__).resolve().parents[3]
 SECTIONS = (
     "calendar", "accepted_frontier", "source_watermarks",
     "cutovers", "gates", "board", "alerts",
@@ -30,7 +29,10 @@ def _is_typed(section: object) -> bool:
     return bool(section.get("status") or section.get("overall"))
 
 
+@pytest.mark.live_db_readonly
 def test_every_section_is_typed_or_honestly_unavailable() -> None:
+    """live_db_readonly: collect_status 契约就是"有库查库/无库 unavailable", 两种情况
+    同一断言 (test_isolation_r1.md §2.2B)。"""
     status = ps.collect_status()
     assert status["kind"] == "project_status"
     for name in SECTIONS:
@@ -38,32 +40,64 @@ def test_every_section_is_typed_or_honestly_unavailable() -> None:
         assert _is_typed(status[name]), f"{name} 既没给数据也没诚实标 unavailable: {status[name]}"
 
 
-# data/scratch 是公认的进程私有临时区 (通达信除权缓存 .tdxhub_xdxr_cache.json、
-# baostock 会话锁等)。2026-09-01 实证: 一次并发的 daily 跑批在此写缓存, 就让下面这个
-# 测试变红 —— 但它想问的是"collect_status 自己落盘了吗", 不是"有没有别的进程在写 data/"。
-# 判据的实现比意图宽, 任何并发写 data/ 的进程都能伪造失败 (同 engineering_governance §15.5)。
-_SCRATCH = "scratch"
+def test_collect_writes_no_files(tmp_path, tmp_manifest) -> None:
+    """L2 契约 = 命令现查、零文件。落盘就等于又造了一份会烂的状态。
 
+    不打 live_db_readonly 标记, 改用 tmp_manifest: 原判据 diff 整个 <repo>/data 树,
+    2026-09-11 实证任何并发写 data/ 的进程 (交易所证据抓取脚本) 都能伪造它失败
+    (test_isolation_r1.md §2.2B) —— 判据的实现比意图宽。这里改 diff tmp_path 树,
+    并断言 accepted_frontier 确实探到了 smartmoney (证明走的是真路径, 不是降级)。
+    """
+    import duckdb
 
-def _durable_data_files() -> set:
-    """data/ 下的持久文件, 排除 scratch 临时区 —— 后者按设计就会被并发进程写。"""
-    root = REPO / "data"
-    if not root.is_dir():
-        return set()
-    return {
-        p for p in root.rglob("*")
-        if p.is_file() and _SCRATCH not in p.relative_to(root).parts
-    }
+    ref_path = tmp_manifest.path_for("reference")
+    ref_conn = duckdb.connect(str(ref_path))
+    try:
+        ref_conn.execute(
+            "CREATE TABLE dim_trading_calendar (trade_date VARCHAR, is_trading BIGINT)"
+        )
+        ref_conn.executemany(
+            "INSERT INTO dim_trading_calendar VALUES (?, 1)",
+            [("2026-09-08",), ("2026-09-09",), ("2026-09-10",), ("2026-09-11",)],
+        )
+    finally:
+        ref_conn.close()
 
+    sm_path = tmp_manifest.path_for("smartmoney")
+    sm_conn = duckdb.connect(str(sm_path))
+    try:
+        sm_conn.execute(
+            "CREATE TABLE accepted_partition ("
+            "dataset_id VARCHAR, partition_value VARCHAR, batch_id VARCHAR, "
+            "contract_version VARCHAR, contract_hash VARCHAR, config_hash VARCHAR, "
+            "row_count BIGINT, content_hash VARCHAR, observed_at TIMESTAMP, "
+            "available_at TIMESTAMP, accepted_at TIMESTAMP)"
+        )
+        sm_conn.execute(
+            "INSERT INTO accepted_partition VALUES "
+            "('tier0.market_data.nominal_ohlcv_daily','20260910','b1','v1','ch1','cf1',"
+            "100,'hh1',now(),now(),now())"
+        )
+        sm_conn.execute(
+            "CREATE TABLE mart_data_source_watermark ("
+            "data_domain VARCHAR, source_name VARCHAR, last_data_date VARCHAR, "
+            "consecutive_failures INTEGER, fallback_active BOOLEAN, row_count BIGINT)"
+        )
+        sm_conn.execute(
+            "INSERT INTO mart_data_source_watermark VALUES "
+            "('sync:probe_daily','tdxhub','20260910',0,false,10)"
+        )
+    finally:
+        sm_conn.close()
 
-def test_collect_writes_no_files(tmp_path, monkeypatch) -> None:
-    """L2 契约 = 命令现查、零文件。落盘就等于又造了一份会烂的状态。"""
-    before = _durable_data_files()
-    ps.collect_status()
-    after = _durable_data_files()
+    before = {p for p in tmp_path.rglob("*") if p.is_file()}
+    status = ps.collect_status()
+    after = {p for p in tmp_path.rglob("*") if p.is_file()}
     assert after == before, f"现查入口落了盘: {sorted(str(p) for p in (after - before))[:5]}"
+    assert "smartmoney" in status["accepted_frontier"]["databases_probed"]
 
 
+@pytest.mark.live_db_readonly
 def test_main_exit_code_is_always_zero(capsys) -> None:
     """状态命令不是门。给它退出码语义 = 又造一套与 continuity/SLA 并行的裁决。"""
     assert ps.main([]) == 0
@@ -71,12 +105,11 @@ def test_main_exit_code_is_always_zero(capsys) -> None:
     assert "project_status" in capsys.readouterr().out
 
 
+@pytest.mark.live_db_readonly
 def test_lag_is_counted_in_trading_days_not_calendar_days() -> None:
     """滞后必须按交易日；按自然日会把周末算进去，制造假紧迫。"""
     frontier = ps.collect_status()["accepted_frontier"]
     if frontier.get("status") != "ok":
-        import pytest
-
         pytest.skip(f"库不可达: {frontier.get('reason')}")
     dated = [d for d in frontier["datasets"] if d["frontier_is_date"]]
     assert dated, "至少应有一个日期轴数据集"

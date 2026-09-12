@@ -6,6 +6,9 @@ from pathlib import Path
 import duckdb
 import pytest
 
+# 硬编码真实 <repo>/data/smartmoney.duckdb (perf 默认反选, 显式跑 -m perf 时才会
+# 撞守卫); test_isolation_r1.md §4.7 第 4 条。
+pytestmark = pytest.mark.live_db_readonly
 
 DB_PATH = Path(__file__).resolve().parents[3] / "data" / "smartmoney.duckdb"
 TABLE_NAME = "mart_p0b_oos_predictions"

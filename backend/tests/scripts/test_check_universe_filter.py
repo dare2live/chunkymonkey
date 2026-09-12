@@ -56,7 +56,9 @@ def test_empty_source_snapshot_fails_closed(tmp_path: Path) -> None:
     assert any(issue["code"] == "no_source" for issue in report["issues"])
 
 
-def test_worktree_includes_untracked_source_and_omits_deleted_file(tmp_path: Path) -> None:
+def test_worktree_includes_untracked_source_and_omits_deleted_file(
+    tmp_path: Path, monkeypatch
+) -> None:
     _git(tmp_path, "init", "-q")
     deleted = _source(tmp_path, "deleted.py")
     _git(tmp_path, "add", deleted.relative_to(tmp_path).as_posix())
@@ -64,33 +66,30 @@ def test_worktree_includes_untracked_source_and_omits_deleted_file(tmp_path: Pat
     _source(tmp_path, "untracked.py")
     registry_path = _write_inputs(tmp_path, _live_margin_registry())
 
+    # 不打桩会真的开 tushare_raw 读 accepted_partition (skip_live_readiness=False
+    # 默认路径); 本测试测的是 worktree 清单(untracked/deleted), 不是 readiness——
+    # 桩成确定的 READY, 断言从此不再随宿主库状态摇摆 (test_isolation_r1.md §2.2A)。
+    class _Ready:
+        def as_dict(self):
+            return {
+                "status": "READY",
+                "observation_date": "20260717",
+                "reasons": ["accepted_calendar_kline_st:20260717"],
+            }
+
+    monkeypatch.setattr(gate, "evaluate_observation_population_readiness", lambda _policy: _Ready())
+
     report = gate.audit_repository(tmp_path, registry_path=registry_path)
     assert report["verdict"] == "PASS"
     assert report["source_mode"] == "worktree"
     assert report["source_count"] == 1
     assert report["formal_dataset_count"] == 1
     assert report["scope_counts"] == {"external_aggregate": 1}
-    # live_readiness must be evaluated via observation loaders, not a dead constant.
-    # Hosts with an accepted eligible-frontier canary may honestly report READY;
-    # offline/missing hosts stay NOT_EVALUATED/BLOCKED with explicit reasons.
-    assert report["live_readiness"] in {"NOT_EVALUATED", "BLOCKED", "DEGRADED", "READY"}
+    assert report["live_readiness"] == "READY"
     detail = report["live_readiness_detail"]
-    assert detail["status"] == report["live_readiness"]
-    assert detail.get("reasons")
-    if report["live_readiness"] == "READY":
-        assert detail.get("observation_date")
-        assert any("accepted_calendar_kline_st" in reason for reason in detail["reasons"])
-    else:
-        # 只要求 reasons 点名**它实际检查到的那个**数据集, 不要求两个都出现:
-        # readiness 在第一个缺失的数据集处短路返回是正确行为(缺 K 线时不必再查 ST),
-        # 于是 reasons 可能只有一条。2026-08-21 实测: 补齐 stock_st 到 20260821 后
-        # 该域已就绪、K 线因 available_after=18:00 尚未发布, reasons 只剩 nominal_ohlcv
-        # 一条 —— 原断言要求两条同时出现, 等于断言宿主数据处于某个特定残缺状态。
-        assert any(
-            ds in reason
-            for reason in detail["reasons"]
-            for ds in ("nominal_ohlcv", "stock_st", "trading_calendar")
-        ), detail["reasons"]
+    assert detail["status"] == "READY"
+    assert detail["observation_date"] == "20260717"
+    assert any("accepted_calendar_kline_st" in reason for reason in detail["reasons"])
 
 
 def test_index_mode_uses_staged_inventory_not_clean_worktree(tmp_path: Path) -> None:
@@ -106,7 +105,7 @@ def test_index_mode_uses_staged_inventory_not_clean_worktree(tmp_path: Path) -> 
     )
     tracked.write_text("WORKTREE_ONLY = 2\n", encoding="utf-8")
 
-    report = gate.audit_repository(tmp_path, source_mode="index")
+    report = gate.audit_repository(tmp_path, source_mode="index", skip_live_readiness=True)
     assert report["verdict"] == "PASS"
     assert report["source_mode"] == "index"
     assert report["source_count"] == 1
@@ -140,7 +139,9 @@ def test_disabled_formal_dataset_still_requires_population_scope(tmp_path: Path)
     registry["domains"]["margin"].pop("population_scope")
     registry_path = _write_inputs(tmp_path, registry)
 
-    report = gate.audit_repository(tmp_path, registry_path=registry_path)
+    report = gate.audit_repository(
+        tmp_path, registry_path=registry_path, skip_live_readiness=True
+    )
     assert report["verdict"] == "FAIL"
     issue = next(item for item in report["issues"] if item["code"] == "population_scope_invalid")
     assert issue["domain"] == "margin"
@@ -162,7 +163,9 @@ def test_exchange_aggregate_cannot_masquerade_as_project_security_scope(tmp_path
         }
     )
     registry_path = _write_inputs(tmp_path, registry)
-    report = gate.audit_repository(tmp_path, registry_path=registry_path)
+    report = gate.audit_repository(
+        tmp_path, registry_path=registry_path, skip_live_readiness=True
+    )
     assert report["verdict"] == "FAIL"
     assert "security_field must be 'ts_code'" in report["issues"][0]["message"]
 

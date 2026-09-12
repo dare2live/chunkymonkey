@@ -1,9 +1,17 @@
-"""Stock dossier API tests — fixture DB, no live DuckDB dependency."""
+"""Stock dossier API tests — fixture DB.
+
+2026-09-11 实测更正: docstring 曾写"no live DuckDB dependency", 与事实不符——
+stock_dossier.py:882 load_holdernumber_assist(code, as_of) 经 holdernumber_assist.py
+的 DataAccess() 会开 tushare_raw/market/reference 三库 RO (get_dossier_conn 的
+dependency override 管不到它, 见 test_isolation_r1.md §1.3)。下面的 autouse 夹具把
+这条路径打桩成 typed empty, 现有 status in {"ok","empty"} 断言照旧成立。
+"""
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -11,6 +19,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
 from routers import stock_dossier as dossier_api
+
+
+@pytest.fixture(autouse=True)
+def _stub_holdernumber(monkeypatch):
+    from services import holdernumber_assist as hna
+
+    empty = {
+        "status": "empty",
+        "reason": "stubbed_in_test",
+        "latest": None,
+        "series": [],
+        "concentration": hna._concentration(None, None),
+        "vs_price": {
+            "status": "unavailable",
+            "reason": "stubbed_in_test",
+            "price_chg_pct": None,
+            "note": "assist only; not a signal",
+        },
+        "provenance": None,
+    }
+    monkeypatch.setattr(dossier_api, "load_holdernumber_assist", lambda code, as_of=None: dict(empty))
 
 
 def _fixture_conn():

@@ -111,12 +111,26 @@ def _sw_attach(con) -> None:
     )
 
 
+def _dim_ddl(con) -> None:
+    """stock_screener.py:292 active_stock_name_map(codes, conn=conn) 走
+    resolver.dim_read_conn(conn, "dim_active_a_stock") —— fixture conn 没这张表就
+    静默回退开真实 reference RO (test_isolation_r1.md §1.3/§2.2A)。给 conn 建这张表
+    是 dim_read_conn 文档化的"conn 有表用 conn"正路, 不是 mock 掉被测的 security_master。
+    """
+    con.execute(
+        "CREATE TABLE dim_active_a_stock "
+        "(stock_code VARCHAR, stock_name VARCHAR, updated_at TIMESTAMP)"
+    )
+    con.execute("INSERT INTO dim_active_a_stock VALUES ('600001', '甲', now())")
+
+
 def _briefing_fresh_conn():
     con = duck_mem()
     _cal(con)
     _sector_ddl(con)
     _member_ddl(con)
     _form_ddl(con)
+    _dim_ddl(con)
     _sw_attach(con)
     _insert_strong_sector(con, sector_code="BK001", sector_name="行业A", chain="dc_industry")
     _insert_strong_sector(con, sector_code="BK101", sector_name="概念X", chain="dc_concept")
@@ -179,6 +193,7 @@ def test_briefing_fail_closed_when_intersection_stale():
     _sector_ddl(con)
     _member_ddl(con)
     _form_ddl(con)
+    _dim_ddl(con)
     _sw_attach(con)
     _insert_strong_sector(con, sector_code="BK001", sector_name="行业A", chain="dc_industry")
     _insert_strong_sector(con, sector_code="801010.SI", sector_name="申万农林", chain="sw_industry")

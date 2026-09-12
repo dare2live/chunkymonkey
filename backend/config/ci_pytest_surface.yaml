@@ -235,6 +235,7 @@ blocking_paths:
 - tests/test_institution_profile.py
 - tests/test_institution_profile_api.py
 - tests/test_kline_write_calendar_lint.py
+- tests/test_livedb_guard.py
 - tests/test_market_db_canonical_kline.py
 - tests/test_market_pulse.py
 - tests/test_market_pulse_api.py
