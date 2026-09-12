@@ -13,10 +13,8 @@ docstring in ``sources/miaoxiang.py`` for the full mapping table and provenance)
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import pytest
-import yaml
 
 from services.data_sources.pagination_integrity import assess_paginated_land
 from services.data_sources.sources.miaoxiang import (
@@ -38,8 +36,8 @@ from services.data_sources.sources.miaoxiang import (
     clean_top_inst_row,
     clean_top_list_row,
     compact_trade_date,
-    load_vendor_scope,
 )
+from services.data_sources.vendor_scope import VendorExclusions, VendorScopeError
 
 
 # ---------------------------------------------------------------------------
@@ -807,72 +805,31 @@ def test_alias_is_miaoxiang():
 
 
 # ---------------------------------------------------------------------------
-# vendor_scope.yaml — B股/EQB 排除 (owner ruling 2026-09-12)
+# vendor_scope wiring — B股/EQB 排除 (owner ruling 2026-09-12). The v2
+# vendor_scope.yaml shape, its L1-L12 loader rules, and vendor_exclusions()
+# itself are tested in test_vendor_scope.py; this file only tests that
+# MiaoxiangSource.fetch_raw wires that API in correctly (接线测试).
 # ---------------------------------------------------------------------------
 
 
-def _write_vendor_scope(tmp_path: Path, content: dict) -> Path:
-    path = tmp_path / "vendor_scope.yaml"
-    path.write_text(yaml.safe_dump(content, allow_unicode=True), encoding="utf-8")
-    return path
+def test_unregistered_api_disposition_fails_closed(monkeypatch):
+    """An api that passes the known-report-name check but has no vendor_scope
+    disposition must not be treated as "no exclusions" — it must fail closed.
+    Mutation target: removing the try/except VendorScopeError wrapping in
+    fetch_raw makes this raise VendorScopeError instead of MiaoxiangSourceError
+    (or not raise at all if the lookup were skipped), so this test alone
+    catches that regression."""
 
+    def _raise_unregistered(*_args, **_kwargs):
+        raise VendorScopeError("no disposition registered for 'miaoxiang.top_inst'")
 
-def test_vendor_scope_repo_file_excludes_eqb():
-    """The actual checked-in backend/config/vendor_scope.yaml (default path,
-    no override) must exclude EQB from block_trade."""
-    scope = load_vendor_scope()
-    assert scope["block_trade"] == frozenset({"EQB"})
-
-
-def test_vendor_scope_unknown_top_key(tmp_path):
-    path = _write_vendor_scope(
-        tmp_path,
-        {
-            "version": 1,
-            "miaoxiang": {"block_trade": {"exclude_security_types": ["EQB"]}},
-            "extra_top_key": True,
-        },
+    monkeypatch.setattr(
+        "services.data_sources.sources.miaoxiang.vendor_exclusions",
+        _raise_unregistered,
     )
-    with pytest.raises(ValueError):
-        load_vendor_scope(path)
-
-
-def test_vendor_scope_unknown_api(tmp_path):
-    path = _write_vendor_scope(
-        tmp_path,
-        {
-            "version": 1,
-            "miaoxiang": {
-                "block_trade": {"exclude_security_types": ["EQB"]},
-                "top_inst": {"exclude_security_types": ["XYZ"]},
-            },
-        },
-    )
-    with pytest.raises(ValueError):
-        load_vendor_scope(path)
-
-
-def test_vendor_scope_bad_value_type(tmp_path):
-    path = _write_vendor_scope(
-        tmp_path,
-        {"version": 1, "miaoxiang": {"block_trade": {"exclude_security_types": "EQB"}}},
-    )
-    with pytest.raises(ValueError):
-        load_vendor_scope(path)
-
-
-def test_vendor_scope_empty_list(tmp_path):
-    path = _write_vendor_scope(
-        tmp_path,
-        {"version": 1, "miaoxiang": {"block_trade": {"exclude_security_types": []}}},
-    )
-    with pytest.raises(ValueError):
-        load_vendor_scope(path)
-
-
-# ---------------------------------------------------------------------------
-# vendor_scope wired into block_trade fetch — excludes before clean_block_trade_row
-# ---------------------------------------------------------------------------
+    src = MiaoxiangSource(client=_ExplodingClient())
+    with pytest.raises(MiaoxiangSourceError, match="no vendor_scope disposition"):
+        src.fetch_raw("top_inst", trade_date="20260825")
 
 
 def test_block_trade_fetch_excludes_eqb_before_clean(caplog):
@@ -894,8 +851,8 @@ def test_block_trade_fetch_eqb_not_excluded_raises(monkeypatch):
     clean_block_trade_row and hits the now-unregistered (EQB, '4') pair —
     MiaoxiangUnknownUnitError, not a silent NULL vol."""
     monkeypatch.setattr(
-        "services.data_sources.sources.miaoxiang.load_vendor_scope",
-        lambda *a, **k: {"block_trade": frozenset()},
+        "services.data_sources.sources.miaoxiang.vendor_exclusions",
+        lambda *a, **k: VendorExclusions(request_filters=(), response_excludes=()),
     )
     eqb_row = _block_trade_raw_row(SECUCODE="900926.SH", SECURITY_TYPE="EQB", TRADE_UNIT="4")
     client = _FakeClient([{"pages": 1, "count": 1, "data": [eqb_row]}])

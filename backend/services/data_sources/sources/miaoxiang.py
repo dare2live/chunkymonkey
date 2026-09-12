@@ -213,15 +213,13 @@ from __future__ import annotations
 import logging
 import math
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Callable
-
-import yaml
 
 from services.data_sources.pagination_integrity import (
     EASTMONEY_V1_MAX_PAGES_PER_QUERY,
     assess_paginated_land,
 )
+from services.data_sources.vendor_scope import VendorScopeError, vendor_exclusions
 
 log = logging.getLogger(__name__)
 
@@ -230,10 +228,6 @@ ALIAS = "miaoxiang"
 REPORT_BLOCK_TRADE = "RPT_DATA_BLOCKTRADE"
 REPORT_TOP_INST = "RPT_OPERATEDEPT_TRADE"
 REPORT_TOP_LIST = "RPT_DAILYBILLBOARD_DETAILSNEW"
-
-# backend/config/vendor_scope.yaml — this file lives at
-# backend/services/data_sources/sources/miaoxiang.py, four parents up is backend/.
-_VENDOR_SCOPE_PATH = Path(__file__).resolve().parent.parent.parent.parent / "config" / "vendor_scope.yaml"
 
 # api 名 -> 妙想 reportName。刻意用 registry 现有 `api:` 同名值 (block_trade/top_inst/top_list),
 # 接线时只需改 `source:`, 不用改 `api:` (任务边界: 接线由主线做, 这里只保证形状对上)。
@@ -307,63 +301,6 @@ _BLOCK_TRADE_VOLUME_FACTOR: dict[tuple[str, str], int] = {
     # e.g. 694500/138.9=5000=10*500 (妙想 1 手=10 张, factor=10, 单位=张).
     ("BD0", "1"): 10,
 }
-
-
-def load_vendor_scope(path: Path | None = None) -> dict[str, frozenset[str]]:
-    """Load ``backend/config/vendor_scope.yaml`` — vendor rows that are out of
-    this project's scope by owner ruling, not by any data-quality judgment
-    (业主 2026-09-12 原话: 「不用管B股，以后也不做，获取完的数据删除清理干净」).
-    This file only describes *which vendor rows are out of scope*; it does not
-    decide cleaning/conversion logic and does not claim the vendor stops
-    returning these rows.
-
-    Fail-closed on any unrecognized shape (未知键 fail-closed, 与本项目其它 typed
-    YAML 加载同型 — 见 ``services/taxonomy_config.py``): unexpected top-level
-    keys, wrong ``version``, an unknown api name under ``miaoxiang``, or a
-    malformed/empty ``exclude_security_types`` all raise ``ValueError`` rather
-    than silently loading a partial or wrong scope.
-    """
-    cfg_path = Path(path) if path is not None else _VENDOR_SCOPE_PATH
-    raw = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict) or set(raw) != {"version", "miaoxiang"}:
-        raise ValueError(
-            f"vendor_scope.yaml top-level keys must be exactly {{'version', 'miaoxiang'}}, "
-            f"got {sorted(raw) if isinstance(raw, dict) else type(raw).__name__}"
-        )
-    if raw.get("version") != 1:
-        raise ValueError(f"vendor_scope.yaml version must be 1, got {raw.get('version')!r}")
-
-    miaoxiang_cfg = raw.get("miaoxiang")
-    if not isinstance(miaoxiang_cfg, dict) or set(miaoxiang_cfg) != {"block_trade"}:
-        raise ValueError(
-            "vendor_scope.yaml miaoxiang keys must be exactly {'block_trade'}, got "
-            f"{sorted(miaoxiang_cfg) if isinstance(miaoxiang_cfg, dict) else type(miaoxiang_cfg).__name__}"
-        )
-
-    block_trade_cfg = miaoxiang_cfg["block_trade"]
-    if not isinstance(block_trade_cfg, dict) or set(block_trade_cfg) != {"exclude_security_types"}:
-        raise ValueError(
-            "vendor_scope.yaml miaoxiang.block_trade keys must be exactly "
-            f"{{'exclude_security_types'}}, got "
-            f"{sorted(block_trade_cfg) if isinstance(block_trade_cfg, dict) else type(block_trade_cfg).__name__}"
-        )
-
-    values = block_trade_cfg["exclude_security_types"]
-    if not isinstance(values, list) or not values:
-        raise ValueError(
-            "vendor_scope.yaml miaoxiang.block_trade.exclude_security_types must "
-            f"be a non-empty list, got {values!r}"
-        )
-    cleaned: list[str] = []
-    for v in values:
-        if not isinstance(v, str) or not v.strip():
-            raise ValueError(
-                "vendor_scope.yaml exclude_security_types entries must be "
-                f"non-empty strings, got {v!r}"
-            )
-        cleaned.append(v.strip())
-
-    return {"block_trade": frozenset(cleaned)}
 
 
 def _reject_caller_paging(params: dict[str, Any]) -> None:
@@ -663,6 +600,17 @@ class MiaoxiangSource:
                 f"miaoxiang: unknown api {api!r}; known={sorted(API_REPORT_NAMES)}"
             )
         _reject_caller_paging(params)
+        # Every api must have a registered vendor_scope disposition (fail-closed:
+        # an unregistered (source, api) is not "no exclusions", it is an
+        # unaddressed unknown — see backend/config/vendor_scope.yaml L11, the
+        # static test that would have caught a newly-enabled registry domain
+        # missing this registration before it ever got here).
+        try:
+            exclusions = vendor_exclusions(ALIAS, name)
+        except VendorScopeError as exc:
+            raise MiaoxiangSourceError(
+                f"miaoxiang: no vendor_scope disposition for api {name!r}"
+            ) from exc
         trade_date = compact_trade_date(params.get("trade_date"))
         report_name = API_REPORT_NAMES[name]
         sort_columns, sort_types = _SORT_BY_API[name]
@@ -680,12 +628,14 @@ class MiaoxiangSource:
         # keep), and before the per-row cleaner (which would otherwise raise
         # MiaoxiangUnknownUnitError on an EQB row's (SECURITY_TYPE, TRADE_UNIT)
         # pair, since that pair is deliberately not registered any more).
-        if name == "block_trade":
-            exclude_security_types = load_vendor_scope()["block_trade"]
+        # Domains with no response_exclude disposition (no_vendor_axis /
+        # request_enumeration / population_disjoint) yield an empty tuple here
+        # and this loop is a no-op — the adapter has nothing to do for them.
+        for field, values in exclusions.response_excludes:
             before = len(raw_rows)
             raw_rows = [
                 r for r in raw_rows
-                if _text(r.get("SECURITY_TYPE")) not in exclude_security_types
+                if _text(r.get(field)) not in values
             ]
             excluded = before - len(raw_rows)
             # Deliberate: only log when excluded>0. A zero-exclusion day has no
@@ -693,11 +643,12 @@ class MiaoxiangSource:
             # for a reader of this log to act on or reconcile against).
             if excluded:
                 log.info(
-                    "RPT_DATA_BLOCKTRADE %s excluded %d rows by vendor_scope "
-                    "exclude_security_types=%s",
+                    "%s %s excluded %d rows by vendor_scope %s=%s",
+                    report_name,
                     trade_date,
                     excluded,
-                    sorted(exclude_security_types),
+                    field,
+                    sorted(values),
                 )
         cleaner = _CLEANERS[name]
         return [cleaner(r, trade_date=trade_date) for r in raw_rows]
@@ -783,5 +734,4 @@ __all__ = [
     "clean_top_inst_row",
     "clean_top_list_row",
     "compact_trade_date",
-    "load_vendor_scope",
 ]

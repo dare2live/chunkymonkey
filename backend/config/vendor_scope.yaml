@@ -1,14 +1,221 @@
+# 供应商范围登记表 v2 — 只描述「哪些证券类别不在项目范围、各取数路径对它怎么处置」。
+# 不决定跑什么、按什么顺序跑 (那是 sync_registry.yaml + sync_runner 的事)。
+#
 # 业主裁定 (2026-09-12) 原话: 「不用管B股，以后也不做，获取完的数据删除清理干净」。
 # 已落的 138 行 B 股 (妙想 SECURITY_TYPE='EQB') 主会话已删除, 以后不再落库。
 #
-# 本文件只描述「供应商数据里哪些行不在项目范围」——不改变清洗/换算逻辑, 不代表供应商
-# 停止返回这些行 (妙想仍可能在原始响应里带这些行), 只是本项目在清洗前主动丢弃它们。
+# v1 -> v2 (2026-09-12): v1 只能表达单一 (供应商, api) —— 其 loader 把 api 键集合
+# 写死成 {'block_trade'}, 加任何第二个域都要改代码。v2 把形状换成能覆盖全部取数域,
+# 键统一写成 "<source>.<api>"。
 #
-# 加载与校验见 backend/services/data_sources/sources/miaoxiang.py::load_vendor_scope
-# —— 未知键 fail-closed: 根键集合、miaoxiang 下的 api 键集合、每个 api 配置的键集合
-# 都必须与本文件的既有形状逐字段相等, 出现任何未登记的键或形态都直接抛 ValueError,
-# 不静默忽略、不部分生效。
-version: 1
-miaoxiang:
-  block_trade:
-    exclude_security_types: [EQB]
+# 五种 mode (按「供应商给了什么轴」分派, 不按域分组, 红线10):
+#   request_exclude    — 请求侧能表达"不要这个类别" (参数过滤 / 供应商端点本身按类别命名空间)
+#   response_exclude   — 请求侧不行, 响应带供应商类别字段, 清洗前按该字段丢行
+#   no_vendor_axis      — 两者都没有: 不在 landing 动手, canonical/serve 层过滤 (项目词汇的合法落点)
+#   request_enumeration — 请求侧本来就按项目枚举跑 (板块前缀/活跃股票池), 登记枚举来源不改行为
+#   population_disjoint  — 供应商总体按定义不含该类别 (指数/融资融券/派生自已排除总体的域), 0 行无豁免
+#
+# 加载与全部校验见 backend/services/data_sources/vendor_scope.py::load_vendor_scope
+# —— 未知键 / 未知 mode / 缺处置 / 违反 C2 互斥一律 fail-closed (ValueError, 消息前缀
+# "vendor_scope: L#" 标出违反的具体规则), 不部分生效、不静默忽略。
+#
+# 设计出处: scratchpad/b_share_exclusion_r1.md §3 (2026-09-12 r1) —— 本文件是该规格的
+# 字面落地, 不是重新设计。
+#
+# 覆盖范围 (L11, 静态测试强制, 不在本文件校验): sync_registry.yaml 里
+# execution_policy.mode == enabled 且 (grain ∪ {universe_filter_col}) 与
+# security_code_columns 有交集的 (source, api) 必须每个都在 dispositions 里有条目
+# (2026-09-12 核对: 共 23 个 —— fuyao×5 / miaoxiang×3 / stock_st_derive.stock_st /
+# tdxhub.daily / tushare×13); disabled 的域 (14 个) 不在本文件强制范围内, 重新
+# enabled 那天 L11 会红, 逼出裁决。
+
+version: 2
+
+# L12 (静态测试) 与本文件 L10 共用: sync_registry.yaml 的每个 universe_filter_col
+# 取值都必须在这个集合里 —— 堵"新域用了新列名, 两个枚举器都看不见"的洞。
+security_code_columns: [ts_code, con_code, stock_code, code]
+
+out_of_scope_classes:
+  b_share:
+    ruling: "业主 2026-09-12: 不用管B股, 以后也不做, 获取完的数据删除清理干净"
+    code_patterns:
+      - {prefix: "900", suffix: SH}   # 上交所 B 股代码段 (900000-900999 独占)
+      - {prefix: "200", suffix: SZ}   # 深交所 B 股代码段 (200000-200999 独占)
+
+dispositions:
+  # ── miaoxiang (东财 aif10 datacenter) ──────────────────────────────────
+  miaoxiang.block_trade:
+    b_share:
+      mode: response_exclude
+      field: SECURITY_TYPE
+      values: [EQB]
+      # 现状 (逐字节保留, S1 不改): RPT_DATA_BLOCKTRADE 响应带 SECURITY_TYPE 字段,
+      # 清洗前按此字段丢 EQB 行 (sources/miaoxiang.py::MiaoxiangSource.fetch_raw)。
+      # [T4] (东财 datacenter 过滤语法 <>/not like 是否被接受) 未测——本片禁止触网,
+      # 若未来证实请求侧可排除, 改判 request_exclude 是后续 S2 切片的事, 非本片。
+
+  miaoxiang.top_inst:
+    b_share:
+      mode: no_vendor_axis
+      checked_at: "2026-09-12"
+      evidence: "RPT_OPERATEDEPT_TRADE 响应 34 列逐列核对 (topinst_20260825.json) 无 SECURITY_TYPE
+        / SECURITY_TYPE_CODE / TRADE_MARKET_CODE / MARKET 等任何类别或市场字段, 故不能走
+        response_exclude; 请求侧过滤是否生效未测 ([T4], 本片禁止触网)。按当前证据落 no_vendor_axis:
+        不在 landing 排除, 交给 canonical 层 (fact_top_inst_seat_daily 发布, S5 切片) 过滤。"
+
+  miaoxiang.top_list:
+    b_share:
+      mode: no_vendor_axis
+      checked_at: "2026-09-12"
+      evidence: "RPT_DAILYBILLBOARD_DETAILSNEW 是否带类别/市场字段未逐列实测 ([T5] 未跑, 本片
+        禁止触网); sources/miaoxiang.py 头注的字段映射表只列出已消费字段, 不是完整响应列清单,
+        不能据此断言'无此字段'。证据不足时按 §1.2 决策树保守落 no_vendor_axis (不声称已排除、
+        不误报 0 行), 待 [T5] 补测后可能改判 request_exclude/response_exclude。"
+
+  # ── fuyao (同花顺官方 REST) ────────────────────────────────────────────
+  fuyao.meta-tickers-list:
+    b_share:
+      mode: request_exclude
+      filters: ["asset_type=a-share"]
+      # 既有事实 (fuyao.py TICKER_LIST_ASSET_TYPE="a-share" 常量 + 服务端/客户端双重过滤,
+      # tushare_sunset.yaml stock_basic 条目实测: 5,563 只 100% 覆盖 tushare 5,550 只)。
+
+  fuyao.limit-up-pool:
+    b_share:
+      mode: request_exclude
+      filters: ["vendor endpoint path /api/a-share/special-data/limit-up-pool is a-share-scoped by path"]
+      # fuyao.py POOL_API_PATHS: 三个涨跌停池端点本身命名空间在 /api/a-share/ 下 (代码实读,
+      # 非猜测), 与 meta-tickers-list 靠查询参数排除不同, 这里排除机制是端点路径本身。
+
+  fuyao.limit-down-pool:
+    b_share:
+      mode: request_exclude
+      filters: ["vendor endpoint path /api/a-share/special-data/limit-down-pool is a-share-scoped by path"]
+
+  fuyao.limit-break-pool:
+    b_share:
+      mode: request_exclude
+      filters: ["vendor endpoint path /api/a-share/special-data/limit-break-pool is a-share-scoped by path"]
+
+  fuyao.auction-short-term-benchmark:
+    b_share:
+      mode: request_exclude
+      filters: ["vendor endpoint path /api/a-share/auction/short-term-benchmark is a-share-scoped by path"]
+
+  # ── tdxhub (通达信协议层) ──────────────────────────────────────────────
+  tdxhub.daily:
+    b_share:
+      mode: request_enumeration
+      code_source: "services.data_sources.sources.tdxhub.TdxhubSource.DEFAULT_BOARD_PREFIXES"
+      # {"SZ": ("00","30"), "SH": ("60","68")} —— 请求侧已按板块前缀白名单枚举, 900/200 从不
+      # 在请求范围内 (与 universe_rules.yaml include.board_prefixes 一致)。
+
+  # ── population_disjoint: 供应商总体按定义不含 B 股 ─────────────────────
+  stock_st_derive.stock_st:
+    b_share:
+      mode: population_disjoint
+      why: "派生自 tdxhub 名义 K 线 (daily 域已按 request_enumeration 排除 900/200 前缀),
+        总体本就不含 B 股, 无需二次过滤。"
+
+  tushare.margin_detail:
+    b_share:
+      mode: population_disjoint
+      why: "B 股不可融资融券 (监管规则), 总体结构性不含 B 股。"
+
+  tushare.index_daily:
+    b_share:
+      mode: population_disjoint
+      why: "指数代码总体 (000300.SH 等基准指数), 不是个股, 总体里没有 B 股。"
+
+  # ── no_vendor_axis: TuShare Pro 标准接口未见证券类别字段, 且按日/按报告期整市场拉取
+  #    无逐码请求侧可加排除参数; 以下 11 个域均未逐字段实测 (未触网/未开库确认历史行),
+  #    按 §1.2 决策树证据不足时的保守分支登记, 不声称 0 行、不误判已排除。业主/后续切片
+  #    可用 [T-new] 探测覆盖后改判。population 与 B 股上市公司 (900/200) 有交集的业务
+  #    含义各自标注。
+  tushare.daily_basic:
+    b_share:
+      mode: no_vendor_axis
+      checked_at: "2026-09-12"
+      evidence: "每日指标 (换手率/PE/PB/市值) 覆盖全部可交易证券, 未见 TuShare 响应带证券类别
+        字段; B 股正常交易故 population 与其相交。未逐字段实测, 按保守分支登记。"
+
+  tushare.balancesheet:
+    b_share:
+      mode: no_vendor_axis
+      checked_at: "2026-09-12"
+      evidence: "资产负债表按上市公司报告期披露, B 股上市公司同样披露财报, population 相交;
+        未见 TuShare 财务接口带证券类别字段。未逐字段实测, 按保守分支登记。"
+
+  tushare.income:
+    b_share:
+      mode: no_vendor_axis
+      checked_at: "2026-09-12"
+      evidence: "利润表同 balancesheet 一样按上市公司报告期披露, B 股上市公司同样披露财报,
+        population 相交, 未见证券类别字段。未逐字段实测, 按保守分支登记。"
+
+  tushare.fina_indicator:
+    b_share:
+      mode: no_vendor_axis
+      checked_at: "2026-09-12"
+      evidence: "财务指标衍生自 balancesheet/income 同一批上市公司, population 相交, 未见
+        证券类别字段。未逐字段实测, 按保守分支登记。"
+
+  tushare.limit_list_d:
+    b_share:
+      mode: no_vendor_axis
+      checked_at: "2026-09-12"
+      evidence: "涨跌停统计覆盖当日触及涨跌停的全部证券, B 股同样有涨跌停幅度规则,
+        population 相交, 未见证券类别字段。未逐字段实测, 按保守分支登记。"
+
+  tushare.report_rc:
+    b_share:
+      mode: no_vendor_axis
+      checked_at: "2026-09-12"
+      evidence: "券商评级/预测报告理论上可覆盖任意上市公司 (含 B 股), 未见证券类别字段可供
+        response_exclude, 也无请求侧过滤参数。未逐字段实测, 按保守分支登记。"
+
+  tushare.share_float:
+    b_share:
+      mode: no_vendor_axis
+      checked_at: "2026-09-12"
+      evidence: "限售股解禁按上市公司公告, B 股上市公司同样存在限售解禁事件,
+        population 相交, 未见证券类别字段。未逐字段实测, 按保守分支登记。"
+
+  tushare.stk_holdernumber:
+    b_share:
+      mode: no_vendor_axis
+      checked_at: "2026-09-12"
+      evidence: "股东户数按上市公司定期披露, B 股上市公司同样披露, population 相交,
+        未见证券类别字段。未逐字段实测, 按保守分支登记。"
+
+  tushare.stk_limit:
+    b_share:
+      mode: no_vendor_axis
+      checked_at: "2026-09-12"
+      evidence: "每日涨跌停价覆盖全部可交易证券, B 股同样有涨跌停价, population 相交,
+        未见证券类别字段。未逐字段实测, 按保守分支登记。"
+
+  tushare.stk_surv:
+    b_share:
+      mode: no_vendor_axis
+      checked_at: "2026-09-12"
+      evidence: "机构调研记录理论上可覆盖任意上市公司 (含 B 股), 未见证券类别字段,
+        也无请求侧过滤参数。未逐字段实测, 按保守分支登记。"
+
+  tushare.suspend_d:
+    b_share:
+      mode: no_vendor_axis
+      checked_at: "2026-09-12"
+      evidence: "停复牌记录覆盖全部可交易证券, B 股同样存在停复牌事件, population 相交,
+        未见证券类别字段。未逐字段实测, 按保守分支登记。"
+
+# 不在 sync_registry.yaml 里的取数路径 (键同样是 "<source>.<api>"), 登记仅为 L11 死引用
+# 检查提供合法目标, 不要求 (也不强制) 每条都带 b_share 处置——它们的请求形态见各自 writer:
+# 已知均已是代码枚举 (get_active_universe), 现存 B 行是旧枚举遗留 (§1.3 [T8])。
+non_registry_sources:
+  aif10.RPT_DMSK_HOLDERS:
+    writer: "services.qfii_client"
+  aif10.holders_top10:
+    writer: "scripts.ingest_holders_raw"
+  aif10.org_holding:
+    writer: "scripts.ingest_org_holding_aif10"
