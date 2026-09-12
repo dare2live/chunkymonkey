@@ -350,8 +350,14 @@ domains:
       (b) 转债成交量单位待核 (妙想 DEAL_VOLUME 与本地 vol 单位未确认); (c) RPT_DATA_BLOCKTRADE -> raw_tushare_block_trade
       行映射尚不存在, 无映射则做不了声明 grain 对账。
       消费方: serve_read_views.yaml 注册了 v_block_trade_stock_day 但全仓库零 .py 实读 (声明了未接线的服务面)。
-      在库 109,875 行 2023-01-03~2026-08-27, 5 个骤降日已 vendor 核实非采集缺陷。fuyao/tdxhub 均无大宗交易端点。"
+      在库 109,875 行 2023-01-03~2026-08-27, 5 个骤降日已 vendor 核实非采集缺陷。fuyao/tdxhub 均无大宗交易端点。
+      **2026-09-12 换源完成并按交易所逐笔全史核验 (验收退出码 0 且已记账)**: 适配器单位按 (SECURITY_TYPE, TRADE_UNIT) 对枚举、未知对 fail-closed; EQB (B 股) 按业主裁定在清洗前排除不落库; 落 vendor_market (供应商响应的 TRADE_MARKET_OLD) 用于解出无后缀行的真实场所。重落两次 (第二次为补 vendor_market 列): 139,339 行 / 895 天 / 20230103..20260910, 4 段全 rc=0, EQB 0 行, seq 无 NULL, (证券类型, 交易单位) 只四对 (EQA/4=120,280; BD0/1=9,790; FDO/3=9,266; EQA/3=3), vendor_market 全史只三值 (CNSESZ 72,983; CNSESH 64,071; CNSEBJ 2,285); 两次行数均与直接从妙想取的离线快照相等 (139,339)。
+      交易所天花板核验 (沪 895 天 64,067 行 / 深 895 天 63,178 行, 已按裁定去 B 股): 结构检查 S1-S4 全过; not_checked 为空 (每天每市场都有证据文件且 recordcount 校验过); 按日身份层双侧施加, 旧归档与新表各丢弃 13 行换码 twin; 8 行 .OF (501054 六 / 501049 二) 由 vendor_market=CNSESH 解出为上交所, 不按 6 位码猜。
+      格级裁决 (backend/config/exchange_cell_verdicts.yaml, 102 格全 consumed / 0 失效): 席位名写法不同 94 行 / 92 格, 归组后只 11 种写法对 (57 处万和「营业/营业部」、28 处广发丢「(对外营业部)」后缀、6 处陕陜与征徵异体字, 另 5 处是妙想事实性错误: 湖南分公司写成上海、名字尾段重复拼接、诚通「苏州白塔西路」写成当前的「苏州星都街」); 妙想真缺 2 笔 (688981.SH 2023-03-06 42.79/30.00 与 03-07 42.13/30.02, 按整天两种取法重取仍无); 供应商重复行 8 笔 (002915 / 301153 / 508068 两笔各报两次; 512480 / 513180 / 513730 三只 ETF 同一笔给了两位价与三位价两行且金额相同, 只有三位价那行满足 price x vol 约等于 amount)。
+      旧 tushare 归档表自身错误 (作对照不作基准): 412 行旧行未匹配 —— 220 行键不在交易所里, 137 行为名称/精度差异已由格级登记消费, 53 行是 33 只代码全部挤在 2023-05-16 一天的深市串日 (那天交易所有完整证据、新表也有当天数据, 而这 33 只代码两边都查不到), 另 2 行对应上述妙想真缺。--record 已落表: tushare_raw.mart_data_deletion_record, run_id=grain-20260911, delete_scope=rows_replaced_verified。"
 
+    status: done
+    done_at: "2026-09-12"
   fina_indicator:
     decision: replace
     replacement: 妙想(分字段裁, 非整域切)
