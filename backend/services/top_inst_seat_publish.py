@@ -19,9 +19,22 @@ Grain contract (r2b, 业主批准 2026-09-11):
   过滤放发布层不放消费方: 「什么是单日榜/什么是类别行」只在这里判一次 (backend/config/
   lhb_board_class.yaml, 红线 11 fail-closed); 消费方 (S6: market_pulse / institution_profile)
   import DAILY_METRIC_FILTER_SQL, 不各写一遍判断。
+
+lhb_board_class.yaml version 2 (2026-09, r1 登记形态 (b), 见 scratchpad/lhb_reason_class_r1.md
+§3.1): 582 个供货商理由串收成 119 个 YAML 键 (108 精确 + 11 模板)。归一规则不进 YAML (它是
+比较逻辑不是数据), 是这里的 canonical_reason(): 把理由串里每个 [+-]?[0-9]+\\.[0-9]+ (只认半角
+ASCII 数字) 替换成占位符 "{v}"; 全角数字/整数阈值/标点/全半角括号一律不归一 —— 它们是规则身份,
+新阈值/新标点必须有人登记, 不会被静默吸收。YAML 的 reasons 键本身必须已经是规范形 (loader 拒绝
+键内残留半角小数), 且键里出现的 "{"/"}" 只允许构成字面量 "{v}" (loader 拒绝任何其它占位符写法);
+YAML 也拒绝重复键 (PyYAML SafeLoader 默认对重复 mapping 键静默取最后一个写入的值, 这里用
+_UniqueKeySafeLoader 改成 fail-closed)。三条防线叠在一起保证「一个理由串在运行时只能命中 0 或 1
+条登记, 不可能命中 2 条」: 查表本身是字典查找 (0 或 1 条), ≥2 条的可能性全部被推到加载时拒绝。
+折叠 SQL / 四条交叉核 / 发布表的 reasons 列一律继续用原始理由字符串 JOIN —— 归一只发生在这一处
+Python 代码里 (_register_reason_class / audit_unknown_reasons), 不在 DuckDB 里重复实现一遍。
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, time
 from pathlib import Path
@@ -85,6 +98,52 @@ _REQUIRED_CHECK_KEYS = {
     "category_boards_only_investor_category_names",
 }
 
+# Reason-string canonicalisation (lhb_reason_class_r1.md §3.1). Only ASCII
+# halfwidth decimals are absorbed -- fullwidth digit variants (e.g. "３０.４７")
+# are left untouched and read as an unknown reason (fail-closed by design:
+# the vendor has 0 historical rows using fullwidth digits, so seeing one is
+# itself a signal worth a human look, not silently swallowing it).
+_DECIMAL_RE = re.compile(r"[+-]?[0-9]+\.[0-9]+")
+REASON_PLACEHOLDER = "{v}"
+
+
+def canonical_reason(s: str) -> str:
+    """Replace every ASCII halfwidth decimal number in ``s`` with the
+    ``{v}`` placeholder. Integer thresholds, punctuation, and full/halfwidth
+    brackets are never touched -- they are part of a reason's identity, not
+    an observed value (lhb_reason_class_r1.md §3.1)."""
+    return _DECIMAL_RE.sub(REASON_PLACEHOLDER, s)
+
+
+class _UniqueKeySafeLoader(yaml.SafeLoader):
+    """yaml.SafeLoader that raises ValueError on any duplicate mapping key.
+
+    PyYAML's default SafeLoader silently keeps the *last* value for a
+    repeated key (measured, PyYAML 6.0.3: ``{k: a, k: b}`` -> ``{k: b}``).
+    lhb_board_class.yaml's ``reasons`` map depends on "at most one
+    registration per canonical reason" (r1.md §3.2) -- a duplicate key must
+    fail loudly at load time instead of silently dropping a registration.
+    """
+
+    def construct_mapping(self, node, deep=False):  # type: ignore[override]
+        seen: set[Any] = set()
+        for key_node, _value_node in node.value:
+            key = self.construct_object(key_node, deep=True)
+            if key in seen:
+                raise ValueError(
+                    f"duplicate key {key!r} in YAML mapping "
+                    f"(line {key_node.start_mark.line + 1})"
+                )
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
+
+
+def _load_yaml_reject_duplicate_keys(path: Path) -> Any:
+    """``yaml.safe_load`` equivalent that rejects duplicate mapping keys
+    (see ``_UniqueKeySafeLoader``) instead of silently keeping the last one.
+    """
+    return yaml.load(path.read_text(encoding="utf-8"), Loader=_UniqueKeySafeLoader)
+
 
 @dataclass(frozen=True)
 class BoardClass:
@@ -101,10 +160,19 @@ def load_board_class(path: Path | None = None) -> BoardClass:
     unknown top-level keys, an unlisted window value, a non-bool
     investor_category_board, a seat_kinds key outside {investor_category,
     anonymous_inst}, empty/cross-kind-duplicate names, or a missing checks
-    key all raise ValueError rather than silently defaulting.
+    key all raise ValueError rather than silently defaulting. Version 2
+    (r1.md §3.2) adds three more fail-closed checks on every ``reasons``
+    key, all raising ValueError: (1) a duplicate key anywhere in the YAML
+    file (caught by ``_load_yaml_reject_duplicate_keys``, not PyYAML's
+    default silent last-write-wins); (2) a key whose ``canonical_reason()``
+    is not itself -- i.e. a key that still contains a raw ASCII decimal
+    observation instead of the registered template; (3) a key containing a
+    "{"/"}" that does not form the literal placeholder "{v}". Together these
+    make "a raw reason string matches at most one registered key" true by
+    construction, not by convention.
     """
     p = Path(path) if path is not None else _DEFAULT_BOARD_CLASS_YAML
-    doc = yaml.safe_load(p.read_text(encoding="utf-8"))
+    doc = _load_yaml_reject_duplicate_keys(p)
     if not isinstance(doc, dict):
         raise ValueError(f"{p}: root must be a mapping, got {type(doc).__name__}")
 
@@ -181,6 +249,19 @@ def load_board_class(path: Path | None = None) -> BoardClass:
     for reason, body in reasons_raw.items():
         if not isinstance(reason, str) or not reason:
             raise ValueError(f"{p}: reasons keys must be non-empty strings, got {reason!r}")
+        canon_key = canonical_reason(reason)
+        if canon_key != reason:
+            raise ValueError(
+                f"{p}: reasons key {reason!r} is not canonical (canonical form is "
+                f"{canon_key!r}); register the template, not a raw observed instance "
+                "(r1.md §3.2)"
+            )
+        placeholder_stripped = reason.replace(REASON_PLACEHOLDER, "")
+        if "{" in placeholder_stripped or "}" in placeholder_stripped:
+            raise ValueError(
+                f"{p}: reasons key {reason!r} uses an illegal placeholder; "
+                f"only {REASON_PLACEHOLDER!r} is allowed"
+            )
         if not isinstance(body, dict):
             raise ValueError(f"{p}: reasons[{reason!r}] must be a mapping")
         unknown_reason_keys = set(body.keys()) - {"window", "investor_category_board"}
@@ -212,9 +293,16 @@ def load_board_class(path: Path | None = None) -> BoardClass:
 def audit_unknown_reasons(
     conn, *, table: str = "raw_tushare_top_inst"
 ) -> list[tuple[str, int]]:
-    """Read-only scan of ``table`` for ``reason`` strings not registered in
-    lhb_board_class.yaml. Returns (reason, row_count) sorted by count desc
-    (ties broken by reason). Empty list = everything known.
+    """Read-only scan of ``table`` for ``reason`` strings whose
+    ``canonical_reason()`` is not registered in lhb_board_class.yaml.
+    Returns (raw_reason, row_count) sorted by count desc (ties broken by
+    raw_reason asc). Empty list = everything known.
+
+    Normalisation happens in Python, one reason string at a time, after a
+    plain ``GROUP BY`` fetches the distinct raw strings -- not as a SQL
+    ``NOT IN (?...)`` against the raw (un-normalised) registered keys, since
+    a raw row's decimal observation would never literally match a
+    registered template (r1.md §3.3).
 
     Meant to run once after a full relanding of top_inst and before a full
     rebuild of fact_top_inst_seat_daily, so new vendor strings get a one-shot
@@ -222,19 +310,43 @@ def audit_unknown_reasons(
     mid-rebuild (r2b §2.4).
     """
     bc = load_board_class()
-    known = list(bc.reasons.keys())
-    placeholders = ",".join(["?"] * len(known)) if known else "NULL"
     rows = conn.execute(
         f"""
         SELECT reason, COUNT(*) AS c
         FROM {table}
-        WHERE reason IS NOT NULL AND reason NOT IN ({placeholders})
+        WHERE reason IS NOT NULL
         GROUP BY reason
-        ORDER BY c DESC, reason
-        """,
-        known,
+        """
     ).fetchall()
-    return [(str(r[0]), int(r[1])) for r in rows]
+    unknown = [
+        (str(reason), int(count))
+        for reason, count in rows
+        if canonical_reason(str(reason)) not in bc.reasons
+    ]
+    unknown.sort(key=lambda t: (-t[1], t[0]))
+    return unknown
+
+
+def audit_unknown_reasons_from_raw(
+    *, table: str = "raw_tushare_top_inst"
+) -> list[tuple[str, int]]:
+    """Open the raw db read-only and delegate to :func:`audit_unknown_reasons`.
+
+    The connection lives here rather than in the CLI script because the
+    SERVE read-layer door D1 only lets registered data-module members hold
+    an inline connection (``data_module_members.yaml``); the script is a
+    thin argv/printing shell over this function. Raises
+    ``FileNotFoundError`` when the raw db is absent -- an audit that cannot
+    read raw must not look like "nothing unknown".
+    """
+    raw_path = _raw_db_path()
+    if not raw_path.is_file():
+        raise FileNotFoundError(f"missing raw db: {raw_path}")
+    con = duck_connect(str(raw_path), read_only=True)
+    try:
+        return audit_unknown_reasons(con, table=table)
+    finally:
+        con.close()
 
 
 # ---------------------------------------------------------------------------
@@ -281,9 +393,22 @@ def _compact(value: str) -> str:
     return day
 
 
-def _register_reason_class(con, bc: BoardClass) -> None:
-    """Materialize lhb_board_class.yaml's reasons map as a temp table so the
-    fold/classification SQL can JOIN instead of re-deriving the mapping.
+def _register_reason_class(
+    con, bc: BoardClass, where: str, params: list[Any]
+) -> list[tuple[str, str, int]]:
+    """Materialize lhb_board_class.yaml's reasons map, keyed by the RAW
+    reason string observed under ``where``, as a temp table so the
+    fold/classification SQL can JOIN on ``r.reason = c.reason`` without
+    re-deriving canonicalisation in SQL (r1.md §3.3): canonicalisation
+    happens exactly once, here, in Python.
+
+    Reads the distinct (reason, COUNT(*)) pairs under ``where``, then for
+    each one looks up ``canonical_reason(reason)`` in ``bc.reasons``. Known
+    raw reasons are inserted into the temp table keyed by their raw string
+    (so downstream exact-string JOINs are unaffected by normalisation).
+    Unknown ones are returned as (raw_reason, canonical_reason, row_count)
+    triples, sorted by row_count desc then raw_reason asc -- an empty
+    return means every distinct raw reason under ``where`` is known.
     """
     con.execute("DROP TABLE IF EXISTS temp.lhb_reason_class")
     con.execute(
@@ -295,10 +420,36 @@ def _register_reason_class(con, bc: BoardClass) -> None:
         )
         """
     )
-    con.executemany(
-        "INSERT INTO lhb_reason_class VALUES (?, ?, ?)",
-        [(reason, window, cat) for reason, (window, cat) in bc.reasons.items()],
-    )
+    distinct_rows = con.execute(
+        f"""
+        SELECT reason, COUNT(*) AS c
+        FROM tr.{SOURCE_TABLE} r
+        WHERE {where} AND r.reason IS NOT NULL
+        GROUP BY reason
+        """,
+        params,
+    ).fetchall()
+
+    known_rows: list[tuple[str, str, bool]] = []
+    unknown: list[tuple[str, str, int]] = []
+    for raw_reason, count in distinct_rows:
+        raw_reason = str(raw_reason)
+        canon = canonical_reason(raw_reason)
+        cls = bc.reasons.get(canon)
+        if cls is None:
+            unknown.append((raw_reason, canon, int(count)))
+        else:
+            window, cat = cls
+            known_rows.append((raw_reason, window, cat))
+
+    if known_rows:
+        con.executemany(
+            "INSERT INTO lhb_reason_class VALUES (?, ?, ?)",
+            known_rows,
+        )
+
+    unknown.sort(key=lambda t: (-t[2], t[0]))
+    return unknown
 
 
 def _assert_board_rank_present(con, where: str, params: list[Any]) -> None:
@@ -313,11 +464,12 @@ def _assert_board_rank_present(con, where: str, params: list[Any]) -> None:
 
 
 def _classify_and_assert(con, where: str, params: list[Any], bc: BoardClass) -> None:
-    """Register lhb_reason_class (from YAML) then run the four fail-closed
-    cross-checks (r2b §2.2/§2.3) against the current window's raw rows.
-    Raises ValueError with a message naming the violated check.
+    """Register lhb_reason_class (from YAML, via canonical_reason) then run
+    the four fail-closed cross-checks (r2b §2.2/§2.3) against the current
+    window's raw rows. Raises ValueError with a message naming the violated
+    check.
     """
-    _register_reason_class(con, bc)
+    unknown = _register_reason_class(con, bc, where, params)
 
     null_reason = con.execute(
         f"SELECT COUNT(*) FROM tr.{SOURCE_TABLE} r WHERE {where} AND r.reason IS NULL",
@@ -328,19 +480,10 @@ def _classify_and_assert(con, where: str, params: list[Any], bc: BoardClass) -> 
             f"{int(null_reason)} 行 reason 为空 (NULL), fail-closed —— 分类判据必须能读到理由字符串"
         )
 
-    unknown = con.execute(
-        f"""
-        SELECT r.reason, COUNT(*) AS c
-        FROM tr.{SOURCE_TABLE} r
-        LEFT JOIN lhb_reason_class c ON c.reason = r.reason
-        WHERE {where} AND r.reason IS NOT NULL AND c.reason IS NULL
-        GROUP BY r.reason
-        ORDER BY c DESC, r.reason
-        """,
-        params,
-    ).fetchall()
     if unknown:
-        detail = ", ".join(f"{reason!r}x{int(count)}" for reason, count in unknown)
+        detail = ", ".join(
+            f"{raw!r} -> {canon!r}x{count}" for raw, canon, count in unknown
+        )
         raise ValueError(
             f"{SOURCE_TABLE} 含未在 lhb_board_class.yaml 登记的理由 (fail-closed, 红线 11): {detail}"
         )
@@ -600,6 +743,7 @@ __all__ = [
     "SOURCE_TABLE",
     "DAILY_METRIC_FILTER_SQL",
     "BoardClass",
+    "canonical_reason",
     "load_board_class",
     "audit_unknown_reasons",
     "top_inst_seat_available_at",
