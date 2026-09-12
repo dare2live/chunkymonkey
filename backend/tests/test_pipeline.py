@@ -77,6 +77,16 @@ class _AcceptedExceptConn:
 
 
 def _disabled_trade_calendar_registry():
+    """trade_cal 被合法地标 disabled —— 2026-09-12 起这**不再**阻塞 preflight。
+
+    改判经过: `automatic_domains` 原先只看 `sync_policy`, 于是 disabled 域照样进 all-due,
+    再被 `preflight_execution_policies` 判死。那个组合让 daily_update 从 2026-09-07 起
+    连续 5 天 0 秒 hard_fail(exit 4)、四阶段一步未启动 —— 而 16 个 disabled 恰恰是按
+    `check_tushare_sunset` 检查 8 的官方建议写上去的。修法是在选域处排除 disabled,
+    所以「合法的 disabled」现在**必须不阻塞**; 本 fixture 因此改用于
+    test_disabled_domain_no_longer_blocks_preflight(正向孪生)。
+    要验「无效策略仍 fail-closed」请用 _invalid_policy_registry。
+    """
     return {
         "defaults": {},
         "domains": {
@@ -86,6 +96,32 @@ def _disabled_trade_calendar_registry():
             "trade_cal": {
                 "execution_policy": {
                     "mode": "disabled",
+                    "reason": "accepted_generation_pending",
+                },
+            },
+        },
+    }
+
+
+def _invalid_policy_registry():
+    """trade_cal 的 execution_policy **形状非法**(mode 不在值域内) —— 必须 fail-closed。
+
+    这是三条 "blocks before calendar/auth/SLA/stage" 用例真正想守的东西: 策略本身读不出来时,
+    不许在日历探针 / 供应商授权 / SLA 落盘 / stage 执行之前放行。原先它们借「合法 disabled」
+    来触发阻塞, 而那条路已被上面的改判关掉; 用非法策略触发才对准被守的东西
+    (`execution_policy_for_spec` 抛 ExecutionPolicyError(invalid_execution_policy),
+    `automatic_domains` 与 `preflight_execution_policies` 都会把它冒泡到
+    `PipelinePreflightError`; domain 由 `domain_spec` 塞入 spec, 所以消息里指得出域名)。
+    """
+    return {
+        "defaults": {},
+        "domains": {
+            "healthy_domain": {
+                "execution_policy": {"mode": "enabled", "reason": "manual_only"},
+            },
+            "trade_cal": {
+                "execution_policy": {
+                    "mode": "paused",  # 非法值域: 只允许 enabled / disabled
                     "reason": "accepted_generation_pending",
                 },
             },
@@ -760,7 +796,7 @@ def test_full_pipeline_execution_policy_blocks_before_calendar_auth_or_sla(
     from services.pipeline import preflight
     from services.pipeline.context import PipelineContext
 
-    monkeypatch.setattr(sync_runner, "load_registry", _disabled_trade_calendar_registry)
+    monkeypatch.setattr(sync_runner, "load_registry", _invalid_policy_registry)
     monkeypatch.setattr(
         preflight,
         "ensure_calendar_ready",
@@ -778,9 +814,12 @@ def test_full_pipeline_execution_policy_blocks_before_calendar_auth_or_sla(
     )
     ctx = PipelineContext(date="20260719", log_path=tmp_path / "pipeline.log")
     try:
+        # 2026-09-12: 触发条件从「合法 disabled」换成「策略形状非法」—— 合法 disabled 现在
+        # 由选域处排除、不再阻塞(见 _disabled_trade_calendar_registry 头注与同名正向孪生用例);
+        # 而本用例真正要守的是「策略读不出来时, 不许在日历/授权/SLA 之前放行」, 那条仍然成立。
         with pytest.raises(
             preflight.PipelinePreflightError,
-            match="sync_execution_blocked:trade_cal:accepted_generation_pending",
+            match="sync_execution_blocked:trade_cal:invalid_execution_policy",
         ):
             preflight.run_preflight(ctx)
     finally:
@@ -795,7 +834,7 @@ def test_direct_acquire_execution_policy_blocks_before_auth_or_write_steps(
     from services.pipeline import acquire, preflight
     from services.pipeline.context import PipelineContext
 
-    monkeypatch.setattr(sync_runner, "load_registry", _disabled_trade_calendar_registry)
+    monkeypatch.setattr(sync_runner, "load_registry", _invalid_policy_registry)
     monkeypatch.setattr(
         preflight,
         "ensure_tushare_authorized",
@@ -808,9 +847,11 @@ def test_direct_acquire_execution_policy_blocks_before_auth_or_write_steps(
         lambda *_a, **_k: pytest.fail("acquire writer step must not start"),
     )
     try:
+        # 2026-09-12: 同上, 触发条件换成「策略形状非法」。守的东西不变:
+        # 策略读不出来时不许走到供应商授权与 writer step。
         with pytest.raises(
             preflight.PipelinePreflightError,
-            match="sync_execution_blocked:trade_cal:accepted_generation_pending",
+            match="sync_execution_blocked:trade_cal:invalid_execution_policy",
         ):
             acquire.run_acquire(ctx)
     finally:
@@ -826,7 +867,7 @@ def test_independent_acquire_stage_policy_blocks_before_calendar_auth_and_stage(
     from services.pipeline.context import PipelineContext
 
     monkeypatch.setenv(lock_mod.WRITER_LOCK_PATH_ENV, str(tmp_path / "writer.lock"))
-    monkeypatch.setattr(sync_runner, "load_registry", _disabled_trade_calendar_registry)
+    monkeypatch.setattr(sync_runner, "load_registry", _invalid_policy_registry)
     monkeypatch.setattr(
         stage_runner,
         "PipelineContext",
@@ -849,9 +890,54 @@ def test_independent_acquire_stage_policy_blocks_before_calendar_auth_and_stage(
     )
 
     assert stage_runner.run_stage("acquire", dry=False, date="20260719") == 5
-    assert "sync_execution_blocked:trade_cal:accepted_generation_pending" in (
+    # 2026-09-12: reason 随 fixture 一起换成 invalid_execution_policy —— 守的仍是
+    # 「策略读不出来时, stage 不许启动」(exit 5 = WRITER/stage block)。
+    assert "sync_execution_blocked:trade_cal:invalid_execution_policy" in (
         tmp_path / "stage.log"
     ).read_text()
+
+
+def test_disabled_domain_no_longer_blocks_preflight(monkeypatch, tmp_path):
+    """合法 disabled 的域**不再**阻塞 preflight —— 2026-09-07→09-12 五天全链死锁的正向孪生。
+
+    上面三条用例守的是「策略形状非法 → fail-closed」; 这一条守相反的那半:
+    一个域被**合法地**标成 disabled(台账裁决 freeze/derive 后按 check_tushare_sunset 检查 8 的
+    建议写上去的), preflight 必须放行, 让四阶段照常启动。
+    缺了这一条, 「disabled 不该阻塞」这个语义就没有任何测试覆盖 —— 而那正是同形态在 48 天内
+    复发两次的原因 (a84e0867 2026-07-21 margin / 01f8f41a 2026-09-07 十六个 freeze 域)。
+
+    断言 ensure_calendar_ready 被调用: preflight 走过了选域与执行策略这两关。
+    """
+    from services.data_sources import sync_runner
+    from services.pipeline import preflight
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(sync_runner, "load_registry", _disabled_trade_calendar_registry)
+    reached = []
+    monkeypatch.setattr(
+        preflight, "ensure_calendar_ready", lambda *_a, **_k: reached.append("calendar")
+    )
+    monkeypatch.setattr(
+        preflight, "ensure_tushare_authorized", lambda *_a, **_k: reached.append("auth")
+    )
+    monkeypatch.setattr(
+        preflight, "run_watermark_sla_check", lambda *_a, **_k: reached.append("sla") or 0
+    )
+    ctx = PipelineContext(date="20260719", log_path=tmp_path / "pipeline.log")
+    try:
+        preflight.run_preflight(ctx)
+    finally:
+        ctx.close()
+
+    assert "calendar" in reached, (
+        "preflight 在选域/执行策略这一关就停了 —— 合法 disabled 又把全链锁死了"
+    )
+    log = (tmp_path / "pipeline.log").read_text()
+    assert "sync_execution_blocked" not in log
+    # healthy_domain 是唯一 enabled 且非 on_demand 的域, 所以 all-due 集合恰好剩它
+    assert sync_runner.automatic_domains(_disabled_trade_calendar_registry()) == [
+        "healthy_domain"
+    ]
 
 
 def test_calendar_preflight_reuses_continuity_gate_and_fails_closed(monkeypatch, tmp_path):

@@ -234,13 +234,19 @@ def test_programmatic_margin_entrypoints_block_before_calendar_provider_or_db(
     [
         _args(),
         _args(drain=True),
-        _args(all_due=True),
     ],
-    ids=["explicit-domain", "drain", "all-due"],
+    ids=["explicit-domain", "drain"],
 )
 def test_cli_entrypoints_block_before_calendar_lock_auth_provider_or_db(
     monkeypatch, capsys, args
 ):
+    """**显式点名**一个 disabled 域时, 必须在日历/锁/授权/provider/DB 之前 typed 拒绝。
+
+    2026-09-12 去掉了原本的第三个参数化 id ``all-due``: all-due 不再是"点名",
+    disabled 域在选域处就被排除, 所以它走不到 execution_blocked —— 那条语义已由
+    test_all_due_skips_disabled_domains_instead_of_blocking 单独钉住(见下)。
+    留在这里的两个 id 才是本用例真正守的东西: 点名一个 disabled 域 = 拒绝, 且不得触碰任何副作用。
+    """
     import services.writer_lock as writer_lock_module
 
     monkeypatch.setattr(sr, "_parse_cli_args", lambda: args)
@@ -267,6 +273,32 @@ def test_cli_entrypoints_block_before_calendar_lock_auth_provider_or_db(
     }
 
 
+def test_all_due_skips_disabled_domains_instead_of_blocking(monkeypatch, capsys):
+    """``--all-due`` 遇到 disabled 域要**跳过它**, 不是拒绝整批。
+
+    这是上面那个参数化里被删掉的 ``all-due`` id 的替代, 也是 2026-09-07→09-12 五天全链死锁
+    (daily_update 每次 exit 4、四阶段一步未启动) 的直接回归钉子。
+    fixture 里 margin = {mode: disabled, reason: scope_blocked} 且未声明 sync_policy ——
+    改判前它会被选进 all-due 再被 preflight 判死; 改判后集合只剩 daily, 整批照常往下走。
+
+    断言用 ``_selected_domains`` + 两个 preflight 函数, 而不是跑 ``main()``:
+    main() 会继续往日历/锁/授权走, 那些不是本用例要守的东西 (它们各有自己的用例)。
+    """
+    registry = _registry()
+    args = _args(all_due=True)
+
+    assert sr._selected_domains(args, registry) == ["daily"]
+    # 不抛 = 整批放行; 抛了就说明 disabled 域又漏进了 all-due
+    sr.preflight_execution_policies(registry, sr._selected_domains(args, registry))
+    sr.preflight_formal_population_scopes(
+        registry, sr._selected_domains(args, registry)
+    )
+
+    # 反向: 显式点名那个 disabled 域仍然必须 typed 拒绝 (两条语义不可互相替代)
+    with pytest.raises(sr.ExecutionPolicyError, match="margin.*scope_blocked"):
+        sr.preflight_execution_policies(registry, ["margin"])
+
+
 def test_main_unlocked_cannot_bypass_execution_policy(monkeypatch):
     monkeypatch.setattr(sr, "_calendar_preflight", _forbidden("calendar"))
     monkeypatch.setattr(sr, "run_domain", _forbidden("run_domain"))
@@ -276,19 +308,82 @@ def test_main_unlocked_cannot_bypass_execution_policy(monkeypatch):
 
 
 def test_automatic_domain_inventory_matches_all_due_and_fails_closed():
+    """all-due 集合按**两个**轴排除: on_demand 与 disabled。
+
+    2026-09-12 改判: 本用例原先断言 ``["daily", "margin"]`` —— 而 fixture 里的 margin 正是
+    ``{mode: disabled, reason: scope_blocked}``。也就是它当时钉住的是**缺陷本身**:
+    一个 disabled 域被选进 all-due, 随后必然被 preflight_execution_policies 判死。
+    那个组合让 daily_update 从 2026-09-07 起连续 5 天 exit 4、四阶段一步未启动
+    (16 个域按 check_tushare_sunset 检查 8 的官方建议标了 disabled)。
+    现在 disabled 在选域处就被排除, 所以 margin 不再出现在集合里。
+    """
     registry = _registry()
     registry["domains"]["manual_repair"] = {
         "sync_policy": "on_demand",
         "execution_policy": {"mode": "enabled", "reason": "manual_only"},
     }
-    assert sr.automatic_domains(registry) == ["daily", "margin"]
+    # margin 是 disabled(scope_blocked) 且未声明 sync_policy —— 两个轴里第二个把它排除
+    assert sr.automatic_domains(registry) == ["daily"]
 
+    # 第一个轴单独也成立: 把 margin 改回 enabled 再贴 on_demand, 仍然不进集合
+    registry["domains"]["margin"]["execution_policy"] = {
+        "mode": "enabled",
+        "reason": "active",
+    }
+    assert sr.automatic_domains(registry) == ["daily", "margin"]
     registry["domains"]["margin"]["sync_policy"] = "on_demand"
     assert sr.automatic_domains(registry) == ["daily"]
 
+    # 策略形状非法时 fail-closed: 不许悄悄当成 enabled 选进来。
+    # match 用的是 **str(exc)** 里真实出现的文本 —— 不是 "invalid_execution_policy":
+    # 那个串是异常的 .reason **属性**值, 只有 pipeline.preflight 会拿它拼
+    # f"sync_execution_blocked:{exc.domain}:{exc.reason}", 它并不出现在 str(exc) 里。
+    # (先前我按 .reason 写 match, 于是"抛对了却匹配不上"——判据与被判对象错位。)
+    registry["domains"]["margin"].pop("sync_policy")
+    registry["domains"]["margin"]["execution_policy"] = {"mode": "paused", "reason": "x"}
+    with pytest.raises(
+        sr.ExecutionPolicyError, match="unsupported execution policy mode"
+    ) as caught:
+        sr.automatic_domains(registry)
+    # 同时钉住 preflight 拼消息用的那两个属性, 否则 pipeline 侧三条 fail-closed 用例
+    # 依赖的 "sync_execution_blocked:<domain>:<reason>" 形状没有任何测试覆盖
+    assert caught.value.domain == "margin"
+
+    registry["domains"]["margin"]["execution_policy"] = {
+        "mode": "enabled",
+        "reason": "active",
+    }
     registry["domains"]["broken"] = None
     with pytest.raises(ValueError, match="domain entry.*broken.*mapping"):
         sr.automatic_domains(registry)
+
+
+def test_live_registry_all_due_set_passes_pipeline_preflight():
+    """live registry 的 all-due 集合必须能过 pipeline preflight —— 纯 YAML, 零 DB。
+
+    这条是 2026-09-07→09-12 那次 5 天全链死锁的回归钉子, 也是「配置允许全链启动」这个
+    验收判据本身。为什么非要用**真** registry: 所有既有的 preflight 测试都 monkeypatch 掉
+    ``load_registry``, 于是「按台账门的建议给某个域标 disabled」这个动作从来没有被任何测试
+    覆盖过 —— 同形态因此在 48 天内复发两次 (a84e0867 2026-07-21 margin / 01f8f41a 2026-09-07
+    十六个 freeze 域)。07-21 那次的证据是手工跑一次 ``PASS domains=42``, 没钉成测试。
+
+    断言的是**不变量**不是状态: 不检查集合里有几个域、也不检查具体哪些域
+    (那会随域迁移/换源漂移, 见 feedback-test-must-carry-its-own-fixture 里
+    「别把运行时测量值钉成常量」), 只断言「选出来的每一个域都是 enabled, 且两个 preflight 不抛」。
+    """
+    registry = sr.load_registry()
+    domains = sr.automatic_domains(registry)
+    assert domains, "all-due 集合不该为空 —— 空集合会让这条断言按构造永远通过"
+
+    sr.preflight_execution_policies(registry, domains)
+    sr.preflight_formal_population_scopes(registry, domains)
+
+    for domain in domains:
+        policy = sr.execution_policy_for_spec(sr.domain_spec(registry, domain))
+        assert policy.mode == "enabled", (
+            f"{domain} 进了 all-due 却是 {policy.mode}({policy.reason}) —— "
+            "preflight 会 hard_fail 且四阶段一步不启动"
+        )
 
 
 @pytest.mark.parametrize(

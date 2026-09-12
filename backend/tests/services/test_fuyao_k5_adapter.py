@@ -102,7 +102,13 @@ def test_kpl_list_is_not_a_live_registry_domain() -> None:
 def test_automatic_domains_exclude_fuyao_on_demand() -> None:
     auto = set(sr.automatic_domains(_registry()))
     assert set(FUYAO_DOMAINS).isdisjoint(auto)
-    assert "moneyflow" in auto
+    # 正向对照: 集合非空、且确实含一个 enabled 的自动域。
+    # 2026-09-12 从 "moneyflow" 换成 "stock_basic": moneyflow 已按台账裁决 freeze 标成
+    # execution_policy.mode=disabled, 而 automatic_domains 现在按两个轴排除
+    # (on_demand 与 disabled), 所以它不再进集合。stock_basic 更合适 ——
+    # 它 source=fuyao(本测试文件的主题)、非 tushare 因而不受 09-10 授权到期影响。
+    assert auto, "空集合会让上面的 isdisjoint 按构造永远通过"
+    assert "stock_basic" in auto
 
 
 def test_limit_offset_pagination_is_rejected() -> None:

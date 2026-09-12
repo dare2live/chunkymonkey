@@ -4373,7 +4373,29 @@ def _selected_domains(
 
 
 def automatic_domains(registry: dict[str, Any]) -> list[str]:
-    """Return the exact domain set used by the legacy all-due pipeline."""
+    """Return the exact domain set used by the legacy all-due pipeline.
+
+    Two axes, both required (2026-09-12):
+    1. ``sync_policy != "on_demand"`` — on_demand 域由 acquire 的 on_demand 桥自己拉。
+    2. ``execution_policy.mode != "disabled"`` — **disabled 域本就不属于 all-due 集合**。
+
+    第 2 条以前不在这里, 代价是一次为期 5 天的全链死锁: 01f8f41a (2026-09-07 10:13) 按
+    check_tushare_sunset 检查 8 的官方建议, 给 16 个 freeze 域写上
+    ``execution_policy: {mode: disabled, reason: tushare_sunset_freeze}``; 而本函数当时只看
+    sync_policy, 于是这 16 个 disabled 域照样进 all-due, 紧接着
+    ``preflight_execution_policies`` 对它们要求 enabled -> ExecutionPolicyError ->
+    ``pipeline.preflight`` 抛 PipelinePreflightError -> ``run.py`` hard_fail exit 4,
+    **四阶段一步未启动**。表现是 daily_update 每次 0 秒退出、数据停更, 而 8 条 runtime_checks
+    全由 store 阶段执行, store 又永远到不了 —— 判官住在被判者体内。
+    同形态 2026-07-21 已发生过一次 (a84e0867, margin 被标 disabled 后死锁), 当时的修法是给
+    margin 贴 ``sync_policy: on_demand`` 绕开; 那是把「冻结」伪装成「手工拉」, 48 天后复发。
+    这次修在选域处, 并由 test_live_registry_all_due_set_passes_pipeline_preflight 钉住。
+
+    必须经 :func:`domain_spec` 取合并后的 spec, **不能读裸 entry**: 42 个域里 34 个不写
+    execution_policy, 靠 ``defaults`` 继承; 对裸 entry 调 execution_policy_for_spec 会抛
+    "missing execution_policy"。畸形策略仍然抛 ExecutionPolicyError (ValueError 子类),
+    由 pipeline.preflight 照旧捕获 —— fail-closed 不因本次过滤而丢。
+    """
 
     domains = registry.get("domains")
     if not isinstance(domains, Mapping):
@@ -4384,8 +4406,11 @@ def automatic_domains(registry: dict[str, Any]) -> list[str]:
             raise ValueError(
                 f"sync_registry.yaml: domain entry {domain!r} must be a mapping"
             )
-        if entry.get("sync_policy") != "on_demand":
-            selected.append(str(domain))
+        if entry.get("sync_policy") == "on_demand":
+            continue
+        if execution_policy_for_spec(domain_spec(registry, str(domain))).mode == "disabled":
+            continue
+        selected.append(str(domain))
     return selected
 
 
