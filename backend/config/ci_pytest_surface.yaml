@@ -21,6 +21,7 @@ blocking_paths:
 - tests/scripts/test_check_grain_uniqueness.py
 - tests/scripts/test_check_holders_staging.py
 - tests/scripts/test_check_lineage_catalog_drift.py
+- tests/scripts/test_check_out_of_scope_rows.py
 - tests/scripts/test_check_rule_compliance.py
 - tests/scripts/test_check_staged_blob_size.py
 - tests/scripts/test_check_strategy_lab.py

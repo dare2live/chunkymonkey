@@ -1,0 +1,65 @@
+version: 1
+# out_of_scope_scan.yaml — check_out_of_scope_rows.py 的最小 typed 声明 (S3, 2026-09-12)。
+#
+# 这是 backend/config/vendor_scope.yaml (S1 正在改, v2 未合入本仓) 落地前的**过渡文件**,
+# 不是它的替代品。两者管的是同一件事的两个不同侧面:
+#   - vendor_scope.yaml (未来 v2) 的 out_of_scope_classes / dispositions[*].mode 决定
+#     "某个 (source, api) 取数时该怎么处置"(request_exclude / response_exclude /
+#     no_vendor_axis / ...) —— 是取数策略, 消费方是各适配器 (miaoxiang.py 等)。
+#   - 本文件只决定"运行时不变量检查扫哪些代码列、认哪些代码段属于范围外类别、
+#     豁免哪些已知按行删除在结构上不可行的 landing 表"——是事实核查, 消费方只有
+#     check_out_of_scope_rows.py 一个。
+#
+# S1 的 vendor_scope v2 合入后应做的合并 (到时候删除本文件):
+#   - security_code_columns **不要**改读 vendor_scope 那份: 两者同名但语义不同 ——
+#     vendor_scope 的那份判「哪些 (source, api) 必须登记处置」(面对 sync_registry 的声明面,
+#     今天 4 个), 本文件的那份判「扫库时认哪些列名」(面对库里实际长出来的列, 今天 6 个,
+#     多 secucode / symbol)。照搬会让扫描丢掉这两列 = 那些列里的范围外行永远报 PASS。
+#     两份的关系由 test_vendor_scope_code_columns_are_subset_of_scanned_columns 钉住(子集, 非相等)。
+#   - classes[*].code_patterns 改读 vendor_scope.out_of_scope_classes[*].code_patterns
+#   - landing_exemptions 改由 vendor_scope.dispositions[*].mode == "no_vendor_axis" 反推
+#     (哪个 (source, api) 落哪张表, 由 sync_registry.target_table 解出)
+#
+# landing_exemptions 今天留空——[T4]/[T5] (妙想请求侧过滤探测) 还没跑, S1 还没裁定
+# 任何一个 (source, api) 是 no_vendor_axis。CLAUDE.md 红线3 "缺失只能传播为缺失":
+# 没有证据就不能替它抢先下结论, 留空不影响检查的正确性 (代价只是今天没有任何表被
+# 豁免, 检查会如实报出当前全部命中——这正是业主裁决后清理执行前的预期状态)。
+#
+# 机器判据边界 (b_share_exclusion_r1.md §2.3 C3, check_out_of_scope_rows.py 头注复述):
+# 本文件登记的是"范围外类别"(业主裁定永不做的证券类别, 无版本号, 在所有表包括 raw
+# 上以 0 行执法), 不是"股票池过滤"(universe_rules.yaml 里那种有版本 hash、只在
+# serve/发布面执法的政策)。两者绝不合并到一份文件——合并会让"股票池收紧"变成
+# 悄悄改一个只在 raw 层执法的范围外类别, 或反过来把范围外类别降级成一条可以被
+# policy_version bump 悄悄修改的政策。
+
+security_code_columns:
+  # 6 种已知代码列名 (机器枚举实测: 手工列 15 张表会漏 raw_tushare_dc_member.con_code
+  # 与 fact_dc_member_daily.con_code 各 10,596 行——所以这里只声明"认哪些列名",
+  # 具体落在哪些表由 check_out_of_scope_rows.py 对每个活库的 information_schema
+  # 发现式枚举, 不在此处或任何地方手写表清单)。
+  - ts_code
+  - stock_code
+  - con_code
+  - code
+  - secucode
+  - symbol
+
+classes:
+  b_share:
+    ruling: "业主 2026-09-12 裁定: B 股不在本项目范围, 以后也不做, 获取完的数据删除清理干净"
+    code_patterns:
+      # 上交所 B 股 900000-900999 独占段, 深交所 B 股 200000-200999 独占段;
+      # 两段历史上从未挪作他用 (b_share_exclusion_r1.md §5.1)。带不带交易所后缀都要
+      # 判 (落库既有裸 6 位也有带后缀写法), 但后缀必须匹配对应交易所, 防止
+      # "包含 900" 这种子串误判 (如 9000011 七位数、600900.SH 都不该命中)。
+      - {prefix: "900", suffix: SH}
+      - {prefix: "200", suffix: SZ}
+
+landing_exemptions: []
+  # 唯一豁免形态 (b_share_exclusion_r1.md §2.3/§4.1): no_vendor_axis 域的 landing/raw
+  # 表——那类表的批次哈希按行重算、按行删除在结构上不可行, 豁免只免它自己不 FAIL,
+  # 仍然报数 (不是 warn-nothing); 它的任何派生表不豁免, 照判 FAIL。
+  # 格式: {db: <database_manifest.yaml 里的库别名>, table: <表名>, why: <非空说明>}
+  # 例 (裁定后按此形状加, 不要提前假设):
+  #   - {db: tushare_raw, table: raw_tushare_top_inst,
+  #      why: "miaoxiang.top_inst 响应无类别轴且请求侧过滤未证实生效 (见 [T4])"}

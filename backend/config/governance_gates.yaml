@@ -397,6 +397,29 @@ runtime_checks:
       精确清单见 data/audit/lineage_catalog_drift_{date}.json
     skip_when_dry: true
 
+  - id: out_of_scope_rows
+    # S3 (2026-09-12): 业主裁决「B 股不在本项目范围, 以后也不做, 获取完的数据删除
+    # 清理干净」的防回流不变量。守的是"数据现在对不对"(某个已裁定永不做的证券类别
+    # 有没有再出现在库里), 不是"这次 diff 对不对"——与 db_invariants/cutover_effective
+    # 同理由 from_gate: null。三态退出码 (0 全 PASS / 1 有 FAIL / 3 无 FAIL 但有
+    # UNVERIFIED) 由 backend/scripts/check_out_of_scope_rows.py 自身保证。判据、
+    # 发现式枚举原理、豁免形状见该脚本头注 + backend/config/out_of_scope_scan.yaml
+    # 顶注。清理执行前, 本检查跑出来必然是 FAIL——这是预期状态, 不是本条接线错误。
+    from_gate: null
+    script: backend/scripts/check_out_of_scope_rows.py
+    args:
+      - "--alert-flag"
+      - "/tmp/chunkymonkey_ALERT_out_of_scope_rows.flag"
+      - "--json-out"
+      - "data/audit/out_of_scope_rows_{date}.json"
+    degraded_msg: >-
+      system_health out_of_scope_rows 非 PASS — 某个已裁定"范围外"的证券类别
+      (当前=B 股) 在库里被发现式枚举扫到行(FAIL, exit 1)或某库无法核验
+      (UNVERIFIED, exit 3: 库不可达/写锁/代码列名集合枚举失效), 两者都不是 PASS;
+      逐条 (db, table, column, class) 状态见
+      data/audit/out_of_scope_rows_{date}.json + ALERT_out_of_scope_rows.flag
+    skip_when_dry: false
+
 # ── 脚手架批量修 ────────────────────────────────────────────────────────
 # scaffold 组不再阻断提交，代价是必须有一个「一条命令修完」的入口，
 # 否则 warn 会被无限忽略。scripts/chunkyctl scaffold-fix 消费本节。
