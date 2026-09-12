@@ -121,6 +121,64 @@ r2 字面文本的出入见各函数头注):
      ``vendor_code``)。事件表没给 (``--code-changes`` 缺省) 时身份层整体
      ``skipped``, 不阻断验收 —— 未被识别的 twin 会在格级比较里表现成一格
      "新表多出的行" (``extra_unregistered``), 待裁决而不是静默吞掉。
+  R. (2026-09-12, 本片: 残差明细可追溯 + 计数/明细一致性) 此前
+     :func:`exchange_verdicts` 算出的四路定性只以 ``residual_verdict_counts`` 的
+     汇总计数形式存在, 逐条 ``report["residual"]`` 查不到自己是哪一类——尤其
+     ``miaoxiang_gap_unregistered`` 这个计数, 真实含义是"旧行视角的重复计数" (它
+     混了两种情况: 该格根本没登记, 或该格已登记消费但这一行的 (buyer, seller)
+     被 ``text_pairs`` 配对掉了, 即两侧其实都在只是席位名写法不同——旧归档行按
+     六键在新表找不到而被判成 gap, 格级比较早就把同一事实定性成 ``text``), 此前
+     两种情况全部塌缩成同一个计数, 查不出具体是哪几条、也分不清哪些是真缺口。
+     现在 :func:`verify` 给 ``residual`` 每条都补两个键 (:func:`_annotate_residual_
+     defaults` 打默认值, :func:`_apply_exchange_evidence` 的 pass 2 原地覆盖它真正
+     处理过的行): ``exchange_verdict`` (与 ``residual_verdict_counts`` 六个类名同名
+     的字符串; 没被这份证据覆盖到的行显式标 ``"unverified"``, 不缺键也不冒充某个
+     具体定性——"没被定性"与"评估过但跟这格无关" (:func:`_row_cell_verdict` 的
+     ``"no_cell_residual"``) 是两回事, 报告里分得开) 与 ``cell_verdict`` (该行所属
+     T 格的登记消费状态: ``"not_applicable"``/``"no_cell_residual"``/
+     ``"unregistered"``/``"stale"``/``"contradiction"``/``"consumed"``,
+     ``"consumed"`` 时再给 ``row_kind`` = ``"missing"`` (真缺口, 已登记确认) 或
+     ``"text"`` (被配对掉的文本差异, 91 条的真实形态))。写回只复用
+     :func:`exchange_verdicts` 已经算出的 ``reason``、:func:`consume` 已经算出的
+     ``per_cell`` 与 :func:`_cell_missing_rows` 的只读重放, 不重算 (pass 2 里另调
+     一次 :func:`_covered_codes` 只是为了跟 ``exchange_verdicts()`` 的输出做 1:1
+     位置对齐, 它本就是头注 L 点名的唯一覆盖判断入口)。另加分区不变量
+     :func:`_assert_residual_verdict_partition`: ``residual_verdict_counts`` 每一类
+     计数必须等于 ``residual`` 明细里 ``exchange_verdict`` 等于该类名的条数, 逐类
+     比对而非只比总数, 破了 ``AssertionError`` (``main`` 转退出码 1)——这是本片的
+     核心, 让"汇总计数与逐条明细两条路径算出来的东西不一致"变成机器可判。
+     ``miaoxiang_gap_unregistered`` 本身仍然不参与 :func:`verdict` 的退出码 (理由
+     不变, 见头注 N: 避免同一事实双判), 也不删这个计数 (它对"旧供应商错在哪"仍有
+     诊断价值)——但现在过滤 ``exchange_verdict == "miaoxiang_gap_unregistered"``
+     且 ``cell_verdict.row_kind == "text"`` 就能直接查出那批"其实是文本变体、不是
+     真缺口"的旧行, 不再是算了没人能核的黑箱。
+  S. (2026-09-12, 本片续: 主会话在真实数据上实测追加) 真实跑一遍 block_trade 的
+     412 条 residual 按"新表当天该市场有无该 (日,码) / 交易所证据有无该码"分组:
+     新表有+交易所无 220 条 (``old_vendor_error``) / 新表有+交易所有 137 条 (已被
+     格级登记消费) / 新表无+交易所有 2 条 (``miaoxiang_gap``, 已登记) / **新表无+
+     交易所无 53 条** —— 这最后一类此前落进 ``unverified`` (:func:`_covered_codes`
+     只处理了"交易所有、新表无"这一半, 没处理"两边都没有"), 把 :func:`verdict` 的
+     2 分支 (``counts["unverified"]>0``) 钉死, 而这批恰恰是三个可查条件都满足时
+     能下最硬结论的一类: 那天那个市场有完整交易所证据、新表当天该市场也确实有
+     数据, 这个代码两边都查不到 => 旧供应商凭空多记了一整个代码 (比
+     ``old_vendor_error`` 更硬——那个只是"这个具体 key 不在交易所里, 这个代码
+     其它 key 两边对得上"; 这个是"这个代码当天两边压根都不存在")。新增
+     :func:`_is_absent_from_both` 判三个前提 (并且关系, 头注写在该函数里): (a)
+     该 (day, market) 确实有 ``new_day_rows`` (非空, 不是我们自己那天没取到
+     数据); (b) 该 ts_code 在 ``new_day_rows`` 里完全找不到 (哪怕以不覆盖的
+     security_type 出现也算"存在", 不落这一类); (c) 该 ts_code 在
+     ``exchange_rows_canon`` 里也完全找不到。全部满足才产出
+     ``old_vendor_error_absent_both`` (:func:`exchange_verdicts` 在原有"代码不受
+     覆盖就跳过"的分支里新插的第五路), 缺一条仍然停在 ``unverified``——不能靠
+     "两边都查不到"单一条件下结论, 必须先确认"我们真的看过这两边"。
+     :func:`verdict` 的代码一行没动 (它从来只查 ``counts["unverified"]`` 这一个
+     键, 从不单独检查 ``old_vendor_error``/``old_vendor_error_absent_both`` 之类
+     的具体类名): 这一类不再计入 ``unverified`` (:func:`_apply_exchange_evidence`
+     的 ``handled`` 汇总把它跟 ``old_vendor_error`` 同等对待), 退出码因此不再被
+     它钉在 2——是上游少算了一次减法, 不是下游改了判定分支; 2 分支其它条件
+     (``text_candidate``/``extra_unregistered``/``venue.unresolved``/
+     ``venue.conflict``/``not_checked``) 与 3 分支一个字节都没碰。写回明细
+     (头注 R) 与分区不变量对这一类一视同仁, 不特殊处理。
 
 用法:
   python backend/scripts/reland_event_domain.py prepare --domain block_trade --run-id r1
@@ -1085,6 +1143,44 @@ def _code_counters(
     return by_code
 
 
+def _is_absent_from_both(
+    ts_code: Any,
+    new_day_rows: Sequence[Mapping[str, Any]],
+    exchange_rows_canon: Sequence[Mapping[str, Any]],
+    codes: Sequence[str] | None,
+) -> bool:
+    """头注 S: 判断一个 (不受 :func:`_covered_codes` 覆盖的) ``ts_code`` 是否满足
+    ``old_vendor_error_absent_both`` 的三个前提 (并且关系, 缺一不可):
+
+      1. ``new_day_rows`` 非空 —— 这天这个市场我们自己确实取到了数据, 不是数据
+         空洞的一天 (空的话"两边都没有"下不了结论, 可能只是我们没取到, 不是旧
+         供应商凭空多出来的);
+      2. ``ts_code`` 在 ``new_day_rows`` 里完全找不到 (不分 security_type ——
+         哪怕它以 BD0/其它不覆盖的类型出现, 也算"在新表存在", 走原有四路,
+         不落这一类);
+      3. ``ts_code`` 在 ``exchange_rows_canon`` 里也完全找不到 (若交易所有,
+         应落 ``miaoxiang_gap``, 走原有四路)。
+
+    ``codes`` 非空时额外要求该 6 位代码在白名单里 (与 :func:`_covered_codes`
+    最后一步同一份约束) —— 证据文件明确声明"只覆盖这些代码"时, 白名单外的
+    代码不该被这份文件的"没提到"下结论, 停在 unverified。
+
+    纯函数, 只读入参, 不产出定性字符串本身——那仍然只在 :func:`exchange_verdicts`
+    (调用它的地方) 产出一次; :func:`_apply_exchange_evidence` 的 pass 2 复用这
+    同一个谓词只是为了跟 :func:`exchange_verdicts` 的输出做 1:1 位置对齐 (与
+    头注 R 复用 :func:`_covered_codes` 同一份道理), 不是第二处定性。
+    """
+    if not new_day_rows or not isinstance(ts_code, str):
+        return False
+    if codes is not None and ts_code[:6] not in codes:
+        return False
+    if any(row.get("ts_code") == ts_code for row in new_day_rows):
+        return False
+    if any(row.get("ts_code") == ts_code for row in exchange_rows_canon):
+        return False
+    return True
+
+
 def exchange_verdicts(
     residual_items: Sequence[Mapping[str, Any]],
     new_day_rows: Sequence[Mapping[str, Any]],
@@ -1092,19 +1188,29 @@ def exchange_verdicts(
     market: str,
     codes: Sequence[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """钉死的四路判定: 对受覆盖代码的每个 residual 旧行, 设 ``x = exchange_key(旧行)``,
-    ``NC``/``EX`` 分别为该代码受覆盖新行/交易所行的 key Counter:
+    """钉死的四路判定 (头注 S 起加一条第五路): 对受覆盖代码的每个 residual 旧行,
+    设 ``x = exchange_key(旧行)``, ``NC``/``EX`` 分别为该代码受覆盖新行/交易所行
+    的 key Counter:
 
       - ``x in EX`` 且 ``NC[x] < EX[x]`` -> ``miaoxiang_gap``
       - ``x in EX`` 且 ``NC[x] >= EX[x]`` -> ``matched_at_exchange_precision``
       - ``x not in EX`` 且 ``NC == EX`` -> ``old_vendor_error``
       - ``x not in EX`` 且 ``NC != EX`` -> ``new_diverges_from_exchange``
 
-    代码不受覆盖 (:func:`_covered_codes`) 的 residual 行不产出 (调用方按"不在
-    返回列表里"计 unverified)。``residual_items`` 里每条至少要有 ``key``, 且
-    ``key`` 必须是 block_trade 的六列 key_cols 顺序
-    (``ts_code, trade_date, price, vol, buyer, seller`` —— 与 :data:`DOMAIN_CANON`
-    里 block_trade 的声明一致, 这也是这个函数只对 block_trade 有意义的原因)。
+    代码不受覆盖 (:func:`_covered_codes`) 的 residual 行原本一律不产出 (调用方
+    按"不在返回列表里"计 unverified)。(头注 S, 2026-09-12 追加) 其中满足
+    :func:`_is_absent_from_both` 三个前提的一部分 (该 (day, market) 确实取到了
+    新表数据, 且这个 ts_code 在新表/交易所两边都完全查不到) 改产出
+    ``old_vendor_error_absent_both`` —— 比 ``old_vendor_error`` 更硬的结论 (那个
+    只是"这个具体 key 不在交易所里, 但这个代码当天其它 key 两边对得上"; 这个是
+    "这个代码当天两边压根都不存在", 旧供应商凭空多记了一整个代码)。不满足前提
+    (new_day_rows 为空, 或代码在任一侧哪怕以不覆盖的类型出现) 仍然不产出, 语义
+    不变——不能靠"两边都查不到"单一条件下结论。
+
+    ``residual_items`` 里每条至少要有 ``key``, 且 ``key`` 必须是 block_trade 的
+    六列 key_cols 顺序 (``ts_code, trade_date, price, vol, buyer, seller`` ——
+    与 :data:`DOMAIN_CANON` 里 block_trade 的声明一致, 这也是这个函数只对
+    block_trade 有意义的原因)。
     """
     covered = _covered_codes(new_day_rows, exchange_rows_canon, market, codes)
     nc_by_code = _code_counters(new_day_rows)
@@ -1116,6 +1222,12 @@ def exchange_verdicts(
         old_row = dict(zip(("ts_code", "trade_date", "price", "vol", "buyer", "seller"), key_list))
         ts_code = old_row.get("ts_code")
         if ts_code not in covered:
+            if _is_absent_from_both(ts_code, new_day_rows, exchange_rows_canon, codes):
+                out.append({
+                    "key": list(key_list),
+                    "reason": "old_vendor_error_absent_both",
+                    "x": list(exchange_key(old_row)),
+                })
             continue
         x = exchange_key(old_row)
         nc = nc_by_code.get(ts_code, Counter())
@@ -1212,6 +1324,104 @@ def _cell_missing_rows(entry: Any) -> "Counter[tuple[str, str]]":
         if remaining > 0:
             missing[row] += remaining
     return missing
+
+
+# ------------------------------------------------------------ residual write-back --
+
+# 头注 R: 没有被这份交易所证据覆盖到的 residual 行 (没给 exchange_dir / 该
+# (day, market) 没有证据文件 / 代码不在 :func:`_covered_codes` 范围里) 落的默认
+# ``cell_verdict`` —— 显式取值, 不是缺键 (红线 3)。``status="not_applicable"``
+# 与 :func:`_row_cell_verdict` 可能返回的 ``"no_cell_residual"`` 是两回事: 前者是
+# "根本没评估" (没被定性), 后者是"评估过, 这一行对它所在格没有 gap 贡献" (定性
+# 结果是"跟这格残差无关", 不是没定性)。
+_UNCOVERED_CELL_VERDICT: dict[str, Any] = {"cell": None, "status": "not_applicable", "row_kind": None}
+
+
+def _annotate_residual_defaults(residual_all: list[dict[str, Any]]) -> None:
+    """头注 R: 给每条 residual 明细原地打上"未评估"默认值 (``exchange_verdict=
+    "unverified"``, ``cell_verdict``=:data:`_UNCOVERED_CELL_VERDICT`), 调用方
+    (:func:`_apply_exchange_evidence`) 随后只覆盖它真正处理过的行 —— 没给
+    ``exchange_dir``、或该 (day, market) 没有证据文件、或代码不受覆盖的行最终就
+    停在这个默认值上, 与 ``residual_verdict_counts["unverified"]`` 同一个类名,
+    不是另起一个"未覆盖"的同义词 (:func:`_assert_residual_verdict_partition` 逐类
+    比对时两边要能对上)。
+    """
+    for item in residual_all:
+        item["exchange_verdict"] = "unverified"
+        item["cell_verdict"] = dict(_UNCOVERED_CELL_VERDICT)
+
+
+def _row_cell_verdict(
+    cell: CellKey,
+    buyer: Any,
+    seller: Any,
+    observed_by_cell: Mapping[CellKey, Observed],
+    consumption: Any,
+    verdicts: CellVerdictSet,
+) -> dict[str, Any]:
+    """头注 R: 一行 (已经过 :func:`exchange_key` 归一的 ``buyer``/``seller``) 在它
+    所属 T 格里的下场, 只读重放已经算好的 ``observed_by_cell``/``consumption``/
+    ``verdicts`` (与 :func:`_cell_missing_rows` 同一份"不重算"性质), 不重新判定
+    gap/extra 也不重新判定 consumed/stale。
+
+    先查这一行自己的 (buyer, seller) 在该格 ``Observed.gap`` 里的计数: <=0 说明
+    这一行本身没有对这一格的 gap 有贡献 (matched_at_exchange_precision/
+    old_vendor_error/new_diverges_from_exchange 都落在这一支, 数学上可证:
+    这三类要么 x 在 EX 里且 NC>=EX, 要么 x 不在 EX 里 —— 两种情况下这一行自己的
+    (buyer, seller) 在格里的 gap 计数恒为 0), 返回 ``"no_cell_residual"``——这不是
+    "没被定性", 是"评估过, 结论是这一行跟这格的残差无关"。
+
+    gap 计数 > 0 (只有 miaoxiang_gap 会走到这一支) 时查该格的登记消费状态: 不是
+    ``"consumed"`` (unregistered/stale/contradiction) 直接原样返回该状态,
+    ``row_kind=None`` (格级本身还没有可信结论, 不装作有); 是 ``"consumed"`` 则用
+    :func:`_cell_missing_rows` 判断这一行的 (buyer, seller) 是仍然真缺 (``"missing"``,
+    已登记确认) 还是已经被 ``text_pairs`` 配对消费掉了 (``"text"``, 91 条那种"其实
+    是文本变体"的真实形态)。
+    """
+    obs = observed_by_cell.get(cell)
+    gap_count = obs.gap.get((buyer, seller), 0) if obs is not None else 0
+    if gap_count <= 0:
+        return {"cell": list(cell), "status": "no_cell_residual", "row_kind": None}
+
+    per_cell = consumption.per_cell.get(cell)
+    status = per_cell.get("status") if per_cell is not None else "unregistered"
+    if status != "consumed":
+        return {"cell": list(cell), "status": status, "row_kind": None}
+
+    entry = verdicts.by_cell.get(cell)
+    remaining = _cell_missing_rows(entry).get((buyer, seller), 0) if entry is not None else 0
+    row_kind = "missing" if remaining > 0 else "text"
+    return {"cell": list(cell), "status": status, "row_kind": row_kind}
+
+
+def _assert_residual_verdict_partition(
+    residual_all: Sequence[Mapping[str, Any]], residual_verdict_counts: Mapping[str, int]
+) -> None:
+    """头注 R (本片核心): ``residual_verdict_counts`` 逐类计数必须等于 ``residual``
+    明细里 ``exchange_verdict`` 字段等于该类名的条数 —— 逐类比对, 不是只比总数。
+    汇总计数与逐条明细本该是同一份 pass 2 写回逻辑的两个视图; 哪天写回漏标/错标
+    了一条, 这里就抛, 不必等到"91 条查不到是哪几条"这种事后才被发现。
+
+    额外校验 ``residual`` 明细里不出现六个已知类名之外的 ``exchange_verdict``
+    取值——否则某条被打了个不在册的字符串, 光逐类比对已知类不会发现它把
+    ``len(residual_all)`` 也带偏了 (某个已知类会被少算, 但也可能因为它本来就是 0
+    个成员而蒙混过关)。
+    """
+    actual: Counter = Counter(item.get("exchange_verdict") for item in residual_all)
+    unexpected = set(actual) - set(residual_verdict_counts)
+    if unexpected:
+        raise AssertionError(
+            "residual_verdict_counts partition invariant broken: residual detail has "
+            f"exchange_verdict values not present in residual_verdict_counts: {sorted(unexpected)}"
+        )
+    for cls, expected in residual_verdict_counts.items():
+        got = actual.get(cls, 0)
+        if got != expected:
+            raise AssertionError(
+                "residual_verdict_counts partition invariant broken: class "
+                f"{cls!r} count={expected} but residual detail has {got} entries with "
+                f"exchange_verdict={cls!r}"
+            )
 
 
 def emit_candidate_verdicts(
@@ -1384,6 +1594,7 @@ def _apply_exchange_evidence(
     counts = {
         "unverified": 0,
         "old_vendor_error": 0,
+        "old_vendor_error_absent_both": 0,
         "miaoxiang_gap_registered": 0,
         "miaoxiang_gap_unregistered": 0,
         "new_diverges_from_exchange": 0,
@@ -1491,7 +1702,8 @@ def _apply_exchange_evidence(
         )
 
     # pass 2: 旧 exchange_verdicts 四路 (逻辑不变, miaoxiang_gap 的登记查询改走
-    # 格级 consumption, 头注 N) + explained_merged proved 检查 (逻辑完全不变)。
+    # 格级 consumption, 头注 N) + explained_merged proved 检查 (逻辑完全不变) +
+    # (头注 R, 本片新增) 把每条 residual 明细的定性/格级消费结果写回它自己。
     for (day, market), ctx in per_day_market.items():
         market_new_rows = ctx["market_new_rows"]
         exchange_rows_canon = ctx["exchange_rows_canon"]
@@ -1502,24 +1714,44 @@ def _apply_exchange_evidence(
             item for item in residual_by_day.get(day, [])
             if str(item["key"][0]).upper().endswith(suffix)
         ]
-        for v in exchange_verdicts(day_residuals, market_new_rows, exchange_rows_canon, market, codes=codes):
+        # exchange_verdicts() 内部按 _covered_codes(market_new_rows,
+        # exchange_rows_canon, market, codes) 自己的覆盖判断过滤 day_residuals,
+        # 头注 S 起再加一条 _is_absent_from_both 补进部分未覆盖的行 —— 这个覆盖
+        # 集合跟上面 ctx["covered"] 不是同一份 (ctx["covered"] 已经减去了 venue
+        # 不确定/冲突的 blocked_suffix, 供 cell_compare 用; exchange_verdicts 拿到
+        # 的 market_new_rows/exchange_rows_canon 是未减去 blocked_suffix 的原始
+        # 参数)。这里再调一次同两个纯函数算出 ev_included, 只是为了跟
+        # exchange_verdicts() 的输出做 1:1 位置对齐 (它的返回列表是 day_residuals
+        # 按"是否产出"过滤后保序的子序列), 不是重新发明覆盖规则 (头注 L:
+        # _covered_codes 是唯一入口) 也不是重算 exchange_verdicts/_is_absent_from_
+        # both 自己的判定 (头注 R/S)。
+        ev_covered = _covered_codes(market_new_rows, exchange_rows_canon, market, codes)
+        verdict_results = iter(
+            exchange_verdicts(day_residuals, market_new_rows, exchange_rows_canon, market, codes=codes)
+        )
+        for item in day_residuals:
+            ts_code = item["key"][0]
+            ev_included = ts_code in ev_covered or _is_absent_from_both(
+                ts_code, market_new_rows, exchange_rows_canon, codes
+            )
+            if not ev_included:
+                # 不受这份证据覆盖、也不满足"两边都没有"的三前提: 外层
+                # _annotate_residual_defaults 已经打好的 "unverified"/
+                # "not_applicable" 默认值原样保留, 不在这里重复赋值。
+                continue
+            v = next(verdict_results)
             reason = v["reason"]
+            x_ts_code, x_trade_date, x_price, x_vol, x_buyer, x_seller = v["x"]
+            cell = (str(x_trade_date), market, str(x_ts_code)[:6], f"{x_price:.2f}", f"{x_vol:.2f}")
+            cell_info = _row_cell_verdict(cell, x_buyer, x_seller, observed_by_cell, consumption, verdicts)
             if reason == "miaoxiang_gap":
-                ts_code, trade_date, price, vol, buyer, seller = v["x"]
-                code6 = str(ts_code)[:6]
-                cell = (str(trade_date), market, code6, f"{price:.2f}", f"{vol:.2f}")
-                per_cell = consumption.per_cell.get(cell)
-                registered = False
-                if per_cell is not None and per_cell.get("status") == "consumed":
-                    entry = verdicts.by_cell.get(cell)
-                    if entry is not None:
-                        registered = _cell_missing_rows(entry).get((buyer, seller), 0) > 0
-                if registered:
-                    counts["miaoxiang_gap_registered"] += 1
-                else:
-                    counts["miaoxiang_gap_unregistered"] += 1
+                registered = cell_info["row_kind"] == "missing"
+                final_reason = "miaoxiang_gap_registered" if registered else "miaoxiang_gap_unregistered"
             else:
-                counts[reason] += 1
+                final_reason = reason
+            counts[final_reason] += 1
+            item["exchange_verdict"] = final_reason
+            item["cell_verdict"] = cell_info
 
         for item in merged_by_day.get(day, []):
             ts_code = item["key"][0]
@@ -1532,9 +1764,9 @@ def _apply_exchange_evidence(
                 explained_merged_proved += 1
 
     handled = (
-        counts["old_vendor_error"] + counts["miaoxiang_gap_registered"]
-        + counts["miaoxiang_gap_unregistered"] + counts["new_diverges_from_exchange"]
-        + counts["matched_at_exchange_precision"]
+        counts["old_vendor_error"] + counts["old_vendor_error_absent_both"]
+        + counts["miaoxiang_gap_registered"] + counts["miaoxiang_gap_unregistered"]
+        + counts["new_diverges_from_exchange"] + counts["matched_at_exchange_precision"]
     )
     counts["unverified"] = len(residual_all) - handled
 
@@ -1572,7 +1804,13 @@ def verdict(report: Mapping[str, Any]) -> int:
 
     0: 其余 —— 注意 ``new_diverges_from_exchange`` (旧四路判定) 不再单独影响退出
     码: 它的机器含义已被格级比较完整覆盖 (该格自己会按残差类定性), 双判会让同一
-    事实产生两个不同退出码 (bt_residual_classes_r1.md §4 末段)。
+    事实产生两个不同退出码 (bt_residual_classes_r1.md §4 末段)。``old_vendor_
+    error_absent_both`` (头注 S) 同理不单独影响退出码——本函数从未单独检查过
+    这个/``old_vendor_error``/``matched_at_exchange_precision`` 这几个类名, 只看
+    ``counts["unverified"]``; 这一类已经从 :func:`exchange_verdicts` 里"确认过、
+    不是待核" (三前提机器判过), 不再计入 ``unverified``, 因此不会让退出码停在 2
+    ——这是上游 (:func:`_apply_exchange_evidence` 的 ``handled`` 汇总) 的效果,
+    本函数不需要、也没有为它加任何新分支。
 
     ``report`` 里没有 ``consumption``/``venue``/``not_checked`` (没传
     ``exchange_dir`` 的调用) 时按全零/空对待, 不影响判定。
@@ -1657,6 +1895,10 @@ def verify(
         classes, residual_all, explained_merged_all, new_rows_by_day, identity_totals = _classify_all_days(
             active_conn, domain, table, run_id=run_id, archive_dir=archive_dir, ccs=ccs
         )
+        # 头注 R: 先给每条 residual 明细打默认值 ("unverified"/not_applicable),
+        # 两条分支 (给/不给 exchange_dir) 都从这个统一起点出发, 后面只有真正被
+        # 交易所证据覆盖到的行会被 _apply_exchange_evidence 原地覆盖。
+        _annotate_residual_defaults(residual_all)
         if exchange_dir is not None:
             evidence = _apply_exchange_evidence(
                 residual_all=residual_all,
@@ -1683,6 +1925,7 @@ def verify(
             residual_verdict_counts = {
                 "unverified": len(residual_all),
                 "old_vendor_error": 0,
+                "old_vendor_error_absent_both": 0,
                 "miaoxiang_gap_registered": 0,
                 "miaoxiang_gap_unregistered": 0,
                 "new_diverges_from_exchange": 0,
@@ -1706,6 +1949,8 @@ def verify(
             registry_sha256 = loaded_verdicts.sha256
             if emit_candidates_path is not None:
                 emit_candidate_verdicts({}, loaded_verdicts, emit_candidates_path)
+        # 头注 R (本片核心): 汇总计数与逐条明细必须逐类对得上, 不是只比总数。
+        _assert_residual_verdict_partition(residual_all, residual_verdict_counts)
         result: dict[str, Any] = {
             "domain": domain,
             "table": table,

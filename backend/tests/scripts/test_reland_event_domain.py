@@ -74,6 +74,7 @@ from scripts.reland_event_domain import (
     structural_checks,
     verdict,
     verify,
+    _assert_residual_verdict_partition,
     _vol_2dp,
 )
 from services.exchange_cell_verdicts import _DOMAIN_CELL_COLS, load_exchange_cell_verdicts
@@ -83,6 +84,7 @@ def _zero_counts(**overrides) -> dict:
     counts = {
         "unverified": 0,
         "old_vendor_error": 0,
+        "old_vendor_error_absent_both": 0,
         "miaoxiang_gap_registered": 0,
         "miaoxiang_gap_unregistered": 0,
         "new_diverges_from_exchange": 0,
@@ -1591,3 +1593,273 @@ def test_c27_main_returns_2_for_unregistered_text_difference(tmp_path, monkeypat
         "--exchange-dir", str(tmp_path), "--cell-verdicts", str(verdicts_path),
     ])
     assert rc == 2
+
+
+# ============================================== R1-R5: residual write-back (R) ==
+# 头注 R (2026-09-12, 本片): exchange_verdicts()/consume() 算出的定性此前只以
+# residual_verdict_counts 的汇总计数形式存在, report["residual"] 逐条明细里查不到
+# 自己是哪一类。R1-R4 对应规格里给的四个隔离条件 (受覆盖且 old_vendor_error /
+# miaoxiang_gap 且格已登记消费为 missing / miaoxiang_gap 但格已登记消费为 text
+# (91 条那种形态) / 不受覆盖); R5 是分区不变量 (计数与明细逐类必须相等)。
+
+def test_r1_old_vendor_error_row_is_traceable_in_residual_detail(tmp_path):
+    old_rows = [dict(ts_code="600020.SH", trade_date="20230120", price=11.0, vol=5.0, buyer="b", seller="s")]
+    new_rows = [dict(ts_code="600020.SH", trade_date="20230120", price=10.0, vol=5.0, buyer="b", seller="s")]
+    conn = _setup_block_trade_reland(tmp_path, "r1", old_rows, new_rows)
+    _write_both_exchange_files(tmp_path, "20230120",
+                                sh_rows=[_exch_raw_row("sh", "600020", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="r1", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["residual_verdict_counts"]["old_vendor_error"] == 1
+    assert len(report["residual"]) == 1
+    item = report["residual"][0]
+    assert item["exchange_verdict"] == "old_vendor_error"
+    # 这一行自己的 (buyer, seller) 在它自己的价位格 (11.00, 与交易所/新表的 10.00
+    # 不是同一格) 里没有 gap 贡献 —— 评估过, 跟这格残差无关, 不是"没被定性"。
+    assert item["cell_verdict"]["status"] == "no_cell_residual"
+    assert item["cell_verdict"]["row_kind"] is None
+
+
+def test_r2_miaoxiang_gap_registered_as_missing_shows_registered_in_detail(tmp_path):
+    row = dict(ts_code="600051.SH", trade_date="20230211", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "r2", [row], [])  # 重落后彻底消失
+    _write_both_exchange_files(tmp_path, "20230211",
+                                sh_rows=[_exch_raw_row("sh", "600051", "10.00", "5.00", "b", "s")])
+    entry = _cell_entry(
+        cells=[("20230211", "sh", "600051", "10.00", "5.00")],
+        exchange_unmatched=[("b", "s", 1)],
+        vendor_unmatched=[],
+        evidence="交易所核对确有此笔, 妙想重落后确实缺失, 已知问题",
+    )
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [entry])
+
+    report = verify("block_trade", run_id="r2", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["residual_verdict_counts"]["miaoxiang_gap_registered"] == 1
+    assert len(report["residual"]) == 1
+    item = report["residual"][0]
+    assert item["exchange_verdict"] == "miaoxiang_gap_registered"
+    assert item["cell_verdict"] == {
+        "cell": ["20230211", "sh", "600051", "10.00", "5.00"],
+        "status": "consumed",
+        "row_kind": "missing",
+    }
+
+
+def test_r3_miaoxiang_gap_unregistered_but_cell_consumed_as_text_shows_text_kind(tmp_path):
+    """这正是主会话实测的 91 条的形态: 旧行按六键在新表找不到而被判成
+    miaoxiang_gap (registered=False, 计入 miaoxiang_gap_unregistered), 但格级比较
+    早就把同一事实定性成 ``text`` (两侧都在, 只是席位名写法不同)。明细里必须能
+    直接看出这不是真缺口。"""
+    old_rows = [dict(ts_code="600052.SH", trade_date="20230212", price=10.0, vol=5.0,
+                      buyer="brokerA_old", seller="s")]
+    new_rows = [dict(ts_code="600052.SH", trade_date="20230212", price=10.0, vol=5.0,
+                      buyer="brokerA_new", seller="s")]
+    conn = _setup_block_trade_reland(tmp_path, "r3", old_rows, new_rows)
+    _write_both_exchange_files(tmp_path, "20230212",
+                                sh_rows=[_exch_raw_row("sh", "600052", "10.00", "5.00", "brokerA_old", "s")])
+    entry = _cell_entry(
+        cells=[("20230212", "sh", "600052", "10.00", "5.00")],
+        exchange_unmatched=[("brokerA_old", "s", 1)],
+        vendor_unmatched=[("brokerA_new", "s", 1)],
+        text_pairs=[(0, 0, 1)],
+        evidence="交易所营业部全称核对无误, 只是简称写法不同",
+    )
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [entry])
+
+    report = verify("block_trade", run_id="r3", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["residual_verdict_counts"]["miaoxiang_gap_unregistered"] == 1
+    assert len(report["residual"]) == 1
+    item = report["residual"][0]
+    assert item["exchange_verdict"] == "miaoxiang_gap_unregistered"
+    assert item["cell_verdict"] == {
+        "cell": ["20230212", "sh", "600052", "10.00", "5.00"],
+        "status": "consumed",
+        "row_kind": "text",
+    }
+    # 格已经被登记表完整消费掉 (text=1, 无 unregistered 残差), 不阻断退出码。
+    assert report["exit_code"] == 0
+
+
+def test_r4_row_not_covered_by_exchange_evidence_is_marked_unverified_not_missing_key(tmp_path):
+    old_rows = [dict(ts_code="430001.BJ", trade_date="20230213", price=10.0, vol=5.0, buyer="b", seller="s")]
+    conn = _setup_block_trade_reland(tmp_path, "r4", old_rows, [])  # 重落后消失, 走 residual
+    _write_both_exchange_files(tmp_path, "20230213", sh_rows=[], sz_rows=[])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="r4", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["residual_verdict_counts"]["unverified"] == 1
+    assert len(report["residual"]) == 1
+    item = report["residual"][0]
+    assert "exchange_verdict" in item and "cell_verdict" in item  # 显式取值, 不是缺键
+    assert item["exchange_verdict"] == "unverified"
+    assert item["cell_verdict"] == {"cell": None, "status": "not_applicable", "row_kind": None}
+
+
+def test_r5a_partition_invariant_direct_mismatch_raises_with_class_name():
+    residual_all = [{"exchange_verdict": "old_vendor_error"}]
+    counts = _zero_counts(old_vendor_error=2)  # 明细只有 1 条 old_vendor_error, 计数却是 2
+    with pytest.raises(AssertionError, match="old_vendor_error"):
+        _assert_residual_verdict_partition(residual_all, counts)
+
+
+def test_r5b_partition_invariant_violation_via_verify_raises_and_names_the_class(tmp_path, monkeypatch):
+    """规格要求的隔离用例: monkeypatch 让某一类计数与明细条数差 1, 必须抛且消息
+    含类名。这里通过一份不产生任何 residual 的干净输入 + 篡改
+    ``_apply_exchange_evidence`` 返回的 counts (明细不变, 计数漂移 1) 直接触发。"""
+    import scripts.reland_event_domain as red
+
+    row = dict(ts_code="600053.SH", trade_date="20230214", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "r5b", [row], [row])  # 完全匹配, 无 residual
+    _write_both_exchange_files(tmp_path, "20230214", sh_rows=[])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    original = red._apply_exchange_evidence
+
+    def _tampered(**kwargs):
+        evidence = original(**kwargs)
+        evidence["counts"]["old_vendor_error"] += 1  # 明细里没有任何一条被标成这一类
+        return evidence
+
+    monkeypatch.setattr(red, "_apply_exchange_evidence", _tampered)
+
+    with pytest.raises(AssertionError, match="old_vendor_error"):
+        verify("block_trade", run_id="r5b", conn=conn, archive_dir=tmp_path,
+               exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+
+
+# ==================================== S1-S6: old_vendor_error_absent_both (S) ==
+# 头注 S (2026-09-12, 主会话在真实数据上实测追加): 该 (day, market) 有交易所证据
+# 文件 + 新表当天该市场至少一行数据 + 该 ts_code 在新表/交易所两边都完全查不到,
+# 三个前提并且满足才落 old_vendor_error_absent_both, 缺一条仍是 unverified。
+
+def test_s1_all_three_preconditions_met_gives_absent_both_and_excludes_unverified(tmp_path):
+    present_row = dict(ts_code="600060.SH", trade_date="20230301", price=10.0, vol=5.0, buyer="b", seller="s")
+    ghost_row = dict(ts_code="600061.SH", trade_date="20230301", price=20.0, vol=8.0, buyer="x", seller="y")
+    # 600061.SH 只存在于旧归档 (残差), 新表/交易所当天都没有这个代码。
+    conn = _setup_block_trade_reland(tmp_path, "s1", [present_row, ghost_row], [present_row])
+    _write_both_exchange_files(tmp_path, "20230301",
+                                sh_rows=[_exch_raw_row("sh", "600060", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="s1", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["residual_verdict_counts"]["old_vendor_error_absent_both"] == 1
+    assert report["residual_verdict_counts"]["unverified"] == 0
+    ghost_items = [r for r in report["residual"] if r["key"][0] == "600061.SH"]
+    assert len(ghost_items) == 1
+    assert ghost_items[0]["exchange_verdict"] == "old_vendor_error_absent_both"
+
+
+def test_s2_no_evidence_file_for_that_day_market_stays_unverified(tmp_path):
+    # 前提 2 (新表当天该市场至少一行) 特意满足 (present_row 留在新表里), 只让
+    # 前提 1 (有证据文件) 失效, 才是"只缺被测那一条"的隔离用例。
+    ghost_row = dict(ts_code="600062.SH", trade_date="20230302", price=20.0, vol=8.0, buyer="x", seller="y")
+    present_row = dict(ts_code="600070.SH", trade_date="20230302", price=1.0, vol=1.0, buyer="p", seller="q")
+    conn = _setup_block_trade_reland(tmp_path, "s2", [ghost_row, present_row], [present_row])
+    # 20230302 完全没有证据文件 (both markets) —— 前提 1 不满足。
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="s2", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["residual_verdict_counts"]["old_vendor_error_absent_both"] == 0
+    assert report["residual_verdict_counts"]["unverified"] == 1
+    assert report["residual"][0]["exchange_verdict"] == "unverified"
+
+
+def test_s3_new_table_empty_that_day_market_stays_unverified(tmp_path):
+    ghost_row = dict(ts_code="600063.SH", trade_date="20230303", price=20.0, vol=8.0, buyer="x", seller="y")
+    # 新表这天这个市场零行 (旧行也不例外地一起消失) —— 前提 2 (new_day_rows 非空)
+    # 不满足, 即便证据文件写了别的代码。
+    conn = _setup_block_trade_reland(tmp_path, "s3", [ghost_row], [])
+    _write_both_exchange_files(tmp_path, "20230303",
+                                sh_rows=[_exch_raw_row("sh", "600099", "1.00", "1.00", "p", "q")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="s3", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["residual_verdict_counts"]["old_vendor_error_absent_both"] == 0
+    assert report["residual_verdict_counts"]["unverified"] == 1
+    assert report["residual"][0]["exchange_verdict"] == "unverified"
+
+
+def test_s4_code_present_in_new_table_does_not_get_absent_both_uses_original_four_way(tmp_path):
+    # 600064.SH 在新表存在 (价格对不上交易所, NC==EX 触发 old_vendor_error) ——
+    # 走原有四路, 不落 absent_both, 即便它本身就是 residual。
+    old_row = dict(ts_code="600064.SH", trade_date="20230304", price=11.0, vol=5.0, buyer="b", seller="s")
+    new_row = dict(ts_code="600064.SH", trade_date="20230304", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "s4", [old_row], [new_row])
+    _write_both_exchange_files(tmp_path, "20230304",
+                                sh_rows=[_exch_raw_row("sh", "600064", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="s4", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["residual_verdict_counts"]["old_vendor_error_absent_both"] == 0
+    assert report["residual_verdict_counts"]["old_vendor_error"] == 1
+    assert report["residual"][0]["exchange_verdict"] == "old_vendor_error"
+
+
+def test_s5_code_present_in_exchange_does_not_get_absent_both_gives_miaoxiang_gap(tmp_path):
+    # 600065.SH 只在交易所出现 (新表当天该市场另有别的代码, 保证 new_day_rows
+    # 非空但不含 600065.SH) —— 应落 miaoxiang_gap, 不落 absent_both。
+    ghost_row = dict(ts_code="600065.SH", trade_date="20230305", price=10.0, vol=5.0, buyer="b", seller="s")
+    other_row = dict(ts_code="600066.SH", trade_date="20230305", price=1.0, vol=1.0, buyer="p", seller="q")
+    conn = _setup_block_trade_reland(tmp_path, "s5", [ghost_row, other_row], [other_row])
+    _write_both_exchange_files(
+        tmp_path, "20230305",
+        sh_rows=[
+            _exch_raw_row("sh", "600065", "10.00", "5.00", "b", "s"),
+            _exch_raw_row("sh", "600066", "1.00", "1.00", "p", "q"),
+        ],
+    )
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="s5", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["residual_verdict_counts"]["old_vendor_error_absent_both"] == 0
+    ghost_items = [r for r in report["residual"] if r["key"][0] == "600065.SH"]
+    assert len(ghost_items) == 1
+    assert ghost_items[0]["exchange_verdict"] == "miaoxiang_gap_unregistered"
+
+
+def test_s6_absent_both_alone_gives_exit_0_but_exit_2_alongside_text_candidate(tmp_path):
+    ghost_row = dict(ts_code="600067.SH", trade_date="20230306", price=20.0, vol=8.0, buyer="x", seller="y")
+    present_row = dict(ts_code="600068.SH", trade_date="20230306", price=10.0, vol=5.0, buyer="brokerA", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "s6", [ghost_row, present_row], [present_row])
+    _write_both_exchange_files(
+        tmp_path, "20230306",
+        sh_rows=[_exch_raw_row("sh", "600068", "10.00", "5.00", "brokerA", "s")],
+    )
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="s6", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["residual_verdict_counts"]["old_vendor_error_absent_both"] == 1
+    # 只有这一类残差 (600068.SH 与交易所完全一致, 无 gap/extra) -> exit 0。
+    assert report["exit_code"] == 0
+
+    # 再加一个未登记文本差异, 证明 2 分支的其它条件没有被一起放过。
+    conn2 = _setup_block_trade_reland(
+        tmp_path, "s6b",
+        [ghost_row, present_row, dict(ts_code="600069.SH", trade_date="20230306", price=1.0, vol=1.0,
+                                       buyer="brokerB", seller="s")],
+        [present_row, dict(ts_code="600069.SH", trade_date="20230306", price=1.0, vol=1.0,
+                            buyer="brokerB", seller="s")],
+    )
+    _write_both_exchange_files(
+        tmp_path, "20230306",
+        sh_rows=[
+            _exch_raw_row("sh", "600068", "10.00", "5.00", "brokerA", "s"),
+            _exch_raw_row("sh", "600069", "1.00", "1.00", "brokerBprime", "s"),
+        ],
+    )
+    report2 = verify("block_trade", run_id="s6b", conn=conn2, archive_dir=tmp_path,
+                      exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report2["residual_verdict_counts"]["old_vendor_error_absent_both"] == 1
+    assert report2["consumption"]["totals"]["text_candidate"] == 1
+    assert report2["exit_code"] == 2
