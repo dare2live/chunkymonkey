@@ -305,6 +305,7 @@ def test_clean_block_trade_row_eqa():
         "seller": "机构专用",
         "security_type": "EQA",
         "trade_unit": "4",
+        "vendor_market": None,
     }
     assert "seq" not in out
 
@@ -491,6 +492,36 @@ def test_clean_block_trade_fetch_raw_integration():
     assert call["sort_columns"] == "SECURITY_CODE,DEAL_PRICE,DEAL_VOLUME,BUYER_NAME,SELLER_NAME"
     assert call["sort_types"] == "1,1,1,1,1"
     assert call["extra_filters"] == ["(TRADE_DATE='2026-08-27')"]
+
+
+def test_block_trade_vendor_market_present():
+    """A1: vendor_market field present with valid exchange code (CNSESH)."""
+    row = _block_trade_raw_row(TRADE_MARKET_OLD="CNSESH")
+    out = clean_block_trade_row(row, trade_date="20260827")
+    assert out["vendor_market"] == "CNSESH"
+
+
+def test_block_trade_vendor_market_missing():
+    """A2: vendor_market field absent from row -> None, no exception."""
+    row = _block_trade_raw_row()
+    if "TRADE_MARKET_OLD" in row:
+        del row["TRADE_MARKET_OLD"]
+    out = clean_block_trade_row(row, trade_date="20260827")
+    assert out["vendor_market"] is None
+
+
+def test_block_trade_vendor_market_unknown_value():
+    """A3: vendor_market field with unknown exchange code (CNSEXX) -> passthrough, no exception."""
+    row = _block_trade_raw_row(TRADE_MARKET_OLD="CNSEXX")
+    out = clean_block_trade_row(row, trade_date="20260827")
+    assert out["vendor_market"] == "CNSEXX"
+
+
+def test_block_trade_vendor_market_empty_string():
+    """A4: vendor_market field with empty string -> None (per _text behavior)."""
+    row = _block_trade_raw_row(TRADE_MARKET_OLD="")
+    out = clean_block_trade_row(row, trade_date="20260827")
+    assert out["vendor_market"] is None
 
 
 def test_clean_top_inst_row_with_new_columns():

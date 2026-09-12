@@ -529,6 +529,7 @@ def clean_block_trade_row(row: dict[str, Any], *, trade_date: str) -> dict[str, 
         "seller": seller,
         "security_type": security_type,
         "trade_unit": _text(row.get("TRADE_UNIT")),
+        "vendor_market": _text(row.get("TRADE_MARKET_OLD")),
     }
 
 
