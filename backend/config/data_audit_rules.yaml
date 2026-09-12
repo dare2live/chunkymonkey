@@ -58,6 +58,16 @@ cross_table_consistency:
       # 沦为无意义的自证; 且该表本身无存活 writer (冻结 10+ 周), 继续依赖只会读到过期快照。
       # kline_universe_coverage(北交所/非A股板块 leak 检测)不依赖此表, 独立保留。
 
+# 2026-09-12 (asof_identity_r1.md §3.2/§3.4, 施工片 S5) 两条常驻审计共用的配置轴。
+# price_tolerance 只服务 kline_code_succession 的候选侦测 (旧末日收盘价 vs 新首日前收盘价
+# 邻接, 抓"日常按日同步下正常发生的换码"); kline_entity_duplicate 判的是"全同值"的实体
+# 重复 (抓"按码重拉又把历史回写进 K 线"), 无容差, 阈值锚在
+# backend/services/security_identity.py 的 _DUPLICATE_DAY_THRESHOLD, 不在此重复定义。
+# 两条审计共用同一份登记表 backend/config/security_code_changes.yaml。
+kline_identity:
+  kline_table: canonical_nominal_ohlcv_daily
+  price_tolerance: 0.01
+
 audit_rules:
   - kline_completeness
   - kline_consistency
@@ -65,3 +75,5 @@ audit_rules:
   - date_range
   - volume_sanity
   - cross_table_consistency
+  - kline_entity_duplicate
+  - kline_code_succession

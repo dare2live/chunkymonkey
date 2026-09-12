@@ -3,6 +3,7 @@ blocking_paths:
 - tests/data_governance/test_etl_hook.py
 - tests/scripts/test_agent_board_projection.py
 - tests/scripts/test_agent_boot.py
+- tests/scripts/test_amend_kline_entity_duplicates.py
 - tests/scripts/test_audit_data_completeness.py
 - tests/scripts/test_audit_date_bounds.py
 - tests/scripts/test_audit_exemptions.py

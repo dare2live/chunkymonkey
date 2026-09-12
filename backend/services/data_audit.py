@@ -13,6 +13,12 @@ from typing import Any
 import duckdb
 
 from services.calendar import latest_completed_trade_date
+from services.security_identity import (  # asof_identity_r1.md §3.2/§3.4, §9 S5
+    CodeChangeSet,
+    IdentityRuleInvalid,
+    assert_identity_rule_valid,
+    load_security_code_changes,
+)
 from services.universe import ACTIVE_A_SHARE_PREFIXES, classify_exclusion   # 单一真相源 (板块前缀身份/排除规则)
 
 logger = logging.getLogger(__name__)
@@ -114,6 +120,13 @@ def _load_audit_config() -> dict[str, Any]:
             #   mart_stock_survey_activity(U5) 已物删, 且无 daily-fresh smartmoney 派生表; 各域新鲜度
             #   由 update_watermark_sla SLA gate 按正确 per-domain 窗全覆盖 (去重非丢覆盖)。
             "cross_table_consistency",
+            # 2026-09-12 (asof_identity_r1.md §3.2/§3.4, 施工片 S5) 两条常驻审计: K 线真相表里
+            # 任何"两个不同代码同一天全同"的重复对, 必须能对应一条已登记换码事件且区间落在
+            # [K线首日, effective_date) 内 (kline_entity_duplicate); 任何"旧末日=新首日前一
+            # 交易日 且价格邻接"的候选换码, 必须已登记 (kline_code_succession)。两者共用
+            # backend/config/security_code_changes.yaml 同一份登记表, 见下方 kline_identity 配置。
+            "kline_entity_duplicate",
+            "kline_code_succession",
         ],
         "kline_checks": {
             "source_table": "market.v_price_kline_qfq",
@@ -148,6 +161,15 @@ def _load_audit_config() -> dict[str, Any]:
                 # 物删的 dim_all_ever_listed 判"标记 inactive 但仍在交易", 该表无存活 writer 且外部
                 # is_active 声明源本身已被判定为不再需要 (universe.py K 线活跃真相源原则)。
             ],
+        },
+        # 2026-09-12 (asof_identity_r1.md §3.2/§3.4/§9 S5): kline_entity_duplicate /
+        # kline_code_succession 两条常驻审计共用的配置轴。price_tolerance 只服务
+        # kline_code_succession 的候选侦测 (旧末日收盘价 vs 新首日前收盘价邻接) ——
+        # kline_entity_duplicate 判的是"全同值"的实体重复, 无容差, 阈值锚在
+        # services.security_identity._DUPLICATE_DAY_THRESHOLD (§3.2, 不在此重复定义)。
+        "kline_identity": {
+            "kline_table": "canonical_nominal_ohlcv_daily",
+            "price_tolerance": 0.01,
         },
     } | loaded
 
@@ -473,6 +495,121 @@ def _check_cross_table_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResu
     return CheckResult("cross_table_consistency", "PASS", "kline codes consistent with universe board-prefix truth source")
 
 
+def _check_kline_entity_duplicate(
+    conn: duckdb.DuckDBPyConnection, *, ccs: CodeChangeSet | None = None
+) -> CheckResult:
+    """asof_identity_r1.md §3.2 前提锁 / §3.4-1: K 线里任何两个不同代码在同一天
+    close/vol/amount 全同 (:func:`services.security_identity.kline_entity_duplicate_pairs`,
+    阈值锚在该模块的 ``_DUPLICATE_DAY_THRESHOLD``, 这里不重复定义), 必须能对应恰好一条
+    已登记换码事件且重复区间落在 [K线首日, effective_date) 内, 否则 FAIL —— 抓"按码
+    重拉又把历史回写进 K 线" (I2)。
+
+    S5 地基修正执行后, 已登记的两对本身也被删掉了 (new_code 在 effective_date 前已
+    0 行, 不再有 twin 可配), 本审计因此清理后恒绿; 若将来任何一次同类回写复发
+    (不论是这两个代码还是全新的一对), 立刻 FAIL, 不需要先手工发现才补规则 (红线 5)。
+
+    ``ccs`` 仅供测试注入 (绕开生产 YAML); 生产路径 (``ccs=None``) 现读
+    ``security_code_changes.yaml``。
+    """
+    cfg = AUDIT_RULES.get("kline_identity", {})
+    kline_table = _to_str(cfg.get("kline_table"), "canonical_nominal_ohlcv_daily")
+    kline_sql = f"tushare_raw.{kline_table}"
+    try:
+        events = ccs if ccs is not None else load_security_code_changes()
+        assert_identity_rule_valid(conn, events, kline_sql=kline_sql)
+    except IdentityRuleInvalid as exc:
+        return CheckResult("kline_entity_duplicate", "FAIL", str(exc))
+    except Exception as exc:
+        return CheckResult(
+            "kline_entity_duplicate", "FAIL", f"query failed (K 线源不可达?): {exc}"
+        )
+    return CheckResult(
+        "kline_entity_duplicate", "PASS",
+        "no K-line entity-duplicate pair outside registered code-change events",
+    )
+
+
+def _check_kline_code_succession(
+    conn: duckdb.DuckDBPyConnection, *, ccs: CodeChangeSet | None = None
+) -> CheckResult:
+    """asof_identity_r1.md §3.4-2: 「旧代码末个交易日 = 新代码首个交易日的前一个 K 线
+    交易日 (按 K 线表自己的日历, 不查外部 calendar 服务) 且 旧代码末日收盘价与新代码
+    首日前收盘价之差 <= price_tolerance」的候选换码, 必须已登记, 否则 FAIL —— 抓"日常
+    按日同步下正常发生的换码" (与 kline_entity_duplicate 抓的"按码重拉回写"是两种
+    不同的病因, 不共用同一条判据; asof_identity_r1.md I7 是这条规则清理后唯一能配出
+    的候选)。价格不邻接 (差值超出 price_tolerance) 的一对根本不进候选集合, 不受
+    registration 影响, 恒 PASS。
+
+    ``ccs`` 仅供测试注入; 生产路径读 ``security_code_changes.yaml``。
+    """
+    cfg = AUDIT_RULES.get("kline_identity", {})
+    kline_table = _to_str(cfg.get("kline_table"), "canonical_nominal_ohlcv_daily")
+    price_tolerance = _to_float(cfg.get("price_tolerance"), 0.01)
+    kline_sql = f"tushare_raw.{kline_table}"
+    try:
+        events = ccs if ccs is not None else load_security_code_changes()
+        rows = conn.execute(f"""
+            WITH days AS (
+                SELECT DISTINCT trade_date FROM {kline_sql}
+            ),
+            days_seq AS (
+                SELECT trade_date,
+                       LEAD(trade_date) OVER (ORDER BY trade_date) AS next_trade_date
+                FROM days
+            ),
+            per_code AS (
+                SELECT ts_code, MIN(trade_date) AS first_day, MAX(trade_date) AS last_day
+                FROM {kline_sql}
+                GROUP BY ts_code
+            ),
+            old_last AS (
+                SELECT k.ts_code, k.trade_date AS last_day, k.close AS last_close
+                FROM {kline_sql} k
+                JOIN per_code p ON p.ts_code = k.ts_code AND p.last_day = k.trade_date
+            ),
+            new_first AS (
+                SELECT k.ts_code, k.trade_date AS first_day, k.pre_close AS first_pre_close
+                FROM {kline_sql} k
+                JOIN per_code p ON p.ts_code = k.ts_code AND p.first_day = k.trade_date
+            )
+            SELECT
+                o.ts_code AS old_code,
+                n.ts_code AS new_code,
+                strftime(o.last_day, '%Y%m%d') AS old_last_day,
+                strftime(n.first_day, '%Y%m%d') AS new_first_day
+            FROM old_last o
+            JOIN days_seq ds ON ds.trade_date = o.last_day
+            JOIN new_first n ON n.first_day = ds.next_trade_date
+            WHERE o.ts_code <> n.ts_code
+              AND ABS(o.last_close - n.first_pre_close) <= {price_tolerance}
+            ORDER BY 1, 2
+        """).fetchall()
+    except Exception as exc:
+        return CheckResult(
+            "kline_code_succession", "FAIL", f"query failed (K 线源不可达?): {exc}"
+        )
+
+    unregistered: list[str] = []
+    for old_code, new_code, old_last_day, new_first_day in rows:
+        event = events.by_old.get(str(old_code))
+        if (
+            event is not None
+            and event.new_code == str(new_code)
+            and event.effective_date == str(new_first_day)
+        ):
+            continue
+        unregistered.append(f"{old_code}->{new_code}@{new_first_day}(last={old_last_day})")
+    if unregistered:
+        return CheckResult(
+            "kline_code_succession", "FAIL",
+            f"{len(unregistered)} unregistered code-succession candidate(s): "
+            + ", ".join(unregistered[:8]),
+        )
+    return CheckResult(
+        "kline_code_succession", "PASS", "no unregistered code-succession candidate"
+    )
+
+
 def _overall_status(checks: list[CheckResult]) -> str:
     if any(c.status == "FAIL" for c in checks):
         return "FAIL"
@@ -491,6 +628,8 @@ def run_post_sync_audit(step_name: str, strict: bool = True) -> dict[str, Any]:
         "date_range": _check_date_range,
         "volume_sanity": _check_volume_sanity,
         "cross_table_consistency": _check_cross_table_consistency,
+        "kline_entity_duplicate": _check_kline_entity_duplicate,
+        "kline_code_succession": _check_kline_code_succession,
     }
     configured_rules = AUDIT_RULES.get("audit_rules", [])
     if not isinstance(configured_rules, list):
