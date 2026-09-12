@@ -283,10 +283,22 @@ def test_L21_valid_entry_loads_and_hash_matches(tmp_path):
     assert verdicts.sha256 == hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def test_L21_repo_yaml_loads_with_empty_entries():
+def test_L21_repo_yaml_loads_and_is_internally_consistent():
     verdicts = load_exchange_cell_verdicts()
-    assert verdicts.entries == ()
-    assert verdicts.by_cell == {}
+    # 断言的是不变量, 不是当时的条数: 原来这里写 entries == () / by_cell == {},
+    # 把"这份表现在还是空的"这个运行时状态钉成了常量, 于是第一次真正填入人工裁决
+    # (102 格) 就把本用例打红 —— 条数是状态、会随每次裁决变化, 自洽性才是这份表
+    # 该守的东西。放行的作用 (防假杀: loader 抛异常就红) 一点没丢。
+    from services.exchange_cell_verdicts import _DOMAIN_CELL_COLS
+
+    assert len(verdicts.sha256) == 64 and all(c in "0123456789abcdef" for c in verdicts.sha256)
+    declared = [cell for entry in verdicts.entries for cell in entry.cells]
+    assert set(verdicts.by_cell) == set(declared)
+    assert len(verdicts.by_cell) == len(declared), "同一个格被两条登记覆盖"
+    for entry in verdicts.entries:
+        assert entry.domain in _DOMAIN_CELL_COLS
+        assert entry.exchange_unmatched or entry.vendor_unmatched, "什么都不解释的登记"
+        assert entry.checked_at
 
 
 # ---------------------------------------------------------------------------

@@ -42,7 +42,7 @@ block_trade 段, 物理上放在 ``test_assignment_gap_recon.py`` — 它们测�
 ``structural_checks`` 读的是仓库里真实的 ``backend/config/sync_registry.yaml``
 (S2/S3 的规格明文要求"sync_registry 该域 grain", 不是调用方可注入的假 grain) ——
 这是有意的耦合, 不是漏配置。C1-C27 未显式传 ``cell_verdicts_path`` 的调用同样读
-仓库里真实的 ``backend/config/exchange_cell_verdicts.yaml`` (当前 ``entries: []``,
+仓库里真实的 ``backend/config/exchange_cell_verdicts.yaml`` (其条数随人工裁决增减, 用例不许断言当时的条数,
 是一份普通的、随代码一起提交的 typed YAML 配置, 不是运行时数据, 与
 ``structural_checks`` 读真实 ``sync_registry.yaml`` 同一性质)。
 """
