@@ -341,7 +341,7 @@ def _fixture_conn():
     # v2 龙虎榜: 600001 两个上榜理由 (家数只算 1) + 600002 → lhb_count=2;
     # top_inst 席位事件 (grain 契约 r2b, 折叠已在发布面 fact_top_inst_seat_daily 完成):
     # 席位甲同额跨侧/跨榜已折叠为一行 (sides='0,1'), 席位乙一行 → 100 + (-30) = 70。
-    # 两行都是 single_day/seat, 不受 DAILY_METRIC_FILTER_SQL (D2/D3) 影响。
+    # 两行都是 single_day/seat/池内代码, 不受 daily_metric_filter_sql() (D2/D3/D4) 影响。
     # B2: pulse reads fact_top_inst_seat_daily (DataAccess redirect).
     c.executemany("INSERT INTO tr.raw_tushare_top_list VALUES (?, ?, ?, ?)", [
         (D[0], "600001.SH", "甲", "日涨幅偏离值达到7%"),
@@ -1629,6 +1629,38 @@ def test_lhb_inst_c1c_anonymous_fold_already_done_no_distinct():
         ])
         mp.rebuild_all(conn=c, cfg=CFG)
         assert _lhb_inst_net(c, D[0]) == pytest.approx(10.0)
+    finally:
+        c.close()
+
+
+def _replace_top_inst_ts_codes(c, ts_codes, *, trade_date=None):
+    """r2b D4 隔离用例专用: 每行只变 ts_code 这一个轴, board_window/seat_kind 全部
+    固定为 single_day/seat (D2/D3 都放行), 证明"其它条件全满足、只剩池前缀为假"时
+    判据依然生效; 每行 net_buy 都是 100, 只要池过滤生效就能从和数反推有几行被计入。
+    """
+    trade_date = trade_date or D[0]
+    c.execute("DELETE FROM fact_top_inst_seat_daily")
+    c.executemany(
+        "INSERT INTO fact_top_inst_seat_daily VALUES "
+        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (trade_date, ts_code, f"席位{i}", 100.0, 0.0, 1, 100.0, "0", 1, "R1",
+             "single_day", "seat", "2026-07-17 18:00:00+08:00", "raw_tushare_top_inst",
+             "2026-07-17 18:00:00+08:00")
+            for i, ts_code in enumerate(ts_codes)
+        ],
+    )
+
+
+def test_lhb_inst_c1d_pool_prefix_isolated():
+    """r2b D4 (业主 2026-09-12 批准) 隔离用例: 可转债 (113xxx.SH) / 北交所 (.BJ) / B股
+    (900xxx.SH) 即使 D2/D3 都满足 (single_day/seat) 也必须被项目股票池白名单排除 ——
+    四行各 net_buy=100, 只有池内的 600001.SH 那行该计入, 总和必须仍是 100 不是 400。"""
+    c = _fixture_conn()
+    try:
+        _replace_top_inst_ts_codes(c, ["600001.SH", "113050.SH", "830001.BJ", "900001.SH"])
+        mp.rebuild_all(conn=c, cfg=CFG)
+        assert _lhb_inst_net(c, D[0]) == pytest.approx(100.0)
     finally:
         c.close()
 

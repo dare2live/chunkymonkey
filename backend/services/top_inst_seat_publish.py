@@ -15,10 +15,16 @@ Grain contract (r2b, 业主批准 2026-09-11):
   D2 投资者类别行 (自然人/中小投资者/其他自然人/机构投资者/深股通投资者) 不计入日频指标
      (lhb_inst_net / c3_lhb), 但发布面全收并贴 seat_kind=investor_category 标签 —— 展示 != 指标。
   D3 日频指标只计单日榜 (board_window=single_day); 多日窗口榜金额仍发布, 只是被
-     DAILY_METRIC_FILTER_SQL 挡在两个日频消费方之外。
-  过滤放发布层不放消费方: 「什么是单日榜/什么是类别行」只在这里判一次 (backend/config/
-  lhb_board_class.yaml, 红线 11 fail-closed); 消费方 (S6: market_pulse / institution_profile)
-  import DAILY_METRIC_FILTER_SQL, 不各写一遍判断。
+     daily_metric_filter_sql() 挡在两个日频消费方之外。
+  D4 (业主批准 2026-09-12): 日频指标只算项目股票池内的证券 (ts_code 前缀 60/00/30/68,
+     见 services.universe.UNIVERSE_POLICY)。妙想重落全史后发布表出现旧源没有的可转债/
+     北交所/B股证券, 正在灌进 lhb_inst_net 与 c3_lhb —— 这三类交易所确实披露了, 发布面
+     仍全收 (事实层不删行), 只在指标口径层把它们挡在项目股票池之外。前缀白名单不
+     hardcode 在本文件, 每次调用都读 services.universe 当前的 policy。
+  过滤放发布层不放消费方: 「什么是单日榜/什么是类别行/什么是项目股票池」只在这里判一次
+  (backend/config/lhb_board_class.yaml D1-D3, backend/config/universe_rules.yaml D4,
+  红线 11 fail-closed); 消费方 (S6: market_pulse / institution_profile) import
+  daily_metric_filter_sql(), 不各写一遍判断。
 
 lhb_board_class.yaml version 2 (2026-09, r1 登记形态 (b), 见 scratchpad/lhb_reason_class_r1.md
 §3.1): 582 个供货商理由串收成 119 个 YAML 键 (108 精确 + 11 模板)。归一规则不进 YAML (它是
@@ -45,6 +51,7 @@ import yaml
 
 from services.data_access import resolver
 from services.duck_adapter import connect as duck_connect
+from services.universe import sql_where_active_a_share
 
 TABLE = "fact_top_inst_seat_daily"
 SOURCE_TABLE = "raw_tushare_top_inst"
@@ -60,8 +67,28 @@ _DEFAULT_BOARD_CLASS_YAML = _BACKEND_DIR / "config" / "lhb_board_class.yaml"
 
 # Two daily-metric consumers (market_pulse.lhb_inst, institution_profile.c3_lhb)
 # share this predicate so "what counts as a daily seat event" is judged once,
-# here, not re-derived per consumer (r2b §1 D2/D3).
-DAILY_METRIC_FILTER_SQL = "board_window = 'single_day' AND seat_kind <> 'investor_category'"
+# here, not re-derived per consumer (r2b §1 D2/D3; D4 业主 2026-09-12 批准).
+_DAILY_METRIC_BOARD_SEAT_FILTER = (
+    "board_window = 'single_day' AND seat_kind <> 'investor_category'"
+)
+
+
+def daily_metric_filter_sql(ts_code_column: str = "ts_code") -> str:
+    """两个日频消费方共用的口径判据 (D2/D3/D4, 单一计算点, CLAUDE.md 规则 5)。
+
+    D2/D3 不依赖列名, 直接嵌入; D4 (项目股票池) 依赖 ts_code 所在列名 —— 两个
+    调用点里这一列都无歧义地可以不加表前缀 (market_pulse 的 CTE 单表 FROM 无
+    别名; institution_profile 的 JOIN 里只有 top_inst 一张表有 ts_code 列),
+    所以默认参数 "ts_code" 够用, 保留参数是为了不排除未来需要显式限定列名的调用点。
+
+    前缀白名单不 hardcode 在这里: sql_where_active_a_share() 直接读
+    services.universe.UNIVERSE_POLICY 派生出的 ACTIVE_A_SHARE_PREFIXES,
+    是这份策略今天实际生效的取法 (universe.py 已有的单一计算点), 本函数只复用它,
+    不重新拼一份 SUBSTR(...) IN (...)。ts_code 为 NULL 的行: SUBSTR(NULL,1,2)
+    是 NULL, `NULL IN (...)` 求值为 NULL 非 TRUE, 在 WHERE/JOIN 条件下等价于假 ——
+    缺失只能传播为缺失(红线 3), 不会被当成"在池内"。
+    """
+    return f"{_DAILY_METRIC_BOARD_SEAT_FILTER} AND {sql_where_active_a_share(ts_code_column)}"
 
 DDL = f"""
 CREATE TABLE IF NOT EXISTS {TABLE} (
@@ -741,7 +768,7 @@ def publish_fact_top_inst_seat_daily(
 __all__ = [
     "TABLE",
     "SOURCE_TABLE",
-    "DAILY_METRIC_FILTER_SQL",
+    "daily_metric_filter_sql",
     "BoardClass",
     "canonical_reason",
     "load_board_class",

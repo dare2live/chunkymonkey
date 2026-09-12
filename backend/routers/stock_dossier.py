@@ -573,7 +573,7 @@ def _plain_to_ts(code: str) -> str:
 def _load_lhb_seats(conn, code: str) -> dict[str, Any]:
     # Grain 契约 r2b (业主 2026-09-11 批准): 发布表 fact_top_inst_seat_daily 收全部席位
     # 事件 (单日/多日榜、投资者类别行都收), 展示 != 指标 (红线 9) —— 档案页不按
-    # DAILY_METRIC_FILTER_SQL 过滤, 全部行都显示并贴 board_window / seat_kind 标签,
+    # daily_metric_filter_sql() 过滤, 全部行都显示并贴 board_window / seat_kind 标签,
     # 由前端/本函数的排序把单日席位排前、多日榜次之、投资者类别行放最后。
     grain = "trade_date x ts_code x exalter x buy x sell x board_window x event_seq"
     if not _table_exists(conn, "fact_top_inst_seat_daily"):

@@ -253,7 +253,7 @@ entities:
     # 2026-09-11 grain 契约 r2b: Grain = 席位事件 trade_date x ts_code x exalter x buy x sell x
     # board_window x event_seq (七列); available_at = trade_date 18:00 Asia/Shanghai。
     # 业主口径 (2026-09-11 批准 D1/D2/D3): lhb_inst_net / c3_lhb 只计 board_window=single_day 且
-    # seat_kind<>investor_category (见 DAILY_METRIC_FILTER_SQL); 同股同日同席位买卖金额完全相同的
+    # seat_kind<>investor_category (见 daily_metric_filter_sql()); 同股同日同席位买卖金额完全相同的
     # 多榜记录按一笔计, 匿名机构 (机构专用) 金额完全相同视为同一笔, 可能少算 (D1 下界口径)。
     # Consumers: market_pulse lhb_inst_net + institution_profile C3 LHB.
     # Not episode/mart aggregate; not DC membership PIT.

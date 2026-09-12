@@ -405,7 +405,7 @@ def test_t6_sh_category_board_positive(tmp_path, monkeypatch) -> None:
     """SSE 5.4.3 投资者分类交易统计, five category rows on one S2 board
     (r1.md §1.4 real example, 600721.SH 2026-08-12): all five publish as
     investor_category / multi_day, and none of them pass
-    DAILY_METRIC_FILTER_SQL (D2/D3 展示!=指标)."""
+    daily_metric_filter_sql() (D2/D3 展示!=指标)."""
     rows = [
         _row("自然人", "0", 4173032800.0, 0.0, 4173032800.0, S2, 1, stat_days="9"),
         _row("中小投资者", "0", 2405652600.0, 0.0, 2405652600.0, S2, 2, stat_days="9"),
@@ -423,7 +423,7 @@ def test_t6_sh_category_board_positive(tmp_path, monkeypatch) -> None:
     con = duck_connect(str(sm), read_only=True)
     try:
         cnt = con.execute(
-            f"SELECT COUNT(*) FROM {pub.TABLE} WHERE {pub.DAILY_METRIC_FILTER_SQL}"
+            f"SELECT COUNT(*) FROM {pub.TABLE} WHERE {pub.daily_metric_filter_sql()}"
         ).fetchone()[0]
     finally:
         con.close()
@@ -787,13 +787,30 @@ def test_p16_data_access_columns_and_vendor() -> None:
 
 
 # ---------------------------------------------------------------------------
-# P17: shared predicate constant
+# P17: shared predicate function (D1-D3 constant + D4 项目股票池, 2026-09-12)
 # ---------------------------------------------------------------------------
 
 
 def test_p17_daily_metric_filter_sql_literal() -> None:
-    assert pub.DAILY_METRIC_FILTER_SQL == (
-        "board_window = 'single_day' AND seat_kind <> 'investor_category'"
+    """D2/D3 字面量 + D4 (项目股票池) 拼接; D4 的前缀白名单必须来自
+    services.universe (下面用真实 sql_where_active_a_share() 算期望值,
+    不在本测试里把前缀写死成第二份字面量)。"""
+    from services.universe import sql_where_active_a_share
+
+    assert pub.daily_metric_filter_sql() == (
+        "board_window = 'single_day' AND seat_kind <> 'investor_category' AND "
+        + sql_where_active_a_share("ts_code")
+    )
+
+
+def test_p17b_daily_metric_filter_sql_takes_column_param() -> None:
+    """D4 那一段必须跟着调用方传入的列名走, 不能不管参数硬写 'ts_code'
+    (两个日频消费方里这一列目前都无歧义可省, 但函数契约必须支持限定列名)。"""
+    from services.universe import sql_where_active_a_share
+
+    assert pub.daily_metric_filter_sql("t.ts_code") == (
+        "board_window = 'single_day' AND seat_kind <> 'investor_category' AND "
+        + sql_where_active_a_share("t.ts_code")
     )
 
 

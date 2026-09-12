@@ -51,7 +51,7 @@ from services.data_sources.holders_top10_schema import (
 from services.database_manifest import get_database_manifest
 from services.duck_adapter import connect as duck_connect
 from services.data_access.spec import load_registry
-from services.top_inst_seat_publish import DAILY_METRIC_FILTER_SQL
+from services.top_inst_seat_publish import daily_metric_filter_sql
 
 logger = logging.getLogger(__name__)
 
@@ -138,18 +138,19 @@ def build_period_windows(con) -> int:
         JOIN mk.v_price_kline_qfq k ON k.code = w.stock_code AND k.date <= w.w_end
         QUALIFY ROW_NUMBER() OVER (PARTITION BY w.stock_code, w.report_date ORDER BY k.date DESC) = 1
     ), lhb AS (
-        -- C3 龙虎榜机构席位日按额加权成本 —— 业主口径 (2026-09-11 批准): D1 同股同日同席位
-        -- 买卖金额完全相同的多榜记录已在发布面 (fact_top_inst_seat_daily) 按一笔折叠 (匿名/
-        -- 机构专用同样处理, 可能少算); D2 投资者类别行不计入; D3 只计单日榜。三条口径合一为
-        -- DAILY_METRIC_FILTER_SQL (发布模块 top_inst_seat_publish 拥有, 此处 import 不复制
-        -- 字面量) —— 注意 exalter LIKE '%机构%' 单独会把「机构投资者」这个投资者类别行也
-        -- 吃进来, 所以谓词必须在这里的 JOIN 条件里也生效, 不能只信 LIKE。
+        -- C3 龙虎榜机构席位日按额加权成本 —— 业主口径 (2026-09-11/09-12 批准): D1 同股同日
+        -- 同席位买卖金额完全相同的多榜记录已在发布面 (fact_top_inst_seat_daily) 按一笔折叠
+        -- (匿名/机构专用同样处理, 可能少算); D2 投资者类别行不计入; D3 只计单日榜; D4 只算
+        -- 项目股票池内证券 (排除可转债/北交所/B股)。四条口径合一为 daily_metric_filter_sql()
+        -- (发布模块 top_inst_seat_publish 拥有, 此处 import 不复制字面量) —— 注意
+        -- exalter LIKE '%机构%' 单独会把「机构投资者」这个投资者类别行也吃进来, 所以谓词
+        -- 必须在这里的 JOIN 条件里也生效, 不能只信 LIKE。
         SELECT w.stock_code, w.report_date,
                SUM(k.close * ABS(t.net_buy)) / NULLIF(SUM(ABS(t.net_buy)), 0) AS c3_lhb
         FROM win_dated w
         JOIN {_tr_entity("top_inst")} t
           ON substr(t.ts_code,1,6) = w.stock_code AND t.exalter LIKE '%机构%'
-         AND {DAILY_METRIC_FILTER_SQL}
+         AND {daily_metric_filter_sql()}
          AND strftime(strptime(t.trade_date,'%Y%m%d'),'%Y-%m-%d') > w.w_start
          AND strftime(strptime(t.trade_date,'%Y%m%d'),'%Y-%m-%d') <= w.w_end
         JOIN mk.v_price_kline_qfq k
@@ -377,8 +378,21 @@ def build_episodes(con) -> dict:
     # 身份维 (2026-09-08 Step 4): identity_key -> (kind, grade, 显示名)。
     # holder 列现在存的是 identity_key(code:xxx / name:xxx), 不是人可读的名字, 所以
     # 显示名必须单独带出来 —— 否则前端与被动判定都拿不到名字。
-    # 同一个 identity_key 可能对应多种名字写法(这正是换键要解决的问题), 取最近一次公告的写法
-    # 当 display: 它是"这个身份现在叫什么", 不是历史唯一真名。
+    # 同一个 identity_key 可能对应多种名字写法(这正是换键要解决的问题)。
+    #
+    # 显示名选择必须确定性 (2026-09-12 业主裁定, 根因见下): 按该名字在源表里的
+    # 出现行数降序, 行数相同则按名字字典序升序, 取第一个。这两个信息 (出现行数/
+    # 字典序) 在这段 SQL 的上下文里都拿得到 (h.holder_name_norm 本身就是源表列),
+    # 不需要退化成"只按字典序最小"。
+    #
+    # 根因 (2026-09-12 实测): 原来用 any_value(holder_name_norm) 任选一个变体当
+    # holder_display —— DuckDB 的 any_value 不保证跨次运行稳定。对 institution_profile
+    # 做一次全量重建 rebuild_all() (源数据未变), mart_inst_profile 42,149 行数与
+    # identity_key 体系完全不变, 但 holder 列取值集合变了: 320 个名字消失、315 个
+    # 新出现 (distinct 42,020 -> 42,015); 这 635 个名字在源表
+    # smartmoney.canonical_top10_float_holders_period 的 holder_name / holder_name_norm
+    # 里全部仍然存在, 证实不是源数据变化, 是 any_value 换了挑法。
+    # 展示名在两次重建之间漂移会让前端/按名字查询的下游看到"同一家机构改名了"。
     # 牛散的 PIT 边界与身份置信度 (2026-09-08 Step 4): 做成**数据属性**不做隐藏过滤。
     # known_from = 该人公开知名之日。这 9 个人是 2026 年从网络调研挑出来的, 挑他们的理由
     # 恰恰是他们后来出名了 —— 拿他们知名之前的持仓做跟随回测就是"跟随事后被证明做对的人",
@@ -397,14 +411,33 @@ def build_episodes(con) -> dict:
 
     con.execute(f"""
     CREATE OR REPLACE TABLE _ep_identity AS
-    SELECT identity_key,
-           any_value(identity_kind)  AS identity_kind,
-           any_value(identity_grade) AS identity_grade,
-           any_value(holder_name_norm) AS holder_display,
-           COUNT(DISTINCT holder_name_norm) AS n_name_variants
-      FROM ({events}) AS h
+    WITH h AS (
+        {events}
+    ), name_counts AS (
+        -- "该名字在源表里的出现行数" = 这个 identity_key 下, 该 holder_name_norm
+        -- 写法在 h (未去重的原始披露事件) 里出现了多少行。
+        SELECT identity_key, holder_name_norm, COUNT(*) AS n
+          FROM h
+         WHERE identity_key IS NOT NULL AND holder_name_norm IS NOT NULL
+         GROUP BY identity_key, holder_name_norm
+    ), best_name AS (
+        -- 出现行数降序; 行数相同按名字字典序升序 —— ORDER BY 的 key 里已经含
+        -- holder_name_norm 本身, 同一 identity_key 分区内不可能有并列名次。
+        SELECT identity_key, holder_name_norm AS holder_display
+          FROM name_counts
+        QUALIFY ROW_NUMBER() OVER (
+            PARTITION BY identity_key ORDER BY n DESC, holder_name_norm ASC
+        ) = 1
+    )
+    SELECT h.identity_key,
+           any_value(h.identity_kind)  AS identity_kind,
+           any_value(h.identity_grade) AS identity_grade,
+           any_value(b.holder_display) AS holder_display,
+           COUNT(DISTINCT h.holder_name_norm) AS n_name_variants
+      FROM h
+      LEFT JOIN best_name b ON b.identity_key = h.identity_key
      WHERE h.identity_key IS NOT NULL
-     GROUP BY identity_key
+     GROUP BY h.identity_key
     """)
 
     # 富化: ret/alpha (closed) + 被动标记 + PIT 行业 (as-of 建仓日)

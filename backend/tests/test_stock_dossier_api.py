@@ -338,7 +338,7 @@ def test_dossier_episode_overlay_measured_only():
 def test_dossier_lhb_seats_use_seat_research_class():
     # Grain 契约 r2b C2 (业主 2026-09-11 批准): 发布表七列 grain (加 board_window /
     # event_seq), 展示全部行 (single_day seat/anonymous, multi_day seat, 投资者类别行都在),
-    # 只贴标签不过滤 (红线 9 展示 != 指标) —— dossier 不 import DAILY_METRIC_FILTER_SQL。
+    # 只贴标签不过滤 (红线 9 展示 != 指标) —— dossier 不 import daily_metric_filter_sql。
     con = _fixture_conn()
     con.execute(
         """

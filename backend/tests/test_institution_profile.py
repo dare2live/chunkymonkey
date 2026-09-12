@@ -3,6 +3,8 @@
 覆盖: 新进→增持(加权平均成本)→减持(部分了结)→退出(清仓) 全链数值 + seeded/多轮 episode/无价跳过
 + 2026-07-03 审计修2: share_class 混流过滤 / 源重复键去重 (SQL 级) + 状态机三缺陷 (unit 级)。
 """
+import inspect
+import re
 import sys
 from pathlib import Path
 
@@ -222,6 +224,136 @@ def test_build_episodes_dedups_source_duplicate_keys():
         assert len(rows) == 1, f"重复键必须只计一次 (修前 2 个 episode): {rows}"
         assert rows[0][0] == "holding"
         assert rows[0][1] == pytest.approx(100.0), "稳定序: holder_rank 最小的主行胜出"
+    finally:
+        c.close()
+
+
+# ── 2026-09-12 业主裁定: holder_display 必须确定性选择, 不许 ANY_VALUE 任选变体 ──
+#
+# 根因实测: 对 institution_profile 做一次全量重建 (源数据未变), mart_inst_profile
+# 行数/identity_key 体系完全不变, 但 holder 列取值集合变了 (320 个名字消失/315 个
+# 新出现) —— DuckDB 的 any_value(holder_name_norm) 不保证跨次运行稳定。
+# 判据: 同一 identity_key 下按该名字在源表里的出现行数降序, 行数相同按名字字典序升序,
+# 取第一个。下面两条用例的 fixture 故意让"该赢的名字"既不是插入顺序里第一行也不是
+# 最后一行, 使"扫描顺序碰运气"式实现 (ANY_VALUE 的典型退化) 拿不到正确答案。
+
+
+def test_holder_display_deterministic_by_occurrence_count_then_name():
+    """出现行数更多的写法必须赢, 且与插入顺序无关: "Fund-Zeta" 出现 3 次但后插入,
+    "Fund-Alpha" 只出现 1 次且先插入 —— 若只看插入顺序或字母序会错选 Fund-Alpha。
+    同一份源数据重建两遍, holder_display 必须逐位相同 (不许因扫描顺序不同而漂移)。
+    """
+    c = _sql_conn()
+    try:
+        c.execute("INSERT INTO sm.dim_holder_name_tag VALUES "
+                  "('章建平','niusan','20260820','no_evidence_either_way','name_only_untrusted')")
+        c.executemany(_HOLDER_INSERT, [
+            ("600000", "20240331", "free", 1, 1, "Fund-Alpha", 1.0, "20240430", False,
+             "Fund-Alpha", "A", 100, "新进", None, "基金", "C9", True),
+            ("600000", "20240331", "free", 2, 1, "Fund-Zeta", 1.0, "20240430", False,
+             "Fund-Zeta", "A", 100, "新进", None, "基金", "C9", True),
+            ("600000", "20240331", "free", 2, 2, "Fund-Zeta", 1.0, "20240430", False,
+             "Fund-Zeta", "A", 100, "新进", None, "基金", "C9", True),
+            ("600000", "20240331", "free", 2, 3, "Fund-Zeta", 1.0, "20240430", False,
+             "Fund-Zeta", "A", 100, "新进", None, "基金", "C9", True),
+        ])
+        build_episodes(c)
+        row1 = tuple(c.execute(
+            "SELECT holder_display, n_name_variants FROM _ep_identity WHERE identity_key = 'code:C9'"
+        ).fetchone())
+        assert row1 == ("Fund-Zeta", 2), (
+            f"应选出现行数最多的写法 (Fund-Zeta ×3 > Fund-Alpha ×1), 实得 {row1}"
+        )
+
+        # 重建第二遍 (同一份源数据不变): 结果必须逐位相同, 不许漂移。
+        build_episodes(c)
+        row2 = tuple(c.execute(
+            "SELECT holder_display, n_name_variants FROM _ep_identity WHERE identity_key = 'code:C9'"
+        ).fetchone())
+        assert row2 == row1, f"同一份数据两次重建 holder_display 必须一致, 第二遍得 {row2}"
+    finally:
+        c.close()
+
+
+def test_holder_display_tie_break_alphabetical():
+    """出现行数相同时按名字字典序升序取第一个。用真实 fixture 双向验证正确结果
+    (两个名字各出现 2 次, 正确答案是字典序更小的 "Fund-One", 与哪个先插入无关)。
+    """
+    c = _sql_conn()
+    try:
+        c.execute("INSERT INTO sm.dim_holder_name_tag VALUES "
+                  "('章建平','niusan','20260820','no_evidence_either_way','name_only_untrusted')")
+        c.executemany(_HOLDER_INSERT, [
+            ("600000", "20240331", "free", 1, 1, "Fund-Two", 1.0, "20240430", False,
+             "Fund-Two", "A", 100, "新进", None, "基金", "C10", True),
+            ("600000", "20240331", "free", 1, 2, "Fund-Two", 1.0, "20240430", False,
+             "Fund-Two", "A", 100, "新进", None, "基金", "C10", True),
+            ("600000", "20240331", "free", 2, 1, "Fund-One", 1.0, "20240430", False,
+             "Fund-One", "A", 100, "新进", None, "基金", "C10", True),
+            ("600000", "20240331", "free", 2, 2, "Fund-One", 1.0, "20240430", False,
+             "Fund-One", "A", 100, "新进", None, "基金", "C10", True),
+        ])
+        build_episodes(c)
+        row = tuple(c.execute(
+            "SELECT holder_display, n_name_variants FROM _ep_identity WHERE identity_key = 'code:C10'"
+        ).fetchone())
+        assert row == ("Fund-One", 2), f"行数相同(各2次)时字典序更小的 Fund-One 应赢, 实得 {row}"
+    finally:
+        c.close()
+
+
+def test_holder_display_tie_break_rule_present_in_sql():
+    """去掉 tie-break 规则 (ORDER BY 只留 n DESC, 不按字典序) 这条变异单独在这条用例
+    上变红 —— 2026-09-12 实测: 并列名次在无 tie-break 时靠 DuckDB 内部执行计划决定
+    谁排第一, 同一对名字换一种查询复杂度就可能翻转赢家 (不可靠, 不能作为behavior 判据);
+    真正能钉住"这条规则确实存在"的是 SQL 结构本身必须同时按 n DESC 与
+    holder_name_norm ASC 排序, 缺了字典序 tie-break 这条正则就找不到它。
+    """
+    src = inspect.getsource(build_episodes)
+    assert re.search(
+        r"ORDER BY\s+n\s+DESC\s*,\s*holder_name_norm\s+ASC", src
+    ), (
+        "_ep_identity 的 best_name 排序必须显式写 'n DESC, holder_name_norm ASC' "
+        "(出现行数降序 + 名字字典序升序 tie-break), 不能只有 n DESC"
+    )
+
+
+def test_holder_display_feeds_deterministically_into_profile_marts():
+    """检查 fact_inst_episode.holder 与 mart_inst_profile/mart_inst_profile_dim 是否
+    走同一条选名逻辑 (2026-09-12 要求 3): 三张表对同一 identity_key 的 holder 必须
+    完全一致 —— mart_inst_profile(_dim) 的 ANY_VALUE(holder) 不是重复实现一遍"选变体",
+    而是在读一个已经确定性选好、组内单值的列, 单一计算点仍只有 _ep_identity 一处。
+    """
+    c = _sql_conn()
+    try:
+        c.execute("INSERT INTO sm.dim_holder_name_tag VALUES "
+                  "('章建平','niusan','20260820','no_evidence_either_way','name_only_untrusted')")
+        c.executemany(_HOLDER_INSERT, [
+            ("600000", "20240331", "free", 1, 1, "Fund-Alpha", 1.0, "20240430", False,
+             "Fund-Alpha", "A", 100, "新进", None, "基金", "C9", True),
+            ("600000", "20240331", "free", 2, 1, "Fund-Zeta", 1.0, "20240430", False,
+             "Fund-Zeta", "A", 100, "新进", None, "基金", "C9", True),
+            ("600000", "20240331", "free", 2, 2, "Fund-Zeta", 1.0, "20240430", False,
+             "Fund-Zeta", "A", 100, "新进", None, "基金", "C9", True),
+        ])
+        build_episodes(c)
+        build_profiles(c)
+        ep_holder = [tuple(r) for r in c.execute(
+            "SELECT DISTINCT holder FROM fact_inst_episode WHERE identity_key = 'code:C9'"
+        ).fetchall()]
+        assert ep_holder == [("Fund-Zeta",)]
+        prof_holder = tuple(c.execute(
+            "SELECT holder FROM mart_inst_profile WHERE identity_key = 'code:C9'"
+        ).fetchone())
+        assert prof_holder == ("Fund-Zeta",)
+        dim_holders = {
+            r[0] for r in c.execute(
+                "SELECT DISTINCT holder FROM mart_inst_profile_dim WHERE identity_key = 'code:C9'"
+            ).fetchall()
+        }
+        assert dim_holders in (set(), {"Fund-Zeta"}), (
+            "mart_inst_profile_dim 若有该 identity_key 的行, holder 必须与 fact_inst_episode 一致"
+        )
     finally:
         c.close()
 
