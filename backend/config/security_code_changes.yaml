@@ -1,0 +1,35 @@
+# 证券换码事件登记 (asof_identity_r1.md §2 裁决 (b) / §3.1; 红线 14: 缺 lineage = UNTRUSTED)。
+#
+# 这张表登记的是「哪个代码在哪天换成哪个代码」这一条历史事实, 不是「这些行豁免」——
+# 一条事件能解释发布层里多少行, 由 backend/services/security_identity.py 的解析器按自然键
+# 逐行现比现算 (同日同自然键在旧码与新码下全同才算同一笔), 不由这里的人工圈定行数或日期范围。
+# raw 继续忠实存供应商代码 (取数那一刻的代码, 不是「那天」的代码); 只有发布层读这张表 + K 线
+# 成员资格判「那天它叫什么」, 适配器和 raw 都不改代码 (红线 1/4)。
+#
+# loader (load_security_code_changes) 纯配置校验, 不开库、不读环境变量, fail-closed:
+# 顶层键不恰为 {version, events} / 单条事件键不恰为下方 8 个 / old_code 或 new_code 不匹配
+# ^\d{6}\.(SH|SZ|BJ)$ / old_code == new_code / effective_date 不是合法 YYYYMMDD 日历日 /
+# kind 或 source_kind 不在各自枚举 / source_ref 为空 / old_code 或 new_code 在表内重复 /
+# 换码链 (A→B→C) 的 effective_date 不严格递增 / 出现环, 一律 ValueError 拒绝加载, 不静默跳过。
+#
+# 北交所旧新代码对照 (业主 2026-09-12 决策 3, asof_identity_r1.md §8) 本轮不登记: 来源只有
+# 券商转载 PDF (官网被反爬挡住), 且北交所本不在项目股票池; 规则是北交所进股票池前必须先把
+# 那张对照表登记进这里, 而不是现在就补一份没人读的登记。
+version: 1
+events:
+  - old_code: "300114.SZ"
+    new_code: "302132.SZ"
+    effective_date: "20250217"   # T 日 = 新代码首个交易日
+    exchange: SZSE
+    kind: reorg_rename           # reorg_rename | bse_920_migration
+    source_kind: announcement    # announcement | kline_succession_observed
+    source_ref: "cninfo 2025-02-15 static.cninfo.com.cn/finalpage/2025-02-15/1222544408.PDF 公告编号 2025-028"
+    checked_at: "2026-09-12"
+  - old_code: "000043.SZ"
+    new_code: "001914.SZ"
+    effective_date: "20191216"
+    exchange: SZSE
+    kind: reorg_rename
+    source_kind: kline_succession_observed
+    source_ref: "canonical_nominal_ohlcv_daily: 000043 末条 20191213 close 20.25 == 001914 20191216 pre_close 20.25 (I7); 公告编号待补"
+    checked_at: "2026-09-12"
