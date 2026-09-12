@@ -1,5 +1,5 @@
 """reland_event_domain: 事件域历史重落脚本 (grain 契约 r2 §3, 施工切片 S7 + V1/V2
-验收判据重落)。
+验收判据重落 + 2026-09-12 格级验收判据切片 C2)。
 
 用例编号 V1-V4 对应 r2 §4 S7 表里的字面用例 (archive / record / DDL, 均沿用未改动
 的实现)。V4 系列里专测已删除的 ``old_subset_of_new``/输出字段
@@ -11,25 +11,40 @@ T1-T18 是 2026-09-12 验收判据重落 V1 (分类框架 + 结构检查 + 退�
 字面用例, 每条对应规格里给出的一个隔离条件。编号不连续 (没有 T6/T12, 那两个编号在
 V2 规格里指的是下面的交易所证据层用例) 是规格本身的编号, 不是本文件遗漏。
 
-T6/T6b-T6e/T12/T12b/T19-T25 是同日 V2 (交易所证据层: ``load_exchange_evidence``/
-``canon_exchange_row`` 新签名/``exchange_key``/``gap_key``/``exchange_verdicts``/
-``ceiling_compare``) 新增的字面用例。原 V5 (``canon_exchange_row`` 旧签名
-``(row, *, market)``, 带 ``amount``) 与 V6 (``compare_day_three_way`` 三方比对,
---exchange-json/--date 单日路径) 的用例随对应函数一起删除 (V2 规格头注 K 点名允许
-改写这两个符号, "不留墓碑") —— V5 覆盖的规范化行为 (千分位逗号/百股精度/全角括号/
-HTML 标签/未知 market) 由下面新签名的 T20 (千分位) 与 canon 相关用例接手, 不是
-凭空消失。
+T6/T6b-T6e/T20/T23*/T24/T25 是同日 V2 (交易所证据层: ``load_exchange_evidence``/
+``canon_exchange_row`` 新签名/``exchange_key``/``exchange_verdicts``) 新增的字面
+用例, 沿用未改动。原 V5 (``canon_exchange_row`` 旧签名 ``(row, *, market)``, 带
+``amount``) 与 V6 (``compare_day_three_way`` 三方比对, --exchange-json/--date 单日
+路径) 的用例随对应函数一起删除 (V2 规格头注 K 点名允许改写这两个符号, "不留墓碑")
+—— V5 覆盖的规范化行为 (千分位逗号/百股精度/全角括号/HTML 标签/未知 market) 由下面
+新签名的 T20 (千分位) 与 canon 相关用例接手, 不是凭空消失。
+
+C1-C27 是 2026-09-12 格级验收判据切片 C2 (bt_residual_classes_r1.md §6 C2 表
+V1-V27) 新增的字面用例, 编号加前缀 ``c`` 避免与上面的 T 编号/V1-V6 (r2 §4) 混淆。
+取代了原 T12/T12b (miaoxiang_gap 经 ``vendor_gaps.yaml`` 登记) / T14/T14b
+(``load_vendor_gaps`` loader) / T19 (``registered_gap_present``) / T21 (ceiling
+gap 经 ``vendor_gaps.yaml``) / T22/T22b (ceiling extra 沪/深差别对待) —— 这些
+函数/字段/差别对待整个被格级登记表 (``services.exchange_cell_verdicts``) + 场所
+归属 (``resolve_venue``) + 身份层 (``identity_pass``) 取代, 不留墓碑 (改动清单见
+``backend/scripts/reland_event_domain.py`` 头注 J/N/O/P/Q)。``load_vendor_gaps``
+自己的隔离用例 (loader 校验) 已被格级登记表 loader
+(``services.exchange_cell_verdicts.load_exchange_cell_verdicts``) 的 L1-L21 隔离
+用例取代, 那份在 ``tests/services/test_exchange_cell_verdicts.py`` 里, 不在本文件
+重复。
 
 (V7-V9 测的是 ``recon_assignment_gaps.py``/``assignment_gap_recon.py`` 的 top_inst /
 block_trade 段, 物理上放在 ``test_assignment_gap_recon.py`` — 它们测的是那个模块的
 函数, 不是本文件的。)
 
 全部用内存 DuckDB (``conftest.duck_mem``) / ``tmp_path``, 不连生产库、不跑网络
-(本任务规则 3)。交易所证据文件全部用 ``tmp_path`` 现造 (CLAUDE.md 里格式钉死的
-``data/archive/exchange_evidence/block_trade/`` 目录本身不读)。T7-T10/T16 里
+(本任务规则 3)。交易所证据文件全部用 ``tmp_path`` 现造 (证据文件的格式钉死在
+``load_exchange_evidence`` 自己的头注里, 不在任何文档小节)。T7-T10/T16 里
 ``structural_checks`` 读的是仓库里真实的 ``backend/config/sync_registry.yaml``
 (S2/S3 的规格明文要求"sync_registry 该域 grain", 不是调用方可注入的假 grain) ——
-这是有意的耦合, 不是漏配置。
+这是有意的耦合, 不是漏配置。C1-C27 未显式传 ``cell_verdicts_path`` 的调用同样读
+仓库里真实的 ``backend/config/exchange_cell_verdicts.yaml`` (当前 ``entries: []``,
+是一份普通的、随代码一起提交的 typed YAML 配置, 不是运行时数据, 与
+``structural_checks`` 读真实 ``sync_registry.yaml`` 同一性质)。
 """
 from __future__ import annotations
 
@@ -42,23 +57,26 @@ from conftest import duck_mem
 from scripts.reland_event_domain import (
     ArchiveResult,
     ClassReport,
+    DOMAIN_CANON,
     archive_table,
     canon_exchange_row,
-    ceiling_compare,
+    cell_compare,
     classify_old_keys,
+    emit_candidate_verdicts,
     exchange_key,
     exchange_verdicts,
-    gap_key,
+    identity_pass,
     load_exchange_evidence,
-    load_vendor_gaps,
     main,
     null_index_dates,
     prepare,
+    resolve_venue,
     structural_checks,
     verdict,
     verify,
     _vol_2dp,
 )
+from services.exchange_cell_verdicts import _DOMAIN_CELL_COLS, load_exchange_cell_verdicts
 
 
 def _zero_counts(**overrides) -> dict:
@@ -69,7 +87,6 @@ def _zero_counts(**overrides) -> dict:
         "miaoxiang_gap_unregistered": 0,
         "new_diverges_from_exchange": 0,
         "matched_at_exchange_precision": 0,
-        "registered_gap_present": 0,
     }
     counts.update(overrides)
     return counts
@@ -287,7 +304,9 @@ def test_v2_canon_rounds_price_to_two_decimal_places():
 def test_prepare_dry_run_does_not_touch_db_or_disk(tmp_path):
     plan = prepare("block_trade", run_id="dry1", execute=False, archive_dir=tmp_path)
     assert plan["dry_run"] is True
-    assert plan["would_add_columns"] == ["seq INTEGER", "security_type VARCHAR", "trade_unit VARCHAR"]
+    assert plan["would_add_columns"] == [
+        "seq INTEGER", "security_type VARCHAR", "trade_unit VARCHAR", "vendor_market VARCHAR",
+    ]
     assert not (tmp_path / "raw_tushare_block_trade_pre_reland_dry1.parquet").exists()
 
 
@@ -579,69 +598,15 @@ def test_t13b_record_writes_verified_row_with_expected_verification_keys(tmp_pat
     verification = json.loads(rows[0][0])
     assert set(verification.keys()) == {
         "classes", "residual_verdict_counts", "structural_ok",
-        "vendor_gaps_sha256", "exchange_files", "ceiling",
+        "registry_sha256", "consumed_cells", "stale_cells",
+        "identity", "venue", "not_checked", "exchange_files",
     }
     assert verification["exchange_files"] == []
-    assert verification["ceiling"]["days_checked"] == []
-    assert verification["ceiling"]["not_checked"] == []
-    assert len(verification["vendor_gaps_sha256"]) == 64
-
-
-# --------------------------------------------------------------- T14/T14b: loader --
-
-def _valid_gap_item(**overrides) -> dict:
-    item = {
-        "domain": "block_trade",
-        "trade_date": "20230103",
-        "ts_code": "600000.SH",
-        "key": ["600000.SH", "20230103", "10.0", "5.0", "b", "s"],
-        "evidence": "上交所逐笔查询核对无此笔",
-        "checked_at": "2026-09-12",
-    }
-    item.update(overrides)
-    return item
-
-
-def _write_gaps_yaml(tmp_path, doc) -> "Path":
-    import yaml
-
-    p = tmp_path / "vendor_gaps.yaml"
-    p.write_text(yaml.safe_dump(doc, allow_unicode=True), encoding="utf-8")
-    return p
-
-
-def test_t14_loader_rejects_extra_top_level_key(tmp_path):
-    p = _write_gaps_yaml(tmp_path, {"version": 1, "gaps": [], "extra": 1})
-    with pytest.raises(ValueError):
-        load_vendor_gaps(p)
-
-
-def test_t14_loader_rejects_gap_item_missing_evidence(tmp_path):
-    item = _valid_gap_item()
-    del item["evidence"]
-    p = _write_gaps_yaml(tmp_path, {"version": 1, "gaps": [item]})
-    with pytest.raises(ValueError):
-        load_vendor_gaps(p)
-
-
-def test_t14_loader_rejects_bad_checked_at_format(tmp_path):
-    p = _write_gaps_yaml(tmp_path, {"version": 1, "gaps": [_valid_gap_item(checked_at="2026/09/12")]})
-    with pytest.raises(ValueError):
-        load_vendor_gaps(p)
-
-
-def test_t14_loader_rejects_unknown_domain(tmp_path):
-    p = _write_gaps_yaml(tmp_path, {"version": 1, "gaps": [_valid_gap_item(domain="not_a_domain")]})
-    with pytest.raises(ValueError):
-        load_vendor_gaps(p)
-
-
-def test_t14b_loader_returns_frozenset_with_the_registered_key(tmp_path):
-    item = _valid_gap_item()
-    p = _write_gaps_yaml(tmp_path, {"version": 1, "gaps": [item]})
-    gaps = load_vendor_gaps(p)
-    assert isinstance(gaps, frozenset)
-    assert (item["domain"], tuple(item["key"])) in gaps
+    assert verification["not_checked"] == []
+    assert verification["consumed_cells"] == []
+    assert verification["stale_cells"] == []
+    assert verification["identity"]["skipped"] is True
+    assert len(verification["registry_sha256"]) == 64
 
 
 # ---------------------------------------------------------------------- T15: CLI --
@@ -755,7 +720,8 @@ def test_t18_block_trade_residual_kind_candidate_and_none():
 
 
 # ===================================================== T6-T25: 交易所证据层 (V2) ==
-# 每条对应 CLAUDE.md「切片 V2」里给出的一个隔离条件。编号不连续 (没有 T6a/T7-T11/
+# 每条对应 V2 (2026-09-12 同日的交易所证据层切片) 规格里给出的一个隔离条件, 不在
+# 任何 CLAUDE.md 小节 (曾经的悬空引用已改正, 见 N7)。编号不连续 (没有 T6a/T7-T11/
 # T13-T18, 那些编号在 V2 规格里就没有分给交易所证据层) 是规格本身的编号。
 #
 # 证据文件字段名 (钉死): 上交所 stockid/tradeprice/tradeqty/branchbuy/branchsell;
@@ -794,12 +760,13 @@ def _write_exchange_file(dir_path, market, date, exchange_rows, **extra) -> "Pat
 
 
 def _setup_block_trade_reland(dir_path, run_id, old_rows, new_rows):
-    """建旧 schema 表 (无 seq/security_type) -> 灌 old_rows -> ``prepare(execute=True)``
-    归档 -> 清空 -> 按 new_rows (可选 seq/security_type, 缺省 EQA) 重新灌注, 模拟
-    "重落完成"。``old_rows``/``new_rows`` 每条是 ``{ts_code, trade_date, price, vol,
-    buyer, seller}`` (+ 新表可选 ``seq``/``security_type``)。返回打开的连接; 归档
-    parquet 落在 ``dir_path`` (调用方同一个 tmp_path 也用来放交易所证据文件/
-    vendor_gaps.yaml, 文件名各不相同不冲突)。
+    """建旧 schema 表 (无 seq/security_type/vendor_market) -> 灌 old_rows ->
+    ``prepare(execute=True)`` 归档 -> 清空 -> 按 new_rows (可选
+    seq/security_type/vendor_market, 缺省 EQA/NULL) 重新灌注, 模拟"重落完成"。
+    ``old_rows``/``new_rows`` 每条是 ``{ts_code, trade_date, price, vol, buyer,
+    seller}`` (+ 新表可选 ``seq``/``security_type``/``vendor_market``, C2 场所归属
+    测试用)。返回打开的连接; 归档 parquet 落在 ``dir_path`` (调用方同一个 tmp_path
+    也用来放交易所证据文件/登记 YAML, 文件名各不相同不冲突)。
     """
     conn = duck_mem()
     conn.execute(
@@ -828,14 +795,66 @@ def _setup_block_trade_reland(dir_path, run_id, old_rows, new_rows):
             seq = seq_counter[gkey]
         conn.execute(
             "INSERT INTO raw_tushare_block_trade "
-            "(ts_code, trade_date, price, vol, buyer, seller, seq, security_type) "
-            "VALUES (?,?,?,?,?,?,?,?)",
+            "(ts_code, trade_date, price, vol, buyer, seller, seq, security_type, vendor_market) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
             [
                 r["ts_code"], r["trade_date"], r["price"], r["vol"], r["buyer"], r["seller"],
-                seq, r.get("security_type", "EQA"),
+                seq, r.get("security_type", "EQA"), r.get("vendor_market"),
             ],
         )
     return conn
+
+
+def _write_both_exchange_files(dir_path, date, *, sh_rows=(), sz_rows=()):
+    """C2 helper: 同一天 sh/sz 两份证据文件一起写 (哪怕某一侧是空列表), 避免
+    ``not_checked`` 意外把 exit_code 拉到 2, 污染只想测别的条件的用例 (每个用例
+    只有一个条件为假)。"""
+    _write_exchange_file(dir_path, "sh", date, list(sh_rows))
+    _write_exchange_file(dir_path, "sz", date, list(sz_rows))
+
+
+def _write_cell_verdicts_yaml(tmp_path, entries) -> "Path":
+    import yaml as _yaml
+
+    p = tmp_path / "cell_verdicts.yaml"
+    p.write_text(_yaml.safe_dump({"version": 1, "entries": entries}, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    return p
+
+
+def _cell_entry(
+    cells, *, exchange_unmatched=(), vendor_unmatched=(), text_pairs=(),
+    truth_side="unknown", evidence="test evidence", checked_at="2026-09-12", domain="block_trade",
+) -> dict:
+    return {
+        "domain": domain,
+        "cells": [list(c) for c in cells],
+        "exchange_unmatched": [list(r) for r in exchange_unmatched],
+        "vendor_unmatched": [list(r) for r in vendor_unmatched],
+        "text_pairs": [list(p) for p in text_pairs],
+        "truth_side": truth_side,
+        "evidence": evidence,
+        "checked_at": checked_at,
+    }
+
+
+def _write_code_changes_yaml(tmp_path, events) -> "Path":
+    import yaml as _yaml
+
+    p = tmp_path / "code_changes.yaml"
+    p.write_text(_yaml.safe_dump({"version": 1, "events": events}, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    return p
+
+
+def _code_change_event(
+    old_code="300114.SZ", new_code="302132.SZ", effective_date="20250217", **overrides
+) -> dict:
+    event = {
+        "old_code": old_code, "new_code": new_code, "effective_date": effective_date,
+        "exchange": "SZSE", "kind": "reorg_rename", "source_kind": "announcement",
+        "source_ref": "test fixture", "checked_at": "2026-09-12",
+    }
+    event.update(overrides)
+    return event
 
 
 # --------------------------------------------------------- T6/T6b-T6e: exchange_verdicts --
@@ -982,131 +1001,6 @@ def test_t24_top_inst_with_exchange_dir_raises_and_main_returns_1(tmp_path):
     assert rc == 1
 
 
-# ---------------------------------------------------- T12/T12b: miaoxiang_gap + vendor_gaps --
-
-def test_t12_miaoxiang_gap_unregistered_gives_exit_3(tmp_path):
-    old_rows = [dict(ts_code="600001.SH", trade_date="20230103", price=10.0, vol=5.0, buyer="b", seller="s")]
-    conn = _setup_block_trade_reland(tmp_path, "t12", old_rows, [])  # 重落后这笔彻底消失
-    _write_exchange_file(tmp_path, "sh", "20230103",
-                          [_exch_raw_row("sh", "600001", "10.00", "5.00", "b", "s")])
-    gaps_path = _write_gaps_yaml(tmp_path, {"version": 1, "gaps": []})
-
-    report = verify("block_trade", run_id="t12", conn=conn, archive_dir=tmp_path,
-                     exchange_dir=tmp_path, vendor_gaps_path=gaps_path)
-    assert report["exit_code"] == 3
-    assert report["residual_verdict_counts"]["miaoxiang_gap_unregistered"] == 1
-
-
-def test_t12b_miaoxiang_gap_registered_gives_exit_0(tmp_path):
-    old_rows = [dict(ts_code="600001.SH", trade_date="20230103", price=10.0, vol=5.0, buyer="b", seller="s")]
-    conn = _setup_block_trade_reland(tmp_path, "t12b", old_rows, [])
-    _write_exchange_file(tmp_path, "sh", "20230103",
-                          [_exch_raw_row("sh", "600001", "10.00", "5.00", "b", "s")])
-    gap_item = {
-        "domain": "block_trade", "trade_date": "20230103", "ts_code": "600001.SH",
-        "key": ["600001.SH", "20230103", "10.00", "5.00", "b", "s"],
-        "evidence": "上交所逐笔查询核对无此笔", "checked_at": "2026-09-12",
-    }
-    gaps_path = _write_gaps_yaml(tmp_path, {"version": 1, "gaps": [gap_item]})
-
-    report = verify("block_trade", run_id="t12b", conn=conn, archive_dir=tmp_path,
-                     exchange_dir=tmp_path, vendor_gaps_path=gaps_path)
-    assert report["exit_code"] == 0
-    assert report["residual_verdict_counts"]["miaoxiang_gap_registered"] == 1
-    assert report["residual_verdict_counts"]["unverified"] == 0
-
-
-# --------------------------------------------------------------- T19: registered_gap_present --
-
-def test_t19_registered_gap_reappearing_in_new_table_gives_exit_3(tmp_path):
-    row = dict(ts_code="600006.SH", trade_date="20230109", price=10.0, vol=5.0, buyer="b", seller="s")
-    conn = _setup_block_trade_reland(tmp_path, "t19", [row], [row])  # 旧新完全一致, residual=0
-    gap_item = {
-        "domain": "block_trade", "trade_date": "20230109", "ts_code": "600006.SH",
-        # 之前登记的"缺口" key, 现在实际又出现在新表里了 (供应商回补/重落把它填回来了)。
-        "key": ["600006.SH", "20230109", "10.00", "5.00", "b", "s"],
-        "evidence": "误登记, 实际未缺", "checked_at": "2026-09-01",
-    }
-    gaps_path = _write_gaps_yaml(tmp_path, {"version": 1, "gaps": [gap_item]})
-    empty_exchange_dir = tmp_path / "no_evidence_today"
-    empty_exchange_dir.mkdir()
-
-    report = verify("block_trade", run_id="t19", conn=conn, archive_dir=tmp_path,
-                     exchange_dir=empty_exchange_dir, vendor_gaps_path=gaps_path)
-    assert report["exit_code"] == 3
-    assert report["residual_verdict_counts"]["registered_gap_present"] == 1
-
-
-# --------------------------------------------------------------------- T21: ceiling gap --
-
-def test_t21_ceiling_gap_unregistered_then_registered(tmp_path):
-    old_rows = [dict(ts_code="600003.SH", trade_date="20230106", price=10.0, vol=5.0, buyer="b", seller="s")]
-    new_rows = [dict(ts_code="600003.SH", trade_date="20230106", price=10.0, vol=5.0, buyer="b", seller="s")]
-    conn = _setup_block_trade_reland(tmp_path, "t21", old_rows, new_rows)
-    _write_exchange_file(
-        tmp_path, "sh", "20230106",
-        [
-            _exch_raw_row("sh", "600003", "10.00", "5.00", "b", "s"),  # 跟新/旧都匹配
-            _exch_raw_row("sh", "600003", "20.00", "8.00", "x", "y"),  # 新旧都没有的额外一笔
-        ],
-    )
-    gaps_empty = _write_gaps_yaml(tmp_path, {"version": 1, "gaps": []})
-
-    report = verify("block_trade", run_id="t21", conn=conn, archive_dir=tmp_path,
-                     exchange_dir=tmp_path, vendor_gaps_path=gaps_empty)
-    assert report["exit_code"] == 3
-    assert report["ceiling"]["gap_unregistered"] == 1
-    assert report["residual"] == []  # 这个缺口跟 residual/old 表完全无关, 纯 ceiling 层面
-
-    gap_item = {
-        "domain": "block_trade", "trade_date": "20230106", "ts_code": "600003.SH",
-        "key": ["600003.SH", "20230106", "20.00", "8.00", "x", "y"],
-        "evidence": "沪核对无此笔", "checked_at": "2026-09-12",
-    }
-    gaps_registered = _write_gaps_yaml(tmp_path, {"version": 1, "gaps": [gap_item]})
-    report2 = verify("block_trade", run_id="t21", conn=conn, archive_dir=tmp_path,
-                      exchange_dir=tmp_path, vendor_gaps_path=gaps_registered)
-    assert report2["exit_code"] == 0
-    assert report2["ceiling"]["gap_registered"] == 1
-    assert report2["ceiling"]["gap_unregistered"] == 0
-
-
-# ------------------------------------------------------------------- T22: ceiling extra --
-
-def test_t22_ceiling_extra_in_sh_market_gives_exit_3(tmp_path):
-    old_rows = [dict(ts_code="600004.SH", trade_date="20230107", price=10.0, vol=5.0, buyer="b", seller="s")]
-    new_rows = [
-        dict(ts_code="600004.SH", trade_date="20230107", price=10.0, vol=5.0, buyer="b", seller="s"),
-        dict(ts_code="600004.SH", trade_date="20230107", price=30.0, vol=9.0, buyer="p", seller="q"),
-    ]
-    conn = _setup_block_trade_reland(tmp_path, "t22sh", old_rows, new_rows)
-    _write_exchange_file(tmp_path, "sh", "20230107",
-                          [_exch_raw_row("sh", "600004", "10.00", "5.00", "b", "s")])
-    gaps_path = _write_gaps_yaml(tmp_path, {"version": 1, "gaps": []})
-
-    report = verify("block_trade", run_id="t22sh", conn=conn, archive_dir=tmp_path,
-                     exchange_dir=tmp_path, vendor_gaps_path=gaps_path)
-    assert report["exit_code"] == 3
-    assert report["ceiling"]["extra_sh"] >= 1
-
-
-def test_t22b_ceiling_extra_in_sz_market_gives_exit_2(tmp_path):
-    old_rows = [dict(ts_code="000005.SZ", trade_date="20230108", price=10.0, vol=5.0, buyer="b", seller="s")]
-    new_rows = [
-        dict(ts_code="000005.SZ", trade_date="20230108", price=10.0, vol=5.0, buyer="b", seller="s"),
-        dict(ts_code="000005.SZ", trade_date="20230108", price=30.0, vol=9.0, buyer="p", seller="q"),
-    ]
-    conn = _setup_block_trade_reland(tmp_path, "t22sz", old_rows, new_rows)
-    _write_exchange_file(tmp_path, "sz", "20230108",
-                          [_exch_raw_row("sz", "000005", "10.00", "5.00", "b", "s")])
-    gaps_path = _write_gaps_yaml(tmp_path, {"version": 1, "gaps": []})
-
-    report = verify("block_trade", run_id="t22sz", conn=conn, archive_dir=tmp_path,
-                     exchange_dir=tmp_path, vendor_gaps_path=gaps_path)
-    assert report["exit_code"] == 2
-    assert report["ceiling"]["extra_sz"] >= 1
-
-
 # ---------------------------------------------------------- T25: explained_merged proved --
 
 def test_t25_explained_merged_marked_proved_when_new_multiset_matches_exchange(tmp_path):
@@ -1116,18 +1010,584 @@ def test_t25_explained_merged_marked_proved_when_new_multiset_matches_exchange(t
         dict(ts_code="600002.SH", trade_date="20230105", price=10.0, vol=10.25, buyer="b", seller="s"),
     ]
     conn = _setup_block_trade_reland(tmp_path, "t25", old_rows, new_rows)
-    _write_exchange_file(
-        tmp_path, "sh", "20230105",
-        [
+    _write_both_exchange_files(
+        tmp_path, "20230105",
+        sh_rows=[
             _exch_raw_row("sh", "600002", "10.00", "10.24", "b", "s"),
             _exch_raw_row("sh", "600002", "10.00", "10.25", "b", "s"),
         ],
     )
-    gaps_path = _write_gaps_yaml(tmp_path, {"version": 1, "gaps": []})
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
 
     report = verify("block_trade", run_id="t25", conn=conn, archive_dir=tmp_path,
-                     exchange_dir=tmp_path, vendor_gaps_path=gaps_path)
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
     assert report["classes"]["explained_merged"] == 1
     assert report["classes"]["explained_merged_proved"] == 1
     assert len(report["explained_merged"]) == 1
     assert report["explained_merged"][0].get("proved") is True
+
+
+# ============================================== C1-C27: 格级验收判据切片 C2 ==
+# 编号 c1-c27 对应 scratchpad/bt_residual_classes_r1.md §6 C2 表里的 V1-V27 (加
+# 小写前缀 c 避免与本文件已有的 test_v1_archive_*/test_v2_prepare_*/test_v2_canon_*
+# (r2 §4 S7 的字面 V1-V6) 混淆 —— 两套编号来自不同文档, 恰好都叫 V<n>)。
+
+def test_domain_cell_cols_matches_registry_declaration():
+    """主会话额外要求: ``CanonSpec.cell_cols`` 与
+    ``services.exchange_cell_verdicts._DOMAIN_CELL_COLS`` 是有意分开声明的两份
+    真相 (该模块不连库、不导入脚本层), 但两处的取值必须逐字段相等, 否则将来一定
+    会漂。变异: 把其中一处改掉一个域的格列, 本用例必须变红。"""
+    canon_cell_cols = {domain: spec.cell_cols for domain, spec in DOMAIN_CANON.items()}
+    assert set(canon_cell_cols) == set(_DOMAIN_CELL_COLS)
+    for domain, cols in canon_cell_cols.items():
+        assert tuple(cols) == tuple(_DOMAIN_CELL_COLS[domain]), (
+            f"domain={domain!r}: CanonSpec.cell_cols={cols!r} != "
+            f"exchange_cell_verdicts._DOMAIN_CELL_COLS={_DOMAIN_CELL_COLS[domain]!r}"
+        )
+
+
+def test_identity_natural_key_matches_security_identity_specs():
+    """第三处双份真相: 本脚本的 ``_IDENTITY_NATURAL_KEY`` 与
+    ``services.security_identity.IDENTITY_SPECS[domain].natural_key`` 是有意分开
+    声明的两份 (那个模块不导入脚本层, 免得把 DB 路径解析与写锁依赖拖进纯模块),
+    但两处取值必须逐字段相等 —— R1 的 twin 判定在验收层与发布层若用了不同的自然键,
+    "同一笔"在两层就不是同一件事, 而这种漂移不会有任何别的判据会红。
+    变异: 改掉任一处任一个域的 natural_key, 本用例必须变红。"""
+    from scripts.reland_event_domain import _IDENTITY_NATURAL_KEY
+    from services.security_identity import IDENTITY_SPECS
+
+    assert set(_IDENTITY_NATURAL_KEY) == set(IDENTITY_SPECS)
+    for domain, cols in _IDENTITY_NATURAL_KEY.items():
+        assert tuple(cols) == tuple(IDENTITY_SPECS[domain].natural_key), (
+            f"domain={domain!r}: reland_event_domain._IDENTITY_NATURAL_KEY="
+            f"{tuple(cols)!r} != security_identity.IDENTITY_SPECS[{domain!r}]"
+            f".natural_key={tuple(IDENTITY_SPECS[domain].natural_key)!r}"
+        )
+
+
+# ------------------------------------------------------------- C1-C6: venue (R-V) --
+
+def test_c1_venue_resolved_by_suffix_when_vendor_market_absent(tmp_path):
+    row = dict(ts_code="600000.SH", trade_date="20230103", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c1", [row], [row])
+    _write_both_exchange_files(tmp_path, "20230103",
+                                sh_rows=[_exch_raw_row("sh", "600000", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="c1", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["venue"] == {
+        "by_vendor_market": 0, "unresolved": 0, "conflict": 0,
+        "blocked_exchange_rows": 0, "not_covered_bj": 0,
+    }
+    assert report["exit_code"] == 0
+
+
+def test_c2_venue_resolved_by_vendor_market_when_suffix_missing(tmp_path):
+    # 501054.OF 是妙想换源后才有的形态 (bt_residual_classes_r1.md N3): 后缀丢了
+    # 场所信息, 但 vendor_market=CNSESH 是供应商自己给的一手场所字段。
+    row = dict(ts_code="501054.OF", trade_date="20230103", price=10.0, vol=5.0,
+               buyer="b", seller="s", vendor_market="CNSESH")
+    conn = _setup_block_trade_reland(tmp_path, "c2", [row], [row])
+    _write_both_exchange_files(tmp_path, "20230103",
+                                sh_rows=[_exch_raw_row("sh", "501054", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="c2", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["venue"]["by_vendor_market"] == 1
+    assert report["exit_code"] == 0
+
+
+def test_c3_venue_unresolved_blocks_exchange_row_without_missing(tmp_path):
+    row = dict(ts_code="501054.OF", trade_date="20230103", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c3", [row], [row])
+    _write_both_exchange_files(tmp_path, "20230103",
+                                sh_rows=[_exch_raw_row("sh", "501054", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="c3", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["venue"]["unresolved"] == 1
+    assert report["venue"]["blocked_exchange_rows"] == 1
+    assert report["consumption"]["totals"]["missing_unregistered"] == 0
+    assert report["exit_code"] == 2
+
+
+def test_c4_venue_conflict_between_suffix_and_vendor_market(tmp_path):
+    row = dict(ts_code="600000.SH", trade_date="20230103", price=10.0, vol=5.0,
+               buyer="b", seller="s", vendor_market="CNSESZ")
+    conn = _setup_block_trade_reland(tmp_path, "c4", [row], [row])
+    _write_both_exchange_files(tmp_path, "20230103",
+                                sh_rows=[_exch_raw_row("sh", "600000", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="c4", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["venue"]["conflict"] == 1
+    assert report["exit_code"] == 2
+
+
+def test_c5_bj_venue_not_covered_but_does_not_block_exit_0(tmp_path):
+    matched_row = dict(ts_code="600000.SH", trade_date="20230103", price=10.0, vol=5.0, buyer="b", seller="s")
+    bj_row = dict(ts_code="430001.BJ", trade_date="20230103", price=1.0, vol=1.0, buyer="x", seller="y")
+    conn = _setup_block_trade_reland(tmp_path, "c5", [matched_row, bj_row], [matched_row, bj_row])
+    _write_both_exchange_files(tmp_path, "20230103",
+                                sh_rows=[_exch_raw_row("sh", "600000", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="c5", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["venue"]["not_covered_bj"] == 1
+    assert report["exit_code"] == 0
+
+
+def test_c6_unknown_vendor_market_value_is_unresolved(tmp_path):
+    row = dict(ts_code="501054.OF", trade_date="20230103", price=10.0, vol=5.0,
+               buyer="b", seller="s", vendor_market="XX")
+    conn = _setup_block_trade_reland(tmp_path, "c6", [row], [row])
+    _write_both_exchange_files(tmp_path, "20230103",
+                                sh_rows=[_exch_raw_row("sh", "501054", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="c6", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["venue"]["unresolved"] == 1
+    assert report["exit_code"] == 2
+
+
+# --------------------------------------------------------- C7-C11: identity (R-I) --
+
+def test_c7_twin_row_dropped_by_identity_layer(tmp_path):
+    old_rows = [dict(ts_code="300114.SZ", trade_date="20250210", price=10.0, vol=5.0, buyer="b", seller="s")]
+    new_rows = [
+        dict(ts_code="300114.SZ", trade_date="20250210", price=10.0, vol=5.0, buyer="b", seller="s"),
+        dict(ts_code="302132.SZ", trade_date="20250210", price=10.0, vol=5.0, buyer="b", seller="s"),
+    ]
+    conn = _setup_block_trade_reland(tmp_path, "c7", old_rows, new_rows)
+    _write_both_exchange_files(tmp_path, "20250210",
+                                sz_rows=[_exch_raw_row("sz", "300114", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+    changes_path = _write_code_changes_yaml(tmp_path, [_code_change_event()])
+
+    report = verify("block_trade", run_id="c7", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path, code_changes_path=changes_path)
+    assert report["identity"]["dropped_new"] == 1
+    assert report["identity"]["skipped"] is False
+    assert report["exit_code"] == 0
+
+
+def test_c8_no_twin_row_remapped_to_old_code(tmp_path):
+    old_rows = [dict(ts_code="300114.SZ", trade_date="20250210", price=10.0, vol=5.0, buyer="b", seller="s")]
+    new_rows = [dict(ts_code="302132.SZ", trade_date="20250210", price=10.0, vol=5.0, buyer="b", seller="s")]
+    conn = _setup_block_trade_reland(tmp_path, "c8", old_rows, new_rows)
+    _write_both_exchange_files(tmp_path, "20250210",
+                                sz_rows=[_exch_raw_row("sz", "300114", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+    changes_path = _write_code_changes_yaml(tmp_path, [_code_change_event()])
+
+    report = verify("block_trade", run_id="c8", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path, code_changes_path=changes_path)
+    assert report["identity"]["remapped_new"] == 1
+    assert report["exit_code"] == 0
+
+
+def test_c9_identity_skipped_without_code_changes_leaves_twin_as_extra(tmp_path):
+    old_rows = [dict(ts_code="300114.SZ", trade_date="20250210", price=10.0, vol=5.0, buyer="b", seller="s")]
+    new_rows = [
+        dict(ts_code="300114.SZ", trade_date="20250210", price=10.0, vol=5.0, buyer="b", seller="s"),
+        dict(ts_code="302132.SZ", trade_date="20250210", price=10.0, vol=5.0, buyer="b", seller="s"),
+    ]
+    conn = _setup_block_trade_reland(tmp_path, "c9", old_rows, new_rows)
+    _write_both_exchange_files(tmp_path, "20250210",
+                                sz_rows=[_exch_raw_row("sz", "300114", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="c9", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)  # 不给 code_changes_path
+    assert report["identity"]["skipped"] is True
+    assert report["consumption"]["totals"]["extra_unregistered"] == 1
+    assert report["exit_code"] == 2
+
+
+def test_c10_row_on_or_after_effective_date_not_touched_by_identity(tmp_path):
+    row = dict(ts_code="302132.SZ", trade_date="20250217", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c10", [row], [row])
+    _write_both_exchange_files(tmp_path, "20250217",
+                                sz_rows=[_exch_raw_row("sz", "302132", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+    changes_path = _write_code_changes_yaml(tmp_path, [_code_change_event()])
+
+    report = verify("block_trade", run_id="c10", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path, code_changes_path=changes_path)
+    assert report["identity"]["dropped_new"] == 0
+    assert report["identity"]["remapped_new"] == 0
+    assert report["exit_code"] == 0
+
+
+def test_c11_old_side_twin_dropped_from_archive(tmp_path):
+    old_rows = [
+        dict(ts_code="300114.SZ", trade_date="20250210", price=10.0, vol=5.0, buyer="b", seller="s"),
+        dict(ts_code="302132.SZ", trade_date="20250210", price=10.0, vol=5.0, buyer="b", seller="s"),
+    ]
+    new_rows = [dict(ts_code="300114.SZ", trade_date="20250210", price=10.0, vol=5.0, buyer="b", seller="s")]
+    conn = _setup_block_trade_reland(tmp_path, "c11", old_rows, new_rows)
+    _write_both_exchange_files(tmp_path, "20250210",
+                                sz_rows=[_exch_raw_row("sz", "300114", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+    changes_path = _write_code_changes_yaml(tmp_path, [_code_change_event()])
+
+    report = verify("block_trade", run_id="c11", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path, code_changes_path=changes_path)
+    assert report["identity"]["dropped_old"] == 1
+    assert report["classes"]["residual_none"] == 0
+    assert report["exit_code"] == 0
+
+
+# ------------------------------------------------------ C12-C20: 格级残差类 --
+
+def test_c12_text_difference_unregistered_is_text_candidate(tmp_path):
+    row = dict(ts_code="600010.SH", trade_date="20230110", price=10.0, vol=5.0, buyer="brokerA", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c12", [row], [row])
+    _write_both_exchange_files(tmp_path, "20230110",
+                                sh_rows=[_exch_raw_row("sh", "600010", "10.00", "5.00", "brokerAprime", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="c12", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["consumption"]["totals"]["text_candidate"] == 1
+    assert report["exit_code"] == 2
+
+
+def test_c13_text_difference_registered_via_pair_is_consumed(tmp_path):
+    row = dict(ts_code="600010.SH", trade_date="20230110", price=10.0, vol=5.0, buyer="brokerA", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c13", [row], [row])
+    _write_both_exchange_files(tmp_path, "20230110",
+                                sh_rows=[_exch_raw_row("sh", "600010", "10.00", "5.00", "brokerAprime", "s")])
+    entry = _cell_entry(
+        cells=[("20230110", "sh", "600010", "10.00", "5.00")],
+        exchange_unmatched=[("brokerAprime", "s", 1)],
+        vendor_unmatched=[("brokerA", "s", 1)],
+        text_pairs=[(0, 0, 1)],
+        evidence="交易所营业部全称核对无误, 只是简称写法不同",
+    )
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [entry])
+
+    report = verify("block_trade", run_id="c13", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["consumption"]["totals"]["text"] == 1
+    assert report["exit_code"] == 0
+
+
+def test_c14_missing_unregistered_gives_exit_3(tmp_path):
+    row = dict(ts_code="600011.SH", trade_date="20230111", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c14", [row], [])  # 重落后彻底消失
+    _write_both_exchange_files(tmp_path, "20230111",
+                                sh_rows=[_exch_raw_row("sh", "600011", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="c14", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["consumption"]["totals"]["missing_unregistered"] == 1
+    assert report["exit_code"] == 3
+
+
+def test_c15_missing_registered_gives_exit_0(tmp_path):
+    row = dict(ts_code="600011.SH", trade_date="20230111", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c15", [row], [])
+    _write_both_exchange_files(tmp_path, "20230111",
+                                sh_rows=[_exch_raw_row("sh", "600011", "10.00", "5.00", "b", "s")])
+    entry = _cell_entry(
+        cells=[("20230111", "sh", "600011", "10.00", "5.00")],
+        exchange_unmatched=[("b", "s", 1)],
+        vendor_unmatched=[],
+        evidence="交易所核对确有此笔, 妙想重落后确实缺失, 已知问题",
+    )
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [entry])
+
+    report = verify("block_trade", run_id="c15", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["consumption"]["totals"]["missing"] == 1
+    assert report["exit_code"] == 0
+
+
+def test_c16_duplicate_extra_unregistered_gives_exit_2(tmp_path):
+    row = dict(ts_code="600012.SH", trade_date="20230112", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c16", [row, row], [row, row])  # 供应商两次报同一笔
+    _write_both_exchange_files(tmp_path, "20230112",
+                                sh_rows=[_exch_raw_row("sh", "600012", "10.00", "5.00", "b", "s")])  # 交易所只一笔
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="c16", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["consumption"]["totals"]["extra_unregistered"] == 1
+    assert report["exit_code"] == 2
+
+
+def test_c17_duplicate_extra_registered_gives_exit_0(tmp_path):
+    row = dict(ts_code="600012.SH", trade_date="20230112", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c17", [row, row], [row, row])
+    _write_both_exchange_files(tmp_path, "20230112",
+                                sh_rows=[_exch_raw_row("sh", "600012", "10.00", "5.00", "b", "s")])
+    entry = _cell_entry(
+        cells=[("20230112", "sh", "600012", "10.00", "5.00")],
+        exchange_unmatched=[],
+        vendor_unmatched=[("b", "s", 1)],
+        evidence="供应商同一笔报了两次, 已核实",
+    )
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [entry])
+
+    report = verify("block_trade", run_id="c17", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["consumption"]["totals"]["extra_duplicate"] == 1
+    assert report["exit_code"] == 0
+
+
+def test_c17b_phantom_extra_registered_gives_extra_phantom_not_duplicate(tmp_path):
+    """C1 的 duplicate/phantom 子类判定 (``E[F] >= 1`` 用 ``Observed.exchange_all``)
+    只在 ``_apply_exchange_evidence``/:func:`cell_compare` 把这个字段接对了才有意义
+    —— 这条与 c17 (duplicate) 成对, 唯一能钉住"exchange_all 传的是交易所侧而不是
+    新表自身"的用例 (把它错接成新表自身, 任何 extra 都会显得"交易所也有", 全部
+    误判成 duplicate, 本用例的 extra_phantom 断言必须变红)。"""
+    row = dict(ts_code="600013.SH", trade_date="20230113", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c17b", [row], [row])
+    _write_both_exchange_files(tmp_path, "20230113")  # 交易所完全没有这笔 (真正 phantom)
+    entry = _cell_entry(
+        cells=[("20230113", "sh", "600013", "10.00", "5.00")],
+        exchange_unmatched=[],
+        vendor_unmatched=[("b", "s", 1)],
+        evidence="盘后定价报表可查此笔, 交易所逐笔查询本就不覆盖",
+        truth_side="vendor",
+    )
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [entry])
+
+    report = verify("block_trade", run_id="c17b", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["consumption"]["totals"]["extra_phantom"] == 1
+    assert report["consumption"]["totals"]["extra_duplicate"] == 0
+    assert report["exit_code"] == 0
+
+
+def test_c18_phantom_extra_in_sh_market_gives_exit_2(tmp_path):
+    row = dict(ts_code="600013.SH", trade_date="20230113", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c18sh", [row], [row])
+    _write_both_exchange_files(tmp_path, "20230113")  # 交易所两个市场都没有这笔
+
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+    report = verify("block_trade", run_id="c18sh", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["consumption"]["totals"]["extra_unregistered"] == 1
+    assert report["exit_code"] == 2
+
+
+def test_c18b_phantom_extra_in_sz_market_gives_exit_2_same_as_sh(tmp_path):
+    """深市与沪市各一用例结果相同 (取代旧版沪判死/深看一眼的整市场级差别对待,
+    见头注 O)。"""
+    row = dict(ts_code="000013.SZ", trade_date="20230113", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c18sz", [row], [row])
+    _write_both_exchange_files(tmp_path, "20230113")
+
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+    report = verify("block_trade", run_id="c18sz", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["consumption"]["totals"]["extra_unregistered"] == 1
+    assert report["exit_code"] == 2
+
+
+def test_c19_stale_registration_gives_exit_3(tmp_path):
+    row = dict(ts_code="600011.SH", trade_date="20230111", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c19", [row], [row])  # 重落后这笔其实已经匹配上了
+    _write_both_exchange_files(tmp_path, "20230111",
+                                sh_rows=[_exch_raw_row("sh", "600011", "10.00", "5.00", "b", "s")])
+    entry = _cell_entry(  # 登记声称这格还缺这一笔, 但观测已经 matched
+        cells=[("20230111", "sh", "600011", "10.00", "5.00")],
+        exchange_unmatched=[("b", "s", 1)],
+        vendor_unmatched=[],
+        evidence="之前核实的缺口 (现已过时)",
+    )
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [entry])
+
+    report = verify("block_trade", run_id="c19", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert ["20230111", "sh", "600011", "10.00", "5.00"] in report["consumption"]["stale_cells"]
+    assert report["exit_code"] == 3
+
+
+def test_c20_contradiction_pair_referencing_wrong_string_gives_exit_3(tmp_path):
+    row = dict(ts_code="600010.SH", trade_date="20230110", price=10.0, vol=5.0, buyer="brokerA", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c20", [row], [row])
+    _write_both_exchange_files(tmp_path, "20230110",
+                                sh_rows=[_exch_raw_row("sh", "600010", "10.00", "5.00", "brokerAprime", "s")])
+    entry = _cell_entry(
+        cells=[("20230110", "sh", "600010", "10.00", "5.00")],
+        exchange_unmatched=[("brokerAprimeX", "s", 1)],  # 与观测差一字
+        vendor_unmatched=[("brokerA", "s", 1)],
+        text_pairs=[(0, 0, 1)],
+        evidence="配对声明 (故意写错一个字, 触发 contradiction)",
+    )
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [entry])
+
+    report = verify("block_trade", run_id="c20", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert ["20230110", "sh", "600010", "10.00", "5.00"] in report["consumption"]["stale_cells"]
+    assert report["exit_code"] == 3
+
+
+# ------------------------------------------------------- C21-C27: 收尾/整合 --
+
+def test_c21_missing_evidence_file_for_one_day_gives_exit_2(tmp_path):
+    row1 = dict(ts_code="600001.SH", trade_date="20230101", price=10.0, vol=5.0, buyer="b", seller="s")
+    row2 = dict(ts_code="600002.SH", trade_date="20230102", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c21", [row1, row2], [row1, row2])
+    _write_both_exchange_files(tmp_path, "20230101",
+                                sh_rows=[_exch_raw_row("sh", "600001", "10.00", "5.00", "b", "s")])
+    # 20230102 完全没有证据文件 (both markets)。
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="c21", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["not_checked"] == [["20230102", "sh"], ["20230102", "sz"]]
+    assert report["exit_code"] == 2
+
+
+def test_c22_record_refuses_nonzero_exit_and_writes_new_keys_on_success(tmp_path):
+    bad_row = dict(ts_code="600011.SH", trade_date="20230111", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c22", [bad_row], [])  # 缺口未登记 -> exit 3
+    _write_both_exchange_files(tmp_path, "20230111",
+                                sh_rows=[_exch_raw_row("sh", "600011", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    with pytest.raises(RuntimeError, match="refusing to record"):
+        verify("block_trade", run_id="c22", record=True, conn=conn, archive_dir=tmp_path,
+               exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    rows = conn.execute("SELECT delete_scope FROM mart_data_deletion_record").fetchall()
+    assert all(r[0] != "rows_replaced_verified" for r in rows)
+
+    # 干净的一份: 登记好这个缺口 -> exit 0 -> record 应该写入新 verification keys。
+    entry = _cell_entry(
+        cells=[("20230111", "sh", "600011", "10.00", "5.00")],
+        exchange_unmatched=[("b", "s", 1)],
+        vendor_unmatched=[],
+        evidence="已核实缺口",
+    )
+    verdicts_path2 = _write_cell_verdicts_yaml(tmp_path, [entry])
+    conn2 = _setup_block_trade_reland(tmp_path, "c22b", [bad_row], [])
+    report = verify("block_trade", run_id="c22b", record=True, conn=conn2, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path2)
+    assert report["exit_code"] == 0
+    rows2 = conn2.execute(
+        "SELECT verification_json FROM mart_data_deletion_record WHERE delete_scope = 'rows_replaced_verified'"
+    ).fetchall()
+    assert len(rows2) == 1
+    verification = json.loads(rows2[0][0])
+    assert {"registry_sha256", "consumed_cells", "identity", "venue", "not_checked"} <= set(verification.keys())
+
+
+def test_c23_emit_candidates_skeleton_cannot_be_loaded_as_is(tmp_path):
+    row = dict(ts_code="600011.SH", trade_date="20230111", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c23", [row], [])
+    _write_both_exchange_files(tmp_path, "20230111",
+                                sh_rows=[_exch_raw_row("sh", "600011", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+    emit_path = tmp_path / "candidates.yaml"
+
+    verify("block_trade", run_id="c23", conn=conn, archive_dir=tmp_path,
+           exchange_dir=tmp_path, cell_verdicts_path=verdicts_path, emit_candidates_path=emit_path)
+    assert emit_path.exists()
+    with pytest.raises(ValueError, match="checked_at"):
+        load_exchange_cell_verdicts(emit_path)
+
+
+def test_c24_old_residual_registration_matches_cell_consumption(tmp_path):
+    row = dict(ts_code="600011.SH", trade_date="20230111", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c24", [row], [])
+    _write_both_exchange_files(tmp_path, "20230111",
+                                sh_rows=[_exch_raw_row("sh", "600011", "10.00", "5.00", "b", "s")])
+    entry = _cell_entry(
+        cells=[("20230111", "sh", "600011", "10.00", "5.00")],
+        exchange_unmatched=[("b", "s", 1)],
+        vendor_unmatched=[],
+        evidence="已核实缺口",
+    )
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [entry])
+
+    report = verify("block_trade", run_id="c24", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["residual_verdict_counts"]["miaoxiang_gap_registered"] == 1
+    assert report["consumption"]["totals"]["missing"] == 1
+    assert report["exit_code"] == 0
+
+
+def test_c25_partition_invariant_violation_converts_to_exit_1_via_main(tmp_path, monkeypatch, capsys):
+    import scripts.reland_event_domain as red
+    from services.exchange_cell_verdicts import ConsumptionReport
+
+    row = dict(ts_code="600011.SH", trade_date="20230111", price=10.0, vol=5.0, buyer="b", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c25", [row], [])
+    _write_both_exchange_files(tmp_path, "20230111",
+                                sh_rows=[_exch_raw_row("sh", "600011", "10.00", "5.00", "b", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    def _bad_consume(observed, verdicts):
+        zero = {f: 0 for f in (
+            "text", "missing", "extra_duplicate", "extra_phantom",
+            "text_candidate", "missing_unregistered", "extra_unregistered",
+        )}
+        return ConsumptionReport(per_cell={}, totals=zero, consumed_cells=(), stale_cells=())
+
+    monkeypatch.setattr(red, "connect", lambda *a, **k: conn)
+    monkeypatch.setattr(red, "db_path", lambda *a, **k: tmp_path / "unused.duckdb")
+    monkeypatch.setattr(red, "ARCHIVE_DIR", tmp_path)
+    monkeypatch.setattr(red, "consume", _bad_consume)
+
+    rc = main([
+        "verify", "--domain", "block_trade", "--run-id", "c25",
+        "--exchange-dir", str(tmp_path), "--cell-verdicts", str(verdicts_path),
+    ])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "partition" in err
+
+
+def test_c26_clean_match_with_no_registrations_or_events_gives_exit_0(tmp_path):
+    rows = [
+        dict(ts_code="600014.SH", trade_date="20230114", price=10.0, vol=5.0, buyer="b", seller="s"),
+        dict(ts_code="600015.SH", trade_date="20230114", price=20.0, vol=8.0, buyer="x", seller="y"),
+        dict(ts_code="000016.SZ", trade_date="20230114", price=30.0, vol=9.0, buyer="p", seller="q"),
+    ]
+    conn = _setup_block_trade_reland(tmp_path, "c26", rows, rows)
+    _write_both_exchange_files(
+        tmp_path, "20230114",
+        sh_rows=[
+            _exch_raw_row("sh", "600014", "10.00", "5.00", "b", "s"),
+            _exch_raw_row("sh", "600015", "20.00", "8.00", "x", "y"),
+        ],
+        sz_rows=[_exch_raw_row("sz", "000016", "30.00", "9.00", "p", "q")],
+    )
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    report = verify("block_trade", run_id="c26", conn=conn, archive_dir=tmp_path,
+                     exchange_dir=tmp_path, cell_verdicts_path=verdicts_path)
+    assert report["exit_code"] == 0
+    assert all(v == 0 for v in report["consumption"]["totals"].values())
+    assert report["consumption"]["consumed_cells"] == []
+
+
+def test_c27_main_returns_2_for_unregistered_text_difference(tmp_path, monkeypatch):
+    import scripts.reland_event_domain as red
+
+    row = dict(ts_code="600010.SH", trade_date="20230110", price=10.0, vol=5.0, buyer="brokerA", seller="s")
+    conn = _setup_block_trade_reland(tmp_path, "c27", [row], [row])
+    _write_both_exchange_files(tmp_path, "20230110",
+                                sh_rows=[_exch_raw_row("sh", "600010", "10.00", "5.00", "brokerAprime", "s")])
+    verdicts_path = _write_cell_verdicts_yaml(tmp_path, [])
+
+    monkeypatch.setattr(red, "connect", lambda *a, **k: conn)
+    monkeypatch.setattr(red, "db_path", lambda *a, **k: tmp_path / "unused.duckdb")
+    monkeypatch.setattr(red, "ARCHIVE_DIR", tmp_path)
+
+    rc = main([
+        "verify", "--domain", "block_trade", "--run-id", "c27",
+        "--exchange-dir", str(tmp_path), "--cell-verdicts", str(verdicts_path),
+    ])
+    assert rc == 2

@@ -37,45 +37,90 @@ r2 字面文本的出入见各函数头注):
   I. :func:`verdict` 是只读 report 的纯函数, 不重新计算任何东西: 结构检查任一 fail,
      或 residual 里出现"新表已经比交易所还缺"/"妙想缺口没登记"两类, exit_code=3
      (硬失败, ``--record`` 会拒绝写账); 干净但仍有未核实的 residual, exit_code=2
-     (需要人工过一遍, 决定是旧供应商的错还是要登记进 vendor_gaps); 否则 0。V1 里
-     residual 一律落 ``unverified`` —— 拿 vendor_gaps 消费 residual、判定
-     old_vendor_error/miaoxiang_gap_* /new_diverges_from_exchange 是后续切片的活。
-  J. :func:`load_vendor_gaps` 是"妙想缺、交易所有"这类已核实缺口的唯一登记通道,
-     故意不给命令行放行旗子 (没有 ``--allow-gap`` 之类的参数) —— 免得成为绕过验收的
-     后门。V1 只建通道 + 校验 + 记账时算它的 sha256 存证 (哪个登记版本在场当次校验
-     通过), 分类逻辑还不读它 (H 提到的 residual_verdict_counts 里
-     miaoxiang_gap_registered/unregistered 恒 0)。
+     (需要人工过一遍, 决定是旧供应商的错、还是要登记进格级登记表, 见 J); 否则 0。
+     (这一段 V1 时写的是"登记进 vendor_gaps"与"residual 一律落 unverified, 拿
+     vendor_gaps 消费是后续切片的活" —— C2 起唯一登记通道是 J 说的
+     ``exchange_cell_verdicts.yaml``, 消费逻辑见 N, 那两句已不成立, 故改写。)
+  J. (2026-09-12, 格级验收判据切片 C2, 取代 V1/V2 的 ``vendor_gaps.yaml``) 缺口/
+     多出/文本差异的唯一登记通道现在是格级登记表
+     ``backend/config/exchange_cell_verdicts.yaml`` (``services.exchange_cell_
+     verdicts.load_exchange_cell_verdicts``/``consume``, 该模块已独立提交, 本文件
+     只调用, 不重写)。取代理由 (``scratchpad/bt_residual_classes_r1.md`` §0/§3):
+     ``vendor_gaps.yaml`` 的语义只能表达"妙想整行缺一笔", 装不下"同一笔两侧都在只是
+     席位名写法不同" (text) 与"供应商同一笔报了两次" (extra_duplicate/phantom) 这两类
+     残差 —— 这两类在同一个 T 格 (trade_date, venue, code6, price2dp, vol2dp) 里可能
+     和缺口同时出现, 分两份登记会导致同一格被两处登记、互相不知道对方消费了哪一行。
+     命令行仍然不给放行旗子, 理由不变: 一次性 flag 钉不住"两侧当时到底是什么行",
+     下次供应商数据变了同一个 flag 还会继续放行一个它从没见过的新形状。
   K. (V2, 验收判据切片二: 交易所证据层) ``canon_exchange_row`` 签名改为
      ``(market, trade_date, row)`` —— 直接把 ``trade_date`` 并进输出, 不再返回
-     ``amount`` (交易所证据层只用 :func:`exchange_key`/:func:`gap_key` 六个可比字段
-     判等, 不再做金额层面的三方比对)。旧签名 ``(row, *, market)`` 连同它唯一的调用方
-     ``compare_day_three_way``/``_three_way_for_date`` (--exchange-json/--date 单日
-     路径) 一并删除, 不留墓碑 —— 这是本切片规格点名允许改写的三个符号。
+     ``amount`` (交易所证据层只用 :func:`exchange_key` 六个可比字段判等, 不再做
+     金额层面的三方比对; V2 当时还有 ``gap_key`` 把这六个字段转成登记 key 字符串,
+     C2 把它连同它服务的 ``vendor_gaps.yaml`` 一起删除, 见 J)。旧签名
+     ``(row, *, market)`` 连同它唯一的调用方 ``compare_day_three_way``/
+     ``_three_way_for_date`` (--exchange-json/--date 单日路径) 一并删除, 不留墓碑
+     —— 这是本切片规格点名允许改写的三个符号。
   L. 覆盖范围判断 (哪些代码算"这份交易所文件管得到") 统一收在私有
-     :func:`_covered_codes` 里, :func:`exchange_verdicts`/:func:`ceiling_compare` 都
-     调它, 不各自重写一遍规则 (免得两处判断不一致): 后缀须与 ``market`` 一致
-     (.SH/.SZ); 新表里能查到 ``security_type`` 的按 ``{EQA, FDO}`` 白名单过 (BD0/其它
-     不覆盖); 代码只在交易所出现、新表没有时按后缀直接算覆盖 (没有 security_type 可
-     查, 也没有理由怀疑交易所自己报错); 文件带 ``codes`` 白名单时再交一遍求交集。
-  M. ``verify`` 新增 ``exchange_dir``/``vendor_gaps_path``: 只有 ``block_trade`` 允许
-     传 ``exchange_dir`` (``top_inst`` 传了直接 ``ValueError``, CLI 层 ``main`` 捕获后
-     返回 1, 不是让异常裸抛把退出码交给解释器)。按归档里出现的每一天 × {sh, sz} 找
-     ``exch_<market>_<day>.json``; 文件不存在不是失败 —— 那天那个市场的 residual 保持
-     V1 的 unverified, 只在 ``report["ceiling"]["not_checked"]`` 里记一笔 (day,
-     market), 供人工知道"这些天这些市场我们其实没有交易所口径可核对"。
-  N. vendor_gaps 的消费点扩到三处 (读 :func:`load_vendor_gaps` 同一份登记):
-     miaoxiang_gap 的 :func:`gap_key` 未登记 → ``miaoxiang_gap_unregistered`` (硬
-     失败); ceiling gap (交易所有、新表没有, 覆盖范围内) 未登记 →
-     ``ceiling_gap_unregistered`` (硬失败); 已登记的缺口 key 如果在新表里重新出现
-     (按 :func:`exchange_key` 多重集) → ``registered_gap_present`` (硬失败 —— 说明
-     供应商回补/重落已经把这个缺口填上了, 登记该删了, 但删除是头注 J 说的人工动作,
-     这里只负责报警不负责自动摘)。
-  O. ceiling extra (新表比交易所"多"出来的笔数) 沪深处置不同: 沪市
-     (``ceiling_extra_sh``) 硬失败 —— 上交所逐笔查询是完整披露, 新表凭空多出的成交
-     只能是错的; 深市 (``ceiling_extra_sz``) 只降级到"需要人工看一眼" —— 深交所
-     CATALOGID=1265 只覆盖协议交易, 盘后定价没有逐笔可查, 新表比它"多"是合法的。
-     证据文件的取数入口与格式钉在 :func:`load_exchange_evidence` 的头注里 (本文件),
-     不在任何文档小节 —— 别处没有第二份定义。
+     :func:`_covered_codes` 里, :func:`exchange_verdicts` 与 (C2 起) :func:`_apply_
+     exchange_evidence` 里 :func:`cell_compare` 的调用方都调它, 不各自重写一遍规则
+     (免得两处判断不一致): 后缀须与 ``market`` 一致 (.SH/.SZ); 新表里能查到
+     ``security_type`` 的按 ``{EQA, FDO}`` 白名单过 (BD0/其它不覆盖); 代码只在
+     交易所出现、新表没有时按后缀直接算覆盖 (没有 security_type 可查, 也没有理由
+     怀疑交易所自己报错); 文件带 ``codes`` 白名单时再交一遍求交集。C2 起
+     :func:`_apply_exchange_evidence` 在调它之前先按 :func:`resolve_venue` 把行的
+     ``ts_code`` 规范化成确认场所的后缀形式 (头注 P), 所以这里的"后缀"判断对
+     ``.OF`` 这类原本无后缀的行同样生效, 不再是 V2 遗留的盲区 (bt_residual_
+     classes_r1.md N5)。
+  M. ``verify`` 新增 ``exchange_dir`` (C2 起另加 ``cell_verdicts_path``/
+     ``code_changes_path``/``emit_candidates_path``, 取代 V1/V2 的
+     ``vendor_gaps_path``, 见 J): 只有 ``block_trade`` 允许传 ``exchange_dir``
+     (``top_inst`` 传了直接 ``ValueError``, CLI 层 ``main`` 捕获后返回 1, 不是让
+     异常裸抛把退出码交给解释器)。按归档里出现的每一天 × {sh, sz} 找
+     ``exch_<market>_<day>.json``; 文件不存在不是失败 —— 那天那个市场的残差保持
+     unverified/无格可比, 只在 ``report["not_checked"]`` 里记一笔 (day, market),
+     供人工知道"这些天这些市场我们其实没有交易所口径可核对" (C2 起 ``not_checked``
+     非空本身也会把 exit_code 降到 2, 见 :func:`verdict`, 免得空目录也能判 0)。
+  N. (C2 取代) 格级比较 (:func:`cell_compare`) 取代 :func:`ceiling_compare`
+     (已删除, 不留墓碑): 按 ``(trade_date, venue, code6, price2dp, vol2dp)`` 分格,
+     每格两侧未匹配行是多重集 (``services.exchange_cell_verdicts.Observed``), 交给
+     ``consume()`` 用格级登记表判 consumed/unregistered/stale/contradiction。未登记
+     缺口 (``missing_unregistered``) 或任一格 stale/contradiction 都是硬失败 (exit
+     3); 未登记的文本差异/多出的成交 (``text_candidate``/``extra_unregistered``) 只
+     是待裁决 (exit 2) —— 不再有"沪判死/深看一眼"的整市场级差别对待 (见 O)。
+     旧的四路判定 :func:`exchange_verdicts` (miaoxiang_gap/old_vendor_error/
+     new_diverges_from_exchange/matched_at_exchange_precision) 保留、逻辑不变, 只
+     是它的 miaoxiang_gap "是否已登记" 现在改查格级 ``ConsumptionReport`` (该旧行
+     的 exchange_key 是否落在某个已被 consumed 且判定为 missing 的格里), 不再查
+     vendor_gaps; ``new_diverges_from_exchange`` 不再单独影响退出码 (它的机器含义
+     已被格级比较完整覆盖, 双判会让同一事实产生两个不同退出码, 见 :func:`verdict`)。
+  O. (C2 取代) 沪深不再整市场级差别对待"新表比交易所多"的成交: 深交所盘后定价没有
+     逐笔可查确实是真实存在的合法差异, 但那是**逐格**的事实 (某笔恰好是盘后定价),
+     不是"深市所有多出的成交都从轻发落"——旧版按市场整片降级会让深市真正的重复/错误
+     行也被放过。现在一律走格级登记, `truth_side: vendor` 且带证据 (写明是盘后定价
+     报表里的哪一行) 才能把某笔多出的成交标记为"待发布层保留", 其余未登记的多出成交
+     一律待裁决 (exit 2), 不因市场而异。证据文件的取数入口与格式钉在
+     :func:`load_exchange_evidence` 的头注里 (本文件), 不在任何文档小节 —— 别处
+     没有第二份定义。
+  P. (C2 新增) 场所归属 (R-V, ``resolve_venue``): 供应商行的场所 = 代码后缀
+     (.SH/.SZ/.BJ) 优先; 后缀缺失 (如 ``.OF``) 时退回 ``vendor_market`` 字段
+     (``TRADE_MARKET_OLD``, 适配器已落) 按 :data:`_VENDOR_MARKET_MAP` 映射; 两者都
+     缺 → unresolved, 两者都有但不一致 → conflict。unresolved/conflict 的行既不进
+     任何格比较, 也会把该 (日, code6) 在交易所侧的对应行挡在比较之外 (计入
+     ``venue.blocked_exchange_rows``, 不判 missing —— 免得我们自己的归属缺陷冒充
+     供应商缺口), 只在 ``venue.unresolved``/``venue.conflict`` 计数, 退出码降到 2
+     (待裁决), 不静默放过也不误判为硬失败。映射表本身是供应商表示事实 (裁定 D 同
+     类), 写成 Python 常量, 不进 YAML (CLAUDE.md 红线 11: YAML 只管"检查什么"，这是
+     "供应商行上那个字段的取值该翻成哪个市场"这种事实)。
+  Q. (C2 新增) 身份层 (R-I, :func:`identity_pass`): 换码事件登记
+     (``backend/config/security_code_changes.yaml``, ``services.security_identity.
+     load_security_code_changes``) 在旧行/新行两侧各自独立施加 (asof_identity_r1.md
+     §3.3, §6 ID5: 归档旧表也有回写 twin, 不能只处理新表一侧)。同一天、同一自然键
+     (block_trade: price/vol/buyer/seller) 下, 若换码事件的新代码与旧代码各出现一次
+     全同的行, 判定为"重复回写" (twin, 丢弃新代码那一行); 若只出现新代码没有旧代码
+     的对应行, 判定为"remap" (把该行的 ts_code 改记成旧代码, 原代码存进
+     ``vendor_code``)。事件表没给 (``--code-changes`` 缺省) 时身份层整体
+     ``skipped``, 不阻断验收 —— 未被识别的 twin 会在格级比较里表现成一格
+     "新表多出的行" (``extra_unregistered``), 待裁决而不是静默吞掉。
 
 用法:
   python backend/scripts/reland_event_domain.py prepare --domain block_trade --run-id r1
@@ -106,12 +151,19 @@ from services.data_access.resolver import db_path  # noqa: E402
 from services.data_deletion import record_data_deletion  # noqa: E402
 from services.data_sources.assignment_gap_recon import normalize_cn_name  # noqa: E402
 from services.duck_adapter import connect  # noqa: E402
+from services.exchange_cell_verdicts import (  # noqa: E402
+    CellKey,
+    CellVerdictSet,
+    Observed,
+    consume,
+    load_exchange_cell_verdicts,
+)
+from services.security_identity import CodeChangeSet, load_security_code_changes  # noqa: E402
 from services.writer_lock import writer_lock  # noqa: E402
 
 ARCHIVE_DIR = ROOT / "data" / "archive" / "lifecycle"  # gitignored (r2 §3.2), 同
                                                         # db_lifecycle_delete 的归档目录
 SYNC_REGISTRY_PATH = ROOT / "backend" / "config" / "sync_registry.yaml"
-VENDOR_GAPS_PATH = ROOT / "backend" / "config" / "vendor_gaps.yaml"
 
 DOMAIN_TABLES: dict[str, str] = {
     "block_trade": "raw_tushare_block_trade",
@@ -121,7 +173,10 @@ DOMAIN_TABLES: dict[str, str] = {
 # INTEGER/VARCHAR —— 若靠 sync_runner._write_batch 的新列推断会一律建成 VARCHAR
 # (r2 §0.5 实测: sync_runner.py:1760), 必须一次性 DDL 建对, 不能等 runner 自己补。
 DOMAIN_DDL_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
-    "block_trade": (("seq", "INTEGER"), ("security_type", "VARCHAR"), ("trade_unit", "VARCHAR")),
+    "block_trade": (
+        ("seq", "INTEGER"), ("security_type", "VARCHAR"), ("trade_unit", "VARCHAR"),
+        ("vendor_market", "VARCHAR"),
+    ),
     "top_inst": (("board_rank", "INTEGER"), ("stat_days", "VARCHAR"), ("seat_code", "VARCHAR")),
 }
 # 该列为 NULL = 这一天还没重落 (旧契约行还在)。block_trade 用它声明的
@@ -307,6 +362,14 @@ class CanonSpec:
     group_cols: tuple[str, ...]
     candidate_cols: tuple[str, ...]
     amount_close_tol: float | None
+    # C2 (bt_residual_classes_r1.md §6): 格级比较用的两组列。cell_cols 是 T 格粒度
+    # (与 code6/trade_date/venue 一起构成 CellKey); text_cols 是格内"文本差异"比较
+    # 的列 (席位名)。这两个字段与 services.exchange_cell_verdicts._DOMAIN_CELL_COLS
+    # 是有意分开声明的两份真相 (该模块不连库、不导入脚本层, 解耦), 用
+    # test_domain_cell_cols_matches_registry_declaration 钉住两处不漂。空元组
+    # (top_inst) 表示该域未声明格列, 登记 loader 对它 fail-closed (L5)。
+    cell_cols: tuple[str, ...]
+    text_cols: tuple[str, ...]
 
 
 # key_cols/candidate_cols/group_cols 的取舍见各域头注 (原 DOMAIN_OLD_SUBSET_KEY 的
@@ -333,6 +396,8 @@ DOMAIN_CANON: dict[str, CanonSpec] = {
         group_cols=("ts_code", "trade_date", "price", "buyer", "seller"),
         candidate_cols=("ts_code", "trade_date", "price", "vol"),
         amount_close_tol=None,
+        cell_cols=("price", "vol"),
+        text_cols=("buyer", "seller"),
     ),
     "top_inst": CanonSpec(
         key_cols=("trade_date", "ts_code", "exalter", "side", "buy", "sell"),
@@ -343,6 +408,8 @@ DOMAIN_CANON: dict[str, CanonSpec] = {
         group_cols=(),
         candidate_cols=("trade_date", "ts_code", "exalter", "side"),
         amount_close_tol=100.0,
+        cell_cols=(),
+        text_cols=(),
     ),
 }
 
@@ -379,6 +446,146 @@ def canon_row(domain: str, row: Mapping[str, Any]) -> dict[str, Any]:
             value = out[col]
             out[col] = _vol_2dp(0 if value is None else value)
     return out
+
+
+# ------------------------------------------------------------------ venue (R-V) --
+
+# 供应商场所字段 (``vendor_market``, 落自妙想 ``TRADE_MARKET_OLD``) -> 场所代号的
+# 映射。这是供应商自己对"这笔成交在哪个场所"的一手声明 (与 K 线/事件表无关), 属于
+# 头注 D 同类的表示事实, 写成 Python 常量, 不进 YAML (红线 11 管"检查什么"，不管
+# "对方接口这个字段的取值该翻成哪个场所")。
+_VENDOR_MARKET_MAP: dict[str, str] = {"CNSESH": "sh", "CNSESZ": "sz", "CNSEBJ": "bj"}
+_CODE_SUFFIX_VENUE: dict[str, str] = {"SH": "sh", "SZ": "sz", "BJ": "bj"}
+
+
+def resolve_venue(ts_code: Any, vendor_market: Any) -> tuple[str | None, str]:
+    """R-V (头注 P): 代码后缀优先; 后缀缺失 (如 ``.OF``) 退回 ``vendor_market`` 映射;
+    两者都缺 -> ``unresolved``；两者都有但翻译出的场所不一致 -> ``conflict``
+    (此时仍以后缀为准返回 venue, 调用方按 status 判断要不要用这个 venue)。
+
+    返回 ``(venue, status)``, ``status`` ∈ {"suffix", "by_vendor_market", "conflict",
+    "unresolved"}。不做"按 6 位码在交易所文件里找得到就归该场所"这种反推 —— 那是拿
+    比对结果反推归属 (bt_residual_classes_r1.md §2.1 R-V 末段), 只用供应商自己给的
+    两个一手字段。
+    """
+    suffix_venue: str | None = None
+    if isinstance(ts_code, str):
+        upper = ts_code.upper()
+        if "." in upper:
+            suffix_venue = _CODE_SUFFIX_VENUE.get(upper.rsplit(".", 1)[-1])
+    mapped_venue = (
+        _VENDOR_MARKET_MAP.get(vendor_market) if isinstance(vendor_market, str) else None
+    )
+    if suffix_venue is not None:
+        if mapped_venue is not None and mapped_venue != suffix_venue:
+            return suffix_venue, "conflict"
+        return suffix_venue, "suffix"
+    if mapped_venue is not None:
+        return mapped_venue, "by_vendor_market"
+    return None, "unresolved"
+
+
+# ---------------------------------------------------------------- identity (R-I) --
+
+# 每个域的换码 twin/remap 判定用的"自然键" (asof_identity_r1.md §3.3 R1, IdentitySpec
+# .natural_key)。S1 (services/security_identity.py 里给两个域声明 IDENTITY_SPECS)
+# 与本文件是并行施工的两个切片 (asof S1 未合入前本文件不依赖它), 这里独立声明一份同
+# 名概念 —— 与 CanonSpec.cell_cols/_DOMAIN_CELL_COLS 的两处真相同一性质 (有意解耦,
+# 不是遗漏同步); S1 合入后若两处取值不一致, 属于后续切片要接线的事, 不在本片处理。
+_IDENTITY_NATURAL_KEY: dict[str, tuple[str, ...]] = {
+    "block_trade": ("price", "vol", "buyer", "seller"),
+    "top_inst": ("exalter", "side", "reason", "board_rank", "buy", "sell"),
+}
+
+
+@dataclass(frozen=True)
+class IdentityReport:
+    dropped: list[dict[str, Any]]
+    remapped: list[dict[str, Any]]
+    skipped: bool
+
+
+def identity_pass(
+    domain: str, rows: Sequence[Mapping[str, Any]], events: CodeChangeSet | None
+) -> tuple[list[dict[str, Any]], IdentityReport]:
+    """R-I (头注 Q, asof_identity_r1.md §3.3 R1/R2, bt_residual_classes_r1.md §6 C2
+    ``identity_pass`` 签名)。纯函数, 不开库; 调用方对旧行/新行各自独立调用一次
+    (asof §6 ID5: 归档旧表也可能有回写 twin, 双侧都要过)。
+
+    对每一行: 若其 ``ts_code`` 是某条事件的 ``new_code`` 且 ``trade_date`` 早于
+    ``effective_date`` (R1/R2 只处理生效前; d >= effective 的行原样放行, 交给 R3/R4
+    在发布层判定, 与本函数无关):
+
+    - 同一天内能找到一行 ``ts_code == old_code`` 且按该域 ``_IDENTITY_NATURAL_KEY``
+      全部列都相等的行 (逐个消费, 不重复配对同一行两次) -> 判定为 twin, 该行丢弃
+      (``dropped``);
+    - 找不到 -> 判定为 remap: 该行 ``ts_code`` 改写成 ``old_code``, 原代码存进
+      ``vendor_code`` (``remapped``)。
+
+    ``events`` 为 ``None`` (未给 ``--code-changes``) 或该域没有声明自然键时,
+    ``skipped=True``, 行原样返回 —— 未被识别的 twin 会在后续格级比较里表现为一格
+    "新表多出的行" (待裁决), 不会被静默吞掉。
+    """
+    natural_key = _IDENTITY_NATURAL_KEY.get(domain, ())
+    skipped = events is None
+    by_new: Mapping[str, Any] = {} if skipped else dict(getattr(events, "by_new", {}) or {})
+    if skipped or not natural_key or not by_new:
+        return list(rows), IdentityReport(dropped=[], remapped=[], skipped=skipped)
+
+    canon = [canon_row(domain, r) for r in rows]
+    by_day: dict[Any, list[int]] = {}
+    for idx, c in enumerate(canon):
+        by_day.setdefault(c.get("trade_date"), []).append(idx)
+
+    drop_set: set[int] = set()
+    remap_to: dict[int, str] = {}
+    dropped: list[dict[str, Any]] = []
+    remapped: list[dict[str, Any]] = []
+
+    for day, idxs in by_day.items():
+        by_code_key: dict[tuple[Any, tuple[Any, ...]], list[int]] = {}
+        for idx in idxs:
+            c = canon[idx]
+            k = tuple(c.get(col) for col in natural_key)
+            by_code_key.setdefault((c.get("ts_code"), k), []).append(idx)
+
+        consumed_twins: set[int] = set()
+        for idx in idxs:
+            c = canon[idx]
+            code = c.get("ts_code")
+            event = by_new.get(code)
+            if event is None:
+                continue
+            if day is None or not (str(day) < event.effective_date):
+                continue  # d >= effective (or day missing): 不进身份层 (R3/R4 之外)
+            key = tuple(c.get(col) for col in natural_key)
+            candidates = by_code_key.get((event.old_code, key), [])
+            twin_idx = next((t for t in candidates if t not in consumed_twins and t != idx), None)
+            if twin_idx is not None:
+                consumed_twins.add(twin_idx)
+                drop_set.add(idx)
+                dropped.append(
+                    {"vendor_code": code, "old_code": event.old_code, "trade_date": day, "key": list(key)}
+                )
+            else:
+                remap_to[idx] = event.old_code
+                remapped.append(
+                    {"vendor_code": code, "old_code": event.old_code, "trade_date": day, "key": list(key)}
+                )
+
+    out: list[dict[str, Any]] = []
+    for idx, row in enumerate(rows):
+        if idx in drop_set:
+            continue
+        if idx in remap_to:
+            new_row = dict(row)
+            new_row["vendor_code"] = row.get("ts_code")
+            new_row["ts_code"] = remap_to[idx]
+            out.append(new_row)
+        else:
+            out.append(row)
+
+    return out, IdentityReport(dropped=dropped, remapped=remapped, skipped=False)
 
 
 # --------------------------------------------------------------- classification --
@@ -617,68 +824,6 @@ def structural_checks(conn: Any, domain: str, table: str) -> dict[str, dict[str,
     return {"S1": s1, "S2": s2, "S3": s3, "S4": s4}
 
 
-# --------------------------------------------------------------- vendor gaps --
-
-_VENDOR_GAPS_TOP_KEYS = {"version", "gaps"}
-_VENDOR_GAPS_ITEM_KEYS = {"domain", "trade_date", "ts_code", "key", "evidence", "checked_at"}
-_VENDOR_GAPS_CHECKED_AT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
-
-def load_vendor_gaps(path: Path | None = None) -> frozenset[tuple[str, tuple[str, ...]]]:
-    """加载 ``vendor_gaps.yaml`` (头注 J): "妙想缺、交易所有"这类已核实缺口的唯一
-    登记通道 —— 不给命令行放行旗子, 只认这份带交易所证据的登记。
-
-    校验失败 (根键不是恰好 ``{version, gaps}`` / ``version`` != 1 / ``gaps`` 非
-    list / 任一条目的键不是恰好那 6 个规定键 / ``domain`` 不在 :data:`DOMAIN_CANON`
-    / ``trade_date`` 不是 8 位数字串 / ``ts_code`` 为空 / ``key`` 不是非空字符串
-    列表 / ``evidence`` 为空 / ``checked_at`` 不匹配 ``YYYY-MM-DD``) 一律
-    ``ValueError``, 不静默降级或跳过坏条目 —— 这份登记表本身的完整性就是验收闸的
-    一部分 (红线 11: 未知键 fail-closed)。
-    """
-    p = Path(path) if path is not None else VENDOR_GAPS_PATH
-    doc = yaml.safe_load(p.read_text(encoding="utf-8"))
-    if not isinstance(doc, dict):
-        raise ValueError(f"{p}: root must be a mapping, got {type(doc).__name__}")
-    if set(doc.keys()) != _VENDOR_GAPS_TOP_KEYS:
-        raise ValueError(
-            f"{p}: top-level keys must be exactly {sorted(_VENDOR_GAPS_TOP_KEYS)}, "
-            f"got {sorted(doc.keys())}"
-        )
-    if doc.get("version") != 1:
-        raise ValueError(f"{p}: version must be 1, got {doc.get('version')!r}")
-    gaps = doc.get("gaps")
-    if not isinstance(gaps, list):
-        raise ValueError(f"{p}: gaps must be a list, got {type(gaps).__name__}")
-
-    out: set[tuple[str, tuple[str, ...]]] = set()
-    for i, item in enumerate(gaps):
-        if not isinstance(item, dict) or set(item.keys()) != _VENDOR_GAPS_ITEM_KEYS:
-            got = sorted(item.keys()) if isinstance(item, dict) else type(item).__name__
-            raise ValueError(
-                f"{p}: gaps[{i}] keys must be exactly {sorted(_VENDOR_GAPS_ITEM_KEYS)}, got {got}"
-            )
-        domain = item["domain"]
-        if domain not in DOMAIN_CANON:
-            raise ValueError(f"{p}: gaps[{i}].domain unknown {domain!r}")
-        trade_date = item["trade_date"]
-        if not (isinstance(trade_date, str) and len(trade_date) == 8 and trade_date.isdigit()):
-            raise ValueError(f"{p}: gaps[{i}].trade_date must be an 8-digit string, got {trade_date!r}")
-        ts_code = item["ts_code"]
-        if not (isinstance(ts_code, str) and ts_code):
-            raise ValueError(f"{p}: gaps[{i}].ts_code must be a non-empty string, got {ts_code!r}")
-        key = item["key"]
-        if not (isinstance(key, list) and key and all(isinstance(k, str) for k in key)):
-            raise ValueError(f"{p}: gaps[{i}].key must be a non-empty list of strings, got {key!r}")
-        evidence = item["evidence"]
-        if not (isinstance(evidence, str) and evidence):
-            raise ValueError(f"{p}: gaps[{i}].evidence must be a non-empty string, got {evidence!r}")
-        checked_at = item["checked_at"]
-        if not (isinstance(checked_at, str) and _VENDOR_GAPS_CHECKED_AT_RE.match(checked_at)):
-            raise ValueError(f"{p}: gaps[{i}].checked_at must match YYYY-MM-DD, got {checked_at!r}")
-        out.add((domain, tuple(key)))
-    return frozenset(out)
-
-
 # --------------------------------------------------------------- exchange canon --
 
 # 千分位逗号 / 万股两位 (百股精度) / 全角括号 —— 三条都是外部交易所网页的表示事实
@@ -767,8 +912,7 @@ def canon_exchange_row(market: str, trade_date: str, row: Mapping[str, Any]) -> 
     ``assignment_gap_recon.normalize_cn_name`` 做全角括号 -> 半角归一 (不重复发明
     同一件事的第二份实现)。``trade_date`` 由调用方显式传入 (证据文件本身按
     market+日期一个文件, 不用再像 V1 的 --date 单日路径那样事后补)。不再返回
-    ``amount`` —— 交易所证据层只用 :func:`exchange_key`/:func:`gap_key` 六个字段
-    判等 (头注 K)。
+    ``amount`` —— 交易所证据层只用 :func:`exchange_key` 六个字段判等 (头注 K)。
     """
     key = str(market).strip().lower()
     if key not in _EXCHANGE_FIELDS:
@@ -897,17 +1041,6 @@ def exchange_key(row: Mapping[str, Any]) -> tuple[Any, ...]:
     )
 
 
-def gap_key(xkey: tuple[Any, ...]) -> tuple[str, ...]:
-    """:func:`exchange_key` 的结果 -> ``vendor_gaps.yaml`` 里 block_trade 缺口条目
-    ``key`` 字段的字符串形状 (钉死): ``(ts_code, trade_date, f"{price:.2f}",
-    f"{vol:.2f}", buyer, seller)``。价格/成交量固定两位小数字符串 (不是
-    ``str(float)``) —— 免得 10.0 与 10.00 因为 Python float repr 不同而被当成
-    两个不同的登记 key。
-    """
-    ts_code, trade_date, price, vol, buyer, seller = xkey
-    return (str(ts_code), str(trade_date), f"{price:.2f}", f"{vol:.2f}", str(buyer), str(seller))
-
-
 # --------------------------------------------------------------- exchange coverage --
 
 def _covered_codes(
@@ -917,7 +1050,8 @@ def _covered_codes(
     codes: Sequence[str] | None = None,
 ) -> set[str]:
     """头注 L: 这份交易所文件"管得到"哪些代码 (钉死的四条规则统一在这一处判断,
-    :func:`exchange_verdicts`/:func:`ceiling_compare` 都调它)。
+    :func:`exchange_verdicts`/:func:`cell_compare` 的调用方 (:func:`_apply_exchange_
+    evidence`) 都调它)。
     """
     suffix = _EXCHANGE_SUFFIX[market]
     new_by_code: dict[str, list[Mapping[str, Any]]] = {}
@@ -994,33 +1128,129 @@ def exchange_verdicts(
     return out
 
 
-def ceiling_compare(
-    new_day_rows: Sequence[Mapping[str, Any]],
-    exchange_rows_canon: Sequence[Mapping[str, Any]],
-    market: str,
-    codes: Sequence[str] | None = None,
-) -> dict[str, Any]:
-    """对每个受覆盖代码算 ``gap = EX - NC`` (交易所有、新表没有) 与
-    ``extra = NC - EX`` (新表比交易所多), 按 :func:`exchange_key` 多重集做差
-    (``collections.Counter`` 减法, 天然只留正数差)。这条独立于 residual/
-    classify_old_keys —— 哪怕新表这一码的旧行全部 matched, ceiling 仍然要单独
-    核一遍"新表现在的样子是不是不多不少刚好等于交易所", 因为 matched 只看得到
-    "旧行去哪了", 看不到"新表凭空多出来的行"。
+def _venue_normalize_row(row: Mapping[str, Any], *, code6: str, market: str) -> dict[str, Any]:
+    """把一行的 ``ts_code`` 改写成"该行已经确认属于 ``market`` 这个场所"的规范
+    形状 (``{code6}.{SH|SZ}``), 原始供应商代码存进 ``vendor_code`` (不覆盖
+    :func:`identity_pass` 可能已经写过的 ``vendor_code``)。这样 :func:`_covered_codes`
+    /:func:`exchange_verdicts`/:func:`_code_counters` 这些按后缀字符串比较的既有
+    函数可以原样复用在 (venue, code6) 已经解析好的行上 (含 ``.OF`` 这类原本没有
+    后缀的行), 不需要重写它们成 code6 版本 —— 头注 N/P: R-V 解析出的 venue 才是
+    比较用的场所, 不是供应商原始后缀。
     """
-    covered = _covered_codes(new_day_rows, exchange_rows_canon, market, codes)
-    nc_by_code = _code_counters(new_day_rows)
-    ex_by_code = _code_counters(exchange_rows_canon)
+    out = dict(row)
+    out.setdefault("vendor_code", row.get("ts_code"))
+    out["ts_code"] = f"{code6}{_EXCHANGE_SUFFIX[market]}"
+    return out
 
-    gap_rows: list[dict[str, Any]] = []
-    extra_rows: list[dict[str, Any]] = []
-    for code in sorted(covered):
-        nc = nc_by_code.get(code, Counter())
-        ex = ex_by_code.get(code, Counter())
-        for key, count in (ex - nc).items():
-            gap_rows.append({"key": list(key), "count": count})
-        for key, count in (nc - ex).items():
-            extra_rows.append({"key": list(key), "count": count})
-    return {"codes_checked": sorted(covered), "gap_rows": gap_rows, "extra_rows": extra_rows}
+
+def _cell_key_of(row: Mapping[str, Any], *, venue: str) -> CellKey | None:
+    """一行 (已按 venue 规范化 ts_code, 见 :func:`_venue_normalize_row`) -> 它所属
+    的 T 格 :data:`CellKey`。缺代码/日期/价/量任一项时返回 ``None`` (调用方跳过,
+    不产出一个残缺格)。"""
+    ts_code = row.get("ts_code")
+    trade_date = row.get("trade_date")
+    price = row.get("price")
+    vol = row.get("vol")
+    if not isinstance(ts_code, str) or len(ts_code) < 6 or trade_date is None:
+        return None
+    if price is None or vol is None:
+        return None
+    code6 = ts_code[:6]
+    return (str(trade_date), venue, code6, f"{_vol_2dp(price):.2f}", f"{_vol_2dp(vol):.2f}")
+
+
+def cell_compare(
+    new_rows: Sequence[Mapping[str, Any]],
+    exchange_rows_canon: Sequence[Mapping[str, Any]],
+    venue: str,
+) -> dict[CellKey, Observed]:
+    """C2 (bt_residual_classes_r1.md §3 C2): 取代 :func:`ceiling_compare` (已删除)。
+    按 :data:`CellKey` (trade_date, venue, code6, price2dp, vol2dp) 分格比较两侧
+    的 (buyer, seller) 多重集, 返回给 ``services.exchange_cell_verdicts.consume``
+    消费的 ``Mapping[CellKey, Observed]``。
+
+    调用方必须已经把 ``new_rows``/``exchange_rows_canon`` 过滤 + 规范化到"确认属于
+    ``venue`` 这个场所"(:func:`resolve_venue` + :func:`_venue_normalize_row`,
+    :func:`_covered_codes` 覆盖范围判断) —— 这个函数本身不做场所判断, 只管分格,
+    不重复调用方已经做过的判定 (venue.unresolved/conflict 计数是同一份判定, 不在
+    这里第二次做)。
+    """
+    new_by_cell: dict[CellKey, Counter] = {}
+    for row in new_rows:
+        cell = _cell_key_of(row, venue=venue)
+        if cell is None:
+            continue
+        new_by_cell.setdefault(cell, Counter())[(row.get("buyer"), row.get("seller"))] += 1
+
+    exch_by_cell: dict[CellKey, Counter] = {}
+    for row in exchange_rows_canon:
+        cell = _cell_key_of(row, venue=venue)
+        if cell is None:
+            continue
+        exch_by_cell.setdefault(cell, Counter())[(row.get("buyer"), row.get("seller"))] += 1
+
+    result: dict[CellKey, Observed] = {}
+    for cell in set(new_by_cell) | set(exch_by_cell):
+        nc = new_by_cell.get(cell, Counter())
+        ex = exch_by_cell.get(cell, Counter())
+        result[cell] = Observed(gap=ex - nc, extra=nc - ex, exchange_all=Counter(ex))
+    return result
+
+
+def _cell_missing_rows(entry: Any) -> "Counter[tuple[str, str]]":
+    """一条已登记 entry 的 ``exchange_unmatched`` 按 ``text_pairs`` 消费后剩余的
+    "missing" 行多重集 (:func:`services.exchange_cell_verdicts._consume_cell` 同一份
+    逻辑的只读重放, 用于 :func:`exchange_verdicts` 的 miaoxiang_gap 是否已登记查询,
+    头注 N —— 不改 ``exchange_cell_verdicts.py``, 只在这里按公开字段
+    ``exchange_unmatched``/``text_pairs`` 重算, 不引入第二份状态)。"""
+    ex_consumed = [0] * len(entry.exchange_unmatched)
+    for ex_idx, _vn_idx, count in entry.text_pairs:
+        ex_consumed[ex_idx] += count
+    missing: Counter = Counter()
+    for (row, count), consumed in zip(entry.exchange_unmatched, ex_consumed):
+        remaining = count - consumed
+        if remaining > 0:
+            missing[row] += remaining
+    return missing
+
+
+def emit_candidate_verdicts(
+    observed_by_cell: Mapping[CellKey, Observed],
+    verdicts: CellVerdictSet,
+    path: Path,
+    *,
+    domain: str = "block_trade",
+) -> None:
+    """``--emit-candidates``: 把全部未登记 (不在 ``verdicts.by_cell`` 里) 且仍有
+    残差 (gap 或 extra 非空) 的格按 §3.1 形状写出 YAML 骨架, 供人工逐条判定后搬进
+    仓库登记表。
+
+    骨架里 ``truth_side``/``evidence`` 给占位值 (合法但明显是待填), ``checked_at``
+    留 ``None`` —— 特意只让 ``checked_at`` 这一项无法通过
+    :func:`services.exchange_cell_verdicts.load_exchange_cell_verdicts` (V23), 逼
+    人工填一个真实核对日期才能让骨架变成生效的登记, 不会有人误把骨架原样提交。
+    """
+    entries: list[dict[str, Any]] = []
+    for cell in sorted(observed_by_cell.keys()):
+        if cell in verdicts.by_cell:
+            continue
+        obs = observed_by_cell[cell]
+        if not obs.gap and not obs.extra:
+            continue
+        entries.append(
+            {
+                "domain": domain,
+                "cells": [list(cell)],
+                "exchange_unmatched": [[b, s, c] for (b, s), c in sorted(obs.gap.items())],
+                "vendor_unmatched": [[b, s, c] for (b, s), c in sorted(obs.extra.items())],
+                "text_pairs": [],
+                "truth_side": "unknown",
+                "evidence": "TODO: fill in evidence before registering (emitted skeleton)",
+                "checked_at": None,
+            }
+        )
+    doc = {"version": 1, "entries": entries}
+    Path(path).write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
 
 # ------------------------------------------------------------------------ verify --
@@ -1056,8 +1286,12 @@ def _archive_day_rows_all(
 
 
 def _classify_all_days(
-    conn: Any, domain: str, table: str, *, run_id: str, archive_dir: Path | None
-) -> tuple[dict[str, int], list[dict[str, Any]], list[dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+    conn: Any, domain: str, table: str, *, run_id: str, archive_dir: Path | None,
+    ccs: CodeChangeSet | None = None,
+) -> tuple[
+    dict[str, int], list[dict[str, Any]], list[dict[str, Any]],
+    dict[str, list[dict[str, Any]]], dict[str, Any],
+]:
     """对归档 parquet 里每个日期跑一次 :func:`classify_old_keys`, 汇总成
     ``verify()`` 要的 ``classes``/``residual``/``explained_merged`` 三块 (逐条补上
     ``trade_date`` 供跨日阅读)。归档不存在 (这个 run_id 还没 ``prepare`` 过) 时
@@ -1066,6 +1300,11 @@ def _classify_all_days(
     额外把每天过了 :func:`canon_row` 的新表行按 ``trade_date`` 存一份返回
     (``new_rows_by_day``) —— 交易所证据层 (V2, 头注 M) 要按天核覆盖范围/NC 计数,
     复用这里已经查过的同一批新表行, 不用再对表重新 SELECT 一遍。
+
+    C2 (头注 Q): 旧行/新行在 :func:`classify_old_keys` 之前各自先过一次
+    :func:`identity_pass` (``ccs`` 为 ``None`` 时是 no-op, ``identity_pass`` 自己
+    报告 ``skipped``), 逐日累加成 ``identity_totals``
+    (``dropped_old/dropped_new/remapped_old/remapped_new/skipped``) 一并返回。
     """
     archive_path = _archive_path(table, run_id, archive_dir=archive_dir)
     old_total = 0
@@ -1073,10 +1312,20 @@ def _classify_all_days(
     explained_merged_all: list[dict[str, Any]] = []
     residual_all: list[dict[str, Any]] = []
     new_rows_by_day: dict[str, list[dict[str, Any]]] = {}
+    identity_totals: dict[str, Any] = {
+        "dropped_old": 0, "dropped_new": 0, "remapped_old": 0, "remapped_new": 0,
+        "skipped": ccs is None,
+    }
     if archive_path.exists():
         for day in _archive_distinct_days(conn, archive_path):
-            old_rows = _archive_day_rows_all(conn, archive_path, day)
-            new_rows = _table_day_rows_all(conn, table, day)
+            old_rows_raw = _archive_day_rows_all(conn, archive_path, day)
+            new_rows_raw = _table_day_rows_all(conn, table, day)
+            old_rows, old_id_report = identity_pass(domain, old_rows_raw, ccs)
+            new_rows, new_id_report = identity_pass(domain, new_rows_raw, ccs)
+            identity_totals["dropped_old"] += len(old_id_report.dropped)
+            identity_totals["dropped_new"] += len(new_id_report.dropped)
+            identity_totals["remapped_old"] += len(old_id_report.remapped)
+            identity_totals["remapped_new"] += len(new_id_report.remapped)
             new_rows_by_day[day] = [canon_row(domain, r) for r in new_rows]
             report = classify_old_keys(domain, old_rows, new_rows)
             old_total += report.old_total
@@ -1096,7 +1345,7 @@ def _classify_all_days(
         ),
         "residual_none": sum(1 for r in residual_all if r["kind"] == "none"),
     }
-    return classes, residual_all, explained_merged_all, new_rows_by_day
+    return classes, residual_all, explained_merged_all, new_rows_by_day, identity_totals
 
 
 def _apply_exchange_evidence(
@@ -1105,12 +1354,17 @@ def _apply_exchange_evidence(
     explained_merged_all: list[dict[str, Any]],
     new_rows_by_day: Mapping[str, list[dict[str, Any]]],
     exchange_dir: Path,
-    vendor_gaps_path: Path | None,
+    cell_verdicts_path: Path | None,
 ) -> dict[str, Any]:
-    """头注 M-O: 按归档里出现的每一天 × {sh, sz} 找
-    ``exch_<market>_<day>.json``。有文件就用 :func:`exchange_verdicts` 给该市场
-    当天受覆盖代码的 residual 定性、给 :data:`explained_merged_all` 里对应条目打
-    ``proved``、用 :func:`ceiling_compare` 核 ceiling; 没文件的 (day, market) 记进
+    """C2 (头注 M-Q, bt_residual_classes_r1.md §3/§6): 按归档里出现的每一天先做
+    场所归属 (R-V, :func:`resolve_venue`), 再按 {sh, sz} 找
+    ``exch_<market>_<day>.json``。有文件就: (1) 用 :func:`exchange_verdicts` 给该
+    市场当天受覆盖代码的旧 residual 定性 (逻辑不变, 只是 miaoxiang_gap 的登记查询
+    改走格级 :class:`~services.exchange_cell_verdicts.ConsumptionReport`, 头注 N);
+    (2) 给 :data:`explained_merged_all` 里对应条目打 ``proved``; (3) 用
+    :func:`cell_compare` 产出该市场的 :class:`Observed` 格, 汇总进全局
+    ``observed_by_cell`` 交给 :func:`~services.exchange_cell_verdicts.consume` 统一
+    消费 (取代 :func:`ceiling_compare`)。没文件的 (day, market) 记进
     ``not_checked``, 不算失败。
 
     ``explained_merged_all``/``residual_all`` 的条目在这里被就地改写 (residual
@@ -1118,7 +1372,7 @@ def _apply_exchange_evidence(
     ``proved`` 键) —— 调用方 (:func:`verify`) 传进来的就是它要放进最终 report 的
     同一批对象, 原地打标最省事, 不必再拷一份。
     """
-    vendor_gaps = load_vendor_gaps(vendor_gaps_path)  # fail-closed: 登记表本身没坏
+    verdicts = load_exchange_cell_verdicts(cell_verdicts_path)  # fail-closed: 登记表本身没坏
 
     residual_by_day: dict[str, list[dict[str, Any]]] = {}
     for item in residual_all:
@@ -1127,14 +1381,6 @@ def _apply_exchange_evidence(
     for item in explained_merged_all:
         merged_by_day.setdefault(item["trade_date"], []).append(item)
 
-    # 已登记的 block_trade 缺口 (vendor_gaps.yaml, key 是 gap_key 格式) 按
-    # trade_date (key 的第 2 个元素) 分组, 供下面逐天核"是不是又冒出来了"。
-    registered_by_day: dict[str, list[tuple[str, ...]]] = {}
-    for gap_domain, gap_key_tuple in vendor_gaps:
-        if gap_domain != "block_trade":
-            continue
-        registered_by_day.setdefault(gap_key_tuple[1], []).append(gap_key_tuple)
-
     counts = {
         "unverified": 0,
         "old_vendor_error": 0,
@@ -1142,24 +1388,44 @@ def _apply_exchange_evidence(
         "miaoxiang_gap_unregistered": 0,
         "new_diverges_from_exchange": 0,
         "matched_at_exchange_precision": 0,
-        "registered_gap_present": 0,
     }
     explained_merged_proved = 0
     exchange_files: list[dict[str, Any]] = []
     checked_pairs: list[list[str]] = []
     not_checked: list[list[str]] = []
-    ceiling_gap_registered = 0
-    ceiling_gap_unregistered = 0
-    ceiling_extra_sh = 0
-    ceiling_extra_sz = 0
-    ceiling_gap_detail: list[dict[str, Any]] = []
-    ceiling_extra_detail: list[dict[str, Any]] = []
+    venue_counts = {
+        "by_vendor_market": 0, "unresolved": 0, "conflict": 0,
+        "blocked_exchange_rows": 0, "not_covered_bj": 0,
+    }
+    observed_by_cell: dict[CellKey, Observed] = {}
+    # 每 (day, market) 处理过的上下文, 留给 pass 2 (旧 exchange_verdicts 四路 + 合笔
+    # proved 检查) 复用, 不重新算一遍场所/覆盖范围。
+    per_day_market: dict[tuple[str, str], dict[str, Any]] = {}
 
     for day, new_rows in new_rows_by_day.items():
-        for registered_key in registered_by_day.get(day, []):
-            day_gap_keys = {gap_key(exchange_key(r)) for r in new_rows}
-            if registered_key in day_gap_keys:
-                counts["registered_gap_present"] += 1
+        by_market: dict[str, list[dict[str, Any]]] = {"sh": [], "sz": []}
+        blocked_code6: set[str] = set()
+        for row in new_rows:
+            venue, status = resolve_venue(row.get("ts_code"), row.get("vendor_market"))
+            ts_code = row.get("ts_code")
+            code6 = str(ts_code)[:6] if isinstance(ts_code, str) and len(ts_code) >= 6 else None
+            if status == "by_vendor_market":
+                venue_counts["by_vendor_market"] += 1
+            elif status == "conflict":
+                venue_counts["conflict"] += 1
+                if code6:
+                    blocked_code6.add(code6)
+                continue
+            elif status == "unresolved":
+                venue_counts["unresolved"] += 1
+                if code6:
+                    blocked_code6.add(code6)
+                continue
+            if venue == "bj":
+                venue_counts["not_covered_bj"] += 1
+                continue
+            if venue in by_market and code6:
+                by_market[venue].append(_venue_normalize_row(row, code6=code6, market=venue))
 
         for market in ("sh", "sz"):
             file_path = Path(exchange_dir) / f"exch_{market}_{day}.json"
@@ -1176,52 +1442,95 @@ def _apply_exchange_evidence(
                 canon_exchange_row(market, day, r) for r in evidence["exchange_rows"]
             ]
 
-            suffix = _EXCHANGE_SUFFIX[market]
-            day_residuals = [
-                item for item in residual_by_day.get(day, [])
-                if str(item["key"][0]).upper().endswith(suffix)
-            ]
-            for v in exchange_verdicts(day_residuals, new_rows, exchange_rows_canon, market, codes=codes):
-                reason = v["reason"]
-                if reason == "miaoxiang_gap":
-                    if ("block_trade", gap_key(tuple(v["x"]))) in vendor_gaps:
-                        counts["miaoxiang_gap_registered"] += 1
-                    else:
-                        counts["miaoxiang_gap_unregistered"] += 1
-                else:
-                    counts[reason] += 1
+            market_new_rows = by_market[market]
+            covered = _covered_codes(market_new_rows, exchange_rows_canon, market, codes)
 
-            covered = _covered_codes(new_rows, exchange_rows_canon, market, codes)
-            for item in merged_by_day.get(day, []):
-                ts_code = item["key"][0]
-                if ts_code not in covered:
-                    continue
-                nc = Counter(exchange_key(r) for r in new_rows if r.get("ts_code") == ts_code)
-                ex = Counter(exchange_key(r) for r in exchange_rows_canon if r.get("ts_code") == ts_code)
-                if nc == ex:
-                    item["proved"] = True
-                    explained_merged_proved += 1
+            # 这天有 unresolved/conflict 的供应商行 -> 它同 code6 的交易所行既不能
+            # 判 missing (我们自己的归属缺陷不该冒充供应商缺口), 也不参与格比较;
+            # 挡下来单独计数 (头注 P)。
+            blocked_suffix = {f"{c6}{_EXCHANGE_SUFFIX[market]}" for c6 in blocked_code6}
+            for row in exchange_rows_canon:
+                if row.get("ts_code") in blocked_suffix:
+                    venue_counts["blocked_exchange_rows"] += 1
+            covered -= blocked_suffix
 
-            ceiling = ceiling_compare(new_rows, exchange_rows_canon, market, codes=codes)
-            for row in ceiling["gap_rows"]:
-                if ("block_trade", gap_key(tuple(row["key"]))) in vendor_gaps:
-                    ceiling_gap_registered += 1
-                else:
-                    ceiling_gap_unregistered += 1
-                    ceiling_gap_detail.append({"trade_date": day, "market": market, **row})
-            extra_count = sum(row["count"] for row in ceiling["extra_rows"])
-            if extra_count:
-                if market == "sh":
-                    ceiling_extra_sh += extra_count
-                else:
-                    ceiling_extra_sz += extra_count
-                ceiling_extra_detail.extend(
-                    {"trade_date": day, "market": market, **row} for row in ceiling["extra_rows"]
-                )
+            filtered_new = [r for r in market_new_rows if r.get("ts_code") in covered]
+            filtered_exch = [r for r in exchange_rows_canon if r.get("ts_code") in covered]
+            observed_by_cell.update(cell_compare(filtered_new, filtered_exch, market))
 
-    # 剩下没被上面任何一次 exchange_verdicts 领走的 residual (代码后缀不是
-    # .SH/.SZ、代码不受覆盖、或那天那市场压根没有证据文件), 仍然是 V1 的
-    # unverified。
+            per_day_market[(day, market)] = {
+                "market_new_rows": market_new_rows,
+                "exchange_rows_canon": exchange_rows_canon,
+                "codes": codes,
+                "covered": covered,
+            }
+
+    consumption = consume(observed_by_cell, verdicts)
+
+    # 分区不变量 (V25): 用 consume() 自己的加权公式独立重算一遍, monkeypatch 掉
+    # consume() 本身 (绕过它内部的断言) 也会在这里被抓到。stale/contradiction 格
+    # 两侧都不计入 (与 exchange_cell_verdicts.consume 自己的不变量同口径, 头注 3.2
+    # 钉子 4/consume 文档: 那类格的定义就是"登记跟观测对不上", 没有什么可以拿来
+    # 配平, C1 自己的不变量也不把它们算进去)。
+    t = consumption.totals
+    consumption_weighted = (
+        t.get("text", 0) * 2 + t.get("missing", 0) + t.get("extra_duplicate", 0)
+        + t.get("extra_phantom", 0) + t.get("text_candidate", 0) * 2
+        + t.get("missing_unregistered", 0) + t.get("extra_unregistered", 0)
+    )
+    stale_set = set(consumption.stale_cells)
+    observed_total = sum(
+        sum(obs.gap.values()) + sum(obs.extra.values())
+        for cell, obs in observed_by_cell.items()
+        if cell not in stale_set
+    )
+    if consumption_weighted != observed_total:
+        raise AssertionError(
+            "reland_event_domain cell-level partition invariant broken: "
+            f"consumption sums to {consumption_weighted}, observed gap+extra sums to {observed_total}"
+        )
+
+    # pass 2: 旧 exchange_verdicts 四路 (逻辑不变, miaoxiang_gap 的登记查询改走
+    # 格级 consumption, 头注 N) + explained_merged proved 检查 (逻辑完全不变)。
+    for (day, market), ctx in per_day_market.items():
+        market_new_rows = ctx["market_new_rows"]
+        exchange_rows_canon = ctx["exchange_rows_canon"]
+        codes = ctx["codes"]
+        covered = ctx["covered"]
+        suffix = _EXCHANGE_SUFFIX[market]
+        day_residuals = [
+            item for item in residual_by_day.get(day, [])
+            if str(item["key"][0]).upper().endswith(suffix)
+        ]
+        for v in exchange_verdicts(day_residuals, market_new_rows, exchange_rows_canon, market, codes=codes):
+            reason = v["reason"]
+            if reason == "miaoxiang_gap":
+                ts_code, trade_date, price, vol, buyer, seller = v["x"]
+                code6 = str(ts_code)[:6]
+                cell = (str(trade_date), market, code6, f"{price:.2f}", f"{vol:.2f}")
+                per_cell = consumption.per_cell.get(cell)
+                registered = False
+                if per_cell is not None and per_cell.get("status") == "consumed":
+                    entry = verdicts.by_cell.get(cell)
+                    if entry is not None:
+                        registered = _cell_missing_rows(entry).get((buyer, seller), 0) > 0
+                if registered:
+                    counts["miaoxiang_gap_registered"] += 1
+                else:
+                    counts["miaoxiang_gap_unregistered"] += 1
+            else:
+                counts[reason] += 1
+
+        for item in merged_by_day.get(day, []):
+            ts_code = item["key"][0]
+            if ts_code not in covered:
+                continue
+            nc = Counter(exchange_key(r) for r in market_new_rows if r.get("ts_code") == ts_code)
+            ex = Counter(exchange_key(r) for r in exchange_rows_canon if r.get("ts_code") == ts_code)
+            if nc == ex:
+                item["proved"] = True
+                explained_merged_proved += 1
+
     handled = (
         counts["old_vendor_error"] + counts["miaoxiang_gap_registered"]
         + counts["miaoxiang_gap_unregistered"] + counts["new_diverges_from_exchange"]
@@ -1233,51 +1542,64 @@ def _apply_exchange_evidence(
         "counts": counts,
         "explained_merged_proved": explained_merged_proved,
         "exchange_files": exchange_files,
-        "ceiling": {
-            "days_checked": checked_pairs,
-            "not_checked": not_checked,
-            "gap_registered": ceiling_gap_registered,
-            "gap_unregistered": ceiling_gap_unregistered,
-            "extra_sh": ceiling_extra_sh,
-            "extra_sz": ceiling_extra_sz,
-            "gap_detail": ceiling_gap_detail,
-            "extra_detail": ceiling_extra_detail,
+        "venue": venue_counts,
+        "consumption": {
+            "totals": dict(consumption.totals),
+            "consumed_cells": [list(c) for c in consumption.consumed_cells],
+            "stale_cells": [list(c) for c in consumption.stale_cells],
         },
+        "not_checked": not_checked,
+        "registry_sha256": verdicts.sha256,
+        "observed_by_cell": observed_by_cell,
+        "verdicts": verdicts,
     }
 
 
 def verdict(report: Mapping[str, Any]) -> int:
-    """头注 I/N/O: 只读 ``report`` 的纯函数, 不重新计算、不连库。
+    """头注 I/N-Q (C2 取代, bt_residual_classes_r1.md §4): 只读 ``report`` 的纯
+    函数, 不重新计算、不连库。
 
-    3 (硬失败): 任一结构检查 (S1-S4) 不通过; 或 residual 里出现"新表已经比交易所
-    还缺" (``new_diverges_from_exchange``) / "妙想缺口没登记"
-    (``miaoxiang_gap_unregistered``); 或 ceiling 缺口没登记
-    (``ceiling.gap_unregistered``) / 沪市 ceiling 多出未解释的成交
-    (``ceiling.extra_sh``); 或已登记的缺口在新表里又冒出来了
-    (``registered_gap_present``) —— 这几类无论有没有 unverified 剩余都直接判死,
-    ``--record`` 会拒绝写账。
-    2 (需要人工): 上面都干净, 但还有 ``unverified`` residual 没过 vendor_gaps
-    消费, 或深市 ceiling 多出的成交 (``ceiling.extra_sz`` —— CATALOGID=1265 只覆盖
-    协议交易, 新表比它多是合法的, 只需要人工看一眼不是硬伤)。
-    0: 其余。
+    3 (硬失败): 任一结构检查 (S1-S4) 不通过; 或格级 :class:`ConsumptionReport`
+    有未登记的缺口 (``consumption.totals.missing_unregistered``); 或有格的登记
+    失效 (``consumption.stale_cells`` 非空, 覆盖 stale 与 contradiction 两种)。
+    这几类无论有没有 ``unverified`` 剩余都直接判死, ``--record`` 会拒绝写账。
 
-    ``report`` 里没有 ``ceiling``/``registered_gap_present`` (没传 ``exchange_dir``
-    的调用, 或 V1 遗留的字面 report dict) 时按全零对待, 不影响判定。
+    2 (需要人工): 上面都干净, 但还有 (老 residual 路径的) ``unverified`` 没被格级
+    比较覆盖到; 或格级比较里有未登记的文本差异/多出的成交
+    (``consumption.totals.text_candidate``/``extra_unregistered``); 或场所归属
+    解析不出/冲突 (``venue.unresolved``/``venue.conflict``); 或有 (日, 市场) 没有
+    交易所证据文件可核 (``not_checked``)。
+
+    0: 其余 —— 注意 ``new_diverges_from_exchange`` (旧四路判定) 不再单独影响退出
+    码: 它的机器含义已被格级比较完整覆盖 (该格自己会按残差类定性), 双判会让同一
+    事实产生两个不同退出码 (bt_residual_classes_r1.md §4 末段)。
+
+    ``report`` 里没有 ``consumption``/``venue``/``not_checked`` (没传
+    ``exchange_dir`` 的调用) 时按全零/空对待, 不影响判定。
     """
     structural = report["structural"]
     counts = report["residual_verdict_counts"]
-    ceiling = report.get("ceiling") or {}
+    consumption = report.get("consumption") or {}
+    totals = consumption.get("totals") or {}
+    stale_cells = consumption.get("stale_cells") or []
+    venue = report.get("venue") or {}
+    not_checked = report.get("not_checked") or []
+
     structural_bad = any(not check["ok"] for check in structural.values())
     if (
         structural_bad
-        or counts["new_diverges_from_exchange"] > 0
-        or counts["miaoxiang_gap_unregistered"] > 0
-        or ceiling.get("gap_unregistered", 0) > 0
-        or ceiling.get("extra_sh", 0) > 0
-        or counts.get("registered_gap_present", 0) > 0
+        or totals.get("missing_unregistered", 0) > 0
+        or len(stale_cells) > 0
     ):
         return 3
-    if counts["unverified"] > 0 or ceiling.get("extra_sz", 0) > 0:
+    if (
+        counts.get("unverified", 0) > 0
+        or totals.get("text_candidate", 0) > 0
+        or totals.get("extra_unregistered", 0) > 0
+        or venue.get("unresolved", 0) > 0
+        or venue.get("conflict", 0) > 0
+        or bool(not_checked)
+    ):
         return 2
     return 0
 
@@ -1290,22 +1612,34 @@ def verify(
     conn: Any = None,
     archive_dir: Path | None = None,
     exchange_dir: Path | None = None,
-    vendor_gaps_path: Path | None = None,
+    cell_verdicts_path: Path | None = None,
+    code_changes_path: Path | None = None,
+    emit_candidates_path: Path | None = None,
 ) -> dict[str, Any]:
-    """§3.4 (验收判据重落, 头注 G-O): 逐日三分类 + 结构检查 + (可选) 交易所证据层
-    定性, 汇总出 ``exit_code`` (:func:`verdict`)。
+    """§3.4 (验收判据重落, C2 取代 V1/V2 的 ceiling+vendor_gaps 设计, 头注 G-Q):
+    逐日三分类 + 结构检查 + 身份层 (R-I) + (可选) 交易所证据层的格级比较 (R-V +
+    :func:`cell_compare` + 格级登记), 汇总出 ``exit_code`` (:func:`verdict`)。
 
     ``exchange_dir`` 只对 ``block_trade`` 有意义 (头注 M) —— 其它域传了直接
     ``ValueError``, 在动库/取锁之前就抛, CLI 层 (:func:`main`) 捕获后返回 1。
+    ``code_changes_path`` 缺省 (``None``) 时身份层整体 ``skipped`` (头注 Q), 与
+    ``exchange_dir`` 是否给出无关 —— 身份层 (R-I) 对旧/新行分类 (`classify_old_
+    keys`) 一样适用, 不依赖交易所证据。``emit_candidates_path`` 给出时把当次未登记
+    的残差格写成 YAML 骨架 (:func:`emit_candidate_verdicts`), 只读, 不影响
+    ``exit_code``。
 
     ``record=True`` 时锁覆盖整个校验过程 (读的状态和记的账必须是同一个快照);
     ``exit_code != 0`` 直接 ``RuntimeError``, 不写记账 —— 校验没过就不能宣称"通过
-    验收"。``exit_code == 0`` 才 :func:`load_vendor_gaps` (顺带校验这份登记表本身
-    没坏) 算它的 sha256 存进记账, 写 ``rows_replaced_verified`` (verification_json
-    追加 ``exchange_files``/``ceiling``, 头注 M-O)。
+    验收"。``exit_code == 0`` 时把格级登记表 sha256 (``registry_sha256``)、消费/
+    失效的格 (``consumed_cells``/``stale_cells``)、身份层与场所归属计数
+    (``identity``/``venue``)、证据覆盖情况 (``not_checked``/``exchange_files``)
+    一并写进 ``rows_replaced_verified`` 的 ``verification_json`` (头注 N/Q 钉子 4:
+    每次 verify 都重算, 不缓存)。
 
-    ``record=False`` (默认) 保持只读连接, 不取锁。``vendor_gaps_path`` 未给时两处
-    都退回仓库真实路径 :data:`VENDOR_GAPS_PATH` (与 CLI 用法一致)。
+    ``record=False`` (默认) 保持只读连接, 不取锁。``cell_verdicts_path`` 未给时
+    退回仓库真实路径 (``load_exchange_cell_verdicts`` 的默认路径), 与 CLI 用法
+    一致; 登记表本身**总是**加载校验一遍 (即使没传 ``exchange_dir`` —— 配置本身
+    的完整性与是否用到它是两件事)。
 
     ``conn``/``archive_dir`` 与 :func:`prepare` 同理, 为测试注入而加。
     """
@@ -1316,11 +1650,12 @@ def verify(
             f"逐笔), got domain={domain!r}"
         )
     owns_conn = conn is None
+    ccs = load_security_code_changes(code_changes_path) if code_changes_path is not None else None
 
     def _build_report(active_conn: Any) -> dict[str, Any]:
         structural = structural_checks(active_conn, domain, table)
-        classes, residual_all, explained_merged_all, new_rows_by_day = _classify_all_days(
-            active_conn, domain, table, run_id=run_id, archive_dir=archive_dir
+        classes, residual_all, explained_merged_all, new_rows_by_day, identity_totals = _classify_all_days(
+            active_conn, domain, table, run_id=run_id, archive_dir=archive_dir, ccs=ccs
         )
         if exchange_dir is not None:
             evidence = _apply_exchange_evidence(
@@ -1328,15 +1663,23 @@ def verify(
                 explained_merged_all=explained_merged_all,
                 new_rows_by_day=new_rows_by_day,
                 exchange_dir=exchange_dir,
-                vendor_gaps_path=vendor_gaps_path,
+                cell_verdicts_path=cell_verdicts_path,
             )
+            if emit_candidates_path is not None:
+                emit_candidate_verdicts(
+                    evidence["observed_by_cell"], evidence["verdicts"], emit_candidates_path
+                )
             residual_verdict_counts = evidence["counts"]
             classes["explained_merged_proved"] = evidence["explained_merged_proved"]
             exchange_files = evidence["exchange_files"]
-            ceiling = evidence["ceiling"]
+            venue = evidence["venue"]
+            consumption = evidence["consumption"]
+            not_checked = evidence["not_checked"]
+            registry_sha256 = evidence["registry_sha256"]
         else:
-            # 没给 exchange_dir: 与 V1 同语义, 全部 residual 落 unverified, 交易所
-            # 相关计数/ceiling 全零, exchange_files 为空 (头注 I/M)。
+            # 没给 exchange_dir: 全部 residual 落 unverified (V1 同语义), 格级
+            # 比较/场所归属都没有观测数据可算, 全零/空 —— 但登记表本身仍然照常
+            # 加载校验一遍 (它的完整性与本次要不要用它是两件事)。
             residual_verdict_counts = {
                 "unverified": len(residual_all),
                 "old_vendor_error": 0,
@@ -1344,15 +1687,25 @@ def verify(
                 "miaoxiang_gap_unregistered": 0,
                 "new_diverges_from_exchange": 0,
                 "matched_at_exchange_precision": 0,
-                "registered_gap_present": 0,
             }
             classes["explained_merged_proved"] = 0
             exchange_files = []
-            ceiling = {
-                "days_checked": [], "not_checked": [], "gap_registered": 0,
-                "gap_unregistered": 0, "extra_sh": 0, "extra_sz": 0,
-                "gap_detail": [], "extra_detail": [],
+            venue = {
+                "by_vendor_market": 0, "unresolved": 0, "conflict": 0,
+                "blocked_exchange_rows": 0, "not_covered_bj": 0,
             }
+            consumption = {
+                "totals": {
+                    "text": 0, "missing": 0, "extra_duplicate": 0, "extra_phantom": 0,
+                    "text_candidate": 0, "missing_unregistered": 0, "extra_unregistered": 0,
+                },
+                "consumed_cells": [], "stale_cells": [],
+            }
+            not_checked = []
+            loaded_verdicts = load_exchange_cell_verdicts(cell_verdicts_path)
+            registry_sha256 = loaded_verdicts.sha256
+            if emit_candidates_path is not None:
+                emit_candidate_verdicts({}, loaded_verdicts, emit_candidates_path)
         result: dict[str, Any] = {
             "domain": domain,
             "table": table,
@@ -1361,7 +1714,11 @@ def verify(
             "explained_merged": explained_merged_all,
             "structural": structural,
             "residual_verdict_counts": residual_verdict_counts,
-            "ceiling": ceiling,
+            "identity": identity_totals,
+            "venue": venue,
+            "consumption": consumption,
+            "not_checked": not_checked,
+            "registry_sha256": registry_sha256,
             "exchange_files": exchange_files,
         }
         result["exit_code"] = verdict(result)
@@ -1378,22 +1735,23 @@ def verify(
                         f"verify exit_code={result['exit_code']} != 0; refusing to record "
                         f"(domain={domain} run_id={run_id})"
                     )
-                load_vendor_gaps(vendor_gaps_path)  # 校验登记表本身没坏; 坏了直接 ValueError
-                gaps_path = Path(vendor_gaps_path) if vendor_gaps_path is not None else VENDOR_GAPS_PATH
-                vendor_gaps_sha256 = hashlib.sha256(gaps_path.read_bytes()).hexdigest()
                 record_data_deletion(
                     conn,
                     deletion_run_id=run_id,
                     table_name=table,
                     delete_scope="rows_replaced_verified",
-                    reason="grain 契约重落验收 exit_code=0 (分类+结构检查+交易所)",
+                    reason="grain 契约重落验收 exit_code=0 (格级比较+身份层+结构检查)",
                     verification={
                         "classes": result["classes"],
                         "residual_verdict_counts": result["residual_verdict_counts"],
                         "structural_ok": {k: v["ok"] for k, v in result["structural"].items()},
-                        "vendor_gaps_sha256": vendor_gaps_sha256,
+                        "registry_sha256": result["registry_sha256"],
+                        "consumed_cells": result["consumption"]["consumed_cells"],
+                        "stale_cells": result["consumption"]["stale_cells"],
+                        "identity": result["identity"],
+                        "venue": result["venue"],
+                        "not_checked": result["not_checked"],
                         "exchange_files": result["exchange_files"],
-                        "ceiling": result["ceiling"],
                     },
                 )
                 return result
@@ -1425,7 +1783,9 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.add_argument("--domain", required=True, choices=sorted(DOMAIN_TABLES))
     p_verify.add_argument("--run-id", required=True)
     p_verify.add_argument("--exchange-dir", type=Path, default=None)
-    p_verify.add_argument("--vendor-gaps", type=Path, default=None)
+    p_verify.add_argument("--cell-verdicts", type=Path, default=None)
+    p_verify.add_argument("--code-changes", type=Path, default=None)
+    p_verify.add_argument("--emit-candidates", type=Path, default=None)
     p_verify.add_argument("--record", action="store_true")
 
     args = parser.parse_args(argv)
@@ -1440,9 +1800,11 @@ def main(argv: list[str] | None = None) -> int:
             run_id=args.run_id,
             record=args.record,
             exchange_dir=args.exchange_dir,
-            vendor_gaps_path=args.vendor_gaps,
+            cell_verdicts_path=args.cell_verdicts,
+            code_changes_path=args.code_changes,
+            emit_candidates_path=args.emit_candidates,
         )
-    except ValueError as exc:
+    except (ValueError, AssertionError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
