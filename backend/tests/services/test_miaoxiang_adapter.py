@@ -12,8 +12,13 @@ docstring in ``sources/miaoxiang.py`` for the full mapping table and provenance)
 """
 from __future__ import annotations
 
-import pytest
+import logging
+from pathlib import Path
 
+import pytest
+import yaml
+
+from services.data_sources.pagination_integrity import assess_paginated_land
 from services.data_sources.sources.miaoxiang import (
     ALIAS,
     API_REPORT_NAMES,
@@ -22,14 +27,18 @@ from services.data_sources.sources.miaoxiang import (
     REPORT_BLOCK_TRADE,
     REPORT_TOP_INST,
     REPORT_TOP_LIST,
+    MiaoxiangBadNumberError,
     MiaoxiangMissingFieldError,
     MiaoxiangSource,
     MiaoxiangSourceError,
     MiaoxiangTruncationError,
+    MiaoxiangUnknownUnitError,
+    _float,
     clean_block_trade_row,
     clean_top_inst_row,
     clean_top_list_row,
     compact_trade_date,
+    load_vendor_scope,
 )
 
 
@@ -202,6 +211,59 @@ def test_clean_top_list_row_missing_secucode_fails_closed():
         clean_top_list_row(row, trade_date="20260825")
 
 
+def test_top_list_missing_explanation_none():
+    row = _top_list_raw_row(EXPLANATION=None)
+    with pytest.raises(MiaoxiangMissingFieldError):
+        clean_top_list_row(row, trade_date="20260825")
+
+
+def test_top_list_missing_explanation_empty():
+    row = _top_list_raw_row(EXPLANATION="")
+    with pytest.raises(MiaoxiangMissingFieldError):
+        clean_top_list_row(row, trade_date="20260825")
+
+
+# ---------------------------------------------------------------------------
+# _float — fail-closed numeric parsing
+# ---------------------------------------------------------------------------
+
+
+def test_float_none():
+    assert _float(None) is None
+
+
+def test_float_empty():
+    assert _float("") is None
+
+
+def test_float_numeric_string():
+    assert _float("12.5") == 12.5
+
+
+def test_float_int():
+    assert _float(12) == 12.0
+
+
+def test_float_garbage():
+    with pytest.raises(MiaoxiangBadNumberError):
+        _float("--")
+
+
+def test_float_nan():
+    with pytest.raises(MiaoxiangBadNumberError):
+        _float("nan")
+
+
+def test_float_inf():
+    with pytest.raises(MiaoxiangBadNumberError):
+        _float("inf")
+
+
+def test_float_bool():
+    with pytest.raises(MiaoxiangBadNumberError):
+        _float(True)
+
+
 def test_clean_top_inst_row_normalizes_null_amount_to_zero():
     """Real-world regression (found via live 20260825 full-day reconciliation,
     2026-08-31): a one-sided seat (only buys, never sells, or vice versa) comes
@@ -286,18 +348,113 @@ def test_clean_block_trade_row_fdo():
 
 
 def test_clean_block_trade_row_unknown_security_type():
-    """A4: Unknown security type sets vol to None, logs warning."""
+    """A4 (2026-09-11 revised): an unrecognized (SECURITY_TYPE, TRADE_UNIT) pair
+    fails closed instead of silently landing vol=None on a grain column."""
+    with pytest.raises(MiaoxiangUnknownUnitError):
+        clean_block_trade_row(
+            _block_trade_raw_row(
+                SECURITY_TYPE="XYZ",
+                DEAL_VOLUME=100,
+                DEAL_AMT=1000,
+            ),
+            trade_date="20260827",
+        )
+
+
+# ---------------------------------------------------------------------------
+# block_trade — (SECURITY_TYPE, TRADE_UNIT) volume-factor table
+# ---------------------------------------------------------------------------
+
+
+def test_block_trade_factor_eqa_4():
     out = clean_block_trade_row(
-        _block_trade_raw_row(
-            SECURITY_TYPE="XYZ",
-            DEAL_VOLUME=100,
-            DEAL_AMT=1000,
-        ),
+        _block_trade_raw_row(SECURITY_TYPE="EQA", TRADE_UNIT="4", DEAL_VOLUME=131476),
         trade_date="20260827",
     )
-    assert out["vol"] is None
-    assert out["amount"] == pytest.approx(0.1)
-    assert out["security_type"] == "XYZ"
+    assert out["vol"] == pytest.approx(13.1476)
+
+
+def test_block_trade_factor_eqa_3_reits():
+    out = clean_block_trade_row(
+        _block_trade_raw_row(SECURITY_TYPE="EQA", TRADE_UNIT="3", DEAL_VOLUME=2411000),
+        trade_date="20260827",
+    )
+    assert out["vol"] == pytest.approx(241.1)
+
+
+def test_block_trade_factor_fdo_3():
+    out = clean_block_trade_row(
+        _block_trade_raw_row(SECURITY_TYPE="FDO", TRADE_UNIT="3", DEAL_VOLUME=1000000),
+        trade_date="20260827",
+    )
+    assert out["vol"] == pytest.approx(100.0)
+
+
+def test_block_trade_factor_bd0_1():
+    out = clean_block_trade_row(
+        _block_trade_raw_row(SECURITY_TYPE="BD0", TRADE_UNIT="1", DEAL_VOLUME=5000),
+        trade_date="20260827",
+    )
+    assert out["vol"] == pytest.approx(5.0)
+
+
+def test_block_trade_unknown_pair_type_known_unit_unknown():
+    """A recognized SECURITY_TYPE (EQA) paired with a TRADE_UNIT not in the
+    table for it ('1' is only registered for BD0) must still fail closed."""
+    with pytest.raises(MiaoxiangUnknownUnitError):
+        clean_block_trade_row(
+            _block_trade_raw_row(SECURITY_TYPE="EQA", TRADE_UNIT="1"),
+            trade_date="20260827",
+        )
+
+
+def test_block_trade_unknown_pair_type_unknown():
+    with pytest.raises(MiaoxiangUnknownUnitError):
+        clean_block_trade_row(
+            _block_trade_raw_row(SECURITY_TYPE="XYZ", TRADE_UNIT="4"),
+            trade_date="20260827",
+        )
+
+
+def test_block_trade_unknown_pair_eqb_3():
+    """EQB is only registered with TRADE_UNIT '4' — '3' is not a known pair."""
+    with pytest.raises(MiaoxiangUnknownUnitError):
+        clean_block_trade_row(
+            _block_trade_raw_row(SECURITY_TYPE="EQB", TRADE_UNIT="3"),
+            trade_date="20260827",
+        )
+
+
+def test_block_trade_missing_trade_unit_none():
+    """A missing TRADE_UNIT must fail the required-field check itself, not
+    merely raise *some* MiaoxiangMissingFieldError subclass — MiaoxiangUnknownUnitError
+    is also a MiaoxiangMissingFieldError, and would equally fire if TRADE_UNIT
+    ever silently fell through the required-field gate into the (SECURITY_TYPE,
+    TRADE_UNIT) lookup as ''."""
+    row = _block_trade_raw_row(TRADE_UNIT=None)
+    with pytest.raises(MiaoxiangMissingFieldError) as excinfo:
+        clean_block_trade_row(row, trade_date="20260827")
+    assert "TRADE_UNIT" in str(excinfo.value)
+    assert not isinstance(excinfo.value, MiaoxiangUnknownUnitError)
+    assert not isinstance(excinfo.value, MiaoxiangBadNumberError)
+
+
+def test_block_trade_missing_trade_unit_empty():
+    """Same as above for an empty-string TRADE_UNIT."""
+    row = _block_trade_raw_row(TRADE_UNIT="")
+    with pytest.raises(MiaoxiangMissingFieldError) as excinfo:
+        clean_block_trade_row(row, trade_date="20260827")
+    assert "TRADE_UNIT" in str(excinfo.value)
+    assert not isinstance(excinfo.value, MiaoxiangUnknownUnitError)
+    assert not isinstance(excinfo.value, MiaoxiangBadNumberError)
+
+
+def test_block_trade_price_garbage_raises():
+    """Wiring check: DEAL_PRICE going through the now-strict _float raises
+    MiaoxiangBadNumberError, with every other field left legitimate."""
+    row = _block_trade_raw_row(DEAL_PRICE="--")
+    with pytest.raises(MiaoxiangBadNumberError):
+        clean_block_trade_row(row, trade_date="20260827")
 
 
 def test_clean_block_trade_row_missing_buyer():
@@ -542,6 +699,43 @@ def test_runaway_pagination_hits_max_pages_and_fails_closed():
 
 
 # ---------------------------------------------------------------------------
+# fail-closed: missing/zero provider count on a non-empty land
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_report_day_rows_with_zero_count_raises():
+    """assess_paginated_land's `expected_count > 0` gate is a no-op when count
+    is 0/missing (pagination_integrity.py:40-49) — a dedicated check must catch
+    a non-empty land riding on an untrustworthy zero count."""
+    client = _FakeClient([{"pages": 1, "count": 0, "data": [_top_inst_raw_row()]}])
+    src = MiaoxiangSource(client=client)
+    with pytest.raises(MiaoxiangTruncationError):
+        src._fetch_report_day(
+            REPORT_TOP_INST, "20260825", sort_columns="SECUCODE", sort_types="1"
+        )
+
+
+def test_fetch_report_day_empty_zero_count_ok():
+    """A genuinely empty day (0 rows, count 0) is not truncation."""
+    client = _FakeClient([{"pages": 0, "count": 0, "data": []}])
+    src = MiaoxiangSource(client=client)
+    rows = src._fetch_report_day(
+        REPORT_TOP_INST, "20260825", sort_columns="SECUCODE", sort_types="1"
+    )
+    assert rows == []
+
+
+def test_fetch_report_day_count_matches_ok():
+    row = _top_inst_raw_row()
+    client = _FakeClient([{"pages": 1, "count": 1, "data": [row]}])
+    src = MiaoxiangSource(client=client)
+    rows = src._fetch_report_day(
+        REPORT_TOP_INST, "20260825", sort_columns="SECUCODE", sort_types="1"
+    )
+    assert rows == [row]
+
+
+# ---------------------------------------------------------------------------
 # dependency injection
 # ---------------------------------------------------------------------------
 
@@ -579,3 +773,146 @@ def test_client_factory_used_lazily_when_no_client_given():
 
 def test_alias_is_miaoxiang():
     assert ALIAS == "miaoxiang"
+
+
+# ---------------------------------------------------------------------------
+# vendor_scope.yaml — B股/EQB 排除 (owner ruling 2026-09-12)
+# ---------------------------------------------------------------------------
+
+
+def _write_vendor_scope(tmp_path: Path, content: dict) -> Path:
+    path = tmp_path / "vendor_scope.yaml"
+    path.write_text(yaml.safe_dump(content, allow_unicode=True), encoding="utf-8")
+    return path
+
+
+def test_vendor_scope_repo_file_excludes_eqb():
+    """The actual checked-in backend/config/vendor_scope.yaml (default path,
+    no override) must exclude EQB from block_trade."""
+    scope = load_vendor_scope()
+    assert scope["block_trade"] == frozenset({"EQB"})
+
+
+def test_vendor_scope_unknown_top_key(tmp_path):
+    path = _write_vendor_scope(
+        tmp_path,
+        {
+            "version": 1,
+            "miaoxiang": {"block_trade": {"exclude_security_types": ["EQB"]}},
+            "extra_top_key": True,
+        },
+    )
+    with pytest.raises(ValueError):
+        load_vendor_scope(path)
+
+
+def test_vendor_scope_unknown_api(tmp_path):
+    path = _write_vendor_scope(
+        tmp_path,
+        {
+            "version": 1,
+            "miaoxiang": {
+                "block_trade": {"exclude_security_types": ["EQB"]},
+                "top_inst": {"exclude_security_types": ["XYZ"]},
+            },
+        },
+    )
+    with pytest.raises(ValueError):
+        load_vendor_scope(path)
+
+
+def test_vendor_scope_bad_value_type(tmp_path):
+    path = _write_vendor_scope(
+        tmp_path,
+        {"version": 1, "miaoxiang": {"block_trade": {"exclude_security_types": "EQB"}}},
+    )
+    with pytest.raises(ValueError):
+        load_vendor_scope(path)
+
+
+def test_vendor_scope_empty_list(tmp_path):
+    path = _write_vendor_scope(
+        tmp_path,
+        {"version": 1, "miaoxiang": {"block_trade": {"exclude_security_types": []}}},
+    )
+    with pytest.raises(ValueError):
+        load_vendor_scope(path)
+
+
+# ---------------------------------------------------------------------------
+# vendor_scope wired into block_trade fetch — excludes before clean_block_trade_row
+# ---------------------------------------------------------------------------
+
+
+def test_block_trade_fetch_excludes_eqb_before_clean(caplog):
+    eqa_row = _block_trade_raw_row()
+    eqb_row = _block_trade_raw_row(SECUCODE="900926.SH", SECURITY_TYPE="EQB", TRADE_UNIT="4")
+    client = _FakeClient([{"pages": 1, "count": 2, "data": [eqa_row, eqb_row]}])
+    src = MiaoxiangSource(client=client)
+
+    with caplog.at_level(logging.INFO, logger="services.data_sources.sources.miaoxiang"):
+        rows = src.fetch_raw("block_trade", trade_date="20260827")
+
+    assert len(rows) == 1
+    assert rows[0]["security_type"] == "EQA"
+    assert "excluded 1 rows" in caplog.text
+
+
+def test_block_trade_fetch_eqb_not_excluded_raises(monkeypatch):
+    """If vendor_scope stops excluding EQB, the EQB row falls through to
+    clean_block_trade_row and hits the now-unregistered (EQB, '4') pair —
+    MiaoxiangUnknownUnitError, not a silent NULL vol."""
+    monkeypatch.setattr(
+        "services.data_sources.sources.miaoxiang.load_vendor_scope",
+        lambda *a, **k: {"block_trade": frozenset()},
+    )
+    eqb_row = _block_trade_raw_row(SECUCODE="900926.SH", SECURITY_TYPE="EQB", TRADE_UNIT="4")
+    client = _FakeClient([{"pages": 1, "count": 1, "data": [eqb_row]}])
+    src = MiaoxiangSource(client=client)
+    with pytest.raises(MiaoxiangUnknownUnitError):
+        src.fetch_raw("block_trade", trade_date="20260827")
+
+
+def test_block_trade_fetch_exclusion_keeps_truncation_check():
+    """Truncation must be judged against the rows landed *before* vendor_scope
+    exclusion, not after.
+
+    Page 1 (of 1) declares count=1000 and lands exactly 1000 rows in one go —
+    600 EQB + 400 EQA, every row individually valid. Judged against the
+    pre-exclusion land (1000 landed == 1000 expected), this is not truncated
+    at all. Only if vendor_scope exclusion were wrongly moved *before* the
+    truncation check — so the check saw just the 400 surviving EQA rows
+    against a still-1000 expected count — would ``assess_paginated_land`` see
+    400<1000 and fail closed with ``MiaoxiangTruncationError`` (see the
+    companion fact in ``test_truncation_tolerance_flags_post_exclusion_count``
+    below: 400 landed against 1000 expected *is* judged truncated on its own,
+    so this test would go red under that ordering bug)."""
+    eqb_rows = [
+        _block_trade_raw_row(SECUCODE="900926.SH", SECURITY_TYPE="EQB", TRADE_UNIT="4")
+        for _ in range(600)
+    ]
+    eqa_rows = [_block_trade_raw_row() for _ in range(400)]
+    client = _FakeClient([{"pages": 1, "count": 1000, "data": eqb_rows + eqa_rows}])
+    src = MiaoxiangSource(client=client)
+
+    rows = src.fetch_raw("block_trade", trade_date="20260827")
+
+    assert len(rows) == 400
+    assert all(r["security_type"] == "EQA" for r in rows)
+
+
+def test_truncation_tolerance_flags_post_exclusion_count():
+    """Standalone fact the ordering test above depends on: judged in
+    isolation, 400 landed rows against a declared count of 1000 *is*
+    truncated under the pagination-integrity tolerance (500-row floor is
+    well below the 600-row shortfall here). This is what makes the previous
+    test able to tell the two orderings apart — if vendor_scope exclusion
+    ran before the truncation check instead of after it, that test's landed
+    count would drop to exactly this 400-vs-1000 shape and raise
+    MiaoxiangTruncationError."""
+    verdict = assess_paginated_land(
+        expected_count=1000,
+        landed_rows=400,
+        page_size=PAGE_SIZE,
+    )
+    assert verdict.truncated is True

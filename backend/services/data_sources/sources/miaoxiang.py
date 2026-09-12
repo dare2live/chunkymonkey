@@ -38,9 +38,14 @@ exalter                OPERATEDEPT_NAME       营业部全名, 直通
 side                   TRADE_DIRECTION        '0'/'1' 字符串, 直通 (值域相同)
 buy                    BUY_AMT_REAL           实测逐行相等 (20260825 000017.SZ);
                                                单向席位(只买或只卖)另一侧妙想返回
-                                               JSON null 而 tushare 是 0.0 (实测
-                                               20260825 全天 130/650=20% 行命中),
-                                               ``_amount()`` 把 None 归零对齐
+                                               JSON null (实测 20260825 全天
+                                               130/650=20% 行命中)。**2026-09-11
+                                               更正**: 原文档在此声称"tushare 是
+                                               0.0"不成立——旧 tushare 归档全史
+                                               (2019-2026) 实测该侧也是 NULL
+                                               (约 19%, 每年都有); ``_amount()``
+                                               把 None 归零是本 adapter 的选择
+                                               (业务含义明确的零), 不是对齐 tushare
 sell                   SELL_AMT_REAL          实测逐行相等; None->0.0 同上
 buy_rate               BUY_RATIO              tushare 显示 2 位小数四舍五入版本,
                                                妙想更高精度, 语义相同不改精度;
@@ -96,19 +101,37 @@ vol × buyer × seller, 多重度索引 = seq):
 ts_code                SECUCODE               直通; 空 → MiaoxiangMissingFieldError
 trade_date             TRADE_DATE             compact YYYYMMDD; 行内日期与请求日
                                                必须相同, 否则 MissingFieldError
-price                  DEAL_PRICE             float; 空 → error
-vol                    DEAL_VOLUME            按 SECURITY_TYPE 计:
-                       + SECURITY_TYPE        - EQA/FDO: DEAL_VOLUME/1e4 (万股/万份)
-                                               - BD0: DEAL_VOLUME×10/1e4 (万张; 妙想
-                                                 手=10张; 机制: DEAL_AMT/DEAL_PRICE=
-                                                 10×DEAL_VOLUME 实证 e.g. 694500/138.9
-                                                 =5000=10×500; 2023-01-03 2行BD0)
-                                               - 其它: NULL (单位unknown, log.warning)
+price                  DEAL_PRICE             float; 空/非数值(如"--") → error
+vol                    DEAL_VOLUME            按 (SECURITY_TYPE, TRADE_UNIT) 对
+                       + SECURITY_TYPE        计 (``_BLOCK_TRADE_VOLUME_FACTOR``,
+                       + TRADE_UNIT           vol = DEAL_VOLUME × factor / 1e4):
+                                               - (EQA,'4')=1 (万股; 深交所 200012
+                                                 20230109 两笔 3.00/9.00 万股实证)
+                                               - (EQA,'3')=1 (万份, **REITs** ——
+                                                 508018/508027/508028.SH
+                                                 20231013, 金额恒等式反推)
+                                               - (FDO,'3')=1 (万份, 基金)
+                                               - (BD0,'1')=10 (万张; 妙想 1 手=
+                                                 10 张; DEAL_AMT/DEAL_PRICE=
+                                                 10×DEAL_VOLUME 实证 e.g.
+                                                 694500/138.9=5000=10×500;
+                                                 2023-01-03 2 行 BD0)
+                                               - 表外的对 → MiaoxiangUnknownUnitError
+                                                 (不再 NULL+log.warning)
+                                               - B 股按 vendor_scope.yaml 在清洗前排除
+                                                 (业主 2026-09-12 裁定), 不在此表登记;
+                                                 若 EQB 行仍走到这里就是未知对, 同样
+                                                 MiaoxiangUnknownUnitError
 amount                 DEAL_AMT               DEAL_AMT/1e4 (万元), 所有类型
 buyer / seller         BUYER_NAME/SELLER_NAME 直通; 空 → error
 security_type          SECURITY_TYPE          直通 VARCHAR (证据列)
-trade_unit             TRADE_UNIT             直通 VARCHAR (证据列; 1:1 共变 EQA↔'4',
-                                               FDO↔'3', BD0↔'1')
+trade_unit             TRADE_UNIT             直通 VARCHAR (证据列, 现为必填字段);
+                                               与 SECURITY_TYPE 联合决定 vol 换算
+                                               系数, 见上; 同一 SECURITY_TYPE 可能
+                                               对应不止一种 TRADE_UNIT (EQA 同时有
+                                               '4'=股票与'3'=REITs), 已推翻原
+                                               "1:1 共变" 的说法, 不再按 SECURITY_TYPE
+                                               单键判断
 seq                    (不映射)               由 _prepare_batch_df 派生 (到达顺序 1..n)
 built_at               (无 — sync_runner 生成)
 =====================  =====================  ==============================
@@ -151,14 +174,30 @@ TRADE_DIRECTION, RANK) 唯一 (130 块榜每榜 RANK 1..n 连续), 本地当日�
   - 分页落地行数 < 供应商声明 count (超容差) -> ``MiaoxiangTruncationError``
     (复用本仓 ``services/data_sources/pagination_integrity.py`` 的东财 v1
     100 页硬上限截断判定, 不重新发明)
+  - 分页落地非空但 provider count 缺失/为 0 -> ``MiaoxiangTruncationError``
+    (``assess_paginated_land`` 的 ``expected_count > 0`` 门在 count=0 时不检查,
+    2026-09-11 补的独立判定, 见 ``_fetch_report_day``)
   - 单行缺必填字段 (top_inst: SECUCODE/TRADE_DATE/OPERATEDEPT_NAME/TRADE_DIRECTION/
     EXPLANATION/RANK; block_trade: SECUCODE/TRADE_DATE/DEAL_PRICE/DEAL_VOLUME/DEAL_AMT/
-    BUYER_NAME/SELLER_NAME/SECURITY_TYPE 之一), 或行内日期与请求日不符
-    -> ``MiaoxiangMissingFieldError``
+    BUYER_NAME/SELLER_NAME/SECURITY_TYPE/TRADE_UNIT 之一; top_list: SECUCODE/TRADE_DATE/
+    EXPLANATION 之一), 或行内日期与请求日不符 -> ``MiaoxiangMissingFieldError``
   - ``top_inst`` RANK 缺失/非整数/< 1 -> ``MiaoxiangMissingFieldError``
     (三种情况分别判定, 便于下游定位)
+  - ``block_trade`` 的 (SECURITY_TYPE, TRADE_UNIT) 不在 ``_BLOCK_TRADE_VOLUME_FACTOR``
+    表里 -> ``MiaoxiangUnknownUnitError`` (``MiaoxiangMissingFieldError`` 子类)
+  - 数值字段解析失败 (非数值垃圾串如 "--"、bool、nan/inf) -> ``MiaoxiangBadNumberError``
+    (``MiaoxiangMissingFieldError`` 子类; 替代旧的"解析不出就返回 None"静默行为)
   - 上游 HTTP/JSON 错误 -> ``aif10_scraper`` 客户端自带 retry(3 次, 指数退避)
     耗尽后原样抛出 ``AIF10Error``, 本 adapter 不吞
+
+调用链姿态: ``MiaoxiangMissingFieldError``/``MiaoxiangUnknownUnitError``/
+``MiaoxiangBadNumberError``/``MiaoxiangTruncationError`` 均已在
+``services/data_sources/fetch_verdict.py::_classify_miaoxiang`` 里被
+``isinstance(exc, (MiaoxiangMissingFieldError, MiaoxiangTruncationError))``
+判为 ``FailureKind.STRUCTURAL`` (isinstance 对子类同样命中); ``sync_runner._fetch_with_retry``
+对 STRUCTURAL 立即 ``return None`` 不重试, 调用方把 ``None`` 计入
+``failed_batches`` 入 failure_queue —— 该批次失败但不拖垮整次同步的其它批次/域,
+也不会被静默跳过 (2026-09-11 read-before-change 核对, 见 sync_runner.py:1173-1178)。
 
 依赖注入: ``MiaoxiangSource(client=...)`` 可注入假客户端 (测试用, 只需实现
 ``get_v1(report_name, *, page, page_size, sort_columns, sort_types, columns,
@@ -172,8 +211,12 @@ PYTHONPATH=backend 直接可见, 那层间接与它的"不存在也不报错"语
 from __future__ import annotations
 
 import logging
+import math
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable
+
+import yaml
 
 from services.data_sources.pagination_integrity import (
     EASTMONEY_V1_MAX_PAGES_PER_QUERY,
@@ -187,6 +230,10 @@ ALIAS = "miaoxiang"
 REPORT_BLOCK_TRADE = "RPT_DATA_BLOCKTRADE"
 REPORT_TOP_INST = "RPT_OPERATEDEPT_TRADE"
 REPORT_TOP_LIST = "RPT_DAILYBILLBOARD_DETAILSNEW"
+
+# backend/config/vendor_scope.yaml — this file lives at
+# backend/services/data_sources/sources/miaoxiang.py, four parents up is backend/.
+_VENDOR_SCOPE_PATH = Path(__file__).resolve().parent.parent.parent.parent / "config" / "vendor_scope.yaml"
 
 # api 名 -> 妙想 reportName。刻意用 registry 现有 `api:` 同名值 (block_trade/top_inst/top_list),
 # 接线时只需改 `source:`, 不用改 `api:` (任务边界: 接线由主线做, 这里只保证形状对上)。
@@ -225,6 +272,98 @@ class MiaoxiangTruncationError(RuntimeError):
 
 class MiaoxiangMissingFieldError(ValueError):
     """A grain-critical vendor field was absent/empty on a landed row."""
+
+
+class MiaoxiangUnknownUnitError(MiaoxiangMissingFieldError):
+    """``(SECURITY_TYPE, TRADE_UNIT)`` pair not in ``_BLOCK_TRADE_VOLUME_FACTOR``.
+
+    Fail-closed replacement for the old "log.warning + vol=None" branch: an
+    unrecognized unit means we do not know the correct vol conversion, and a
+    NULL on a grain column is worse than a loud, attributable failure.
+    """
+
+
+class MiaoxiangBadNumberError(MiaoxiangMissingFieldError):
+    """A numeric-looking vendor field parsed to something non-numeric (garbage
+    string, bool, nan/inf) instead of a real finite number."""
+
+
+# (SECURITY_TYPE, TRADE_UNIT) -> vol = DEAL_VOLUME * factor / 1e4. Each pair is
+# evidence-backed (2026-09-11 real-data reconciliation), not guessed:
+_BLOCK_TRADE_VOLUME_FACTOR: dict[tuple[str, str], int] = {
+    # 深交所 200012 2023-01-09 两笔交易所口径 3.00 / 9.00 万股 == 妙想 DEAL_VOLUME
+    # 30000 / 90000 股 / 1e4 (factor=1, 单位=股).
+    ("EQA", "4"): 1,
+    # 508018/508027/508028.SH 20231013 (REITs, 按份额): 用金额恒等式反推
+    # DEAL_AMT*1e4/DEAL_PRICE == DEAL_VOLUME 得 factor=1 (单位=份, 与 EQA/'4' 系数
+    # 相同但业务含义不同 —— 不是同一种证券, 只是巧合系数相同; 原文件头注声称
+    # "1:1 共变 EQA<->'4'" 被这三行推翻, 故按 (类型, 单位) 对分别登记而不是按类型).
+    ("EQA", "3"): 1,
+    # FDO (基金) 未见与 EQA 不同单位的实测反例, 沿用 factor=1 直到有反例。B 股 (EQB)
+    # 不在此表登记 —— 按 vendor_scope.yaml 在清洗前排除 (业主 2026-09-12 裁定), 若
+    # 仍有 EQB 行走到这里就是未知对, 抛 MiaoxiangUnknownUnitError。
+    ("FDO", "3"): 1,
+    # 2023-01-03 2 行 BD0 (可转债): DEAL_AMT/DEAL_PRICE == 10*DEAL_VOLUME 实证
+    # e.g. 694500/138.9=5000=10*500 (妙想 1 手=10 张, factor=10, 单位=张).
+    ("BD0", "1"): 10,
+}
+
+
+def load_vendor_scope(path: Path | None = None) -> dict[str, frozenset[str]]:
+    """Load ``backend/config/vendor_scope.yaml`` — vendor rows that are out of
+    this project's scope by owner ruling, not by any data-quality judgment
+    (业主 2026-09-12 原话: 「不用管B股，以后也不做，获取完的数据删除清理干净」).
+    This file only describes *which vendor rows are out of scope*; it does not
+    decide cleaning/conversion logic and does not claim the vendor stops
+    returning these rows.
+
+    Fail-closed on any unrecognized shape (未知键 fail-closed, 与本项目其它 typed
+    YAML 加载同型 — 见 ``services/taxonomy_config.py``): unexpected top-level
+    keys, wrong ``version``, an unknown api name under ``miaoxiang``, or a
+    malformed/empty ``exclude_security_types`` all raise ``ValueError`` rather
+    than silently loading a partial or wrong scope.
+    """
+    cfg_path = Path(path) if path is not None else _VENDOR_SCOPE_PATH
+    raw = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or set(raw) != {"version", "miaoxiang"}:
+        raise ValueError(
+            f"vendor_scope.yaml top-level keys must be exactly {{'version', 'miaoxiang'}}, "
+            f"got {sorted(raw) if isinstance(raw, dict) else type(raw).__name__}"
+        )
+    if raw.get("version") != 1:
+        raise ValueError(f"vendor_scope.yaml version must be 1, got {raw.get('version')!r}")
+
+    miaoxiang_cfg = raw.get("miaoxiang")
+    if not isinstance(miaoxiang_cfg, dict) or set(miaoxiang_cfg) != {"block_trade"}:
+        raise ValueError(
+            "vendor_scope.yaml miaoxiang keys must be exactly {'block_trade'}, got "
+            f"{sorted(miaoxiang_cfg) if isinstance(miaoxiang_cfg, dict) else type(miaoxiang_cfg).__name__}"
+        )
+
+    block_trade_cfg = miaoxiang_cfg["block_trade"]
+    if not isinstance(block_trade_cfg, dict) or set(block_trade_cfg) != {"exclude_security_types"}:
+        raise ValueError(
+            "vendor_scope.yaml miaoxiang.block_trade keys must be exactly "
+            f"{{'exclude_security_types'}}, got "
+            f"{sorted(block_trade_cfg) if isinstance(block_trade_cfg, dict) else type(block_trade_cfg).__name__}"
+        )
+
+    values = block_trade_cfg["exclude_security_types"]
+    if not isinstance(values, list) or not values:
+        raise ValueError(
+            "vendor_scope.yaml miaoxiang.block_trade.exclude_security_types must "
+            f"be a non-empty list, got {values!r}"
+        )
+    cleaned: list[str] = []
+    for v in values:
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError(
+                "vendor_scope.yaml exclude_security_types entries must be "
+                f"non-empty strings, got {v!r}"
+            )
+        cleaned.append(v.strip())
+
+    return {"block_trade": frozenset(cleaned)}
 
 
 def _reject_caller_paging(params: dict[str, Any]) -> None:
@@ -270,12 +409,26 @@ def _text(value: Any) -> str | None:
 
 
 def _float(value: Any) -> float | None:
+    """Parse a vendor numeric field. ``None``/``""`` is a legitimate absence
+    (returns ``None``, propagated as unknown — 宪法第 3 条). Anything else that
+    doesn't parse to a real finite number is a **data-quality failure**, not a
+    silent unknown: a bool (``True``/``False`` would otherwise silently become
+    ``1.0``/``0.0`` via Python's ``float()``), an unparseable garbage string
+    (e.g. ``"--"``), or ``nan``/``inf`` (which would poison downstream ``SUM``
+    aggregations without raising) all raise ``MiaoxiangBadNumberError`` instead
+    of returning ``None`` — the old behavior silently converted "--" into a
+    NULL on grain-critical columns like ``price``."""
     if value in (None, ""):
         return None
+    if isinstance(value, bool):
+        raise MiaoxiangBadNumberError(f"miaoxiang: bad numeric value {value!r} (bool)")
     try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise MiaoxiangBadNumberError(f"miaoxiang: bad numeric value {value!r}") from exc
+    if not math.isfinite(parsed):
+        raise MiaoxiangBadNumberError(f"miaoxiang: non-finite numeric value {value!r}")
+    return parsed
 
 
 def _amount(value: Any) -> float:
@@ -283,10 +436,15 @@ def _amount(value: Any) -> float:
     an unknown. 实测 2026-08-31 (20260825 全天, 130/650 行, 20%): 东财
     ``RPT_OPERATEDEPT_TRADE`` 对单向席位 (只买不卖 / 只卖不买) 把另一侧
     ``BUY_AMT_REAL``/``SELL_AMT_REAL``/``BUY_RATIO``/``SELL_RATIO`` 返回 JSON
-    null, 而 tushare 对应字段是 ``0.0`` —— 两者语义相同 ("这一侧没有交易"),
-    只是 null-vs-zero 的表示差异, 不是缺数据。``_float`` 对其它字段 (可能真的
-    无意义, 如债券的 turnover_rate/float_values) 保留 None 传透, 此处专用于
-    这四个金额/占比字段, 避免下游 ``SUM(net_buy)`` 等聚合遇 NULL 传播。"""
+    null. **2026-09-11 更正**: 原文档在此处声称 "tushare 对应字段是 0.0" ——
+    对旧 tushare 归档全史 (2019-2026) 逐年实测推翻: 单向席位另一侧 tushare 自己
+    也是 NULL (buy 侧 NULL 200,492 行 / sell 侧 NULL 202,248 行, 约占 19%, 每年
+    都有), 不是 0.0。也就是说这里把 None 归零**不是**"对齐 tushare 的既有做法",
+    而是本 adapter 自己的选择: "这一侧没有交易" 视为真零, 避免下游
+    ``SUM(net_buy)`` 等聚合遇 NULL 传播 (宪法第 3 条允许的例外 —— 这四个字段的
+    null 有明确业务含义, 不是"测不出"的 unknown)。``_float`` 对其它字段 (可能
+    真的无意义, 如债券的 turnover_rate/float_values) 仍保留 None 传透, 此处
+    专用于这四个金额/占比字段。"""
     v = _float(value)
     return 0.0 if v is None else v
 
@@ -300,6 +458,7 @@ _REQUIRED_BLOCK_TRADE_FIELDS = (
     "BUYER_NAME",
     "SELLER_NAME",
     "SECURITY_TYPE",
+    "TRADE_UNIT",
 )
 _REQUIRED_TOP_INST_FIELDS = (
     "SECUCODE",
@@ -309,7 +468,7 @@ _REQUIRED_TOP_INST_FIELDS = (
     "EXPLANATION",
     "RANK",
 )
-_REQUIRED_TOP_LIST_FIELDS = ("SECUCODE", "TRADE_DATE")
+_REQUIRED_TOP_LIST_FIELDS = ("SECUCODE", "TRADE_DATE", "EXPLANATION")
 
 
 def clean_block_trade_row(row: dict[str, Any], *, trade_date: str) -> dict[str, Any]:
@@ -335,20 +494,20 @@ def clean_block_trade_row(row: dict[str, Any], *, trade_date: str) -> dict[str, 
                 f"RPT_DATA_BLOCKTRADE row date {row_trade_date} != request date {trade_date}"
             )
 
-    # Vol calculation based on SECURITY_TYPE
+    # Vol calculation keyed on (SECURITY_TYPE, TRADE_UNIT) — see
+    # _BLOCK_TRADE_VOLUME_FACTOR for the evidence behind each pair. An
+    # unrecognized pair fails closed (MiaoxiangUnknownUnitError) instead of
+    # silently landing a NULL on this grain column.
     security_type = _text(row.get("SECURITY_TYPE"))
+    trade_unit = _text(row.get("TRADE_UNIT"))
     deal_volume = _float(row.get("DEAL_VOLUME"))
-    if security_type in ("EQA", "FDO"):
-        vol = deal_volume / 1e4 if deal_volume is not None else None
-    elif security_type == "BD0":
-        vol = (deal_volume * 10 / 1e4) if deal_volume is not None else None
-    else:
-        vol = None
-        if security_type is not None:
-            log.warning(
-                "RPT_DATA_BLOCKTRADE unknown SECURITY_TYPE=%r, vol set to None",
-                security_type
-            )
+    factor = _BLOCK_TRADE_VOLUME_FACTOR.get((security_type or "", trade_unit or ""))
+    if factor is None:
+        raise MiaoxiangUnknownUnitError(
+            f"RPT_DATA_BLOCKTRADE unknown (SECURITY_TYPE, TRADE_UNIT) pair "
+            f"{(security_type, trade_unit)!r}"
+        )
+    vol = (deal_volume * factor / 1e4) if deal_volume is not None else None
 
     buyer = _text(row.get("BUYER_NAME"))
     seller = _text(row.get("SELLER_NAME"))
@@ -512,6 +671,33 @@ class MiaoxiangSource:
             sort_columns=sort_columns,
             sort_types=sort_types,
         )
+        # Vendor-scope exclusion (out-of-scope rows, e.g. B股/EQB — owner ruling
+        # 2026-09-12) happens here: after the truncation check inside
+        # _fetch_report_day (which must keep comparing the provider's declared
+        # count against the rows landed *before* this exclusion — the vendor's
+        # own pagination integrity is unrelated to what this project chooses to
+        # keep), and before the per-row cleaner (which would otherwise raise
+        # MiaoxiangUnknownUnitError on an EQB row's (SECURITY_TYPE, TRADE_UNIT)
+        # pair, since that pair is deliberately not registered any more).
+        if name == "block_trade":
+            exclude_security_types = load_vendor_scope()["block_trade"]
+            before = len(raw_rows)
+            raw_rows = [
+                r for r in raw_rows
+                if _text(r.get("SECURITY_TYPE")) not in exclude_security_types
+            ]
+            excluded = before - len(raw_rows)
+            # Deliberate: only log when excluded>0. A zero-exclusion day has no
+            # observable state change to report (no rows were dropped, nothing
+            # for a reader of this log to act on or reconcile against).
+            if excluded:
+                log.info(
+                    "RPT_DATA_BLOCKTRADE %s excluded %d rows by vendor_scope "
+                    "exclude_security_types=%s",
+                    trade_date,
+                    excluded,
+                    sorted(exclude_security_types),
+                )
         cleaner = _CLEANERS[name]
         return [cleaner(r, trade_date=trade_date) for r in raw_rows]
 
@@ -551,6 +737,18 @@ class MiaoxiangSource:
                 f"miaoxiang {report_name} {trade_date} exceeded {MAX_PAGES} pages "
                 "without exhausting pagination"
             )
+        # A missing/zero provider count makes assess_paginated_land's
+        # `expected_count > 0` gate a no-op (pagination_integrity.py:40-49) —
+        # it silently stops checking for truncation instead of treating 0 as
+        # a declared-empty result. Rows landed with count<=0 means the
+        # provider's count field itself is untrustworthy for this response;
+        # a non-empty land in a genuinely empty day (`rows` stays [] and this
+        # branch is skipped) is left alone.
+        if rows and provider_count == 0:
+            raise MiaoxiangTruncationError(
+                f"miaoxiang {report_name} {trade_date}: provider count 缺失或为 0, "
+                f"但落了 {len(rows)} 行"
+            )
         verdict = assess_paginated_land(
             expected_count=provider_count,
             landed_rows=len(rows),
@@ -574,12 +772,15 @@ __all__ = [
     "REPORT_BLOCK_TRADE",
     "REPORT_TOP_INST",
     "REPORT_TOP_LIST",
+    "MiaoxiangBadNumberError",
     "MiaoxiangMissingFieldError",
     "MiaoxiangSource",
     "MiaoxiangSourceError",
     "MiaoxiangTruncationError",
+    "MiaoxiangUnknownUnitError",
     "clean_block_trade_row",
     "clean_top_inst_row",
     "clean_top_list_row",
     "compact_trade_date",
+    "load_vendor_scope",
 ]

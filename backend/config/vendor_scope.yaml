@@ -1,0 +1,14 @@
+# 业主裁定 (2026-09-12) 原话: 「不用管B股，以后也不做，获取完的数据删除清理干净」。
+# 已落的 138 行 B 股 (妙想 SECURITY_TYPE='EQB') 主会话已删除, 以后不再落库。
+#
+# 本文件只描述「供应商数据里哪些行不在项目范围」——不改变清洗/换算逻辑, 不代表供应商
+# 停止返回这些行 (妙想仍可能在原始响应里带这些行), 只是本项目在清洗前主动丢弃它们。
+#
+# 加载与校验见 backend/services/data_sources/sources/miaoxiang.py::load_vendor_scope
+# —— 未知键 fail-closed: 根键集合、miaoxiang 下的 api 键集合、每个 api 配置的键集合
+# 都必须与本文件的既有形状逐字段相等, 出现任何未登记的键或形态都直接抛 ValueError,
+# 不静默忽略、不部分生效。
+version: 1
+miaoxiang:
+  block_trade:
+    exclude_security_types: [EQB]
