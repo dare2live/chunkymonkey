@@ -73,8 +73,9 @@ r2 字面文本的出入见各函数头注):
   O. ceiling extra (新表比交易所"多"出来的笔数) 沪深处置不同: 沪市
      (``ceiling_extra_sh``) 硬失败 —— 上交所逐笔查询是完整披露, 新表凭空多出的成交
      只能是错的; 深市 (``ceiling_extra_sz``) 只降级到"需要人工看一眼" —— 深交所
-     CATALOGID=1265 只覆盖协议交易, 盘后定价没有逐笔可查, 新表比它"多"是合法的
-     (业主裁定, 见 CLAUDE.md 交易所证据文件小节)。
+     CATALOGID=1265 只覆盖协议交易, 盘后定价没有逐笔可查, 新表比它"多"是合法的。
+     证据文件的取数入口与格式钉在 :func:`load_exchange_evidence` 的头注里 (本文件),
+     不在任何文档小节 —— 别处没有第二份定义。
 
 用法:
   python backend/scripts/reland_event_domain.py prepare --domain block_trade --run-id r1
@@ -798,7 +799,7 @@ _CODE_RE = re.compile(r"^\d{6}$")
 
 
 def load_exchange_evidence(path: Path) -> dict[str, Any]:
-    """加载并严格校验一份交易所证据文件 (CLAUDE.md "交易所证据文件" 小节格式钉死)。
+    """加载并严格校验一份交易所证据文件 (格式由本函数钉死, 没有第二份定义)。
 
     文件名必须是 ``exch_<sh|sz>_<YYYYMMDD>.json``; ``trade_date`` 必须与文件名里
     的日期一致 —— 这不是多余检查, 是防"文件从别的日期拷贝过来改了个名"这种人工
