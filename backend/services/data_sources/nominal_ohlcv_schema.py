@@ -16,9 +16,12 @@ DATASET_ID = "tier0.market_data.nominal_ohlcv_daily"
 LANDING_TABLE = "landing_tushare_daily"
 CANONICAL_TABLE = "canonical_nominal_ohlcv_daily"
 SCHEMA_ID = "tier0.market_data.nominal_ohlcv_daily.canonical"
-SCHEMA_VERSION = "1"
+# 2026-09-13 v2: pre_close/change/pct_chg 改可空 + 新增 pre_close_origin。
+# 改 canonical 形状必须同时抬 schema 与 contract 版本, 否则下游分不清两份数据
+# (同 holders_top10 的 test_identity_promotion_bumped_both_versions)。
+SCHEMA_VERSION = "2"
 WRITER_ID = "services.data_sources.nominal_ohlcv_acceptance"
-CONTRACT_VERSION = "1"
+CONTRACT_VERSION = "2"
 PROVIDER_FIELDS = (
     "ts_code",
     "trade_date",
@@ -101,28 +104,39 @@ _SCHEMA_PAYLOAD: dict[str, Any] = {
             "null_semantics": "forbidden",
             "origin": "provider",
         },
+        # 2026-09-13 v2 改可空。理由不是"值不重要", 恰恰相反: 它是 adjust_factor 全链的
+        # 唯一输入 (ratio[t] = close[t-1] / pre_close[t]), 错一个点会让那只股此后全部
+        # hfq_factor 永久作废。v1 声明 forbidden 的代价是**整个交易日的分区被 REJECTED**
+        # (NULL_NUMERIC), 即一行取不到就丢一天 —— 那不是"缺失传播为缺失", 是缺失放大。
+        # 可空之后, 取不到的那一行落 NULL、其余行照常, 由消费方按 null_semantics 处置。
+        # origin 保持 provider 不动: 可空性与"值由谁产生"是正交的两个轴 (margin 同表内
+        # rqye/rqmcl/rqyl 也是 nullable=True + 同一 null 语义 + origin=provider);
+        # 逐行的真实来源由 pre_close_origin 说, 不挤进列级声明。
         {
             "name": "pre_close",
             "duckdb_type": "DOUBLE",
-            "nullable": False,
+            "nullable": True,
             "unit": "CNY",
-            "null_semantics": "forbidden",
+            "null_semantics": "provider_unknown_or_not_reported; never_zero_fill",
             "origin": "provider",
         },
+        # change 与 pct_chg 都是从 pre_close 派生的 (change = close - pre_close), 所以
+        # pre_close 不可知时它们必然也不可知 —— 让它们继续 forbidden 等于强迫适配器
+        # 用一个编造的 pre_close 去算出两个编造的值。
         {
             "name": "change",
             "duckdb_type": "DOUBLE",
-            "nullable": False,
+            "nullable": True,
             "unit": "CNY",
-            "null_semantics": "forbidden",
+            "null_semantics": "provider_unknown_or_not_reported; never_zero_fill",
             "origin": "provider",
         },
         {
             "name": "pct_chg",
             "duckdb_type": "DOUBLE",
-            "nullable": False,
+            "nullable": True,
             "unit": "percent",
-            "null_semantics": "forbidden",
+            "null_semantics": "provider_unknown_or_not_reported; never_zero_fill",
             "origin": "provider",
         },
         {
@@ -142,10 +156,39 @@ _SCHEMA_PAYLOAD: dict[str, Any] = {
             "origin": "provider",
         },
         *lineage_fields(),
+        # 2026-09-13 v2 新增。**域级**增补列, 不进 lineage_fields() —— 那六列是所有
+        # SecurityDay 域共有的血缘列, 而 stock_st 没有 pre_close, 不该长出这一列。
+        # 也**不进 PROVIDER_FIELDS**: canonical_content_hash 只按 provider_fields 算,
+        # 实测同一批行带不带本列算出的 content_hash 逐位相同 —— 所以加它不动既有
+        # 859 万行指纹, 也不动两份冻结快照。
+        # 为什么需要它: 三列可空之后, "这一行的 pre_close 到底是谁给的" 成了必须回答
+        # 的问题 —— 是供应商原样给的、是按交易所公式推的、还是根本不知道, 三者的可信
+        # 度天差地别, 而列级 origin 说不了逐行的事。
+        # 取值不用 allowed_values 做 CHECK: 实测 DuckDB 1.5.2 不支持给既有表 ALTER 加
+        # CHECK, 那会造成"测试新建表有约束、859 万行的生产表永远没有"的分裂; 改由
+        # _candidate_rows 逐行校验 (对新表旧表一视同仁)。
+        {
+            "name": "pre_close_origin",
+            "duckdb_type": "VARCHAR",
+            "nullable": False,
+            "unit": "provenance_label",
+            "null_semantics": "forbidden",
+            "origin": "system",
+            "role": "value_provenance",
+        },
     ],
 }
 SCHEMA_CONTRACT: Mapping[str, Any] = _freeze(_SCHEMA_PAYLOAD)
 SCHEMA_HASH = schema_contract_hash(SCHEMA_CONTRACT)
+
+ENRICHMENT_FIELDS = ("pre_close_origin",)
+# 从 payload 的 nullable 派生, 不手写第二份清单 (照 margin_schema.NON_NULL_NUMERIC_FIELDS
+# 的形态)。手写会让"schema 说可空"与"non_null 清单"两处各抄一份, 改一处漏一处就永久
+# 不等且没有任何东西会红 —— holders_top10 的 _HASH_FIELDS 注释记的正是这个教训。
+_FIELD_BY_NAME = {str(f["name"]): f for f in _SCHEMA_PAYLOAD["fields"]}
+NON_NULL_NUMERIC_FIELDS = tuple(
+    name for name in NUMERIC_FIELDS if not bool(_FIELD_BY_NAME[name]["nullable"])
+)
 
 DOMAIN = SecurityDayDomain(
     domain="daily",
@@ -157,7 +200,8 @@ DOMAIN = SecurityDayDomain(
     canonical_table=CANONICAL_TABLE,
     provider_fields=PROVIDER_FIELDS,
     numeric_fields=NUMERIC_FIELDS,
-    non_null_numeric_fields=NUMERIC_FIELDS,
+    non_null_numeric_fields=NON_NULL_NUMERIC_FIELDS,
+    enrichment_fields=ENRICHMENT_FIELDS,
     text_fields=(),
     grain=("ts_code", "trade_date"),
     partition_field="trade_date",
@@ -207,7 +251,9 @@ __all__ = [
     "CONTRACT_VERSION",
     "DATASET_ID",
     "DOMAIN",
+    "ENRICHMENT_FIELDS",
     "LANDING_TABLE",
+    "NON_NULL_NUMERIC_FIELDS",
     "PROVIDER_FIELDS",
     "SCHEMA_CONTRACT",
     "SCHEMA_HASH",

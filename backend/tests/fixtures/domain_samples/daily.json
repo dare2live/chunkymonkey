@@ -5,7 +5,7 @@
   "ts_code",
   "trade_date"
  ],
- "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名",
+ "note": "首批真实样本 (字段语义契约): 消费代码 fixture 必须用本形态, 禁抽象命名。2026-09-13 契约 v2 补 pre_close_origin: 该列是域级增补列 (enrichment_fields), 适配器必须逐行给出 —— 本样本是 tushare 首批, 其 pre_close 经实测带真实除权调整 (挑事件最密集三天验: 事件行数与 landing 不等行数逐一吻合), 是真 provider 值, 故标 provider_tushare。",
  "rows": [
   {
    "ts_code": "000001.SZ",
@@ -18,7 +18,8 @@
    "change": 0.61,
    "pct_chg": 4.6353,
    "vol": 2194127.94,
-   "amount": 2971546.989
+   "amount": 2971546.989,
+   "pre_close_origin": "provider_tushare"
   },
   {
    "ts_code": "000002.SZ",
@@ -31,7 +32,8 @@
    "change": 0.03,
    "pct_chg": 0.1648,
    "vol": 636399.63,
-   "amount": 1158945.281
+   "amount": 1158945.281,
+   "pre_close_origin": "provider_tushare"
   },
   {
    "ts_code": "000004.SZ",
@@ -44,7 +46,8 @@
    "change": 0.26,
    "pct_chg": 2.686,
    "vol": 21340.62,
-   "amount": 21096.459
+   "amount": 21096.459,
+   "pre_close_origin": "provider_tushare"
   },
   {
    "ts_code": "000005.SZ",
@@ -57,7 +60,8 @@
    "change": 0.01,
    "pct_chg": 0.5376,
    "vol": 58366.0,
-   "amount": 10814.411
+   "amount": 10814.411,
+   "pre_close_origin": "provider_tushare"
   },
   {
    "ts_code": "000006.SZ",
@@ -70,7 +74,8 @@
    "change": -0.18,
    "pct_chg": -2.8571,
    "vol": 1066476.7,
-   "amount": 650673.926
+   "amount": 650673.926,
+   "pre_close_origin": "provider_tushare"
   }
  ]
 }

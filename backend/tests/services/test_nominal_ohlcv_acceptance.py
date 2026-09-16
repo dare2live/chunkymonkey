@@ -18,7 +18,17 @@ from services.data_sources.nominal_ohlcv_runtime import (
     publish_accepted_nominal_ohlcv_partition,
     runtime_surface as ohlcv_runtime_surface,
 )
-from services.data_sources.nominal_ohlcv_schema import DATASET_ID, SCHEMA_HASH
+from services.data_sources.nominal_ohlcv_schema import (
+    CONTRACT_VERSION,
+    DATASET_ID,
+    ENRICHMENT_FIELDS,
+    NON_NULL_NUMERIC_FIELDS,
+    NUMERIC_FIELDS,
+    PROVIDER_FIELDS,
+    SCHEMA_CONTRACT,
+    SCHEMA_HASH,
+    SCHEMA_VERSION,
+)
 from services.data_sources.observation_population import (
     NOMINAL_KLINE_DATASET_ID,
     AcceptedPartitionRef,
@@ -116,6 +126,60 @@ def test_contract_factory_binds_schema_hash() -> None:
     }
 
 
+def test_identity_promotion_bumped_both_versions() -> None:
+    """改 canonical 形状必须同时抬 schema 与 contract 版本, 否则下游分不清两份数据。
+
+    照 holders_top10 同名测试的形态。钉死的是**声明值**不是测量值: 它的作用正是逼
+    "改形状的那个人"同时改这里, 从而意识到要抬版本 —— 改了形状忘了抬版本, 这条会红。
+    """
+
+    assert SCHEMA_VERSION == "2"
+    assert CONTRACT_VERSION == "2"
+
+
+def test_non_null_numeric_is_derived_from_payload_not_a_second_list() -> None:
+    """non_null 清单必须由 payload 的 nullable 现算, 不许手写第二份。
+
+    手写会让"schema 说可空"与"non_null 清单"两处各抄一份, 改一处漏一处就永久不等
+    且没有任何东西会红 (holders_top10 的 _HASH_FIELDS 注释记的正是这个教训)。
+    本条断言的是**派生关系**, 不是某个具体名单 —— 将来再改哪列可空都不用动它。
+    """
+
+    by_name = {str(f["name"]): f for f in SCHEMA_CONTRACT["fields"]}
+    expected = tuple(n for n in NUMERIC_FIELDS if not bool(by_name[n]["nullable"]))
+    assert NON_NULL_NUMERIC_FIELDS == expected
+    # 且它必须真的比 NUMERIC_FIELDS 短 —— 等长说明没有任何一列可空, 那 v2 白改了
+    assert set(NON_NULL_NUMERIC_FIELDS) < set(NUMERIC_FIELDS)
+
+
+def test_v2_null_semantics_are_honest_for_the_three_derived_columns() -> None:
+    """pre_close/change/pct_chg 可空, 且 null 语义不许退回 forbidden。
+
+    v1 声明 forbidden 的代价实测过: 一行取不到 pre_close -> NULL_NUMERIC ->
+    **整个交易日的分区被 REJECTED**, 那是缺失放大不是缺失传播 (红线 3)。
+    """
+
+    by_name = {str(f["name"]): f for f in SCHEMA_CONTRACT["fields"]}
+    for name in ("pre_close", "change", "pct_chg"):
+        assert by_name[name]["nullable"] is True, name
+        assert by_name[name]["null_semantics"] != "forbidden", name
+        assert "never_zero_fill" in str(by_name[name]["null_semantics"]), name
+
+
+def test_enrichment_column_stays_out_of_provider_fields() -> None:
+    """pre_close_origin 必须在 schema 里、但**不在** PROVIDER_FIELDS 里。
+
+    canonical_content_hash 只按 provider_fields 算 —— 实测同一批行带不带本列算出的
+    content_hash 逐位相同。一旦有人把它挪进 PROVIDER_FIELDS, 859 万行的 content_hash
+    会全部改变, 两份冻结快照与 accepted_partition 指针同时失配, 而那是静默发生的。
+    """
+
+    declared = {str(f["name"]) for f in SCHEMA_CONTRACT["fields"]}
+    assert ENRICHMENT_FIELDS == ("pre_close_origin",)
+    assert set(ENRICHMENT_FIELDS) <= declared
+    assert not (set(ENRICHMENT_FIELDS) & set(PROVIDER_FIELDS))
+
+
 def test_provider_nan_normalizes_before_landing() -> None:
     from services.data_sources.nominal_ohlcv_schema import DOMAIN as OHLCV_DOMAIN
     from services.data_sources.security_day_capture import (
@@ -176,6 +240,7 @@ def test_publish_accepts_partition_and_reader_returns_membership(conn) -> None:
         conn,
         SecurityDayLandingBatch(
             source=contract.source,
+            contract_version=contract.contract_version,
             batch_id="daily-batch-1",
             partition_value=PARTITION,
             observed_at=OBSERVED,
@@ -206,6 +271,7 @@ def test_premature_publication_is_rejected(conn) -> None:
         conn,
         SecurityDayLandingBatch(
             source=contract.source,
+            contract_version=contract.contract_version,
             batch_id="daily-early",
             partition_value=PARTITION,
             observed_at=early,
@@ -259,6 +325,7 @@ def test_kill_point_after_canonical_delete_rolls_back(conn) -> None:
         conn,
         SecurityDayLandingBatch(
             source=contract.source,
+            contract_version=contract.contract_version,
             batch_id="daily-seed",
             partition_value=PARTITION,
             observed_at=OBSERVED,
@@ -278,6 +345,7 @@ def test_kill_point_after_canonical_delete_rolls_back(conn) -> None:
         conn,
         SecurityDayLandingBatch(
             source=contract.source,
+            contract_version=contract.contract_version,
             batch_id="daily-kill",
             partition_value=PARTITION,
             observed_at=OBSERVED.replace(minute=10),
@@ -330,6 +398,7 @@ def test_stock_st_and_ohlcv_resolver_end_to_end(conn) -> None:
         conn,
         SecurityDayLandingBatch(
             source=ohlcv_contract.source,
+            contract_version=ohlcv_contract.contract_version,
             batch_id="ohlcv-st-day",
             partition_value=ST_PARTITION,
             observed_at=OHLCV_ON_ST_DAY,
@@ -346,6 +415,7 @@ def test_stock_st_and_ohlcv_resolver_end_to_end(conn) -> None:
         conn,
         SecurityDayLandingBatch(
             source=st_contract.source,
+            contract_version=st_contract.contract_version,
             batch_id="st-batch-1",
             partition_value=ST_PARTITION,
             observed_at=ST_OBSERVED,

@@ -171,10 +171,13 @@ def check_canonical_vs_pointer(conn: Any, domain: DomainSpec, contract: Any) -> 
 # 当前就有真实 mismatch —— 但它是 frozen_at=2026-08-24T10:51:37Z 的 cutover 证据快照
 # (holders_top10 冻结在 contract_version=2, 现网已到 3; nominal_ohlcv 的 contract_hash
 # 冻结在 2026-09-01 "source/api 退出 config_hash" 改动之前), 语义就是"锁住那一刻",
-# 不是忘了重生 —— 故登记豁免。另一个 (main_rally_dataset_snapshot/snapshot.json) 同样带
-# frozen_at 标记但**当前恰好仍然一致**, 刻意不豁免: 提前豁免一个当前没有问题的文件等于
-# 把它的未来漂移也一并静默掉, 违反"门不能因为你觉得它以后会豁免就现在放行"——它真的漂移
-# 时应该在那一刻被抓到, 由那时的人决定修复还是登记豁免。
+# 不是忘了重生 —— 故登记豁免。
+#
+# 2026-09-13 更新: 上面这段原本还写着 main_rally_dataset_snapshot/snapshot.json
+# "当前恰好仍然一致, 刻意不豁免 …… 它真的漂移时应该在那一刻被抓到, 由那时的人决定修复
+# 还是登记豁免"。**今天它真的漂了** (daily 契约 v1->v2, 131/131 条戳记录的 config_hash
+# 与现算契约不符), 而这就是"那一刻"。裁决是登记豁免, 理由见下方条目 —— 不是因为修不动
+# 懒得修, 是因为"修"这条路被两道独立的机制各自堵死, 且两次都是实测判决不是推断。
 # ============================================================================
 
 LINEAGE_SNAPSHOT_EXEMPTIONS: dict[str, str] = {
@@ -186,6 +189,25 @@ LINEAGE_SNAPSHOT_EXEMPTIONS: dict[str, str] = {
         "config_hash 的改动, config_hash 本身仍相同); org_holding/stk_holdertrade 当前仍一致。"
         "文件语义是'锁住 2026-08-24 那一刻的 shadow 验证证据', 不是活文档, 不应跟随契约演进——"
         "验证过这不是漏更新, 是设计如此。"
+    ),
+    "data/lineage/main_rally_dataset_snapshot/snapshot.json": (
+        "2026-09-13 daily 契约 v1->v2 (pre_close/change/pct_chg 改可空 + 新增 pre_close_origin), "
+        "config_hash 21d86185…->2e6150f5…, 于是这份 frozen_at=2026-08-24T10:46:40Z 的 F0 快照里 "
+        "131/131 条戳记录与现算契约不符。**登记豁免而不是重生**, 两条路各被一道独立机制堵死, "
+        "两次都是实测判决不是推断: "
+        "(1) 重生会 fail-closed —— freeze 后必然重跑 run_b0_scaffold, 而 main_rally 的 "
+        "holdout_scope_id 现算为 8c70d5f1a606… 且磁盘上 8c70d5f1….holdout_consumed 已存在, "
+        "consume_single_touch 会拒绝第二次消费 (跑过判决实验); 更早一步 "
+        "assert_live_nominal_pointer_matches_snapshot 今天就已抛 content_hash drift —— "
+        "130 天里 59 天的 row_count/content_hash 因 2026-09-12 换码删行 (amend_kline_entity_"
+        "duplicates, 业主已裁决) 而与活库脱钩, 即这份快照**在本次改动之前就已不可绑定**。 "
+        "(2) 改文件字节会波及无处登记的 check⑤ —— phase_f 的 b0/b1/b2/manifest 四处钉着本文件 "
+        "整文件摘要 877f3ca2…, 现状全部 OK; 而 check_file_digest_pins 没有任何豁免入口 "
+        "(run_all_checks 的 lineage_exemptions 只传给 check_lineage_snapshots), 动一次字节就多 "
+        "4 条永久 FAIL。 "
+        "豁免作用域仅限本条 config_hash 漂移; content_hash/row_count 脱钩**不在**本豁免内 —— "
+        "那一项由 snapshot_nominal_bind 在真正要用这份快照时抛, 红线 14「缺 lineage = UNTRUSTED」"
+        "应当在使用点生效, 不该被门提前静默。"
     ),
 }
 

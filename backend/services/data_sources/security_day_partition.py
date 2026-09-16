@@ -103,6 +103,40 @@ class SecurityDayDomain:
     # 于是「有名义 K 线 = 在交易」这个 universe 判据在不改规则的情况下改变了含义。
     # 判据要说它真正的意思, 而不同域的"真正发生了"是不同字段, 所以进 domain 规格不硬编码。
     activity_field: str | None = None
+    # 2026-09-13: 域级增补列 —— 在 schema_payload["fields"] 里、但**不在** provider_fields 里
+    # 的那些列。与 lineage_fields() 的六列不同: 那六列是所有 SecurityDay 域共有的血缘列,
+    # 这里是**单域语义列** (daily 的 pre_close_origin 不该长在 stock_st 上)。
+    # 实测依据: canonical_content_hash 只按 provider_fields 算, 同一批行带不带增补列算出的
+    # content_hash 逐位相同 —— 所以加列不动既有 859 万行指纹, 也不动两份冻结快照。
+    # 值由 accept 逐行从 landing payload 取, 缺键即 MISSING_ENRICHMENT 拒绝 (不按批兜底:
+    # 同一批内不同行可以不同源, 按批兜底会把"这一行从哪来"压成"这一批从哪来")。
+    enrichment_fields: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        # canonical 行由 {**provider, **enrichment, <lineage 六键>} 合成, 后写的键**静默**
+        # 覆盖先写的: enrichment 撞 provider 会悄悄改掉供应商原值, lineage 撞 enrichment 会
+        # 悄悄丢掉增补值 —— 两种都不报错、不留痕。实测过这个覆盖行为确实发生。
+        # 所以在**构造那一刻**就拒绝, 而不是等某天某行数据对不上才去查
+        # (同 SecurityDayLandingBatch 删掉 source 默认值的理由: 把静默错变成构造期的显式错)。
+        from services.data_sources.security_day_reader import lineage_fields
+
+        enrichment = set(self.enrichment_fields)
+        clash_provider = enrichment & set(self.provider_fields)
+        clash_lineage = enrichment & {str(f["name"]) for f in lineage_fields()}
+        if clash_provider or clash_lineage:
+            raise ValueError(
+                f"{self.domain}: enrichment_fields 与既有列重名 —— "
+                f"撞 provider_fields={sorted(clash_provider)} "
+                f"撞 lineage_fields={sorted(clash_lineage)}; "
+                "canonical 行合成时后者会静默覆盖前者, 必须改名"
+            )
+        declared = {str(f["name"]) for f in self.schema_payload["fields"]}
+        missing = enrichment - declared
+        if missing:
+            raise ValueError(
+                f"{self.domain}: enrichment_fields {sorted(missing)} 不在 "
+                "schema_payload['fields'] 里 —— 声明了却没有列可落, accept 会 KeyError"
+            )
 
     @property
     def availability_policy(self) -> AvailabilityPolicy:
@@ -144,7 +178,11 @@ class SecurityDayLandingBatch:
     # (capture.py source=domain.source / transport.py source=batch.source), 只有测试在吃
     # 这个默认值 —— 删掉它把静默错变成构造期的显式错。
     source: str
-    contract_version: str = "1"
+    # 2026-09-13: contract_version 的默认值 "1" 同理删掉 —— 它是上面 source 默认值那个坑的
+    # 另一半, 当时没一起删。daily 契约升到 v2 之后两域的合法值已经不同 (daily="2",
+    # stock_st="1"), 默认值等于替调用方静默挑一个; 实测 10 个测试构造点都在吃它, 表现为
+    # land 时 "batch contract_version='1' current='2'"。两个生产构造点本就显式传。
+    contract_version: str
 
 
 @dataclass(frozen=True)
@@ -188,6 +226,32 @@ def _columns(conn, table: str) -> dict[str, str]:
         str(row[0]): str(row[1]).upper()
         for row in conn.execute(f"DESCRIBE {table}").fetchall()
     }
+
+
+def _canonical_constraint_contract(conn, table: str) -> dict[str, Any]:
+    """读出一张 canonical 表**实际**的约束 (不是 DDL 声称的)。
+
+    照 margin_schema._constraint_contract 的形态 —— 那是本仓已有的同型实现, 不另造一套。
+    """
+
+    rows = conn.execute(
+        """
+        SELECT constraint_type, constraint_column_names
+          FROM duckdb_constraints()
+         WHERE table_name = ?
+        """,
+        [table],
+    ).fetchall()
+    primary_keys: set[tuple[str, ...]] = set()
+    not_null: set[str] = set()
+    for constraint_type, columns in rows:
+        kind = str(constraint_type).upper()
+        key = tuple(str(column) for column in (columns or []))
+        if kind == "PRIMARY KEY":
+            primary_keys.add(key)
+        elif kind == "NOT NULL" and len(key) == 1:
+            not_null.add(key[0])
+    return {"primary_keys": primary_keys, "not_null": not_null}
 
 
 def ensure_security_day_schema(conn, domain: SecurityDayDomain) -> None:
@@ -242,6 +306,29 @@ def ensure_security_day_schema(conn, domain: SecurityDayDomain) -> None:
                 f"{domain.canonical_table} schema drift: "
                 f"missing={sorted(expected_canonical - canonical_cols)} "
                 f"extra={sorted(canonical_cols - expected_canonical)}"
+            )
+        # 2026-09-13: 只比列名集合守不住"约束漂移"。CREATE TABLE IF NOT EXISTS 对**既有**表
+        # 是 no-op, 所以改 schema 里某列的 nullable 既不会被发现、也不会让表跟着变 —— 契约
+        # 说可空而物理表仍 NOT NULL, 第一个 NULL 值进来才在 INSERT 处炸, 且错误信息与根因无关。
+        # 照 margin_schema.ensure_margin_acceptance_schema 的形态补上 (本仓已有的同型实现)。
+        # 实测: 补上这段后 daily(17/17) 与 stock_st(11/11) 今天都恰好一致, 不是靠放宽通过的。
+        constraints = _canonical_constraint_contract(conn, domain.canonical_table)
+        expected_not_null = {
+            str(field["name"]) for field in fields if not bool(field["nullable"])
+        }
+        if constraints["not_null"] != expected_not_null:
+            raise SecurityDayError(
+                f"{domain.canonical_table} nullability drift: "
+                f"表上非空={sorted(constraints['not_null'] - expected_not_null)} "
+                f"契约要求非空但表上可空={sorted(expected_not_null - constraints['not_null'])} "
+                "—— 契约与物理表不一致; 改 schema 的 nullable 必须同时 ALTER 既有表"
+            )
+        expected_primary = {tuple(domain.schema_payload["primary_key"])}
+        if constraints["primary_keys"] != expected_primary:
+            raise SecurityDayError(
+                f"{domain.canonical_table} primary-key drift: "
+                f"actual={sorted(constraints['primary_keys'])} "
+                f"expected={sorted(expected_primary)}"
             )
         conn.execute("COMMIT")
     except Exception as primary_error:
@@ -570,9 +657,23 @@ def _candidate_rows(
                 "DUPLICATE_GRAIN", f"duplicate ts_code={code}"
             )
         seen.add(code)
+        enrichment: dict[str, Any] = {}
+        for name in domain.enrichment_fields:
+            value = payload.get(name)
+            if value is None or (isinstance(value, str) and not value.strip()):
+                raise SecurityDayValidationError(
+                    "MISSING_ENRICHMENT",
+                    f"{name} 不在 landing payload 里 (ts_code={code}); 适配器必须逐行给出该值。"
+                    "不按批兜底: 同一批内不同行可以不同源, 按批兜底会把「这一行的值从哪来」"
+                    "压成「这一批从哪来」, 那是编造血缘。契约升版前落地的历史批次 payload "
+                    "没有此键, 它们不从 landing 重生成 —— 其值由一次性回填按 "
+                    "ingest_batch.source_name 补齐 (见重打脚本说明)。",
+                )
+            enrichment[name] = value
         canonical.append(
             {
                 **provider,
+                **enrichment,
                 "available_at": available_at,
                 "ingest_batch_id": batch_id,
                 "source_row_hash": str(row_hash),

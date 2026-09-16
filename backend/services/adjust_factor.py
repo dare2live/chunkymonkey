@@ -41,9 +41,19 @@
    被裁决要退役）的模式，见该脚本与 ``tushare_sunset.yaml``（本模块不碰这两者）。
 3. **缺失传播为缺失**：``close``/``pre_close`` 任一行为 NULL -> 该行 ``ratio`` = NULL ->
    该股从此往后所有 ``hfq_factor`` = NULL（累乘链条一环 unknown，后面继承 unknown；不做
-   latest fallback、不假定"后面肯定没事"）。当前 ``canonical_nominal_ohlcv_daily`` 全列
-   NOT NULL（schema 声明），这条路径当前不会被触发，但必须存在，防止未来源表放松约束时
-   静默算错。
+   latest fallback、不假定"后面肯定没事"）。
+
+   注意: 2026-09-13 起这条路径**真的会被触发**：nominal_ohlcv 契约 v2 把
+   ``pre_close``/``change``/``pct_chg`` 三列改为可空（``null_semantics`` =
+   ``provider_unknown_or_not_reported; never_zero_fill``），生产库已同步重打。
+   本段原文是"当前全列 NOT NULL，这条路径当前不会被触发"——那句话自 v2 落地那刻起失效，
+   保留它会让下一个人以为这里是死代码。改动的理由恰恰是 v1 的 ``forbidden`` 代价太大：
+   一行取不到 pre_close 会让 ``_validate_provider_row`` 抛 ``NULL_NUMERIC``、**整个交易日
+   的分区被 REJECTED**，那不是"缺失传播为缺失"，是缺失放大成丢一整天。
+
+   由此本模块的 poison 语义从"防御性代码"变成"活路径"：单行 NULL 会让该股此后全部
+   ``hfq_factor`` 作废，且 ``build_latest`` 只追加不改写历史行（见其 docstring），
+   回补必须走 ``rebuild_all``。逐行的值来源由 canonical 的 ``pre_close_origin`` 列说明。
 4. **ratio 超出合理区间**（见配置 ``ratio_bounds``）同样判 unknown、同样 poison 向后传播——
    一个荒谬的 ratio（例如源数据 pre_close 异常导致比例爆炸）如果被悄悄接受，会把错误永久
    固化进这只股此后的每一天。

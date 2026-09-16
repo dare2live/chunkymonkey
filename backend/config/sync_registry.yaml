@@ -1114,10 +1114,13 @@ domains:
       kind: raw_evidence
       population_label: provider_response
       usage: evidence_only
+    # 2026-09-13 契约 v2: pre_close/change/pct_chg 改可空 + 新增 pre_close_origin 血缘列。
+    # schema_hash 由 nominal_ohlcv_schema.SCHEMA_HASH 现算, 这里是它的副本 —— 两处不等时
+    # nominal_ohlcv_contract_for_spec 抛 "security_day_partition drift" (fail-closed)。
     security_day_partition:
-      contract_version: "1"
+      contract_version: "2"
       coverage_start: "20190102"
-      schema_hash: fd84a583a868a967980d1a5759fd8ac7b607f9847267b000ca0b0d0f900f8551
+      schema_hash: 17ddf5c43490d0e72a2b12c093a1c43eec5867828fc6f47683dd84cfc7754d4f
     # 2026-09-01 授权换源 (tushare 2026-09-10 到期不续期): tushare -> tdxhub (通达信)。
     # 实证: 全市场 5208 只 x 9 字段与 canonical 逐项**零差异** (46872/46872 全对), 代码集
     # 双向零缺失; 除权日 pre_close 15/15 正确 (通达信返前复权口径与本项目一致); 停牌语义

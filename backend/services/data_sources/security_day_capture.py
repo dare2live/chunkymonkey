@@ -40,8 +40,21 @@ def project_security_day_provider_row(
         raise SecurityDayError(
             f"{domain.domain}_provider_row_missing_fields missing={missing!r}"
         )
+    # 2026-09-13: 投影按白名单重建 dict, 所以域级增补列 (enrichment_fields) 必须在这里
+    # 显式放行 —— 否则适配器逐行给出的值在**落地之前**就被丢掉, 而失败要等到 accept 才以
+    # MISSING_ENRICHMENT 暴露, 错误点离根因两步远。实测过: 不放行时投影结果里没有该键。
+    # 缺键在这里就炸 (不是拖到 accept): land 是它第一次有机会被发现的地方, 早一步失败,
+    # 错误也更贴近"适配器没给"这个真实根因。
+    missing_enrichment = [name for name in domain.enrichment_fields if name not in row]
+    if missing_enrichment:
+        raise SecurityDayError(
+            f"{domain.domain}_provider_row_missing_enrichment "
+            f"missing={missing_enrichment!r} —— 适配器必须逐行给出这些值; "
+            "不按批兜底 (同一批内不同行可以不同源)"
+        )
     return {
-        name: _normalize_provider_value(row[name]) for name in domain.provider_fields
+        name: _normalize_provider_value(row[name])
+        for name in (*domain.provider_fields, *domain.enrichment_fields)
     }
 
 

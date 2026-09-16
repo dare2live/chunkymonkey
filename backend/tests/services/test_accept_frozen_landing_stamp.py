@@ -243,6 +243,7 @@ def test_reseal_recipe_reproduces_production_seal_for_each_family(conn) -> None:
         conn,
         SecurityDayLandingBatch(
             source=st_contract.source,
+            contract_version=st_contract.contract_version,
             batch_id=st_batch_id,
             partition_value=ST_PARTITION,
             observed_at=ST_OBSERVED,
@@ -318,6 +319,7 @@ def test_stock_st_stale_landed_stamps_are_accepted(conn) -> None:
         conn,
         SecurityDayLandingBatch(
             source=contract.source,
+            contract_version=contract.contract_version,
             batch_id=batch_id,
             partition_value=ST_PARTITION,
             observed_at=ST_OBSERVED,
@@ -371,6 +373,7 @@ def test_stock_st_stale_contract_version_is_still_rejected(conn) -> None:
         conn,
         SecurityDayLandingBatch(
             source=contract.source,
+            contract_version=contract.contract_version,
             batch_id=batch_id,
             partition_value=ST_PARTITION,
             observed_at=ST_OBSERVED,
@@ -399,6 +402,7 @@ def test_stock_st_stale_writer_id_is_still_rejected(conn) -> None:
         conn,
         SecurityDayLandingBatch(
             source=contract.source,
+            contract_version=contract.contract_version,
             batch_id=batch_id,
             partition_value=ST_PARTITION,
             observed_at=ST_OBSERVED,
