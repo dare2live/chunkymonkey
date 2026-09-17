@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .context import REPO, PipelineContext
+from .evidence_paths import load_pipeline_evidence_paths
 from .preflight import run_watermark_sla_check
 from .run_outcome import (
     OUTCOME_HARD_FAIL,
@@ -51,7 +52,7 @@ def run_store(ctx: PipelineContext) -> None:
 
     # Step 2.99: acquisition 后重算同一 SLA 投影。preflight 仅保留 before/readiness 证据，
     # 最终报告和告警只消费此 post-acquire artifact，避免已修复分区仍被旧报告误报。
-    sla_output_rel = f"data/audit/watermark_sla_{ctx.date}.json"
+    sla_output_rel = load_pipeline_evidence_paths().watermark_sla_rel(date=ctx.date)
     sla_returncode = run_watermark_sla_check(ctx, output_rel=sla_output_rel)
     if sla_returncode == 2:
         ctx.degraded(f"post-acquire watermark SLA alert (见 {sla_output_rel})")
@@ -121,9 +122,10 @@ def write_report_and_alert(
     ctx.log("--- Report (data-health + run_outcome) ---")
     (REPO / "data/reports").mkdir(parents=True, exist_ok=True)
     (REPO / "data/audit").mkdir(parents=True, exist_ok=True)
-    report_json = REPO / f"data/reports/daily_{ctx.date}.json"
-    preflight_sla_report = REPO / f"data/audit/watermark_sla_before_{ctx.date}.json"
-    sla_report = REPO / f"data/audit/watermark_sla_{ctx.date}.json"
+    paths = load_pipeline_evidence_paths()
+    report_json = REPO / paths.daily_report_rel(date=ctx.date)
+    preflight_sla_report = REPO / paths.watermark_sla_before_rel(date=ctx.date)
+    sla_report = REPO / paths.watermark_sla_rel(date=ctx.date)
 
     _has_degraded = len(ctx.degraded_msgs) > 0
     outcome_info = derive_run_outcome(
@@ -133,6 +135,9 @@ def write_report_and_alert(
     output: dict[str, Any] = {
         "date": ctx.date,
         "dry_run": int(ctx.dry),
+        # chain_run R4 (fable_review_chain_run_stop_rule.md 任务1): --skip-sync 跑一遍
+        # 可以得到 run_outcome=success 而一行数据没取; 报告缺这一列会被这种假绿骗过。
+        "skip_sync": int(ctx.skip_sync),
         "log": str(ctx.log_path),
         "scope": "data_foundation (L0/L1/L1k/snapshot)",
         "phase_status": {

@@ -10,6 +10,7 @@ This surface intentionally stays small. It exposes the live manual-only Tier0/op
   6. data_health          — data_health_snapshot.py --dry-run (表新鲜度/红黄绿)
   7. brick_registry       — L2/L3 FeatureBlock hop/raw/orphan (B5 strangler)
   8. foundation_done      — F1–F10 aggregate (FND-GATE); PARTIAL→WARN (e.g. F8 §15)
+  9. chain_run            — R1–R7 一次 D 日「真运行」证据链 (--run-date; 不传→WARN/UNVERIFIED)
 Retired commands are fail-closed compatibility names, not dormant workflows or future promises.
 """
 from __future__ import annotations
@@ -502,6 +503,37 @@ def _foundation_done_section(result: dict[str, Any]) -> dict[str, Any]:
     return section
 
 
+def _chain_run_section(run_date: str | None, *, repo: Path) -> dict[str, Any]:
+    """R1-R7: 是否存在 D 日一次「真运行」证据链 (backend/services/pipeline/chain_run.py)。
+
+    不传 --run-date: doctor 判不出该选哪一天的证据, 本节 state=UNVERIFIED, 聚合按 WARN
+    (不破坏现有 doctor 用途)。传了但判据算不出/不满足: 聚合按 FAIL (要验收就 fail-closed;
+    UNVERIFIED 在这里不等于「放过」, 只是三态语义里「哪一种红」的区分, 见
+    services.pipeline.chain_run 模块顶注)。
+    """
+    if not run_date:
+        return {
+            "name": "chain_run",
+            "verdict": "WARN",
+            "state": "UNVERIFIED",
+            "reason": "--run-date 未传, 无法判定选哪一天的证据 (不影响 doctor 其余节)",
+        }
+    from services.pipeline.chain_run import evaluate_chain_run
+
+    outcome = evaluate_chain_run(run_date, repo=repo)
+    state = outcome.get("state")
+    section: dict[str, Any] = {
+        "name": "chain_run",
+        "verdict": "PASS" if state == "PASS" else "FAIL",
+        "state": state,
+        "date": run_date,
+    }
+    if state != "PASS":
+        section["failed_rule"] = outcome.get("failed_rule")
+        section["reason"] = outcome.get("reason")
+    return section
+
+
 def run_doctor(args: argparse.Namespace) -> int:
     repo = Path(args.repo).expanduser().resolve()
     sections: list[dict[str, Any]] = []
@@ -527,12 +559,13 @@ def run_doctor(args: argparse.Namespace) -> int:
         cwd=repo,
     )
     sections.append(_foundation_done_section(fd))
+    sections.append(_chain_run_section(getattr(args, "run_date", None), repo=repo))  # 9. chain_run
     verdict = _aggregate_verdict(sections)
     report = {"command": "doctor", "verdict": verdict, "sections": sections,
-              "note": "当前权威快检聚合 8 个独立 gate: moth/automation/alert/"
+              "note": "当前权威快检聚合 9 个独立 gate: moth/automation/alert/"
                       "population_contract/population_readiness/data_health/"
-                      "brick_registry/foundation_done；PARTIAL foundation → WARN；"
-                      "静态契约 PASS 不升级 live readiness"}
+                      "brick_registry/foundation_done/chain_run；PARTIAL foundation → WARN；"
+                      "chain_run 无 --run-date → WARN；静态契约 PASS 不升级 live readiness"}
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if verdict != "FAIL" else 1
 
@@ -559,6 +592,10 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--fast", action="store_true")              # wrapper 已 strip; 防直调残留不崩
     d.add_argument("--skip-storage-payload", action="store_true")
     d.add_argument("--fail-on-dirty-worktree", action="store_true")
+    d.add_argument(
+        "--run-date", default=None,
+        help="YYYYMMDD; 验 chain_run 节 R1-R7 (不传该节 state=UNVERIFIED, 聚合按 WARN)",
+    )
     args, _unknown = parser.parse_known_args(argv)
     if args.command == "doctor":
         return run_doctor(args)

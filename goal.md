@@ -31,7 +31,7 @@
 
 派生 ← 接受 ← 证据，每层可从下一层一键重生成且 hash 相等；每个落盘的可重生成物记录何时、用什么配置、从哪些输入算的，输入在它之后更新即过期即门红；一个 dataset 的事实属性只写在一处登记表，门读它。
 
-达成判据：登记表门 0 warn（无幽灵表、无孤儿表）；`derived_stale` 0 FAIL；同一份数据物理只有一份。
+达成判据：存在某个运行日 D，`bash scripts/daily_update.sh --date D` 非 dry、非 skip-sync 真跑完且 `run_outcome=success`；`scripts/chunkyctl doctor --run-date D` 退出 0 且 chain_run 节 PASS（判据 R1–R7 写在该节 docstring：D 日证据文件齐全、accepted 前沿不早于运行结束时刻按日历应有的最近交易日）。只认 D 那次运行自己产出的证据；证据日期≠D、缺失、或引用更早的绿都不算达成。原三条（登记表门 0 warn / `derived_stale` 0 FAIL / 一份数据一份物理）降为 D 那次运行内 system_health 的子项，不再单独构成达成。
 
 ## 边界（明确不做）
 

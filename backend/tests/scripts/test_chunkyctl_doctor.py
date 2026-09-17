@@ -286,6 +286,10 @@ def test_doctor_blocks_when_automation_surface_fails(tmp_path, monkeypatch, caps
 
     assert rc == 1
     assert report["verdict"] == "FAIL"
+    # 2026-09-16 chain_run 节新增 (fable_review_chain_run_stop_rule.md 任务1): this
+    # Namespace has no run_date attribute, matching a real `doctor` invocation without
+    # --run-date, so chain_run itself is WARN/UNVERIFIED — automation_surface's FAIL
+    # still drives the overall verdict.
     assert [section["name"] for section in report["sections"]] == [
         "tooling_gate",
         "automation_surface",
@@ -295,6 +299,7 @@ def test_doctor_blocks_when_automation_surface_fails(tmp_path, monkeypatch, caps
         "data_health",
         "brick_registry",
         "foundation_done",
+        "chain_run",
     ]
 
 

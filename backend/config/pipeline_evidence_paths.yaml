@@ -1,0 +1,26 @@
+# pipeline_evidence_paths.yaml — daily_update 证据文件路径模板 (owner: 本文件)
+#
+# 消费方 (代码读, 不是文档抄):
+#   - backend/services/pipeline/evidence_paths.py   typed loader (唯一读取点)
+#   - backend/services/pipeline/store.py            写 daily_{date}.json / watermark_sla_{date}.json
+#   - backend/services/pipeline/preflight.py        写 watermark_sla_before_{date}.json
+#   - backend/services/pipeline/context.py          默认日志文件名 chunkymonkey_daily_update_{date}.log
+#   - backend/services/pipeline/chain_run.py         doctor chain_run 节按同一模板选证据
+#
+# 这些模板此前在 store.py/preflight.py/context.py 里各写死一份字面量副本, chain_run 节要按
+# 同一约定选中「D 日证据」时又会抄第三份 —— 这类会随业务/审计目录布局调整的路径模板
+# 属于参数 (CLAUDE.md #11: 规则进 typed YAML 不 hardcode), 归并到这一处唯一定义,
+# 其余处一律 import loader 读取, 不再各自持有字面量。
+#
+# 每个模板必须含 "{date}" 占位符 (loader 用简单 str.replace 渲染，与
+# governance_gates.RuntimeCheckSpec.rendered_args 同一约定，不用 str.format，
+# 避免路径里出现其它花括号时行为不一致)。
+#
+# daily_update_log_name_template: 只是文件名 (不含目录 —— 目录是运行时 DEGRADED_FLAG.parent,
+# 不是参数)。context.py 写日志与 chain_run.py 的 R3 校验日志路径签名读的都是这一行。
+version: 1
+
+daily_report_path_template: "data/reports/daily_{date}.json"
+watermark_sla_path_template: "data/audit/watermark_sla_{date}.json"
+watermark_sla_before_path_template: "data/audit/watermark_sla_before_{date}.json"
+daily_update_log_name_template: "chunkymonkey_daily_update_{date}.log"

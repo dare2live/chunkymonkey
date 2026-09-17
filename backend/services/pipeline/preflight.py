@@ -337,7 +337,9 @@ def run_preflight(ctx: PipelineContext) -> None:
     ctx.log("--- Preflight: watermark SLA 新鲜度检查 ---")
 
     # Step 1a: before/readiness 证据。alert 可能由本次 acquire 修复，最终 verdict 留给 Store 重算。
-    output_rel = f"data/audit/watermark_sla_before_{ctx.date}.json"
+    from .evidence_paths import load_pipeline_evidence_paths
+
+    output_rel = load_pipeline_evidence_paths().watermark_sla_before_rel(date=ctx.date)
     returncode = run_watermark_sla_check(ctx, output_rel=output_rel)
     if returncode == 2:
         ctx.log(

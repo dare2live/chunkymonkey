@@ -14,6 +14,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .evidence_paths import load_pipeline_evidence_paths
+
 REPO = Path(__file__).resolve().parents[3]
 # degraded 告警 flag (session 启动检查 /tmp/chunkymonkey_ALERT_*.flag); 每次链起跑清, 跑完仍存=本次真实降级
 DEGRADED_FLAG = Path("/tmp/chunkymonkey_ALERT_daily_update_degraded.flag")
@@ -58,7 +60,9 @@ class PipelineContext:
         if self.log_path is None:
             # 日志与告警必须落在同一 runtime 目录。生产默认仍是 /tmp；测试只需隔离
             # DEGRADED_FLAG 即同时隔离默认日志，避免假日期/假阻断污染真实运维证据。
-            self.log_path = DEGRADED_FLAG.parent / f"chunkymonkey_daily_update_{self.date}.log"
+            self.log_path = DEGRADED_FLAG.parent / load_pipeline_evidence_paths().daily_update_log_name(
+                date=self.date
+            )
         # 追加模式打开日志 (与旧 bash tee -a 一致)
         self._log_fh = open(self.log_path, "a", encoding="utf-8")
 

@@ -18,12 +18,61 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 @pytest.fixture(autouse=True)
 def _isolated_pipeline_runtime_paths(tmp_path, monkeypatch):
-    """Pipeline tests must not touch the production writer lock, logs, or alert flag."""
-    from services.pipeline import context
+    """Pipeline tests must not touch the production writer lock, logs, or alert flag.
+
+    store.py/run.py 各自 `from .context import REPO` 绑定了自己的模块级名字
+    (store.py:16 / run.py:23) —— patch `context.REPO` 对它们无效, 必须分别 patch
+    两处 (test_pipeline_delta_manifest.py:123 已是这么做的)。之前只隔离了
+    DEGRADED_FLAG/writer lock, 没隔离 REPO: 任何调 `write_report_and_alert` 的测试
+    (例如 test_tier0_acquire_block_stops_every_downstream_stage, date=20260101) 都会
+    在真实仓库 data/reports/ 下留一份 pytest 副产物, 而 ops_manual_run.py 按 mtime 选
+    「最新报告」会把它当成真实最近一次日更 (fable_review_chain_run_stop_rule.md
+    任务1「store.py:124 泄漏」)。
+
+    回归锁: 上面两行 store.REPO/run_mod.REPO monkeypatch 才是真正防泄漏的代码 —— 万一
+    日后有人手误删掉这两行, 被测代码会改用 `services.pipeline.context.REPO`(真实仓库
+    根, 本 fixture 不 patch 它) 写 daily_{date}.json / watermark_sla*_{date}.json, 而
+    本文件其余测试只会因为读不到 tmp_path 下的文件连带变红, 没有任何测试点名"真实仓库
+    又被写脏了"。跑前后快照真实证据文件集合 (glob 由 pipeline_evidence_paths.yaml 的
+    模板派生, 不另抄字面量), 变了就 fail —— 同 conftest.py::_real_alert_flag_sentinel
+    对 DEGRADED_FLAG 的写法。
+    """
+    from services.pipeline import context, run as run_mod, store
+    from services.pipeline.evidence_paths import load_pipeline_evidence_paths
     from services.writer_lock import WRITER_LOCK_PATH_ENV
 
     monkeypatch.setenv(WRITER_LOCK_PATH_ENV, str(tmp_path / "pipeline-writer.lock"))
     monkeypatch.setattr(context, "DEGRADED_FLAG", tmp_path / "pipeline-alert.flag")
+    monkeypatch.setattr(store, "REPO", tmp_path)
+    monkeypatch.setattr(run_mod, "REPO", tmp_path)
+
+    evidence_paths = load_pipeline_evidence_paths()
+    evidence_globs = sorted(
+        {
+            evidence_paths.daily_report_path_template.replace("{date}", "*"),
+            evidence_paths.watermark_sla_path_template.replace("{date}", "*"),
+            evidence_paths.watermark_sla_before_path_template.replace("{date}", "*"),
+        }
+    )
+    # 绑定当前的真实仓库根 (Path 不可变对象): 少数用例 (例如
+    # test_post_acquire_sla_alert_is_the_final_degraded_verdict) 会自己额外
+    # monkeypatch `context.REPO`(为了让 ctx.run_script 的子进程 cwd 也落 tmp_path) ——
+    # 若这里在 yield 之后才重新读 `context.REPO` 属性, 读到的会是那次 monkeypatch 换上
+    # 的新对象而不是真实仓库, 导致本回归锁把"合法的额外隔离"误判成"泄漏"。真实仓库
+    # 只需在本 fixture 自己的 monkeypatch 生效之前锚定一次。
+    real_repo = context.REPO
+
+    def _snapshot_real_evidence_files():
+        return {g: sorted(str(f) for f in real_repo.glob(g)) for g in evidence_globs}
+
+    before_real_evidence = _snapshot_real_evidence_files()
+    yield
+    after_real_evidence = _snapshot_real_evidence_files()
+    assert after_real_evidence == before_real_evidence, (
+        "pipeline test leaked a daily_update evidence file into the real repo "
+        "(store.REPO/run_mod.REPO isolation regressed): "
+        f"before={before_real_evidence} after={after_real_evidence}"
+    )
 
 
 
