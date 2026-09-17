@@ -1,0 +1,215 @@
+# 登记不修台账 (2026-09-16 cutC_deferred_findings)。
+#
+# 本文件只登记「施工中发现、但不修不会写错数据/不挡当前判据/不是生产路径上正在发生的
+# 红线违规」的问题——登记本身不是修复，是把"已知但暂不动"的状态从人的记忆搬进可机器
+# 核对的台账，防止它下次被重新发现时又要从头调研一遍。
+#
+# 消费方: backend/services/deferred_findings.py::load_deferred_findings (fail-closed
+# typed loader；未知键/缺键/id 不是 slug/日期格式错/decision 不在词表一律 ValueError)。
+#
+# 每条 finding 的字段含义:
+#   id             小写 kebab slug，全局唯一。
+#   asset          受影响的资产：文件路径:行号，或表名。
+#   detector       会检测到它的门 id / 脚本路径 / file:line；没有检测器就写 none。
+#                  写成仓库路径（含 / 且以 .py 或 .yaml 结尾，可带 :行号）时，loader 会
+#                  校验该文件确实存在（fail-closed，防止台账自己先烂掉）。
+#   escalates_when 可观测的升级条件——写到"哪个文件/门会出现什么"这一级，不是空话。
+#   recorded       登记日期 YYYY-MM-DD。
+#   decision       取值必须属于下面 decisions 词表。
+#
+# decisions 词表本身是参数（会随业主决定增减新的处置类型），放在这里而不是硬编码进
+# loader —— 词表为空时任何 finding 的 decision 字段都无法通过校验（fail-closed，
+# 不会静默放行）。
+version: 1
+
+decisions:
+  - register        # 已登记为已知问题，暂不修，等 escalates_when 触发再处理
+  - owner_decision   # 需要业主拍板取舍（例如换源/清理范围/接受某个已知偏差），非纯技术判断
+
+findings:
+  - id: adjust-factor-docstring-rebuild-all
+    asset: "backend/services/adjust_factor.py:42-56 (模块 docstring 设计取舍第 3 点)"
+    detector: none
+    escalates_when: >
+      backend/services/pipeline 下任何日更阶段模块开始调用
+      services.adjust_factor.build_latest 或 services.adjust_factor.rebuild_all
+      （当前两者均无生产调用方，唯一生产路径是
+      backend/scripts/build_price_kline_qfq_tushare.py 每次全量 DROP+CTAS 直接调
+      hfq_sql，docstring 第 3 点"回补必须走 rebuild_all"这句话对当前唯一生产路径不成立）。
+    recorded: "2026-09-16"
+    decision: register
+
+  - id: ops-latest-report-by-mtime
+    asset: "backend/routers/ops_manual_run.py:327-345 (_latest_daily_report) 与 :505 同型选择"
+    detector: none
+    escalates_when: >
+      data/reports 目录下出现一份 dry_run=1 或其 date 字段不等于最近一次真实
+      daily_update 运行日、但文件系统 mtime 比真实运行报告更新的 daily_*.json——
+      按 st_mtime 取"最新"的两处代码都会把它当成最近一次运行的结果返回给
+      /ops 面板，冒充真实运行状态。
+    recorded: "2026-09-16"
+    decision: register
+
+  - id: strategy-paper-pre-close-fallback
+    asset: "backend/services/strategy_paper.py:89-110 (_pre_close)"
+    detector: none
+    escalates_when: >
+      研究/回测读取 20260901 之后、canonical pre_close 为 NULL 的行时——
+      _pre_close 在 bar["pre_close"] 缺失或 <=0 时会静默回退为前一交易日
+      close（找不到前一日数据再退到 0.0），把"未知"变成一个编造出来的数字，
+      违反红线 3。strategy_paper 不在 backend/services/pipeline 日更链上，
+      当前只影响研究/回测口径。
+    recorded: "2026-09-16"
+    decision: register
+
+  - id: institution-follow-paper-or-zero
+    asset: "backend/services/institution_follow_paper.py:292,340 (entry_pre / exit_pre)"
+    detector: none
+    escalates_when: >
+      同上——研究/回测读取 20260901 之后、canonical pre_close 为 NULL 的行时，
+      float(bar.get("pre_close") or 0.0) 把 NULL/0/空字符串一律折成 0.0，
+      涨跌停判定与收益计算会用这个编造出来的 0 参与运算。不在日更链上，
+      只影响研究/回测口径。
+    recorded: "2026-09-16"
+    decision: register
+
+  - id: data-audit-code-succession-null-pre-close
+    asset: "backend/services/data_audit.py:571,584 (_check_kline_code_succession 的 new_first CTE 与 WHERE 价格邻接判据)"
+    detector: none
+    escalates_when: >
+      一次真实换码发生 (旧代码末个交易日与新代码首个交易日, 按 K 线表自己的日历邻接)、且
+      新代码首日 canonical_nominal_ohlcv_daily.pre_close 恰好为 NULL (契约 v2 起 pre_close
+      可空) 时——WHERE 子句 `ABS(o.last_close - n.first_pre_close) <= price_tolerance` 里
+      first_pre_close 是 NULL 操作数, SQL 三值逻辑下整个比较恒为 UNKNOWN、该行不进结果集
+      (已用内存 DuckDB 实测核实: NULL 操作数被 WHERE 静默排除, 非 NULL 且邻接的对照行正常
+      留在结果里), 于是这条候选换码永远不会出现在 unregistered 名单里,
+      _check_kline_code_succession 对这次真实换码恒报 PASS, 即便它从未登记进
+      security_code_changes.yaml——把"未知"当成"无候选换码"。与
+      institution-follow-paper-or-zero / strategy-paper-pre-close-fallback 同源 (pre_close
+      从 forbidden 改 nullable 后消费方 NULL 处置未同步跟进), 三者同列在 44b772c2 commit
+      message 的 Residual 段同一条目下, 但这一条此前未登记进本表。
+    recorded: "2026-09-16"
+    decision: register
+
+  - id: tier12-breadth-null-pct-chg
+    asset: "backend/services/tier12_publish_writer.py:408-430 (_build_market_context，被 :536 write_tier12_batch 调用)"
+    detector: none
+    escalates_when: >
+      backend/scripts/persist_tier12_full_universe_accept.py 或
+      persist_tier12_writer_smoke.py 在某个存在 NULL pct_chg 的交易日上运行——
+      当前实现 `if pct is None: continue` 把 NULL 行从 adv_n/dec_n/flat_n/used
+      计数里静默剔除，market context 信封没有 unknown_n 字段记录被剔除了多少行，
+      READY/UNAVAILABLE 的 trust_status 判定看不出分母已经缩水。
+    recorded: "2026-09-16"
+    decision: register
+
+  - id: v-daily-stock-day-stale
+    asset: "backend/config/serve_read_views.yaml:75-79 (v_daily_stock_day -> raw_tushare_daily)"
+    detector: none
+    escalates_when: >
+      前端板块资金流页面被实际访问——v_daily_stock_day 指向的 raw_tushare_daily
+      停在 20260716 不再更新，而 services/market_pulse_serve_read.py::sw_flow_sql
+      读这张视图，经 backend/routers/market_pulse.py 与
+      backend/routers/decision_assist.py（import market_pulse_serve_read as
+      pulse_serve）两条路由暴露给前端；只要页面没人看，这条 stale 数据不产生
+      可观测影响。
+    recorded: "2026-09-16"
+    decision: owner_decision
+
+  - id: frozen-snapshot-content-hash-drift
+    asset: "data/lineage/main_rally_dataset_snapshot/snapshot.json"
+    detector: "backend/scripts/check_contract_stamp_consistency.py"
+    escalates_when: >
+      需要重新跑 phase_f 或重新冻结 main_rally_dataset_snapshot /
+      disclosure 快照——快照记录的 content_hash 已经和当前活库脱钩，
+      而对应的 holdout token 已经用掉，直接重跑会用一份对不上活库状态的
+      冻结基线做对照。
+    recorded: "2026-09-16"
+    decision: owner_decision
+
+  - id: daily-land-from-local-raw-broken
+    asset: "backend/services/data_sources/security_day_capture.py:50 (project_security_day_provider_row 的 missing_enrichment raise)"
+    detector: "backend/services/data_sources/security_day_capture.py:50"
+    escalates_when: >
+      需要用 daily 域的 --land-only --from-local-raw 路径从
+      landing_tushare_daily 重生成 daily 历史——契约 v2 之后
+      enrichment_fields 包含 pre_close_origin，而 landing_tushare_daily 里的
+      历史 raw 行没有这一列，project_security_day_provider_row 会对每一行都抛
+      SecurityDayError(..._provider_row_missing_enrichment)，整条 land-only
+      重生成路径打不通。
+    recorded: "2026-09-16"
+    decision: register
+
+  - id: market-pulse-null-pct-chg-unknown-count
+    asset: "backend/services/market_pulse.py:491-492,692-693"
+    detector: none
+    escalates_when: >
+      沪深股票池某个交易日出现 pct_chg 为 NULL 的行——两处
+      COUNT(*) FILTER (WHERE pct_chg > 0/< 0) 的广度统计都会把 NULL 行静默排除
+      在 adv_n/dec_n 分母之外，SQL 结果里没有 unknown_n 列告诉消费方分母已经
+      缩水了多少行。
+    recorded: "2026-09-16"
+    decision: register
+
+  - id: doctor-missing-system-health-section
+    asset: "backend/scripts/chunkyctl.py 的 doctor 汇总（scripts/chunkyctl doctor 委派到此）"
+    detector: none
+    escalates_when: >
+      某个 runtime check（例如 gate_policy.py --run-system-health 覆盖的
+      system_health 组门）的 JSON 结果 overall=FAIL，而 scripts/chunkyctl
+      doctor 的退出码仍是 0——doctor 当前的检查清单里没有读取 system_health
+      分组结果的 section（grep 全仓 "system_health"/"chain_run" 在
+      chunkyctl.py 里 0 命中），一道系统健康门红了也不会体现在 doctor 的
+      汇总退出码上。
+    recorded: "2026-09-16"
+    decision: register
+
+  - id: pipeline-run-manifest-run-id-no-run-date
+    asset: "backend/services/pipeline/stage_status.py:55 (record_stage 的 run_id 缺省值) 与 :149 (run_and_record 经 _record_stage_best_effort 调用时未传 run_id/started_at)"
+    detector: none
+    escalates_when: >
+      需要按"这一行阶段状态对应哪个业务运行日（daily_update.sh --date
+      YYYYMMDD 的那个日期）"去追溯 mart_pipeline_run_manifest 的 stage 行——
+      当前生产调用路径 (run_and_record -> _record_stage_best_effort ->
+      record_stage) 从不传 run_id 也不传 started_at，run_id 落到默认值
+      f"stage.{stage}.{ts}"，ts = utc_now_iso()，只反映代码执行时的 UTC
+      时钟时间，不含被处理的业务运行日；对一次为过去日期做的补跑，
+      run_id 里的日期会是"今天"而不是"补跑的那一天"。
+    recorded: "2026-09-16"
+    decision: register
+
+  - id: nominal-ohlcv-column-origin-provider
+    asset: "backend/services/data_sources/nominal_ohlcv_schema.py:116-121,132,140 (pre_close/change/pct_chg 的列级 origin)"
+    detector: none
+    escalates_when: >
+      nominal_ohlcv 契约下一次升版——pre_close/change/pct_chg 三列的列级
+      origin 元数据仍固定写 "provider"，即便某一行的值实际由 adapter 推算
+      （例如 tdxhub 的 _adjusted_pre_close 退化路径）。逐行真实来源已经由
+      pre_close_origin 列承担（本模块 108-125 行注释里说明这是"可空性"与
+      "值由谁产生"两个正交轴的刻意设计），列级声明与逐行来源不同步只在
+      契约需要重新表达"谁产生了这一列"时才需要处理。
+    recorded: "2026-09-16"
+    decision: register
+
+  - id: tdxhub-xdxr-swallowed-exception
+    asset: "backend/services/data_sources/sources/tdxhub.py:951-953 (except Exception: events = [])"
+    detector: none
+    escalates_when: >
+      tdxhub 的 xdxr 除权除息事件查询被用作对照器或独立证据源——当前
+      client.xdxr(code) 抛出的任何异常都被这一处 except Exception 静默吞掉、
+      降级为"该票无事件"，网络故障与"真的没有除权事件"在调用方看来完全
+      一样。tdxhub 已不是 daily 域的生产源，只在被重新启用为对照/证据源时
+      才需要修（业主已知晓此项，标记为待修但推迟）。
+    recorded: "2026-09-16"
+    decision: register
+
+  - id: orphan-worktree-agent-branches
+    asset: "git 本地分支 (git branch --list 'worktree-agent-*')"
+    detector: none
+    escalates_when: >
+      业主决定是否清理——2026-09-16 实测本地存在 15 个 worktree-agent-*
+      分支，但 git worktree list 里没有任何一个当前 worktree 引用它们
+      （当前活跃 worktree 全部是 worktree-wf_* 命名，与之无关）；是否删除
+      这些分支属于业主对历史 agent 产物的取舍，不是技术判断。
+    recorded: "2026-09-16"
+    decision: owner_decision

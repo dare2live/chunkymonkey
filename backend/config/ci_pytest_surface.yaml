@@ -82,6 +82,7 @@ blocking_paths:
 - tests/services/test_database_manifest.py
 - tests/services/test_dataset_contracts.py
 - tests/services/test_dc_member_publish_b1.py
+- tests/services/test_deferred_findings.py
 - tests/services/test_derive_runtime_s5.py
 - tests/services/test_disclosure_boundaries.py
 - tests/services/test_disclosure_dataset_snapshot.py
