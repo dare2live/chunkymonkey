@@ -247,6 +247,11 @@ domains:
 
   # ── P0-b: 可执行性真相源 + 情绪温度计 ──
   limit_list_d:
+    # 2026-09-16: tushare 不是可用源, 本域停止从它取数。台账 tushare_sunset.yaml
+    # decision: replace, replacement: fuyao (扶摇三池端点已注册为域)。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_replaced_by_fuyao_pools
     identity:
       kind: derived_rule
       fact: "涨跌停统计 = OHLCV + stk_limit 比对"
@@ -277,6 +282,11 @@ domains:
                               # 此域从无 calendar_gaps 问题, row_dip_tolerance 才是准确语义)
 
   stk_limit:
+    # 2026-09-16: tushare 不是可用源, 本域停止从它取数。台账 tushare_sunset.yaml
+    # decision: derive (公开规则推导, 见 tushare_sunset.yaml evidence)。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_derive_pending
     identity:
       kind: derived_rule
       fact: "涨跌停价 = 昨收 x 板块规则 (主板10/双创20/北交所30/ST5)"
@@ -362,6 +372,11 @@ domains:
                                    # 漏进 universe(红线相邻); 100≤histmin 零幻影缺口
 
   suspend_d:
+    # 2026-09-16: tushare 不是可用源, 本域停止从它取数。台账 tushare_sunset.yaml
+    # decision: derive (公开规则推导, 见 tushare_sunset.yaml evidence)。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_derive_pending
     identity:
       kind: derived_rule
       fact: "停牌 = 该交易日无成交; 券商没有这张表, 因为『没交易就是停牌』"
@@ -383,6 +398,11 @@ domains:
 
   # ── 两融族 (B3 2026-07-02 用户点名日更参数, 主升浪 D2 L1 叠加层; 实弹核证见 commit) ──
   margin_detail:
+    # 2026-09-16: tushare 不是可用源, 本域停止从它取数。台账 tushare_sunset.yaml
+    # decision: retire (零业务消费方, 见 tushare_sunset.yaml evidence)。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_retire
     identity:
       kind: exchange_fact
       fact: "融资融券个股明细 (交易所公布)"
@@ -888,6 +908,11 @@ domains:
   #   批2 2026-06-28 institution_survey SERVE entity 切此 tushare 唯一源 (旧 aif10+akshare raw_institution_surveys 退役物删)。
 
   report_rc:
+    # 2026-09-16: tushare 不是可用源, 本域停止从它取数。台账 tushare_sunset.yaml
+    # decision: retire (零业务消费方, 见 tushare_sunset.yaml evidence)。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_retire
     identity:
       kind: vendor_view
       judge: "券商分析师"
@@ -942,6 +967,11 @@ domains:
                                                    # 2026-07-08 根因深查又发现独立缺口 20260328(见上)。
 
   stk_surv:
+    # 2026-09-16: tushare 不是可用源, 本域停止从它取数。台账 tushare_sunset.yaml
+    # decision: retire (零业务消费方, 见 tushare_sunset.yaml evidence)。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_retire
     identity:
       kind: exchange_fact
       fact: "机构调研记录 (公告)"
@@ -991,6 +1021,11 @@ domains:
   # 盲注册有截断/grain 撞键风险。K3 已退役 ths_hot (零消费), 不按该模式补注册。
 
   moneyflow_hsgt:
+    # 2026-09-16: tushare 不是可用源, 本域停止从它取数。台账 tushare_sunset.yaml
+    # decision: retire (零业务消费方, 见 tushare_sunset.yaml evidence)。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_retire
     identity:
       kind: exchange_fact
       fact: "沪深港通资金流 (交易所公布)"
@@ -1154,6 +1189,11 @@ domains:
     allow_empty_batch: false
 
   daily_basic:
+    # 2026-09-16: tushare 不是可用源, 本域停止从它取数。台账 tushare_sunset.yaml
+    # decision: replace, replacement: 妙想 (切换未完成)。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_replace_pending
     identity:
       kind: undecided
       blocked_by: "可由 OHLCV + 股本 + 财务推导, 但换手/市值/PE 的分母定义各家有差异; 待验推导路径 circ_mv ~ close*volume/turn*100 (验收 p95 相对误差 <1%)"
@@ -1233,6 +1273,11 @@ domains:
   # 现状: KPI 超额走 akshare = 主从倒挂; 申万退役真因 = 只有快照无历史 → index_member_all 带
   # in_date/out_date 是 PIT 原生解。两域均 2000 积分实测可调 (2026-06-13 单发核证字段/grain)。
   index_daily_benchmark:
+    # 2026-09-16: tushare 不是可用源, 本域停止从它取数。台账 tushare_sunset.yaml
+    # decision: replace, replacement: 妙想 index_data (切换未完成)。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_replace_pending
     identity:
       kind: exchange_fact
       fact: "指数日行情 (交易所发布)"
@@ -1409,6 +1454,12 @@ domains:
                               # (1/4/7/10月强双峰), 淡季tinyshare逐日探测源端同样0行, 真实事件稀疏
 
   income:   # 正式利润表 (2026-06-14 实弹核证: 96 列全套利润表科目, PEAD 后段慢信号)
+    # 2026-09-16: tushare 不是可用源, 本域停止从它取数。台账 tushare_sunset.yaml
+    # decision: replace, replacement: 妙想 GINCOME (切换未完成,
+    # f_ann_date 历史段偏差待查)。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_replace_pending
     identity:
       kind: exchange_fact
       fact: "利润表原始科目 (公告)"
@@ -1429,6 +1480,11 @@ domains:
     allow_empty_batch: true   # 多数交易日无新财报披露
 
   balancesheet:   # 完整资产负债表 (2026-06-26 通达信全删 单元4: gpcw 财务链迁 tushare; contract_liab 新准则字段=contract_to_revenue 源, 实弹核证茅台2026Q1 contract_liab=30.27亿; 替代 balancesheet_advrecv 旧stale预收账款拉)
+    # 2026-09-16: tushare 不是可用源, 本域停止从它取数。台账 tushare_sunset.yaml
+    # decision: replace, replacement: 妙想 GBALANCE (切换未完成)。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_replace_pending
     identity:
       kind: exchange_fact
       fact: "资产负债表原始科目 (公告)"
@@ -1527,6 +1583,12 @@ domains:
   #   证据: git log --grep post_close_update_e2e §5–6.
 
   fina_indicator:   # 财务指标 (2026-06-14 实弹核证: 167 项衍生指标 ROE/ROA/毛利率/负债率 = 直接因子料)
+    # 2026-09-16: tushare 不是可用源, 本域停止从它取数。台账 tushare_sunset.yaml
+    # decision: replace, replacement: 妙想 (分字段裁, 非整域切)
+    # (ROE 口径未对齐, 切换未完成)。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_replace_pending
     identity:
       kind: vendor_view
       judge: "tushare"
@@ -1589,6 +1651,11 @@ domains:
     #   立墓碑, 先进 failure_queue 观察窗。
 
   share_float:   # 解禁 (天然前瞻 PIT: ann_date 公告日已知未来 float_date 解禁=0泄露; 出场/风控)
+    # 2026-09-16: tushare 不是可用源, 本域停止从它取数。台账 tushare_sunset.yaml
+    # decision: retire (零业务消费方, 见 tushare_sunset.yaml evidence)。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_retire
     identity:
       kind: exchange_fact
       fact: "限售股解禁 (公告)"
@@ -1636,6 +1703,12 @@ domains:
   #   (no formal accept plane yet). Consumer = DataAccess holder_number + dossier assist.
   #   Evidence: git log --grep stk_holdernumber_retire_evidence.
   stk_holdernumber:   # 股东户数 (筹码集中慢变量; 辅助因子/dossier; 非择时)
+    # 2026-09-16: tushare 不是可用源, 本域停止从它取数。台账 tushare_sunset.yaml
+    # decision: replace, replacement: 妙想 RPT_F10_EH_HOLDERNUM
+    # (切换未完成)。
+    execution_policy:
+      mode: disabled
+      reason: tushare_sunset_replace_pending
     identity:
       kind: exchange_fact
       fact: "股东户数 (公告)"

@@ -117,98 +117,11 @@ dispositions:
       why: "派生自 tdxhub 名义 K 线 (daily 域已按 request_enumeration 排除 900/200 前缀),
         总体本就不含 B 股, 无需二次过滤。"
 
-  tushare.margin_detail:
-    b_share:
-      mode: population_disjoint
-      why: "B 股不可融资融券 (监管规则), 总体结构性不含 B 股。"
-
-  tushare.index_daily:
-    b_share:
-      mode: population_disjoint
-      why: "指数代码总体 (000300.SH 等基准指数), 不是个股, 总体里没有 B 股。"
-
   # ── no_vendor_axis: TuShare Pro 标准接口未见证券类别字段, 且按日/按报告期整市场拉取
   #    无逐码请求侧可加排除参数; 以下 11 个域均未逐字段实测 (未触网/未开库确认历史行),
   #    按 §1.2 决策树证据不足时的保守分支登记, 不声称 0 行、不误判已排除。业主/后续切片
   #    可用 [T-new] 探测覆盖后改判。population 与 B 股上市公司 (900/200) 有交集的业务
   #    含义各自标注。
-  tushare.daily_basic:
-    b_share:
-      mode: no_vendor_axis
-      checked_at: "2026-09-12"
-      evidence: "每日指标 (换手率/PE/PB/市值) 覆盖全部可交易证券, 未见 TuShare 响应带证券类别
-        字段; B 股正常交易故 population 与其相交。未逐字段实测, 按保守分支登记。"
-
-  tushare.balancesheet:
-    b_share:
-      mode: no_vendor_axis
-      checked_at: "2026-09-12"
-      evidence: "资产负债表按上市公司报告期披露, B 股上市公司同样披露财报, population 相交;
-        未见 TuShare 财务接口带证券类别字段。未逐字段实测, 按保守分支登记。"
-
-  tushare.income:
-    b_share:
-      mode: no_vendor_axis
-      checked_at: "2026-09-12"
-      evidence: "利润表同 balancesheet 一样按上市公司报告期披露, B 股上市公司同样披露财报,
-        population 相交, 未见证券类别字段。未逐字段实测, 按保守分支登记。"
-
-  tushare.fina_indicator:
-    b_share:
-      mode: no_vendor_axis
-      checked_at: "2026-09-12"
-      evidence: "财务指标衍生自 balancesheet/income 同一批上市公司, population 相交, 未见
-        证券类别字段。未逐字段实测, 按保守分支登记。"
-
-  tushare.limit_list_d:
-    b_share:
-      mode: no_vendor_axis
-      checked_at: "2026-09-12"
-      evidence: "涨跌停统计覆盖当日触及涨跌停的全部证券, B 股同样有涨跌停幅度规则,
-        population 相交, 未见证券类别字段。未逐字段实测, 按保守分支登记。"
-
-  tushare.report_rc:
-    b_share:
-      mode: no_vendor_axis
-      checked_at: "2026-09-12"
-      evidence: "券商评级/预测报告理论上可覆盖任意上市公司 (含 B 股), 未见证券类别字段可供
-        response_exclude, 也无请求侧过滤参数。未逐字段实测, 按保守分支登记。"
-
-  tushare.share_float:
-    b_share:
-      mode: no_vendor_axis
-      checked_at: "2026-09-12"
-      evidence: "限售股解禁按上市公司公告, B 股上市公司同样存在限售解禁事件,
-        population 相交, 未见证券类别字段。未逐字段实测, 按保守分支登记。"
-
-  tushare.stk_holdernumber:
-    b_share:
-      mode: no_vendor_axis
-      checked_at: "2026-09-12"
-      evidence: "股东户数按上市公司定期披露, B 股上市公司同样披露, population 相交,
-        未见证券类别字段。未逐字段实测, 按保守分支登记。"
-
-  tushare.stk_limit:
-    b_share:
-      mode: no_vendor_axis
-      checked_at: "2026-09-12"
-      evidence: "每日涨跌停价覆盖全部可交易证券, B 股同样有涨跌停价, population 相交,
-        未见证券类别字段。未逐字段实测, 按保守分支登记。"
-
-  tushare.stk_surv:
-    b_share:
-      mode: no_vendor_axis
-      checked_at: "2026-09-12"
-      evidence: "机构调研记录理论上可覆盖任意上市公司 (含 B 股), 未见证券类别字段,
-        也无请求侧过滤参数。未逐字段实测, 按保守分支登记。"
-
-  tushare.suspend_d:
-    b_share:
-      mode: no_vendor_axis
-      checked_at: "2026-09-12"
-      evidence: "停复牌记录覆盖全部可交易证券, B 股同样存在停复牌事件, population 相交,
-        未见证券类别字段。未逐字段实测, 按保守分支登记。"
-
 # 不在 sync_registry.yaml 里的取数路径 (键同样是 "<source>.<api>"), 登记仅为 L11 死引用
 # 检查提供合法目标, 不要求 (也不强制) 每条都带 b_share 处置——它们的请求形态见各自 writer:
 # 已知均已是代码枚举 (get_active_universe), 现存 B 行是旧枚举遗留 (§1.3 [T8])。
