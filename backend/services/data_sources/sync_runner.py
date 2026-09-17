@@ -2598,6 +2598,18 @@ def _publish_security_day_accepted_partition(
             }
 
     def _acquired_rows(_params: Mapping[str, Any]):
+        # 返修 (blocking 发现 #1 修复, 2026-09-16): 之前这里无条件塌缩成 plain
+        # list, 把 acquire 层已经保住的 request_meta (dump 的 release 身份/
+        # sha256 等) 就地丢弃, capture_security_day_provider_rows 因而永远收不到
+        # ProviderPage —— 明明它早就会处理。只有 request_meta 非空时才包一层
+        # ProviderPage, 其它所有域/adapter (request_meta 恒为空 dict) 的行为
+        # 逐位不变, 仍是 plain list。
+        if acquired.request_meta:
+            from services.data_sources.security_day_capture import ProviderPage
+
+            return ProviderPage(
+                rows=list(acquired.rows), request_meta=dict(acquired.request_meta)
+            )
         return list(acquired.rows)
 
     if domain == "daily":
@@ -3274,6 +3286,17 @@ def _land_security_day_partition(
             )
 
             def _acquired_rows(_params: Mapping[str, Any]):
+                # 返修 (blocking 发现 #1 修复, 2026-09-16): 同
+                # _publish_security_day_accepted_partition 里那份 —— 只在
+                # request_meta 非空时才包 ProviderPage, 其余域/adapter 行为不变。
+                if acquired.request_meta:
+                    from services.data_sources.security_day_capture import (
+                        ProviderPage,
+                    )
+
+                    return ProviderPage(
+                        rows=list(acquired.rows), request_meta=dict(acquired.request_meta)
+                    )
                 return list(acquired.rows)
 
             if domain == "daily":

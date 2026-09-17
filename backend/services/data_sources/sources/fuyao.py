@@ -420,6 +420,10 @@ class FuyaoSource:
         return key
 
     def fetch_raw(self, api: str, **params: Any) -> list[dict[str, Any]]:
+        if api == "daily_k_dump":
+            from services.data_sources.sources.fuyao_daily_k import fetch_daily_k_dump_rows
+
+            return fetch_daily_k_dump_rows(self, **params)
         _reject_limit_offset(params)
         path = resolve_api_path(api)
         if path in POOL_API_PATHS.values():

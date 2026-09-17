@@ -1,0 +1,25 @@
+# nominal_ohlcv daily 域 —— 历史契约版本的回退目标戳 (2026-09-16 刀1)。
+#
+# 这三个哈希是**一次性历史事实**, 不是可推导的现算值: v1 (contract_version="1") 是本刀
+# 之前的契约形状 (pre_close/change/pct_chg 皆 NOT NULL, 无 pre_close_origin 列)。要拿到它
+# 的真实指纹, 必须回到那一刻的代码重新跑一遍契约工厂——而生产代码现在已经是 v2, 没有任何
+# "现算"路径能答出 v1 的值 (v2 的契约工厂只会算出 v2 自己的戳)。
+#
+# 做法 (2026-09-16 施工时实测, 只读不联网): `git archive 44b772c241bc3ae2c672abfb619fa71a4d14ca78^`
+# 把 v1 那棵树解到临时目录, 用 v1 版 nominal_ohlcv_contract.py::load_nominal_ohlcv_contract()
+# 现跑一次算出下列三个值 (v1 版 sync_registry.yaml 里 daily.security_day_partition.schema_hash
+# 字面量与本文件 schema_hash 逐位相同, 交叉印证未算错)。CI 是浅克隆没有 git 历史, 所以这三个
+# 值必须烤进配置里由 restamp_nominal_ohlcv_contract.py --to-v1 直接读, 不能在测试或生产脚本
+# 里现跑 git archive。
+#
+# 不要把当前 v2 的哈希抄进这里——v2 的值一律由 nominal_ohlcv_contract.py 现算, 抄一份进来
+# 只会制造第二个会漂移的真相源。
+#
+# loader: services/data_sources/nominal_ohlcv_contract_versions.py::load_rollback_target
+# 校验: 64 位小写十六进制 / 未知键 / 缺键 —— 一律 fail-closed。
+rollback_targets:
+  "1":
+    schema_hash: "fd84a583a868a967980d1a5759fd8ac7b607f9847267b000ca0b0d0f900f8551"
+    config_hash: "21d861852df1963083109954345edcda1ce7c924108fcdbdeff8a7e61cbb3b44"
+    contract_hash: "a25c126e045b80ba86f2f716981434dbee1a35c021fdfe8cad892a0bad5a1188"
+    derived_from: "git 44b772c2^ 契约工厂现算"

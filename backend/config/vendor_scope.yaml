@@ -25,9 +25,10 @@
 # 覆盖范围 (L11, 静态测试强制, 不在本文件校验): sync_registry.yaml 里
 # execution_policy.mode == enabled 且 (grain ∪ {universe_filter_col}) 与
 # security_code_columns 有交集的 (source, api) 必须每个都在 dispositions 里有条目
-# (2026-09-12 核对: 共 23 个 —— fuyao×5 / miaoxiang×3 / stock_st_derive.stock_st /
-# tdxhub.daily / tushare×13); disabled 的域 (14 个) 不在本文件强制范围内, 重新
-# enabled 那天 L11 会红, 逼出裁决。
+# (2026-09-16 刀2 核对: 共 23 个 —— fuyao×6 / miaoxiang×3 / stock_st_derive.stock_st /
+# tushare×13; tdxhub.daily 已随 daily 域 tdxhub->fuyao 换源删除——L11 是双向检查,
+# 留着会变成"指向 registry 里已不存在的 (source,api)"的死条目, 删东西不留墓碑);
+# disabled 的域 (14 个) 不在本文件强制范围内, 重新 enabled 那天 L11 会红, 逼出裁决。
 
 version: 2
 
@@ -102,20 +103,25 @@ dispositions:
       mode: request_exclude
       filters: ["vendor endpoint path /api/a-share/auction/short-term-benchmark is a-share-scoped by path"]
 
-  # ── tdxhub (通达信协议层) ──────────────────────────────────────────────
-  tdxhub.daily:
+  # 2026-09-16 刀2: daily 域 tdxhub -> fuyao 换源, tdxhub.daily 这条已随之删除
+  # (registry 里不再有 source: tdxhub 的域; L11 是双向检查, 留着会变成指向 registry
+  # 里已不存在的 (source,api) 的死条目)。tdxhub.py 本身不动——它只是不再是任何域的
+  # 活跃 adapter, 不是被删除。
+
+  fuyao.daily_k_dump:
     b_share:
-      mode: request_enumeration
-      code_source: "services.data_sources.sources.tdxhub.TdxhubSource.DEFAULT_BOARD_PREFIXES"
-      # {"SZ": ("00","30"), "SH": ("60","68")} —— 请求侧已按板块前缀白名单枚举, 900/200 从不
-      # 在请求范围内 (与 universe_rules.yaml include.board_prefixes 一致)。
+      mode: population_disjoint
+      why: "刀2 换源实测: fuyao daily-k / daily-k-10d dump 与 canonical OHLC 逐日抽样
+        比对 (recon_fuyao_kline.py), 出现的证券代码前缀只有 00/30/60/68/92 (沪深A+
+        北交所), 无 900(SH)/200(SZ) B 股前缀——与 tdxhub.daily 当年下线前的观测口径
+        一致, 总体本就不含 B 股, 无需请求侧/响应侧二次过滤。"
 
   # ── population_disjoint: 供应商总体按定义不含 B 股 ─────────────────────
   stock_st_derive.stock_st:
     b_share:
       mode: population_disjoint
-      why: "派生自 tdxhub 名义 K 线 (daily 域已按 request_enumeration 排除 900/200 前缀),
-        总体本就不含 B 股, 无需二次过滤。"
+      why: "派生自名义 K 线所在股票池 (daily 域已通过 fuyao.daily_k_dump 的
+        population_disjoint 排除 B 股, 见上), 总体本就不含 B 股, 无需二次过滤。"
 
   # ── no_vendor_axis: TuShare Pro 标准接口未见证券类别字段, 且按日/按报告期整市场拉取
   #    无逐码请求侧可加排除参数; 以下 11 个域均未逐字段实测 (未触网/未开库确认历史行),

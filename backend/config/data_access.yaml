@@ -44,7 +44,9 @@ entities:
     # @2026-09-01, 实测 ingest_batch 2026-08-31 起 source_name=tdxhub), 复权因子也已改自算
     # (不再是任何供应商) —— 见 services/market_schema.py:29-40 注释与
     # tushare_sunset.yaml domains.adj_factor (decision=derive)。
-    vendor: tdxhub
+    # 2026-09-16 通达信 K 线族服务端停供, 再次换源 tdxhub -> fuyao (dump 价量 + baostock
+    # 前收参考, tushare_sunset.yaml domains.daily replacement=fuyao/status=done@2026-09-16)。
+    vendor: fuyao
     available_after: eod
 
   moneyflow:

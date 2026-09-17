@@ -62,13 +62,19 @@ domains:
   # ── replace: 有已验证替代，到期前必须切 ──────────────────
   daily:
     decision: replace
-    replacement: tdxhub
+    replacement: fuyao
     must_by: "2026-09-10"
-    evidence: "通达信全市场 5,208 只 × 9 字段与 canonical 逐项零差异 (46,872 项);
-      除权日 pre_close 15/15 正确; 全历史 0.6s/票; 停牌语义与项目地基一致(不给行);
-      TdxhubSource 已实现并通过真实端到端验收，adapter 就绪待启用。"
+    evidence: "2026-09-16 二次换源 (第一任 replacement tdxhub 已停供: 两台主机任何参数
+      恒返 2 字节协议错误帧, 与 pytdx 包逐字节核对确认非解析 bug, 非瞬时故障)。fuyao
+      dump (daily-k-10d/daily-k) 价量与 canonical OHLC 实测 100% 相等 (vol/100、
+      amount/1000), 含 BJ、不含 B 股 (vendor_scope population_disjoint)。dump 本身无
+      pre_close 列 (供应商响应字段表里没有这一列, 不是漏抓), 唯一交易所口径来源是
+      baostock query_history_k_data_plus——两条腿合并见 sources/fuyao_daily_k.py。
+      北交所结构上不支持 baostock, pre_close 稳态 unknown (~340 行/天, 对 hfq/
+      market_pulse 两个下游不可见, 两者都已按项目股票池过滤 BJ)。FuyaoSource 已实现
+      daily_k_dump 分派并通过离线单元测试, adapter 就绪待启用。"
     status: done
-    done_at: "2026-09-01"
+    done_at: "2026-09-16"
 
   stock_basic:
     decision: replace

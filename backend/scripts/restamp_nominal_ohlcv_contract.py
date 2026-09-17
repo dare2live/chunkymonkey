@@ -29,6 +29,28 @@
    config_hash, 正是 09-02 那次重打留下的证据, 当时也没有任何记账表)。证据天然在
    数据里, 再建一张表是多一个会漂移的副本。
 
+   **2026-09-16 更正 (这里曾经写过一句错话)**: 早先的表述隐含"回退不用单独处理,
+   因为 ingest_batch 保留着旧戳, 从那里读回去就行"—— 这个假设是错的, 差点造成灾难。
+   实测 1,858/1,859 个分区的 ingest_batch 戳根本不是 v1 的原始值, 而是**更早一代**
+   的 ``contract_hash=5ec8471c…`` / ``config_hash=7d122f28…`` (来自比 v1 还早的一次
+   重打, 同一张表上摞了两代历史证据)。若真按"读 ingest_batch 的旧戳往回写"去做回退,
+   会把全库打成这个两代之前、早已作废的戳组合 —— 而 v1 契约工厂现算出来的真实值是
+   ``contract_hash=a25c126e…`` / ``config_hash=21d86185…`` / ``schema_hash=fd84a583…``
+   (见 ``backend/config/nominal_ohlcv_contract_versions.yaml``, 该文件的值是对
+   ``git 44b772c2^`` 那棵树现跑一次 v1 版契约工厂得到的, 不是猜的也不是从
+   ingest_batch 反推的)。两者不等, ``security_day_reader`` 的严格 hash 相等校验会
+   拒绝读回**每一个**分区。正确回退法: 目标戳只能来自一次独立算出的 v1 契约, 绝不能
+   从 ingest_batch 的历史记录反推 —— ingest_batch 是走过的路留下的脚印, 不是"上一站"
+   的地图。``--to-v1`` (见下方用法) 就是这条正确路径的实现: 目标戳从
+   ``nominal_ohlcv_contract_versions.yaml`` 读, 从不读 ingest_batch。
+
+   **回退窗口**: 只在**第一行 NULL 进 canonical 之前**安全。v1 要求
+   ``pre_close``/``change``/``pct_chg`` 三列 ``NOT NULL``, ``ALTER COLUMN … SET NOT
+   NULL`` 遇到哪怕一行 NULL 就直接失败 (不会跳过、不会部分生效)。一旦已经落了 NULL
+   行, ``--to-v1`` 会拒绝执行并报"必须先删除含 NULL 的分区"——删分区是不可逆动作
+   (信息永久消失), 所以刀3 (补 09-01 起的缺口, 其中北交所行按设计就是 NULL) 一开跑,
+   即视为放弃"纯改戳"回退到 v1 契约这条路。
+
 4. **一个连接、一个事务** (CLAUDE.md 红线 6)。实测 DuckDB 1.5.2 的 DDL 是事务性的:
    事务内 ADD COLUMN / DROP NOT NULL 后 ROLLBACK 能完全还原, 中途 ConstraintException
    之后 ROLLBACK 同样还原且数据完好 —— 所以 DDL 与 UPDATE 可以同事务, 失败不留半改态。
@@ -54,6 +76,13 @@
     # 3) 确认无误后对生产库执行
     PYTHONPATH=backend python backend/scripts/restamp_nominal_ohlcv_contract.py --execute
 
+    # 回退到 v1 契约 (仅在"回退窗口"关闭之前安全, 见上文"3. 不记账"的更正)。
+    # --to-v1 同 --execute 一样: 省略 --execute 即 dry-run (只读, 打印计划)。
+    PYTHONPATH=backend python backend/scripts/restamp_nominal_ohlcv_contract.py \\
+        --to-v1 --db-override /tmp/copy.duckdb
+    PYTHONPATH=backend python backend/scripts/restamp_nominal_ohlcv_contract.py \\
+        --to-v1 --db-override /tmp/copy.duckdb --execute
+
 退出码: 0 = 成功 (dry-run 或 execute); 非 0 = 计划不可执行 / 断言失败 (已 ROLLBACK)。
 """
 from __future__ import annotations
@@ -71,13 +100,22 @@ from services.data_sources.accepted_schema import (  # noqa: E402
     ACCEPTED_TABLE,
     INGEST_BATCH_TABLE,
 )
+from services.data_sources.nominal_ohlcv_acquire_rules import (  # noqa: E402
+    load_nominal_ohlcv_acquire_rules,
+)
 from services.data_sources.nominal_ohlcv_contract import (  # noqa: E402
     load_nominal_ohlcv_contract,
+)
+from services.data_sources.nominal_ohlcv_contract_versions import (  # noqa: E402
+    load_rollback_target,
 )
 from services.data_sources.nominal_ohlcv_schema import (  # noqa: E402
     CANONICAL_TABLE,
     DATASET_ID,
     DOMAIN,
+    ENRICHMENT_FIELDS,
+    NON_NULL_NUMERIC_FIELDS,
+    NUMERIC_FIELDS,
 )
 from services.writer_lock import writer_lock  # noqa: E402
 
@@ -90,29 +128,11 @@ class RestampMismatchError(RuntimeError):
     """
 
 
-# 历史行的 pre_close_origin 回填映射。
-#
-# 这是**一次性迁移的事实**, 不是可配置策略, 所以放代码常量而不是 YAML —— 它描述的是
-# "2019-01-02..2026-08-31 这段历史里, 每个供货商的 pre_close 实际由谁产生", 那是已经
-# 发生过的事, 不会再变。每条都有实证:
-#
-#   tushare  -> provider_tushare
-#       实测 (挑事件最密集的三天): 20260529 canonical 事件 166 行 ↔ landing pre_close
-#       与前日 close 不等**恰好 166 行**; 20250606 是 159 ↔ 158。样本如 000999.SZ
-#       landing pre_close=33.02 而前日 close=43.24 (大比例送转)。即 tushare 给的是带
-#       真实除权调整的值, 是真 provider 字段。
-#
-#   tdxhub   -> derived_tdxhub_xdxr
-#       实测: 20260831 那批抽 400 行, pre_close == 前日 close 有 398 行, 唯一不等的
-#       000423.SZ 正是除权日。对照源码 sources/tdxhub.py:1042 ``_adjusted_pre_close``
-#       (无事件时退化为 round(prev_close, 2)) 与 :1040 新股首日 ``round(open_, 2)`` ——
-#       供应商的 K 线响应里**根本没有 pre_close 字段**, 值全部由 adapter 算出。
-#       标签说的是"值出自哪条代码路径", 不是"当天有没有除权", 所以对退化的那 398 行
-#       同样准确。
-_ORIGIN_BY_SOURCE: Mapping[str, str] = {
-    "tushare": "provider_tushare",
-    "tdxhub": "derived_tdxhub_xdxr",
-}
+# 历史行的 pre_close_origin 回填映射 —— 2026-09-16 起从
+# backend/config/nominal_ohlcv_acquire.yaml 的 backfill_origin_by_source 键读取
+# (业主 09-16 明令: 会随供货商增减而变的事实是参数, 参数进配置, 脚本里不留字面量)。
+# 该 yaml 文件里逐条记着每个映射的实证依据 (tushare/tdxhub 的取证过程), 不在这里
+# 重复一份会漂移的注释。
 
 
 @dataclass(frozen=True)
@@ -177,6 +197,7 @@ def plan(con: Any) -> RestampPlan:
     """只读: 算出要改什么, 以及重打后必须保持不变的那些基线读数。"""
 
     contract = load_nominal_ohlcv_contract()
+    backfill_map = load_nominal_ohlcv_acquire_rules().backfill_origin_by_source
     fields = tuple(DOMAIN.schema_payload["fields"])
     declared = {str(f["name"]): f for f in fields}
     cols, not_null = _table_shape(con, CANONICAL_TABLE)
@@ -207,7 +228,7 @@ def plan(con: Any) -> RestampPlan:
             [DATASET_ID],
         ).fetchall()
     ]
-    unmapped = tuple(sorted(s for s in sources if s not in _ORIGIN_BY_SOURCE))
+    unmapped = tuple(sorted(s for s in sources if s not in backfill_map))
 
     pointer_rows = int(con.execute(
         f"SELECT COUNT(*) FROM {ACCEPTED_TABLE} WHERE dataset_id = ?", [DATASET_ID]
@@ -253,7 +274,7 @@ def plan(con: Any) -> RestampPlan:
         add_columns=add_columns,
         drop_not_null=drop_not_null,
         set_not_null=set_not_null,
-        backfill_by_source={s: _ORIGIN_BY_SOURCE[s] for s in sources if s in _ORIGIN_BY_SOURCE},
+        backfill_by_source={s: backfill_map[s] for s in sources if s in backfill_map},
         unmapped_sources=unmapped,
         content_hash_before=content_before,
         ingest_batch_before=ingest_before,
@@ -280,7 +301,8 @@ def format_plan(p: RestampPlan) -> str:
     if p.unmapped_sources:
         lines.append(
             f"!! 无法执行: ingest_batch 里有未登记的 source_name {list(p.unmapped_sources)} —— "
-            "回填映射缺这些源的裁决, 补进 _ORIGIN_BY_SOURCE 并写明实证依据后再跑 "
+            "回填映射缺这些源的裁决, 补进 nominal_ohlcv_acquire.yaml 的 "
+            "backfill_origin_by_source 并写明实证依据后再跑 "
             "(不猜: 猜错就是给 859 万行里的一部分编造血缘)"
         )
     return "\n".join(lines)
@@ -475,6 +497,162 @@ def _assert_after(con: Any, p: RestampPlan, *, shape: bool = True) -> None:
         )
 
 
+# ── --to-v1: 回退到 v1 契约 ──────────────────────────────────────────────────
+#
+# 目标戳来自 nominal_ohlcv_contract_versions.yaml (一次性历史事实, 现算自
+# git 44b772c2^ 的契约工厂), 不来自 load_nominal_ohlcv_contract() (那是**当前** v2
+# 契约工厂, 只会算出 v2 自己的戳, 答不出 v1 的值) 也不来自 ingest_batch (见上方
+# "3. 不记账" 的 2026-09-16 更正 —— ingest_batch 里躺着的是更早一代的戳, 不是 v1)。
+#
+# 要删/要恢复 NOT NULL 的列不硬编码字面量, 照 plan() 的纪律现算:
+#   drop_columns    = ENRICHMENT_FIELDS               (v1 没有这一列)
+#   restore_not_null = NUMERIC_FIELDS 里被 v2 改成可空的那些
+#                     = set(NUMERIC_FIELDS) - set(NON_NULL_NUMERIC_FIELDS)
+# 两者都是从当前 v2 schema 声明反推 v1 与 v2 的差集, 不是拍脑袋写的列名清单。
+
+
+@dataclass(frozen=True)
+class RollbackPlan:
+    """回退到某个历史 contract_version 的计划。"""
+
+    target_contract_version: str
+    target_schema_hash: str
+    target_config_hash: str
+    target_contract_hash: str
+    derived_from: str
+    drop_columns: tuple[str, ...]
+    restore_not_null: tuple[str, ...]
+    # 待恢复 NOT NULL 的列里, 现在已经是 NULL 的行数 —— 这才是"能不能回退"的判据
+    # (SET NOT NULL 遇到哪怕一行 NULL 就直接失败, 不会跳过)。
+    null_row_count: int
+
+    @property
+    def executable(self) -> bool:
+        return self.null_row_count == 0
+
+
+def plan_to_v1(con: Any) -> RollbackPlan:
+    """只读: 算出回退到 v1 契约要做什么, 以及是否已经被 NULL 行挡住 (回退窗口已关)。"""
+
+    target = load_rollback_target("1")
+    cols, not_null = _table_shape(con, CANONICAL_TABLE)
+    drop_columns = tuple(name for name in ENRICHMENT_FIELDS if name in cols)
+    candidate_not_null = tuple(sorted(set(NUMERIC_FIELDS) - set(NON_NULL_NUMERIC_FIELDS)))
+    restore_not_null = tuple(
+        name for name in candidate_not_null if name in cols and name not in not_null
+    )
+    blocking_columns = tuple(name for name in candidate_not_null if name in cols)
+    if blocking_columns:
+        where = " OR ".join(f"{name} IS NULL" for name in blocking_columns)
+        null_row_count = int(
+            con.execute(f"SELECT COUNT(*) FROM {CANONICAL_TABLE} WHERE {where}").fetchone()[0]
+        )
+    else:
+        null_row_count = 0
+    return RollbackPlan(
+        target_contract_version=target.contract_version,
+        target_schema_hash=target.schema_hash,
+        target_config_hash=target.config_hash,
+        target_contract_hash=target.contract_hash,
+        derived_from=target.derived_from,
+        drop_columns=drop_columns,
+        restore_not_null=restore_not_null,
+        null_row_count=null_row_count,
+    )
+
+
+def format_plan_to_v1(p: RollbackPlan) -> str:
+    lines = [
+        f"回退目标: contract_version={p.target_contract_version} ({p.derived_from})",
+        f"          schema_hash={p.target_schema_hash}",
+        f"          config_hash={p.target_config_hash}",
+        f"          contract_hash={p.target_contract_hash}",
+        f"删列: {list(p.drop_columns) or '无'}",
+        f"恢复 NOT NULL: {list(p.restore_not_null) or '无'}",
+    ]
+    if p.null_row_count:
+        lines.append(
+            f"!! 无法执行: {CANONICAL_TABLE} 里有 {p.null_row_count} 行待恢复 NOT NULL "
+            "的列为 NULL —— 必须先删除含 NULL 的分区 (accept 的 DELETE+INSERT 原子替换) "
+            "才能回退到 v1 契约; SET NOT NULL 遇 NULL 行会直接失败, 不会半途而止"
+        )
+    elif not (p.drop_columns or p.restore_not_null):
+        lines.append("==> 无事可做: 表形状已是 v1 契约形状 (重跑本命令是 no-op)。")
+    return "\n".join(lines)
+
+
+def execute_to_v1(con: Any, p: RollbackPlan) -> RollbackPlan:
+    """一个事务删列+改戳, 再一个独立事务恢复 NOT NULL (理由同 execute() 段2的实测:
+    SET NOT NULL 与同事务里刚做完的写操作互斥)。"""
+
+    if not p.executable:
+        raise RestampMismatchError(
+            f"计划不可执行: {CANONICAL_TABLE} 里有 {p.null_row_count} 行含 NULL, "
+            "必须先删除含 NULL 的分区 (回退窗口已关闭)"
+        )
+
+    con.execute("BEGIN TRANSACTION")
+    try:
+        for name in p.drop_columns:
+            con.execute(f"ALTER TABLE {CANONICAL_TABLE} DROP COLUMN {name}")
+        con.execute(
+            f"UPDATE {CANONICAL_TABLE} SET contract_version = ?, config_hash = ?",
+            [p.target_contract_version, p.target_config_hash],
+        )
+        con.execute(
+            f"""
+            UPDATE {ACCEPTED_TABLE}
+               SET contract_version = ?, contract_hash = ?, config_hash = ?
+             WHERE dataset_id = ?
+            """,
+            [p.target_contract_version, p.target_contract_hash, p.target_config_hash, DATASET_ID],
+        )
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+
+    if p.restore_not_null:
+        con.execute("BEGIN TRANSACTION")
+        try:
+            for name in p.restore_not_null:
+                con.execute(f"ALTER TABLE {CANONICAL_TABLE} ALTER COLUMN {name} SET NOT NULL")
+            con.execute("COMMIT")
+        except Exception:
+            con.execute("ROLLBACK")
+            raise
+
+    _assert_after_to_v1(con, p)
+    return p
+
+
+def _assert_after_to_v1(con: Any, p: RollbackPlan) -> None:
+    bad_ptr = con.execute(
+        f"""SELECT COUNT(*) FROM {ACCEPTED_TABLE}
+             WHERE dataset_id = ? AND (contract_version <> ? OR contract_hash <> ?
+                                       OR config_hash <> ?)""",
+        [DATASET_ID, p.target_contract_version, p.target_contract_hash, p.target_config_hash],
+    ).fetchone()[0]
+    if bad_ptr:
+        raise RestampMismatchError(f"{ACCEPTED_TABLE}: {bad_ptr} 行回退后戳仍不等于 v1 目标")
+
+    bad_canon = con.execute(
+        f"""SELECT COUNT(*) FROM {CANONICAL_TABLE}
+             WHERE contract_version <> ? OR config_hash <> ?""",
+        [p.target_contract_version, p.target_config_hash],
+    ).fetchone()[0]
+    if bad_canon:
+        raise RestampMismatchError(f"{CANONICAL_TABLE}: {bad_canon} 行回退后戳仍不等于 v1 目标")
+
+    cols, not_null = _table_shape(con, CANONICAL_TABLE)
+    still_present = [name for name in p.drop_columns if name in cols]
+    if still_present:
+        raise RestampMismatchError(f"回退后仍残留应删的列: {still_present}")
+    not_restored = [name for name in p.restore_not_null if name not in not_null]
+    if not_restored:
+        raise RestampMismatchError(f"回退后仍未恢复 NOT NULL 的列: {not_restored}")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -484,12 +662,45 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--db-override", default=None,
         help="改写目标库路径 (先在生产库副本上验证全流程, 再对生产库跑)",
     )
+    parser.add_argument(
+        "--to-v1", action="store_true",
+        help="回退到 v1 契约 (目标戳来自 nominal_ohlcv_contract_versions.yaml, 不现算; "
+             "回退窗口: 第一行 NULL 进 canonical 之前, 见模块 docstring)",
+    )
     args = parser.parse_args(argv)
 
     from services.data_access.resolver import db_path  # noqa: PLC0415
     from services.duck_adapter import connect  # noqa: PLC0415
 
     target = args.db_override or str(db_path("tushare_raw"))
+
+    if args.to_v1:
+        if not args.execute:
+            con = connect(target, read_only=True)
+            try:
+                rp = plan_to_v1(con)
+            finally:
+                con.close()
+            print(format_plan_to_v1(rp))
+            print("\n(dry-run; 加 --execute 才写库)")
+            return 0 if rp.executable else 2
+
+        with writer_lock("restamp_nominal_ohlcv_contract"):
+            con = connect(target, read_only=False)
+            try:
+                rp = plan_to_v1(con)
+                print(format_plan_to_v1(rp))
+                if not rp.executable:
+                    return 2
+                execute_to_v1(con, rp)
+            finally:
+                con.close()
+        print(
+            f"\nexecuted: 已回退到 contract_version={rp.target_contract_version} "
+            f"({rp.derived_from}); 删列={list(rp.drop_columns) or '无'} "
+            f"恢复NOT NULL={list(rp.restore_not_null) or '无'}; 写后自证通过"
+        )
+        return 0
 
     if not args.execute:
         con = connect(target, read_only=True)

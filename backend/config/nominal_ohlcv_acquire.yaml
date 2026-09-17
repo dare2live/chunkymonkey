@@ -1,0 +1,124 @@
+# nominal_ohlcv daily 域 —— pre_close_origin 合法取值集 + 参考源/回填参数 (2026-09-16 刀1)。
+#
+# 为什么不进 _SCHEMA_PAYLOAD: 进 payload 会改 SCHEMA_HASH，进而要求重打 1,859 个 accepted
+# 分区指针 + 859 万行 canonical (见 restamp_nominal_ohlcv_contract.py)。本刀只是把"哪些取值
+# 合法"从散落的注释/隐式假设收进一处机读真相源，不改变已落地数据的形状，没有任何收益值得
+# 承担那次重打——所以这份取值集单独放这里，由 security_day_partition.py 的逐行校验消费，
+# 不进契约指纹。
+#
+# loader: services/data_sources/nominal_ohlcv_acquire_rules.py::load_nominal_ohlcv_acquire_rules
+# 未知顶层键 / 未知 kind / 取值集为空 / 阈值非正 / backfill 值不在取值集里 —— 一律 fail-closed
+# (ValueError)，不部分生效。
+version: 1
+
+pre_close_origin:
+  provider_tushare:
+    kind: provider
+    note: "历史 tushare 批, 重打脚本回填"
+  derived_tdxhub_xdxr:
+    kind: derived
+    note: "20260831 tdxhub 批, adapter 用 xdxr 自算"
+  provider_baostock:
+    kind: provider
+    note: "baostock query_history_k_data_plus.preclose, 交易所口径"
+  unknown_no_reference_bj:
+    kind: unknown
+    note: "北交所: baostock 不支持该市场"
+  unknown_reference_unavailable:
+    kind: unknown
+    note: "SH/SZ: baostock 无该 (码,日) 行或该码查询失败"
+  unknown_reference_mismatch:
+    kind: unknown
+    note: "SH/SZ: baostock close 与 dump close 差 > close_tolerance"
+
+reference:
+  source: baostock
+  # baostock 端点名 (sources/baostock.py::API_FUNCTION_NAMES 的白名单键之一) ——
+  # 供应商端点会随吞吐场景变 (该文件自己的注释建议批量场景改用
+  # query_daily_history_k_AStock), adapter (``_BaostockReferenceCache._query``)
+  # 与幸存者门 (``compute_survivor_gate``) 都从这里读, 不各写一份字面量。
+  api: query_history_k_data_plus
+  # 判"同一只票同一天"的一致性 —— dump 与 baostock 两条腿的 close 差多少还算同一行。
+  close_tolerance: 0.005
+  # 业主已接受北交所前收盘价写空 (pre_close_origin=unknown_no_reference_bj, 稳态 ~340 行/天,
+  # baostock 不支持该市场)。这条只管沪深股票池内的零星 unknown (baostock 缺行/异常/口径对不上)：
+  # 超过这个行数整天拒收，不落地 (见 §3: 拒收 vs 无界放行 NULL 的取舍)。容忍行数暂定 5，
+  # 留在这里方便业主按刀2 dry-run 的实测结果调整。
+  sh_sz_max_unknown_rows: 5
+  # 2026-09-16 刀2 新增: 每码首次查 baostock 时一次性预取 [t, t+此处天数(自然日)] 的整段
+  # 区间, 结果缓存进程内; 后续同码同窗口内的日子直接命中缓存, 不重复发请求。命中缓存 miss
+  # (码不在 t 附近出现过 / 窗口没覆盖到) 再退化成单日 [t, t] 查询一次。
+  prefetch_window_days: 15
+  # baostock query_history_k_data_plus 的 fields 参数 (adapter 用 "," 连接后传给
+  # sources/baostock.py)。只列适配器实际用到的列: date/code 定位一行, close 与 dump 的
+  # close 做一致性比对 (close_tolerance), preclose 是本域要取的值本身, volume/tradestatus
+  # 供 §1 幸存者门 (survivor gate) 判停牌/真漏用, 不在此处多列未用字段。
+  baostock_fields: [date, code, close, preclose, volume, tradestatus]
+  # ts_code 交易所后缀 (与 fuyao dump thscode 同形态) -> baostock query_history_k_data_plus
+  # 的 code 前缀。北交所不在这张表里 —— 它结构上就不支持该市场
+  # (见 pre_close_origin.unknown_no_reference_bj), 不是"漏配一行"。
+  exchange_suffix_to_baostock_prefix:
+    SH: "sh."
+    SZ: "sz."
+  # change = close - pre_close; pct_chg = change / pre_close * 100。业主 09-16 明令金融
+  # 数值禁用内置 round() (银行家舍入); 一律 Decimal + ROUND_HALF_UP 到这么多小数位。
+  change_pct_round_digits: 4
+
+dump:
+  # fuyao dump parquet 文件的仓库相对缓存目录 —— backend/scripts/recon_fuyao_kline.py
+  # 早于本刀已在用同一个目录写死同一路径; 本刀新增的适配器不再另起一份字面量, 从这里读。
+  # (业主 09-16 明令: 路径/文件名模板属于参数, 同一参数只在一处定义。recon 脚本本身不在
+  # 本次允许改的文件清单里, 未能改造成同样读这个值 —— 见本刀 deviations。)
+  cache_dir: data/scratch/fuyao_dumps
+  # 早于此日不许用 fuyao dump 生成 canonical 行 (业主: 历史重生成走 landing_tushare_daily,
+  # 不重放 dump —— dump 只当增量源)。
+  incremental_floor: "20260901"
+  # 供应商列名 -> canonical 列名。目标列集合 (本映射的 values) 必须恰好等于 PROVIDER_FIELDS
+  # 里"由 dump 直接提供"的那 8 列 (ts_code/trade_date + 六个价量列; pre_close/change/pct_chg
+  # 来自 baostock 一条腿, 不在这份映射里, 也不该出现在这份映射的目标集合里) —— loader 逐条
+  # 校验 (见 nominal_ohlcv_acquire_rules.py)。列名来源: fuyao_kline_recon.py:38 已验证过的
+  # 同一份映射 (thscode/date_ms/open_price/high_price/low_price/close_price 与 canonical
+  # 逐字段零差异), volume/turnover 是新加的 (那份 recon 脚本只算 ratio 不重命名列)。
+  column_map:
+    thscode: ts_code
+    date_ms: trade_date
+    open_price: open
+    high_price: high
+    low_price: low
+    close_price: close
+    volume: vol
+    turnover: amount
+  # 供应商单位 -> 项目单位的除数 (fuyao 股 -> 项目手; fuyao 元 -> 项目千元)。记忆 (fable
+  # spec F4/§一) 实测 vol_ratio_median ≈100、amount_ratio_median ≈1000, 已双向确认。
+  vol_divisor: 100
+  amount_divisor: 1000
+  # 只取这个 adjusted 取值的行 (未复权; F4 实测该字段全为 "none")，与
+  # fuyao_kline_recon.py::load_fuyao_kline 的同名过滤同一常量语义。
+  adjusted_filter_value: none
+  # date_ms (epoch 毫秒) 换算成交易日日期时用的时区; 与
+  # fuyao_kline_recon.py::shanghai_date_sql / sources/fuyao.py::shanghai_midnight_ms 同一
+  # 时区语义 (那两处是 SQL 字面量/固定 UTC+8 offset, 这里是本域适配器用 zoneinfo 走的同一
+  # 时区参数, 不是抄两份不同实现)。
+  timezone: Asia/Shanghai
+
+# 历史批次的 pre_close_origin 回填映射 —— restamp_nominal_ohlcv_contract.py --execute 用它
+# 把 2019-01-02..2026-08-31 已落地的 canonical 行按 ingest_batch.source_name 补上这一列
+# (那批行落地时契约还没有它)。每条都有实证 (原文位于本刀之前脚本内的模块级注释，现挪到这里
+# 是因为它描述的是"哪个供货商产生的 pre_close 属于哪个取值"这件会随供货商增减而变的事实，
+# 是参数不是代码——业主 09-16 明令"参数进配置"):
+#
+#   tushare  -> provider_tushare
+#       实测 (挑事件最密集的三天): 20260529 canonical 事件 166 行 与 landing pre_close 与
+#       前日 close 不等**恰好 166 行**; 20250606 是 159 与 158。样本如 000999.SZ landing
+#       pre_close=33.02 而前日 close=43.24 (大比例送转)。即 tushare 给的是带真实除权调整的
+#       值，是真 provider 字段。
+#
+#   tdxhub   -> derived_tdxhub_xdxr
+#       实测: 20260831 那批抽 400 行, pre_close == 前日 close 有 398 行, 唯一不等的
+#       000423.SZ 正是除权日。对照源码 sources/tdxhub.py 的 `_adjusted_pre_close`
+#       (无事件时退化为 round(prev_close, 2)) 与新股首日 `round(open_, 2)` —— 供应商的
+#       K 线响应里根本没有 pre_close 字段, 值全部由 adapter 算出。标签说的是"值出自哪条
+#       代码路径", 不是"当天有没有除权", 所以对退化的那 398 行同样准确。
+backfill_origin_by_source:
+  tushare: provider_tushare
+  tdxhub: derived_tdxhub_xdxr

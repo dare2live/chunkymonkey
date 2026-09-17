@@ -458,6 +458,30 @@ def test_nominal_ohlcv_accepted_sources_fail_on_disallowed_accepted_source(real_
         c.close()
 
 
+def test_nominal_ohlcv_accepted_sources_pass_fuyao_accepted(real_specs):
+    """2026-09-16 刀2: daily 域二次换源 tdxhub -> fuyao, 允许集加 fuyao (不删 tdxhub,
+    见 test_nominal_sources_allowed_set_locked_to_tushare_sunset 的更正说明)。"""
+    c = _nominal_conn()
+    try:
+        _insert_ingest_batch(c, batch_id="b1", source_name="fuyao", status="ACCEPTED")
+        r = cdi.evaluate_spec(real_specs["nominal_ohlcv_accepted_sources"], c)
+        assert r == {**r, "status": "PASS", "checked": 1, "value": 0}
+    finally:
+        c.close()
+
+
+def test_nominal_ohlcv_accepted_sources_fail_on_akshare_even_alongside_fuyao(real_specs):
+    """反向验证: 加了 fuyao 不等于允许集变宽松到接受任意新源——akshare 仍 FAIL。"""
+    c = _nominal_conn()
+    try:
+        _insert_ingest_batch(c, batch_id="b1", source_name="fuyao", status="ACCEPTED")
+        _insert_ingest_batch(c, batch_id="b2", source_name="akshare", status="ACCEPTED")
+        r = cdi.evaluate_spec(real_specs["nominal_ohlcv_accepted_sources"], c)
+        assert r["status"] == "FAIL" and r["checked"] == 2 and r["value"] == 1
+    finally:
+        c.close()
+
+
 # ── 7. org/holders 指针 (建表函数: ensure_org_holding_acceptance_schema /
 # ensure_holders_top10_acceptance_schema) ────────────────────────────────────────
 
@@ -590,8 +614,18 @@ def test_holders_pointer_fail_on_row_count_drift(real_specs):
 # ── 8. R3: nominal_sources 允许集与 tushare_sunset.yaml 机械锁链 ─────────────────
 
 def test_nominal_sources_allowed_set_locked_to_tushare_sunset(real_specs):
-    """expect 允许集 == {'tushare'} ∪ {tushare_sunset.domains.daily.replacement}——
-    离线断言两处相等 (R3), 不许两边各自硬编码却互不引用。"""
+    """expect 允许集 == {'tushare', 'tdxhub'} ∪ {tushare_sunset.domains.daily.
+    replacement}——离线断言两处相等 (R3), 不许两边各自硬编码却互不引用。
+
+    2026-09-16 刀2 更正 (daily 域二次换源 tdxhub -> fuyao): 原断言 `{"tushare",
+    replacement}` 假设一个域一生只换源一次, 这个假设现在被证伪了——daily 已经历
+    tushare -> tdxhub -> fuyao 两跳, 而 R2 (全历史不设窗, db_invariants.yaml 同条
+    invariant 注释) 要求早已落地的 2026-08-31 tdxhub ACCEPTED 批次永远留在允许集里,
+    不能因为 replacement 字段只能记录"当前"这一任供货商就被挤出去 (那会让这条门对着
+    自己的真实历史数据永久 FAIL)。'tdxhub' 在此硬编码为已冻结的历史成员 (它不会再是
+    任何未来 replacement 的取值——本域已经再次换源离开它), 不是回到"两边各自硬编码"：
+    'tushare'/当前 replacement 仍从 tushare_sunset.yaml 现读, 机械锁链只对"当前在职
+    供货商"那一格生效, 历史格由人工在两处 (这里 + db_invariants.yaml) 同步追加。"""
     sunset = yaml.safe_load(
         (REPO / "backend" / "config" / "tushare_sunset.yaml").read_text(encoding="utf-8")
     )
@@ -600,7 +634,7 @@ def test_nominal_sources_allowed_set_locked_to_tushare_sunset(real_specs):
     m = re.search(r"NOT IN \(([^)]*)\)", sql)
     assert m, "nominal_ohlcv_accepted_sources.sql 里找不到 NOT IN (...) 允许集字面量"
     allowed = {item.strip().strip("'") for item in m.group(1).split(",")}
-    assert allowed == {"tushare", replacement}
+    assert allowed == {"tushare", "tdxhub", replacement}
 
 
 # ── 9. 通用行为: R1 三态判定 (checked==0 / value NULL / 列名不对 / 库不可达) ───────

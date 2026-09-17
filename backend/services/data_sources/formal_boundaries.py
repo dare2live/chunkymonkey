@@ -68,8 +68,12 @@ _FORMAL_BOUNDARIES: dict[str, FormalDomainBoundary] = {
         # 2026-09-01 授权换源 tushare -> tdxhub (通达信)。全市场 5208 只 x 9 字段与 canonical
         # 逐项零差异 (实测 46872/46872 全对), 且覆盖北交所 (tushare 侧 canonical 有 BJ 339 只,
         # 通达信按 ts_code 直取可得)。写字面量不用 LIVE_ADAPTER: 后者是"尚未迁移"的默认值。
+        # 2026-09-16 刀2 再授权换源 tdxhub -> fuyao (tdxhub K 线族服务端已停供, 两台主机任何
+        # 参数恒返 2 字节协议错误帧); OHLCV 七列来自 fuyao dump, pre_close 来自 baostock
+        # 交易所口径查询, 北交所结构上无 baostock 覆盖 (稳态 unknown, 详见
+        # sources/fuyao_daily_k.py)。
         domain="daily",
-        adapter="tdxhub",
+        adapter="fuyao",
         landing_writer="services.data_sources.nominal_ohlcv_acceptance.land_nominal_ohlcv_batch",
         canonical_writer="services.data_sources.nominal_ohlcv_acceptance.accept_nominal_ohlcv_batch",
         dataset_id="tier0.market_data.nominal_ohlcv_daily",

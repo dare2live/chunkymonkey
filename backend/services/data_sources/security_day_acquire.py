@@ -18,9 +18,10 @@ Does not revive the retired multi-source fallback registry / plugin bus.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from services.data_sources.security_day_capture import ProviderPage
 from services.data_sources.security_day_partition import SecurityDayError
 
 _SECURITY_DAY_ACQUIRE_DOMAINS = frozenset({"daily", "stock_st"})
@@ -36,12 +37,20 @@ SUPPORTED_ACQUIRE_MODES = frozenset(
 
 @dataclass(frozen=True)
 class SecurityDayAcquireResult:
-    """Provider-shaped rows plus honest acquire lineage (land-only concern)."""
+    """Provider-shaped rows plus honest acquire lineage (land-only concern).
+
+    ``request_meta`` (2026-09-16, 返修 blocking 发现 #1 修复): page-level
+    provenance (e.g. the fuyao dump adapter's release identity/sha256) that a
+    ``fetch_rows`` callable returned via :class:`~services.data_sources.
+    security_day_capture.ProviderPage` instead of a plain row sequence. Empty
+    default keeps every existing construction (local-raw acquire, tests that
+    build this directly) unchanged — it is additive, never required."""
 
     rows: tuple[Mapping[str, Any], ...]
     acquire_mode: AcquireMode
     lineage_note: str
     source_ref: str
+    request_meta: Mapping[str, Any] = field(default_factory=dict)
 
 
 def _domain_acquire_tables(domain: str) -> tuple[tuple[str, ...], str, str]:
@@ -102,9 +111,24 @@ def acquire_security_day_provider(
     domain: str,
     *,
     trade_date: str,
-    fetch_rows: Callable[[Mapping[str, Any]], Sequence[Mapping[str, Any]] | None],
+    fetch_rows: Callable[
+        [Mapping[str, Any]], Sequence[Mapping[str, Any]] | ProviderPage | None
+    ],
 ) -> SecurityDayAcquireResult:
-    """Run the provider faucet callable once; return provider-shaped rows."""
+    """Run the provider faucet callable once; return provider-shaped rows.
+
+    ``fetch_rows`` may return a :class:`ProviderPage` (rows + page-level
+    ``request_meta``) instead of a plain sequence — same duck-typed contract
+    ``capture_security_day_provider_rows`` already accepts (2026-09-16, 返修
+    blocking 发现 #1 修复). Unwrapping it here, rather than leaving
+    ``tuple(fetch_rows(...) or ())`` to run on whatever came back, matters for
+    two reasons: (a) that literal call raises ``TypeError`` on a
+    ``ProviderPage`` today (实测 2026-09-16) — it has no ``__iter__`` — so
+    without this, a ``fetch_rows`` that starts returning ``ProviderPage``
+    would crash every acquire, not silently degrade; (b) ``request_meta``
+    would otherwise never survive past this function, since ``rows`` here is
+    always flattened to a plain ``tuple`` regardless of caller.
+    """
 
     if domain not in _SECURITY_DAY_ACQUIRE_DOMAINS:
         raise SecurityDayError(
@@ -115,12 +139,19 @@ def acquire_security_day_provider(
         raise SecurityDayError("provider acquire requires fetch_rows")
     partition = str(trade_date).replace("-", "")
     _fields, _table, api = _domain_acquire_tables(domain)
-    rows = tuple(fetch_rows({"trade_date": partition}) or ())
+    page = fetch_rows({"trade_date": partition})
+    if isinstance(page, ProviderPage):
+        rows = tuple(page.rows or ())
+        request_meta: Mapping[str, Any] = dict(page.request_meta or {})
+    else:
+        rows = tuple(page or ())
+        request_meta = {}
     return SecurityDayAcquireResult(
         rows=rows,
         acquire_mode=ACQUIRE_MODE_PROVIDER_TUSHARE,
         lineage_note=f"provider_tushare:{domain}:{api}",
         source_ref=f"tushare:{api}",
+        request_meta=request_meta,
     )
 
 
@@ -130,7 +161,9 @@ def resolve_security_day_acquire(
     *,
     trade_date: str,
     conn=None,
-    fetch_rows: Callable[[Mapping[str, Any]], Sequence[Mapping[str, Any]] | None]
+    fetch_rows: Callable[
+        [Mapping[str, Any]], Sequence[Mapping[str, Any]] | ProviderPage | None
+    ]
     | None = None,
 ) -> SecurityDayAcquireResult:
     """Single land-path entry: choose faucet mode without touching accept."""

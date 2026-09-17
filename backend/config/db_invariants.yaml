@@ -285,12 +285,15 @@ invariants:
     attach: {}
     invariant: >-
       ingest_batch 里 dataset_id=tier0.market_data.nominal_ohlcv_daily 且
-      status=ACCEPTED 的批次, source_name 必须 ∈ {tushare, tdxhub} (裁决允许集,
+      status=ACCEPTED 的批次, source_name 必须 ∈ {tushare, tdxhub, fuyao} (裁决允许集,
       R3 与 tushare_sunset.yaml domains.daily.replacement 锁链)——全历史不设窗
-      (2026-09-01 已论证去窗零成本)
+      (2026-09-01 已论证去窗零成本)。2026-09-16 刀2 加 fuyao (tdxhub -> fuyao 再换源):
+      tdxhub 不从允许集里删——它是已落地历史 ACCEPTED 批次的真实 source_name (2026-08-31
+      批), 删掉会让这条全历史不设窗的门对着自己的历史数据永久 FAIL; 允许集只增不减,
+      与该域已经历的每一任真实供货商一一对应
     sql: |
       SELECT COUNT(*) AS checked,
-             COUNT(*) FILTER (WHERE source_name NOT IN ('tushare', 'tdxhub')) AS value
+             COUNT(*) FILTER (WHERE source_name NOT IN ('tushare', 'tdxhub', 'fuyao')) AS value
         FROM ingest_batch
        WHERE dataset_id = 'tier0.market_data.nominal_ohlcv_daily' AND status = 'ACCEPTED'
     op: "=="

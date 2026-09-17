@@ -4,6 +4,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from services.data_sources.nominal_ohlcv_acquire_rules import (
+    build_pre_close_origin_validator,
+    load_nominal_ohlcv_acquire_rules,
+)
 from services.data_sources.security_day_partition import (
     SecurityDayDomain,
     schema_contract_hash,
@@ -213,6 +217,13 @@ DOMAIN = SecurityDayDomain(
     activity_field="vol",
     # 2026-09-01 授权换源 tushare -> tdxhub (通达信); tushare 授权 2026-09-10 到期不续期。
     # 实证零差异: 全市场 5208 只 x 9 字段 46872/46872 全对, 代码集双向零缺失。
+    # 2026-09-16 刀2 再授权换源 tdxhub -> fuyao (dump 价量 + baostock 前收参考): tdxhub K 线族
+    # 服务端已停供 (两台主机任何参数恒返 2 字节协议错误帧, 与 pytdx 包逐字段核对确认非解析
+    # bug); fuyao dump 价量与 canonical OHLC 实测 100% 相等 (vol/100、amount/1000), 且含
+    # BJ、不含 B 股 (vendor_scope population_disjoint)。dump 本身没有 pre_close 列 (供应商
+    # 响应字段表里没有), 唯一交易所口径的 pre_close 来源是 baostock query_history_k_data_
+    # plus——两条腿合并见 sources/fuyao_daily_k.py。tdxhub.py 保持不动 (未删除, 只是不再是
+    # daily 域的活跃 adapter), 详见该文件与 tushare_sunset.yaml domains.daily。
     # 注 (2026-09-02 更正: 下面两句原文**都是错的**, 且同日实测各自造成过一次误判):
     #   原写「source 参与 config_hash/contract_hash 计算」—— 已不成立。同日
     #   nominal_ohlcv_contract.py:125-133 明确把 source/api 移出 config_payload
@@ -222,8 +233,8 @@ DOMAIN = SecurityDayDomain(
     #   原写「读侧无 "hash 必须相等" 的校验」—— **假的**。security_day_reader.py:96 就是
     #   严格相等; 正因如此, 当初若让 source 进指纹, 换源会让既有 accepted 分区全部读不出来
     #   (实测 daily 1,858 个 + stock_st 1,128 个)。这句话本身曾把人带进沟里, 别再复活。
-    source="tdxhub",
-    api="daily",
+    source="fuyao",
+    api="daily_k_dump",
     target_db="tushare_raw",
     compatibility_table="raw_tushare_daily",
     contract_version=CONTRACT_VERSION,
@@ -239,6 +250,10 @@ DOMAIN = SecurityDayDomain(
     min_rows=1,
     schema_payload=SCHEMA_CONTRACT,
     schema_hash=SCHEMA_HASH,
+    # 2026-09-16: pre_close_origin 逐行校验 —— 取值集/kind 规则定义在
+    # nominal_ohlcv_acquire.yaml, 不进 _SCHEMA_PAYLOAD (进 payload 会改 SCHEMA_HASH,
+    # 见该 yaml 文件头注释)。stock_st 没有这一列, 不设置本字段, 保持 None。
+    enrichment_validator=build_pre_close_origin_validator(load_nominal_ohlcv_acquire_rules()),
 )
 
 

@@ -548,6 +548,42 @@ def _check_kline_code_succession(
     kline_sql = f"tushare_raw.{kline_table}"
     try:
         events = ccs if ccs is not None else load_security_code_changes()
+        # 2026-09-16 刀2: 下面主查询按 price_tolerance 比对 o.last_close 与
+        # n.first_pre_close 时, 若 first_pre_close 是 NULL, `ABS(NULL - x) <=
+        # price_tolerance` 恒为 NULL (SQL WHERE 里当假) —— 该候选换码对会被主查询
+        # 静默滤掉, 从不进入 unregistered 检查 (asof_identity_r1.md §3 已指出这个盲区:
+        # "只影响'新码首日恰好 NULL'这一种情况")。这里只加一个独立计数, 不改主查询/
+        # 不改 status 判定——只报数, 让这类盲区至少在 detail 里可见。
+        null_first_pre_close_n = conn.execute(f"""
+            WITH days AS (
+                SELECT DISTINCT trade_date FROM {kline_sql}
+            ),
+            days_seq AS (
+                SELECT trade_date,
+                       LEAD(trade_date) OVER (ORDER BY trade_date) AS next_trade_date
+                FROM days
+            ),
+            per_code AS (
+                SELECT ts_code, MIN(trade_date) AS first_day, MAX(trade_date) AS last_day
+                FROM {kline_sql}
+                GROUP BY ts_code
+            ),
+            old_last AS (
+                SELECT k.ts_code, k.trade_date AS last_day
+                FROM {kline_sql} k
+                JOIN per_code p ON p.ts_code = k.ts_code AND p.last_day = k.trade_date
+            ),
+            new_first AS (
+                SELECT k.ts_code, k.trade_date AS first_day, k.pre_close AS first_pre_close
+                FROM {kline_sql} k
+                JOIN per_code p ON p.ts_code = k.ts_code AND p.first_day = k.trade_date
+            )
+            SELECT COUNT(*) FROM old_last o
+            JOIN days_seq ds ON ds.trade_date = o.last_day
+            JOIN new_first n ON n.first_day = ds.next_trade_date
+            WHERE o.ts_code <> n.ts_code
+              AND n.first_pre_close IS NULL
+        """).fetchone()[0]
         rows = conn.execute(f"""
             WITH days AS (
                 SELECT DISTINCT trade_date FROM {kline_sql}
@@ -603,10 +639,13 @@ def _check_kline_code_succession(
         return CheckResult(
             "kline_code_succession", "FAIL",
             f"{len(unregistered)} unregistered code-succession candidate(s): "
-            + ", ".join(unregistered[:8]),
+            + ", ".join(unregistered[:8])
+            + f"; null_first_pre_close_n={null_first_pre_close_n}",
         )
     return CheckResult(
-        "kline_code_succession", "PASS", "no unregistered code-succession candidate"
+        "kline_code_succession", "PASS",
+        f"no unregistered code-succession candidate; "
+        f"null_first_pre_close_n={null_first_pre_close_n}",
     )
 
 

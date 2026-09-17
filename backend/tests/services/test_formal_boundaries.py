@@ -19,7 +19,7 @@ from services.data_sources import sync_runner as sr
 
 def test_live_adapter_default_still_guards_unmigrated_domains() -> None:
     # 2026-09-01: tushare 授权 2026-09-10 到期不续期, formal 域已全部换源完毕:
-    #   trade_cal -> calendar_rule (规则推导)   daily     -> tdxhub (通达信)
+    #   trade_cal -> calendar_rule (规则推导)   daily     -> fuyao (dump+baostock, 原 tdxhub)
     #   stock_st  -> stock_st_derive (名称派生)  margin    -> 仍 tushare 但 retired_readonly
     # 即 **LIVE_ADAPTER 已无任何活跃取数域在用** —— 只剩 margin 这个已退役只读域挂着它。
     # 该常量与本守卫仍保留: 它挡的是"往 formal 域塞未授权 adapter"(如 akshare), 与哪个
@@ -108,10 +108,11 @@ def test_inventory_declares_three_boundaries_for_formal_domains() -> None:
     # 授权换源进行中 (tushare 2026-09-10 到期不续期), 每个域自己声明 adapter:
     #   2026-08-31 trade_cal -> calendar_rule (规则推导, 无供应商)
     #   2026-09-01 daily     -> tdxhub (通达信; 46872/46872 字段零差异 + 覆盖北交所)
+    #   2026-09-16 daily     -> fuyao (tdxhub K 线族服务端停供; dump 价量 + baostock 前收)
     #   2026-09-01 stock_st  -> stock_st_derive (名称前缀派生, 读本域已换扶摇的 stock_basic)
     # margin 是唯一仍挂 tushare 的 formal 域。
     assert inventory["trade_cal"]["adapter"] == "calendar_rule"
-    assert inventory["daily"]["adapter"] == "tdxhub"
+    assert inventory["daily"]["adapter"] == "fuyao"
     assert inventory["stock_st"]["adapter"] == "stock_st_derive"
     assert inventory["margin"]["adapter"] == "tushare"
     # 不变量: 任何仍指向 tushare 的 formal 域, 必须在日落台账 tushare_sunset.yaml 里有裁决。

@@ -8,6 +8,10 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from services.data_sources.nominal_ohlcv_acceptance import (
+    accept_nominal_ohlcv_batch,
+    land_nominal_ohlcv_batch,
+)
 from services.data_sources.nominal_ohlcv_contract import load_nominal_ohlcv_contract
 from services.data_sources.nominal_ohlcv_reader import (
     NominalOhlcvTruthUnavailable,
@@ -477,3 +481,155 @@ def test_stock_st_and_ohlcv_resolver_end_to_end(conn) -> None:
     assert membership.st_member_count >= 1
     assert membership.excluded_board_count >= 1
     assert any(code.endswith((".SH", ".SZ")) for code in membership.ts_codes)
+
+
+# ---------------------------------------------------------------------------
+# 刀1 (2026-09-16): pre_close_origin 逐行校验 —— 每个断言对应 fable_spec_daily_
+# cutover.md 「刀1」断言编号。每条只违反一个门控条件, 其它字段照抄现有真实 fixture。
+# ---------------------------------------------------------------------------
+
+
+def test_schema_hash_and_config_hash_pinned_literals() -> None:
+    """断言6: SCHEMA_HASH 字面量 (registry 里也是这个字面量) 与现算 config_hash/
+    contract_hash 前 8 位不因本刀改动而漂移 —— enrichment_validator 只是 DOMAIN 的
+    一个新字段, 不进 schema payload 也不进 config_payload。"""
+
+    assert (
+        SCHEMA_HASH
+        == "17ddf5c43490d0e72a2b12c093a1c43eec5867828fc6f47683dd84cfc7754d4f"
+    )
+    contract = load_nominal_ohlcv_contract()
+    assert contract.config_hash[:8] == "2e6150f5"
+    assert contract.contract_hash[:8] == "d2fd2c85"
+
+
+def test_invalid_pre_close_origin_rejected(conn) -> None:
+    """断言2: landing 行 origin=foo -> REJECTED 且 rejection_code == INVALID_ENRICHMENT。"""
+
+    contract = load_nominal_ohlcv_contract()
+    rows = _daily_rows(PARTITION, include_bj=False)
+    rows[0]["pre_close_origin"] = "foo"
+    outcome = publish_accepted_nominal_ohlcv_partition(
+        conn,
+        SecurityDayLandingBatch(
+            source=contract.source,
+            contract_version=contract.contract_version,
+            batch_id="daily-bad-origin",
+            partition_value=PARTITION,
+            observed_at=OBSERVED,
+            available_at=OBSERVED,
+            rows=rows,
+            request={"api": "daily", "trade_date": PARTITION},
+        ),
+        contract,
+        bootstrap=True,
+    )
+    assert outcome.status == "REJECTED"
+    assert outcome.rejection_code == "INVALID_ENRICHMENT"
+
+
+def test_unknown_origin_with_non_null_pre_close_rejected(conn) -> None:
+    """断言3: origin=unknown_no_reference_bj 但 pre_close 非空 -> REJECTED, 同 code,
+    detail 含 "unknown⇔NULL"。"""
+
+    contract = load_nominal_ohlcv_contract()
+    rows = _daily_rows(PARTITION, include_bj=False)
+    rows[0]["pre_close_origin"] = "unknown_no_reference_bj"
+    rows[0]["pre_close"] = 39.30
+    batch_id = "daily-unknown-with-value"
+    land_nominal_ohlcv_batch(
+        conn,
+        SecurityDayLandingBatch(
+            source=contract.source,
+            contract_version=contract.contract_version,
+            batch_id=batch_id,
+            partition_value=PARTITION,
+            observed_at=OBSERVED,
+            available_at=OBSERVED,
+            rows=rows,
+            request={"api": "daily", "trade_date": PARTITION},
+        ),
+        contract,
+    )
+    outcome = accept_nominal_ohlcv_batch(conn, batch_id, contract)
+    assert outcome.status == "REJECTED"
+    assert outcome.rejection_code == "INVALID_ENRICHMENT"
+    detail = conn.execute(
+        "SELECT rejection_detail FROM ingest_batch WHERE batch_id = ?", [batch_id]
+    ).fetchone()[0]
+    assert "unknown⇔NULL" in detail
+
+
+def test_provider_origin_with_null_pre_close_rejected(conn) -> None:
+    """断言4: origin=provider_baostock 但 pre_close=None -> REJECTED, 同 code。"""
+
+    contract = load_nominal_ohlcv_contract()
+    rows = _daily_rows(PARTITION, include_bj=False)
+    rows[0]["pre_close_origin"] = "provider_baostock"
+    rows[0]["pre_close"] = None
+    outcome = publish_accepted_nominal_ohlcv_partition(
+        conn,
+        SecurityDayLandingBatch(
+            source=contract.source,
+            contract_version=contract.contract_version,
+            batch_id="daily-provider-null",
+            partition_value=PARTITION,
+            observed_at=OBSERVED,
+            available_at=OBSERVED,
+            rows=rows,
+            request={"api": "daily", "trade_date": PARTITION},
+        ),
+        contract,
+        bootstrap=True,
+    )
+    assert outcome.status == "REJECTED"
+    assert outcome.rejection_code == "INVALID_ENRICHMENT"
+
+
+def test_existing_fixture_still_accepted_and_null_numeric_gate_untouched(conn) -> None:
+    """断言5: 现有 fixture (provider_tushare, 无改动) 仍 ACCEPTED; close=None 仍
+    NULL_NUMERIC —— 证明本刀新加的逐行校验没有碰非空数值门 (close 是
+    non_null_numeric_field, 与 pre_close_origin 校验是两条独立的门)。"""
+
+    contract = load_nominal_ohlcv_contract()
+    good_rows = _daily_rows(PARTITION, include_bj=False)
+    outcome = publish_accepted_nominal_ohlcv_partition(
+        conn,
+        SecurityDayLandingBatch(
+            source=contract.source,
+            contract_version=contract.contract_version,
+            batch_id="daily-fixture-untouched",
+            partition_value=PARTITION,
+            observed_at=OBSERVED,
+            available_at=OBSERVED,
+            rows=good_rows,
+            request={"api": "daily", "trade_date": PARTITION},
+        ),
+        contract,
+        bootstrap=True,
+    )
+    assert outcome.status == "ACCEPTED"
+    assert outcome.row_count == len(good_rows)
+
+    other_partition = "20230104"
+    other_observed = datetime(
+        2023, 1, 4, 18, 5, tzinfo=ZoneInfo("Asia/Shanghai")
+    ).astimezone(timezone.utc)
+    bad_rows = _daily_rows(other_partition, include_bj=False)
+    bad_rows[0]["close"] = None
+    null_numeric_outcome = publish_accepted_nominal_ohlcv_partition(
+        conn,
+        SecurityDayLandingBatch(
+            source=contract.source,
+            contract_version=contract.contract_version,
+            batch_id="daily-null-numeric-untouched",
+            partition_value=other_partition,
+            observed_at=other_observed,
+            available_at=other_observed,
+            rows=bad_rows,
+            request={"api": "daily", "trade_date": other_partition},
+        ),
+        contract,
+    )
+    assert null_numeric_outcome.status == "REJECTED"
+    assert null_numeric_outcome.rejection_code == "NULL_NUMERIC"

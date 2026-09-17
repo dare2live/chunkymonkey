@@ -1168,8 +1168,17 @@ domains:
     # 好在本域是 by_trade_date 增量、历史已在库, 不需要回填。
     # 的 bj_codes_provider 默认从 raw_tushare_stock_basic 读 BJ 代码 (实测 338 只) 补进
     # universe, 取数路径与沪深完全相同。BJ 拿不到时降级为仅沪深 + warning, 不阻断主体。
-    source: tdxhub
-    api: daily
+    #
+    # 2026-09-16 刀2 再授权换源 (tdxhub K 线族服务端已停供, 两台主机任何参数恒返 2 字节
+    # 协议错误帧, 与 pytdx 包逐字节核对非解析 bug): tdxhub -> fuyao。OHLCV 七列一律来自
+    # fuyao dump (daily-k-10d 优先, 缺口回退 daily-k 全量; 实测与 canonical 价量 100%
+    # 相等, vol/100、amount/1000), pre_close 无 dump 列 (供应商未提供), SH/SZ 由 baostock
+    # query_history_k_data_plus 的交易所口径 preclose 取得, 北交所结构上不支持 baostock
+    # (pre_close_origin=unknown_no_reference_bj, 稳态 ~340 行/天, 对 hfq/market_pulse 两个
+    # 下游不可见——两者都已按项目股票池过滤 BJ)。详见 sources/fuyao_daily_k.py 与
+    # backend/config/nominal_ohlcv_acquire.yaml (取值集/容忍阈值/单位换算等参数)。
+    source: fuyao
+    api: daily_k_dump
     target_db: tushare_raw
     # legacy compatibility only — not accepted publication identity
     target_table: raw_tushare_daily

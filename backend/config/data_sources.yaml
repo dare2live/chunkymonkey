@@ -5,11 +5,14 @@ version: 1
 # domains.daily, decision=replace/replacement=tdxhub/status=done@2026-09-01, 实测
 # ingest_batch 2026-08-31 起 source_name=tdxhub); 复权因子改自算 (services/adjust_factor.py,
 # tushare_sunset.yaml domains.adj_factor decision=derive)，不再依赖任何供应商因子表。
+# 2026-09-16 起: 通达信 K 线族服务端已停供 (两台主机任何参数恒返 2 字节协议错误帧), 再次
+# 换源 tdxhub -> fuyao (dump 价量 + baostock 前收参考, tushare_sunset.yaml domains.daily
+# replacement=fuyao/status=done@2026-09-16, 见 sources/fuyao_daily_k.py)。
 # 仍无跨供应商 fallback。它是 research/serving read surface，不是 nominal execution truth，
 # 也不是 Tier0 AcceptedPartition。
 capabilities:
   kline_daily:
-    primary: tdxhub
+    primary: fuyao
     fallback: []
     analysis_relation: market.v_price_kline_qfq
     allow_fallback_for_latest_gap: false

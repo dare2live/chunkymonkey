@@ -7,6 +7,7 @@ provider pages into :class:`SecurityDayLandingBatch`.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import isinf, isnan
 from typing import Any
@@ -18,6 +19,43 @@ from services.data_sources.security_day_partition import (
     SecurityDayLandingBatch,
     _partition,
 )
+
+
+@dataclass(frozen=True)
+class ProviderPage:
+    """A ``fetch_rows`` return value carrying request-level provenance metadata
+    alongside the rows themselves.
+
+    2026-09-16 (刀2): the fuyao dump + baostock daily adapter has metadata that
+    describes the *whole page*, not any one row — which dump release/kind was
+    used, its content hash, which reference source backed pre_close, and how
+    many rows fell into which pre_close_origin bucket. None of that belongs on
+    a per-row dict (rows already carry their own ``pre_close_origin``); it
+    belongs in ``ingest_batch.request_json`` where audits can find it without
+    re-deriving it from the rows.
+
+    A ``fetch_rows`` callable that has nothing extra to report keeps returning
+    a plain sequence of row mappings — :func:`capture_security_day_provider_rows`
+    treats that identically to ``ProviderPage(rows, {})``. This type is purely
+    additive: no existing caller (which all return plain sequences today) is
+    affected.
+
+    返修 (blocking 发现 #1 修复): ``__len__``/``__bool__`` delegate to ``rows``
+    so a ``ProviderPage`` is truthy/falsy exactly like the plain sequence it
+    replaces — ``sync_runner._fetch_with_retry``'s ``if rows: return rows`` /
+    zero-rows retry logic (and any other existing ``if fetch_rows(...):``
+    caller) keeps working unchanged on the new return type without needing to
+    know this class exists.
+    """
+
+    rows: Sequence[Mapping[str, Any]]
+    request_meta: Mapping[str, Any]
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+    def __bool__(self) -> bool:
+        return bool(self.rows)
 
 
 def _normalize_provider_value(value: Any) -> Any:
@@ -65,8 +103,19 @@ def build_security_day_landing_batch(
     rows: Sequence[Mapping[str, Any]],
     observed_at: datetime,
     batch_id: str,
+    request_meta: Mapping[str, Any] | None = None,
 ) -> SecurityDayLandingBatch:
-    """Assemble one landing batch from an already-captured provider page."""
+    """Assemble one landing batch from an already-captured provider page.
+
+    ``request_meta`` (2026-09-16, 刀2): page-level provenance to fold into the
+    landing batch's ``request`` mapping (which lands in ``ingest_batch.
+    request_json``), alongside the always-present ``api``/``trade_date`` keys.
+    Optional and additive — ``None``/empty leaves ``request`` exactly as it
+    was before this parameter existed. Colliding with the two reserved keys
+    is rejected outright (construction-time error) rather than silently
+    overwritten, same discipline as ``SecurityDayDomain.__post_init__``'s
+    enrichment/provider/lineage clash check.
+    """
 
     partition = _partition(trade_date)
     if partition < domain.coverage_start:
@@ -110,13 +159,22 @@ def build_security_day_landing_batch(
             f"{domain.domain}_publication_cutoff_unproven partition={partition}: {exc}"
         ) from exc
     available_at = max(observed_utc, cutoff_utc)
+    request: dict[str, Any] = {"api": domain.api, "trade_date": partition}
+    if request_meta:
+        overlap = set(request_meta) & set(request)
+        if overlap:
+            raise SecurityDayError(
+                f"{domain.domain}_request_meta_collides_with_reserved_keys "
+                f"{sorted(overlap)} —— request_meta 不许覆盖 api/trade_date"
+            )
+        request.update(dict(request_meta))
     return SecurityDayLandingBatch(
         batch_id=batch_id,
         partition_value=partition,
         observed_at=observed_at,
         available_at=available_at,
         rows=projected,
-        request={"api": domain.api, "trade_date": partition},
+        request=request,
         source=domain.source,
         contract_version=domain.contract_version,
     )
@@ -126,10 +184,19 @@ def capture_security_day_provider_rows(
     domain: SecurityDayDomain,
     *,
     trade_date: str,
-    fetch_rows: Callable[[Mapping[str, Any]], Sequence[Mapping[str, Any]] | None],
+    fetch_rows: Callable[
+        [Mapping[str, Any]], Sequence[Mapping[str, Any]] | ProviderPage | None
+    ],
     observed_at: datetime,
 ) -> SecurityDayLandingBatch:
-    """Fetch one trade_date partition and build a landing batch."""
+    """Fetch one trade_date partition and build a landing batch.
+
+    ``fetch_rows`` may return a plain sequence of row mappings (every existing
+    caller today) or a :class:`ProviderPage` carrying page-level
+    ``request_meta`` alongside the rows — both shapes are handled identically
+    except that a ``ProviderPage``'s ``request_meta`` is folded into the
+    landing batch's ``request`` (see :func:`build_security_day_landing_batch`).
+    """
 
     partition = _partition(trade_date)
     if (
@@ -144,18 +211,26 @@ def capture_security_day_provider_rows(
         raise SecurityDayError(
             f"{domain.domain}_provider_fetch_failed trade_date={partition}"
         )
+    if isinstance(page, ProviderPage):
+        rows = page.rows
+        request_meta = page.request_meta
+    else:
+        rows = page
+        request_meta = None
     stamp = observed_at.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     batch_id = f"{domain.domain}:{partition}:{stamp}"
     return build_security_day_landing_batch(
         domain,
         trade_date=partition,
-        rows=page,
+        rows=rows,
         observed_at=observed_at,
         batch_id=batch_id,
+        request_meta=request_meta,
     )
 
 
 __all__ = [
+    "ProviderPage",
     "build_security_day_landing_batch",
     "capture_security_day_provider_rows",
     "project_security_day_provider_row",

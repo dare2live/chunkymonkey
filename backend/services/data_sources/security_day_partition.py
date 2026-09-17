@@ -111,6 +111,15 @@ class SecurityDayDomain:
     # 值由 accept 逐行从 landing payload 取, 缺键即 MISSING_ENRICHMENT 拒绝 (不按批兜底:
     # 同一批内不同行可以不同源, 按批兜底会把"这一行从哪来"压成"这一批从哪来")。
     enrichment_fields: tuple[str, ...] = ()
+    # 2026-09-16: 域级逐行校验钩子。默认 None = 该域没有需要额外校验的 enrichment 值
+    # (stock_st 不受影响, 它从不设置本字段)。daily 域在 _candidate_rows 把 enrichment
+    # 拼进 provider 行之后调用它, 传入 {**provider, **enrichment} —— 校验规则本身
+    # (pre_close_origin 取值集、kind==unknown⇔pre_close IS NULL) 定义在
+    # nominal_ohlcv_acquire_rules.py, 这里只留一个通用调用点, 不在共享的 land→accept
+    # 机制里 import 单域规则模块 (照本文件开篇"不是插件框架"的纪律: 每个域仍自己拥有
+    # 校验逻辑, 共享机制只负责在正确的时刻调用它)。违反时必须抛
+    # SecurityDayValidationError, 与其它逐行校验走同一条 REJECTED 路径。
+    enrichment_validator: Callable[[Mapping[str, Any]], None] | None = None
 
     def __post_init__(self) -> None:
         # canonical 行由 {**provider, **enrichment, <lineage 六键>} 合成, 后写的键**静默**
@@ -670,6 +679,8 @@ def _candidate_rows(
                     "ingest_batch.source_name 补齐 (见重打脚本说明)。",
                 )
             enrichment[name] = value
+        if domain.enrichment_validator is not None:
+            domain.enrichment_validator({**provider, **enrichment})
         canonical.append(
             {
                 **provider,
