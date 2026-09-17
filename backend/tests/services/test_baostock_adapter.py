@@ -32,6 +32,19 @@ from services.data_sources.sources.baostock import (
     classify_baostock_failure,
 )
 
+from services.data_sources.sources import baostock as _bao_mod
+
+
+@pytest.fixture(autouse=True)
+def _isolate_session_lock_path(monkeypatch, tmp_path):
+    """会话锁指向 tmp_path —— 否则这些用例会去抢仓库真实的
+    data/scratch/baostock_session.lock: 生产取数(chunkyctl sync / daily_update)持锁时
+    本文件会因 BaostockConcurrencyError 假红, 反向也会短暂占住生产锁。
+    与 test_baostock_session_lock.py::_isolate_lock_path 同一写法。"""
+    monkeypatch.setenv(_bao_mod._SESSION_LOCK_PATH_ENV, str(tmp_path / "baostock_session.lock"))
+
+
+
 
 class _FakeResult:
     """Minimal stand-in for baostock's ResultData."""

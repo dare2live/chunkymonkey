@@ -213,3 +213,62 @@ findings:
       这些分支属于业主对历史 agent 产物的取舍，不是技术判断。
     recorded: "2026-09-16"
     decision: owner_decision
+
+  - id: acquire-mode-labeled-provider-tushare
+    asset: "backend/services/data_sources/security_day_acquire.py:121,152 (ACQUIRE_MODE_PROVIDER_TUSHARE / lineage_note / source_ref)"
+    detector: none
+    escalates_when: >
+      有人拿 daily_update 运行证据里的 acquire_mode / formal_outcomes 去判"这批数据来自哪个供货商"——
+      provider 取数路径对任何 source 都返回 provider_tushare 标签(换源到 fuyao 后依然如此)。
+      真实供货商在 ingest_batch.source_name(=fuyao, 正确), 该标签只进运行证据 JSON 不进任何数据表。
+    recorded: "2026-09-18"
+    decision: register
+
+  - id: bj-pre-close-unknown-steady-state
+    asset: "backend/config/nominal_ohlcv_acquire.yaml (unknown_no_reference_bj) 与 canonical_nominal_ohlcv_daily 北交所行"
+    detector: none
+    escalates_when: >
+      北交所前缀进入 services/universe.py 的活跃板块集合(当前 60/00/30/68), 或除权事件证据域(业主 09-13 第 ④ 项)落地——
+      两者任一发生, 北交所每天约 340 行 pre_close/change/pct_chg 稳态为 NULL 就不再是可接受状态。
+      业主 2026-09-17 已接受当前稳态: baostock 结构性不支持北交所, 公式回退需要先有事件证据域。
+    recorded: "2026-09-18"
+    decision: register
+
+  - id: fuyao-preclose-zero-labeled-mismatch
+    asset: "backend/services/data_sources/sources/fuyao_daily_k.py:541-546 (preclose==0 归入 unknown_reference_mismatch)"
+    detector: none
+    escalates_when: >
+      排查某只票的 unknown 行时, 发现 origin 说"close 与 dump 不一致"但实测两边 close 相等——
+      真实原因是 baostock preclose 为 0 或不可解析。值与 kind 正确(NULL+unknown), 只有子原因标签不准。
+    recorded: "2026-09-18"
+    decision: register
+
+  - id: baostock-source-not-singleton-across-adapters
+    asset: "backend/services/data_sources/sources/fuyao_daily_k.py:694 (default_deps 自建 BaostockSource)"
+    detector: none
+    escalates_when: >
+      sync_registry.yaml 出现任何 source: baostock 的 enabled 域, 且与 daily 在同一进程运行——
+      同进程第二个 BaostockSource 实例拿会话 flock 会被拒(实测 Errno 35), 后登录方熔断整天。
+      当前无此类活域(trade_cal 已改 calendar_rule)。
+    recorded: "2026-09-18"
+    decision: register
+
+  - id: restamp-to-v1-happy-path-untested
+    asset: "backend/tests/scripts/test_restamp_nominal_ohlcv_contract.py (只测 plan 与 NULL 拒绝, 未测 execute_to_v1 成功路径)"
+    detector: none
+    escalates_when: >
+      真要把生产库从契约 v2 回退到 v1 时——DROP COLUMN + 独立事务 SET NOT NULL 这条组合
+      没有常驻测试守着(fable 终审在 fixture 上实跑成功, 但那是一次性验证)。
+      注: 第一行含 NULL 的新源分区落库后, 回退本身就要先删分区, 窗口已关。
+    recorded: "2026-09-18"
+    decision: register
+
+  - id: fuyao-full-dump-downloaded-for-future-dates
+    asset: "backend/services/data_sources/sources/fuyao_daily_k.py:583 (10d 无该日即回退全量 dump)"
+    detector: none
+    escalates_when: >
+      在供应商尚未发布当日数据的时点(例如 18:00 前)或未来日期上跑 daily——
+      10d 窗口没有该日就会下载整份全量 dump 再返回空, 每次白付一次全量下载与 sha256。
+      正确性不受影响(仍走 zero_rows), 只是耗时与流量。
+    recorded: "2026-09-18"
+    decision: register

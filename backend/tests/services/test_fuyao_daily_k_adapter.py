@@ -22,6 +22,19 @@ from typing import Any
 
 import pytest
 
+
+from services.data_sources.sources import baostock as _bao_mod
+
+
+@pytest.fixture(autouse=True)
+def _isolate_session_lock_path(monkeypatch, tmp_path):
+    """熔断用例会驱动真实 BaostockSource._ensure_login -> _acquire_process_lock;
+    不隔离就会抢仓库真实的 data/scratch/baostock_session.lock, 与生产取数互踩
+    (2026-09-18 实测: 后台 fuyao+baostock 实取数持锁期间, 本文件与
+    test_baostock_adapter.py 共 4 个用例假红, 挡住一次提交)。"""
+    monkeypatch.setenv(_bao_mod._SESSION_LOCK_PATH_ENV, str(tmp_path / "baostock_session.lock"))
+
+
 from services.data_sources.nominal_ohlcv_acquire_rules import (
     load_nominal_ohlcv_acquire_rules,
 )
