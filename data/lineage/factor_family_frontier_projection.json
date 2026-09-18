@@ -6,13 +6,13 @@
       "inventory_defer_reason": "type_b_fact_publish_may_lag_raw",
       "live_detail": {
         "defer_policy": "type_b_fact_publish_may_lag_raw",
-        "fact_tip": "20260825",
+        "fact_tip": "20260828",
         "margin_external_aggregate": {
-          "accepted_partition_count": 1851,
-          "accepted_tip": "20260825",
+          "accepted_partition_count": 1853,
+          "accepted_tip": "20260827",
           "defer_policy": "external_aggregate_product_trust_gated"
         },
-        "raw_tip": "20260825"
+        "raw_tip": "20260828"
       },
       "live_status": "PROJECTED",
       "stack_eligibility": "defer"
@@ -22,8 +22,8 @@
       "inventory_blocked_reason": null,
       "inventory_defer_reason": "historical_quarter_holes_log_not_mass",
       "live_detail": {
-        "accepted_partition_count": 22,
-        "accepted_tip": "20260430",
+        "accepted_partition_count": 1160,
+        "accepted_tip": "20260918",
         "dataset_id": "tier0.disclosure.org_holding_detail_period",
         "defer_policy": "period_gap_bounded_n1_not_mass"
       },
@@ -42,13 +42,13 @@
     }
   ],
   "inventory_path": "/Users/dp/Documents/M/stock/chunkymonkey/backend/config/factor_family_inventory.yaml",
-  "inventory_sha256": "7a62c4bbe5236fc9cb382f4d126090f4caab75075bff9043b5358bbb3ef619f8",
+  "inventory_sha256": "5abdb5fc3220ef029365b393bd1d6b1fe418d5d6d7c7ac05724a11d34cb5faa3",
   "notes": [
     "k3_frontier_projection",
     "does_not_mutate_inventory_yaml",
     "rx_still_requires_owner_schedule"
   ],
-  "projected_at": "2026-08-26T05:36:44.378198+00:00",
+  "projected_at": "2026-09-17T22:03:49.310730+00:00",
   "verdict": "PASS",
   "violations": []
 }
