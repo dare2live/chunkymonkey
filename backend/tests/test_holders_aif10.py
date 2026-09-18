@@ -11,6 +11,7 @@ import duckdb  # noqa: E402
 import pytest  # noqa: E402
 
 from services.holders_aif10 import (  # noqa: E402
+    _assert_carry_fields_in_canonical,
     _parse_change,
     _share_class,
     _clean,
@@ -26,7 +27,9 @@ from services.holders_aif10 import (  # noqa: E402
     land_holders_notice_partitions_forward,
     list_missing_notice_partitions_from_fact,
     sync_holders_aif10_incremental,
+    CARRY_FIELDS,
     DEFAULT_START_PERIOD,
+    HoldersCarryFieldSchemaError,
     HoldersDuplicateGrainConflictError,
     UnknownHolderChangeStatusError,
 )
@@ -188,8 +191,7 @@ def _wm_fixture():
             -- 少了它就不是在测生产行为。
             holder_code VARCHAR, is_holder_org BOOLEAN,
             -- 2026-09-08: 退出行要原样带出的持仓字段 (CARRY_FIELDS)。
-            hold_ratio_float DOUBLE, shares_approx BIGINT,
-            hold_amount DOUBLE, hold_market_cap DOUBLE
+            hold_ratio_float DOUBLE, shares_approx BIGINT
         )
         """
     )
@@ -357,8 +359,7 @@ def _canonical_holders_fixture():
             -- 少了它就不是在测生产行为。
             holder_code VARCHAR, is_holder_org BOOLEAN,
             -- 2026-09-08: 退出行要原样带出的持仓字段 (CARRY_FIELDS)。
-            hold_ratio_float DOUBLE, shares_approx BIGINT,
-            hold_amount DOUBLE, hold_market_cap DOUBLE
+            hold_ratio_float DOUBLE, shares_approx BIGINT
         )
         """
     )
@@ -648,8 +649,7 @@ def _notice_hole_fixture():
             -- 少了它就不是在测生产行为。
             holder_code VARCHAR, is_holder_org BOOLEAN,
             -- 2026-09-08: 退出行要原样带出的持仓字段 (CARRY_FIELDS)。
-            hold_ratio_float DOUBLE, shares_approx BIGINT,
-            hold_amount DOUBLE, hold_market_cap DOUBLE
+            hold_ratio_float DOUBLE, shares_approx BIGINT
         )
         """
     )
@@ -883,8 +883,7 @@ def _canon_with_identity(monkeypatch):
             stock_code VARCHAR, report_date VARCHAR, notice_date VARCHAR,
             holder_name VARCHAR, is_exit_row BOOLEAN,
             holder_code VARCHAR, is_holder_org BOOLEAN,
-            hold_ratio_float DOUBLE, shares_approx BIGINT,
-            hold_amount DOUBLE, hold_market_cap DOUBLE
+            hold_ratio_float DOUBLE, shares_approx BIGINT
         )
         """
     )
@@ -1075,21 +1074,30 @@ def test_same_batch_two_periods_chain_derivation():
 
 
 def test_derived_exit_row_carries_last_known_position():
-    """退出行带出**退出前最后一次真实披露**的持仓, 不置 NULL。
+    """退出行带出**退出前最后一次真实披露**的持仓, 不置 NULL, 不炸 BinderException。
 
     2026-09-08 裁决。内存路径 _derive_exits 一直原样带出, canonical 路径置空是
     2026-09-06 引入本函数时的疏漏 —— 同一种派生行两套语义, 在回填边界日翻转。
     唯一消费方 stock_dossier.py:389-396 的注释明文写着契约
     「hold_ratio_float = 上期在榜占比(最后已知)」, 置 NULL 会让界面从有数字变空白。
     置 0 更糟 —— 那是撒谎(暗示比例真的是 0)。
+
+    2026-09-18 更正: 本测试的 fixture(``_canon_with_identity``)曾经多建了
+    hold_amount/hold_market_cap 两列, 并断言它们也被原样带出 —— 但真实生产
+    canonical 表(holders_top10_schema.CANONICAL_ROW_FIELDS)从来没有这两列,
+    它们只活在 _clean() 的内存行里。fixture 比生产表"更规范"让这个 bug 在
+    CI 里全绿了 13 天, 直到生产上真实 canonical 表对着旧 CARRY_FIELDS 跑
+    SELECT 时逐日期 BinderException。fixture 现在改成只有 hold_ratio_float/
+    shares_approx(与真实列集合一致), 本测试因此也覆盖了 CARRY_FIELDS 收窄后
+    "不抛异常" 这条断言。
     """
     con = _canon_with_identity(None)
     con.execute(
         "INSERT INTO canonical_top10_float_holders_period "
         "(stock_code, report_date, notice_date, holder_name, is_exit_row, holder_code, "
-        " is_holder_org, hold_ratio_float, shares_approx, hold_amount, hold_market_cap) "
-        "VALUES ('600000','20240331','20240425','留守',FALSE,'C1',TRUE,0.11,1000,1000.0,9.0),"
-        "       ('600000','20240331','20240425','离场',FALSE,'C2',TRUE,0.05,2000,2000.0,7.0)"
+        " is_holder_org, hold_ratio_float, shares_approx) "
+        "VALUES ('600000','20240331','20240425','留守',FALSE,'C1',TRUE,0.11,1000),"
+        "       ('600000','20240331','20240425','离场',FALSE,'C2',TRUE,0.05,2000)"
     )
     cur = [{
         "stock_code": "600000", "report_date": "20240630", "notice_date": "20240820",
@@ -1097,14 +1105,76 @@ def test_derived_exit_row_carries_last_known_position():
         "holder_code": "C1", "is_holder_org": True,
         "holder_set": "free", "holder_rank": 1, "row_seq": 1, "is_exit_row": False,
     }]
-    exits = _derive_exits_against_canonical(con, cur)
+    exits = _derive_exits_against_canonical(con, cur)  # 不得抛 BinderException
     con.close()
     assert len(exits) == 1 and exits[0]["holder_name"] == "离场"
     e = exits[0]
     assert e["hold_ratio_float"] == 0.05, f"ratio 被置成了 {e['hold_ratio_float']!r}"
     assert e["shares_approx"] == 2000
-    assert e["hold_amount"] == 2000.0
-    assert e["hold_market_cap"] == 7.0
     # 变化量字段仍该置空/改写 —— 带出的是「最后已知持仓」, 不是「本期变化」。
     assert e["change_status"] == "退出"
     assert e["hold_change_num"] is None
+
+
+def test_carry_fields_matches_real_canonical_columns():
+    """CARRY_FIELDS 本身(生产用的默认值)必须都是当前 canonical fixture 的真实列。
+
+    锁住 2026-09-18 的修法本身: 回归防的是"CARRY_FIELDS 又加回一个只活在内存行里、
+    从未持久化的字段"这类漂移。
+    """
+    con = _canon_with_identity(None)
+    try:
+        _assert_carry_fields_in_canonical(con)  # 不得抛
+    finally:
+        con.close()
+    assert CARRY_FIELDS == ("hold_ratio_float", "shares_approx")
+
+
+def test_assert_carry_fields_raises_typed_error_on_missing_column():
+    """CARRY_FIELDS 声明了 canonical 没有的列 → 抛 HoldersCarryFieldSchemaError,
+    消息里含缺失列名, 而不是让调用方在 SELECT 处吃 DuckDB 原生 BinderException。
+
+    对应断言 2: fixture 声明一个 canonical 表没有的 carry 字段。
+    """
+    con = _canon_with_identity(None)
+    try:
+        with pytest.raises(HoldersCarryFieldSchemaError) as exc_info:
+            _assert_carry_fields_in_canonical(
+                con, fields=("hold_ratio_float", "hold_amount")
+            )
+    finally:
+        con.close()
+    assert "hold_amount" in str(exc_info.value)
+    assert "hold_ratio_float" not in str(exc_info.value).split("hold_amount")[0], (
+        "只应报缺失的列, 不该把真实存在的列也算进 missing"
+    )
+
+
+def test_derive_exits_against_canonical_raises_on_carry_field_drift(monkeypatch):
+    """端到端接线: 生产路径调用 _derive_exits_against_canonical 时若 CARRY_FIELDS
+    漂移出一个 canonical 没有的字段, 得到的是 HoldersCarryFieldSchemaError, 不是
+    BinderException(2026-09-18 静默 13 天的那种)。"""
+    import services.holders_aif10 as holders_aif10_mod
+
+    monkeypatch.setattr(
+        holders_aif10_mod, "CARRY_FIELDS", ("hold_ratio_float", "hold_market_cap")
+    )
+    con = _canon_with_identity(None)
+    con.execute(
+        "INSERT INTO canonical_top10_float_holders_period "
+        "(stock_code, report_date, notice_date, holder_name, is_exit_row, holder_code, "
+        " is_holder_org, hold_ratio_float, shares_approx) "
+        "VALUES ('600000','20240331','20240425','留守',FALSE,'C1',TRUE,0.11,1000),"
+        "       ('600000','20240331','20240425','离场',FALSE,'C2',TRUE,0.05,2000)"
+    )
+    cur = [{
+        "stock_code": "600000", "report_date": "20240630", "notice_date": "20240820",
+        "page_update_date": "20240820", "holder_name": "留守",
+        "holder_code": "C1", "is_holder_org": True,
+        "holder_set": "free", "holder_rank": 1, "row_seq": 1, "is_exit_row": False,
+    }]
+    try:
+        with pytest.raises(HoldersCarryFieldSchemaError, match="hold_market_cap"):
+            _derive_exits_against_canonical(con, cur)
+    finally:
+        con.close()

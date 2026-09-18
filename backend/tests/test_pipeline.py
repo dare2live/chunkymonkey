@@ -2392,3 +2392,186 @@ def test_invalid_expiry_warning_config_blocks_before_provider_probe(monkeypatch,
 
     assert calls == []
     assert ctx.tushare_auth_status is None
+
+
+# ── 2026-09-18: result dict 里的 errors/status 被吞, 只印不降级 ────────────────
+#
+# 根因: holders_aif10 CARRY_FIELDS 对着真实 canonical 表 BinderException, 连续 13 天
+# (20260904→20260917) 每个 notice_date 都失败, sync_holders_aif10_incremental 把
+# 失败收进 result["errors"] 正常 return(从不 raise), _sync_holders_aif10 只把它打进
+# print, acquire.py 顶层 `ctx.step(..., degraded_msg=...)` 只在**抛异常**时才降级 ——
+# 于是整条日更能在十大股东静默停摆的情况下 exit 0。本节测试锁住两处修复:
+# _sync_holders_aif10 本身 result.errors 非空必须转 degraded; 以及扫同类找到的
+# 同一形态问题 _sync_org_holding(非 repair_ 前缀 action 的 status="partial" 之前完全
+# 不降级)。
+
+
+class _FakeConnCloseOnly:
+    """占位连接: 只需要 `.close()` 存在, 真实 DB I/O 已被下面的 monkeypatch 挡在外面。"""
+
+    def close(self) -> None:
+        pass
+
+
+def test_sync_holders_aif10_degrades_when_result_has_errors(monkeypatch, tmp_path):
+    """result["errors"] 非空必须 ctx.degraded 一次, 消息含域名与错误条数。"""
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr("services.db.get_conn", lambda: _FakeConnCloseOnly())
+    monkeypatch.setattr(
+        "services.holders_aif10.sync_holders_aif10_incremental",
+        lambda _conn: {
+            "watermark": "20260904",
+            "net_new_notice_rows": 0,
+            "notice_partitions_touched": 0,
+            "rewrite_amplification_rows": 0,
+            "errors": [
+                "20260910:write:BinderException:Binder Error: Referenced column "
+                '"hold_amount" not found in FROM clause!'
+            ],
+        },
+    )
+    ctx = PipelineContext(date="20260918", log_path=tmp_path / "run.log")
+    try:
+        acquire._sync_holders_aif10(ctx)
+    finally:
+        ctx.close()
+    assert len(ctx.degraded_msgs) == 1, ctx.degraded_msgs
+    assert "holders_aif10" in ctx.degraded_msgs[0]
+    assert "1" in ctx.degraded_msgs[0]
+
+
+def test_sync_holders_aif10_no_degrade_when_result_errors_empty(monkeypatch, tmp_path):
+    """result["errors"] 为空时不得误报降级 (回归: 别把每次同步都变成假警报)。"""
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr("services.db.get_conn", lambda: _FakeConnCloseOnly())
+    monkeypatch.setattr(
+        "services.holders_aif10.sync_holders_aif10_incremental",
+        lambda _conn: {
+            "watermark": "20260917",
+            "net_new_notice_rows": 12,
+            "notice_partitions_touched": 1,
+            "rewrite_amplification_rows": 0,
+            "errors": [],
+        },
+    )
+    ctx = PipelineContext(date="20260918", log_path=tmp_path / "run.log")
+    try:
+        acquire._sync_holders_aif10(ctx)
+    finally:
+        ctx.close()
+    assert ctx.degraded_msgs == []
+
+
+def _org_holding_result(*, status, action, accept_status=None):
+    return {
+        "domain": "org_holding",
+        "count": 0,
+        "status": status,
+        "action": action,
+        "report_date": "20260630",
+        "available_date": "20260830",
+        "written": 0,
+        "fetch_status": "ok",
+        "accept": {"status": accept_status, "partitions": []},
+        "gap": {},
+        "message": f"check: action={action} status={status}",
+    }
+
+
+def _patch_org_holding_sync(monkeypatch, result: dict):
+    monkeypatch.setattr(
+        "services.org_holding_db.connect_org_holding", lambda: _FakeConnCloseOnly()
+    )
+    monkeypatch.setattr(
+        "services.org_holding_aif10.org_holding_period_gap_report", lambda _conn: {}
+    )
+
+    async def _fake_sync(_conn):
+        return result
+
+    monkeypatch.setattr(
+        "services.org_holding_aif10.sync_org_holding_incremental", _fake_sync
+    )
+
+
+def test_sync_org_holding_degrades_on_partial_status_without_repair_prefix(
+    monkeypatch, tmp_path
+):
+    """扫同类命中: fetch_then_accept(非 repair_ 前缀) accept 失败 status="partial"
+    时, 旧判断(只挑 action.startswith("repair_"))完全不降级 —— 与 holders_aif10 的
+    result["errors"] 被吞同一形态, 一并修。"""
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    _patch_org_holding_sync(
+        monkeypatch,
+        _org_holding_result(
+            status="partial", action="fetch_then_accept", accept_status="accept_failed"
+        ),
+    )
+    ctx = PipelineContext(date="20260918", log_path=tmp_path / "run.log")
+    try:
+        acquire._sync_org_holding(ctx)
+    finally:
+        ctx.close()
+    assert len(ctx.degraded_msgs) == 1, ctx.degraded_msgs
+    assert "org_holding" in ctx.degraded_msgs[0]
+    assert "partial" in ctx.degraded_msgs[0]
+
+
+def test_sync_org_holding_still_degrades_on_repair_prefix_partial(monkeypatch, tmp_path):
+    """回归: repair_ 前缀 action 失败原本就该降级, 泛化判断后行为不能变。"""
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    _patch_org_holding_sync(
+        monkeypatch,
+        _org_holding_result(
+            status="partial", action="repair_fetch_period", accept_status="accept_failed"
+        ),
+    )
+    ctx = PipelineContext(date="20260918", log_path=tmp_path / "run.log")
+    try:
+        acquire._sync_org_holding(ctx)
+    finally:
+        ctx.close()
+    assert len(ctx.degraded_msgs) == 1, ctx.degraded_msgs
+    assert "org_holding" in ctx.degraded_msgs[0]
+
+
+def test_sync_org_holding_no_degrade_on_completed_status(monkeypatch, tmp_path):
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    _patch_org_holding_sync(
+        monkeypatch,
+        _org_holding_result(
+            status="completed", action="fetch_then_accept", accept_status="accepted"
+        ),
+    )
+    ctx = PipelineContext(date="20260918", log_path=tmp_path / "run.log")
+    try:
+        acquire._sync_org_holding(ctx)
+    finally:
+        ctx.close()
+    assert ctx.degraded_msgs == []
+
+
+def test_sync_org_holding_no_degrade_on_skipped_status(monkeypatch, tmp_path):
+    """尚无 plannable 期是正常空转 (status="skipped"), 不该被泛化后的判断误伤。"""
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    _patch_org_holding_sync(
+        monkeypatch, _org_holding_result(status="skipped", action="none")
+    )
+    ctx = PipelineContext(date="20260918", log_path=tmp_path / "run.log")
+    try:
+        acquire._sync_org_holding(ctx)
+    finally:
+        ctx.close()
+    assert ctx.degraded_msgs == []

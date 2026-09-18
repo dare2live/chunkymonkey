@@ -153,6 +153,17 @@ def _sync_holders_aif10(ctx) -> None:
             f"forward={result.get('notice_partition_forward', {}).get('landed_partitions', [])} "
             f"errors={result.get('errors', [])[:3]}"
         )
+        errors = list(result.get("errors") or [])
+        if errors:
+            # 2026-09-18: result["errors"] 此前只打进上面这行 print —— ctx.step (调用方
+            # acquire.py 顶部 `ctx.step(lambda: _sync_holders_aif10(ctx), ...)`) 只在本
+            # 函数**抛异常**时才会 degraded, 而 sync_holders_aif10_incremental 把域内失败
+            # (例如按日期逐个 land_then_write 抛出的 BinderException) 全部吞进 errors 列表
+            # 正常 return, 从不 raise。于是十大股东能在 errors 非空的情况下让整条日更
+            # exit 0, 实测静默 13 天 (2026-09-04→09-17, CARRY_FIELDS 列不匹配那次)。
+            ctx.degraded(
+                f"holders_aif10 sync 有 {len(errors)} 条错误 (首条: {errors[0]})"
+            )
     finally:
         conn.close()
 
@@ -225,12 +236,19 @@ def _sync_org_holding(ctx: PipelineContext) -> None:
     summary["incremental"] = incremental
     ctx.delta_manifest["acquire_summary"] = summary
 
-    if str(result.get("action") or "").startswith("repair_") and str(
-        result.get("status") or ""
-    ) != "completed":
+    # 2026-09-18 扫同类(与 holders_aif10 result["errors"] 同一形态: 调用返回的 result
+    # dict 带着失败标记, 只被 print 出去, 没有转成 degraded)。原判断只在 action 以
+    # repair_ 开头时才检查 status —— 但 sync_org_holding_incremental 的 fetch_then_accept /
+    # merge_period / accept_from_local_raw / merge_raw / fetch_raw 几条非 repair_ 路径,
+    # 同样会在 accept 失败或 raw_only 写 0 行时返回 status="partial"(源码里 status 只有
+    # "completed"/"skipped"/"partial" 三态, "skipped" 专指「尚无 plannable 期」这种正常
+    # 空转, 不是失败), 之前完全不降级。改成只要不是这两种正常态就降级, 覆盖全部 action。
+    status = str(result.get("status") or "")
+    if status not in ("completed", "skipped"):
         ctx.degraded(
-            "org_holding under_populated_accepted repair failed — "
-            "population still thin; mass history refresh banned"
+            f"org_holding {result.get('action')} 未完成 (status={status!r}, "
+            f"accept={(result.get('accept') or {}).get('status')!r}) — "
+            "population may be under-filled; mass history refresh banned"
         )
     try:
         out = Path(__file__).resolve().parents[3] / "data" / "reports"

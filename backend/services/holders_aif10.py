@@ -574,11 +574,55 @@ def _table_present(conn, name: str) -> bool:
 # 但也不能只活在 log 里 —— 调用方要能拿到它并放进自己的 result dict。
 # 退出行要从上一期**原样带出**的持仓字段(不置空)。理由见 _derive_exits_against_canonical
 # 里 null_fields 处的长注释: 它们的定义就是「退出前最后一次真实披露的值」。
-CARRY_FIELDS: tuple[str, ...] = (
-    "hold_ratio_float", "shares_approx", "hold_amount", "hold_market_cap",
-)
+#
+# 2026-09-18: 这里必须只列 canonical **实际持久化**的列。CARRY_FIELDS 曾经还包含
+# hold_amount / hold_market_cap —— 那两个字段确实存在于 _clean() 产出的内存行里
+# (build_rows/_derive_exits 的全内存路径能看到它们), 但从未进过 canonical 的 schema
+# (holders_top10_schema.CANONICAL_ROW_FIELDS = PROVIDER_FIELDS + ENRICHMENT_FIELDS,
+# 23 列里没有这两个)。_derive_exits_against_canonical 的非同批分支要对着**真实**
+# canonical 表跑 `SELECT ...CARRY_FIELDS... FROM {CANONICAL_TABLE}`, 列不存在时
+# DuckDB 直接 BinderException —— 2026-09-18 生产实测: 这条路径连续 13 天在每个命中
+# 的 notice_date 上重复炸, sync_holders_aif10_incremental 把它收进 result["errors"]
+# 却从未有人转成 degraded (见 pipeline/acquire.py:_sync_holders_aif10), 于是日更
+# exit 0、十大股东静默停摆 13 天。修法: CARRY_FIELDS 收窄到真实列; 新增的
+# ``_assert_carry_fields_in_canonical`` 对再次漂移 fail-closed (CLAUDE.md §11),
+# 一次性抛清楚缺哪列, 不再让 DuckDB 的 BinderException 逐日期重复炸。
+CARRY_FIELDS: tuple[str, ...] = ("hold_ratio_float", "shares_approx")
 
 _EXIT_DERIVE_SKIPS: list[dict] = []
+
+
+class HoldersCarryFieldSchemaError(RuntimeError):
+    """CARRY_FIELDS 声明要带出的字段不在 canonical 实际列集合里 —— fail-closed
+    (CLAUDE.md §11): 一次性抛清楚缺哪列, 不让 DuckDB BinderException 在每个命中的
+    日期上重复炸 (2026-09-18 holders_aif10 静默 13 天的根因)。"""
+
+
+def _assert_carry_fields_in_canonical(
+    conn, fields: Optional[tuple[str, ...]] = None
+) -> None:
+    """CARRY_FIELDS 每个字段都必须是 ``CANONICAL_TABLE`` 的真实列, 调用查询前先查清楚。
+
+    ``fields`` 缺省时读**当前**模块级 ``CARRY_FIELDS`` (不是 def 时绑定的默认参数) ——
+    否则 monkeypatch 模块属性来测漂移场景会静默失效: 默认参数值只在函数定义那一刻
+    求值一次, 之后 patch 模块属性也换不掉它。
+    """
+    if fields is None:
+        fields = CARRY_FIELDS
+    actual = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+            [CANONICAL_TABLE],
+        ).fetchall()
+    }
+    missing = [f for f in fields if f not in actual]
+    if missing:
+        raise HoldersCarryFieldSchemaError(
+            f"{CANONICAL_TABLE} missing CARRY_FIELDS column(s) {missing!r}; "
+            "CARRY_FIELDS must only list fields persisted on canonical "
+            "(see holders_top10_schema.CANONICAL_ROW_FIELDS)"
+        )
 
 
 def take_exit_derive_skips() -> list[dict]:
@@ -619,9 +663,12 @@ def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
             by_stock_period.setdefault(key, []).append(r)
     if not by_stock_period or not _table_present(conn, CANONICAL_TABLE):
         return []
+    # 一次性查清楚 CARRY_FIELDS 是否都是 canonical 真实列 —— 不通过就 fail-closed
+    # 抛出去, 不进下面的循环让 SELECT 对每个命中的 (股,期) 重复炸 BinderException。
+    _assert_carry_fields_in_canonical(conn)
 
-    # 2026-09-08: hold_ratio_float / shares_approx / hold_amount / hold_market_cap
-    # 从这里移出去 —— 它们要带出上一期的值, 不置空。
+    # 2026-09-08: hold_ratio_float / shares_approx (CARRY_FIELDS)
+    # 从 null_fields 里移出去 —— 它们要带出上一期的值, 不置空。
     #
     # 内存路径 _derive_exits (`e = dict(prev_row)`) 一直是原样带出的; canonical 路径置空
     # 是 2026-09-06 引入本函数时的疏漏(提交信息没提要改这几个字段的语义, null_fields 也没留理由),
