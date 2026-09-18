@@ -203,17 +203,6 @@ findings:
     recorded: "2026-09-16"
     decision: register
 
-  - id: orphan-worktree-agent-branches
-    asset: "git 本地分支 (git branch --list 'worktree-agent-*')"
-    detector: none
-    escalates_when: >
-      业主决定是否清理——2026-09-16 实测本地存在 15 个 worktree-agent-*
-      分支，但 git worktree list 里没有任何一个当前 worktree 引用它们
-      （当前活跃 worktree 全部是 worktree-wf_* 命名，与之无关）；是否删除
-      这些分支属于业主对历史 agent 产物的取舍，不是技术判断。
-    recorded: "2026-09-16"
-    decision: owner_decision
-
   - id: acquire-mode-labeled-provider-tushare
     asset: "backend/services/data_sources/security_day_acquire.py:121,152 (ACQUIRE_MODE_PROVIDER_TUSHARE / lineage_note / source_ref)"
     detector: none
@@ -271,4 +260,26 @@ findings:
       10d 窗口没有该日就会下载整份全量 dump 再返回空, 每次白付一次全量下载与 sha256。
       正确性不受影响(仍走 zero_rows), 只是耗时与流量。
     recorded: "2026-09-18"
+    decision: register
+
+  - id: daily-availability-declared-three-times
+    asset: "backend/services/data_sources/nominal_ohlcv_schema.py:242-245 (DOMAIN available_after_legacy / availability_at) + backend/config/sync_registry.yaml daily available_after 与 availability_policy.at"
+    detector: backend/services/data_sources/nominal_ohlcv_contract.py
+    escalates_when: >
+      要改 daily 契约可见时刻 (2026-09-18 实测两腿 17:30 前齐, 契约仍是 18:00) 时——同一个值
+      三处声明, 代码一处是参数写进 Python; 三处有漂移校验 (nominal_ohlcv_contract 不一致即
+      raise), 所以不会静默分叉, 但改一次要动三处且会改 config_hash 与全部分区戳 (须契约升版
+      加重打戳)。
+    recorded: "2026-09-19"
+    decision: register
+
+  - id: kline-write-lint-constant-tdxhub-rationale
+    asset: "backend/services/calendar.py:29-30 (KLINE_WRITE_CLOSE_HOUR/MINUTE = 15:05)"
+    detector: none
+    escalates_when: >
+      任何日 K 水龙头开始返回盘中行 (fuyao dump 与 baostock 都是盘后整日数据, 当前不触发)；
+      或有人再把这个写侧「bar 已收盘」阈值当成「供应商已发布」来用 (chain_run R7 曾这样用,
+      09-19 已改读 sync_registry 的 available_after)。常量本身是参数写在代码里, 注释理由
+      「tdxhub settlement buffer」随 tdxhub K 线族停供已过时。
+    recorded: "2026-09-19"
     decision: register

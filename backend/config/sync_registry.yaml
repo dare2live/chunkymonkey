@@ -1186,7 +1186,7 @@ domains:
     grain: [ts_code, trade_date]
     batch_mode: by_trade_date
     partition_by: [trade_date]
-    pit_anchor: "trade_date; 收盘后 15-16 点入库 -> 保守 18:00; 未复权价, 复权用 adj_factor 派生"
+    pit_anchor: "trade_date; 契约可见时刻 18:00 (不早于实际发布即可, 改它会改 config_hash 与全部分区戳)。2026-09-18 两腿实测: fuyao 16:00 无/16:30 有; baostock (pre_close/isST 唯一来源腿) 16:30 无/18:59 有, 其官网原文当前交易日17:30完成日K线数据入库。早于 18:00 落库的行照契约盖 18:00 可见; 未复权价, 复权用 adj_factor 派生"
     available_after: "18:00"
     availability_policy:
       axis: trading_day

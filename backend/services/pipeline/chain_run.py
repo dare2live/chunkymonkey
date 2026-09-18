@@ -23,8 +23,12 @@
   UNVERIFIED 判据本身算不出 (registry 不可用 / 日历不可达 / 前沿读取失败等)。
 
 R7 的前沿函数与日历函数都可注入 (测试一律注入，不开任何库)；默认实现见
-``_default_frontier_fn`` / ``_default_calendar_fn``，复用仓库已有的只读连接工具与
-``services.calendar`` 写侧同一口径函数，不自造第二套口径。
+``_default_frontier_fn`` / ``_default_calendar_fn``。前沿函数复用仓库已有的只读连接
+工具; 日历函数按该域自己在 sync_registry 里声明的可见时刻 (契约值 available_after, 由
+``nominal_ohlcv_schema.DOMAIN`` 定域名, 不在本模块另抄一份域名或时刻字面量) 换算期望
+交易日, 不自造第二套口径, 也不是写侧「bar 已收盘定稿」的口径 (那条问的是另一个问题,
+见 ``calendar.py`` 15:05 lint 的注释)。可用时刻不是 HH:MM 时该条判据算不出，是
+UNVERIFIED 不是 PASS/FAIL。
 """
 from __future__ import annotations
 
@@ -90,11 +94,78 @@ def _default_frontier_fn() -> str | None:
     return str(row[0]) if row and row[0] else None
 
 
-def _default_calendar_fn(run_at: datetime) -> str | None:
-    """写侧同一口径 (15:05 阈值)，不自造第二套日历判断。"""
-    from services.calendar import latest_completed_for_kline_write
+class AvailabilityUnverified(RuntimeError):
+    """该域声明的可用时刻不是可解析的 HH:MM (t+1/缺键/格式错都算)。
 
-    return latest_completed_for_kline_write(now=run_at)
+    R7 据此判 UNVERIFIED (算不出), 不是 FAIL (不满足) 也不是 PASS。
+    """
+
+
+def _registered_available_after(
+    *, registry_loader: Callable[[], Any] | None = None
+) -> tuple[int, int] | str | None:
+    """从 sync_registry 读该域声明的 available_after 并解析。
+
+    域名复用 ``nominal_ohlcv_schema.DOMAIN`` (与 ``_default_frontier_fn`` 同一处),
+    不在本模块或配置里另抄一份域名字面量。三层合并 (defaults/source/domain) 走
+    ``sync_runner.domain_spec`` —— 该函数 docstring 自称"唯一合并点 (37 处调用依赖
+    它)"，不重新实现这条合并链。
+
+    HH:MM / "t+1" / 缺键三种取值的解析复用 ``sync_runner._parse_available_after``；
+    grep 仓库只找到这一处定义 (加两处内部调用者)，没有下划线以外的公开等价物——
+    ``services.data_sources.availability.availability_policy_from_mapping`` 虽公开
+    导出，但它解析的是 ``availability_policy`` 这份 typed 映射 (且对 "t+1"/缺键直接
+    抛异常，语义与本条判据要求的"能分辨 t+1 与缺键"不同)，不是 ``available_after``
+    这个 legacy 字段的等价解析器。复用私有函数而不是另写一份，按施工规格记 deviation。
+    """
+    from services.data_sources.nominal_ohlcv_schema import DOMAIN
+    from services.data_sources.sync_runner import (
+        _parse_available_after,
+        domain_spec,
+        load_registry as load_sync_registry,
+    )
+
+    registry = (registry_loader or load_sync_registry)()
+    spec = domain_spec(registry, DOMAIN.domain)
+    return _parse_available_after(spec)
+
+
+def _expected_trade_date_for_availability(
+    run_at: datetime,
+    available_after: tuple[int, int] | str | None,
+    *,
+    calendar_lookup: Callable[[datetime, int, int], str | None],
+) -> str | None:
+    """纯函数：给定 run_at、已解析的可用时刻、日历查询函数 → 期望交易日。
+
+    ``available_after`` 不是 ``(hh, mm)`` tuple 时 (t+1/缺键/格式错) 抛
+    ``AvailabilityUnverified``；``_default_calendar_fn`` 让它顺着
+    ``evaluate_chain_run`` 既有的 "calendar lookup failed" 异常通路变成 R7
+    UNVERIFIED，不需要改 R7 的判定代码本身。
+    """
+    if not isinstance(available_after, tuple):
+        raise AvailabilityUnverified(
+            f"available_after={available_after!r} is not HH:MM"
+        )
+    hh, mm = available_after
+    return calendar_lookup(run_at, hh, mm)
+
+
+def _default_calendar_fn(run_at: datetime) -> str | None:
+    """按该域在 sync_registry 里声明的契约可见时刻 (available_after) 算期望交易日。
+
+    不是写侧「bar 已收盘定稿」的 15:05 口径 (那是另一个问题，见 calendar.py 注释)。
+    """
+    from services.calendar import latest_completed_trade_date
+
+    available_after = _registered_available_after()
+    return _expected_trade_date_for_availability(
+        run_at,
+        available_after,
+        calendar_lookup=lambda now, hh, mm: latest_completed_trade_date(
+            now=now, close_hour=hh, close_minute=mm
+        ),
+    )
 
 
 def evaluate_chain_run(

@@ -1,7 +1,9 @@
 """backend/services/pipeline/chain_run.py — doctor 的 chain_run 节 (R1-R7)。
 
-规格: sandbox/patch_loop_review_20260916/fable_review_chain_run_stop_rule.md 任务1.
-基线 + M1-M10: 每条判据一条「其它条件全满足、只违反它」的隔离用例, 逐条变异
+规格: sandbox/patch_loop_review_20260916/fable_review_chain_run_stop_rule.md 任务1;
+sandbox/acceptance_cuts_20260918/spec_daily_availability.md (A1-A5, R7 期望日改按
+daily 域自己声明的可用时刻算, 不再是写侧 15:05 口径)。
+基线 + M1-M10 + A1-A5: 每条判据一条「其它条件全满足、只违反它」的隔离用例, 逐条变异
 (改坏生产代码里对应那一处, 看红的是不是该用例) 记在提交信息 assertions 里，本文件
 只锁行为。frontier/calendar/registry 全部注入，不开任何真实 DB。
 """
@@ -9,7 +11,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -383,3 +385,123 @@ def test_runtime_check_json_out_paths_extracts_exactly_six(tmp_path):
     assert len(rels) == 6
     assert all(BASE_DATE in rel for rel in rels)
     assert all(rel.startswith("data/audit/") for rel in rels)
+
+
+# ── A1-A5: R7 期望日改按 daily 域自己声明的可用时刻算 ───────────────────────────
+# spec_daily_availability.md。可用时刻不再是写侧 15:05 口径 (那条问「bar 是否收盘
+# 定稿」)，而是该域契约声明的可见时刻，从 sync_registry 该域条目的 available_after 读。
+
+
+def _fake_calendar_lookup(trading_days: set[str]):
+    """A1/A2 用的假日历查询函数：与 services.calendar.latest_completed_trade_date 同一
+    契约 ((run_at, close_hour, close_minute) -> 'YYYYMMDD' | None)，但只查内存里的
+    ``trading_days`` 集合，不开任何真实 DB。"""
+
+    def _lookup(run_at, close_hour, close_minute):
+        anchor = run_at.date()
+        if (run_at.hour, run_at.minute) < (close_hour, close_minute):
+            anchor -= timedelta(days=1)
+        candidates = [d for d in trading_days if d <= anchor.strftime("%Y%m%d")]
+        return max(candidates) if candidates else None
+
+    return _lookup
+
+
+# A1 — 可用时刻 17:30 边界：其它一切满足，只在 run_at 越过 17:30 那一刻切换。
+def test_a1_availability_boundary_17_29_before_17_30_at(tmp_path):
+    lookup = _fake_calendar_lookup({"20260917", "20260918"})
+    before = chain_run._expected_trade_date_for_availability(
+        datetime(2026, 9, 18, 17, 29), (17, 30), calendar_lookup=lookup
+    )
+    at = chain_run._expected_trade_date_for_availability(
+        datetime(2026, 9, 18, 17, 30), (17, 30), calendar_lookup=lookup
+    )
+    assert before == "20260917"
+    assert at == "20260918"
+
+
+# A2 — 可用时刻从 sync_registry 读，不是字面量：假注册表把 daily 的 available_after
+# 改成 16:00，run_at 16:30 (18:00/17:30 都不满足但 16:00 满足) 应期望当天。
+def test_a2_available_after_read_from_registry_not_literal(tmp_path):
+    fake_registry = {"domains": {"daily": {"available_after": "16:00"}}}
+    parsed = chain_run._registered_available_after(registry_loader=lambda: fake_registry)
+    assert parsed == (16, 0)
+
+    lookup = _fake_calendar_lookup({"20260918"})
+    result = chain_run._expected_trade_date_for_availability(
+        datetime(2026, 9, 18, 16, 30), parsed, calendar_lookup=lookup
+    )
+    assert result == "20260918"
+
+
+# A3 — 可用时刻不是 HH:MM (t+1 / 缺键) -> UNVERIFIED，reason 含 available_after，
+# 不得 PASS 也不得 FAIL。先隔离测纯函数直接抛的异常，再端到端走 evaluate_chain_run
+# 的 R7 确认真落到 UNVERIFIED。
+@pytest.mark.parametrize("bad_available_after", [None, "t+1"])
+def test_a3_non_hhmm_available_after_raises_mentioning_available_after(bad_available_after):
+    lookup = _fake_calendar_lookup({"20260918"})
+    with pytest.raises(chain_run.AvailabilityUnverified) as exc_info:
+        chain_run._expected_trade_date_for_availability(
+            datetime(2026, 9, 18, 20, 0), bad_available_after, calendar_lookup=lookup
+        )
+    assert "available_after" in str(exc_info.value)
+
+
+def test_a3_missing_available_after_key_parses_to_none():
+    """缺键 (registry 条目根本没有 available_after) 解析结果与 't+1' 同归 None 一侧。"""
+    fake_registry = {"domains": {"daily": {}}}
+    parsed = chain_run._registered_available_after(registry_loader=lambda: fake_registry)
+    assert parsed is None
+
+
+def test_a3_r7_unverified_end_to_end_when_available_after_not_hhmm(tmp_path):
+    ctx = _baseline(tmp_path)
+    lookup = _fake_calendar_lookup({BASE_DATE})
+
+    def _bad_calendar(run_at):
+        return chain_run._expected_trade_date_for_availability(
+            run_at, "t+1", calendar_lookup=lookup
+        )
+
+    result = _evaluate(tmp_path, ctx, calendar=_bad_calendar)
+    assert result["state"] == "UNVERIFIED"
+    assert result["failed_rule"] == "R7"
+    assert "available_after" in result["reason"]
+
+
+# A4 — 真配置：唯一允许读真实 sync_registry.yaml 的用例。只断言不变量 (两份副本
+# 相等且都是可解析的 HH:MM), 不把 17:30 这个取值钉成常量 —— 取值随实测调整时只改
+# 配置一处。
+def test_a4_real_registry_daily_availability_copies_agree_and_parse():
+    from services.data_sources.nominal_ohlcv_schema import DOMAIN
+    from services.data_sources.sync_runner import _parse_available_after, domain_spec
+    from services.data_sources.sync_runner import load_registry as load_sync_registry
+
+    spec = domain_spec(load_sync_registry(), DOMAIN.domain)
+    assert spec["available_after"] == spec["availability_policy"]["at"]
+    assert isinstance(_parse_available_after(spec), tuple)
+    assert chain_run._registered_available_after() == _parse_available_after(spec)
+
+
+# A1b — 默认日历函数的接线: 注册表声明的时分原样传给 services.calendar 的
+# latest_completed_trade_date (A1 只证明纯函数把参数传给注入的查询函数; 这一条证明
+# 生产默认实现传的是注册表的值, 且 now 就是 run_at)。
+def test_a1b_default_calendar_fn_passes_registered_hhmm(monkeypatch):
+    import services.calendar as calendar_mod
+
+    seen = {}
+
+    def _capture(*, now, close_hour, close_minute):
+        seen.update(now=now, close_hour=close_hour, close_minute=close_minute)
+        return "20260918"
+
+    monkeypatch.setattr(chain_run, "_registered_available_after", lambda: (16, 5))
+    monkeypatch.setattr(calendar_mod, "latest_completed_trade_date", _capture)
+    run_at = datetime(2026, 9, 18, 16, 6)
+    assert chain_run._default_calendar_fn(run_at) == "20260918"
+    assert seen == {"now": run_at, "close_hour": 16, "close_minute": 5}
+
+
+# A5 — chain_run 其余 R1-R6 行为不变: 由本文件其余既有用例(M1-M10 等)覆盖，本条只
+# 确认 _default_calendar_fn 替换后仍然只在 R7 生效、不改变 evaluate_chain_run 的签名
+# 与 R1-R6 分支 (baseline 走既有 M1-M10 用例即是回归锁)。
