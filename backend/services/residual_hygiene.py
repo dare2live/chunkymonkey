@@ -173,7 +173,12 @@ def measure_ann_tip_lags(
         return []
     warn_n = int(block.get("warn_trading_days", 5))
     fail_n = int(block.get("fail_trading_days", 15))
-    from services.data_sources.sync_runner import eligible_end_date, load_registry
+    from services.data_sources.sync_runner import (
+        domain_spec,
+        eligible_end_date,
+        execution_policy_for_spec,
+        load_registry,
+    )
 
     reg = registry if registry is not None else load_registry()
     domains_cfg = list(block.get("domains") or [])
@@ -195,6 +200,13 @@ def measure_ann_tip_lags(
             )
             continue
         spec = {**spec, "domain": domain}
+        # 冻结域 (execution_policy.mode=disabled, 2026-09-19): 没有源、不会再有新公告落库,
+        # 「公告尖端落后可取日」按构造只会越拉越大 —— 守的是「drain 卡住了」, 冻结域没有 drain。
+        # 滞后照实量、照实写进 finding, 只把 warn/fail 改记 observe_frozen (不进人工处理队列);
+        # 域一转回 enabled, 本分支不再命中, 自动回到原 warn/fail 判据 (与 check_continuity_integrity
+        # 对冻结域的 observe_frozen_* 同口径, commit 6dc8e08d)。
+        policy_state = execution_policy_for_spec(domain_spec(reg, domain))
+        frozen = policy_state.mode == "disabled"
         eligibility = eligible_end_date(
             spec,
             now=now,
@@ -224,8 +236,9 @@ def measure_ann_tip_lags(
                 {
                     "check": "ann_tip_lag",
                     "domain": domain,
-                    "status": "fail",
-                    "detail": "local_empty_while_eligible_present",
+                    "status": "observe_frozen" if frozen else "fail",
+                    "detail": "local_empty_while_eligible_present"
+                    + (f"; frozen_observe mode=disabled/{policy_state.reason}" if frozen else ""),
                     "local_max": None,
                     "eligible_end": eligible,
                     "eligible_reason": eligibility.reason,
@@ -237,14 +250,16 @@ def measure_ann_tip_lags(
             continue
         lag = trading_lag_days(trading_days, local_max, eligible)
         status = classify_lag(lag, warn_trading_days=warn_n, fail_trading_days=fail_n)
+        detail = "tip_behind_eligible" if (lag or 0) > 0 else "tip_at_or_past_eligible"
+        if frozen and status in ("warn", "fail"):
+            status = "observe_frozen"
+            detail += f"; frozen_observe mode=disabled/{policy_state.reason} (域转 enabled 后按原判据)"
         findings.append(
             {
                 "check": "ann_tip_lag",
                 "domain": domain,
                 "status": status,
-                "detail": (
-                    "tip_behind_eligible" if (lag or 0) > 0 else "tip_at_or_past_eligible"
-                ),
+                "detail": detail,
                 "local_max": local_max,
                 "eligible_end": eligible,
                 "eligible_reason": eligibility.reason,
@@ -299,6 +314,7 @@ def evaluate_residual_hygiene(
             "warn": sum(1 for f in findings if f.get("status") == "warn"),
             "pass": sum(1 for f in findings if f.get("status") == "pass"),
             "skip": sum(1 for f in findings if f.get("status") == "skip"),
+            "observe": sum(1 for f in findings if f.get("status") == "observe_frozen"),
         },
     }
 

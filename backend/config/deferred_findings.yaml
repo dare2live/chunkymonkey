@@ -312,3 +312,16 @@ findings:
     recorded: "2026-09-19"
     decision: register
 
+  - id: smartmoney-daily-run-free-block-growth
+    asset: "smartmoney.duckdb (一次正常日更后 pragma_database_size free_blocks 占比 0.31% -> 6.40%)"
+    detector: backend/config/db_invariants.yaml
+    escalates_when: >
+      2026-09-19 实测: 回填结束后 smartmoney 空闲块 0.31%, 跑完一次 D=20260918 日更后 6.40%
+      (bloat_ratio_smartmoney PASS, 阈值 10)。按调查报告 churn.md, 日更对 smartmoney 的写法都是
+      窗口删插或增量追加, 这个增量 (约 1,200 块 / 300 MB) 与之不符, 具体是哪张表 / 哪一步产生的
+      未定位 (假设: 窗口 DELETE 命中按代码而非按日期排列的表, 检查点时整表行组被重写)。
+      库膨胀治本刀 (日更末尾按阈值统一压缩) 合入后不会再顶破阈值, 但每天都要压缩一次
+      smartmoney; 若压缩耗时成为问题, 回来定位这个写者。
+    recorded: "2026-09-19"
+    decision: register
+

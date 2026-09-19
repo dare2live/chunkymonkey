@@ -205,3 +205,104 @@ def test_run_outcome_classifies_residual_hygiene_as_integrity():
 
     info = derive_run_outcome(["residual_hygiene FAIL — Type-B publish lag over SLA"])
     assert info["run_outcome"] == "integrity_observe"
+
+
+# ── ann_tip_lag 对冻结域 (execution_policy.mode=disabled) 记 observe_frozen (2026-09-19) ──
+# 每条只违反一个门控条件: 冻结与否 × 滞后是否超阈值。库用内存 DuckDB, 注册表用真
+# sync_registry 的 stk_holdernumber 条目深拷贝后只改 execution_policy。
+
+import copy as _copy
+from datetime import datetime as _dt
+
+import duckdb as _duckdb
+
+from services import residual_hygiene as rh
+
+
+def _ann_policy():
+    return {
+        "policy_id": "t",
+        "ann_tip_lag": {
+            "enabled": True,
+            "warn_trading_days": 5,
+            "fail_trading_days": 15,
+            "domains": [
+                {
+                    "domain": "stk_holdernumber",
+                    "db_alias": "tushare_raw",
+                    "table": "raw_tushare_stk_holdernumber",
+                    "date_column": "ann_date",
+                }
+            ],
+        },
+    }
+
+
+def _ann_registry(mode: str):
+    from services.data_sources.sync_runner import load_registry
+
+    reg = _copy.deepcopy(load_registry())
+    spec = reg["domains"]["stk_holdernumber"]
+    spec["execution_policy"] = (
+        {"mode": "disabled", "reason": "test_frozen"}
+        if mode == "disabled"
+        else {"mode": "enabled", "reason": "test_enabled"}
+    )
+    return reg
+
+
+def _ann_days():
+    # 30 个连续「交易日」, 足够让滞后越过 fail=15
+    from datetime import date, timedelta
+
+    start = date(2026, 8, 3)
+    out, d = [], start
+    while len(out) < 30:
+        if d.weekday() < 5:
+            out.append(d.strftime("%Y%m%d"))
+        d += timedelta(days=1)
+    return out
+
+
+def _ann_conn_for(local_max: str):
+    def _factory(_alias):
+        c = _duckdb.connect(":memory:")
+        c.execute("CREATE TABLE raw_tushare_stk_holdernumber (ann_date VARCHAR)")
+        c.execute("INSERT INTO raw_tushare_stk_holdernumber VALUES (?)", [local_max])
+        return c
+
+    return _factory
+
+
+def _ann_eval(mode: str, local_max: str):
+    days = _ann_days()
+    now = _dt.strptime(days[-1], "%Y%m%d").replace(hour=23)
+    return rh.measure_ann_tip_lags(
+        policy=_ann_policy(),
+        trading_days=days,
+        conn_for_alias=_ann_conn_for(local_max),
+        registry=_ann_registry(mode),
+        now=now,
+    )
+
+
+def test_ann_tip_lag_frozen_domain_over_fail_is_observe_not_fail():
+    days = _ann_days()
+    [f] = _ann_eval("disabled", days[2])
+    assert f["status"] == "observe_frozen", f
+    assert f["lag_trading_days"] is not None and f["lag_trading_days"] > 15
+    assert "frozen_observe" in f["detail"] and "test_frozen" in f["detail"]
+    assert rh.overall_status([f]) == "PASS"
+
+
+def test_ann_tip_lag_enabled_domain_same_lag_still_fails():
+    days = _ann_days()
+    [f] = _ann_eval("enabled", days[2])
+    assert f["status"] == "fail", f
+    assert rh.overall_status([f]) == "FAIL"
+
+
+def test_ann_tip_lag_frozen_domain_within_sla_stays_pass():
+    days = _ann_days()
+    [f] = _ann_eval("disabled", days[-2])
+    assert f["status"] == "pass", f
