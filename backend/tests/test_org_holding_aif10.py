@@ -806,3 +806,106 @@ def test_sync_period_raw_only_writes_legacy_not_canonical(monkeypatch):
     ).fetchone()[0] == 1
     con.close()
 
+
+# ── S1-A7 (spec_bshare_b2.md §5.1, 2026-09-19): vendor_scope B股 排除 ───────
+# 用真实 (不打桩) vendor_scope.yaml —— aif10.org_holding disposition。落点在
+# sync_period 的截断检查之后、_normalize_rows 之前; provider_count (供应商
+# count, 含 B) 原样进 write_source_probe / 返回字典, 不受排除影响。
+
+
+def _org_holding_b_share_row(**overrides):
+    """真实形态 aif10 B股行 (spec_bshare_b2.md §1.1 P3 实测: SECURITY_TYPE_CODE=
+    058001002, 深 200012)。"""
+    row = {
+        "REPORT_DATE": "20260630",
+        "SECURITY_CODE": "200012",
+        "HOLDER_CODE": "HB1",
+        "FUND_DERIVECODE": "",
+        "SECURITY_TYPE_CODE": "058001002",
+    }
+    row.update(overrides)
+    return row
+
+
+def test_sync_period_excludes_b_share_before_normalize(monkeypatch):
+    """B 股行在落库前被丢, provider_count (含 B) 原样保留 —— 与本地行数
+    (不含 B) 从此恒差, source_count_ahead 的差值触发线远高于此 (spec §2.3)。"""
+    con = duckdb.connect(":memory:")
+    m.ensure_tables(con)
+    a_row = {
+        "REPORT_DATE": "20260630",
+        "SECURITY_CODE": "600000",
+        "HOLDER_CODE": "H1",
+        "FUND_DERIVECODE": "",
+    }
+    b_row = _org_holding_b_share_row()
+
+    def _fake_fetch(_period):
+        return {
+            "rows": [a_row, b_row],
+            "provider_count": 2,
+            "fetched_rows": 2,
+            "truncated": False,
+            "shard_count": 1,
+            "land_reasons": [],
+        }
+
+    monkeypatch.setattr(m, "_fetch_period", _fake_fetch)
+    out = m.sync_period(con, "2026-06-30", raw_only=True)
+    assert out["status"] == "ok_raw"
+    assert out["written_rows"] == 1
+    # provider_count is the vendor's own declared count (含 B) — must survive
+    # unfiltered; this is what write_source_probe's source_count is built from.
+    assert out["provider_count"] == 2
+    landed = con.execute(
+        "SELECT stock_code FROM raw_org_holding_aif10 WHERE report_date = '2026-06-30'"
+    ).fetchall()
+    assert landed == [("600000",)]
+    con.close()
+
+
+def test_sync_period_all_b_share_period_lands_zero_rows(monkeypatch):
+    """Isolates the exclusion gate itself: an all-B股 period must land 0 rows,
+    not error and not silently keep them (mutation target: dropping the
+    _drop_vendor_excluded call would land 1 row here)."""
+    con = duckdb.connect(":memory:")
+    m.ensure_tables(con)
+
+    def _fake_fetch(_period):
+        return {
+            "rows": [_org_holding_b_share_row()],
+            "provider_count": 1,
+            "fetched_rows": 1,
+            "truncated": False,
+            "shard_count": 1,
+            "land_reasons": [],
+        }
+
+    monkeypatch.setattr(m, "_fetch_period", _fake_fetch)
+    out = m.sync_period(con, "2026-06-30", raw_only=True)
+    assert out["written_rows"] == 0
+    assert out["status"] == "empty"
+    con.close()
+
+
+def test_normalize_rows_does_not_filter_b_share_itself():
+    """S1-A7 second half (spec §5.1 table): _normalize_rows must stay a pure
+    field-mapping function — filtering happens in sync_period before it, not
+    inside it. Feeding a B股 row directly to _normalize_rows must NOT drop it
+    (that would mean the filter got duplicated/moved into the wrong layer)."""
+    out = m._normalize_rows([_org_holding_b_share_row()], announcement_by_stock={})
+    assert len(out) == 1
+    assert out[0]["stock_code"] == "200012"
+
+
+def test_drop_vendor_excluded_does_not_swallow_vendor_scope_error(monkeypatch):
+    """S1-A11: unregistered acquiring path must fail closed."""
+    from services.data_sources.vendor_scope import VendorScopeError
+
+    def _raise(*_a, **_k):
+        raise VendorScopeError("no disposition registered for 'aif10.org_holding'")
+
+    monkeypatch.setattr("services.data_sources.vendor_scope.vendor_exclusions", _raise)
+    with pytest.raises(VendorScopeError):
+        m._drop_vendor_excluded([{"SECURITY_CODE": "600000", "REPORT_DATE": "20260630"}])
+

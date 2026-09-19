@@ -54,7 +54,7 @@ _VALID_MIN: dict = {
             ],
         }
     },
-    "landing_exemptions": [],
+    "databases_without_security_code_columns": [],
 }
 
 
@@ -79,7 +79,7 @@ def _min_config():
                 regex=r"^(900\d{3}(\.SH)?|200\d{3}(\.SZ)?)$",
             ),
         ),
-        landing_exemptions=frozenset(),
+        declared_no_code_columns=frozenset(),
     )
 
 
@@ -131,7 +131,7 @@ def test_load_fails_closed_on_extra_top_level_key(tmp_path):
 
 def test_load_fails_closed_on_missing_top_level_key(tmp_path):
     bad = dict(_VALID_MIN)
-    del bad["landing_exemptions"]
+    del bad["databases_without_security_code_columns"]
     p = _write_yaml(tmp_path, bad)
     with pytest.raises(cosr.OutOfScopeScanConfigError, match="顶层键"):
         cosr.load_scan_config(p)
@@ -247,66 +247,111 @@ def test_load_fails_closed_on_duplicate_pattern(tmp_path):
         cosr.load_scan_config(p)
 
 
-def test_load_fails_closed_on_landing_exemptions_not_list(tmp_path):
-    bad = {**_VALID_MIN, "landing_exemptions": {}}
+# ── S2-A4 (spec_bshare_b2.md §5.2, 2026-09-19): databases_without_security_code_columns
+# loader —— 键集不对 / db 不在 manifest / why 空 / 重复 db / 顶层多出旧 landing_exemptions
+# 键, 各自 OutOfScopeScanConfigError; 每条隔离 (其它全满足只违反它一条)。────────────
+
+
+def test_load_fails_closed_on_declared_no_code_columns_not_list(tmp_path):
+    bad = {**_VALID_MIN, "databases_without_security_code_columns": {}}
     p = _write_yaml(tmp_path, bad)
-    with pytest.raises(cosr.OutOfScopeScanConfigError, match="landing_exemptions must be a list"):
+    with pytest.raises(
+        cosr.OutOfScopeScanConfigError, match="databases_without_security_code_columns must be a list"
+    ):
         cosr.load_scan_config(p)
 
 
-def test_load_fails_closed_on_exemption_wrong_key_set(tmp_path):
-    bad = {**_VALID_MIN, "landing_exemptions": [{"db": "smartmoney", "table": "t"}]}
+def test_load_fails_closed_on_declared_wrong_key_set(tmp_path):
+    bad = {
+        **_VALID_MIN,
+        "databases_without_security_code_columns": [{"db": "experiment_store", "table": "t"}],
+    }
     p = _write_yaml(tmp_path, bad)
     with pytest.raises(cosr.OutOfScopeScanConfigError, match="键集合必须恰为"):
         cosr.load_scan_config(p)
 
 
-def test_load_fails_closed_on_exemption_unknown_db_alias(tmp_path):
+def test_load_fails_closed_on_declared_extra_key(tmp_path):
+    """S2-A4 isolation: {db, why} both present (correctly formed) but with a
+    stray extra key alongside them must still be rejected — a subset check
+    (require {db, why} present, permit more) would wrongly accept this,
+    unlike ``test_load_fails_closed_on_declared_wrong_key_set`` above whose
+    fixture is missing ``why`` entirely and so is caught either way.
+    Mirrors ``test_l9_extra_key_rejected`` in test_vendor_scope.py."""
     bad = {
         **_VALID_MIN,
-        "landing_exemptions": [{"db": "no_such_alias_xyz", "table": "t", "why": "x"}],
+        "databases_without_security_code_columns": [
+            {"db": "experiment_store", "why": "test declaration", "extra": "z"}
+        ],
+    }
+    p = _write_yaml(tmp_path, bad)
+    with pytest.raises(cosr.OutOfScopeScanConfigError, match="键集合必须恰为"):
+        cosr.load_scan_config(p)
+
+
+def test_load_fails_closed_on_declared_unknown_db_alias(tmp_path):
+    bad = {
+        **_VALID_MIN,
+        "databases_without_security_code_columns": [
+            {"db": "no_such_alias_xyz", "why": "x"}
+        ],
     }
     p = _write_yaml(tmp_path, bad)
     with pytest.raises(cosr.OutOfScopeScanConfigError, match="unknown database alias"):
         cosr.load_scan_config(p)
 
 
-def test_load_fails_closed_on_exemption_bad_table_name(tmp_path):
+def test_load_fails_closed_on_declared_empty_why(tmp_path):
     bad = {
         **_VALID_MIN,
-        "landing_exemptions": [{"db": "smartmoney", "table": "1bad-name", "why": "x"}],
-    }
-    p = _write_yaml(tmp_path, bad)
-    with pytest.raises(cosr.OutOfScopeScanConfigError, match="table must match"):
-        cosr.load_scan_config(p)
-
-
-def test_load_fails_closed_on_exemption_empty_why(tmp_path):
-    bad = {
-        **_VALID_MIN,
-        "landing_exemptions": [{"db": "smartmoney", "table": "raw_x", "why": "  "}],
+        "databases_without_security_code_columns": [
+            {"db": "experiment_store", "why": "  "}
+        ],
     }
     p = _write_yaml(tmp_path, bad)
     with pytest.raises(cosr.OutOfScopeScanConfigError, match="why must be a non-empty string"):
         cosr.load_scan_config(p)
 
 
-def test_load_fails_closed_on_duplicate_exemption(tmp_path):
-    entry = {"db": "smartmoney", "table": "raw_x", "why": "x"}
-    bad = {**_VALID_MIN, "landing_exemptions": [dict(entry), dict(entry)]}
+def test_load_fails_closed_on_duplicate_declared_db(tmp_path):
+    entry = {"db": "experiment_store", "why": "x"}
+    bad = {**_VALID_MIN, "databases_without_security_code_columns": [dict(entry), dict(entry)]}
     p = _write_yaml(tmp_path, bad)
-    with pytest.raises(cosr.OutOfScopeScanConfigError, match="duplicate \\(db, table\\)"):
+    with pytest.raises(cosr.OutOfScopeScanConfigError, match="duplicate db"):
         cosr.load_scan_config(p)
 
 
-def test_load_accepts_valid_exemption_against_real_manifest(tmp_path):
+def test_load_fails_closed_on_stale_landing_exemptions_top_level_key(tmp_path):
+    """S2-A4 control: the retired ``landing_exemptions`` key must now be
+    rejected as an unknown top-level key, not silently ignored."""
+    bad = {**_VALID_MIN, "landing_exemptions": []}
+    p = _write_yaml(tmp_path, bad)
+    with pytest.raises(cosr.OutOfScopeScanConfigError, match="顶层键"):
+        cosr.load_scan_config(p)
+
+
+def test_load_accepts_valid_declared_no_code_columns_against_real_manifest(tmp_path):
     ok = {
         **_VALID_MIN,
-        "landing_exemptions": [{"db": "smartmoney", "table": "raw_x", "why": "test exemption"}],
+        "databases_without_security_code_columns": [
+            {"db": "experiment_store", "why": "test declaration"}
+        ],
     }
     p = _write_yaml(tmp_path, ok)
     cfg = cosr.load_scan_config(p)
-    assert cfg.landing_exemptions == frozenset({("smartmoney", "raw_x")})
+    assert cfg.declared_no_code_columns == frozenset({"experiment_store"})
+
+
+def test_main_returns_2_when_declared_no_code_columns_malformed(tmp_path, monkeypatch):
+    """S2-A4: main() surfaces the loader's fail-closed behavior as exit 2,
+    same as the pre-existing classes-empty/missing-file death conditions."""
+    bad = {
+        **_VALID_MIN,
+        "databases_without_security_code_columns": [{"db": "no_such_alias_xyz", "why": "x"}],
+    }
+    p = _write_yaml(tmp_path, bad)
+    monkeypatch.setattr(cosr, "CONFIG_PATH", p)
+    assert cosr.main(["--json"]) == 2
 
 
 # ── R1. 发现式枚举: 3 张表各 1 个代码列 → 枚举恰 3 项 (集合相等, 不是 >=) ──────────
@@ -447,42 +492,80 @@ def test_scan_passes_on_lookalike_substring_not_false_positive():
         pass
 
 
-# ── R4. 豁免只免它自己的表, 派生表不豁免 ──────────────────────────────────────────
+# ── S2-A1/A2/A3 (spec_bshare_b2.md §5.2, 2026-09-19): databases_without_security_code_columns
+# 三分支 —— 取代旧 R4 (landing_exemptions/observed, 已删)。每条隔离用例只违反一个门控
+# 条件, 其它分支条件全部满足。──────────────────────────────────────────────────────
 
-def _config_with_exemption(db_alias: str, table: str):
+
+def _config_with_declared(db_alias: str):
     base = _min_config()
     return cosr.ScanConfig(
         security_code_columns=base.security_code_columns,
         classes=base.classes,
-        landing_exemptions=frozenset({(db_alias, table)}),
+        declared_no_code_columns=frozenset({db_alias}),
     )
 
 
-def test_exempted_landing_table_reports_observed_not_fail_with_visible_value():
-    config = _config_with_exemption("d", "landing_x")
+def test_declared_db_with_no_code_columns_scan_passes():
+    """S2-A1: 声明库 (4 张表均无代码列) → 恰一行 PASS,
+    reason=declared_no_security_code_columns, checked==4, overall PASS, exit 0。"""
+    config = _config_with_declared("d")
     c = duck_connect(":memory:")
     try:
-        c.execute("CREATE TABLE landing_x (ts_code VARCHAR)")
-        c.execute("INSERT INTO landing_x VALUES ('900901.SH')")
+        for i in range(4):
+            c.execute(f"CREATE TABLE t{i} (run_id VARCHAR)")
         rows = cosr.run_scan(config, lambda alias: c, ["d"])
-        assert rows[0]["status"] == "observed"
-        assert rows[0]["value"] == 1  # 报数, 不是 warn-nothing
-        assert cosr.overall_status(rows) == "PASS"  # observed 不算 FAIL
-        assert cosr.exit_code_for(cosr.overall_status(rows)) == 0
+        assert rows == [
+            {
+                "db": "d", "table": None, "column": None, "class": None,
+                "checked": 4, "value": 0, "status": "PASS",
+                "reason": "declared_no_security_code_columns",
+            }
+        ]
+        overall = cosr.overall_status(rows)
+        assert overall == "PASS"
+        assert cosr.exit_code_for(overall) == 0
     finally:
         pass
 
 
-def test_derived_table_of_exempt_domain_still_fails():
-    """豁免只覆盖登记的那张表本身——同域的另一张(派生)表命中同样的行, 必须照判 FAIL。"""
-    config = _config_with_exemption("d", "landing_x")  # 豁免 landing_x, 不豁免 derived_x
+def test_undeclared_db_with_no_code_columns_stays_unverified():
+    """S2-A2: 同样"4 张表均无代码列"的夹具, 但该库**未在**
+    databases_without_security_code_columns 里声明 → 必须仍是 UNVERIFIED
+    enumeration_empty (现有行为不变) —— 隔离出"声明"这个门控条件本身。"""
+    config = _min_config()  # declared_no_code_columns == frozenset() — 未声明任何库
     c = duck_connect(":memory:")
     try:
-        c.execute("CREATE TABLE derived_x (ts_code VARCHAR)")
-        c.execute("INSERT INTO derived_x VALUES ('900901.SH')")
+        for i in range(4):
+            c.execute(f"CREATE TABLE t{i} (run_id VARCHAR)")
         rows = cosr.run_scan(config, lambda alias: c, ["d"])
-        assert rows[0]["status"] == "FAIL"
+        assert len(rows) == 1
+        assert rows[0]["status"] == "UNVERIFIED" and rows[0]["reason"] == "enumeration_empty"
+        assert cosr.overall_status(rows) == "UNVERIFIED"
+    finally:
+        pass
+
+
+def test_declared_db_with_stale_declaration_still_scans_and_fails():
+    """S2-A3: 声明库里多建一张带 ts_code 的表 (声明已过期——库其实长出了代码列) →
+    正常逐列扫的行 (含命中/不命中) + 一行 FAIL reason 以 stale_declaration 开头,
+    overall FAIL, exit 1。声明命中不能跳过枚举 (mutation target)。"""
+    config = _config_with_declared("d")
+    c = duck_connect(":memory:")
+    try:
+        c.execute("CREATE TABLE t0 (run_id VARCHAR)")  # 无代码列, 声明原本描述的对象
+        c.execute("CREATE TABLE t1 (ts_code VARCHAR)")  # 声明过期的证据: 长出了代码列
+        c.execute("INSERT INTO t1 VALUES ('600000.SH')")  # 不命中 B 股, 但列存在即过期
+        rows = cosr.run_scan(config, lambda alias: c, ["d"])
+        scan_rows = [r for r in rows if r["table"] == "t1"]
+        assert len(scan_rows) == 1 and scan_rows[0]["status"] == "PASS"
+        stale_rows = [r for r in rows if r["table"] is None]
+        assert len(stale_rows) == 1
+        assert stale_rows[0]["status"] == "FAIL"
+        assert stale_rows[0]["reason"].startswith("stale_declaration")
+        assert stale_rows[0]["value"] == 1  # 1 个代码列被发现 (t1.ts_code)
         assert cosr.overall_status(rows) == "FAIL"
+        assert cosr.exit_code_for(cosr.overall_status(rows)) == 1
     finally:
         pass
 
@@ -493,7 +576,7 @@ def test_broken_column_name_set_is_unverified_not_pass():
     broken = cosr.ScanConfig(
         security_code_columns=("nonexistent_col_xyz",),
         classes=_min_config().classes,
-        landing_exemptions=frozenset(),
+        declared_no_code_columns=frozenset(),
     )
     c = duck_connect(":memory:")
     try:
@@ -562,14 +645,14 @@ def test_overall_status_fail_beats_unverified():
         {"status": "FAIL"},
         {"status": "UNVERIFIED"},
         {"status": "PASS"},
-        {"status": "observed"},
     ]
     assert cosr.overall_status(rows) == "FAIL"
     assert cosr.exit_code_for(cosr.overall_status(rows)) == 1
 
 
-def test_overall_status_all_pass_and_observed_is_pass():
-    rows = [{"status": "PASS"}, {"status": "observed"}]
+def test_overall_status_all_pass_is_pass():
+    """2026-09-19 刀 B2: 旧 observed 三态已删, 只剩 PASS/FAIL/UNVERIFIED (§2.4)。"""
+    rows = [{"status": "PASS"}, {"status": "PASS"}]
     assert cosr.overall_status(rows) == "PASS"
     assert cosr.exit_code_for(cosr.overall_status(rows)) == 0
 
@@ -650,6 +733,47 @@ def test_main_end_to_end_detects_injected_out_of_scope_row(tmp_path, monkeypatch
     assert hit["status"] == "FAIL" and hit["value"] == 1 and hit["table"] == "raw_hit"
 
 
+def test_main_end_to_end_declared_db_with_no_code_columns_mixed_with_empty_dbs(tmp_path, monkeypatch):
+    """S2-A6: 真实 manifest 全部 7 个别名 --db-override; 只有声明库(有表, 无代码列)可以
+    PASS, 其余仍是全新空库 (0 张表); summary 里不再有 observed 键 (mutation target:
+    保留 observed 计数 -> 这条键集断言先红); write_alert_flag 在整体 PASS 时删除旗标
+    (先写一个旧旗标验证自愈)。"""
+    from services.database_manifest import get_database_manifest
+
+    manifest = get_database_manifest()
+    target_alias = sorted(manifest.databases)[0]
+    cfg = {
+        **_VALID_MIN,
+        "databases_without_security_code_columns": [
+            {"db": target_alias, "why": "test: no code columns by design"}
+        ],
+    }
+    monkeypatch.setattr(cosr, "CONFIG_PATH", _write_yaml(tmp_path, cfg, "scan.yaml"))
+
+    override_args: list[str] = []
+    for alias in manifest.databases:
+        p = tmp_path / f"{alias}.duckdb"
+        con = duckdb.connect(str(p))
+        if alias == target_alias:
+            con.execute("CREATE TABLE run_id_only (run_id VARCHAR)")
+        con.close()
+        override_args += ["--db-override", f"{alias}={p}"]
+
+    json_out = tmp_path / "out.json"
+    flag = tmp_path / "alert.flag"
+    flag.write_text("stale alert from a previous non-PASS run", encoding="utf-8")
+    rc = cosr.main(["--json-out", str(json_out), "--alert-flag", str(flag), *override_args])
+    assert rc == 0
+    assert not flag.exists()
+    payload = json.loads(json_out.read_text())
+    assert payload["overall"] == "PASS"
+    assert set(payload["summary"]) == {"PASS", "FAIL", "UNVERIFIED"}
+    declared_rows = [r for r in payload["rows"] if r["db"] == target_alias]
+    assert len(declared_rows) == 1
+    assert declared_rows[0]["status"] == "PASS"
+    assert declared_rows[0]["reason"] == "declared_no_security_code_columns"
+
+
 # ── 与 vendor_scope (S1) 的一致性: 过渡期允许重复, 不允许分叉 ──────────────────
 # out_of_scope_scan.yaml 是 vendor_scope.yaml v2 落地前的过渡文件, B 股代码段在两份文件里
 # 各声明了一遍。重复本身可以接受(见 out_of_scope_scan.yaml 头注对"范围外类别 vs 股票池过滤"
@@ -711,3 +835,25 @@ def test_vendor_scope_code_columns_are_subset_of_scanned_columns():
         "vendor_scope 声明了扫描器不认的代码列名, 这些列里的范围外行永远扫不出来: "
         f"{missing}; 把它们加进 out_of_scope_scan.yaml 的 security_code_columns"
     )
+
+
+# ── S2-A5 (spec_bshare_b2.md §5.2, 2026-09-19): 真文件 ────────────────────────────
+
+
+def test_real_config_declared_no_code_columns_is_experiment_store():
+    cfg = cosr.load_scan_config()
+    assert cfg.declared_no_code_columns == frozenset({"experiment_store"})
+
+
+def test_real_config_regex_byte_identical_to_out_of_scope_codes_class_regex():
+    """cfg.classes[0].regex == class_regex(...) 逐字节 —— out_of_scope_codes 是这两个
+    formula 抄本(check_out_of_scope_rows 自己的 + vendor_scope.py 的 code_exclude)共同的
+    唯一来源 (S1-A1 已经反向验过 vendor_scope 那边, 这里补 check_out_of_scope_rows 这边)。
+    """
+    from services.data_sources.out_of_scope_codes import class_regex
+
+    cfg = cosr.load_scan_config()
+    b_share = next(c for c in cfg.classes if c.name == "b_share")
+    assert b_share.regex == class_regex(b_share.code_patterns)
+
+

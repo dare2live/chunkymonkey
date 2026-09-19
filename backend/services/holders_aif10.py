@@ -145,12 +145,32 @@ def _parse_change(raw):
     return "不变", 0
 
 
+def _drop_vendor_excluded(raw: list[dict]) -> list[dict]:
+    """Drop vendor rows for a range-outside category (B股, owner ruling
+    2026-09-12) before any cleaning/dedup — see ``vendor_scope.yaml``
+    ``aif10.holders_top10`` (刀 B2, 2026-09-19). ``VendorScopeError`` is
+    deliberately not caught here: an unregistered acquiring path is an
+    unaddressed unknown, not "nothing to exclude" (宪法红线3: 缺失只能传播为
+    缺失), same fail-closed contract as ``sources/miaoxiang.py::fetch_raw``.
+    """
+    from services.data_sources.vendor_scope import apply_response_excludes, vendor_exclusions
+
+    exclusions = vendor_exclusions("aif10", "holders_top10")
+    filtered, excluded = apply_response_excludes(raw, exclusions)
+    # Deliberate: only log when excluded>0 (same convention as miaoxiang.py) —
+    # a zero-exclusion call has no observable state change to report.
+    if excluded:
+        log.info("aif10.holders_top10 excluded %d rows by vendor_scope", excluded)
+    return filtered
+
+
 # ── ① 获取 acquire ───────────────────────────────────────────────────
 def _fetch_raw(client, symbol: str) -> list[dict]:
     """纯采集: aif10 datacenter 拉某股全期流通股东 (无计算)."""
     from aif10_scraper import fetch_all_pages
-    return fetch_all_pages(REPORT_FREE, secucode=_secucode(symbol),
-                           page_size=PAGE_SIZE, max_pages=0, client=client) or []
+    raw = fetch_all_pages(REPORT_FREE, secucode=_secucode(symbol),
+                          page_size=PAGE_SIZE, max_pages=0, client=client) or []
+    return _drop_vendor_excluded(raw)
 
 
 # ── ② 清洗 clean ─────────────────────────────────────────────────────
@@ -485,12 +505,22 @@ def fetch_holders_top10_by_notice_date(notice_date: str) -> list[dict]:
 
     Evidence 2026-07-21: ``RPT_F10_EH_FREEHOLDERS`` +
     ``(UPDATE_DATE='YYYY-MM-DD')`` returns ~10–120 provider rows/day
-    (not mass). Preserves provider response (incl. BSE); no universe exclude.
-    Exit rows are process-derived elsewhere — land path returns raw clean only
-    (``is_exit_row=False``). Contrasts by_ts_code per-stock sync.
+    (not mass). Preserves provider response except vendor_scope
+    response_exclude (out-of-scope classes, e.g. B股 — 刀 B2, 2026-09-19); no
+    universe exclude (BSE rows stay). Exit rows are process-derived
+    elsewhere — land path returns raw clean only (``is_exit_row=False``).
+    Contrasts by_ts_code per-stock sync.
 
     Pagination here is unstable at (END_DATE, HOLDER_RANK) ties and duplicates
     rows across pages — ``_dedupe_notice_rows_by_grain`` collapses those first.
+
+    2026-09-19 note (spec_bshare_b2.md §2.3, [T3] unverified inference #3):
+    if a given notice_date's provider rows are *entirely* a range-outside
+    category, exclusion here can leave 0 rows for that day. The forward-fill
+    caller (``holders_notice_catchup.py``) already has an ``empty_partitions``
+    branch for exactly this shape (nothing to land, watermark unmoved, that
+    day re-probed next run) — accepted as idempotent and low-volume (≤~120
+    rows/day at this endpoint), not wired into a separate code path here.
     """
     digits = "".join(ch for ch in str(notice_date or "") if ch.isdigit())
     if len(digits) < 8:
@@ -510,6 +540,7 @@ def fetch_holders_top10_by_notice_date(notice_date: str) -> list[dict]:
         extra_filters=[f"(UPDATE_DATE='{iso}')"],
         client=default_client,
     ) or []
+    raw = _drop_vendor_excluded(raw)
     cleaned = _clean(raw, start_period=DEFAULT_START_PERIOD)
     same_day = [row for row in cleaned if row.get("notice_date") == part]
     deduped, removed = _dedupe_notice_rows_by_grain(same_day)

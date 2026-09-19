@@ -268,6 +268,32 @@ def _new_grains_only(
     return [row for row in rows if _grain_key(row) not in existing]
 
 
+def _drop_vendor_excluded(raw: list[dict]) -> list[dict]:
+    """Drop vendor rows for a range-outside category (B股, owner ruling
+    2026-09-12) before ``_normalize_rows`` — see ``vendor_scope.yaml``
+    ``aif10.org_holding`` (刀 B2, 2026-09-19). Placed after ``sync_period``'s
+    truncation check (which compares the provider's declared count against
+    the rows landed *before* this exclusion — the vendor's own pagination
+    integrity is unrelated to what this project chooses to keep) and before
+    ``_normalize_rows`` (which must stay a pure field-mapping/grain function —
+    see its own docstring note; filtering does not belong inside it).
+    ``VendorScopeError`` is deliberately not caught here: an unregistered
+    acquiring path is an unaddressed unknown, not "nothing to exclude"
+    (宪法红线3: 缺失只能传播为缺失), same fail-closed contract as
+    ``sources/miaoxiang.py::fetch_raw`` / ``holders_aif10._drop_vendor_excluded``.
+    """
+    from services.data_sources.vendor_scope import apply_response_excludes, vendor_exclusions
+
+    exclusions = vendor_exclusions("aif10", "org_holding")
+    filtered, excluded = apply_response_excludes(raw, exclusions)
+    # Deliberate: only log when excluded>0 (same convention as miaoxiang.py /
+    # holders_aif10.py) — a zero-exclusion call has no observable state
+    # change to report.
+    if excluded:
+        logger.info("[org-holding-aif10] excluded %d rows by vendor_scope", excluded)
+    return filtered
+
+
 # ── ② 清洗 clean ─────────────────────────────────────────────────────
 def _period_announcement_map(report_date: str) -> dict[str, str]:
     """Join income/holders first-announcement day. Empty map → first-seen stamps."""
@@ -583,7 +609,7 @@ def sync_period(
             "truncated": True,
             "land_reasons": fetched.get("land_reasons"),
         }
-    raw = fetched.get("rows") or []
+    raw = _drop_vendor_excluded(fetched.get("rows") or [])
     rows = _normalize_rows(
         raw,
         announcement_by_stock=_period_announcement_map(iso),

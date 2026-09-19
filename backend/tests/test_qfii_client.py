@@ -6,6 +6,8 @@ from datetime import date
 from pathlib import Path
 from unittest import mock
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
@@ -201,3 +203,95 @@ def test_qfii_sync_wired_in_pipeline_acquire():
     from services.pipeline import acquire
     assert callable(sync_qfii_incremental)
     assert hasattr(acquire, "_sync_qfii")
+
+
+# ── S1-A8 (spec_bshare_b2.md §5.1, 2026-09-19): vendor_scope B股 排除 ───────
+# 用真实 (不打桩) vendor_scope.yaml —— aif10.qfii_holders disposition。落点在
+# _fetch_qfii_by_symbol 内 rename_map 之前 (改名后 SECURITY_TYPE_CODE 这个供应商
+# 字段名就没了, 必须在改名前排除)。
+
+
+def _qfii_a_row(**overrides):
+    row = {
+        "HOLDER_NAME": "UBS AG",
+        "HOLDER_NEWTYPE": "QFII",
+        "RANK": 9,
+        "SECURITY_CODE": "000411",
+        "SECURITY_NAME_ABBR": "英特集团",
+        "END_DATE": "2025-12-31",
+        "HOLD_NUM": 1978553,
+        "HOLD_NUM_CHANGE": None,
+        "HOLD_RATIO_CHANGE": None,
+        "HOLDNUM_CHANGE_NAME": "新进",
+        "HOLDER_MARKET_CAP": 25226550.75,
+        "NOTICE_DATE": "2026-04-23",
+    }
+    row.update(overrides)
+    return row
+
+
+def _qfii_b_row(**overrides):
+    """真实形态 aif10 B股行 (spec_bshare_b2.md §1.1 P4 实测: SECURITY_TYPE_CODE=
+    058001002, 沪 900937)。"""
+    row = _qfii_a_row(SECURITY_CODE="900937", SECURITY_NAME_ABBR="沪B股东")
+    row["SECURITY_TYPE_CODE"] = "058001002"
+    row.update(overrides)
+    return row
+
+
+def test_fetch_qfii_by_symbol_excludes_b_share_before_rename(monkeypatch):
+    a_row = _qfii_a_row()
+    b_row = _qfii_b_row()
+    monkeypatch.setattr(
+        qfii_client, "_fetch_qfii_aif10", lambda *_a, **_k: [a_row, b_row]
+    )
+    out = qfii_client._fetch_qfii_by_symbol("20251231", "新进")
+    assert len(out) == 1
+    assert out[0]["股票代码"] == "000411"
+    # 中文列名齐全 (rename 成功执行, 不是意外落在过滤之外的原始 dict)
+    for col in qfii_client._COL_REQUIRED:
+        assert col in out[0]
+
+
+def test_fetch_qfii_by_symbol_all_b_share_day_returns_empty(monkeypatch):
+    """隔离用例: 整批只有 B 股时必须返回 [] 而不是报 qfii_columns_missing
+    (排除必须先于 rename, 排除后为空时也不该走进 _normalize_rows 之外的报错路径)。"""
+    monkeypatch.setattr(
+        qfii_client, "_fetch_qfii_aif10", lambda *_a, **_k: [_qfii_b_row()]
+    )
+    out = qfii_client._fetch_qfii_by_symbol("20251231", "新进")
+    assert out == []
+
+
+def test_fetch_qfii_by_symbol_drops_vendor_excluded_before_rename(monkeypatch):
+    """S1-A8 ordering guarantee, white-box: ``_drop_vendor_excluded`` must see
+    the vendor's own (English) field names, not the rename_map's Chinese
+    target names. A purely black-box before/after-rename test cannot
+    discriminate this for the current rename_map (``SECURITY_TYPE_CODE`` is
+    not a rename_map source key, so ``dict.get(key, key)`` happens to leave it
+    untouched either way) — this test asserts the ordering positionally by
+    inspecting what keys actually reach the exclusion call."""
+    seen_keysets: list[set] = []
+
+    def _spy(raw):
+        seen_keysets.append(set().union(*(row.keys() for row in raw)) if raw else set())
+        return raw
+
+    monkeypatch.setattr(qfii_client, "_fetch_qfii_aif10", lambda *_a, **_k: [_qfii_a_row()])
+    monkeypatch.setattr(qfii_client, "_drop_vendor_excluded", _spy)
+    qfii_client._fetch_qfii_by_symbol("20251231", "新进")
+    assert seen_keysets, "_drop_vendor_excluded was never called"
+    assert "SECURITY_CODE" in seen_keysets[0]
+    assert "股票代码" not in seen_keysets[0]
+
+
+def test_drop_vendor_excluded_does_not_swallow_vendor_scope_error(monkeypatch):
+    """S1-A11: unregistered acquiring path must fail closed."""
+    from services.data_sources.vendor_scope import VendorScopeError
+
+    def _raise(*_a, **_k):
+        raise VendorScopeError("no disposition registered for 'aif10.qfii_holders'")
+
+    monkeypatch.setattr("services.data_sources.vendor_scope.vendor_exclusions", _raise)
+    with pytest.raises(VendorScopeError):
+        qfii_client._drop_vendor_excluded([_qfii_a_row()])

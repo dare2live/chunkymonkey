@@ -904,3 +904,95 @@ def test_truncation_tolerance_flags_post_exclusion_count():
         page_size=PAGE_SIZE,
     )
     assert verdict.truncated is True
+
+
+# ---------------------------------------------------------------------------
+# S1-A5 (spec_bshare_b2.md §5.1, 2026-09-19): top_inst / top_list against the
+# real (not stubbed) vendor_scope.yaml — top_inst is now code_exclude on
+# SECUCODE (no vendor category axis exists at all), top_list is now
+# response_exclude on SECURITY_TYPE_CODE (补测 [T5] confirmed the field
+# exists). No monkeypatch of vendor_exclusions here: this exercises the real
+# YAML wiring, same style as test_block_trade_fetch_excludes_eqb_before_clean.
+# ---------------------------------------------------------------------------
+
+
+def test_top_inst_fetch_excludes_b_share_by_secucode_before_clean(caplog):
+    a_row = _top_inst_raw_row()
+    b_row = _top_inst_raw_row(SECUCODE="900925.SH", SECURITY_CODE="900925")
+    client = _FakeClient([{"pages": 1, "count": 2, "data": [a_row, b_row]}])
+    src = MiaoxiangSource(client=client)
+
+    with caplog.at_level(logging.INFO, logger="services.data_sources.sources.miaoxiang"):
+        rows = src.fetch_raw("top_inst", trade_date="20260825")
+
+    assert len(rows) == 1
+    assert rows[0]["ts_code"] == "000017.SZ"
+    assert "excluded 1 rows" in caplog.text
+
+
+def test_top_inst_fetch_exclusion_keeps_truncation_check():
+    """Same ordering guarantee as ``test_block_trade_fetch_exclusion_keeps_
+    truncation_check`` (L864), scaled the same way: at count=2/landed=2 the
+    500-row ``row_tolerance_min`` floor (pagination_integrity.py:35) can
+    never fire regardless of ordering, so that shape cannot tell the two
+    orderings apart. Page 1 (of 1) declares count=1000 and lands exactly
+    1000 rows — 600 code_exclude-matched B股 (SECUCODE 900xxx.SH) + 400
+    A股, every row individually valid. Judged against the pre-exclusion
+    land (1000 landed == 1000 expected), this is not truncated at all. Only
+    if code_exclude were wrongly moved *before* the truncation check — so
+    the check saw just the 400 surviving A股 rows against a still-1000
+    expected count — would ``assess_paginated_land`` see 400<1000 and fail
+    closed with ``MiaoxiangTruncationError`` (see
+    ``test_truncation_tolerance_flags_post_exclusion_count`` above: 400
+    landed against 1000 expected *is* judged truncated on its own, so this
+    test would go red under that ordering bug)."""
+    b_rows = [
+        _top_inst_raw_row(SECUCODE="900925.SH", SECURITY_CODE="900925")
+        for _ in range(600)
+    ]
+    a_rows = [_top_inst_raw_row() for _ in range(400)]
+    client = _FakeClient([{"pages": 1, "count": 1000, "data": b_rows + a_rows}])
+    src = MiaoxiangSource(client=client)
+
+    rows = src.fetch_raw("top_inst", trade_date="20260825")
+
+    assert len(rows) == 400
+    assert all(r["ts_code"] == "000017.SZ" for r in rows)
+
+
+def test_top_inst_fetch_eqa_only_day_excludes_nothing():
+    """Control case: an all-A股 day must not log an exclusion and must not
+    drop anything (mutation target: an overly-eager regex that also matches
+    A股 codes)."""
+    rows_in = [_top_inst_raw_row(), _top_inst_raw_row(SECUCODE="300308.SZ", SECURITY_CODE="300308")]
+    client = _FakeClient([{"pages": 1, "count": 2, "data": rows_in}])
+    src = MiaoxiangSource(client=client)
+    rows = src.fetch_raw("top_inst", trade_date="20260825")
+    assert len(rows) == 2
+
+
+def test_top_list_fetch_excludes_b_share_by_security_type_code(caplog):
+    a_row = _top_list_raw_row()
+    b_row = _top_list_raw_row(
+        SECUCODE="200017.SZ", SECURITY_CODE="200017", SECURITY_TYPE_CODE="058001002"
+    )
+    client = _FakeClient([{"pages": 1, "count": 2, "data": [a_row, b_row]}])
+    src = MiaoxiangSource(client=client)
+
+    with caplog.at_level(logging.INFO, logger="services.data_sources.sources.miaoxiang"):
+        rows = src.fetch_raw("top_list", trade_date="20260825")
+
+    assert len(rows) == 1
+    assert rows[0]["ts_code"] == "000017.SZ"
+    assert "excluded 1 rows" in caplog.text
+
+
+def test_top_list_fetch_keeps_row_missing_security_type_code_field():
+    """Vendor rows that never carry the category field at all must survive
+    (宪法红线3: 缺失只能传播为缺失, not to a false exclusion) — every existing
+    ``_top_list_raw_row()`` fixture already omits SECURITY_TYPE_CODE, so this
+    is also the control case for the previous test."""
+    client = _FakeClient([{"pages": 1, "count": 1, "data": [_top_list_raw_row()]}])
+    src = MiaoxiangSource(client=client)
+    rows = src.fetch_raw("top_list", trade_date="20260825")
+    assert len(rows) == 1

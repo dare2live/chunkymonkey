@@ -1,16 +1,31 @@
-"""check_out_of_scope_rows — 范围外证券类别 (当前=B 股) 全库运行时不变量 (S3, 2026-09-12)。
+"""check_out_of_scope_rows — 范围外证券类别 (当前=B 股) 全库运行时不变量 (S3, 2026-09-12;
+2026-09-19 刀 B2 §2.4/§3 改判据: 删 landing_exemptions/observed 一档, 加显式"无代码列"
+声明分支)。
 
 背景: 业主 2026-09-12 裁定「B 股不在本项目范围, 以后也不做, 获取完的数据删除清理干净」
-(scratchpad b_share_exclusion_r1.md §0/§1.4, R2 解读: 删一次 + 有轴的不再请求 + 无轴的
-raw 允许再现但任何发布面 0 行; 唯一硬不变量是"全库任何时刻扫到的范围外行数 == 0")。
+(spec_bshare_b2.md §0, 承接 b_share_exclusion_r1.md §0/§1.4)。
 
-判据 (一句话, r1 §4.1): 对 manifest 里每个活库、``information_schema.columns`` 里
-列名 ∈ ``security_code_columns`` 的每一列, 匹配任一登记类别 ``code_patterns`` 的行数
-必须 == 0; 唯一例外是 ``landing_exemptions`` 登记的 (no_vendor_axis 域的 landing/raw)
-表——那类表批次哈希按行重算, 按行删除在结构上不可行, 只免它自己不判 FAIL, 仍然报数
-(不是 warn-nothing); 它的任何派生表不豁免, 照判 FAIL。
+判据 (一句话, spec_bshare_b2.md §3): 对 manifest 里每个活库、``information_schema.columns``
+里列名 ∈ ``security_code_columns`` 的每一列, 匹配任一登记类别 ``code_patterns`` 的行数
+必须 == 0 才 PASS; 一个库要么枚举到 ≥1 个代码列并逐列扫 (0 行才 PASS), 要么被
+``out_of_scope_scan.yaml`` 的 ``databases_without_security_code_columns`` 显式声明
+"预期无证券代码列"且实际枚举也为空才 PASS——声明与实况任一不符即非 PASS (声明过期 =
+该库长出了代码列 = FAIL, 不是悄悄放行; 没有声明的库枚举为空仍是 UNVERIFIED)。三个分支
+(§3 表):
+    有表, 枚举到代码列, 未声明   → 正常逐列扫 (现状)。
+    有表, 未枚举到代码列, 已声明 → 一行 PASS, reason=declared_no_security_code_columns。
+    有表, 枚举到代码列, 已声明   → 正常逐列扫 **并追加一行 FAIL**,
+                                    reason 以 stale_declaration 开头——声明过期不能
+                                    悄悄把库放行。
+    有表, 未枚举到代码列, 未声明 → UNVERIFIED enumeration_empty (现状不变)。
+    0 张表                        → [] (现状不变)。
+2026-09-19 前的旧判据用 ``landing_exemptions`` 登记"命中行数 > 0 但只报数不算 FAIL"的
+第三态 ``observed`` (spec_bshare_purge/spec_bshare_b2.md §2.4 判为 feedback-warn-only-
+degrades-to-warn-nothing.md 点名的"报数不算失败"模式, 已删除, 不留墓碑)——今天没有
+"这张表允许有范围外行"这种豁免, 只有"这个库按设计没有代码列"这种声明, 两者不是同一件事:
+前者豁免的是本该判 FAIL 的证据, 后者声明的是判据本来就无法适用的对象。
 
-发现式枚举 (r1 §4.1, 与 services/lineage/builder.py::_live_tables_by_db 同一原则:
+发现式枚举 (spec §1.4, 与 services/lineage/builder.py::_live_tables_by_db 同一原则:
 "手写一张存放点清单, 换个地方长出同一个病"): 表和列都从活库的 information_schema
 现查, 不读任何手写表清单。已实测的反例——手工列 15 张表会漏
 raw_tushare_dc_member.con_code 与 fact_dc_member_daily.con_code 各 10,596 行,
@@ -30,22 +45,20 @@ than-it-guards.md 点名的 grain 唯一性门反例——那道门扫的是去�
 伤害发生在去重之前, 机制把证据销毁了): 这里相反。本检查想守的是"排除机制是否生效",
 排除失败的**后果**就是范围外行落进表里, 而本检查扫的正是那张表——机制失效**制造**
 证据, 不是销毁证据。具体地: 供应商静默忽略请求过滤 → 行落地 → 本检查在下一次运行时
-就会扫到并 FAIL; 有人把 no_vendor_axis 域的发布路径过滤删掉 → 派生表长出范围外行 →
-FAIL (派生表从不在 landing_exemptions 里); 有人误删本文件全部 classes → loader
-fail-closed (见下), 退出码 2, 不会悄悄放行。
+就会扫到并 FAIL; 有人把某个域的发布路径过滤删掉 → 派生表长出范围外行 → FAIL; 有人
+误删本文件全部 classes → loader fail-closed (见下), 退出码 2, 不会悄悄放行。
 
 三态 + 退出码 (照抄 backend/scripts/check_db_invariants.py, R5 三态不许 UNVERIFIED
 返回 0):
-    PASS       — 该 (db, table, column, class) 组合命中行数 == 0。
-    FAIL       — 命中行数 > 0 且该 (db, table) 不在 landing_exemptions 里。
-    observed   — 命中行数 > 0 但该 (db, table) 在 landing_exemptions 里 (只报数不算 FAIL,
-                 JSON 里数字仍然可见——区分于 warn-nothing)。
-    UNVERIFIED — 库不可达 (缺文件/写锁/其它连接异常) / 该库可达但枚举到 0 个
-                 (table, column) 组合而库里确实有 ≥1 张表 (列名集合坏了或枚举本身失效,
-                 不许悄悄绿) / 单条查询本身出错 (如 CAST 失败)。
+    PASS       — 该 (db, table, column, class) 组合命中行数 == 0, 或该库有效声明
+                 无证券代码列且实枚也为空。
+    FAIL       — 命中行数 > 0, 或某库声明无代码列但实枚到 ≥1 个 (stale_declaration)。
+    UNVERIFIED — 库不可达 (缺文件/写锁/其它连接异常) / 该库可达但未声明无代码列、
+                 枚举到 0 个 (table, column) 组合而库里确实有 ≥1 张表 (列名集合坏了
+                 或枚举本身失效, 不许悄悄绿) / 单条查询本身出错 (如 CAST 失败)。
 
 退出码:
-    0 = 全部 PASS (或只有 observed, 无 FAIL 无 UNVERIFIED)
+    0 = 全部 PASS
     1 = 至少一条 FAIL
     2 = 配置错 (out_of_scope_scan.yaml 加载失败, 含 classes 清空——见 kill_when) 或脚本崩溃
     3 = 无 FAIL 但至少一条 UNVERIFIED
@@ -83,19 +96,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import yaml  # noqa: E402
 
+from services.data_sources.out_of_scope_codes import CodePattern, class_regex  # noqa: E402
+
 REPO = Path(__file__).resolve().parents[2]
 CONFIG_PATH = REPO / "backend" / "config" / "out_of_scope_scan.yaml"
 
-_TOP_KEYS = {"version", "security_code_columns", "classes", "landing_exemptions"}
+_TOP_KEYS = {"version", "security_code_columns", "classes", "databases_without_security_code_columns"}
 _CLASS_KEYS = {"ruling", "code_patterns"}
 _PATTERN_KEYS = {"prefix", "suffix"}
-_EXEMPTION_KEYS = {"db", "table", "why"}
+_DECLARED_NO_CODE_COLUMNS_KEYS = {"db", "why"}
 _ALLOWED_SUFFIXES = {"SH", "SZ", "BJ"}
 
 _COL_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _CLASS_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _PREFIX_RE = re.compile(r"^\d{2,3}$")
-_TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class OutOfScopeScanConfigError(RuntimeError):
@@ -103,24 +117,20 @@ class OutOfScopeScanConfigError(RuntimeError):
 
 
 @dataclass(frozen=True)
-class CodePattern:
-    prefix: str
-    suffix: str
-
-
-@dataclass(frozen=True)
 class OutOfScopeClass:
     name: str
     ruling: str
     code_patterns: tuple[CodePattern, ...]
-    regex: str  # 由 code_patterns 生成, 供 DuckDB regexp_matches 直接使用
+    regex: str  # 由 code_patterns 生成 (services.data_sources.out_of_scope_codes.class_regex),
+    # 供 DuckDB regexp_matches 直接使用 —— 与 vendor_scope.py 的 code_exclude 用同一个公式
+    # (one-place formula, S1-A1 parity test 钉住两者逐字节相等)。
 
 
 @dataclass(frozen=True)
 class ScanConfig:
     security_code_columns: tuple[str, ...]
     classes: tuple[OutOfScopeClass, ...]
-    landing_exemptions: frozenset[tuple[str, str]]  # {(db_alias, table_name), ...}
+    declared_no_code_columns: frozenset[str]  # {db_alias, ...} — §3 显式"无代码列"声明
 
 
 # ── 加载 (fail-closed, 照 check_db_invariants.py 的形状) ──────────────────────────
@@ -129,12 +139,6 @@ def _manifest():
     from services.database_manifest import get_database_manifest
 
     return get_database_manifest()
-
-
-def _pattern_regex(prefix: str, suffix: str) -> str:
-    """900/SH -> r'900\\d{3}(\\.SH)?' —— 锚定总长 6 位, 后缀可选但若出现必须匹配。"""
-    digits = 6 - len(prefix)
-    return rf"{prefix}\d{{{digits}}}(\.{suffix})?"
 
 
 def _parse_class(name: str, raw: Any) -> OutOfScopeClass:
@@ -157,7 +161,6 @@ def _parse_class(name: str, raw: Any) -> OutOfScopeClass:
 
     seen: set[tuple[str, str]] = set()
     patterns: list[CodePattern] = []
-    regexes: list[str] = []
     for i, p in enumerate(patterns_raw):
         if not isinstance(p, dict) or set(p) != _PATTERN_KEYS:
             raise OutOfScopeScanConfigError(
@@ -180,33 +183,33 @@ def _parse_class(name: str, raw: Any) -> OutOfScopeClass:
             )
         seen.add(key)
         patterns.append(CodePattern(prefix=prefix, suffix=suffix))
-        regexes.append(_pattern_regex(prefix, suffix))
 
-    regex = "^(" + "|".join(sorted(regexes)) + ")$"
+    regex = class_regex(patterns)
     return OutOfScopeClass(name=name, ruling=ruling.strip(), code_patterns=tuple(patterns), regex=regex)
 
 
-def _parse_exemption(index: int, raw: Any, manifest: Any) -> tuple[str, str]:
-    if not isinstance(raw, dict) or set(raw) != _EXEMPTION_KEYS:
+def _parse_declared_no_code_columns(index: int, raw: Any, manifest: Any) -> str:
+    if not isinstance(raw, dict) or set(raw) != _DECLARED_NO_CODE_COLUMNS_KEYS:
         raise OutOfScopeScanConfigError(
-            f"landing_exemptions[{index}] 键集合必须恰为 {sorted(_EXEMPTION_KEYS)}"
+            "databases_without_security_code_columns"
+            f"[{index}] 键集合必须恰为 {sorted(_DECLARED_NO_CODE_COLUMNS_KEYS)}"
         )
-    db, table, why = raw["db"], raw["table"], raw["why"]
+    db, why = raw["db"], raw["why"]
     if not isinstance(db, str) or not db.strip():
-        raise OutOfScopeScanConfigError(f"landing_exemptions[{index}].db must be a non-empty string")
+        raise OutOfScopeScanConfigError(
+            f"databases_without_security_code_columns[{index}].db must be a non-empty string"
+        )
     try:
         manifest.require(db)
     except KeyError as exc:
         raise OutOfScopeScanConfigError(
-            f"landing_exemptions[{index}].db unknown database alias: {db!r}"
+            f"databases_without_security_code_columns[{index}].db unknown database alias: {db!r}"
         ) from exc
-    if not isinstance(table, str) or not _TABLE_NAME_RE.match(table):
-        raise OutOfScopeScanConfigError(
-            f"landing_exemptions[{index}].table must match ^[A-Za-z_][A-Za-z0-9_]*$: {table!r}"
-        )
     if not isinstance(why, str) or not why.strip():
-        raise OutOfScopeScanConfigError(f"landing_exemptions[{index}].why must be a non-empty string")
-    return (db, table)
+        raise OutOfScopeScanConfigError(
+            f"databases_without_security_code_columns[{index}].why must be a non-empty string"
+        )
+    return db
 
 
 def load_scan_config(path: Path | None = None) -> ScanConfig:
@@ -256,21 +259,25 @@ def load_scan_config(path: Path | None = None) -> ScanConfig:
         )
     classes = tuple(_parse_class(name, body) for name, body in classes_raw.items())
 
-    exemptions_raw = raw.get("landing_exemptions")
-    if not isinstance(exemptions_raw, list):
-        raise OutOfScopeScanConfigError("landing_exemptions must be a list (可以为空列表)")
+    declared_raw = raw.get("databases_without_security_code_columns")
+    if not isinstance(declared_raw, list):
+        raise OutOfScopeScanConfigError(
+            "databases_without_security_code_columns must be a list (可以为空列表)"
+        )
     manifest = _manifest()
-    seen_exempt: set[tuple[str, str]] = set()
-    for i, item in enumerate(exemptions_raw):
-        key = _parse_exemption(i, item, manifest)
-        if key in seen_exempt:
-            raise OutOfScopeScanConfigError(f"landing_exemptions duplicate (db, table): {key}")
-        seen_exempt.add(key)
+    seen_declared: set[str] = set()
+    for i, item in enumerate(declared_raw):
+        db = _parse_declared_no_code_columns(i, item, manifest)
+        if db in seen_declared:
+            raise OutOfScopeScanConfigError(
+                f"databases_without_security_code_columns duplicate db: {db!r}"
+            )
+        seen_declared.add(db)
 
     return ScanConfig(
         security_code_columns=tuple(columns),
         classes=classes,
-        landing_exemptions=frozenset(seen_exempt),
+        declared_no_code_columns=frozenset(seen_declared),
     )
 
 
@@ -312,8 +319,30 @@ def _unverified_row(db_alias: str, *, reason: str, table=None, column=None, cls=
     }
 
 
-def _scan_one(conn, db_alias: str, table: str, column: str, cls: OutOfScopeClass,
-              exemptions: frozenset[tuple[str, str]]) -> dict[str, Any]:
+def _declared_pass_row(db_alias: str, *, checked: int) -> dict[str, Any]:
+    """§3 branch 2: db declared "no security-code columns" and enumeration
+    agrees (found none) — one summary PASS row, no per-(table,column,class)
+    rows exist to report (there is nothing to scan)."""
+    return {
+        "db": db_alias, "table": None, "column": None, "class": None,
+        "checked": checked, "value": 0, "status": "PASS",
+        "reason": "declared_no_security_code_columns",
+    }
+
+
+def _stale_declaration_row(db_alias: str, *, checked: int, code_column_count: int) -> dict[str, Any]:
+    """§3 branch 3: db declared "no security-code columns" but enumeration
+    found some anyway — the normal per-column scan rows still run (appended
+    by the caller), plus this FAIL row so a stale declaration can never
+    quietly pass the gate."""
+    return {
+        "db": db_alias, "table": None, "column": None, "class": None,
+        "checked": checked, "value": code_column_count, "status": "FAIL",
+        "reason": f"stale_declaration: {code_column_count} security-code columns found",
+    }
+
+
+def _scan_one(conn, db_alias: str, table: str, column: str, cls: OutOfScopeClass) -> dict[str, Any]:
     try:
         row = conn.execute(
             f'SELECT count(*) AS checked, '
@@ -328,11 +357,7 @@ def _scan_one(conn, db_alias: str, table: str, column: str, cls: OutOfScopeClass
         )
 
     checked, value = row[0], row[1]
-    is_exempt = (db_alias, table) in exemptions
-    if value:
-        status = "observed" if is_exempt else "FAIL"
-    else:
-        status = "PASS"
+    status = "FAIL" if value else "PASS"
     return {
         "db": db_alias, "table": table, "column": column, "class": cls.name,
         "checked": checked, "value": value, "status": status,
@@ -340,19 +365,38 @@ def _scan_one(conn, db_alias: str, table: str, column: str, cls: OutOfScopeClass
 
 
 def scan_database(conn, db_alias: str, config: ScanConfig) -> list[dict[str, Any]]:
-    """单库扫描: 发现式枚举 (table, column) 再逐个 class 判定。不抛异常。"""
+    """单库扫描: 发现式枚举 (table, column) 再逐个 class 判定。不抛异常。
+
+    §3 三/五分支表 (spec_bshare_b2.md): 0 张表 -> []（不变）; 有表+未枚举到代码列+
+    未声明 -> UNVERIFIED enumeration_empty（不变）; 有表+未枚举到代码列+已声明 ->
+    一行 declared PASS；有表+枚举到代码列+未声明 -> 正常逐列扫（不变）；有表+枚举到
+    代码列+已声明 -> 正常逐列扫 **并追加一行 FAIL** (stale_declaration) —— 声明过期
+    不能悄悄把库放行。
+    """
     total_tables = _count_base_tables(conn)
+    if total_tables == 0:
+        return []
+
     discovered = _discover_columns(conn, config.security_code_columns)
-    if total_tables > 0 and not discovered:
-        # 库里确实有表, 但一个代码列都没发现——列名集合坏了或枚举本身失效,
+    declared = db_alias in config.declared_no_code_columns
+    if not discovered:
+        if declared:
+            return [_declared_pass_row(db_alias, checked=total_tables)]
+        # 库里确实有表, 但一个代码列都没发现且未声明——列名集合坏了或枚举本身失效,
         # 绝不能悄悄当 0 命中 PASS (CLAUDE.md 红线3: 缺失只能传播为缺失)。
         return [_unverified_row(db_alias, reason="enumeration_empty")]
 
     rows: list[dict[str, Any]] = []
+    code_column_count = 0
     for table in sorted(discovered):
         for column in discovered[table]:
+            code_column_count += 1
             for cls in config.classes:
-                rows.append(_scan_one(conn, db_alias, table, column, cls, config.landing_exemptions))
+                rows.append(_scan_one(conn, db_alias, table, column, cls))
+    if declared:
+        rows.append(
+            _stale_declaration_row(db_alias, checked=total_tables, code_column_count=code_column_count)
+        )
     return rows
 
 
@@ -392,7 +436,8 @@ def overall_status(rows: list[dict[str, Any]]) -> str:
 
 
 def exit_code_for(overall: str) -> int:
-    """R5 同款: 0=全 PASS(含 observed) / 1=有 FAIL / 3=无 FAIL 但有 UNVERIFIED。"""
+    """R5 同款: 0=全 PASS / 1=有 FAIL / 3=无 FAIL 但有 UNVERIFIED。没有"报数不算失败"
+    这一档 (旧 observed 已删, spec_bshare_b2.md §2.4)。"""
     return {"PASS": 0, "FAIL": 1, "UNVERIFIED": 3}[overall]
 
 
@@ -402,7 +447,7 @@ def write_alert_flag(flag_path: Path, overall: str, rows: list[dict[str, Any]]) 
         return
     lines = [f"[{datetime.now().strftime('%F %T')}] out_of_scope_rows 非 PASS: overall={overall}"]
     for r in rows:
-        if r["status"] in ("PASS", "observed"):
+        if r["status"] == "PASS":
             continue
         detail = (
             f"  [{r['status']}] db={r['db']} table={r['table']} column={r['column']} "
@@ -479,7 +524,7 @@ def main(argv: list[str] | None = None) -> int:
     overall = overall_status(rows)
     counts = {
         s: sum(1 for r in rows if r["status"] == s)
-        for s in ("PASS", "FAIL", "UNVERIFIED", "observed")
+        for s in ("PASS", "FAIL", "UNVERIFIED")
     }
     payload = {"overall": overall, "rows": rows, "summary": counts}
 
@@ -498,7 +543,7 @@ def main(argv: list[str] | None = None) -> int:
             print(line)
         print(
             f"out-of-scope-rows: overall={overall} pass={counts['PASS']} fail={counts['FAIL']} "
-            f"unverified={counts['UNVERIFIED']} observed={counts['observed']} (of {len(rows)})"
+            f"unverified={counts['UNVERIFIED']} (of {len(rows)})"
         )
 
     if args.json_out:

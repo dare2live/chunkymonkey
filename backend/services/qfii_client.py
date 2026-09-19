@@ -174,6 +174,30 @@ def _fetch_qfii_aif10(report_date_yyyymmdd: str, symbol: str):
 # _fetch_qfii_akshare 已删 2026-06-29 (批2c: akshare 兜底退役 §4.3 无热备, QFII 走 aif10 RPT_DMSK_HOLDERS 唯一)
 
 
+def _drop_vendor_excluded(raw: list[dict]) -> list[dict]:
+    """Drop vendor rows for a range-outside category (B股, owner ruling
+    2026-09-12) before the Chinese ``rename_map`` relabels the fields — see
+    ``vendor_scope.yaml`` ``aif10.qfii_holders`` (刀 B2, 2026-09-19). Must run
+    before the rename: ``apply_response_excludes`` matches on the vendor's
+    own field name, which no longer exists on the row once the rename_map
+    has relabeled the dict's keys (see vendor_scope.yaml for the field name).
+    ``VendorScopeError`` is deliberately not caught here: an unregistered
+    acquiring path is an unaddressed unknown, not "nothing to exclude"
+    (宪法红线3: 缺失只能传播为缺失), same fail-closed contract as
+    ``sources/miaoxiang.py::fetch_raw`` / ``holders_aif10._drop_vendor_excluded``.
+    """
+    from services.data_sources.vendor_scope import apply_response_excludes, vendor_exclusions
+
+    exclusions = vendor_exclusions("aif10", "qfii_holders")
+    filtered, excluded = apply_response_excludes(raw, exclusions)
+    # Deliberate: only log when excluded>0 (same convention as miaoxiang.py /
+    # holders_aif10.py / org_holding_aif10.py) — a zero-exclusion call has no
+    # observable state change to report.
+    if excluded:
+        logger.info("[qfii-client] excluded %d rows by vendor_scope", excluded)
+    return filtered
+
+
 def _fetch_qfii_by_symbol(report_date_yyyymmdd: str, symbol: str):
     """QFII 季度持股: aif10 妙想 RPT_DMSK_HOLDERS 唯一源 (2026-06-29 批2c: akshare 兜底退役 §4.3 无热备).
 
@@ -181,6 +205,7 @@ def _fetch_qfii_by_symbol(report_date_yyyymmdd: str, symbol: str):
     symbol: 持股变动 {"新进", "增加", "不变", "减少"}.
     """
     rows = _fetch_qfii_aif10(report_date_yyyymmdd, symbol)
+    rows = _drop_vendor_excluded(rows)
     if not rows:
         return []
     rename_map = {

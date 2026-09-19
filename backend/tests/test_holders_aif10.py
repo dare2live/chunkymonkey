@@ -18,9 +18,11 @@ from services.holders_aif10 import (  # noqa: E402
     _derive_exits,
     _derive_exits_against_canonical,
     _dedupe_notice_rows_by_grain,
+    _drop_vendor_excluded,
     _local_stock_codes_for_notice_date,
     _net_new_notice_since,
     _write,
+    build_rows,
     catchup_missing_holders_notice_partitions,
     fetch_holders_top10_by_notice_date,
     formal_holders_watermark,
@@ -33,6 +35,7 @@ from services.holders_aif10 import (  # noqa: E402
     HoldersDuplicateGrainConflictError,
     UnknownHolderChangeStatusError,
 )
+from services.data_sources.vendor_scope import VendorScopeError  # noqa: E402
 
 
 def _raw(secu, code, end_date, name, rank, hold_num, change, ratio=1.0, stype="A股",
@@ -56,6 +59,17 @@ def _raw(secu, code, end_date, name, rank, hold_num, change, ratio=1.0, stype="A
     }
     if holder_code is not None:
         row["HOLDER_CODE"] = holder_code
+    return row
+
+
+def _b_share_row(**overrides):
+    """真实形态 aif10 B股行 (spec_bshare_b2.md §1.1 P1 实测: SECURITY_TYPE_CODE=
+    058001002, 沪 900910)。``_raw`` 不带这一列 (它的默认调用形态不需要类别字段),
+    这里单独造一份不改 ``_raw`` 签名。"""
+    row = _raw("900910.SH", "900910", "2026-09-17", "沪B股东", 1, 1000, "不变",
+               upd="2026-09-17")
+    row["SECURITY_TYPE_CODE"] = "058001002"
+    row.update(overrides)
     return row
 
 
@@ -305,6 +319,85 @@ def test_fetch_holders_top10_by_notice_date_dedupes_paged_duplicates(monkeypatch
     rows = fetch_holders_top10_by_notice_date("20260722")
     assert len(rows) == 2
     assert {r["holder_name"] for r in rows} == {"机构甲", "机构乙"}
+
+
+# ── S1-A6 (spec_bshare_b2.md §5.1, 2026-09-19): vendor_scope B股 排除 ───────
+# 用真实 (不打桩) vendor_scope.yaml —— aif10.holders_top10 disposition。
+# 两处调用各变异一次: by_notice_date 直接调 fetch_all_pages, 与 build_rows
+# 经 _fetch_raw 调 fetch_all_pages 是两条独立代码路径, 各自的 _drop_vendor_excluded
+# 调用点是独立的门控条件。
+
+
+def test_fetch_holders_top10_by_notice_date_excludes_b_share(monkeypatch):
+    import types
+
+    a_row = _raw("600388.SH", "600388", "2026-09-17", "A机构", 1, 100, "不变",
+                 upd="2026-09-17")
+    b_row = _b_share_row()
+
+    def fake_fetch_all_pages(report, **kwargs):
+        del report, kwargs
+        return [a_row, b_row]
+
+    fake_mod = types.ModuleType("aif10_scraper")
+    fake_mod.fetch_all_pages = fake_fetch_all_pages
+    fake_mod.default_client = object()
+    monkeypatch.setitem(sys.modules, "aif10_scraper", fake_mod)
+
+    rows = fetch_holders_top10_by_notice_date("20260917")
+    assert {r["stock_code"] for r in rows} == {"600388"}
+
+
+def test_fetch_holders_top10_by_notice_date_all_b_share_day_lands_empty(monkeypatch):
+    """排除后为空 (整天只有 B 股披露) 返回 [] —— 前向路径既有 empty_partitions
+    分支据此决定不落库、水位不动 (holders_notice_catchup.py), 本函数不需要
+    另开一条路径。"""
+    import types
+
+    def fake_fetch_all_pages(report, **kwargs):
+        del report, kwargs
+        return [_b_share_row()]
+
+    fake_mod = types.ModuleType("aif10_scraper")
+    fake_mod.fetch_all_pages = fake_fetch_all_pages
+    fake_mod.default_client = object()
+    monkeypatch.setitem(sys.modules, "aif10_scraper", fake_mod)
+
+    rows = fetch_holders_top10_by_notice_date("20260917")
+    assert rows == []
+
+
+def test_build_rows_excludes_pure_b_share_symbol(monkeypatch):
+    """build_rows 的 per-stock 路径经 _fetch_raw 调用同一个 _drop_vendor_excluded
+    —— 与上面 by_notice_date 路径是两处独立调用, 各自变异各自的门。"""
+    row = _b_share_row()
+
+    def fetch_all_pages(_report, *, secucode, page_size=500, max_pages=0, client=None):
+        del _report, page_size, max_pages, client
+        return [row] if str(secucode).split(".")[0] == "900910" else []
+
+    fake_mod = __import__("types").ModuleType("aif10_scraper")
+    fake_mod.fetch_all_pages = fetch_all_pages
+    fake_mod.default_client = object()
+    monkeypatch.setitem(sys.modules, "aif10_scraper", fake_mod)
+
+    out = build_rows(object(), "900910")
+    assert out == []
+
+
+def test_drop_vendor_excluded_does_not_swallow_vendor_scope_error(monkeypatch):
+    """S1-A11: unregistered acquiring path must fail closed — a
+    _drop_vendor_excluded that wrapped vendor_exclusions in try/except and
+    returned the input unchanged would hide this behind "nothing to exclude"."""
+
+    def _raise(*_a, **_k):
+        raise VendorScopeError("no disposition registered for 'aif10.holders_top10'")
+
+    monkeypatch.setattr("services.data_sources.vendor_scope.vendor_exclusions", _raise)
+    with pytest.raises(VendorScopeError):
+        _drop_vendor_excluded([
+            _raw("600388.SH", "600388", "2026-09-17", "A机构", 1, 100, "不变")
+        ])
 
 
 # ── _dedupe_notice_rows_by_grain: 幂等去重 + 观测 + 矛盾拒绝 ─────────────

@@ -347,7 +347,7 @@ def test_a2_predicate_from_config_object(three_dbs, real_config, monkeypatch) ->
     fake_scan_config = ScanConfig(
         security_code_columns=real_load_scan_config().security_code_columns,
         classes=(fake_class,),
-        landing_exemptions=frozenset(),
+        declared_no_code_columns=frozenset(),
     )
     monkeypatch.setattr(cor, "load_scan_config", lambda: fake_scan_config)
 

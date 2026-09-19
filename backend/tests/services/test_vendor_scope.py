@@ -23,8 +23,9 @@ import pytest
 import yaml
 
 from services.data_sources.vendor_scope import (
+    VendorExclusions,
     VendorScopeError,
-    landing_tables_with_no_vendor_axis,
+    apply_response_excludes,
     load_vendor_scope,
     out_of_scope_code_patterns,
     vendor_exclusions,
@@ -52,9 +53,8 @@ def _minimal_valid_scope() -> dict:
         "dispositions": {
             "srcx.apiy": {
                 "b_share": {
-                    "mode": "no_vendor_axis",
-                    "checked_at": "2026-09-12",
-                    "evidence": "test evidence",
+                    "mode": "population_disjoint",
+                    "why": "test why",
                 },
             },
         },
@@ -76,7 +76,7 @@ def _write(tmp_path: Path, data: dict) -> Path:
 def test_minimal_valid_scope_loads_successfully(tmp_path):
     path = _write(tmp_path, _minimal_valid_scope())
     scope = load_vendor_scope(path)
-    assert scope.dispositions["srcx.apiy"]["b_share"].mode == "no_vendor_axis"
+    assert scope.dispositions["srcx.apiy"]["b_share"].mode == "population_disjoint"
     assert scope.security_code_columns == frozenset({"ts_code", "con_code"})
 
 
@@ -252,11 +252,11 @@ def test_l8_disposition_key_bad_format_rejected(tmp_path):
     [
         {"mode": "request_exclude"},
         {"mode": "response_exclude", "field": "SECURITY_TYPE"},
-        {"mode": "no_vendor_axis", "checked_at": "2026-09-12"},
+        {"mode": "code_exclude", "code_field": "SECUCODE", "checked_at": "2026-09-12"},
         {"mode": "request_enumeration"},
         {"mode": "population_disjoint"},
     ],
-    ids=["request_exclude", "response_exclude", "no_vendor_axis", "request_enumeration", "population_disjoint"],
+    ids=["request_exclude", "response_exclude", "code_exclude", "request_enumeration", "population_disjoint"],
 )
 def test_l9_missing_required_key_rejected(tmp_path, payload):
     data = _minimal_valid_scope()
@@ -271,11 +271,17 @@ def test_l9_missing_required_key_rejected(tmp_path, payload):
     [
         {"mode": "request_exclude", "filters": ["x=y"], "extra": 1},
         {"mode": "response_exclude", "field": "SECURITY_TYPE", "values": ["EQB"], "extra": 1},
-        {"mode": "no_vendor_axis", "checked_at": "2026-09-12", "evidence": "x", "extra": 1},
+        {
+            "mode": "code_exclude",
+            "code_field": "SECUCODE",
+            "checked_at": "2026-09-12",
+            "evidence": "x",
+            "extra": 1,
+        },
         {"mode": "request_enumeration", "code_source": "os.path", "extra": 1},
         {"mode": "population_disjoint", "why": "x", "extra": 1},
     ],
-    ids=["request_exclude", "response_exclude", "no_vendor_axis", "request_enumeration", "population_disjoint"],
+    ids=["request_exclude", "response_exclude", "code_exclude", "request_enumeration", "population_disjoint"],
 )
 def test_l9_extra_key_rejected(tmp_path, payload):
     data = _minimal_valid_scope()
@@ -293,6 +299,19 @@ def test_l9_unknown_mode_rejected(tmp_path):
         load_vendor_scope(path)
 
 
+def test_l9_retired_no_vendor_axis_mode_is_now_unknown(tmp_path):
+    """S1 (2026-09-19, spec_bshare_b2.md §2.4): ``no_vendor_axis`` was replaced
+    by ``code_exclude`` — a config that still says ``no_vendor_axis`` must now
+    fail closed as an unknown mode, not silently resolve to anything."""
+    data = _minimal_valid_scope()
+    data["dispositions"]["srcx.apiy"] = {
+        "b_share": {"mode": "no_vendor_axis", "checked_at": "2026-09-12", "evidence": "x"}
+    }
+    path = _write(tmp_path, data)
+    with pytest.raises(ValueError, match=r"vendor_scope: L9"):
+        load_vendor_scope(path)
+
+
 def test_l9_request_enumeration_dangling_code_source_rejected(tmp_path):
     data = _minimal_valid_scope()
     data["dispositions"]["srcx.apiy"] = {
@@ -303,14 +322,77 @@ def test_l9_request_enumeration_dangling_code_source_rejected(tmp_path):
         load_vendor_scope(path)
 
 
-def test_l9_no_vendor_axis_invalid_date_rejected(tmp_path):
+def test_l9_code_exclude_invalid_date_rejected(tmp_path):
     data = _minimal_valid_scope()
     data["dispositions"]["srcx.apiy"] = {
-        "b_share": {"mode": "no_vendor_axis", "checked_at": "2026-13-40", "evidence": "x"}
+        "b_share": {
+            "mode": "code_exclude",
+            "code_field": "SECUCODE",
+            "checked_at": "2026-13-40",
+            "evidence": "x",
+        }
     }
     path = _write(tmp_path, data)
     with pytest.raises(ValueError, match=r"vendor_scope: L9"):
         load_vendor_scope(path)
+
+
+def test_l9_code_exclude_empty_evidence_rejected(tmp_path):
+    """S1-A2: isolates the evidence check — key set, code_field, checked_at
+    all satisfy their own gates, only evidence violates."""
+    data = _minimal_valid_scope()
+    data["dispositions"]["srcx.apiy"] = {
+        "b_share": {
+            "mode": "code_exclude",
+            "code_field": "SECUCODE",
+            "checked_at": "2026-09-12",
+            "evidence": "   ",
+        }
+    }
+    path = _write(tmp_path, data)
+    with pytest.raises(ValueError, match=r"vendor_scope: L9"):
+        load_vendor_scope(path)
+
+
+# ---------------------------------------------------------------------------
+# code_exclude's code_field — L10 mirror image: must BE a security-code
+# identity column (the exact opposite requirement from response_exclude's
+# L10, which forbids one) — spec_bshare_b2.md §2.2/§5.1 S1-A2.
+# ---------------------------------------------------------------------------
+
+
+def test_l10_code_exclude_field_not_code_identity_column_rejected(tmp_path):
+    """Isolates the code_field-identity check: mode/checked_at/evidence all
+    valid, only code_field is a non-identity (vendor category) field name."""
+    data = _minimal_valid_scope()
+    data["dispositions"]["srcx.apiy"] = {
+        "b_share": {
+            "mode": "code_exclude",
+            "code_field": "SECURITY_TYPE",
+            "checked_at": "2026-09-12",
+            "evidence": "x",
+        }
+    }
+    path = _write(tmp_path, data)
+    with pytest.raises(ValueError, match=r"vendor_scope: L10"):
+        load_vendor_scope(path)
+
+
+def test_l10_code_exclude_field_accepts_any_registered_code_like_name(tmp_path):
+    """Control case for the above: SYMBOL/CODE are also in
+    _CODE_LIKE_FIELD_NAMES, not just SECUCODE/SECURITY_CODE."""
+    data = _minimal_valid_scope()
+    data["dispositions"]["srcx.apiy"] = {
+        "b_share": {
+            "mode": "code_exclude",
+            "code_field": "SYMBOL",
+            "checked_at": "2026-09-12",
+            "evidence": "x",
+        }
+    }
+    path = _write(tmp_path, data)
+    scope = load_vendor_scope(path)
+    assert scope.dispositions["srcx.apiy"]["b_share"].code_field == "SYMBOL"
 
 
 # ---------------------------------------------------------------------------
@@ -394,14 +476,154 @@ def test_vendor_exclusions_returns_response_excludes_for_response_exclude_mode(t
 
 
 def test_vendor_exclusions_empty_for_no_op_modes(tmp_path):
-    """no_vendor_axis / request_enumeration / population_disjoint: the
-    disposition must exist (checked above) but the adapter has nothing to act
-    on at landing time."""
+    """request_enumeration / population_disjoint: the disposition must exist
+    (checked above) but the adapter has nothing to act on at landing time."""
     scope = load_vendor_scope(_write(tmp_path, _minimal_valid_scope()))
     exclusions = vendor_exclusions("srcx", "apiy", scope=scope)
     assert exclusions == vendor_exclusions("srcx", "apiy", scope=scope)
     assert exclusions.request_filters == ()
     assert exclusions.response_excludes == ()
+    assert exclusions.code_excludes == ()
+
+
+# ---------------------------------------------------------------------------
+# S1-A3: vendor_exclusions() for code_exclude (spec_bshare_b2.md §5.1)
+# ---------------------------------------------------------------------------
+
+
+def test_vendor_exclusions_returns_code_excludes_for_code_exclude_mode(tmp_path):
+    data = _minimal_valid_scope()
+    data["dispositions"]["srcx.apiy"] = {
+        "b_share": {
+            "mode": "code_exclude",
+            "code_field": "SECUCODE",
+            "checked_at": "2026-09-12",
+            "evidence": "x",
+        }
+    }
+    scope = load_vendor_scope(_write(tmp_path, data))
+    exclusions = vendor_exclusions("srcx", "apiy", scope=scope)
+    assert exclusions.request_filters == ()
+    assert exclusions.response_excludes == ()
+    assert exclusions.code_excludes == (
+        ("SECUCODE", r"^(200\d{3}(\.SZ)?|900\d{3}(\.SH)?)$"),
+    )
+
+
+def test_vendor_exclusions_code_exclude_does_not_populate_response_excludes(tmp_path):
+    """Isolates the branch dispatch: a code_exclude disposition must not also
+    show up under response_excludes (mutation target: merging the two
+    branches would make both fields non-empty for the same disposition)."""
+    data = _minimal_valid_scope()
+    data["dispositions"]["srcx.apiy"] = {
+        "b_share": {
+            "mode": "code_exclude",
+            "code_field": "SECUCODE",
+            "checked_at": "2026-09-12",
+            "evidence": "x",
+        }
+    }
+    scope = load_vendor_scope(_write(tmp_path, data))
+    exclusions = vendor_exclusions("srcx", "apiy", scope=scope)
+    assert exclusions.response_excludes == ()
+
+
+# ---------------------------------------------------------------------------
+# S1-A4: apply_response_excludes() — response_exclude and code_exclude vectors
+# ---------------------------------------------------------------------------
+
+
+def test_apply_response_excludes_response_exclude_vector():
+    exclusions = VendorExclusions(
+        request_filters=(),
+        response_excludes=(("SECURITY_TYPE_CODE", frozenset({"058001002"})),),
+    )
+    rows = [
+        {"SECURITY_TYPE_CODE": "058001002", "SECUCODE": "900910.SH"},  # dropped: B股
+        {"SECURITY_TYPE_CODE": "058001001", "SECUCODE": "600000.SH"},  # kept: A股
+        {"SECURITY_TYPE_CODE": "058001008", "SECUCODE": "688001.SH"},  # kept: 科创板
+        {"SECUCODE": "300001.SZ"},  # kept: field missing entirely
+    ]
+    survivors, excluded = apply_response_excludes(rows, exclusions)
+    assert excluded == 1
+    assert {r["SECUCODE"] for r in survivors} == {"600000.SH", "688001.SH", "300001.SZ"}
+
+
+def test_apply_response_excludes_code_exclude_vector():
+    """Vector aligned with spec_bshare_b2.md §5.1 S1-A4: drop 900925.SH /
+    200017.SZ / bare 900925 (with-suffix, with-suffix, no-suffix); keep
+    600900.SH (lookalike substring "900"), 9000011 (7 digits, too long),
+    920001.BJ (北交所, wrong prefix+suffix pair) and 110001 (unrelated code)."""
+    exclusions = VendorExclusions(
+        request_filters=(),
+        response_excludes=(),
+        code_excludes=(("SECUCODE", r"^(200\d{3}(\.SZ)?|900\d{3}(\.SH)?)$"),),
+    )
+    rows = [
+        {"SECUCODE": "900925.SH"},
+        {"SECUCODE": "200017.SZ"},
+        {"SECUCODE": "900925"},
+        {"SECUCODE": "600900.SH"},
+        {"SECUCODE": "9000011"},
+        {"SECUCODE": "920001.BJ"},
+        {"SECUCODE": "110001"},
+        {"OTHER_FIELD": "no code field on this row"},
+    ]
+    survivors, excluded = apply_response_excludes(rows, exclusions)
+    assert excluded == 3
+    assert {r.get("SECUCODE") for r in survivors} == {
+        "600900.SH", "9000011", "920001.BJ", "110001", None,
+    }
+
+
+def test_apply_response_excludes_fullmatch_not_search():
+    """Mutation target named in the spec table: switching fullmatch to search
+    would wrongly drop 600900.SH (contains "900" as a substring, not a
+    matching prefix)."""
+    exclusions = VendorExclusions(
+        request_filters=(),
+        response_excludes=(),
+        code_excludes=(("SECUCODE", r"^(200\d{3}(\.SZ)?|900\d{3}(\.SH)?)$"),),
+    )
+    survivors, excluded = apply_response_excludes([{"SECUCODE": "600900.SH"}], exclusions)
+    assert excluded == 0
+    assert survivors == [{"SECUCODE": "600900.SH"}]
+
+
+def test_apply_response_excludes_fullmatch_not_search_unanchored_pattern():
+    """S1-A4 blocking-review fix: every real ``code_excludes`` regex comes
+    from ``class_regex``, which always wraps the alternation in ``^(...)$``
+    — on a single-line string, ``re.search`` on a ``^``-anchored pattern
+    only ever matches starting at index 0, same as ``re.fullmatch``, so the
+    test above cannot actually observe a fullmatch-vs-search swap (it stays
+    green either way). ``code_excludes`` only requires a compilable regex
+    string, so this test bypasses ``class_regex`` and uses the *unanchored*
+    ``pattern_regex()`` output directly to exercise the real distinction the
+    S1-A4 mutation table names."""
+    from services.data_sources.out_of_scope_codes import pattern_regex
+
+    regex = pattern_regex("900", "SH")  # r"900\d{3}(\.SH)?" -- no ^/$ anchors
+    exclusions = VendorExclusions(
+        request_filters=(),
+        response_excludes=(),
+        code_excludes=(("SECUCODE", regex),),
+    )
+    # "900925.SH" sits as a trailing substring of "8900925.SH": re.search
+    # would find that substring and wrongly drop the row; re.fullmatch
+    # requires the whole field to match and correctly keeps it (the leading
+    # "8" is not part of any B股 code pattern).
+    rows = [{"SECUCODE": "8900925.SH"}]
+    survivors, excluded = apply_response_excludes(rows, exclusions)
+    assert excluded == 0
+    assert survivors == rows
+
+
+def test_apply_response_excludes_returns_zero_and_unchanged_rows_when_nothing_to_drop():
+    exclusions = VendorExclusions(request_filters=(), response_excludes=())
+    rows = [{"SECUCODE": "600000.SH"}]
+    survivors, excluded = apply_response_excludes(rows, exclusions)
+    assert excluded == 0
+    assert survivors == rows
 
 
 def test_vendor_exclusions_aggregates_across_multiple_classes(tmp_path):
@@ -424,7 +646,7 @@ def test_vendor_exclusions_aggregates_across_multiple_classes(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# out_of_scope_code_patterns() / landing_tables_with_no_vendor_axis()
+# out_of_scope_code_patterns()
 # ---------------------------------------------------------------------------
 
 
@@ -434,31 +656,17 @@ def test_out_of_scope_code_patterns_returns_all_classes_patterns(tmp_path):
     assert {(p.prefix, p.suffix) for p in patterns} == {("900", "SH"), ("200", "SZ")}
 
 
-def test_landing_tables_with_no_vendor_axis_filters_by_mode_and_registry(tmp_path):
-    scope = load_vendor_scope(_write(tmp_path, _minimal_valid_scope()))
-    registry = {
-        "sources": {"srcx": {"target_db": "some_db"}},
-        "domains": {
-            "d1": {"source": "srcx", "api": "apiy", "target_table": "raw_srcx_apiy"},
-            "d2": {
-                "source": "other",
-                "api": "thing",
-                "target_table": "raw_other_thing",
-                "target_db": "other_db",
-            },
-        },
-    }
-    tables = landing_tables_with_no_vendor_axis(registry, scope=scope)
-    assert tables == frozenset({("some_db", "raw_srcx_apiy")})
-
-
 # ---------------------------------------------------------------------------
-# C1 boundary — code_patterns/out_of_scope_code_patterns is canonical/audit
-# only; adapters and sync_runner must never import it (static grep, same
-# method as check_dead_references.py's import scans).
+# C1 boundary — code_patterns/out_of_scope_code_patterns/out_of_scope_codes is
+# canonical/audit only; adapters and sync_runner must never import either
+# (static grep, same method as check_dead_references.py's import scans).
+# Widened 2026-09-19 (S1-A9, spec_bshare_b2.md §5.1): the ``code_exclude``
+# mode's formula module (``out_of_scope_codes``) must reach adapters only via
+# ``vendor_exclusions()``, never by direct import — same boundary as
+# ``out_of_scope_code_patterns()``, same enforcement mechanism.
 # ---------------------------------------------------------------------------
 
-_BANNED_SYMBOL_RE = re.compile(r"out_of_scope_code_patterns")
+_BANNED_SYMBOL_RE = re.compile(r"out_of_scope_code_patterns|out_of_scope_codes")
 
 
 def test_adapters_and_sync_runner_do_not_reference_out_of_scope_code_patterns():
@@ -473,9 +681,150 @@ def test_adapters_and_sync_runner_do_not_reference_out_of_scope_code_patterns():
         if _BANNED_SYMBOL_RE.search(text):
             offenders.append(str(p.relative_to(_BACKEND_DIR)))
     assert offenders == [], (
-        "C1 violation: out_of_scope_code_patterns is canonical/audit-only "
-        f"vocabulary, referenced from landing-side module(s): {offenders}"
+        "C1 violation: out_of_scope_code_patterns/out_of_scope_codes is "
+        f"canonical/audit-only vocabulary, referenced from landing-side module(s): {offenders}"
     )
+
+
+# ---------------------------------------------------------------------------
+# S1-A9 (spec_bshare_b2.md §5.1): the four aif10/miaoxiang landing-side
+# writers must never hardcode the vendor field name, the B股 value, or a bare
+# "900"/"200" literal — every one of those three facts must come only from
+# vendor_scope.yaml via vendor_exclusions(). Assertion is limited to non-
+# comment lines so miaoxiang.py's documentation table (which legitimately
+# quotes SECURITY_TYPE_CODE / 900 / 200 as historical field-mapping evidence)
+# does not trip it.
+# ---------------------------------------------------------------------------
+
+_S1A9_FILES = (
+    "services/holders_aif10.py",
+    "services/org_holding_aif10.py",
+    "services/qfii_client.py",
+    "services/data_sources/sources/miaoxiang.py",
+)
+# Quoted-literal form only (not bare \b900\b/\b200\b): these four production
+# files legitimately contain unrelated integers/prose that happen to spell
+# "900" or "200" (e.g. a page-size default, a truncated-string slice length,
+# a percentage in a comment-adjacent docstring sentence) — a bare word-
+# boundary scan false-positives on those. What must never appear is the
+# vendor field name or its B股 value, or "900"/"200" written as the quoted
+# string literal a code_field/prefix check would actually use.
+_S1A9_LITERAL_RE = re.compile(r"""['"]058001002['"]|SECURITY_TYPE_CODE|['"]900['"]|['"]200['"]""")
+
+
+def _non_comment_lines(text: str) -> list[str]:
+    out = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        # Drop a trailing "# ..." comment but keep code before it — a literal
+        # inside a string that happens to contain "#" is not a realistic risk
+        # for these four files (no such string literals exist in them).
+        code_part = line.split("#", 1)[0] if "#" in line else line
+        out.append(code_part)
+    return out
+
+
+def test_aif10_writers_never_hardcode_b_share_vendor_literals():
+    offenders: list[str] = []
+    for rel in _S1A9_FILES:
+        p = _BACKEND_DIR / rel
+        text = p.read_text(encoding="utf-8")
+        for lineno, code_line in enumerate(_non_comment_lines(text), start=1):
+            if _S1A9_LITERAL_RE.search(code_line):
+                offenders.append(f"{rel}:{lineno}: {code_line.strip()!r}")
+    assert offenders == [], (
+        "S1-A9 violation: B股 vendor literal hardcoded outside a comment in a "
+        f"landing-side writer (must come only from vendor_scope.yaml): {offenders}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# S1-A1: out_of_scope_codes.class_regex() byte-identical to the pre-existing
+# check_out_of_scope_rows.py formula — the S1->S2 transition-period parity
+# check (S2 hasn't switched to importing this module yet in this cut).
+# ---------------------------------------------------------------------------
+
+
+def test_class_regex_matches_check_out_of_scope_rows_formula():
+    from scripts.check_out_of_scope_rows import load_scan_config as _load_scan_cfg
+    from services.data_sources.out_of_scope_codes import class_regex
+
+    scan_cfg = _load_scan_cfg()
+    b_share_scan = next(c for c in scan_cfg.classes if c.name == "b_share")
+
+    scope = load_vendor_scope()
+    b_share_vendor = scope.out_of_scope_classes["b_share"]
+
+    assert class_regex(b_share_vendor.code_patterns) == b_share_scan.regex
+
+
+def test_class_regex_formula_matches_hardcoded_literal():
+    """S1-A1 blocking-review fix: the test above now compares two call
+    sites that both import the *same* ``class_regex`` (S2 of this cut
+    switched ``check_out_of_scope_rows.py`` to import it from
+    ``out_of_scope_codes`` too, per spec_bshare_b2.md §5.2(c)) — a defect
+    inside the shared formula itself (e.g. dropping ``sorted``) moves both
+    sides identically, so that comparison stays green and is now circular
+    for bugs in the formula. This test has no config-loading call site on
+    either side of the assertion: it pins the formula's output to a literal
+    string, so it is the only test left that can catch a bug in the formula
+    itself (as opposed to drift between two independently-loading callers)."""
+    from services.data_sources.out_of_scope_codes import CodePattern, class_regex
+
+    patterns = (
+        CodePattern(prefix="900", suffix="SH"),
+        CodePattern(prefix="200", suffix="SZ"),
+    )
+    assert class_regex(patterns) == r"^(200\d{3}(\.SZ)?|900\d{3}(\.SH)?)$"
+
+
+# ---------------------------------------------------------------------------
+# S1-A10: real vendor_scope.yaml — mode/field/values for the five B2 keys.
+# ---------------------------------------------------------------------------
+
+
+def test_real_config_top_inst_is_code_exclude_on_secucode():
+    scope = load_vendor_scope()
+    dispo = scope.dispositions["miaoxiang.top_inst"]["b_share"]
+    assert dispo.mode == "code_exclude"
+    assert dispo.code_field == "SECUCODE"
+    exclusions = vendor_exclusions("miaoxiang", "top_inst", scope=scope)
+    assert exclusions.code_excludes == (
+        ("SECUCODE", r"^(200\d{3}(\.SZ)?|900\d{3}(\.SH)?)$"),
+    )
+
+
+def test_real_config_top_list_is_response_exclude_on_security_type_code():
+    scope = load_vendor_scope()
+    dispo = scope.dispositions["miaoxiang.top_list"]["b_share"]
+    assert dispo.mode == "response_exclude"
+    assert dispo.field_name == "SECURITY_TYPE_CODE"
+    assert dispo.values == frozenset({"058001002"})
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["aif10.holders_top10", "aif10.org_holding", "aif10.qfii_holders"],
+)
+def test_real_config_aif10_writers_are_response_exclude_on_security_type_code(key):
+    scope = load_vendor_scope()
+    dispo = scope.dispositions[key]["b_share"]
+    assert dispo.mode == "response_exclude"
+    assert dispo.field_name == "SECURITY_TYPE_CODE"
+    assert dispo.values == frozenset({"058001002"})
+    # L11 second half needs these keys claimed by non_registry_sources (they
+    # are not real sync_registry.yaml domains).
+    assert key in scope.non_registry_sources
+
+
+def test_real_config_qfii_key_renamed_from_rpt_dmsk_holders():
+    scope = load_vendor_scope()
+    assert "aif10.RPT_DMSK_HOLDERS" not in scope.dispositions
+    assert "aif10.RPT_DMSK_HOLDERS" not in scope.non_registry_sources
+    assert "aif10.qfii_holders" in scope.dispositions
+    assert "aif10.qfii_holders" in scope.non_registry_sources
 
 
 # ---------------------------------------------------------------------------

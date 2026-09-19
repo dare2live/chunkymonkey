@@ -271,3 +271,16 @@ findings:
       「tdxhub settlement buffer」随 tdxhub K 线族停供已过时。
     recorded: "2026-09-19"
     decision: register
+
+  - id: market-pulse-lhb-count-no-universe-filter
+    asset: "backend/services/market_pulse.py (lhb CTE: SELECT trade_date, COUNT(DISTINCT ts_code) AS lhb_count FROM raw_tushare_top_list GROUP BY 1)"
+    detector: none
+    escalates_when: >
+      任何一天龙虎榜有 B 股或北交所上榜——lhb_count 没有股票池过滤 (D4 只给 lhb_inst_net
+      上了 daily_metric_filter_sql), mart_market_pulse_daily 的上榜家数把它们算进去
+      (fable 09-19 实测 20260831 多算 2、20260903 多算 1, 北交所行一直在算);
+      mart 表没有代码列, out_of_scope_rows 门按构造看不见。B 股从水龙头丢行后
+      (09-19 刀 B2) 只剩北交所这一半。
+    recorded: "2026-09-19"
+    decision: register
+

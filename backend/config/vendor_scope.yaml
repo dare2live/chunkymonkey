@@ -11,7 +11,13 @@
 # 五种 mode (按「供应商给了什么轴」分派, 不按域分组, 红线10):
 #   request_exclude    — 请求侧能表达"不要这个类别" (参数过滤 / 供应商端点本身按类别命名空间)
 #   response_exclude   — 请求侧不行, 响应带供应商类别字段, 清洗前按该字段丢行
-#   no_vendor_axis      — 两者都没有: 不在 landing 动手, canonical/serve 层过滤 (项目词汇的合法落点)
+#   code_exclude        — 响应连类别轴都没有 (2026-09-19 刀 B2 替换 no_vendor_axis):
+#                          落地前按 out_of_scope_classes 的 code_patterns 正则匹配一个
+#                          代码身份列 (code_field, 必须∈ SECUCODE/SECURITY_CODE/SYMBOL/CODE)
+#                          丢行——项目词汇进 landing 的唯一合法入口, 适配器只经
+#                          services.data_sources.vendor_scope.vendor_exclusions() 取
+#                          (从不 import out_of_scope_codes 或自己拼正则), 规则公式定义
+#                          在 backend/services/data_sources/out_of_scope_codes.py 一处。
 #   request_enumeration — 请求侧本来就按项目枚举跑 (板块前缀/活跃股票池), 登记枚举来源不改行为
 #   population_disjoint  — 供应商总体按定义不含该类别 (指数/融资融券/派生自已排除总体的域), 0 行无豁免
 #
@@ -57,21 +63,26 @@ dispositions:
 
   miaoxiang.top_inst:
     b_share:
-      mode: no_vendor_axis
-      checked_at: "2026-09-12"
-      evidence: "RPT_OPERATEDEPT_TRADE 响应 34 列逐列核对 (topinst_20260825.json) 无 SECURITY_TYPE
-        / SECURITY_TYPE_CODE / TRADE_MARKET_CODE / MARKET 等任何类别或市场字段, 故不能走
-        response_exclude; 请求侧过滤是否生效未测 ([T4], 本片禁止触网)。按当前证据落 no_vendor_axis:
-        不在 landing 排除, 交给 canonical 层 (fact_top_inst_seat_daily 发布, S5 切片) 过滤。"
+      mode: code_exclude
+      code_field: SECUCODE
+      checked_at: "2026-09-19"
+      evidence: "[T5] 补测 (spec_bshare_b2.md §1.1 P2, 2026-09-19 GET, TRADE_DATE>=2026-08-01
+        SECURITY_CODE∈[900000,900999] → count=70, 34 列逐列核对仍无 SECURITY_TYPE /
+        SECURITY_TYPE_CODE / TRADE_MARKET_CODE / MARKET 等任何类别或市场字段, 与 09-12
+        核对一致——response_exclude 走不通; 供应商确有 B 股席位行, 不能再落 no_vendor_axis
+        (业主 2026-09-12 已裁定 B 股不做, 无轴不等于可以不排除)。改按 code_exclude: 落地前用
+        SECUCODE 匹配 out_of_scope_classes.b_share 的 code_patterns 丢行。"
 
   miaoxiang.top_list:
     b_share:
-      mode: no_vendor_axis
-      checked_at: "2026-09-12"
-      evidence: "RPT_DAILYBILLBOARD_DETAILSNEW 是否带类别/市场字段未逐列实测 ([T5] 未跑, 本片
-        禁止触网); sources/miaoxiang.py 头注的字段映射表只列出已消费字段, 不是完整响应列清单,
-        不能据此断言'无此字段'。证据不足时按 §1.2 决策树保守落 no_vendor_axis (不声称已排除、
-        不误报 0 行), 待 [T5] 补测后可能改判 request_exclude/response_exclude。"
+      mode: response_exclude
+      field: SECURITY_TYPE_CODE
+      values: ["058001002"]
+      # [T5] 补测 (spec_bshare_b2.md §1.1 P5, 2026-09-19 GET, TRADE_DATE=2026-09-03
+      # SECURITY_CODE=200017 → count=1, SECURITY_TYPE_CODE=058001002, 另有 MARKET=SZ /
+      # TRADE_MARKET_CODE=069001002001): RPT_DAILYBILLBOARD_DETAILSNEW 响应确实带
+      # SECURITY_TYPE_CODE 类别字段, 改判 response_exclude (此前 09-12 无轴登记是证据不足
+      # 时的保守落点, 现已补测推翻)。A 股侧取值见下方三条 aif10 disposition 的共同证据段。
 
   # ── fuyao (同花顺官方 REST) ────────────────────────────────────────────
   fuyao.meta-tickers-list:
@@ -123,16 +134,50 @@ dispositions:
       why: "派生自名义 K 线所在股票池 (daily 域已通过 fuyao.daily_k_dump 的
         population_disjoint 排除 B 股, 见上), 总体本就不含 B 股, 无需二次过滤。"
 
-  # ── no_vendor_axis: TuShare Pro 标准接口未见证券类别字段, 且按日/按报告期整市场拉取
-  #    无逐码请求侧可加排除参数; 以下 11 个域均未逐字段实测 (未触网/未开库确认历史行),
-  #    按 §1.2 决策树证据不足时的保守分支登记, 不声称 0 行、不误判已排除。业主/后续切片
-  #    可用 [T-new] 探测覆盖后改判。population 与 B 股上市公司 (900/200) 有交集的业务
-  #    含义各自标注。
+  # ── aif10 (东财妙想 datacenter, 非 sync_registry 登记路径 —— L11 死引用检查靠
+  #    non_registry_sources 认领这三个键, 见文件尾) ─────────────────────────
+  # 2026-09-19 刀 B2 [T5] 补测证据 (spec_bshare_b2.md §1.1): P1/P3/P4 三次 GET 一致
+  # 实测 SECURITY_TYPE_CODE=058001002 是 B 股 (沪 900/深 200 两段), A 股为 058001001
+  # (科创板另见 058001008); 本地 staging 全量按 (SECURITY_TYPE_CODE, 交易所, 前缀)
+  # 分组只有 5 组 (058001001×4 + 058001008×1), 故排除必须按"等于 058001002"而不是
+  # "不等于 058001001"(否则会连科创板那组也丢)。
+  aif10.holders_top10:
+    b_share:
+      mode: response_exclude
+      field: SECURITY_TYPE_CODE
+      values: ["058001002"]
+      # P1: RPT_F10_EH_FREEHOLDERS UPDATE_DATE='2026-09-17' SECURITY_CODE="900910"
+      # → 10 行, 47 列, SECURITY_TYPE_CODE=058001002, SECUCODE=900910.SH。
+
+  aif10.org_holding:
+    b_share:
+      mode: response_exclude
+      field: SECURITY_TYPE_CODE
+      values: ["058001002"]
+      # P3: RPT_MAIN_ORGHOLDDETAIL REPORT_DATE='2026-06-30' SECURITY_CODE="200012"
+      # → 5 行, 41 列, SECURITY_TYPE_CODE=058001002, SECUCODE=200012.SZ。
+
+  aif10.qfii_holders:
+    b_share:
+      mode: response_exclude
+      field: SECURITY_TYPE_CODE
+      values: ["058001002"]
+      # P4: RPT_DMSK_HOLDERS HOLDER_NEWTYPE="QFII" SECURITY_CODE="900937"
+      # END_DATE='2026-06-30' → 4 行, 41 列, SECURITY_TYPE_CODE=058001002,
+      # SECUCODE=900937.SH。键从 aif10.RPT_DMSK_HOLDERS 改名 (原名不满足 dispositions
+      # 键正则 ^[a-z_]+\.[a-z0-9_-]+$, 大写字母不合法); 全仓 grep 无其它引用该旧字符串
+      # (services/clients_registry.py:71 的 upstream_source="aif10:RPT_DMSK_HOLDERS"
+      # 是另一个独立字符串常量, 不受影响, 不动)。
+
 # 不在 sync_registry.yaml 里的取数路径 (键同样是 "<source>.<api>"), 登记仅为 L11 死引用
-# 检查提供合法目标, 不要求 (也不强制) 每条都带 b_share 处置——它们的请求形态见各自 writer:
-# 已知均已是代码枚举 (get_active_universe), 现存 B 行是旧枚举遗留 (§1.3 [T8])。
+# 检查提供合法目标 (三条均已在上方 dispositions 里有 b_share response_exclude 处置——
+# 2026-09-19 刀 B2 之前这里曾写「不要求每条都带处置, 已知均已是代码枚举 (get_active_universe)」,
+# 该断言对这三个 aif10 写者不成立: holders 的 `fetch_holders_top10_by_notice_date` 按公告日
+# 整批取, org_holding 的 `sync_period` 按报告期整市场取, qfii 的 `_fetch_qfii_aif10` 按持股
+# 变动类型×报告期整市场取, 三者都不经 get_active_universe 逐码枚举, 此前的 B 股行是取数无
+# 过滤所致, 不是"旧枚举遗留"——spec_bshare_b2.md §1.4/§1.3 已更正)。
 non_registry_sources:
-  aif10.RPT_DMSK_HOLDERS:
+  aif10.qfii_holders:
     writer: "services.qfii_client"
   aif10.holders_top10:
     writer: "scripts.ingest_holders_raw"

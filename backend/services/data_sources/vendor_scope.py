@@ -23,21 +23,31 @@ rules from the r1 spec
 authority for the *shape*; this module is its literal implementation, not a
 reinterpretation.
 
-**Layer boundary (C1, spec §2.1)**: the landing side of this project only
-ever acts in one of two ways on a vendor row — *request-side* (any project
-vocabulary is fine; the request is already ours to shape:
-``request_exclude`` / ``request_enumeration``), or *response-side*, and only
-on a genuine **vendor** field (``response_exclude``, field name confined to
-security-code-identity columns' complement — see L10). Project vocabulary
-like a category's ``code_patterns`` (e.g. B股的 900/200 前缀) is **not**
-allowed to leak into an adapter or ``sync_runner`` as a landing-time filter —
-that is exactly the "range-outside category" vs "universe/stock-pool policy"
-line this project has had to redraw five times after some filter's scope
-quietly grew past its stated intent
-(``feedback-warn-only-degrades-to-warn-nothing.md``). ``out_of_scope_code_patterns()``
-below exists only for the canonical/audit layer (a later slice); a static
-test in ``test_vendor_scope.py`` enforces that no adapter or ``sync_runner``
-module imports it.
+**Layer boundary (C1, spec §2.1, amended 2026-09-19 spec_bshare_b2.md §2.2)**:
+the landing side of this project acts in one of three ways on a vendor row —
+*request-side* (any project vocabulary is fine; the request is already ours
+to shape: ``request_exclude`` / ``request_enumeration``), *response-side* on
+a genuine **vendor** field (``response_exclude``, field name confined to
+security-code-identity columns' complement — see L10), or, only when a vendor
+report carries **no category axis at all** (e.g. top_inst's
+``RPT_OPERATEDEPT_TRADE`` — 34 columns, none of them a category/market
+field), ``code_exclude``: match a security-code-identity field (L10's mirror
+image — here the field *must* be one) against this class's
+``out_of_scope_codes.class_regex()``. This is the one deliberate, narrow hole
+in "project vocabulary never reaches landing": it is not an import-ban
+violation because an adapter never imports ``out_of_scope_codes`` or touches
+a regex itself — it only ever calls :func:`vendor_exclusions`, which resolves
+the (field, regex) pair for it (a static test enforces the import ban, see
+below). What actually keeps this from growing into the "range-outside
+category" vs "universe/stock-pool policy" leak this project has had to
+redraw five times (``feedback-warn-only-degrades-to-warn-nothing.md``) is
+**C2** (below): every registered class's prefixes are checked against
+``universe_rules.yaml`` at load time, so a stock-pool *policy* prefix can
+never masquerade as a permanent range-outside *fact*.
+``out_of_scope_code_patterns()`` below exists only for the canonical/audit
+layer (a later slice); a static test in ``test_vendor_scope.py`` enforces
+that no adapter or ``sync_runner`` module imports it or
+``out_of_scope_codes`` directly.
 
 **Mutual exclusion (C2, spec §2.2)**: a category's ``code_patterns`` prefixes
 must never overlap ``universe_rules.yaml``'s board-prefix vocabulary
@@ -57,6 +67,7 @@ from typing import Any, Mapping
 
 import yaml
 
+from services.data_sources.out_of_scope_codes import CodePattern, class_regex
 from services.universe import UNIVERSE_POLICY
 
 # backend/config/vendor_scope.yaml — this module lives at
@@ -71,18 +82,22 @@ _CLASS_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _PREFIX_RE = re.compile(r"^\d{2,3}$")
 _VALID_SUFFIXES = frozenset({"SH", "SZ", "BJ"})
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_DISPOSITION_KEY_RE = re.compile(r"^[a-z_]+\.[a-z0-9_-]+$")
+# 2026-09-19 刀 B2 加宽: 原 r"^[a-z_]+\.[a-z0-9_-]+$" 的 source 段不许数字, 会拒绝真实
+# source 名 "aif10"(4 个 aif10 写者的 disposition key 就是 "aif10.<api>")。改成与本文件
+# 别处 _COLUMN_NAME_RE/_CLASS_NAME_RE 同形 (首字母小写, 后随字母数字下划线) 是超集放宽,
+# 不影响任何既有已注册 key (miaoxiang.*/fuyao.*/stock_st_derive.* 均已满足新旧两种正则)。
+_DISPOSITION_KEY_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_-]+$")
 _CODE_PREFIX_LIKE_RE = re.compile(r"^\d{1,3}$")
 _CODE_FULL_LIKE_RE = re.compile(r"^\d{6}(\.[A-Z]{2})?$")
 _CODE_LIKE_FIELD_NAMES = frozenset({"SECUCODE", "SECURITY_CODE", "SYMBOL", "CODE"})
 
 _VALID_MODES = frozenset(
-    {"request_exclude", "response_exclude", "no_vendor_axis", "request_enumeration", "population_disjoint"}
+    {"request_exclude", "response_exclude", "code_exclude", "request_enumeration", "population_disjoint"}
 )
 _MODE_REQUIRED_KEYS: dict[str, frozenset[str]] = {
     "request_exclude": frozenset({"mode", "filters"}),
     "response_exclude": frozenset({"mode", "field", "values"}),
-    "no_vendor_axis": frozenset({"mode", "checked_at", "evidence"}),
+    "code_exclude": frozenset({"mode", "code_field", "checked_at", "evidence"}),
     "request_enumeration": frozenset({"mode", "code_source"}),
     "population_disjoint": frozenset({"mode", "why"}),
 }
@@ -93,14 +108,6 @@ class VendorScopeError(LookupError):
     registered disposition. Never silently treated as "no exclusions" —
     an unregistered acquiring path is an unaddressed unknown, not a green
     field (宪法红线3: 缺失只能传播为缺失)."""
-
-
-@dataclass(frozen=True)
-class CodePattern:
-    """One out-of-scope code segment, e.g. B股 900.SH / 200.SZ."""
-
-    prefix: str
-    suffix: str
 
 
 @dataclass(frozen=True)
@@ -118,6 +125,7 @@ class Disposition:
     filters: tuple[str, ...] = ()
     field_name: str | None = None
     values: frozenset[str] = field(default_factory=frozenset)
+    code_field: str | None = None
     checked_at: str | None = None
     evidence: str | None = None
     code_source: str | None = None
@@ -135,12 +143,18 @@ class VendorScope:
 @dataclass(frozen=True)
 class VendorExclusions:
     """What an adapter should do for one (source, api) call. Empty tuples mean
-    "nothing to do here" (``no_vendor_axis`` / ``request_enumeration`` /
-    ``population_disjoint`` all resolve to this) — the disposition still had
-    to exist (see :class:`VendorScopeError`), it just doesn't act on landing."""
+    "nothing to do here" (``request_enumeration`` / ``population_disjoint``
+    both resolve to this) — the disposition still had to exist (see
+    :class:`VendorScopeError`), it just doesn't act on landing.
+
+    ``code_excludes`` defaults to ``()`` so existing call sites that construct
+    this dataclass without it (e.g. ``VendorExclusions(request_filters=(),
+    response_excludes=())`` in ``test_miaoxiang_adapter.py``) keep working
+    unchanged."""
 
     request_filters: tuple[str, ...]
     response_excludes: tuple[tuple[str, frozenset[str]], ...]
+    code_excludes: tuple[tuple[str, str], ...] = ()
 
 
 def _is_valid_calendar_date(text: str) -> bool:
@@ -417,7 +431,28 @@ def load_vendor_scope(path: Path | str | None = None) -> VendorScope:
                         )
                 built[class_name] = Disposition(mode=mode, field_name=field_name, values=frozenset(values))
 
-            elif mode == "no_vendor_axis":
+            elif mode == "code_exclude":
+                code_field = dispo_cfg["code_field"]
+                if not isinstance(code_field, str) or not code_field.strip():
+                    raise ValueError(
+                        f"vendor_scope: L9 code_exclude dispositions[{key!r}][{class_name!r}]"
+                        ".code_field must be a non-empty string"
+                    )
+                code_field = code_field.strip()
+                # L10 (mirror image): a code_exclude field must be a genuine
+                # security-code-identity column — the exact opposite
+                # requirement from response_exclude's L10 (which forbids one).
+                # This mode exists precisely because the vendor gave no
+                # category axis at all (top_inst, §2.1); the only column left
+                # to filter on is the code itself, matched against this
+                # class's out_of_scope_codes.class_regex().
+                if code_field.upper() not in _CODE_LIKE_FIELD_NAMES:
+                    raise ValueError(
+                        f"vendor_scope: L10 code_exclude dispositions[{key!r}][{class_name!r}]"
+                        f".code_field {code_field!r} must be a security-code-identity "
+                        f"column (one of {sorted(_CODE_LIKE_FIELD_NAMES)}), not a vendor "
+                        "category field"
+                    )
                 checked_at = dispo_cfg["checked_at"]
                 if (
                     not isinstance(checked_at, str)
@@ -425,17 +460,17 @@ def load_vendor_scope(path: Path | str | None = None) -> VendorScope:
                     or not _is_valid_calendar_date(checked_at)
                 ):
                     raise ValueError(
-                        f"vendor_scope: L9 no_vendor_axis dispositions[{key!r}][{class_name!r}]"
+                        f"vendor_scope: L9 code_exclude dispositions[{key!r}][{class_name!r}]"
                         f".checked_at must be a valid YYYY-MM-DD date, got {checked_at!r}"
                     )
                 evidence = dispo_cfg["evidence"]
                 if not isinstance(evidence, str) or not evidence.strip():
                     raise ValueError(
-                        f"vendor_scope: L9 no_vendor_axis dispositions[{key!r}][{class_name!r}]"
+                        f"vendor_scope: L9 code_exclude dispositions[{key!r}][{class_name!r}]"
                         ".evidence must be a non-empty string"
                     )
                 built[class_name] = Disposition(
-                    mode=mode, checked_at=checked_at, evidence=evidence.strip()
+                    mode=mode, code_field=code_field, checked_at=checked_at, evidence=evidence.strip()
                 )
 
             elif mode == "request_enumeration":
@@ -503,19 +538,67 @@ def vendor_exclusions(source: str, api: str, *, scope: VendorScope | None = None
 
     request_filters: list[str] = []
     response_excludes: list[tuple[str, frozenset[str]]] = []
-    for dispo in per_class.values():
+    code_excludes: list[tuple[str, str]] = []
+    for class_name, dispo in per_class.items():
         if dispo.mode == "request_exclude":
             request_filters.extend(dispo.filters)
         elif dispo.mode == "response_exclude":
             assert dispo.field_name is not None  # guaranteed by load_vendor_scope
             response_excludes.append((dispo.field_name, dispo.values))
-        # no_vendor_axis / request_enumeration / population_disjoint: the
-        # disposition exists (checked above) but the adapter has nothing to
-        # do at landing time for it.
+        elif dispo.mode == "code_exclude":
+            assert dispo.code_field is not None  # guaranteed by load_vendor_scope
+            cls = resolved.out_of_scope_classes[class_name]
+            code_excludes.append((dispo.code_field, class_regex(cls.code_patterns)))
+        # request_enumeration / population_disjoint: the disposition exists
+        # (checked above) but the adapter has nothing to do at landing time
+        # for it.
     return VendorExclusions(
         request_filters=tuple(request_filters),
         response_excludes=tuple(response_excludes),
+        code_excludes=tuple(code_excludes),
     )
+
+
+def apply_response_excludes(
+    rows: list[dict], exclusions: VendorExclusions
+) -> tuple[list[dict], int]:
+    """Drop landing-time out-of-scope rows for one ``(source, api)`` fetch.
+
+    The two mechanisms this project has (§2.1 C1): ``response_excludes``
+    (drop when a genuine vendor field's value is in a registered set) and
+    ``code_excludes`` (drop when a security-code-identity field fullmatches
+    a registered class regex — only used when the vendor gives no category
+    axis at all, e.g. top_inst). Both loops use the same "value absent ->
+    keep the row" semantics as the original miaoxiang.py implementation this
+    was lifted from: a missing/empty field is not evidence the row belongs to
+    an excluded class, so it survives (宪法红线3: 缺失只能传播为缺失, not
+    "propagate to a false exclusion" either).
+
+    Returns the surviving rows and the total number of rows dropped across
+    every disposition (adapters that want to log should check this is > 0
+    before logging — a zero-exclusion call has no observable state change).
+    """
+    total_excluded = 0
+    for field_name, values in exclusions.response_excludes:
+        before = len(rows)
+        rows = [r for r in rows if _field_text(r.get(field_name)) not in values]
+        total_excluded += before - len(rows)
+    for field_name, regex in exclusions.code_excludes:
+        pattern = re.compile(regex)
+        before = len(rows)
+        rows = [
+            r for r in rows
+            if (text := _field_text(r.get(field_name))) is None or not pattern.fullmatch(text)
+        ]
+        total_excluded += before - len(rows)
+    return rows, total_excluded
+
+
+def _field_text(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def out_of_scope_code_patterns(*, scope: VendorScope | None = None) -> tuple[CodePattern, ...]:
@@ -530,37 +613,6 @@ def out_of_scope_code_patterns(*, scope: VendorScope | None = None) -> tuple[Cod
     return tuple(patterns)
 
 
-def landing_tables_with_no_vendor_axis(
-    registry: Mapping[str, Any], *, scope: VendorScope | None = None
-) -> frozenset[tuple[str, str]]:
-    """``(target_db, target_table)`` pairs for every registry domain whose
-    ``(source, api)`` carries a ``no_vendor_axis`` disposition for any class —
-    the only tables a runtime out-of-scope-row invariant (a later slice) may
-    observe without failing. ``registry`` is the parsed ``sync_registry.yaml``
-    mapping (top-level ``sources``/``domains`` keys)."""
-    resolved = scope if scope is not None else load_vendor_scope()
-    no_axis_keys = {
-        key
-        for key, per_class in resolved.dispositions.items()
-        if any(dispo.mode == "no_vendor_axis" for dispo in per_class.values())
-    }
-    domains = registry.get("domains") or {}
-    sources_cfg = registry.get("sources") or {}
-    tables: set[tuple[str, str]] = set()
-    for domain_cfg in domains.values():
-        if not isinstance(domain_cfg, Mapping):
-            continue
-        source = domain_cfg.get("source")
-        api = domain_cfg.get("api")
-        if f"{source}.{api}" not in no_axis_keys:
-            continue
-        table = domain_cfg.get("target_table")
-        db = domain_cfg.get("target_db") or (sources_cfg.get(source) or {}).get("target_db")
-        if db and table:
-            tables.add((str(db), str(table)))
-    return frozenset(tables)
-
-
 __all__ = [
     "CodePattern",
     "Disposition",
@@ -568,7 +620,7 @@ __all__ = [
     "VendorExclusions",
     "VendorScope",
     "VendorScopeError",
-    "landing_tables_with_no_vendor_axis",
+    "apply_response_excludes",
     "load_vendor_scope",
     "out_of_scope_code_patterns",
     "vendor_exclusions",

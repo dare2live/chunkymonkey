@@ -384,9 +384,11 @@ runtime_checks:
     # 清理干净」的防回流不变量。守的是"数据现在对不对"(某个已裁定永不做的证券类别
     # 有没有再出现在库里), 不是"这次 diff 对不对"——与 db_invariants 同理由
     # from_gate: null。三态退出码 (0 全 PASS / 1 有 FAIL / 3 无 FAIL 但有
-    # UNVERIFIED) 由 backend/scripts/check_out_of_scope_rows.py 自身保证。判据、
-    # 发现式枚举原理、豁免形状见该脚本头注 + backend/config/out_of_scope_scan.yaml
-    # 顶注。清理执行前, 本检查跑出来必然是 FAIL——这是预期状态, 不是本条接线错误。
+    # UNVERIFIED) 由 backend/scripts/check_out_of_scope_rows.py 自身保证。判据(含
+    # 无代码列库的 databases_without_security_code_columns 显式声明分支, 没有"报数
+    # 不算失败"这一档)、发现式枚举原理见该脚本头注 + backend/config/
+    # out_of_scope_scan.yaml 顶注。清理执行前, 本检查跑出来必然是 FAIL——这是预期
+    # 状态, 不是本条接线错误。
     from_gate: null
     script: backend/scripts/check_out_of_scope_rows.py
     args:

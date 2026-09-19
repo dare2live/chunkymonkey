@@ -1,14 +1,16 @@
 version: 1
-# out_of_scope_scan.yaml — check_out_of_scope_rows.py 的最小 typed 声明 (S3, 2026-09-12)。
+# out_of_scope_scan.yaml — check_out_of_scope_rows.py 的最小 typed 声明 (S3, 2026-09-12;
+# 2026-09-19 刀 B2 §2.4/§3: 删 landing_exemptions/observed, 加
+# databases_without_security_code_columns)。
 #
-# 这是 backend/config/vendor_scope.yaml (S1 正在改, v2 未合入本仓) 落地前的**过渡文件**,
-# 不是它的替代品。两者管的是同一件事的两个不同侧面:
-#   - vendor_scope.yaml (未来 v2) 的 out_of_scope_classes / dispositions[*].mode 决定
+# 这是 backend/config/vendor_scope.yaml (v2, 已随刀 B2 合入) 的**过渡文件**, 不是它的
+# 替代品。两者管的是同一件事的两个不同侧面:
+#   - vendor_scope.yaml 的 out_of_scope_classes / dispositions[*].mode 决定
 #     "某个 (source, api) 取数时该怎么处置"(request_exclude / response_exclude /
-#     no_vendor_axis / ...) —— 是取数策略, 消费方是各适配器 (miaoxiang.py 等)。
+#     code_exclude / ...) —— 是取数策略, 消费方是各适配器 (miaoxiang.py 等)。
 #   - 本文件只决定"运行时不变量检查扫哪些代码列、认哪些代码段属于范围外类别、
-#     豁免哪些已知按行删除在结构上不可行的 landing 表"——是事实核查, 消费方只有
-#     check_out_of_scope_rows.py 一个。
+#     哪些库按设计没有证券代码列"——是事实核查, 消费方只有 check_out_of_scope_rows.py
+#     一个。
 #
 # S1 的 vendor_scope v2 合入后应做的合并 (到时候删除本文件):
 #   - security_code_columns **不要**改读 vendor_scope 那份: 两者同名但语义不同 ——
@@ -17,13 +19,14 @@ version: 1
 #     多 secucode / symbol)。照搬会让扫描丢掉这两列 = 那些列里的范围外行永远报 PASS。
 #     两份的关系由 test_vendor_scope_code_columns_are_subset_of_scanned_columns 钉住(子集, 非相等)。
 #   - classes[*].code_patterns 改读 vendor_scope.out_of_scope_classes[*].code_patterns
-#   - landing_exemptions 改由 vendor_scope.dispositions[*].mode == "no_vendor_axis" 反推
-#     (哪个 (source, api) 落哪张表, 由 sync_registry.target_table 解出)
+#     (公式已统一到 services.data_sources.out_of_scope_codes, 本文件的 CodePattern/
+#     class_regex 已经是同一个模块, 只是两份 code_patterns 声明还没合并成一份)。
 #
-# landing_exemptions 今天留空——[T4]/[T5] (妙想请求侧过滤探测) 还没跑, S1 还没裁定
-# 任何一个 (source, api) 是 no_vendor_axis。CLAUDE.md 红线3 "缺失只能传播为缺失":
-# 没有证据就不能替它抢先下结论, 留空不影响检查的正确性 (代价只是今天没有任何表被
-# 豁免, 检查会如实报出当前全部命中——这正是业主裁决后清理执行前的预期状态)。
+# databases_without_security_code_columns 是唯一合法的"无代码列"豁免形态 (§3, 取代
+# 旧 landing_exemptions/observed 一档"报数不算失败"): 一个库要么枚举到 ≥1 个代码列
+# 并逐列扫 (0 行才 PASS), 要么被这里显式声明"预期无证券代码列"且实际枚举也为空才
+# PASS; 声明与实况任一不符即非 PASS (声明过期 = 该库长出了代码列 = FAIL, 不是悄悄
+# 放行)。没有声明的库枚举到 0 个代码列, 仍然是 UNVERIFIED enumeration_empty, 不改判。
 #
 # 机器判据边界 (b_share_exclusion_r1.md §2.3 C3, check_out_of_scope_rows.py 头注复述):
 # 本文件登记的是"范围外类别"(业主裁定永不做的证券类别, 无版本号, 在所有表包括 raw
@@ -55,11 +58,13 @@ classes:
       - {prefix: "900", suffix: SH}
       - {prefix: "200", suffix: SZ}
 
-landing_exemptions: []
-  # 唯一豁免形态 (b_share_exclusion_r1.md §2.3/§4.1): no_vendor_axis 域的 landing/raw
-  # 表——那类表的批次哈希按行重算、按行删除在结构上不可行, 豁免只免它自己不 FAIL,
-  # 仍然报数 (不是 warn-nothing); 它的任何派生表不豁免, 照判 FAIL。
-  # 格式: {db: <database_manifest.yaml 里的库别名>, table: <表名>, why: <非空说明>}
-  # 例 (裁定后按此形状加, 不要提前假设):
-  #   - {db: tushare_raw, table: raw_tushare_top_inst,
-  #      why: "miaoxiang.top_inst 响应无类别轴且请求侧过滤未证实生效 (见 [T4])"}
+databases_without_security_code_columns:
+  # 格式: {db: <database_manifest.yaml 里的库别名>, why: <非空说明>}。db 必须
+  # manifest.require() 通过; 不重复。判据见 check_out_of_scope_rows.py 头注 §3
+  # 分支表——声明了且实际枚举也为空才判 PASS; 声明了但枚举到代码列 → 照常逐列扫
+  # 并追加一行 FAIL (stale_declaration), 声明不能让枚举被跳过; 未声明库枚举为空
+  # 仍是 UNVERIFIED enumeration_empty。
+  - db: experiment_store
+    why: "database_manifest: alpha_validation_experiment, 4 张表 (verdict / ic_scan /
+      artifact_lineage / pit_audit_log) 只存 run_id / 哈希 / 判决, 按设计无证券代码列
+      (spec_bshare_b2.md §1.2, 2026-09-19 information_schema 实枚: 31 列 0 命中)。"

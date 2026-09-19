@@ -219,7 +219,12 @@ from services.data_sources.pagination_integrity import (
     EASTMONEY_V1_MAX_PAGES_PER_QUERY,
     assess_paginated_land,
 )
-from services.data_sources.vendor_scope import VendorScopeError, vendor_exclusions
+from services.data_sources.vendor_scope import (
+    VendorExclusions,
+    VendorScopeError,
+    apply_response_excludes,
+    vendor_exclusions,
+)
 
 log = logging.getLogger(__name__)
 
@@ -628,16 +633,17 @@ class MiaoxiangSource:
         # keep), and before the per-row cleaner (which would otherwise raise
         # MiaoxiangUnknownUnitError on an EQB row's (SECURITY_TYPE, TRADE_UNIT)
         # pair, since that pair is deliberately not registered any more).
-        # Domains with no response_exclude disposition (no_vendor_axis /
-        # request_enumeration / population_disjoint) yield an empty tuple here
-        # and this loop is a no-op — the adapter has nothing to do for them.
+        # Domains with no exclusion disposition (request_enumeration /
+        # population_disjoint) yield two empty tuples here and both loops
+        # below are no-ops — the adapter has nothing to do for them. Actual
+        # row filtering is delegated to vendor_scope.apply_response_excludes
+        # (one definition, shared with the aif10 writers' _drop_vendor_excluded
+        # helpers) — this method only owns per-disposition logging.
         for field, values in exclusions.response_excludes:
-            before = len(raw_rows)
-            raw_rows = [
-                r for r in raw_rows
-                if _text(r.get(field)) not in values
-            ]
-            excluded = before - len(raw_rows)
+            raw_rows, excluded = apply_response_excludes(
+                raw_rows,
+                VendorExclusions(request_filters=(), response_excludes=((field, values),)),
+            )
             # Deliberate: only log when excluded>0. A zero-exclusion day has no
             # observable state change to report (no rows were dropped, nothing
             # for a reader of this log to act on or reconcile against).
@@ -649,6 +655,22 @@ class MiaoxiangSource:
                     excluded,
                     field,
                     sorted(values),
+                )
+        for code_field, regex in exclusions.code_excludes:
+            raw_rows, excluded = apply_response_excludes(
+                raw_rows,
+                VendorExclusions(
+                    request_filters=(), response_excludes=(), code_excludes=((code_field, regex),)
+                ),
+            )
+            if excluded:
+                log.info(
+                    "%s %s excluded %d rows by vendor_scope code_exclude %s~%s",
+                    report_name,
+                    trade_date,
+                    excluded,
+                    code_field,
+                    regex,
                 )
         cleaner = _CLEANERS[name]
         return [cleaner(r, trade_date=trade_date) for r in raw_rows]
