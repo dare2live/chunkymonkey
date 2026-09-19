@@ -313,7 +313,7 @@ def build_episodes(con) -> dict:
         role = next((t for t in ("own_funds_account", "client_funds_account") if t in tags), None)
         if role:
             role_pairs.append((str(nm), role))
-    con.execute("CREATE OR REPLACE TABLE _ep_capital_role (holder_name VARCHAR, capital_role VARCHAR)")
+    con.execute("CREATE OR REPLACE TEMP TABLE _ep_capital_role (holder_name VARCHAR, capital_role VARCHAR)")
     if role_pairs:
         con.executemany("INSERT INTO _ep_capital_role VALUES (?, ?)", role_pairs)
 
@@ -364,7 +364,7 @@ def build_episodes(con) -> dict:
     """).fetchall()
     episodes, stats = run_episode_state_machine(rows)
 
-    con.execute(f"""CREATE OR REPLACE TABLE _ep_raw (
+    con.execute(f"""CREATE OR REPLACE TEMP TABLE _ep_raw (
         holder VARCHAR, stock VARCHAR, holder_type VARCHAR,
         open_date VARCHAR, open_notice VARCHAR, seeded BOOLEAN, shares DOUBLE,
         cost_c1 DOUBLE, cost_c2 DOUBLE, cost_c3 DOUBLE,
@@ -402,7 +402,7 @@ def build_episodes(con) -> dict:
     # identity_confidence 同理带出来: 实测徐开东既是唯一 suspected_multiple, 又是身份标志
     # 未记录(holder_type_proxy)的 —— 两个独立信号都说"不知道这是谁", 默认不该进跟随池。
     con.execute("""
-    CREATE OR REPLACE TABLE _ep_niusan AS
+    CREATE OR REPLACE TEMP TABLE _ep_niusan AS
     SELECT holder_name, ANY_VALUE(known_from) AS known_from,
            ANY_VALUE(identity_confidence) AS identity_confidence,
            ANY_VALUE(identity_grade) AS niusan_identity_grade
@@ -410,7 +410,7 @@ def build_episodes(con) -> dict:
     """)
 
     con.execute(f"""
-    CREATE OR REPLACE TABLE _ep_identity AS
+    CREATE OR REPLACE TEMP TABLE _ep_identity AS
     WITH h AS (
         {events}
     ), name_counts AS (
@@ -498,7 +498,8 @@ def build_episodes(con) -> dict:
       ON p.stock_code = e.stock AND p.in_date <= e.open_date
      AND (p.out_date IS NULL OR p.out_date > e.open_date)
     """)
-    con.execute("DROP TABLE _ep_raw")
+    # _ep_raw 是 TEMP TABLE (cut_lineage_drift §2.4) —— 随本连接关闭自动消失, 不需要
+    # 显式 DROP (显式 DROP 只在它是持久表时才有必要退登记它占的物理空间)。
     stats["episodes"] = con.execute("SELECT COUNT(*) FROM fact_inst_episode").fetchone()[0]
     return stats
 

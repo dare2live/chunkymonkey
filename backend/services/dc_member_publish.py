@@ -9,8 +9,7 @@ explicitly provides historical membership via trade_date / start_date / end_date
 loops; output columns are trade_date, ts_code, con_code, name only — no
 in_date/out_date. Do not invent interval columns. Local landing covers the
 vendor floor (20250102+). dim_stock_dc_* stay current-snapshot display
-residuals; retired v_dc_industry_pit (first-seen only) stays unused.
-ths_member is a different namespace and marks in_date/out_date as 暂无.
+residuals. ths_member is a different namespace and marks in_date/out_date as 暂无.
 
 Source = raw_tushare_dc_member (landing residual). Not a formal accept plane;
 publication is derived/materialized so DataAccess can leave the raw leaf.

@@ -4,9 +4,9 @@ Rulers:
 - DC membership = ``fact_dc_member_daily`` (observation-date publication).
 - SW membership = ``v_sw_industry_pit`` (interval PIT as-of).
 - THS = Fuyao catalog + current constituents (observation snapshot).
-``raw_tushare_dc_member`` / ``raw_tushare_index_member_all`` / dim_stock_dc_* /
-``v_dc_industry_pit`` are not membership truth. Equal names are candidates,
-not identity. TDX ``block`` is not a four-chain namespace.
+``raw_tushare_dc_member`` / ``raw_tushare_index_member_all`` / dim_stock_dc_*
+are not membership truth. Equal names are candidates, not identity. TDX
+``block`` is not a four-chain namespace.
 """
 from __future__ import annotations
 
@@ -27,7 +27,6 @@ BANNED_DC_MEMBERSHIP = frozenset(
         "raw_tushare_dc_member",
         "dim_stock_dc_industry",
         "dim_stock_dc_concept",
-        "v_dc_industry_pit",
     }
 )
 BANNED_SW_MEMBERSHIP = frozenset({"raw_tushare_index_member_all"})

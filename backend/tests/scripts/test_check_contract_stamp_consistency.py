@@ -147,7 +147,7 @@ def test_classify_hash_column_known_roles():
 
 
 def test_classify_hash_column_out_of_scope_registered():
-    assert ccsc.classify_hash_column("mart_data_lineage", "sql_hash") == "out_of_scope"
+    assert ccsc.classify_hash_column("mart_data_source_watermark", "last_raw_hash") == "out_of_scope"
 
 
 def test_classify_hash_column_unclassified_is_reported_not_silent():

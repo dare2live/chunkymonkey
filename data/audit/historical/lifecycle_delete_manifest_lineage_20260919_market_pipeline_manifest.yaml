@@ -1,0 +1,33 @@
+# 草稿 (未执行) —— cut_lineage_drift §4.1「删除执行」
+# 这份必须 --force: market.mart_pipeline_run_manifest 与 smartmoney 同名活表撞名,
+# live 守护按名不按库, dry-run (不带 --force) 预期会 REFUSE 命中
+# backend/services/pipeline/stage_status.py 与 backend/services/pipeline/store.py
+# (两处命中的都是 smartmoney 那张活表, 不是 market 这张化石)。
+#
+# 施工时用真实 grep 复核过 (2026-09-19): ruling_lineage_drift.md §3 项11 原文举例的
+# refresh_source_watermarks.py:23 / data_health_snapshot.py:710 两处, 当前仓库里
+# 已经不含 mart_pipeline_run_manifest 字样 (grep 0 命中) —— 文件内容在裁决写完之后
+# 变过, 或裁决举例本身有误; 真正当前会被 live 守护命中的是 stage_status.py / store.py
+# 两处 (backend/services/pipeline_manifest.py 也提到这张表, 但它在
+# backend/services/pipeline_manifest.py, 不在 backend/services/pipeline/ 目录下,
+# 不在 db_lifecycle_delete._live_surface() 的扫描范围内, 不会被扫到)。
+#
+# 先跑一次不带 --force 的 dry-run 确认 REFUSE 命中面与下面 expected 一致 (证明"守护按名
+# 工作、force 是有意为之", 不是绕过一个没检查过的洞), 再补 --execute --force。
+run_id: lifecycle_20260918_market_pipeline_manifest
+db: market
+requires_force: true
+expected_dry_run_refuse_without_force:
+  - table: mart_pipeline_run_manifest
+    expected_hit_examples:
+      - backend/services/pipeline/stage_status.py
+      - backend/services/pipeline/store.py
+entries:
+  - table: mart_pipeline_run_manifest
+    action: delete
+    bucket: lineage_catalog_drift_fossil
+    reason: >-
+      ruling_lineage_drift.md §3 项11: market 库这份是化石。COUNT=14,
+      MAX(started_at)=2026-05-07, pipeline_name 均为已退役 tdxhub 脚本,
+      cwd=旧仓。record_stage 恒写 smartmoney(stage_status.py); smartmoney
+      那份 MAX(started_at)=2026-09-17 是活的, 不在本条删除范围内。

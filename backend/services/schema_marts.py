@@ -59,43 +59,6 @@ MART_SCHEMA_SQL = """
                 PRIMARY KEY (data_domain, source_name, source_tier)
             );
 
-            CREATE TABLE IF NOT EXISTS mart_lineage (
-                lineage_id         TEXT PRIMARY KEY,            -- e.g. 'mart_daily_recommendation/topk_v1'
-                output_table       TEXT NOT NULL,
-                input_tables       TEXT,                        -- JSON 数组
-                sql_text           TEXT,                        -- 完整 SQL (或脚本入口)
-                sql_hash           TEXT,                        -- sha256(sql_text)[:16] — 变更检测
-                version            TEXT DEFAULT 'v1',
-                owner              TEXT,                        -- 模块路径或责任人
-                description        TEXT,
-                last_run_at        TIMESTAMP,
-                last_row_count     BIGINT,
-                last_status        TEXT,                        -- 'ok' / 'failed' / 'pending'
-                last_error         TEXT,
-                last_runtime_s     DOUBLE,
-                created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE VIEW IF NOT EXISTS mart_data_lineage AS
-            SELECT lineage_id,
-                   output_table AS mart_table,
-                   output_table,
-                   input_tables,
-                   sql_text,
-                   sql_hash,
-                   version,
-                   owner,
-                   description,
-                   last_run_at,
-                   last_row_count,
-                   last_status,
-                   last_error,
-                   last_runtime_s,
-                   created_at,
-                   updated_at
-              FROM mart_lineage;
-
             CREATE TABLE IF NOT EXISTS mart_data_deprecation_record (
                 record_id        TEXT PRIMARY KEY,
                 table_name       TEXT NOT NULL,

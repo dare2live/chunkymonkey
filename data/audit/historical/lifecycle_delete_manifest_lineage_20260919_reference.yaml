@@ -1,0 +1,16 @@
+# 草稿 (未执行) —— cut_lineage_drift §2.4 (cut B, _ 前缀反向洞)
+# 只有一张表: reference._lock_probe。与 smartmoney 那张同一 §2.4 处置, 单独一份 manifest
+# 是因为 reference 库在 §4.1 的其它删除项里没有份额, 不与任何库共用一份 manifest。
+# 实测(2026-09-19): "_lock_probe"/"_rw_probe" 在 db_lifecycle_delete._live_surface()
+# 扫描范围内 0 命中, dry-run 预期 REFUSE 0, 不需要 --force。
+run_id: lifecycle_20260918_reference
+db: reference
+expected_dry_run_refuse_count: 0
+entries:
+  - table: _lock_probe
+    action: delete
+    bucket: lineage_catalog_drift_dangling_probe
+    reason: >-
+      ruling_lineage_drift.md §2.4/§1.3 项d: 无 creator 的持久残留, 与
+      smartmoney._lock_probe 同一处置(见 lifecycle_20260918_smartmoney.yaml
+      同名条目, 只是不同库的物理副本)。豁免前提已不成立, 本刀已删两处豁免代码。

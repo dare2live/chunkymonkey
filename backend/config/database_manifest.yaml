@@ -3,6 +3,17 @@ defaults:
   attach_mode: read_only
   missing_optional_attach: warn
 
+# cut_lineage_drift §2.1 (2026-09-18): 运行时记账表, writer 以 conn 为参数 (谁在哪个库
+# 删/落地就在哪个库建), 一表一库假设对它们不成立。每个在线库可选出现一份 —— 不是
+# "必须每库都有", 只是"出现了不算幽灵"。services/lineage/builder.py::catalog_drift()
+# 校验名单每个成员在 data_layers.yaml 里的 layer 必须是 infra, 否则 fail-closed
+# RuntimeError (防止把非 infra 表塞进来绕过登记漂移检查)。
+shared_bookkeeping_tables:
+  - mart_data_deletion_record
+  - dim_schema_version
+  - accepted_partition
+  - ingest_batch
+
 databases:
   smartmoney:
     path: data/smartmoney.duckdb
@@ -63,6 +74,14 @@ databases:
       - fact_rally_negative
       - fact_rally_strata
       - period_windows
+      # 判例引擎 T2/T3 (casebook.yaml): 全部写者是 services/casebook/{signals,outcome,
+      # pair_stats}.py，恒 manifest.path_for("feature_store") —— 登记从第一版
+      # (0637b0ba) 起就没对过，不是搬库 (cut_lineage_drift §3 项1)。
+      - casebook_case
+      - casebook_outcome_day
+      - casebook_stock_baseline
+      - casebook_market_day
+      - casebook_pair_stats
 
   experiment_store:
     path: data/experiment_store.duckdb
@@ -105,8 +124,11 @@ databases:
       - landing_miaoxiang_org_holding
       - canonical_org_holding_detail_period
       - raw_org_holding_aif10
-      - ingest_batch
-      - accepted_partition
+      # org_holding_population.py:13 PROBE_TABLE — 活表 (实测 1 行 observed_at
+      # 2026-09-17), 此前从未登记过 (cut_lineage_drift §3 项2)。
+      - org_holding_source_probe
+      # ingest_batch/accepted_partition 移入顶层 shared_bookkeeping_tables (2026-09-18
+      # cut_lineage_drift §2.1) —— 一个参数只在一处定义, 不再在这里留字面量副本。
     notes:
       - Formal org_holding land/accept writer is services.data_sources.org_holding_acceptance
       - raw_org_holding_aif10 remains NONCONFORMING strangler until DatasetSnapshot cutover
@@ -131,10 +153,23 @@ databases:
     retention_class: canonical_source_store
     table_patterns:
       - raw_tushare_*
-      - ingest_batch
       - landing_tushare_margin
       - canonical_margin_exchange_daily
-      - accepted_partition
+      # 09-18 daily 域换源 (fuyao dump + baostock 前收盘价) 落地的 4 canonical + 5
+      # landing 字面量 —— 与上面 landing_tushare_margin 同形, 全部字面量, 不加
+      # landing_*/canonical_* 通配 (会把 smartmoney/org_holding 的同前缀 canonical
+      # 表默认吸过来, 见 cut_lineage_drift §3 项4)。
+      - landing_tushare_daily
+      - canonical_nominal_ohlcv_daily
+      - landing_tushare_stock_st
+      - canonical_stock_st_daily
+      - landing_tushare_trade_cal
+      - landing_tushare_trade_cal_fragment
+      - canonical_sse_trading_calendar_generation
+      - landing_tushare_stk_holdertrade
+      - canonical_stk_holdertrade_announcement
+      # ingest_batch/accepted_partition 移入顶层 shared_bookkeeping_tables (2026-09-18
+      # cut_lineage_drift §2.1) —— 一个参数只在一处定义, 不再在这里留字面量副本。
     notes:
       - raw_tushare_* is replayable compatibility data written by sync_runner.
       - Formal margin tables are permanent evidence under the margin dataset contract; never delete this database as a rebuildable raw mirror.

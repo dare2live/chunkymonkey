@@ -1,0 +1,25 @@
+# 草稿 (未执行) —— cut_lineage_drift §4.1「删除执行」
+# 主循环用法: python backend/scripts/db_lifecycle_delete.py \
+#   --manifest data/audit/historical/lifecycle_delete_manifest_20260918_market_processing_tool.yaml
+# 先 dry-run (不带 --execute), 确认 REFUSE 命中数与下面 expected_dry_run_refuse_count 一致,
+# 再补 --execute。业主 09-12「留痕不归档」: action 全部 delete, 不 archive, 不导 parquet。
+# reason 字段被 db_lifecycle_delete 截到 400 字符入 mart_data_deletion_record, 完整证据
+# 见 ruling_lineage_drift.md §3 项5 原文 (COUNT/MAX/GROUP BY/cwd 等数字)。
+run_id: lifecycle_20260918_market_processing_tool
+db: market
+expected_dry_run_refuse_count: 0
+entries:
+  - table: mart_data_processing_tool_issue
+    action: delete
+    bucket: lineage_catalog_drift_fossil
+    reason: >-
+      ruling_lineage_drift.md §3 项5: 化石表, 全仓 0 非测试引用(唯一残留是
+      smartmoney.dim_schema_version 两行 expected=v1, 属另一件事不动)。
+      10 行, built_at 2026-05-06/07, tool_name 均为已退役 tdxhub 脚本,
+      cwd=旧仓 chunky-monkey-v2。
+  - table: mart_data_processing_tool_run
+    action: delete
+    bucket: lineage_catalog_drift_fossil
+    reason: >-
+      ruling_lineage_drift.md §3 项5: 同上一条化石表的配对表, 4 行,
+      同一批 tool_name/cwd 证据, 同一处置。

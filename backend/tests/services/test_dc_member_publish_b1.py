@@ -3,8 +3,7 @@
 Honest PIT = daily membership snapshots (trade_date × board ts_code × con_code)
 with available_at + lineage. Vendor history exists via TuShare dc_member
 trade_date loops (not range in/out — those columns are absent on this API).
-dim_stock_dc_* remain current-snapshot display residuals; retired
-v_dc_industry_pit (first-seen only) stays unused.
+dim_stock_dc_* remain current-snapshot display residuals.
 """
 from __future__ import annotations
 

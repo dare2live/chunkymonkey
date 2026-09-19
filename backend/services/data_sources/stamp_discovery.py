@@ -139,8 +139,6 @@ _EXACT_COLUMN_ROLES: dict[tuple[str, str], str] = {
 # 已知与"契约戳"体系无关的存放点 (另一套子系统的 hash, 例如 lineage SQL 指纹 / 增量水位
 # 游标) —— 显式登记 + 理由, 而不是靠命名巧合躲过发现式扫描。
 _OUT_OF_SCOPE_COLUMNS: dict[tuple[str, str], str] = {
-    ("mart_data_lineage", "sql_hash"): "血缘子系统的 SQL 文本指纹, 与数据集契约身份无关",
-    ("mart_lineage", "sql_hash"): "同上 (mart_lineage 是 mart_data_lineage 的同义/历史表)",
     ("mart_data_source_watermark", "last_raw_hash"): "增量同步水位游标, 不是契约戳",
 }
 

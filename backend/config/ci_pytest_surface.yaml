@@ -37,6 +37,7 @@ blocking_paths:
 - tests/scripts/test_cleanup_out_of_scope_rows.py
 - tests/scripts/test_completeness_ref.py
 - tests/scripts/test_cross_section_full.py
+- tests/scripts/test_data_layer_audit.py
 - tests/scripts/test_db_compact.py
 - tests/scripts/test_db_lifecycle_delete.py
 - tests/scripts/test_db_split_org_holding.py
@@ -242,7 +243,6 @@ blocking_paths:
 - tests/test_market_db_canonical_kline.py
 - tests/test_market_pulse.py
 - tests/test_market_pulse_api.py
-- tests/test_mart_data_lineage_compat.py
 - tests/test_min_rows_era_aware.py
 - tests/test_min_rows_per_batch_threshold.py
 - tests/test_moneyflow_assist.py

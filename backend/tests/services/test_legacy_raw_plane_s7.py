@@ -198,12 +198,17 @@ def test_s7_derive_runtime_still_bans_acquire_imports() -> None:
 
 
 def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
-    """S7 inventory: 20 ssot / 1 fill / 22 compat / 3 retired (holdernumber restored).
+    """S7 inventory: 14 ssot / 1 fill / 22 compat (holdernumber restored).
 
     2026-09-08 自算换心只动 raw_tushare_adj_factor 的 kind (derive_input → sync_orphan,
     它不再是任何 derive 的输入), role 仍是 compatibility —— 顶注定义 ssot 是
     「production still treats this raw table as truth」, 换源后生产恰恰不再拿它当真相,
     升 ssot 会把方向弄反。故本组计数不变。
+
+    retired 计数不钉死数字 (2026-09-18 cut_lineage_drift §2.3): 已 DROP 的墓碑条目
+    (express/fina_mainbz/stk_factor_pro) 同 commit 从本文件删除, "retired == N" 这种
+    状态断言每次墓碑清理都要跟着改数字, 且不判任何东西——见下面
+    test_s7_residual_ssot_map_is_typed_hard_stops_only 改成的不变量断言。
     """
 
     mod = _load_check_mod()
@@ -211,8 +216,6 @@ def test_s7_inventory_role_counts_after_derive_pulse_knife() -> None:
     assert counts["ssot"] == 14, counts
     assert counts["fill"] == 1, counts
     assert counts["compatibility"] == 22, counts
-    assert counts.get("retired", 0) == 9, counts
-    assert sum(counts.values()) == 46, counts
 
 
 def test_s7_residual_ssot_map_is_typed_hard_stops_only() -> None:
@@ -259,22 +262,26 @@ def test_s7_residual_ssot_map_is_typed_hard_stops_only() -> None:
     # (2026-09-08 删掉原来紧跟其后的 `sum(len(v) for v in by_kind.values()) == N`:
     #  上一行已经把成员钉死, 这个和就被 expected 完全决定, 它永远不可能独立失败 ——
     #  不判任何东西, 只会在每次成员变动时跟着要人改数字。)
-    retired = {
-        table.removeprefix("raw_tushare_")
+    #
+    # retired 集合改成不变量而不是钉死名单 (2026-09-18 cut_lineage_drift §2.3 F1):
+    # legacy_raw_plane.yaml 现在是 lineage_catalog_drift 的第四个声明源, 已 DROP 的
+    # 墓碑条目 (role=retired 但表已不在) 会被判成 orphan —— "钉死 9 个名字" 这种状态
+    # 断言测不出这条新规则, 每次墓碑清理还要跟着手改数字。真正该守的不变量是:
+    # 每个 role=retired 键必须有非空 note (为什么停更/停供), 且不能再是 sync_registry
+    # 的 target_table (退役声明与仍在同步矛盾)。
+    retired_tables = {
+        table: meta
         for table, meta in inv["tables"].items()
         if meta.get("role") == "retired"
     }
-    assert retired == {
-        "stk_factor_pro",
-        "express",
-        "fina_mainbz",
-        "daily_info",
-        "dc_daily",
-        "hm_detail",
-        "hm_list",
-        "kpl_list",
-        "ths_hot",
-    }, retired
+    assert retired_tables, "S7 inventory 至少应有一张 retired 表 (K3 停更批)"
+    sync_targets = mod.sync_registry_raw_tables()
+    for table, meta in retired_tables.items():
+        assert meta.get("note"), f"{table}: role=retired 必须有非空 note (为什么停更/停供)"
+        assert table not in sync_targets, (
+            f"{table}: role=retired 但仍是 sync_registry 的 target_table —— "
+            "退役声明与仍在同步矛盾, 要么撤回 retired 要么从 sync_registry 摘掉这张表"
+        )
 
 
 def test_s7_limit_list_d_publication_is_fact_stock_limit_daily() -> None:

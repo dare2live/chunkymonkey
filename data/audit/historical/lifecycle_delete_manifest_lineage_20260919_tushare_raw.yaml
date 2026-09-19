@@ -1,0 +1,38 @@
+# 草稿 (未执行) —— cut_lineage_drift §4.1「删除执行」
+# 前提: 本刀第一 commit 已删 build_dc_industry_view.py 提及 v_dc_industry_pit 的
+# docstring 句 (原坑(i): 那句 docstring 在 live 守护扫描范围内, 留着会 REFUSE)、
+# taxonomy_recon.py 的 BANNED_DC_MEMBERSHIP 成员与模块 docstring 提及、
+# dc_member_publish.py 提及句、legacy_raw_plane.yaml:120 note 半句、segments.yaml:7
+# 提及半句。同 commit 删完这些之后, dry-run 预期 REFUSE 0。
+#
+# raw_baostock_trade_dates 一并列入 (build_lineage_drift.md 主循环补充指令#2, 覆盖
+# ruling_lineage_drift.md §4.1 原文「不在本刀 manifest 里」): 该表按
+# sandbox/supply_plan_20260918/deletion_ruling_final.md 批0 D1 已判删 (行 74:
+# 无登记; 无代码引用 baostock.py:425 是 docstring SQL 不动; 反方 #7 未推翻), 由
+# 批0 那把刀单独执行 db_lifecycle_delete --execute。此处重复登记只是让本刀的
+# dry-run/G1 口径与批0一致——若验收时批0 D1 已先执行完, 这条 entry 对 db_lifecycle_delete
+# 是 no-op (表已不存在, live 守护找不到表也不会 REFUSE); 若批0 D1 还没执行, 见下方
+# expected_dry_run_refuse_count 的两种口径说明, 不允许本刀替批0去 --execute。
+run_id: lifecycle_20260918_tushare_raw
+db: tushare_raw
+expected_dry_run_refuse_count: 0
+entries:
+  - table: v_dc_industry_pit
+    action: delete
+    bucket: lineage_catalog_drift_fake_pit
+    reason: >-
+      ruling_lineage_drift.md §3 项6: VIEW, 只读 raw_tushare_dc_member,
+      只有 first-seen 没有 out_date —— 假 PIT, 与 CLAUDE.md 红线1 冲突。
+      tushare_raw 其余 18 个视图 0 引用它; 全仓 7 处引用(施工前)全是
+      禁用/注释/测试, data/ 下 json 0 命中。
+  - table: raw_baostock_trade_dates
+    action: delete
+    bucket: lineage_catalog_drift_g1_ghost
+    reason: >-
+      deletion_ruling_final.md D1 (行 74): 存活 6 小时的域 (11c3345e → 81505a99
+      同日撤销) 留下的孤儿表, 单一 built_at 2026-08-30, 13,162 行, 零登记
+      (legacy_raw_plane.yaml 未收录) 零代码引用 (baostock.py:425 只是 docstring
+      SQL, 不是可执行调用), calendar_rule 不读不校验, 反方 #7 (换源零差异核证的
+      原始副本) 未推翻——不构成 keep_frozen_history。列入本刀 manifest 是为了让
+      check_lineage_catalog_drift 的 G1 (ghost=0) 在批0 D1 执行后可验证；实际
+      --execute 由批0 那把刀负责, 本刀不重复执行同一张表的删除。

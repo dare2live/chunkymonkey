@@ -17,6 +17,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import duckdb
 import yaml
 
 from services.duck_adapter import audit_connect as _audit_connect
@@ -29,6 +30,13 @@ CONFIG = REPO / "backend" / "config"
 SCAN_DIRS = ["backend", "assets", "scripts"]
 # Experiment evidence is outside the Tier0 data-lineage projection.
 LINEAGE_DBS_SKIP = {"experiment_store"}
+
+
+class LiveCatalogUnreachable(RuntimeError):
+    """活库某个库不可达 (缺文件被跑批锁住等) —— 调用方 (check_lineage_catalog_drift.py)
+    据此 fail-open (UNVERIFIED, 不阻断)。是 RuntimeError 的子类, 与 _shared_bookkeeping_tables()
+    的配置校验错误 (同样 RuntimeError, 但是配置真错了, 必须 fail-closed 报出来, 不能被同一个
+    except 悄悄降级成"活库暂时查不到") 区分开——两者都是 RuntimeError, 但含义相反。"""
 
 
 def _table_id(db_alias: str, table: str) -> str:
@@ -80,13 +88,20 @@ def _live_tables_by_db() -> dict[str, list[str]]:
                     "SELECT table_name FROM information_schema.tables "
                     "WHERE table_schema='main' ORDER BY table_name"
                 ).fetchall()
-                # 排除 _ 前缀瞬态表 (pipeline_lock 的 _lock_probe/_rw_probe 锁探针, 建/即删) —
-                # 否则 build 时偶遇会进图 → graph.json 非确定性 (drift 门 flicker, 2026-06-26 实测)
-                out[alias] = [r[0] for r in rows if not r[0].startswith("_")]
+                # 2026-09-18 cut_lineage_drift §2.4: 不再排除 `_` 前缀 —— 那条豁免的前提
+                # ("建/即删" 瞬态锁探针) 对现存 `_lock_probe`/`_ep_*` 已不成立 (无 creator,
+                # 或是持久草稿表), `_` 前缀已从"瞬态锁探针的巧合命名"退化成"谁都能借来
+                # 永久隐身"的洞。真正的瞬态表改用 DuckDB TEMP TABLE (本刀 institution_profile
+                # 的 `_ep_*` 同改): TEMP 表只在创建它的连接里可见、随连接关闭消失, 本函数
+                # 每次都开一条新连接扫描, 天然看不到别的连接建的 TEMP 表, 不需要靠名字
+                # 前缀二次过滤。
+                out[alias] = [r[0] for r in rows]
             finally:
                 conn.close()
         except Exception as exc:
-            raise RuntimeError(f"lineage catalog scan failed for {alias} ({path}): {exc}") from exc
+            raise LiveCatalogUnreachable(
+                f"lineage catalog scan failed for {alias} ({path}): {exc}"
+            ) from exc
     return out
 
 
@@ -152,6 +167,42 @@ def _sync_registry_target_db_by_table() -> dict[str, str]:
     return out
 
 
+def _legacy_raw_plane_tables() -> tuple[str, ...]:
+    """legacy_raw_plane.yaml 第四个声明源 (cut_lineage_drift §2.3): raw_tushare_* 物理面
+    的完整清单 (它已经是这套清单——键集与活 raw_tushare_* 表实测一致)。取全部键, 不只
+    role=retired —— 只取 retired 会让"改个 role 就从声明源里消失"变成一个可调的豁免。
+    """
+    return tuple(sorted((_load_yaml("legacy_raw_plane.yaml").get("tables") or {}).keys()))
+
+
+def _shared_bookkeeping_tables() -> tuple[str, ...]:
+    """database_manifest.yaml 顶层 shared_bookkeeping_tables 名单 (cut_lineage_drift §2.1):
+    运行时记账表 (writer 以 conn 为参数, 一表一库假设不成立), 每个在线库可选出现一份。
+
+    fail-closed: 名单成员必须在 data_layers.yaml 声明为 infra 层, 否则 RuntimeError ——
+    封死"把非 infra 表塞进名单来藏错位"这条路 (L2_feature 等业务表进不来)。
+    """
+    raw = _load_yaml("database_manifest.yaml").get("shared_bookkeeping_tables")
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise RuntimeError(
+            "database_manifest.yaml.shared_bookkeeping_tables 必须是 list, 实际是 "
+            f"{type(raw).__name__}"
+        )
+    names = tuple(str(item) for item in raw)
+    layers = _table_layers()
+    for name in names:
+        layer = layers.get(name)
+        if layer != "infra":
+            raise RuntimeError(
+                f"database_manifest.yaml.shared_bookkeeping_tables 成员 {name!r} 在 "
+                f"data_layers.yaml 里的 layer 是 {layer!r}, 必须是 infra —— 拒绝把非 "
+                "infra 表塞进名单来绕过登记漂移检查"
+            )
+    return names
+
+
 def _registry_table_specs() -> dict[str, str]:
     """登记表(无活库)枚举 table_name → db_alias, 供 catalog=False 建表节点 (#12(i))。
 
@@ -162,6 +213,11 @@ def _registry_table_specs() -> dict[str, str]:
          database_manifest.table_patterns(含通配符) 匹配 db, 找不到再退
          sync_registry 解出的 target_db, 最后落到 database_manifest 里唯一未声明
          table_patterns 的 catch-all 库 (今天=smartmoney)。
+      4. legacy_raw_plane.tables 的键 (cut_lineage_drift §2.3) — 同样按
+         database_manifest.table_patterns 匹配 db (键全是 raw_tushare_*, 匹配不到时
+         落 catch-all, 不假定必然命中 tushare_raw —— 若某张实际落在别的库, ghost+orphan
+         会成对出现, 不会被这条路径悄悄放过)。优先级最低: 前三层已声明的名字不会被
+         这层覆盖。
 
     刻意不用 brick_registry.outputs 做第四个表名来源: 实测 10 项 outputs 里 7 项
     (MarketContextSnapshot / StockStateDaily / kline_qfq / market_risk_on /
@@ -196,27 +252,166 @@ def _registry_table_specs() -> dict[str, str]:
             continue
         specs[name] = db
 
+    for name in _legacy_raw_plane_tables():
+        if name in specs:
+            continue
+        db = _match_manifest_db(name, patterns_by_db) or default_db
+        if db in LINEAGE_DBS_SKIP:
+            continue
+        specs[name] = db
+
     return specs
+
+
+def _ledger_has_table_drop(db_alias: str, table: str) -> bool:
+    """目标库 mart_data_deletion_record 是否有该表的 table_drop 行 (cut_lineage_drift §2.2)。
+
+    目标库文件不存在, 或目标库里连 mart_data_deletion_record 这张 ledger 表都没建过
+    (= 从未做过生命周期删除) —— 两种情况都视作"无行", 不是错误: "这域压根没有过 ledger"
+    是合法的正常状态, 不该被 fail-closed 纪律误伤成崩溃。
+
+    返修 (blocking finding, 2026-09-19): 连接目标库这步必须走与 _live_tables_by_db
+    相同的 fail-open 包法——被 catalog_drift() 每次 on_demand orphan 判定都会调用,
+    目标库正被写锁占住时 (真实场景: tushare_raw 是分段写入最频繁的库, 见
+    project memory「分段写库期间不开库不提交」) _audit_connect 会抛
+    duckdb.IOException, 不是 RuntimeError 子类, 不包住就会让本函数裸 traceback 崩溃。
+    内层 duckdb.CatalogException (ledger 表未建过, 视作无行) 仍在最内层单独捕获,
+    不受外层影响——两者含义不同, 不能合并成一个 except。
+
+    这里 raise 出来的 LiveCatalogUnreachable 由调用方 `_split_declared_unbuilt` 逐域
+    单独 catch (不是靠它一路冒泡到 catalog_drift() 顶层)——本函数自己不知道、也不该
+    知道其它域或其它库这次扫描是否已经成功, 只负责如实报告"这个目标库这次连不上"。
+    """
+    manifest = _load_yaml("database_manifest.yaml").get("databases", {}) or {}
+    spec = manifest.get(db_alias) or {}
+    path = spec.get("path")
+    if not path:
+        return False
+    db_path = REPO / path
+    if not db_path.exists():
+        return False
+    try:
+        conn = _audit_connect(str(db_path))
+        try:
+            try:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM mart_data_deletion_record "
+                    "WHERE table_name = ? AND delete_scope = 'table_drop'",
+                    [table],
+                ).fetchone()
+            except duckdb.CatalogException:
+                # 目标库从未建过 mart_data_deletion_record —— 从未做过生命周期删除, 视作无行。
+                return False
+            return bool(row[0])
+        finally:
+            conn.close()
+    except Exception as exc:
+        raise LiveCatalogUnreachable(
+            f"lineage catalog scan failed for {db_alias} ({db_path}): {exc}"
+        ) from exc
+
+
+def _split_declared_unbuilt(orphans: set[str]) -> tuple[set[str], set[str]]:
+    """cut_lineage_drift §2.2: orphans 里 sync_policy=on_demand 且目标表从未被治理工具
+    DROP 过 (目标库 mart_data_deletion_record 无该表 table_drop 行) 的那些, 改判
+    declared_unbuilt (打印但不算漂移, exit 0); 其余 (非 on_demand, 或曾被删过) 仍是
+    真 orphan —— "曾经存在过、被删过"的表不能靠改 sync_policy 就悄悄绿掉。
+
+    返回 (剩余 orphans, declared_unbuilt)。
+
+    返修 (blocking finding, 2026-09-19, builder.py:339): 每个 on_demand 域各自单独
+    探测 (`_ledger_has_table_drop` 对 target_db 新开一条连接) —— 探测目标库与
+    catalog_drift() 已经扫描过的活库集合(`live_by_db`)是不同的连接, 一个域的目标库
+    (今天几乎总是 tushare_raw, 分段写入最频繁的库) 被写锁占住不代表其它库的扫描结果
+    有问题。之前的写法让 `_ledger_has_table_drop` 抛出的 LiveCatalogUnreachable 直接
+    穿透本函数、冒泡到 catalog_drift() 顶层, 于是调用方 check_lineage_catalog_drift.py
+    的 fail-open 分支把"已经真实算出来的、其它库的 ghost/orphan"整体清空成 UNVERIFIED
+    ——一个不相关库的临时锁, 冲掉了已经拿到的真漂移。这里改成逐域 try/except: 探测失败
+    时这张表保持在 remaining(orphan) 里不动 (fail-closed, 不能因为探测不到就静默判成
+    declared_unbuilt——那等于把"查不清"当"从没删过"处理), 也不让异常波及其它域或已经
+    算好的 ghosts, 循环继续处理下一个域。
+    """
+    registry = _load_yaml("sync_registry.yaml")
+    domains = registry.get("domains") or {}
+    sources_cfg = registry.get("sources") or {}
+    defaults = registry.get("defaults") or {}
+
+    remaining = set(orphans)
+    declared_unbuilt: set[str] = set()
+    for spec in domains.values():
+        spec = spec or {}
+        target = spec.get("target_table")
+        if not target or spec.get("sync_policy") != "on_demand":
+            continue
+        source = spec.get("source", "unknown")
+        source_cfg = sources_cfg.get(source) or {}
+        target_db = spec.get("target_db") or source_cfg.get("target_db") or defaults.get("target_db")
+        if not target_db:
+            continue
+        tid = _table_id(target_db, target)
+        if tid not in remaining:
+            continue
+        try:
+            dropped = _ledger_has_table_drop(target_db, target)
+        except LiveCatalogUnreachable:
+            # 这个域的目标库探测不到 (写锁/缺文件等) —— 保持为 orphan, 不摘出, 也不
+            # 让异常波及其它已经算好的域/库 (blocking finding 2026-09-19)。
+            continue
+        if dropped:
+            continue  # 曾被治理工具删过 —— 仍是真 orphan, 不摘出
+        remaining.discard(tid)
+        declared_unbuilt.add(tid)
+    return remaining, declared_unbuilt
 
 
 def catalog_drift() -> dict[str, list[str]]:
     """活库(information_schema)与登记表(catalog=False 枚举)的表集合差 (#12(i) runtime 雏形)。
 
-    ghosts  = 活库存在但没有任何登记表声明它的表 (没人认领)
-    orphans = 登记表声明了但活库不存在的表 (声明了没建 / 已删没退登记)
+    ghosts          = 活库存在但没有任何登记表声明它的表 (没人认领)
+    orphans         = 登记表声明了但活库不存在的表 (声明了没建 / 已删没退登记)
+    declared_unbuilt = orphans 里 "on_demand 域从未取过、也从未被治理工具删过" 的表
+                        (cut_lineage_drift §2.2) —— 打印但不算漂移。
     两侧各自独立算 db 归属 (不假设一致), 用同一个 table:<db>.<table> id 空间比较。
     与 build_lineage_graph 共用全部私有 helper —— K4 check_datasets_registry 落地时
     "用同一个 builder 算" (方案 §7.5), 不是第二套实现。
+
+    shared_bookkeeping_tables (§2.1) 校验必须先于活库扫描执行: 它只需要 data_layers.yaml,
+    fail-closed 的 RuntimeError 不该依赖活库是否可达。
     """
+    shared_names = _shared_bookkeeping_tables()
+
+    live_by_db = _live_tables_by_db()
     live_ids = {
         _table_id(db_alias, t)
-        for db_alias, tables in _live_tables_by_db().items()
+        for db_alias, tables in live_by_db.items()
         for t in tables
     }
     registry_ids = {_table_id(db, t) for t, db in _registry_table_specs().items()}
+
+    shared_set = set(shared_names)
+
+    def _bare_table(tid: str) -> str:
+        return tid.split(".", 1)[1]
+
+    # §2.1: shared 名单成员按"每个在线库可选出现一份"单独判定, 不进入按名字→单库映射
+    # 的常规比较 —— 无论 _registry_table_specs() 把它路由到哪一个库, 剔除两侧集合里
+    # 它的全部副本 (任意库), 只在下面单独判它是不是"全库都不存在"。
+    live_ids_cmp = {tid for tid in live_ids if _bare_table(tid) not in shared_set}
+    registry_ids_cmp = {tid for tid in registry_ids if _bare_table(tid) not in shared_set}
+
+    ghosts = live_ids_cmp - registry_ids_cmp
+    orphans = registry_ids_cmp - live_ids_cmp
+
+    for name in shared_names:
+        if not any(name in tables for tables in live_by_db.values()):
+            orphans.add(f"table:*.{name}")
+
+    orphans, declared_unbuilt = _split_declared_unbuilt(orphans)
+
     return {
-        "ghosts": sorted(live_ids - registry_ids),
-        "orphans": sorted(registry_ids - live_ids),
+        "ghosts": sorted(ghosts),
+        "orphans": sorted(orphans),
+        "declared_unbuilt": sorted(declared_unbuilt),
     }
 
 

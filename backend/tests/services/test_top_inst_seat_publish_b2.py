@@ -928,6 +928,14 @@ def test_legacy_plane_top_inst_is_compatibility() -> None:
     """Restored from pre-r2b B2 strangler (HEAD f89661e0): raw_tushare_top_inst
     stays a compatibility leaf, not upgraded to ssot, and the legacy-plane
     gate's global role counts are untouched by the r2b grain migration.
+
+    retired 计数不钉死数字 (2026-09-18 cut_lineage_drift §2.3, 同一改法见
+    test_legacy_raw_plane_s7.py::test_s7_inventory_role_counts_after_derive_pulse_knife):
+    已 DROP 的墓碑条目 (express/fina_mainbz/stk_factor_pro) 同 commit 从
+    legacy_raw_plane.yaml 删除后 retired 从 9 降到 6, "retired == N" 这种状态断言
+    每次墓碑清理都要跟着改数字且不判任何东西。真正该守的不变量在
+    test_s7_residual_ssot_map_is_typed_hard_stops_only 里, 这里只保留与
+    raw_tushare_top_inst 本身相关的 ssot/compatibility 计数。
     """
     import importlib.util
 
@@ -945,7 +953,7 @@ def test_legacy_plane_top_inst_is_compatibility() -> None:
     counts = mod.role_counts()
     assert counts["ssot"] == 14
     assert counts["compatibility"] == 22
-    assert counts.get("retired", 0) == 9
+    assert counts.get("retired", 0) > 0, "S7 inventory 至少应有一张 retired 表 (K3 停更批)"
 
 
 def test_consumers_resolve_top_inst_off_raw_leaf(monkeypatch) -> None:

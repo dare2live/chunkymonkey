@@ -29,8 +29,11 @@ CREATE INDEX IF NOT EXISTS idx_mart_data_health_severity ON mart_data_health(sev
 CREATE INDEX IF NOT EXISTS idx_pipeline_manifest_started ON mart_pipeline_run_manifest(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pipeline_manifest_name_status ON mart_pipeline_run_manifest(pipeline_name, status);
 CREATE INDEX IF NOT EXISTS idx_source_watermark_domain ON mart_data_source_watermark(data_domain, source_tier);
-CREATE INDEX IF NOT EXISTS idx_mart_lineage_output ON mart_lineage(output_table);
-CREATE INDEX IF NOT EXISTS idx_mart_lineage_status ON mart_lineage(last_status, last_run_at DESC);
+-- mart_lineage / mart_data_lineage 索引 DDL 已删 (2026-09-18 cut_lineage_drift §3 项3:
+--   mart_lineage 0 行、mart_data_lineage 只是它的别名视图, 非测试读写者 0, 原消费方
+--   check_panel_lineage/check_registry_promote 已随孤儿 data_quality.py 系统 2026-07-06
+--   整体退役 —— DROP TABLE/VIEW 由 db_lifecycle_delete manifest 执行, 建表 DDL 同 commit
+--   删, 否则 init_db 重建)
 CREATE INDEX IF NOT EXISTS idx_data_deletion_run ON mart_data_deletion_record(deletion_run_id);
 CREATE INDEX IF NOT EXISTS idx_data_deletion_table ON mart_data_deletion_record(table_name, delete_scope);
 DROP TABLE IF EXISTS raw_fetch_batch;

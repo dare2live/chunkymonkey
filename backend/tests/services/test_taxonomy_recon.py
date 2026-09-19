@@ -43,9 +43,9 @@ def test_banned_membership_baselines_and_tdx_block_are_rejected():
             banned=BANNED_DC_MEMBERSHIP,
             accepted=DC_MEMBER_PUBLICATION,
         )
-    with pytest.raises(ValueError, match="v_dc_industry_pit"):
+    with pytest.raises(ValueError, match="dim_stock_dc_industry"):
         reject_banned_baseline(
-            "v_dc_industry_pit",
+            "dim_stock_dc_industry",
             banned=BANNED_DC_MEMBERSHIP,
             accepted=DC_MEMBER_PUBLICATION,
         )

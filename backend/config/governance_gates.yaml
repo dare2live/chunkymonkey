@@ -375,8 +375,9 @@ runtime_checks:
     degraded_msg: >-
       system_health lineage_catalog_drift 非 PASS — 活库真实表集合与登记表
       (sync_registry/data_layers/data_access/database_manifest) 声明表集合不一致
-      (幽灵表: 活库有登记表未声明; 孤儿表: 登记表声明但活库没有),
-      精确清单见 data/audit/lineage_catalog_drift_{date}.json
+      (幽灵表: 活库有登记表未声明; 孤儿表: 登记表声明但活库没有, exit 1),
+      或某库不可达未能核验 (UNVERIFIED, exit 3), 精确清单见
+      data/audit/lineage_catalog_drift_{date}.json
     skip_when_dry: true
 
   - id: out_of_scope_rows

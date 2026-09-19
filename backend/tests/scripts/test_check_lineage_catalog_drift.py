@@ -7,7 +7,7 @@ build_lineage_graph(catalog=False) 提交门那样完全绕开 DuckDB (该提交
 2026-09-08 随 data/lineage/graph.json 去跟踪一并退役)。
 
 覆盖: PASS(一致) / DEGRADED(有 ghost/orphan, 退出码 1) / --json-out 落盘 /
-fail-open(某库不可达时 UNVERIFIED 退出 0, 不当阻断)。fail-open 用**真实** RW 写锁
+UNVERIFIED(某库不可达时退出 3, 不崩溃也不当 PASS)。这条路径用**真实** RW 写锁
 复现 (backend/scripts/check_lineage_catalog_drift.py docstring 点名: 2026-08-11 被撤销
 的旧检查这条路径从未被测过, 这次补上), 不是 mock RuntimeError —— mock 只能证明代码
 分支存在, 证明不了 DuckDB 锁语义真的触发它。
@@ -128,6 +128,56 @@ def test_degraded_reports_ghosts_and_orphans_and_writes_json(tmp_path: Path) -> 
     assert payload["orphans"] == ["table:main.dim_registered"]
 
 
+def test_D1_declared_unbuilt_reported_as_pass_not_degraded(tmp_path: Path) -> None:
+    """D1 (cut_lineage_drift §2.2): checker JSON 含 declared_unbuilt 列表；ghosts/orphans
+    空但 declared_unbuilt 非空 → 打印 PASS 并列出, exit 0 (不是 DEGRADED)。"""
+    repo = _build_fixture_repo(tmp_path)
+    _write(repo / "backend" / "config" / "sync_registry.yaml", """
+version: 1
+defaults: {}
+sources: {}
+domains:
+  v_pool:
+    source: fuyao
+    target_table: raw_v_pool
+    target_db: main
+    sync_policy: on_demand
+""")
+    _write(repo / "backend" / "config" / "database_manifest.yaml", """
+version: 1
+shared_bookkeeping_tables:
+  - mart_data_deletion_record
+databases:
+  main:
+    path: data/main.duckdb
+""")
+    _write(repo / "backend" / "config" / "data_layers.yaml", """
+version: 1
+tables:
+  dim_registered: L1_foundation
+  mart_data_deletion_record: infra
+""")
+    db_path = repo / "data" / "main.duckdb"
+    conn = duckdb.connect(str(db_path))
+    conn.execute("CREATE TABLE dim_registered (id INTEGER)")
+    conn.execute("CREATE TABLE mart_data_deletion_record (table_name VARCHAR, delete_scope VARCHAR)")
+    conn.close()
+    # raw_v_pool 故意不建: on_demand 域从未取过, 且 ledger 无 table_drop 行
+
+    out_json = repo / "out.json"
+    result = _check(repo, "--json-out", str(out_json))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "PASS" in result.stdout
+    assert "declared_unbuilt" in result.stdout
+    assert "table:main.raw_v_pool" in result.stdout
+
+    payload = json.loads(out_json.read_text(encoding="utf-8"))
+    assert payload["ghosts"] == []
+    assert payload["orphans"] == []
+    assert payload["declared_unbuilt"] == ["table:main.raw_v_pool"]
+    assert payload["declared_unbuilt_count"] == 1
+
+
 def test_db_file_missing_is_reported_as_orphan_not_fail_open(tmp_path: Path) -> None:
     """活库文件根本不存在(还没建过) —— _live_tables_by_db 直接 skip 该库 (既有行为,
     不 raise), 所以登记表里声明的表在这个(不存在的)库里天然算"孤儿"; 这与"库存在但
@@ -191,7 +241,7 @@ def _rw_lock_holder(tmp_path):
 
 def test_fail_open_under_real_write_lock(tmp_path: Path, _rw_lock_holder) -> None:
     """核心验收 (G): 活库被另一个进程 RW 持锁时 (如形态面全量重建), 本检查必须
-    UNVERIFIED + exit 0 (fail-open), 不能报 FAIL/崩溃 —— 这正是 2026-08-11 被撤出
+    UNVERIFIED + exit 3, 不能报 FAIL/崩溃, 也不能退出 0 冒充 PASS —— 这正是 2026-08-11 被撤出
     runtime_checks 的旧检查被点名"写锁期的降级路径从未验证"的那条路径。"""
     repo = _build_fixture_repo(tmp_path)
     _make_main_db(repo, ["dim_registered"])
@@ -207,6 +257,33 @@ def test_fail_open_under_real_write_lock(tmp_path: Path, _rw_lock_holder) -> Non
     # 仍然是「重试耗尽 → fail-open」这条路径, 只是不必等满默认值。
     # 本用例此前 31.8 秒 (占全部阻断时长 17%), 其中 30 秒纯粹在等锁。
     result = _check(repo, env={"CHUNKYMONKEY_AUDIT_LOCK_TIMEOUT": "1"})
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == 3, result.stdout + result.stderr
     assert "UNVERIFIED" in result.stdout
-    assert "fail-open" in result.stdout
+    assert "PASS:" not in result.stdout
+
+
+def test_config_error_fails_closed_not_fail_open(tmp_path: Path) -> None:
+    """一个门控条件的隔离用例: shared_bookkeeping_tables 名单成员 layer 不是 infra
+    是配置本身写错了 (services.lineage.builder._shared_bookkeeping_tables 里的
+    RuntimeError), 与"活库被写锁/缺文件挡住" (LiveCatalogUnreachable, 前一条用例的
+    UNVERIFIED/exit 3) 是两回事 —— 前者必须 fail-closed (exit 2), 不能被同一个
+    except 悄悄降级成"活库暂时查不到"。这条不隔离会被前一条用例的宽 except 掩盖:
+    两者都是 RuntimeError 的子类关系, 只有分开捕获才分得清。"""
+    repo = _build_fixture_repo(tmp_path)
+    _make_main_db(repo, ["dim_registered"])
+    _write(repo / "backend" / "config" / "database_manifest.yaml", """
+version: 1
+shared_bookkeeping_tables:
+  - dim_registered
+databases:
+  main:
+    path: data/main.duckdb
+""")
+    # dim_registered 在 data_layers.yaml 里是 L1_foundation, 不是 infra (fixture 65 行)。
+
+    result = _check(repo)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "FAIL" in result.stdout + result.stderr
+    assert "infra" in result.stdout + result.stderr
+    assert "UNVERIFIED" not in result.stdout
+    assert "fail-open" not in result.stdout

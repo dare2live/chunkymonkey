@@ -417,13 +417,10 @@ def _normalize_trade_dates_rows(rows: list[dict[str, Any]]) -> list[dict[str, An
     ``is_open``(int) / ``pretrade_date``(紧凑 8 位或 ``None``)。
 
     2026-08-30 授权换源 (trade_cal: tushare -> baostock) 的等价性推导已由 controller
-    独立核证 (对生产 canonical 逐行零差异), 对应 SQL:
-        SELECT 'SSE', CAST(calendar_date AS DATE),
-               CAST(is_trading_day AS INTEGER),
-               CAST(LAG(CASE WHEN is_trading_day='1' THEN calendar_date END IGNORE NULLS)
-                    OVER (ORDER BY calendar_date) AS DATE)
-        FROM raw_baostock_trade_dates
-    本函数是该 SQL 的等价单遍线性扫描 (``rows`` 已按日期升序返回, 不引入 pandas):
+    独立核证 (对生产 canonical 逐行零差异; 当时落地的 baostock 日历原始表已于 2026-09-19
+    按删除裁决 D1 删除, 留痕在 tushare_raw.mart_data_deletion_record)。语义等价于对
+    (calendar_date, is_trading_day) 按日期升序取「上一个开市日」的 LAG ... IGNORE NULLS。
+    本函数是它的单遍线性扫描实现 (``rows`` 已按日期升序返回, 不引入 pandas):
     ``pretrade_date`` = 扫描到当前行为止、之前最近一个 ``is_open==1`` 的
     ``cal_date`` (不含自身, 天然对齐 SQL 的 LAG 语义); 首行 (或首个开市日之前的行)
     为 ``None`` —— 生产库首行同样是 NULL, 已核对。

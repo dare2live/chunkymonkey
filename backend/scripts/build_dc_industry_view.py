@@ -11,9 +11,6 @@
 产出 (serving, smartmoney.duckdb):
   - dim_stock_dc_industry: legacy 个股当前快照，仍沿用 tdx_* 位置别名；待迁移。
   - dim_stock_dc_concept: 个股当前概念成员 (多对多)。
-
-旧 `v_dc_industry_pit` writer 已退役：原实现只有 first-seen，没有 out_date/content_type，
-不能继续生成假 PIT。现存 DB view 仅作待清理 residue，不得被新 consumer 使用。
 """
 from __future__ import annotations
 

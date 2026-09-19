@@ -284,13 +284,17 @@ def load_scan_config(path: Path | None = None) -> ScanConfig:
 # ── 发现式枚举 + 扫描 ──────────────────────────────────────────────────────────────
 
 def _count_base_tables(conn) -> int:
+    # 返修 (blocking finding, cut_lineage_drift 收尾, 2026-09-19): 不再排除 `_` 前缀 ——
+    # 本刀在 services/lineage/builder.py::_live_tables_by_db 与
+    # backend/scripts/data_layer_audit.py::_live_tables 已删掉同一条豁免 (锁探针残留与
+    # 机构画像草稿表早已没有 creator, `_` 前缀已从"瞬态锁探针的巧合命名"退化成"谁都能借来
+    # 永久隐身"的洞); 本检查扫描的是 B 股范围外行防回流不变量, 同一个洞会让任何
+    # `_` 前缀表永久逃过范围外证券扫描, 必须一并关闭。
     rows = conn.execute(
         "SELECT table_name FROM information_schema.tables "
         "WHERE table_schema='main' AND table_type='BASE TABLE'"
     ).fetchall()
-    # 排除 _ 前缀瞬态表 (pipeline_lock 的锁探针, 建/即删), 与
-    # services/lineage/builder.py::_live_tables_by_db 同一惯例。
-    return sum(1 for r in rows if not str(r[0]).startswith("_"))
+    return len(rows)
 
 
 def _discover_columns(conn, security_code_columns: tuple[str, ...]) -> dict[str, list[str]]:
@@ -303,10 +307,10 @@ def _discover_columns(conn, security_code_columns: tuple[str, ...]) -> dict[str,
         "WHERE c.table_schema='main' AND t.table_type='BASE TABLE' "
         "ORDER BY c.table_name, c.column_name"
     ).fetchall()
+    # 返修 (blocking finding, cut_lineage_drift 收尾, 2026-09-19): 同上——不再排除
+    # `_` 前缀, 理由见 _count_base_tables。
     out: dict[str, list[str]] = {}
     for table_name, column_name in rows:
-        if str(table_name).startswith("_"):
-            continue
         if str(column_name).lower() in wanted:
             out.setdefault(table_name, []).append(column_name)
     return out

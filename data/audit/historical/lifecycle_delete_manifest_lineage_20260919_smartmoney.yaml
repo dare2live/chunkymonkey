@@ -1,0 +1,36 @@
+# 草稿 (未执行) —— cut_lineage_drift §4.1「删除执行」+ §2.4 (cut B, _ 前缀反向洞)
+# 前提: 本刀第一 commit 已同时删掉 schema_marts.py 的 mart_lineage 表 DDL / mart_data_lineage
+# 视图 DDL、schema_migrations.py 的两条 INDEX、data_layers.yaml:205 的声明行、
+# stamp_discovery.py 的两条 out-of-scope 登记 —— 必须与本次 DROP 同批生效
+# (schema_layer_filter.keep_stmt 不检查 CREATE VIEW 目标, 不删 DDL 会被 init_db 重建)。
+# 实测(2026-09-19 施工时 grep 复核): mart_data_lineage / mart_lineage / _lock_probe 三个
+# 名字在 db_lifecycle_delete._live_surface() 扫描范围 (backend/scripts/*.py +
+# backend/services/{serving,recommendation,scoring,ensemble,pipeline}/**.py +
+# scripts/daily_update.sh) 内 0 命中, dry-run 预期 REFUSE 0, 不需要 --force。
+run_id: lifecycle_20260918_smartmoney
+db: smartmoney
+expected_dry_run_refuse_count: 0
+entries:
+  - table: mart_data_lineage
+    action: delete
+    bucket: lineage_catalog_drift_dead_object
+    reason: >-
+      ruling_lineage_drift.md §3 项3: VIEW, mart_lineage 的别名视图。原消费方
+      check_panel_lineage/check_registry_promote 已随孤儿 data_quality.py
+      系统 2026-07-06 整体退役。db_lifecycle_delete 自动识别 VIEW 并 DROP VIEW。
+  - table: mart_lineage
+    action: delete
+    bucket: lineage_catalog_drift_dead_object
+    reason: >-
+      ruling_lineage_drift.md §3 项3: 底表, 实测 0 行, MAX(last_run_at)=NULL。
+      非测试代码读写者 0 (DDL/INDEX/data_layers 声明/stamp_discovery 登记均已
+      随本刀第一 commit 删除)。与 mart_data_lineage 同一 manifest 内任意顺序
+      DROP 均可。
+  - table: _lock_probe
+    action: delete
+    bucket: lineage_catalog_drift_dangling_probe
+    reason: >-
+      ruling_lineage_drift.md §2.4/§1.3 项d: 无 creator 的持久残留。全仓仅剩
+      三处注释提及(均已改写为不再字面提及表名, 以免 live 守护误判仍被引用),
+      git log -S 查无 creator。"下划线前缀=瞬态锁探针"豁免的前提已不成立,
+      本刀已删两处豁免代码。

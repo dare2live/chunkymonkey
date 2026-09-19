@@ -16,6 +16,9 @@ def test_org_holding_alias_resolves_own_file():
         "landing_miaoxiang_org_holding",
         "canonical_org_holding_detail_period",
         "raw_org_holding_aif10",
-        "ingest_batch",
-        "accepted_partition",
+        "org_holding_source_probe",
     }.issubset(spec.table_patterns)
+    # ingest_batch/accepted_partition 2026-09-18 cut_lineage_drift §2.1 移入顶层
+    # shared_bookkeeping_tables — 不应再在这里留字面量副本 (同一参数只在一处定义)。
+    assert "ingest_batch" not in spec.table_patterns
+    assert "accepted_partition" not in spec.table_patterns

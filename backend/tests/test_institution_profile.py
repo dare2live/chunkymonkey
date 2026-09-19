@@ -236,6 +236,28 @@ def test_build_episodes_dedups_source_duplicate_keys():
 # 判据: 同一 identity_key 下按该名字在源表里的出现行数降序, 行数相同按名字字典序升序,
 # 取第一个。下面两条用例的 fixture 故意让"该赢的名字"既不是插入顺序里第一行也不是
 # 最后一行, 使"扫描顺序碰运气"式实现 (ANY_VALUE 的典型退化) 拿不到正确答案。
+#
+# 断言读 fact_inst_episode (产出) 而不是 _ep_identity (2026-09-18 cut_lineage_drift §2.4:
+# _ep_identity 改成了 CREATE OR REPLACE TEMP TABLE, 随连接关闭即消失——断言该断产出,
+# 不该断一张连名字都带着"内部草稿"记号的中间表)。fact_inst_episode.holder 即
+# _ep_identity.holder_display 的最终落点 (build_episodes 里 `i.holder_display AS holder`),
+# n_name_variants 原样带出。同一 identity_key 下每行的这两列必须完全一致, 用
+# _episode_holder_and_variants 顺带校验这条 (不是隐藏假设)。
+
+
+def _episode_holder_and_variants(conn, identity_key: str) -> tuple:
+    """同一 identity_key 下 fact_inst_episode 的 (holder, n_name_variants) 必须唯一
+    (它们由 _ep_identity 按 identity_key 分组算出, 组内单值) —— 不唯一本身就是 bug。"""
+    rows = {
+        tuple(r) for r in conn.execute(
+            "SELECT holder, n_name_variants FROM fact_inst_episode WHERE identity_key = ?",
+            [identity_key],
+        ).fetchall()
+    }
+    assert len(rows) == 1, (
+        f"identity_key={identity_key!r} 的 (holder, n_name_variants) 在同批 episode 间不一致: {rows}"
+    )
+    return next(iter(rows))
 
 
 def test_holder_display_deterministic_by_occurrence_count_then_name():
@@ -258,18 +280,14 @@ def test_holder_display_deterministic_by_occurrence_count_then_name():
              "Fund-Zeta", "A", 100, "新进", None, "基金", "C9", True),
         ])
         build_episodes(c)
-        row1 = tuple(c.execute(
-            "SELECT holder_display, n_name_variants FROM _ep_identity WHERE identity_key = 'code:C9'"
-        ).fetchone())
+        row1 = _episode_holder_and_variants(c, "code:C9")
         assert row1 == ("Fund-Zeta", 2), (
             f"应选出现行数最多的写法 (Fund-Zeta ×3 > Fund-Alpha ×1), 实得 {row1}"
         )
 
         # 重建第二遍 (同一份源数据不变): 结果必须逐位相同, 不许漂移。
         build_episodes(c)
-        row2 = tuple(c.execute(
-            "SELECT holder_display, n_name_variants FROM _ep_identity WHERE identity_key = 'code:C9'"
-        ).fetchone())
+        row2 = _episode_holder_and_variants(c, "code:C9")
         assert row2 == row1, f"同一份数据两次重建 holder_display 必须一致, 第二遍得 {row2}"
     finally:
         c.close()
@@ -294,10 +312,44 @@ def test_holder_display_tie_break_alphabetical():
              "Fund-One", "A", 100, "新进", None, "基金", "C10", True),
         ])
         build_episodes(c)
-        row = tuple(c.execute(
-            "SELECT holder_display, n_name_variants FROM _ep_identity WHERE identity_key = 'code:C10'"
-        ).fetchone())
+        row = _episode_holder_and_variants(c, "code:C10")
         assert row == ("Fund-One", 2), f"行数相同(各2次)时字典序更小的 Fund-One 应赢, 实得 {row}"
+    finally:
+        c.close()
+
+
+# ── H2 (cut_lineage_drift §2.4): _ep_* 不许在物理库里永久隐身 ──────────────────
+
+
+def test_no_persistent_ep_prefixed_tables_after_build_episodes():
+    """跑完一次 build_episodes 后, 库里不能有任何 `_ep_` 开头的**持久**表 (temporary=False)。
+
+    这几张是 build_episodes 内部的一次性草稿表 (_ep_capital_role/_ep_raw/_ep_niusan/
+    _ep_identity), 全部改成 CREATE OR REPLACE TEMP TABLE ——TEMP 表只在创建它的连接里
+    可见、随连接关闭消失; institution_profile.rebuild_all() 每次都新开连接、用完即关,
+    所以物理文件里永远不该留下它们的持久副本。用 duckdb_tables().temporary 而不是
+    "表存在与否"来判, 因为同一连接里查 information_schema/duckdb_tables() 本来就能看到
+    自己建的 TEMP 表 (这是正常的, 不是没生效)——真正该判的是"是不是持久的"。
+    """
+    c = _sql_conn()
+    try:
+        c.execute("INSERT INTO sm.dim_holder_name_tag VALUES "
+                  "('章建平','niusan','20260820','no_evidence_either_way','name_only_untrusted')")
+        c.executemany(_HOLDER_INSERT, [
+            ("600000", "20240331", "free", 1, 1, "Fund-One", 1.0, "20240430", False,
+             "Fund-One", "A", 100, "新进", None, "基金", "C11", True),
+        ])
+        build_episodes(c)
+        persistent_ep_tables = [
+            r[0] for r in c.execute(
+                "SELECT table_name FROM duckdb_tables() "
+                "WHERE table_name LIKE '\\_ep\\_%' ESCAPE '\\' AND NOT temporary"
+            ).fetchall()
+        ]
+        assert persistent_ep_tables == [], (
+            f"发现持久 (非 TEMP) 的 _ep_ 表: {persistent_ep_tables} —— institution_profile "
+            "的 _ep_* 草稿表必须是 CREATE OR REPLACE TEMP TABLE"
+        )
     finally:
         c.close()
 

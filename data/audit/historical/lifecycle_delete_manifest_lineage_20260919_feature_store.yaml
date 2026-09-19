@@ -1,0 +1,22 @@
+# 主循环补 (2026-09-19): cut_lineage_drift 把 institution_profile 的 _ep_* 草稿表改成 TEMP TABLE,
+# 但 feature_store 里已经持久存在的三张旧副本不会自己消失 —— 删 `_` 前缀豁免后它们是 ghost。
+run_id: lifecycle_20260918_feature_store
+db: feature_store
+expected_dry_run_refuse_count: 0
+entries:
+  - table: _ep_capital_role
+    action: delete
+    bucket: lineage_catalog_drift_dangling_draft
+    reason: >-
+      ruling_lineage_drift.md §2.4: institution_profile.py 的持久草稿表 (CREATE OR REPLACE TABLE,
+      只有 _ep_raw 被 DROP); 本刀起改 TEMP TABLE, 进程结束即消失, 这份持久副本是旧代码留下的。
+  - table: _ep_identity
+    action: delete
+    bucket: lineage_catalog_drift_dangling_draft
+    reason: >-
+      同 _ep_capital_role。
+  - table: _ep_niusan
+    action: delete
+    bucket: lineage_catalog_drift_dangling_draft
+    reason: >-
+      同 _ep_capital_role。

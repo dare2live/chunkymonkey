@@ -78,6 +78,11 @@ class DatabaseManifest:
     repo_root: Path
     defaults: dict[str, Any]
     databases: dict[str, DatabaseSpec]
+    # Runtime bookkeeping tables a writer creates by ``conn`` parameter (not a fixed
+    # database) — each online database may optionally carry one copy. Declared here
+    # (not inferred) so services.lineage.builder.catalog_drift() can stop treating
+    # their per-database copies as unclaimed ghosts (cut_lineage_drift §2.1).
+    shared_bookkeeping_tables: tuple[str, ...] = field(default_factory=tuple)
 
     def require(self, alias: str) -> DatabaseSpec:
         try:
@@ -118,6 +123,20 @@ def _parse_database(alias: str, raw: dict[str, Any]) -> DatabaseSpec:
     )
 
 
+def _parse_shared_bookkeeping_tables(raw: Any) -> tuple[str, ...]:
+    """Explicit parse (not silent-ignore): an unrecognized shape here must fail
+    loudly, otherwise this "typed" top-level key is typed in name only (CLAUDE.md
+    #11: 未知键/悬空引用 fail-closed)."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ValueError(
+            f"database_manifest.yaml.shared_bookkeeping_tables must be a list "
+            f"(got {type(raw).__name__})"
+        )
+    return tuple(str(item) for item in raw)
+
+
 def load_database_manifest(
     path: Path | None = None,
     *,
@@ -138,6 +157,9 @@ def load_database_manifest(
         repo_root=repo_root or _REPO_ROOT,
         defaults=raw.get("defaults") or {},
         databases=databases,
+        shared_bookkeeping_tables=_parse_shared_bookkeeping_tables(
+            raw.get("shared_bookkeeping_tables")
+        ),
     )
 
 

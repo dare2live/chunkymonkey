@@ -330,11 +330,13 @@ def test_tushare_manifest_names_each_formal_margin_table_exactly() -> None:
     patterns = set(get_database_manifest().require("tushare_raw").table_patterns)
 
     assert {
-        "ingest_batch",
         "landing_tushare_margin",
         "canonical_margin_exchange_daily",
-        "accepted_partition",
     }.issubset(patterns)
+    # ingest_batch/accepted_partition 2026-09-18 cut_lineage_drift §2.1 移入顶层
+    # shared_bookkeeping_tables — 不应再在这里留字面量副本。
+    assert "ingest_batch" not in patterns
+    assert "accepted_partition" not in patterns
     assert "canonical_*" not in patterns
     assert "landing_*" not in patterns
 

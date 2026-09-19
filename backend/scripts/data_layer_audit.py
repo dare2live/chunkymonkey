@@ -65,11 +65,17 @@ def _live_tables(dbs=MANAGED_DBS) -> set[str]:
         c = audit_connect(str(path))
         try:
             c.execute("SET enable_progress_bar=false")
-            # 排除 _ 前缀瞬态表 (pipeline_lock 的 _lock_probe/_rw_probe 锁探针, 建/即删) —
-            # 否则审计偶遇会误判 untagged → moth data-layer-integrity flicker (2026-06-26 实测)
+            # 2026-09-18 cut_lineage_drift §2.4: 不再排除 `_` 前缀 —— 那条豁免的前提
+            # ("建/即删" 瞬态锁探针) 已不成立: pipeline_lock 曾用来做锁探针的那张下划线
+            # 前缀表如今没有任何 creator, 是无人清理的残留, `_` 前缀已退化成"谁都能借来
+            # 永久躲过 untagged 执法"的洞, 与 services/lineage/builder.py 同一豁免同一
+            # 命运。那张残留表由本刀的 lifecycle manifest 草稿标记删除 (表名故意不在
+            # 本文件字面出现——这份脚本在 db_lifecycle_delete 的 live 守护扫描范围内,
+            # 字面提及会让守护误判"仍被引用"而 REFUSE 删除); 删除执行前它会在此处如实
+            # 报 untagged。
             live |= {r[0] for r in c.execute(
                 "SELECT table_name FROM duckdb_tables() WHERE schema_name='main'"
-            ).fetchall() if not r[0].startswith("_")}
+            ).fetchall()}
         finally:
             c.close()
     return live

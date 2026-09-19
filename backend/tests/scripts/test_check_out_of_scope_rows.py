@@ -357,6 +357,12 @@ def test_main_returns_2_when_declared_no_code_columns_malformed(tmp_path, monkey
 # ── R1. 发现式枚举: 3 张表各 1 个代码列 → 枚举恰 3 项 (集合相等, 不是 >=) ──────────
 
 def test_discovery_enumeration_exact_set_not_at_least():
+    """返修 (blocking finding, cut_lineage_drift 收尾, 2026-09-19): `_` 前缀曾经被整表
+    跳过发现式枚举 (与 services/lineage/builder.py::_live_tables_by_db 同一豁免), 但
+    `_lock_probe`/`_ep_*` 早已没有 creator, 前缀已从"瞬态锁探针的巧合命名"退化成
+    "谁都能借来永久隐身"的洞——本刀已在 builder.py 与 data_layer_audit.py 关闭它,
+    这里补齐同一道 out_of_scope_rows 门。`_lock_probe` 现在必须和其它带代码列的表
+    一样出现在发现集合里; VIEW 与不相关列的表仍然不在 (集合相等, 不是 >=)。"""
     c = duck_connect(":memory:")
     try:
         c.execute("CREATE TABLE a (ts_code VARCHAR, name VARCHAR)")
@@ -366,7 +372,43 @@ def test_discovery_enumeration_exact_set_not_at_least():
         c.execute("CREATE VIEW v AS SELECT ts_code FROM a")
         c.execute("CREATE TABLE _lock_probe (ts_code VARCHAR)")
         discovered = cosr._discover_columns(c, ("ts_code", "con_code", "code"))
-        assert discovered == {"a": ["ts_code"], "b": ["con_code"], "c": ["code"]}
+        assert discovered == {
+            "a": ["ts_code"], "b": ["con_code"], "c": ["code"], "_lock_probe": ["ts_code"],
+        }
+    finally:
+        c.close()
+
+
+def test_underscore_prefixed_table_no_longer_exempt_from_scan():
+    """隔离用例 (其它全满足, 只违反"表名以 `_` 开头"这一个条件): 库可达、列名匹配、
+    命中真实范围外码——唯一特殊之处是表名带 `_` 前缀。返修前这类表会被
+    `_count_base_tables` 与 `_discover_columns` 双双过滤掉, 范围外行永久不会被扫到;
+    返修后必须和普通表一样正常 FAIL。变异 (把两处过滤加回去) 会让本用例先在
+    `rows[0]` 处 IndexError (discovered 变空, run_scan 不再产出任何行), 或者
+    (若只加回其中一处) 断言值不等——两种红都证明前缀豁免已关闭。"""
+    c = duck_connect(":memory:")
+    try:
+        c.execute("CREATE TABLE _scratch (ts_code VARCHAR)")
+        c.execute("INSERT INTO _scratch VALUES ('900901.SH')")
+        rows = cosr.run_scan(_min_config(), lambda alias: c, ["d"])
+        assert len(rows) == 1
+        assert rows[0]["table"] == "_scratch"
+        assert rows[0]["status"] == "FAIL" and rows[0]["value"] == 1
+        assert cosr.overall_status(rows) == "FAIL"
+    finally:
+        pass
+
+
+def test_count_base_tables_counts_underscore_prefixed_tables():
+    """`_count_base_tables` 单测隔离: 只有一张 `_` 前缀表时, 计数必须是 1 不是 0——
+    否则它会跟 `_discover_columns` 的过滤"互相配合"制造假象 (两处都少算, 永远一致,
+    `scan_database` 的 `total_tables > 0 and not discovered` 死机制就测不出坏列名
+    这一真正想守的情况)。变异: 把 `_` 前缀过滤加回 `_count_base_tables` → 断言红
+    (计数变回 0)。"""
+    c = duck_connect(":memory:")
+    try:
+        c.execute("CREATE TABLE _scratch (irrelevant VARCHAR)")
+        assert cosr._count_base_tables(c) == 1
     finally:
         c.close()
 
