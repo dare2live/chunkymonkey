@@ -564,7 +564,7 @@ def _reject(
 
 
 # content_hash 的字段表。两个算 hash 的地方 (_canonical_content_hash 按内存批次算、
-# _partition_pointer_stats 按库内分区算) **必须用同一份**, 否则两边的 hash 不可比,
+# partition_pointer_stats 按库内分区算) **必须用同一份**, 否则两边的 hash 不可比,
 # 而它们本来就是要互相对账的。2026-09-08 提成常量: 此前两处各抄一份, 我改 GRAIN 时
 # 只改到一处就会让「批次 hash」与「分区 hash」永久不等且没有任何东西会红。
 # notice_date 进 GRAIN 后不再重复列 —— dict 本来就按键去重, 所以 payload 与 hash 不变,
@@ -586,13 +586,18 @@ def _canonical_content_hash(rows: Sequence[Mapping[str, Any]]) -> str:
     return sha256_text(stable_json(payload))
 
 
-def _partition_pointer_stats(conn, partition: str) -> tuple[int, str]:
+def partition_pointer_stats(conn, partition: str) -> tuple[int, str]:
     """整个 notice_date 分区现算 row_count + content_hash (给 accepted 指针用)。
 
     2026-09-07 加。原本指针直接用本批次的 row_count/content_hash —— 那在
     「一个分区只由一个批次构成」时成立, 按股回填打破了这个前提: 同一个 notice_date
     会被多只股票各自的批次分别写入, 指针若只描述最后一批, 就与 canonical 里的实际内容
     对不上。照 ``disclosure_event_partition.partition_accepted_pointer_stats`` 的形态。
+
+    2026-09-19 (cut_bshare_s3): 去下划线改公开名, 让 cleanup_out_of_scope_rows.py
+    的 holders_top10_canonical kind 能像 org 那条用 partition_accepted_pointer_stats
+    一样, 用 writer 自己的函数重打受影响分区的指针 (它不是 DisclosureEventDomain 域,
+    没有那条共享路径可用)。
     """
     fields = list(_HASH_FIELDS)
     order = ", ".join(GRAIN)
@@ -780,7 +785,7 @@ def accept_holders_top10_batch(
         _call(after_step, "after_canonical_insert")
         if delete_scope == "stocks_in_batch":
             # 分区由多个批次拼成, 指针必须描述合并后的整个分区而不是最后一批。
-            row_count, content_hash = _partition_pointer_stats(conn, partition)
+            row_count, content_hash = partition_pointer_stats(conn, partition)
         conn.execute(
             f"""
             INSERT INTO {ACCEPTED_TABLE} (
@@ -898,6 +903,7 @@ __all__ = [
     "accept_holders_top10_batch",
     "ensure_holders_top10_acceptance_schema",
     "land_holders_top10_batch",
+    "partition_pointer_stats",
     "publish_accepted_holders_top10_partition",
     "runtime_surface",
 ]

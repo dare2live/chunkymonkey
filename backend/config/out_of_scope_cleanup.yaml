@@ -14,6 +14,10 @@ version: 1
 #   plain_delete               — {db, table, code_column, kind, key_columns, why}
 #   disclosure_event_canonical — {db, table, code_column, kind, domain, why}
 #     (key_columns 由 domain 解析出的对象的 .grain 给出, 不许在本文件重复声明)
+#   holders_top10_canonical    — {db, table, code_column, kind, why}
+#     (holders_top10 不是 DisclosureEventDomain 域, 没有 module:attr 可指——
+#     grain/partition_field/dataset_id 一律由 loader 从 holders_top10_schema 常量取,
+#     指针用 holders_top10_acceptance.partition_pointer_stats 重算; 本文件不重复声明)
 #
 # domain 写法 module:attr (与 vendor_scope.py:_resolve_code_source 的私有解析同形状,
 # 本文件的 loader 不 import 该私有函数, 自行按 partition(":") + importlib + getattr
@@ -44,3 +48,8 @@ dispositions:
     kind: plain_delete
     key_columns: [trade_date, ts_code, reason]
     why: "无戳 raw 镜像 (legacy_raw_plane role=compatibility)"
+  - db: smartmoney
+    table: canonical_top10_float_holders_period
+    code_column: stock_code
+    kind: holders_top10_canonical
+    why: "带 accepted_partition 指针的标准表, 分区键 notice_date; 指针用 holders_top10_acceptance.partition_pointer_stats 重算 (它不是 DisclosureEventDomain 域)"

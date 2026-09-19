@@ -58,9 +58,16 @@ from scripts.check_out_of_scope_rows import (  # noqa: E402
 )
 from services.data_access import resolver  # noqa: E402
 from services.data_deletion import record_data_deletion  # noqa: E402
-from services.data_sources.accepted_schema import ACCEPTED_TABLE  # noqa: E402
+from services.data_sources.accepted_schema import (  # noqa: E402
+    ACCEPTED_TABLE,
+    INGEST_BATCH_TABLE,
+)
 from services.data_sources.disclosure_event_partition import (  # noqa: E402
     partition_accepted_pointer_stats,
+)
+from services.data_sources import holders_top10_schema  # noqa: E402
+from services.data_sources.holders_top10_acceptance import (  # noqa: E402
+    partition_pointer_stats as holders_top10_partition_pointer_stats,
 )
 from services.writer_lock import WriterLockBusyError, writer_lock  # noqa: E402
 
@@ -69,9 +76,16 @@ CONFIG_PATH = REPO / "backend" / "config" / "out_of_scope_cleanup.yaml"
 _TOP_KEYS = {"version", "dispositions"}
 _KIND_PLAIN = "plain_delete"
 _KIND_CANONICAL = "disclosure_event_canonical"
-_KNOWN_KINDS = {_KIND_PLAIN, _KIND_CANONICAL}
+_KIND_HOLDERS_CANONICAL = "holders_top10_canonical"
+_KNOWN_KINDS = {_KIND_PLAIN, _KIND_CANONICAL, _KIND_HOLDERS_CANONICAL}
 _PLAIN_DELETE_KEYS = {"db", "table", "code_column", "kind", "key_columns", "why"}
 _CANONICAL_KEYS = {"db", "table", "code_column", "kind", "domain", "why"}
+_HOLDERS_CANONICAL_KEYS = {"db", "table", "code_column", "kind", "why"}
+_EXPECTED_KEYS_BY_KIND = {
+    _KIND_PLAIN: _PLAIN_DELETE_KEYS,
+    _KIND_CANONICAL: _CANONICAL_KEYS,
+    _KIND_HOLDERS_CANONICAL: _HOLDERS_CANONICAL_KEYS,
+}
 _TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _COLUMN_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _DB_ORDER_HINT = ("org_holding", "smartmoney", "tushare_raw")
@@ -88,6 +102,21 @@ class CleanupMismatchError(RuntimeError):
 # ── 配置对象 ──────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
+class _CanonicalShape:
+    """两种「带 accepted_partition 指针」kind (disclosure_event_canonical /
+    holders_top10_canonical) 共用的五样东西: plan()/execute() 只认这个形状,
+    不关心它是从 DisclosureEventDomain 解析出来的还是从 holders_top10_schema
+    常量拼出来的——两种 kind 的差别只剩「形状从哪来」, plan/execute 的逻辑一份不复制。
+    """
+
+    dataset_id: str
+    partition_field: str
+    grain: tuple[str, ...]
+    canonical_table: str
+    pointer_stats: Callable[[Any, str], tuple[int, str]]
+
+
+@dataclass(frozen=True)
 class Disposition:
     db: str
     table: str
@@ -96,6 +125,7 @@ class Disposition:
     why: str
     key_columns: tuple[str, ...] = ()
     domain: Any = None  # DisclosureEventDomain, 只对 disclosure_event_canonical 有效
+    shape: _CanonicalShape | None = None  # 两种 canonical kind 共用, plain_delete 为 None
 
 
 @dataclass(frozen=True)
@@ -178,7 +208,7 @@ def load_cleanup_config(
             raise OutOfScopeCleanupConfigError(
                 f"dispositions[{i}].kind must be one of {sorted(_KNOWN_KINDS)}: {kind!r}"
             )
-        expected_keys = _CANONICAL_KEYS if kind == _KIND_CANONICAL else _PLAIN_DELETE_KEYS
+        expected_keys = _EXPECTED_KEYS_BY_KIND[kind]
         actual_keys = set(item)
         if actual_keys != expected_keys:
             raise OutOfScopeCleanupConfigError(
@@ -238,10 +268,38 @@ def load_cleanup_config(
                     f"dispositions[{i}].domain {domain_ref!r} canonical_table="
                     f"{getattr(domain_obj, 'canonical_table')!r} != table={table!r}"
                 )
+            shape = _CanonicalShape(
+                dataset_id=domain_obj.dataset_id,
+                partition_field=domain_obj.partition_field,
+                grain=tuple(domain_obj.grain),
+                canonical_table=domain_obj.canonical_table,
+                pointer_stats=(
+                    lambda c, pv, _domain=domain_obj: partition_accepted_pointer_stats(c, _domain, pv)
+                ),
+            )
             dispositions.append(
                 Disposition(
                     db=db, table=table, code_column=code_column, kind=kind, why=why.strip(),
-                    key_columns=tuple(domain_obj.grain), domain=domain_obj,
+                    key_columns=tuple(domain_obj.grain), domain=domain_obj, shape=shape,
+                )
+            )
+        elif kind == _KIND_HOLDERS_CANONICAL:
+            if str(holders_top10_schema.CANONICAL_TABLE) != table:
+                raise OutOfScopeCleanupConfigError(
+                    f"dispositions[{i}].table must equal holders_top10_schema.CANONICAL_TABLE "
+                    f"({holders_top10_schema.CANONICAL_TABLE!r}): {table!r}"
+                )
+            shape = _CanonicalShape(
+                dataset_id=holders_top10_schema.DATASET_ID,
+                partition_field=holders_top10_schema.PARTITION_FIELD,
+                grain=tuple(holders_top10_schema.GRAIN),
+                canonical_table=holders_top10_schema.CANONICAL_TABLE,
+                pointer_stats=holders_top10_partition_pointer_stats,
+            )
+            dispositions.append(
+                Disposition(
+                    db=db, table=table, code_column=code_column, kind=kind, why=why.strip(),
+                    key_columns=tuple(holders_top10_schema.GRAIN), domain=None, shape=shape,
                 )
             )
         else:
@@ -261,7 +319,7 @@ def load_cleanup_config(
             dispositions.append(
                 Disposition(
                     db=db, table=table, code_column=code_column, kind=kind, why=why.strip(),
-                    key_columns=tuple(key_columns), domain=None,
+                    key_columns=tuple(key_columns), domain=None, shape=None,
                 )
             )
 
@@ -293,7 +351,7 @@ class TablePlan:
     non_hit: int
     distinct_codes: tuple[str, ...]
     keys: tuple[tuple[Any, ...], ...]
-    domain: Any = None
+    shape: _CanonicalShape | None = None
     partitions: tuple[PartitionPlan, ...] = ()
     pointer_baseline: Mapping[str, tuple[int, str, str]] = field(default_factory=dict)
     ingest_batch_baseline: tuple[tuple[Any, ...], ...] = ()
@@ -428,21 +486,21 @@ def plan(
         pointer_baseline: dict[str, tuple[int, str, str]] = {}
         ingest_baseline: tuple[tuple[Any, ...], ...] = ()
 
-        if disp.kind == _KIND_CANONICAL:
-            domain = disp.domain
-            partition_col = domain.partition_field
+        if disp.kind in (_KIND_CANONICAL, _KIND_HOLDERS_CANONICAL):
+            shape = disp.shape
+            partition_col = shape.partition_field
 
             pointer_baseline = {
                 str(r[0]): (int(r[1]), str(r[2]), str(r[3]))
                 for r in conn.execute(
                     "SELECT replace(CAST(partition_value AS VARCHAR), '-', '') AS pv, "
                     f"row_count, content_hash, batch_id FROM {ACCEPTED_TABLE} WHERE dataset_id = ?",
-                    [domain.dataset_id],
+                    [shape.dataset_id],
                 ).fetchall()
             }
-            ingest_baseline = _ingest_batch_group_counts(conn, domain.dataset_id)
-            snap_set = frozenset(snapshot_partitions.get(domain.dataset_id, ()))
-            snapshot_checked[domain.dataset_id] = tuple(sorted(snap_set))
+            ingest_baseline = _ingest_batch_group_counts(conn, shape.dataset_id)
+            snap_set = frozenset(snapshot_partitions.get(shape.dataset_id, ()))
+            snapshot_checked[shape.dataset_id] = tuple(sorted(snap_set))
 
             if hit > 0:
                 affected_raw = conn.execute(
@@ -491,7 +549,7 @@ def plan(
                     pointer_rows = conn.execute(
                         f"SELECT row_count, content_hash, batch_id FROM {ACCEPTED_TABLE} "
                         "WHERE dataset_id = ? AND replace(CAST(partition_value AS VARCHAR), '-', '') = ?",
-                        [domain.dataset_id, pv],
+                        [shape.dataset_id, pv],
                     ).fetchall()
                     if len(pointer_rows) != 1:
                         reasons.append(
@@ -518,17 +576,17 @@ def plan(
 
                 inter = tuple(sorted(set(affected_compact) & snap_set))
                 if inter:
-                    snapshot_hits[domain.dataset_id] = inter
+                    snapshot_hits[shape.dataset_id] = inter
                     reasons.append(
                         f"{disp.db}.{disp.table}: affected partitions intersect frozen snapshot "
-                        f"for dataset {domain.dataset_id}: {inter}"
+                        f"for dataset {shape.dataset_id}: {inter}"
                     )
 
         table_plans.append(
             TablePlan(
                 db=disp.db, table=disp.table, code_column=disp.code_column, kind=disp.kind,
                 key_columns=disp.key_columns, checked_before=checked_before, hit=hit,
-                non_hit=non_hit, distinct_codes=distinct_codes, keys=keys, domain=disp.domain,
+                non_hit=non_hit, distinct_codes=distinct_codes, keys=keys, shape=disp.shape,
                 partitions=partitions, pointer_baseline=pointer_baseline,
                 ingest_batch_baseline=ingest_baseline,
             )
@@ -622,13 +680,13 @@ def execute(
                         "(state changed between plan and execute)"
                     )
 
-                if t.kind == _KIND_CANONICAL:
+                if t.kind in (_KIND_CANONICAL, _KIND_HOLDERS_CANONICAL):
                     for part in t.partitions:
                         pv = part.partition_value
                         current_before = int(
                             conn.execute(
                                 f'SELECT COUNT(*) FROM "{t.table}" '
-                                f"WHERE replace(CAST(\"{t.domain.partition_field}\" AS VARCHAR), '-', '') = ?",
+                                f"WHERE replace(CAST(\"{t.shape.partition_field}\" AS VARCHAR), '-', '') = ?",
                                 [pv],
                             ).fetchone()[0]
                         )
@@ -637,7 +695,7 @@ def execute(
                                 f"{db}.{t.table} partition {pv}: plan before_count="
                                 f"{part.before_count}, write-time count={current_before}"
                             )
-                        current_pointer = _pointer_row(conn, t.domain.dataset_id, pv)
+                        current_pointer = _pointer_row(conn, t.shape.dataset_id, pv)
                         if current_pointer != part.pointer_before:
                             raise CleanupMismatchError(
                                 f"{db}.{t.table} partition {pv}: pointer changed between plan "
@@ -650,10 +708,10 @@ def execute(
                 )
 
                 partitions_after: dict[str, Any] = {}
-                if t.kind == _KIND_CANONICAL:
+                if t.kind in (_KIND_CANONICAL, _KIND_HOLDERS_CANONICAL):
                     for part in t.partitions:
                         pv = part.partition_value
-                        n, h = partition_accepted_pointer_stats(conn, t.domain, pv)
+                        n, h = t.shape.pointer_stats(conn, pv)
                         if n != part.expected_after:
                             raise CleanupMismatchError(
                                 f"{db}.{t.table} partition {pv}: expected_after="
@@ -663,12 +721,12 @@ def execute(
                             conn.execute(
                                 f"UPDATE {ACCEPTED_TABLE} SET row_count = ?, content_hash = ? "
                                 "WHERE dataset_id = ? AND replace(CAST(partition_value AS VARCHAR), '-', '') = ?",
-                                [n, h, t.domain.dataset_id, pv],
+                                [n, h, t.shape.dataset_id, pv],
                             )
                             readback = conn.execute(
                                 f"SELECT row_count, content_hash FROM {ACCEPTED_TABLE} "
                                 "WHERE dataset_id = ? AND replace(CAST(partition_value AS VARCHAR), '-', '') = ?",
-                                [t.domain.dataset_id, pv],
+                                [t.shape.dataset_id, pv],
                             ).fetchone()
                             if readback is None or (int(readback[0]), str(readback[1])) != (n, h):
                                 raise CleanupMismatchError(
@@ -681,16 +739,32 @@ def execute(
                                 "pointer_after": {"row_count": n, "content_hash": h},
                                 "action": "updated",
                             }
+                            if t.kind == _KIND_HOLDERS_CANONICAL and part.pointer_before is not None:
+                                # 已知残留 (spec_bshare_b2.md §4.3): ingest_batch 该批的
+                                # canonical_row_count 是本批口径 (accept 时写入, 31 = 该次
+                                # 落地批次总行数), 清理刀只重打指针 (分区口径, 变成 21),
+                                # 不回写 ingest_batch —— 那是一次没发生过的"重新观测",
+                                # 与 org 域同款已知残留 (spec_bshare_purge.md §1.2/§4.5),
+                                # 这里显式记进账便于审计核对而不是悄悄留着。
+                                residual_row = conn.execute(
+                                    f"SELECT canonical_row_count FROM {INGEST_BATCH_TABLE} "
+                                    "WHERE batch_id = ?",
+                                    [part.pointer_before["batch_id"]],
+                                ).fetchone()
+                                if residual_row is not None and residual_row[0] is not None:
+                                    partitions_after[pv][
+                                        "ingest_batch_canonical_row_count_unchanged"
+                                    ] = int(residual_row[0])
                         else:
                             conn.execute(
                                 f"DELETE FROM {ACCEPTED_TABLE} WHERE dataset_id = ? "
                                 "AND replace(CAST(partition_value AS VARCHAR), '-', '') = ?",
-                                [t.domain.dataset_id, pv],
+                                [t.shape.dataset_id, pv],
                             )
                             still_there = conn.execute(
                                 f"SELECT 1 FROM {ACCEPTED_TABLE} WHERE dataset_id = ? "
                                 "AND replace(CAST(partition_value AS VARCHAR), '-', '') = ?",
-                                [t.domain.dataset_id, pv],
+                                [t.shape.dataset_id, pv],
                             ).fetchone()
                             if still_there is not None:
                                 raise CleanupMismatchError(
@@ -712,12 +786,12 @@ def execute(
                         f"non_hit_after={non_hit_after} (want {t.non_hit})"
                     )
 
-                if t.kind == _KIND_CANONICAL:
+                if t.kind in (_KIND_CANONICAL, _KIND_HOLDERS_CANONICAL):
                     affected_pvs = {p.partition_value for p in t.partitions}
                     for pv, baseline in t.pointer_baseline.items():
                         if pv in affected_pvs:
                             continue
-                        current = _pointer_row(conn, t.domain.dataset_id, pv)
+                        current = _pointer_row(conn, t.shape.dataset_id, pv)
                         current_tuple = (
                             None if current is None
                             else (current["row_count"], current["content_hash"], current["batch_id"])
@@ -727,7 +801,7 @@ def execute(
                                 f"{db}.{t.table}: unaffected partition {pv} pointer changed: "
                                 f"baseline={baseline} now={current_tuple}"
                             )
-                    current_ingest = _ingest_batch_group_counts(conn, t.domain.dataset_id)
+                    current_ingest = _ingest_batch_group_counts(conn, t.shape.dataset_id)
                     if current_ingest != t.ingest_batch_baseline:
                         raise CleanupMismatchError(
                             f"{db}.{t.table}: ingest_batch GROUP BY distribution changed: "
@@ -740,14 +814,14 @@ def execute(
                                 SELECT replace(CAST(partition_value AS VARCHAR), '-', '') pv, row_count
                                   FROM {ACCEPTED_TABLE} WHERE dataset_id = ?
                             ), can AS (
-                                SELECT replace(CAST({t.domain.partition_field} AS VARCHAR), '-', '') pv,
+                                SELECT replace(CAST({t.shape.partition_field} AS VARCHAR), '-', '') pv,
                                        count(*) n
                                   FROM "{t.table}" GROUP BY 1
                             )
                             SELECT count(*) FILTER (WHERE p.pv IS NULL OR c.pv IS NULL OR p.row_count <> c.n)
                               FROM ptr p FULL OUTER JOIN can c USING (pv)
                             """,
-                            [t.domain.dataset_id],
+                            [t.shape.dataset_id],
                         ).fetchone()[0]
                     )
                     if mismatch_n != 0:
@@ -771,13 +845,13 @@ def execute(
                         "key_columns": list(t.key_columns),
                         "deleted_keys": [list(k) for k in t.keys],
                     }
-                    if t.kind == _KIND_CANONICAL:
+                    if t.kind in (_KIND_CANONICAL, _KIND_HOLDERS_CANONICAL):
                         verification["partitions"] = partitions_after
                         verification["snapshot_partitions_checked"] = list(
-                            plan_obj.snapshot_checked.get(t.domain.dataset_id, ())
+                            plan_obj.snapshot_checked.get(t.shape.dataset_id, ())
                         )
                         verification["snapshot_intersection"] = list(
-                            plan_obj.snapshot_intersection.get(t.domain.dataset_id, ())
+                            plan_obj.snapshot_intersection.get(t.shape.dataset_id, ())
                         )
 
                     record_data_deletion(

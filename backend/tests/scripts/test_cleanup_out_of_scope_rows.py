@@ -21,6 +21,22 @@ raw_org_holding_aif10 mirrors the same grains (report_date/available_date ISO).
 smartmoney.raw_qfii_holding_quarterly: 200011 (hit) + 000001 + 920001.
 tushare_raw.raw_tushare_top_list: 900901.SH/200011.SZ (hit) + 600900.SH/
 9000011/920001.BJ (non-hit vectors, incl. the 7-digit and BJ edge cases).
+
+S3 (cut_bshare_s3) adds a holders_top10_canonical kind targeting
+canonical_top10_float_holders_period, also in the smartmoney db, built with
+the real land->accept writers (land_holders_top10_batch/
+accept_holders_top10_batch via propagate_disclosure_execution_contract).
+Fixture shape (P_h/P_h2/P_h3, notice_date partitions):
+  P_h  20260917: 21 A-share + 10 B-share (900910) rows in one 31-row batch
+       -> expect canonical pointer updated to row_count=21; the batch's
+       ingest_batch.canonical_row_count stays 31 (batch-scoped, known
+       residual, see spec_bshare_b2.md §4.3).
+  P_h2 20260918: only B-share (900920) rows -> expect pointer deleted_empty.
+  P_h3 20260916: only A-share rows -> untouched; placed in the injected
+       frozen snapshot as the non-intersecting baseline (mirrors org's P3).
+Because build_smartmoney_db() always builds this fixture, every pre-existing
+org-focused test that calls cor.execute() with the real registered config
+also exercises the holders_top10_canonical branch end-to-end (not stubbed).
 """
 from __future__ import annotations
 
@@ -52,6 +68,24 @@ from services.data_deletion import ensure_data_deletion_tables  # noqa: E402
 from services.data_sources.disclosure_dataset_snapshot import (  # noqa: E402
     default_snapshot_path,
 )
+from services.data_sources.formal_execution import (  # noqa: E402
+    propagate_disclosure_execution_contract,
+)
+from services.data_sources import holders_top10_acceptance as hta  # noqa: E402
+from services.data_sources.holders_top10_acceptance import (  # noqa: E402
+    HoldersTop10LandingBatch,
+    accept_holders_top10_batch,
+    ensure_holders_top10_acceptance_schema,
+    land_holders_top10_batch,
+)
+from services.data_sources.holders_top10_contract import (  # noqa: E402
+    load_holders_top10_contract,
+)
+from services.data_sources.holders_top10_schema import (  # noqa: E402
+    CANONICAL_TABLE as HOLDERS_CANONICAL_TABLE,
+    DATASET_ID as HOLDERS_DATASET_ID,
+    GRAIN as HOLDERS_GRAIN,
+)
 from services.data_sources.org_holding_acceptance import (  # noqa: E402
     DOMAIN as ORG_HOLDING_DOMAIN,
     OrgHoldingLandingBatch,
@@ -77,6 +111,18 @@ from scripts.check_out_of_scope_rows import (  # noqa: E402
 
 CONFIG_PATH = REPO / "backend" / "config" / "out_of_scope_cleanup.yaml"
 SCAN_CONFIG_PATH = REPO / "backend" / "config" / "out_of_scope_scan.yaml"
+
+# ── S3 holders_top10_canonical fixture partitions (smartmoney db) ────────────
+# P_h (HOLDERS_P1_NOTICE): one batch, 21 A-share + 10 B-share (900910) rows ->
+#   expect pointer updated to row_count=21 (§4.3's known residual: ingest_batch
+#   .canonical_row_count for this batch stays 31, batch-scoped not partition-
+#   scoped -- see the S3-A6 test below).
+# P_h2 (HOLDERS_P2_NOTICE): only B-share rows -> expect pointer deleted_empty.
+# P_h3 (HOLDERS_P3_NOTICE): only A-share rows, untouched; placed in the
+#   injected frozen snapshot as the non-intersecting baseline (mirrors org's P3).
+HOLDERS_P1_NOTICE = "20260917"
+HOLDERS_P2_NOTICE = "20260918"
+HOLDERS_P3_NOTICE = "20260916"
 
 
 # ── fixture builders ────────────────────────────────────────────────────────
@@ -159,6 +205,77 @@ def build_org_holding_db(path: Path, *, extra_raw_rows: list[tuple[str, str, str
         conn.close()
 
 
+def _holders_available_at(y: int, m: int, d: int):
+    return datetime(y, m, d, 18, 0, tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(timezone.utc)
+
+
+def _holders_row(stock: str, *, holder_rank: int, notice_date: str, report_date: str = "20260630") -> dict[str, Any]:
+    return dict(
+        stock_code=stock, report_date=report_date, holder_set="free",
+        holder_rank=holder_rank, row_seq=1, holder_name=f"holder-{stock}-{holder_rank}",
+        holder_code=f"hc-{stock}-{holder_rank}", is_holder_org=True,
+        hold_ratio_float=1.0, notice_date=notice_date, is_exit_row=False,
+    )
+
+
+def _holders_land_and_accept(conn, handed, *, batch_id: str, notice_date: str, rows: list[dict]) -> None:
+    y, m, d = int(notice_date[:4]), int(notice_date[4:6]), int(notice_date[6:8])
+    available_at = _holders_available_at(y, m, d)
+    batch = HoldersTop10LandingBatch(
+        batch_id=batch_id, partition_value=notice_date,
+        observed_at=available_at, available_at=available_at,
+        rows=rows, request={"api": "RPT_F10_EH_FREEHOLDERS", "notice_date": notice_date},
+    )
+    land_holders_top10_batch(conn, batch, handed, handoff=handed)
+    outcome = accept_holders_top10_batch(
+        conn, batch_id, handed, handoff=handed, delete_scope="partition"
+    )
+    assert outcome.status == "ACCEPTED", outcome
+
+
+def _add_holders_top10_fixture(conn) -> None:
+    """smartmoney 夹具库加 holders 表族 (spec_bshare_b2.md §5.3): 真实 land->accept
+    造 P_h/P_h2/P_h3 三个 notice_date 分区, 经 propagate_disclosure_execution_contract
+    握手, 不走任何测试专用捷径。"""
+    ensure_holders_top10_acceptance_schema(conn)
+    contract = load_holders_top10_contract()
+    handed = propagate_disclosure_execution_contract("holders_top10", contract)
+
+    # P_h: 21 A-share (600001..600021) + 10 B-share (900910, holder_rank 1..10)
+    # in ONE batch of 31 rows -> expect canonical pointer updated to row_count=21.
+    p1_rows = [
+        _holders_row(f"6{i:05d}", holder_rank=1, notice_date=HOLDERS_P1_NOTICE)
+        for i in range(1, 22)
+    ] + [
+        _holders_row("900910", holder_rank=r, notice_date=HOLDERS_P1_NOTICE)
+        for r in range(1, 11)
+    ]
+    _holders_land_and_accept(
+        conn, handed, batch_id=f"holders_top10:{HOLDERS_P1_NOTICE}",
+        notice_date=HOLDERS_P1_NOTICE, rows=p1_rows,
+    )
+
+    # P_h2: only 1 B-share row (900920, mirrors org's P2 shape) -> expect
+    # pointer deleted_empty. (This table's ledger row aggregates hits across
+    # ALL partitions -- see the S3-A6 test's isolated single-partition fixture
+    # for the exact "10" the build spec names for P_h alone.)
+    p2_rows = [_holders_row("900920", holder_rank=1, notice_date=HOLDERS_P2_NOTICE)]
+    _holders_land_and_accept(
+        conn, handed, batch_id=f"holders_top10:{HOLDERS_P2_NOTICE}",
+        notice_date=HOLDERS_P2_NOTICE, rows=p2_rows,
+    )
+
+    # P_h3: only A-share rows (700001, 700002) -> untouched baseline.
+    p3_rows = [
+        _holders_row(f"7{i:05d}", holder_rank=1, notice_date=HOLDERS_P3_NOTICE)
+        for i in range(1, 3)
+    ]
+    _holders_land_and_accept(
+        conn, handed, batch_id=f"holders_top10:{HOLDERS_P3_NOTICE}",
+        notice_date=HOLDERS_P3_NOTICE, rows=p3_rows,
+    )
+
+
 def build_smartmoney_db(path: Path, *, extra_rows: list[tuple[str, str, str]] = ()) -> None:
     conn = duck_connect(str(path), read_only=False)
     try:
@@ -176,6 +293,7 @@ def build_smartmoney_db(path: Path, *, extra_rows: list[tuple[str, str, str]] = 
                 "VALUES (?, ?, ?, 'aif10_RPT_DMSK_HOLDERS')",
                 [report_date, code, holder],
             )
+        _add_holders_top10_fixture(conn)
         conn.commit()
     finally:
         conn.close()
@@ -206,7 +324,14 @@ def build_tushare_raw_db(path: Path, *, extra_rows: list[tuple[str, str, str, fl
         conn.close()
 
 
-def write_snapshot(path: Path, partitions: list[str]) -> None:
+def write_snapshot(
+    path: Path, partitions: list[str], *, holders_partitions: list[str] = ()
+) -> None:
+    # holders_partitions defaults to () so every pre-existing call site (org-only
+    # blocking tests) keeps writing the exact same JSON it always did; the
+    # dataset_id inside each "accepted" item is what _load_snapshot_partitions()
+    # actually keys on, not the outer "domains" dict key, so adding a second
+    # domain here never changes org_holding's own snapshot behavior.
     snap = {
         "domains": {
             "org_holding": {
@@ -214,7 +339,13 @@ def write_snapshot(path: Path, partitions: list[str]) -> None:
                     {"dataset_id": ORG_DATASET_ID, "partition": p, "row_count": 1, "content_hash": "dummy"}
                     for p in partitions
                 ]
-            }
+            },
+            "holders_top10": {
+                "accepted": [
+                    {"dataset_id": HOLDERS_DATASET_ID, "partition": p, "row_count": 1, "content_hash": "dummy"}
+                    for p in holders_partitions
+                ]
+            },
         }
     }
     path.write_text(json.dumps(snap), encoding="utf-8")
@@ -299,7 +430,9 @@ def three_dbs(tmp_path: Path) -> dict[str, Path]:
     build_smartmoney_db(paths["smartmoney"])
     build_tushare_raw_db(paths["tushare_raw"])
     snap_path = tmp_path / "snapshot.json"
-    write_snapshot(snap_path, ["20250430"])  # P3 only: non-intersecting baseline
+    write_snapshot(
+        snap_path, ["20250430"], holders_partitions=[HOLDERS_P3_NOTICE],
+    )  # org P3 + holders P_h3: both non-intersecting baselines
     paths["snapshot"] = snap_path
     return paths
 
@@ -814,7 +947,12 @@ def test_a15_unknown_class_exits_2(three_dbs) -> None:
 
 def test_a16_real_config_loads() -> None:
     config = cor.load_cleanup_config()
-    assert len(config.dispositions) == 4
+    # cut_bshare_s3 registers a 5th disposition (holders_top10_canonical); the
+    # dedicated count assertion for that addition is S3-A1 below. This literal
+    # is a mechanical consequence of the shared YAML growing by one entry, not
+    # a change to org's own kind -- the two lines right below (org's domain
+    # object identity/canonical_table) are untouched.
+    assert len(config.dispositions) == 5
     canonical = next(d for d in config.dispositions if d.kind == "disclosure_event_canonical")
     assert canonical.domain is ORG_HOLDING_DOMAIN
     assert canonical.domain.canonical_table == "canonical_org_holding_detail_period"
@@ -1341,3 +1479,333 @@ def test_b9_post_delete_hit_after_mismatch_detected(three_dbs, real_config) -> N
     finally:
         cache.cache["tushare_raw"] = real_conn
         cache.close_all()
+
+
+# ── S3 (cut_bshare_s3): holders_top10_canonical kind ─────────────────────────
+# spec_bshare_b2.md §4.3/§5.3. canonical_top10_float_holders_period is not a
+# DisclosureEventDomain (org_holding/stk_holdertrade are the only two) -- its
+# grain/partition_field/dataset_id come straight from holders_top10_schema
+# constants, and its pointer recompute is its own writer's
+# holders_top10_acceptance.partition_pointer_stats (the S3-required public
+# rename), not disclosure_event_partition.partition_accepted_pointer_stats.
+# plan()/execute() must not duplicate the disclosure_event_canonical branch's
+# logic to support this -- see the shared _CanonicalShape in
+# cleanup_out_of_scope_rows.py, S3-A5 below.
+
+_VALID_HOLDERS_CANONICAL = {
+    "db": "smartmoney", "table": HOLDERS_CANONICAL_TABLE, "code_column": "stock_code",
+    "kind": "holders_top10_canonical", "why": "test disposition",
+}
+
+
+# ── S3-A1: loader key-set / table-match isolation, real YAML has 5 entries ──
+
+def test_s3_a1_holders_kind_loads_with_correct_shape(tmp_path) -> None:
+    doc = _valid_doc([_VALID_PLAIN, _VALID_HOLDERS_CANONICAL])
+    path = _write_yaml(tmp_path, doc)
+    config = cor.load_cleanup_config(path)
+    holders_disp = next(d for d in config.dispositions if d.kind == "holders_top10_canonical")
+    assert set(_VALID_HOLDERS_CANONICAL) == {"db", "table", "code_column", "kind", "why"}
+    assert holders_disp.domain is None
+    assert holders_disp.shape is not None
+    assert holders_disp.shape.canonical_table == HOLDERS_CANONICAL_TABLE
+    assert holders_disp.shape.dataset_id == HOLDERS_DATASET_ID
+    assert holders_disp.shape.partition_field == "notice_date"
+    assert holders_disp.shape.grain == tuple(HOLDERS_GRAIN)
+    assert holders_disp.key_columns == tuple(HOLDERS_GRAIN)
+
+
+@pytest.mark.parametrize(
+    "mutate_doc",
+    [
+        pytest.param(
+            lambda: _valid_doc([_VALID_PLAIN, {**_VALID_HOLDERS_CANONICAL, "domain": "x:y"}]),
+            id="holders_kind_key_set_has_extra_domain_key",
+        ),
+        pytest.param(
+            lambda: _valid_doc(
+                [_VALID_PLAIN, {k: v for k, v in _VALID_HOLDERS_CANONICAL.items() if k != "why"}]
+            ),
+            id="holders_kind_key_set_missing_why",
+        ),
+        pytest.param(
+            lambda: _valid_doc(
+                [_VALID_PLAIN, {**_VALID_HOLDERS_CANONICAL, "table": "wrong_table_name"}]
+            ),
+            id="holders_table_must_equal_schema_canonical_table",
+        ),
+    ],
+)
+def test_s3_a1_holders_loader_fail_closed(tmp_path, mutate_doc) -> None:
+    doc = mutate_doc()
+    path = _write_yaml(tmp_path, doc)
+    with pytest.raises(cor.OutOfScopeCleanupConfigError):
+        cor.load_cleanup_config(path)
+
+
+def test_s3_a1_real_yaml_has_exactly_five_dispositions() -> None:
+    config = cor.load_cleanup_config()
+    assert len(config.dispositions) == 5
+    holders_disp = next(d for d in config.dispositions if d.kind == "holders_top10_canonical")
+    assert holders_disp.db == "smartmoney"
+    assert holders_disp.table == HOLDERS_CANONICAL_TABLE
+    assert holders_disp.code_column == "stock_code"
+
+
+# ── S3-A2: execute updates P_h pointer to (21, oracle content hash) ─────────
+
+def test_s3_a2_holders_pointer_updated_and_invariant_holds(three_dbs, real_config) -> None:
+    plan_obj, cache = _plan_for(three_dbs, real_config)
+    try:
+        cor.execute(cache, plan_obj, run_id="s3a2-run")
+        conn = cache("smartmoney")
+        pointer = conn.execute(
+            "SELECT row_count, content_hash FROM accepted_partition "
+            "WHERE dataset_id = ? AND replace(CAST(partition_value AS VARCHAR),'-','') = ?",
+            [HOLDERS_DATASET_ID, HOLDERS_P1_NOTICE],
+        ).fetchone()
+        assert int(pointer[0]) == 21
+
+        remaining = conn.execute(
+            f"SELECT {', '.join(hta._HASH_FIELDS)} FROM {HOLDERS_CANONICAL_TABLE} "
+            "WHERE notice_date = ?",
+            [HOLDERS_P1_NOTICE],
+        ).fetchall()
+        assert len(remaining) == 21
+        # oracle: the writer's own batch-hash function, reused as an
+        # independent cross-check against the freshly recomputed pointer --
+        # not the same code path as partition_pointer_stats's own SQL.
+        oracle_rows = [dict(zip(hta._HASH_FIELDS, r, strict=True)) for r in remaining]
+        oracle_hash = hta._canonical_content_hash(oracle_rows)
+        assert str(pointer[1]) == oracle_hash
+
+        n, h = hta.partition_pointer_stats(conn, HOLDERS_P1_NOTICE)
+        assert (n, h) == (21, oracle_hash)
+
+        # holders_pointer_rowcount_matches_canonical (db_invariants.yaml) row-count
+        # half, inlined against this fixture.
+        mismatch = conn.execute(
+            """
+            WITH ptr AS (SELECT replace(CAST(partition_value AS VARCHAR), '-', '') pv, row_count
+                           FROM accepted_partition
+                          WHERE dataset_id = 'tier0.disclosure.top10_float_holders_period'),
+                 can AS (SELECT replace(CAST(notice_date AS VARCHAR), '-', '') pv, count(*) n
+                           FROM canonical_top10_float_holders_period GROUP BY 1)
+            SELECT count(*) FILTER (WHERE p.pv IS NULL OR c.pv IS NULL OR p.row_count <> c.n)
+              FROM ptr p FULL OUTER JOIN can c USING (pv)
+            """
+        ).fetchone()[0]
+        assert mismatch == 0
+    finally:
+        cache.close_all()
+
+
+# ── S3-A3: P_h2 pointer disappears (deleted_empty) + P_h3/ingest_batch/BASE
+# TABLE untouched -- org's A4/A5 pattern re-run against the holders table ──
+
+def test_s3_a3_holders_deleted_empty_and_unaffected_partition_untouched(three_dbs, real_config) -> None:
+    plan_obj, cache = _plan_for(three_dbs, real_config)
+    try:
+        conn = cache("smartmoney")
+        before_batch_p2 = conn.execute(
+            "SELECT status, canonical_row_count, canonical_hash FROM ingest_batch WHERE batch_id = ?",
+            [f"holders_top10:{HOLDERS_P2_NOTICE}"],
+        ).fetchone()
+        pointer_p3_before = conn.execute(
+            "SELECT row_count, content_hash, batch_id FROM accepted_partition "
+            "WHERE dataset_id = ? AND replace(CAST(partition_value AS VARCHAR),'-','') = ?",
+            [HOLDERS_DATASET_ID, HOLDERS_P3_NOTICE],
+        ).fetchone()
+        ingest_before = conn.execute(
+            "SELECT contract_version, contract_hash, config_hash, source_name, status, COUNT(*) "
+            "FROM ingest_batch WHERE dataset_id = ? GROUP BY 1,2,3,4,5 ORDER BY 1,2,3,4,5",
+            [HOLDERS_DATASET_ID],
+        ).fetchall()
+        base_tables_before = {
+            db: {str(r[0]) for r in cache(db).execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema='main' AND table_type='BASE TABLE'"
+            ).fetchall()}
+            for db in ("org_holding", "smartmoney", "tushare_raw")
+        }
+
+        cor.execute(cache, plan_obj, run_id="s3a3-run")
+
+        pointer_p2_after = conn.execute(
+            "SELECT 1 FROM accepted_partition "
+            "WHERE dataset_id = ? AND replace(CAST(partition_value AS VARCHAR),'-','') = ?",
+            [HOLDERS_DATASET_ID, HOLDERS_P2_NOTICE],
+        ).fetchone()
+        assert pointer_p2_after is None
+        after_batch_p2 = conn.execute(
+            "SELECT status, canonical_row_count, canonical_hash FROM ingest_batch WHERE batch_id = ?",
+            [f"holders_top10:{HOLDERS_P2_NOTICE}"],
+        ).fetchone()
+        assert tuple(after_batch_p2) == tuple(before_batch_p2)
+
+        pointer_p3_after = conn.execute(
+            "SELECT row_count, content_hash, batch_id FROM accepted_partition "
+            "WHERE dataset_id = ? AND replace(CAST(partition_value AS VARCHAR),'-','') = ?",
+            [HOLDERS_DATASET_ID, HOLDERS_P3_NOTICE],
+        ).fetchone()
+        assert tuple(pointer_p3_after) == tuple(pointer_p3_before)
+
+        ingest_after = conn.execute(
+            "SELECT contract_version, contract_hash, config_hash, source_name, status, COUNT(*) "
+            "FROM ingest_batch WHERE dataset_id = ? GROUP BY 1,2,3,4,5 ORDER BY 1,2,3,4,5",
+            [HOLDERS_DATASET_ID],
+        ).fetchall()
+        assert [tuple(r) for r in ingest_after] == [tuple(r) for r in ingest_before]
+
+        base_tables_after = {
+            db: {str(r[0]) for r in cache(db).execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema='main' AND table_type='BASE TABLE'"
+            ).fetchall()}
+            for db in ("org_holding", "smartmoney", "tushare_raw")
+        }
+        assert base_tables_after == base_tables_before
+    finally:
+        cache.close_all()
+
+
+# ── S3-A4: frozen snapshot guard blocks execution for the holders dataset ──
+
+def test_s3_a4_holders_snapshot_guard_blocks_execute(three_dbs, real_config) -> None:
+    write_snapshot(
+        three_dbs["snapshot"], ["20250430"], holders_partitions=[HOLDERS_P1_NOTICE],
+    )  # P_h intersects -> must block
+    plan_obj, cache = _plan_for(three_dbs, real_config)
+    try:
+        assert plan_obj.executable is False
+        assert plan_obj.snapshot_intersection.get(HOLDERS_DATASET_ID) == (HOLDERS_P1_NOTICE,)
+
+        counts_before = {t.table: cor._count(cache(t.db), t.table) for t in plan_obj.tables}
+        with pytest.raises(cor.CleanupMismatchError):
+            cor.execute(cache, plan_obj, run_id="s3a4-run")
+
+        for t in plan_obj.tables:
+            assert cor._count(cache(t.db), t.table) == counts_before[t.table]
+        for db in ("org_holding", "smartmoney", "tushare_raw"):
+            n = cache(db).execute("SELECT COUNT(*) FROM mart_data_deletion_record").fetchone()[0]
+            assert n == 0
+    finally:
+        cache.close_all()
+
+
+# ── S3-A5: org kind's existing A1-A18/B1-B9 cases are untouched by adding the
+# holders kind (verified structurally by this file's other tests still being
+# green without their own bodies changing); this test additionally proves the
+# two kinds' partitions never cross into each other's bookkeeping within the
+# SAME plan/execute call. Mutation: hardcoding the shape's partition_field to
+# "available_date" makes plan()'s SELECT DISTINCT against holders' canonical
+# table (which has no such column) raise inside plan() -- red at that node,
+# not silently wrong. ──
+
+def test_s3_a5_org_and_holders_partitions_do_not_cross_contaminate(three_dbs, real_config) -> None:
+    plan_obj, cache = _plan_for(three_dbs, real_config)
+    try:
+        org_table = next(t for t in plan_obj.tables if t.table == "canonical_org_holding_detail_period")
+        holders_table = next(t for t in plan_obj.tables if t.table == HOLDERS_CANONICAL_TABLE)
+        assert org_table.shape.partition_field == "available_date"
+        assert holders_table.shape.partition_field == "notice_date"
+        assert org_table.shape.dataset_id != holders_table.shape.dataset_id
+        org_partition_values = {p.partition_value for p in org_table.partitions}
+        holders_partition_values = {p.partition_value for p in holders_table.partitions}
+        assert org_partition_values.isdisjoint(holders_partition_values)
+
+        cor.execute(cache, plan_obj, run_id="s3a5-run")
+
+        org_pointer = cache("org_holding").execute(
+            "SELECT row_count FROM accepted_partition "
+            "WHERE replace(CAST(partition_value AS VARCHAR),'-','') = '20260731'"
+        ).fetchone()
+        assert int(org_pointer[0]) == 3  # org's own A3 outcome, unaffected by holders sharing this call
+        holders_pointer = cache("smartmoney").execute(
+            "SELECT row_count FROM accepted_partition WHERE dataset_id = ? "
+            "AND replace(CAST(partition_value AS VARCHAR),'-','') = ?",
+            [HOLDERS_DATASET_ID, HOLDERS_P1_NOTICE],
+        ).fetchone()
+        assert int(holders_pointer[0]) == 21
+    finally:
+        cache.close_all()
+
+
+# ── S3-A6: ledger accounting shape, isolated single-partition (P_h only)
+# fixture so deleted_keys length matches the build spec's literal 10 (the
+# shared three_dbs fixture used by A2-A5 above also has P_h2's 1 extra
+# B-share row registered against the SAME table, so that fixture's aggregate
+# ledger row would be 11, not 10 -- see the comment on _add_holders_top10_fixture) ──
+
+def test_s3_a6_holders_ledger_accounting_isolated(tmp_path) -> None:
+    org_path = tmp_path / "org_holding.duckdb"
+    smartmoney_path = tmp_path / "smartmoney.duckdb"
+    tushare_path = tmp_path / "tushare_raw.duckdb"
+    build_org_holding_db(org_path)
+    build_tushare_raw_db(tushare_path)
+
+    conn = duck_connect(str(smartmoney_path), read_only=False)
+    try:
+        qfii_client.ensure_tables(conn)
+        ensure_data_deletion_tables(conn)
+        ensure_schema_version_table(conn)
+        ensure_holders_top10_acceptance_schema(conn)
+        contract = load_holders_top10_contract()
+        handed = propagate_disclosure_execution_contract("holders_top10", contract)
+        p1_rows = [
+            _holders_row(f"6{i:05d}", holder_rank=1, notice_date=HOLDERS_P1_NOTICE)
+            for i in range(1, 22)
+        ] + [
+            _holders_row("900910", holder_rank=r, notice_date=HOLDERS_P1_NOTICE)
+            for r in range(1, 11)
+        ]
+        _holders_land_and_accept(
+            conn, handed, batch_id=f"holders_top10:{HOLDERS_P1_NOTICE}",
+            notice_date=HOLDERS_P1_NOTICE, rows=p1_rows,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    snap_path = tmp_path / "snapshot.json"
+    write_snapshot(snap_path, [])
+    paths = {
+        "org_holding": org_path, "smartmoney": smartmoney_path,
+        "tushare_raw": tushare_path, "snapshot": snap_path,
+    }
+    config = cor.load_cleanup_config()
+    plan_obj, cache = _plan_for(paths, config)
+    try:
+        holders_table_plan = next(t for t in plan_obj.tables if t.table == HOLDERS_CANONICAL_TABLE)
+        assert holders_table_plan.hit == 10
+
+        cor.execute(cache, plan_obj, run_id="s3a6-run")
+        rows = cache("smartmoney").execute(
+            "SELECT deletion_run_id, table_name, delete_scope, key_column, key_value, "
+            "deleted_rows, verification_json FROM mart_data_deletion_record "
+            "WHERE deletion_run_id = 's3a6-run' AND table_name = ?",
+            [HOLDERS_CANONICAL_TABLE],
+        ).fetchall()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row[2] == "rows_removed_out_of_scope_class"
+        assert row[3] == "stock_code"
+        assert row[4] == "b_share"
+        assert int(row[5]) == 10
+        verification = json.loads(row[6])
+        assert len(verification["deleted_keys"]) == 10
+        assert all(len(k) == len(HOLDERS_GRAIN) == 7 for k in verification["deleted_keys"])
+        partitions = verification["partitions"]
+        assert partitions[HOLDERS_P1_NOTICE]["action"] == "updated"
+        assert partitions[HOLDERS_P1_NOTICE]["ingest_batch_canonical_row_count_unchanged"] == 31
+    finally:
+        cache.close_all()
+
+
+# ── S3 (2026-09-19): _partition_pointer_stats 改公开名 partition_pointer_stats 时,
+# backend/scripts/migrate_holders_top10_pk.py 是仓内另一个调用方 (运维脚本, 无其它测试)。
+# 这条只守「该脚本仍能 import 且拿到的是同一个函数」。
+
+def test_s3_migrate_holders_top10_pk_imports_public_pointer_stats() -> None:
+    migrate = importlib.import_module("scripts.migrate_holders_top10_pk")
+    assert migrate.partition_pointer_stats is hta.partition_pointer_stats

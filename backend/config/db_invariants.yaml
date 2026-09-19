@@ -366,7 +366,7 @@ invariants:
     why: >-
       与 org_pointer_rowcount_matches_canonical 同形, 分区键换成 notice_date。holders
       是主线正在动的表 (按股回填、2026-09-08 GRAIN 改动)——
-      _partition_pointer_stats (holders_top10_acceptance.py:589) 2026-09-07 才补上
+      partition_pointer_stats (holders_top10_acceptance.py) 2026-09-07 才补上
       "整分区而非本批"语义, 与 org 07-27 事故同型, 它现在没有任何静态门。
       content_hash 半边同 org 不收——今天 1,992 个指针里 4 个 (07-24 09:26-09:27 盖的)
       hash 已过期, 09-08 回填重盖了 1,988 个仍漏 4 个, 但仍是需要 Python 现算才能查的

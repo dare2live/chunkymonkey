@@ -36,7 +36,7 @@ from services.db import get_conn  # noqa: E402
 from services.data_sources.accepted_schema import ACCEPTED_TABLE  # noqa: E402
 from services.data_sources.holders_top10_acceptance import (  # noqa: E402
     _canonical_column_sql,
-    _partition_pointer_stats,
+    partition_pointer_stats,
 )
 from services.data_sources.holders_top10_schema import (  # noqa: E402
     CANONICAL_TABLE,
@@ -85,7 +85,7 @@ def main() -> int:
         # 2026-09-08: 第一版判据写的是「迁移后重算 == 库里存量指针」, 在备份副本上跑出
         # 4 个分区不等 (20190629 / 20190710 / 20200610 / 20230617, 行数都相等只有 hash 不同)。
         # 查下来它们**迁移前就对不上** —— 在未迁移的备份上重算同样是这 4 个不等,
-        # 且四者最后一次接受都是 2026-07-24, 远早于 2026-09-07 加 _partition_pointer_stats,
+        # 且四者最后一次接受都是 2026-07-24, 远早于 2026-09-07 加 partition_pointer_stats,
         # 存量 hash 是旧公式(按批次而非按分区)算的。那是一条独立的历史遗留, 不是本次迁移造成的。
         #
         # 迁移的职责是「什么都别改变」, 所以正确的证明是**前后现算相等**, 它把本次改动的影响
@@ -98,7 +98,7 @@ def main() -> int:
                 [DATASET_ID],
             ).fetchall()
         ]
-        pointers = [(p_, *_partition_pointer_stats(conn, p_)) for p_ in parts]
+        pointers = [(p_, *partition_pointer_stats(conn, p_)) for p_ in parts]
         stored = {
             r[0]: (r[1], r[2])
             for r in conn.execute(
@@ -145,7 +145,7 @@ def main() -> int:
             # 红线 4 的机器证明: 派生面一个字节都没变。
             bad = []
             for part, row_count, content_hash in pointers:
-                rc, ch = _partition_pointer_stats(conn, part)
+                rc, ch = partition_pointer_stats(conn, part)
                 if rc != row_count or ch != content_hash:
                     bad.append((part, row_count, rc, content_hash[:12], ch[:12]))
             if bad:
