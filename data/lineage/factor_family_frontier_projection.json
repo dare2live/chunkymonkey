@@ -42,13 +42,13 @@
     }
   ],
   "inventory_path": "/Users/dp/Documents/M/stock/chunkymonkey/backend/config/factor_family_inventory.yaml",
-  "inventory_sha256": "5abdb5fc3220ef029365b393bd1d6b1fe418d5d6d7c7ac05724a11d34cb5faa3",
+  "inventory_sha256": "0374ae751867212c23de1bfd1957727c900f13da657c32c488efbd68c357bf3a",
   "notes": [
     "k3_frontier_projection",
     "does_not_mutate_inventory_yaml",
     "rx_still_requires_owner_schedule"
   ],
-  "projected_at": "2026-09-17T22:03:49.310730+00:00",
+  "projected_at": "2026-09-19T13:19:19.475818+00:00",
   "verdict": "PASS",
   "violations": []
 }
