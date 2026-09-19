@@ -281,6 +281,12 @@ def load_domain_specs(registry_path: Path | None = None) -> list[dict[str, Any]]
             "universe_filter": bool(entry.get("universe_filter", False)),
             "universe_filter_col": entry.get("universe_filter_col"),
             "universe_filter_prefixes": entry.get("universe_filter_prefixes"),
+            # 2026-09-18 (cut_frozen_domain_verdicts blocking 修复): 既有 typed 键, 三层继承
+            # 已在 contract_spec = domain_spec(raw, domain) 里合并好 (defaults.watermark_table
+            # = mart_data_source_watermark, 复用 services/source_watermarks); 只是此前从未透传
+            # 进这份白名单 spec。check_completeness_ref 的冻结锚点回退防线用它查
+            # mart_data_source_watermark, 不新开一份配置。
+            "watermark_table": contract_spec.get("watermark_table"),
         })
     return specs
 
@@ -329,6 +335,74 @@ def _date_bound(conn, table: str, col: str, compact_day: str) -> str:
 def _lag_trading_days(trading_days: list[str], after: str, upto: str) -> int:
     """(after, upto] 区间内的交易日数 (trading_days 升序 compact)。"""
     return max(0, bisect_right(trading_days, upto) - bisect_right(trading_days, after))
+
+
+def _max_day(conn, table: str, col: str) -> str | None:
+    """域自己表内 col 列的实测 MAX (compact YYYYMMDD), 空表返回 None。
+
+    冻结域窗口截断 (check_completeness_ref) 用它取 local_max —— 与
+    check_static_staleness 内联的同款 MAX 查询同源, 抽出来避免两处各写一份
+    容易漂移的日期归一逻辑。
+
+    **local_max 本身没有冻结时刻锚点** (2026-09-18 blocking finding, cut_frozen_domain_verdicts):
+    这是本域自己那张表**现算**的 MAX —— 若该表在冻结之后被静默削尾 (误删/去重/并发写坏,
+    CLAUDE.md 红线6), 这个值会跟着一起缩水, 静默地把"表被削尾"重新解读成"冻结边界又前移了
+    一天"。真正的回退防线在 _frozen_watermark_anchor_max(), 见其 docstring。
+    """
+    row = conn.execute(f'SELECT MAX("{col}") FROM "{table}"').fetchone()
+    if row is None or row[0] is None:
+        return None
+    return _norm_day(row[0])
+
+
+def _frozen_watermark_anchor_max(
+    domain: str, watermark_table: str | None, anchor_conn: Any = None,
+) -> str | None:
+    """冻结域窗口截断的回退防线 —— 找一个**不会跟着本域原始表一起被削尾**的锚点。
+
+    **守谁**: check_completeness_ref 里 local_max 的可信度; **守什么**: local_max 现算值
+    不得低于域冻结那一刻真实定格的水位, 也就是"冻结不等于给静默数据损坏发免死金牌";
+    **退出**: registry 未声明 watermark_table、anchor_conn 未提供(None)、锚点库不可达、或
+    该域从未同步过没有水位行 —— 一律返回 None (锚点不可用), 调用方据此原样沿用旧的
+    (已知有此残余风险的)时间窗判据, 不假装"查过了确认没回退"(缺失只能传播为缺失,
+    CLAUDE.md 红线3)。
+
+    本函数**不自己开连接**(2026-09-18 blocking finding 修复) —— 生产路径下 anchor_conn 由
+    唯一调用方 run_checks 经它自己已注入的 conn_for("smartmoney") 缓存传入(与其它域的 db
+    连接完全同一套 DI, 见 run_checks 里 completeness_ref 调用点), 不再由本函数用
+    _ANCHOR_CONN_UNSET 哨兵触发一条从未被任何测试覆盖过的现开 duckdb.connect —— 那条
+    自现开连接此前是生产实际唯一会走的分支, 却没有一条测试让它真的执行过(实测两次独立
+    变异均存活)。改为纯 DI 后, run_checks 级别的测试(经 conn_for 提供 smartmoney 别名)
+    就是这条生产接线的真实回归测试, 不必再 monkeypatch database_manifest 单独兜底。
+
+    锚点为什么可信: mart_data_source_watermark.last_data_date 只在
+    services/data_sources/sync_runner.py:2223 _record_outcome 里写入, 且该写入本身就是
+    monotonic-max("历史显式重放可以成功写到旧日期，但绝不能让 freshness frontier 倒退" ——
+    monotonic_date = max(candidate, existing_date))。execution_policy.mode=disabled 的域,
+    sync 入口本身在任何副作用之前就被 sync_registry.yaml 头注声明的检查阻断——域一旦冻结,
+    再没有代码路径会调用 _record_outcome 去移动这一行, 它就定格在冻结前最后一次真实同步的
+    位置, 不随后续对本域原始表的任何操作(含误删)变化。
+
+    这条可信性此前依赖一个**未验证的假设**——backend/scripts/update_watermark_sla.py 的
+    watermark reconcile 分支同样可能在 verified_frontier 存在时把 watermark "rollback" 到
+    现算的 actual(与 local_max 同源同险)。该分支已随本次同一个 blocking finding 修复补上
+    observe_only 门(见 update_watermark_sla._reconcile_status_and_apply), 冻结域的 rollback
+    方向不再真的写库, 上面这条"冻结后不会再被移动"的断言现在两个脚本口径一致(跨文件回归
+    测试见
+    test_update_watermark_sla.py::test_frozen_domain_rollback_does_not_poison_completeness_ref_anchor)。
+    """
+    if not watermark_table or anchor_conn is None:
+        return None
+    try:
+        row = anchor_conn.execute(
+            f'SELECT MAX(last_data_date) FROM "{watermark_table}" WHERE data_domain = ?',
+            [f"sync:{domain}"],
+        ).fetchone()
+    except Exception:  # noqa: BLE001 — 锚点表结构缺失/不存在同样退化成"锚点不可用"
+        return None
+    if row is None or row[0] is None:
+        return None
+    return _norm_day(row[0])
 
 
 def _result(check: str, spec: dict, status: str, detail: str, fix_hint: str = "",
@@ -628,7 +702,8 @@ def check_calendar_gaps(
 
 # ── 检测 7: 同日行数对账 (比行数下界强得多的完整性判据) ──────────────────
 
-def check_completeness_ref(conn, spec: dict, trading_days: list[str], latest_expected: str) -> dict:
+def check_completeness_ref(conn, spec: dict, trading_days: list[str], latest_expected: str,
+                            *, anchor_conn: Any = None) -> dict:
     """按 registry 的 completeness_ref 声明, 对账该域与基准域的同日行数 + 标的集合。
 
     **为什么需要它** (2026-08-18 实测): min_rows_per_batch 只能检出"明显残缺",
@@ -644,6 +719,28 @@ def check_completeness_ref(conn, spec: dict, trading_days: list[str], latest_exp
     抵消——基准 {A,B,C}、本域 {A,B,X}, 两边都是 3 行, 行数判定 pass, 但标的其实不同。行数相符
     后必须再验标的集合是否相符。标的列从 registry 的 grain 里取("除日期列外唯一一列"), 取不出
     (grain 未声明该域, 或除日期列外不止一列) 就明确跳过、不猜列名, 回落成纯行数比对。
+
+    **冻结域窗口截断** (2026-09-18, fable 设计, 见 project cut_frozen_domain_verdicts):
+    execution_policy.mode=disabled 的域 (如 moneyflow/daily_basic tushare_sunset) 没有源、
+    永远不会再有新行, 而 ref_domain(daily) 每天都在长——对账窗口若仍延伸到 latest_expected,
+    这两个域会永远 fail_row_count_mismatch(不可能修好的红)。窗口上界改取
+    min(latest_expected, 本域 local_max): local_max **之前**(域自己曾经有数据覆盖的区间)
+    出现不一致仍是真损坏, 照样 fail_row_count_mismatch; local_max **之后**(域冻结后的空白)
+    不再拿本就不会再来的数据跟长在动的基准比, 状态改为 observe_frozen_window。守谁: 这条
+    completeness_ref 判据本身的适用范围; 守什么: 冻结不等于免检, 只免检"域冻结之后必然出现
+    的空白"; 退出: 域一旦转回 enabled, execution_policy_mode 不再是 disabled, 本分支不触发,
+    自动回到不截断的原判据(不是硬编码某个日期, 会随 registry 状态自愈)。
+
+    **冻结锚点回退防线** (2026-09-18 blocking finding 修复, 同一个 cut): 上面这段窗口截断的
+    local_max 是本域自己那张表**每次现算**的 MAX——没有任何一次性核证过的冻结时刻锚点。若
+    这张表在冻结之后被静默削尾(误删/去重/并发写坏, CLAUDE.md 红线6), local_max 会跟着一起
+    缩水, 窗口跟着收缩, 被削掉的那天直接被排除出对账范围, 结果仍是 observe_frozen_window——
+    "表被削尾"被静默重新解读成"合法的冻结边界前移"。修法: 用 mart_data_source_watermark
+    (sync_runner._record_outcome 的 monotonic-max 写入, 冻结后再没有代码路径会移动它, 见
+    _frozen_watermark_anchor_max docstring) 当独立锚点, 若锚点晚于本次现算 local_max, 判定
+    fail_frozen_regression 而不是静默纳入 observe。锚点查不到(registry 未声明
+    watermark_table / 锚点库不可达 / 域从未同步过)一律退化回上面原有的判据, 不假装"确认
+    没有回退"。
     """
     ref = spec.get("completeness_ref") or {}
     if not ref:
@@ -666,8 +763,56 @@ def check_completeness_ref(conn, spec: dict, trading_days: list[str], latest_exp
     if col is None:
         return _result("completeness_ref", spec, "skipped_no_date_col", "无可解析日期列")
 
-    window = [d for d in trading_days if since <= d <= latest_expected]
+    frozen = str(spec.get("execution_policy_mode") or "enabled") == "disabled"
+    frozen_reason = str(spec.get("execution_policy_reason") or "execution_disabled")
+    window_hi = latest_expected
+    local_max = None
+    if frozen:
+        local_max = _max_day(conn, table, col)
+        if local_max is not None:
+            anchor_max = _frozen_watermark_anchor_max(
+                spec["domain"], spec.get("watermark_table"), anchor_conn)
+            if anchor_max is not None and anchor_max > local_max:
+                return _result(
+                    "completeness_ref", spec, "fail_frozen_regression",
+                    f"execution_policy=disabled/{frozen_reason}: {table} 现算 "
+                    f"MAX({col})={local_max} 落后于冻结锚点 watermark last_data_date="
+                    f"{anchor_max} —— 冻结域 sync 入口已阻断, 该锚点冻结后不会再被移动,"
+                    "现算值只可能持平或(核实后补历史时)前移, 不可能倒退; 倒退说明这张表在"
+                    "冻结后被静默削尾(误删/去重/并发写坏, CLAUDE.md 红线6), 不是合法的"
+                    "冻结边界前移",
+                    f"域 {spec['domain']}: 核实 {table} 冻结后是否发生过误删/VACUUM/并发写;"
+                    "先证明数据能否从备份/上游恢复, 不要靠调低 watermark 或放大 tolerance 掩盖",
+                )
+            window_hi = min(latest_expected, local_max)
+    truncated = frozen and local_max is not None and local_max < latest_expected
+    frozen_note = (
+        f"；frozen_observe mode=disabled/{frozen_reason} window truncated to "
+        f"local_max={local_max} (full range end {latest_expected}) catchup_blocked=true "
+        f"(域转 enabled 后窗口自动回到 latest_expected, 不是硬编码日期)"
+        if truncated else ""
+    )
+    frozen_hint = (
+        f"域 {spec['domain']} execution_policy=disabled/{frozen_reason}: completeness_ref "
+        "只对账 local_max 之前的区间(域冻结前的历史仍受最强判据保护); local_max 之后是"
+        "预期空白, 不是待补拉的缺口"
+        if truncated else ""
+    )
+    ok_status = "observe_frozen_window" if truncated else "pass"
+
+    window = [d for d in trading_days if since <= d <= window_hi]
     if not window:
+        if frozen and local_max is not None:
+            return _result(
+                "completeness_ref", spec, "observe_frozen_window",
+                f"execution_policy=disabled/{frozen_reason}: local_max={local_max} < "
+                f"verified_since={since}, 无窗口内可对账区间 (catchup_blocked=true; 域转 "
+                "enabled 后按原判据重新对账)",
+                frozen_hint or (
+                    f"域 {spec['domain']} execution_policy=disabled/{frozen_reason}: "
+                    "local_max 早于 verified_since, 该判据从未在窗口内生效过"
+                ),
+            )
         return _result("completeness_ref", spec, "skipped_empty_window",
                        f"verified_since={since} 之后无交易日")
     lo, hi = window[0], window[-1]
@@ -702,7 +847,7 @@ def check_completeness_ref(conn, spec: dict, trading_days: list[str], latest_exp
         )
 
     pass_detail = (f"{len(window)} 交易日与 {ref_domain} 同日行数一致 "
-                   f"(tolerance={tolerance}, since={since})")
+                   f"(tolerance={tolerance}, since={since})") + frozen_note
 
     # 行数相符不代表标的相符。标的列从 grain 取: 除日期列(col)外剩下的唯一一列。
     # grain 未声明该域(测试 fixture 常见)、或剩下的不是恰好一列 -> 不猜, 明确跳过集合差。
@@ -715,8 +860,8 @@ def check_completeness_ref(conn, spec: dict, trading_days: list[str], latest_exp
         if code_col not in mine_cols or "ts_code" not in ref_cols:
             code_col = None
     if code_col is None:
-        return _result("completeness_ref", spec, "pass",
-                       pass_detail + "（未做集合差：grain 不支持）")
+        return _result("completeness_ref", spec, ok_status,
+                       pass_detail + "（未做集合差：grain 不支持）", frozen_hint)
 
     try:
         diff_rows = conn.execute(
@@ -751,7 +896,7 @@ def check_completeness_ref(conn, spec: dict, trading_days: list[str], latest_exp
         return _result("completeness_ref", spec, "fail_query", f"标的集合差查询失败: {exc}")
 
     if not diff_rows:
-        return _result("completeness_ref", spec, "pass", pass_detail)
+        return _result("completeness_ref", spec, ok_status, pass_detail, frozen_hint)
 
     by_day: dict[str, dict[str, list[str]]] = {}
     for d, kind, c in diff_rows:
@@ -1114,7 +1259,14 @@ def check_declared_vs_actual(conn, spec: dict, today: str) -> dict:
 
 def check_static_staleness(conn, spec: dict, trading_days: list[str], latest_expected: str) -> dict:
     """by_ts_code 等手动刷新域: MAX(built_at) 距最新交易日 > SLA x 5 交易日 = WARN (只警不 FAIL —
-    stk_factor_pro 停 11 天零痕迹型; 这类域无 drain, 靠人工/专门调度刷新)。"""
+    stk_factor_pro 停 11 天零痕迹型; 这类域无 drain, 靠人工/专门调度刷新)。
+
+    execution_policy.mode=disabled (2026-09-18, fable 设计, project cut_frozen_domain_verdicts):
+    冻结域没有源、不会再刷新, WARN 队列本该是"需要人去刷新"的清单——把一个永远不会被刷新
+    的域天天摆在 WARN 里, 等于让真正该被处理的 WARN 淹没在噪音里(同 calendar_gaps frozen_observe
+    的道理)。守谁: static_staleness 这条判据; 守什么: "陈旧"这件事本身仍如实记录(不删检查项、
+    不消音), 只是不再混进"需要人工介入"的 WARN 队列; 退出: execution_policy_mode 一旦离开
+    disabled(域重新启用), 本分支不再命中, 自动恢复原 warn_stalled 判据。"""
     table = spec["table"]
     if not _table_exists(conn, table):
         return _result("static_staleness", spec, "skipped_missing_table", "表不存在")
@@ -1130,6 +1282,16 @@ def check_static_staleness(conn, spec: dict, trading_days: list[str], latest_exp
     threshold = spec["sla"] * STALENESS_SLA_MULT
     lag = _lag_trading_days(trading_days, mx, latest_expected)
     if lag > threshold:
+        if str(spec.get("execution_policy_mode") or "enabled") == "disabled":
+            reason = str(spec.get("execution_policy_reason") or "execution_disabled")
+            return _result(
+                "static_staleness", spec, "observe_frozen_stalled",
+                f"MAX({probe_col})={mx} 落后 {lag} 交易日 > SLA x {STALENESS_SLA_MULT} = "
+                f"{threshold}; frozen_observe mode=disabled/{reason} catchup_blocked=true "
+                "(域转 enabled 后按原判据重新 WARN)",
+                f"域 {spec['domain']} execution_policy=disabled/{reason}: static_staleness "
+                "observes manual-refresh lag; no forced refresh while frozen (no product thaw)",
+            )
         return _result("static_staleness", spec, "warn_stalled",
                        f"MAX({probe_col})={mx} 落后 {lag} 交易日 > SLA x {STALENESS_SLA_MULT} = {threshold}",
                        f"手动刷新: --domain {spec['domain']}"
@@ -1333,8 +1495,17 @@ def run_checks(
                 )
             if spec.get("completeness_ref") and (only in (None, "completeness_ref")):
                 # 对账门: 只在 verified_since 之后强制, 且基准域自身必须完整(见 _REF_TABLES 注释)
+                # 冻结锚点回退防线 (2026-09-18 blocking finding 修复) 只在域已冻结时才需要
+                # 一条锚点连接 —— 用 run_checks 自己已注入的 conn_for("smartmoney") 缓存,
+                # 与其它域的 db 连接同一套 DI, 不再让 check_completeness_ref 自己现开一条
+                # 不可测的真实连接 (见 _frozen_watermark_anchor_max docstring)。smartmoney
+                # 库不可达时 _conn 已按既有约定捕获异常返回 None, 原样退化成"锚点不可用"。
+                frozen_domain = str(spec.get("execution_policy_mode") or "enabled") == "disabled"
                 results.append(
-                    check_completeness_ref(conn, spec, trading_days, domain_latest_expected)
+                    check_completeness_ref(
+                        conn, spec, trading_days, domain_latest_expected,
+                        anchor_conn=_conn("smartmoney") if frozen_domain else None,
+                    )
                 )
             if spec["batch_mode"] != "full_refresh" and (only in (None, "declared_vs_actual")):
                 # full_refresh 域 data_start 是占位 (注册日), 无回填语义, 不对账

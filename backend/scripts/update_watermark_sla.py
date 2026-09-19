@@ -120,6 +120,17 @@ RETIRED_WATERMARK_TOMBSTONES = frozenset(
         ("sync:hm_list", "tushare"),
         ("sync:kpl_list", "tushare"),
         ("sync:ths_hot", "tushare"),
+        # 2026-09-18 (project cut_frozen_domain_verdicts, 实测 watermark_sla_20260918.json):
+        # 域已从 sync_registry.yaml 撤销(grep 全仓零命中, 与本文件/DOMAIN_SPECS 均无引用),
+        # 残留 watermark 行只产出 NO_QUERY_MAPPING 噪音 —— 与上面六个同型, 走同一条已验证
+        # 机制清掉, 不新发明判据。守谁: mart_data_source_watermark 残留行; 守什么: 只删
+        # allowlist 里明确写死的 (data_domain, source_name) 对, 从不凭 NO_QUERY_MAPPING 状态
+        # 自动推断(见本函数 docstring "Allowlist-only delete"); 退出: **手动** ——
+        # 这条 allowlist 本身没有自动失效机制(与上面 stk_holdernumber 2026-08-23 那次
+        # 移除同理: live_keys 只查 services.source_watermarks.DOMAIN_SPECS, 不查
+        # sync_registry.yaml, 域若重新注册回 registry 也不会被这里自动挡下), 若该域
+        # 未来重新启用必须有人把这一行删掉, 不要假装这里有自动恢复。
+        ("sync:baostock_trade_cal", "baostock"),
     }
 )
 
@@ -157,6 +168,51 @@ DATA_SOURCE_QUERIES = {
     },
     # stock_blocks 域已删 (2026-06-23): 原查通达信表, 源退役; 申万行业新鲜度由 industry_sw 域跟踪。
 }
+
+# 2026-09-18 (project cut_frozen_domain_verdicts, 实测 watermark_sla_20260918.json):
+# DATA_SOURCE_QUERIES 里有些域探测的不是某个 sync:* 域自己的表, 而是一张由某个 sync:*
+# 域**派生构建**出来的展示面 —— industry_dc 查的 dim_stock_dc_industry 是
+# build_dc_industry_view 拿 dc_member 每日构建的, dc_member 本身已 execution_policy
+# mode=disabled(tushare_sunset_freeze, 09-18 实测 local_max=20260828 后断流)。
+# _sync_registry_queries() 只给 "sync:{name}" 键盖 observe_only, 派生域的键名不是
+# "sync:dc_member" 而是它自己的名字, 天然盖不到——于是上游死了, 派生面永远
+# DATA_STALE_VS_SLA。
+#
+# 守谁: 这条派生域自己的 SLA alert; 守什么: alert 是否点亮跟随上游 sync:* 域当前的
+# execution_policy.mode, 不是一次性写死的布尔; 退出: 上游域一旦转回 enabled(或从
+# registry 撤销), 下一次跑批 registry_queries 里就不再带 observe_only=True,
+# _apply_derived_observe_only 会把这里显式改回 False —— 不是只加不减的单向开关。
+DERIVED_FROM_REGISTRY_DOMAIN: dict[str, str] = {
+    "industry_dc": "dc_member",
+}
+
+
+def _apply_derived_observe_only(
+    queries: dict[str, dict], registry_queries: dict[str, dict]
+) -> None:
+    """派生展示面域跟随其上游 sync:* 域的 observe_only, 原地改写 queries (不改常量本身)。
+
+    每次显式写 True 或 False(而非只在冻结时才写 True), 保证上游解冻后这里同一进程内
+    重跑也会跟着复原 —— 见 DERIVED_FROM_REGISTRY_DOMAIN 上方的三问注释。用新 dict 替换
+    queries[derived_domain] 而不是 in-place mutate 它引用的 DATA_SOURCE_QUERIES 原始
+    dict(两者是同一对象, 直接改 entry["observe_only"] 会污染模块级常量, 跨调用/跨测试漏出)。
+    """
+    for derived_domain, upstream_domain in DERIVED_FROM_REGISTRY_DOMAIN.items():
+        entry = queries.get(derived_domain)
+        if not isinstance(entry, dict):
+            continue
+        upstream = registry_queries.get(f"sync:{upstream_domain}") or {}
+        observe_only = bool(upstream.get("observe_only"))
+        new_entry = dict(entry)
+        new_entry["observe_only"] = observe_only
+        if observe_only:
+            new_entry["observe_reason"] = (
+                f"derived_from_frozen_domain:{upstream_domain}:"
+                f"{upstream.get('observe_reason') or 'execution_disabled'}"
+            )
+        else:
+            new_entry.pop("observe_reason", None)
+        queries[derived_domain] = new_entry
 
 
 class SyncRegistrySLAError(RuntimeError):
@@ -417,6 +473,36 @@ def _watermark_reconcile_direction(
     return None
 
 
+def _reconcile_status_and_apply(
+    reconcile: str | None, *, observe_only: bool,
+) -> tuple[str | None, bool]:
+    """冻结域 rollback 门 (2026-09-18 blocking finding 修复, project cut_frozen_domain_verdicts).
+
+    **守谁**: check_continuity_integrity._frozen_watermark_anchor_max 用来判断"冻结锚点是否
+    被静默削尾"的独立锚点(mart_data_source_watermark.last_data_date); **守什么**: 该锚点
+    "冻结后不会再被移动"这条可信性假设; **退出**: 域一旦不再 observe_only(重新启用/撤离
+    execution_policy.mode=disabled), 本门不生效, rollback 恢复原样可写。
+
+    verified_frontier(reconcile="rollback" 的前提)现查自域自己那张原始表, 与上面那条独立
+    锚点同源同险 —— 若这里对一个已冻结域真的把 watermark rollback 写进库, 锚点会被这次
+    UPDATE 带偏, fail_frozen_regression 从此再也测不出该域的静默削尾(与本文件 727/806 行
+    两处既有 observe_only 门同一形状: warn-only 的豁免作用域不能比它意图守护的范围大)。
+    forward 方向不受影响(前移不丢失任何已核实的水位信息, 是 727/806 两处判据都认可的
+    安全方向), 只禁 rollback。
+
+    Returns:
+        (status, should_apply)。status=None 表示无 reconcile 候选, 调用方不应改 status/
+        触发写库; should_apply=False 时调用方不得调用 _apply_watermark_reconcile。
+    """
+    if not reconcile:
+        return None, False
+    if reconcile == "rollback" and observe_only:
+        return "FROZEN_ROLLBACK_OBSERVED", False
+    if reconcile == "rollback":
+        return "INVALID_WATERMARK_FRONTIER", True
+    return "STALE_WATERMARK", True
+
+
 def _apply_watermark_reconcile(
     conn,
     *,
@@ -555,6 +641,7 @@ def main() -> int:
         log.error("sync_registry SLA inventory blocked: %s", exc)
         return 3
     queries = {**DATA_SOURCE_QUERIES, **registry_queries}
+    _apply_derived_observe_only(queries, registry_queries)
 
     today = date.today()  # rule-compliance: ok evidence=SLA staleness age 度量(对wall-clock计天龄, 非交易决策)
     log.info(f"=== watermark SLA check @ {today} ===")
@@ -697,13 +784,25 @@ def main() -> int:
                     actual_date,
                     verified_complete=verified_frontier is not None,
                 )
-                if reconcile:
-                    status = (
-                        "INVALID_WATERMARK_FRONTIER"
-                        if reconcile == "rollback"
-                        else "STALE_WATERMARK"
+                # 冻结域 rollback 门 (2026-09-18 blocking finding 修复, project
+                # cut_frozen_domain_verdicts, 见 _reconcile_status_and_apply docstring):
+                # 与本函数其它两处 observe_only 门(727/806 行)同一形状, 但这条此前完全
+                # 漏了 —— disabled 域(execution_policy.mode=disabled)的 rollback 候选此前
+                # 会被无条件真实写库, 静默毒化 check_continuity_integrity 的冻结锚点回退防线。
+                reconcile_status, should_apply = _reconcile_status_and_apply(
+                    reconcile, observe_only=bool(qspec.get("observe_only")),
+                )
+                if reconcile_status == "FROZEN_ROLLBACK_OBSERVED":
+                    status = reconcile_status
+                    alert = False
+                    log.info(
+                        f"  [OBSERVE] {data_domain}/{source_name}: rollback candidate "
+                        f"{watermark_date} → {actual_date} not applied "
+                        f"(observe_only={qspec.get('observe_reason')})"
                     )
-                    if not args.dry_run:
+                elif reconcile_status:
+                    status = reconcile_status
+                    if should_apply and not args.dry_run:
                         _apply_watermark_reconcile(
                             smart_conn,
                             data_domain=data_domain,

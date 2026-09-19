@@ -737,14 +737,77 @@ def test_static_staleness_fallback_date_col_when_no_built_at():
         c.close()
 
 
+def test_static_staleness_frozen_disabled_domain_observes_not_warn():
+    """execution_policy=disabled (2026-09-18, project cut_frozen_domain_verdicts):
+
+    冻结域没有源、不会再刷新 —— 陈旧仍如实记录(不删检查、不消音), 但不再混进
+    "需要人工介入"的 WARN 队列, 判 observe_frozen_stalled。enabled 孪生同样陈旧仍 WARN,
+    证明放宽只对冻结域生效 (red-green: 同一份数据两种域状态两种判定)。"""
+    tds = _weekdays("20260401", 40)
+    c = duck_mem()
+    try:
+        c.execute("CREATE TABLE t (ts_code TEXT, trade_date TEXT, built_at TIMESTAMP)")
+        stale_day = tds[5]
+        c.execute("INSERT INTO t VALUES ('c0', ?, ?)",
+                  [stale_day, f"{stale_day[:4]}-{stale_day[4:6]}-{stale_day[6:8]} 18:00:00"])
+        spec = _mkspec(
+            batch_mode="by_ts_code", sla=1, data_start=tds[0],
+            execution_policy_mode="disabled", execution_policy_reason="tushare_sunset_retire",
+        )
+        r = cci.check_static_staleness(c, spec, tds, tds[-1])
+        assert r["status"] == "observe_frozen_stalled", r
+        assert "frozen_observe" in r["detail"], r["detail"]
+        assert "tushare_sunset_retire" in (r["fix_hint"] or ""), r
+        # Enabled twin, identical staleness, still WARNs (no blanket silence).
+        r_warn = cci.check_static_staleness(
+            c, _mkspec(batch_mode="by_ts_code", sla=1, data_start=tds[0],
+                       execution_policy_mode="enabled"),
+            tds, tds[-1],
+        )
+        assert r_warn["status"] == "warn_stalled", r_warn
+        assert cci.overall_status([r]) == "PASS"
+        assert cci.overall_status([r_warn]) == "WARN"
+        summary = cci.summarize([r])
+        assert summary["counts"].get("observe") == 1
+        assert summary["counts"].get("warn", 0) == 0
+    finally:
+        c.close()
+
+
+def test_static_staleness_frozen_missing_table_is_still_skipped_missing_table():
+    """表不存在时既有行为不能被冻结分支破坏 —— 表存在性检查必须排在冻结判定之前。"""
+    c = duck_mem()
+    tds = _weekdays("20260401", 5)
+    try:
+        spec = _mkspec(
+            batch_mode="by_ts_code", sla=1,
+            execution_policy_mode="disabled", execution_policy_reason="tushare_sunset_retire",
+        )
+        r = cci.check_static_staleness(c, spec, tds, tds[-1])
+        assert r["status"] == "skipped_missing_table", r
+    finally:
+        c.close()
+
+
 # ── registry 解析 / 编排 / flag ──────────────────────────────────────────
 
 def test_load_domain_specs_new_keys_and_bad_gap_tolerance(tmp_path):
     """新键解析 (gap_tolerance/freshness_group_col/dead_groups/known_empty_days);
-    gap_tolerance 非法值 = 立即报错不静默。"""
+    gap_tolerance 非法值 = 立即报错不静默。
+
+    watermark_table 透传 (2026-09-18 blocking finding, cut_frozen_domain_verdicts):
+    此前所有涉及 watermark_table 的测试都是 _mkspec(watermark_table=...) 手工构造 spec,
+    从未真的经过 load_domain_specs()/domain_spec() 这条生产装配路径 —— 把 check_continuity_
+    integrity.py 里 "watermark_table": contract_spec.get("watermark_table") 改成
+    "watermark_table": None 之后, 全部既有测试(含本文件其余 129 项)照样绿, 没有一条会变红。
+    这里用 defaults 层与域级覆盖各挑一个**与生产值不同的哨兵字符串**(custom_wm_anchor /
+    b_only_wm), 而不是复用生产真实的 mart_data_source_watermark —— 避免测试恰好因为字面量
+    撞上生产默认值而"看起来测过"; 域 a 不覆盖 (验 defaults → contract_spec 这一层三层继承
+    确实流进了这份白名单 spec), 域 b 显式覆盖 (验域级值不会被 defaults 层覆盖回去, 同一条
+    透传两个方向都钉住)。"""
     p = tmp_path / "reg.yaml"
     p.write_text(
-        "defaults:\n  target_db: rawdb\n"
+        "defaults:\n  target_db: rawdb\n  watermark_table: custom_wm_anchor\n"
         "domains:\n"
         "  a:\n    target_table: t_a\n    grain: [x]\n    batch_mode: by_trade_date\n"
         "    data_start: '20240101'\n    freshness_sla_trading_days: 2\n"
@@ -754,7 +817,7 @@ def test_load_domain_specs_new_keys_and_bad_gap_tolerance(tmp_path):
         "    universe_filter_col: ts_code\n    universe_filter_prefixes: ['60', '00']\n"
         "  b:\n    target_table: t_b\n    grain: [trade_date, data_type]\n"
         "    batch_mode: by_trade_date\n    data_start: '20240101'\n"
-        "    freshness_sla_trading_days: 2\n"
+        "    freshness_sla_trading_days: 2\n    watermark_table: b_only_wm\n"
         "    freshness_group_col: data_type\n    dead_groups: ['热基']\n"
         "    data_start_reviewed: true\n    row_dip_tolerance: true\n",
         encoding="utf-8")
@@ -767,10 +830,12 @@ def test_load_domain_specs_new_keys_and_bad_gap_tolerance(tmp_path):
     assert a["universe_filter_col"] == "ts_code"
     assert a["universe_filter_prefixes"] == ["60", "00"]
     assert a["available_after"] == "09:20"
+    assert a["watermark_table"] == "custom_wm_anchor"   # defaults 层透传, 域 a 未覆盖
     b = next(s for s in specs if s["domain"] == "b")
     assert b["freshness_group_col"] == "data_type" and b["dead_groups"] == ["热基"]
     assert b["data_start_reviewed"] is True
     assert b["row_dip_tolerance"] is True
+    assert b["watermark_table"] == "b_only_wm"           # 域级覆盖赢 defaults
     p2 = tmp_path / "bad.yaml"
     p2.write_text(
         "domains:\n  c:\n    target_table: t_c\n    grain: [x]\n"
@@ -800,6 +865,16 @@ def test_real_registry_excludes_retired_k3_domains():
         "rule": "next_trading_session_at",
         "at": "09:00",
     }
+    # watermark_table 透传的生产回归 (2026-09-18 blocking finding 修复, cut_frozen_domain_
+    # verdicts 同一刀): test_load_domain_specs_new_keys_and_bad_gap_tolerance 已用合成哨兵值
+    # 钉住 defaults/域级两层都能流进 load_domain_specs() 的白名单 spec; 这里补真实 registry
+    # 这条腿, 证明生产装配路径(domain_spec 的三层继承 → load_domain_specs 的白名单透传)在
+    # 真实 sync_registry.yaml 上确实接通。不重复硬编码 "mart_data_source_watermark" 第二份
+    # 字面量副本(同一参数只定义一处) —— 直接从生产 YAML 自己的 defaults 节读出声明值来比对,
+    # 而不是猜一个字符串; margin 域自己不覆盖 watermark_table, 这条断言因此实际检验的是
+    # defaults 层那条继承链。
+    real_raw = cci.yaml.safe_load(cci.REGISTRY_PATH.read_text(encoding="utf-8"))
+    assert margin["watermark_table"] == real_raw["defaults"]["watermark_table"]
     # 2026-09-07 删两行。原写 == "enabled" / == "bounded_calendar_catchup", 钉的是
     # margin 当时的**运行时策略状态**, 与本测试的主题 (K3 退役域不得再登记 / 无 data_type
     # 分组列) 无关; margin 按 tushare_sunset 台账切成 freeze 后它必然假红。
@@ -1102,3 +1177,228 @@ def test_calendar_horizon_wired_into_run_checks_global_not_per_domain():
 
     results2, _ = cci.run_checks(specs, _fresh, tds, tds[-1], only="calendar_horizon", domain="dom1")
     assert results2 == [], "显式指定非 trade_cal 的域时, 全局 calendar_horizon 应跳过"
+
+
+# ── 2026-09-18 真实 continuity_20260918.json 形状 (project cut_frozen_domain_verdicts) ──
+#
+# 当天真实审计 37 项非 PASS 里, 4 项是判据问错了问题: moneyflow/daily_basic (completeness_ref
+# fail_row_count_mismatch) 与 index_daily_benchmark/index_dailybasic (static_staleness
+# warn_stalled) 全部 execution_policy.mode=disabled/没有源/永远不会再有新行, 而判据逐日拿它们
+# 跟一张还在长的基准比 —— 这 4 项永远不会好。本测试用同一份形状建夹具(不读生产库), 证明
+# 这 4 项从 FAIL/WARN 变成 observe_*, 而 stock_st 的 calendar_gaps 中间空洞(真缺口, 与冻结
+# 无关)必须仍是 fail_interior_gaps —— 这套放宽不是把整套判据调绿。
+
+def test_20260918_continuity_shapes_frozen_domains_observe_real_gap_still_fails():
+    tds = _weekdays("20260801", 34)
+    local_max = tds[-15]  # 冻结域最后一次真实覆盖的交易日 (之后 09-18 起连续断流)
+    c = duck_mem()
+    try:
+        # 基准域(daily/canonical_nominal_ohlcv_daily): 天天在长, 不含 ts_code
+        # (强制 completeness_ref 的标的集合差分支回落成纯行数比对, 与本测试无关)。
+        c.execute("CREATE TABLE canonical_nominal_ohlcv_daily (trade_date VARCHAR)")
+        c.executemany(
+            "INSERT INTO canonical_nominal_ohlcv_daily VALUES (?)",
+            [(d,) for d in tds for _ in range(5)],
+        )
+
+        # moneyflow / daily_basic: 冻结前逐日与基准一致, 冻结后(local_max 之后) 0 行
+        # —— 09-18 实测 20260831 起本域 0 vs daily 5,553 的真实形状。
+        for table in ("t_moneyflow", "t_daily_basic"):
+            _mktable(c, {d: 5 for d in tds if d <= local_max}, table=table)
+
+        # index_daily_benchmark / index_dailybasic: 手动刷新域, MAX(built_at) 停在 local_max
+        for table in ("t_index_daily_benchmark", "t_index_dailybasic"):
+            c.execute(f"CREATE TABLE {table} (ts_code TEXT, built_at TIMESTAMP)")
+            c.execute(
+                f"INSERT INTO {table} VALUES ('c0', ?)",
+                [f"{local_max[:4]}-{local_max[4:6]}-{local_max[6:8]} 18:00:00"],
+            )
+
+        # stock_st: 中间空洞(真缺口, 与冻结无关) —— enabled 域, 必须仍 FAIL。
+        hole = tds[10]
+        _mktable(c, {d: 2 for d in tds if d != hole}, table="t_stock_st")
+
+        specs = [
+            _mkspec(
+                domain="moneyflow", table="t_moneyflow", grain=["trade_date"],
+                data_start=tds[0],
+                execution_policy_mode="disabled", execution_policy_reason="tushare_sunset_freeze",
+                completeness_ref={"ref_domain": "daily", "tolerance": 0, "verified_since": tds[0]},
+            ),
+            _mkspec(
+                domain="daily_basic", table="t_daily_basic", grain=["trade_date"],
+                data_start=tds[0],
+                execution_policy_mode="disabled",
+                execution_policy_reason="tushare_sunset_replace_pending",
+                completeness_ref={"ref_domain": "daily", "tolerance": 0, "verified_since": tds[0]},
+            ),
+            _mkspec(
+                domain="index_daily_benchmark", table="t_index_daily_benchmark",
+                batch_mode="by_code_list", sla=1, data_start=tds[0],
+                execution_policy_mode="disabled",
+                execution_policy_reason="tushare_sunset_replace_pending",
+            ),
+            _mkspec(
+                domain="index_dailybasic", table="t_index_dailybasic",
+                batch_mode="by_code_list", sla=1, data_start=tds[0],
+                execution_policy_mode="disabled", execution_policy_reason="tushare_sunset_freeze",
+            ),
+            _mkspec(domain="stock_st", table="t_stock_st", sla=1, data_start=tds[0]),
+        ]
+
+        results, failures = cci.run_checks(
+            specs, lambda alias: c, tds, tds[-1], today=tds[-1]
+        )
+        by_key = {(r["check"], r["domain"]): r for r in results}
+
+        assert by_key[("completeness_ref", "moneyflow")]["status"] == "observe_frozen_window", \
+            by_key[("completeness_ref", "moneyflow")]
+        assert by_key[("completeness_ref", "daily_basic")]["status"] == "observe_frozen_window", \
+            by_key[("completeness_ref", "daily_basic")]
+        assert by_key[("static_staleness", "index_daily_benchmark")]["status"] == \
+            "observe_frozen_stalled", by_key[("static_staleness", "index_daily_benchmark")]
+        assert by_key[("static_staleness", "index_dailybasic")]["status"] == \
+            "observe_frozen_stalled", by_key[("static_staleness", "index_dailybasic")]
+        assert by_key[("calendar_gaps", "stock_st")]["status"] == "fail_interior_gaps", \
+            by_key[("calendar_gaps", "stock_st")]
+
+        # 真缺口不许被这套放宽连带放过: overall 仍必须是 FAIL, 不是全线转绿。
+        assert cci.overall_status(results) == "FAIL"
+        fail_keys = {(f["check"], f["domain"]) for f in failures}
+        assert ("completeness_ref", "moneyflow") not in fail_keys
+        assert ("completeness_ref", "daily_basic") not in fail_keys
+        assert ("calendar_gaps", "stock_st") in fail_keys
+    finally:
+        c.close()
+
+
+# ── 冻结锚点回退防线的生产接线 (2026-09-18 blocking finding 修复) ──────────────────────────
+#
+# 此前 run_checks 对 check_completeness_ref 的唯一生产调用点从不传 anchor_conn, 于是
+# _frozen_watermark_anchor_max 的默认值分支(自己现开一条到 smartmoney 库的真实连接)是
+# 生产实际唯一会走的路径, 却没有一条测试覆盖过 —— 两次独立变异(改坏 alias / 把整段
+# 现开逻辑删掉)均存活。修法: anchor_conn 经 run_checks 自己已注入的 conn_for("smartmoney")
+# 缓存传入, 与其它域的 db 连接同一套 DI; 本节测试因此直接走 run_checks 生产路径, 从不
+# 手动向 check_completeness_ref 传 anchor_conn, 证明这条接线本身是通的。
+
+def test_run_checks_wires_real_anchor_conn_via_smartmoney_alias():
+    """生产接线: 只走 run_checks(经 conn_for), 不手动传 anchor_conn —— 证明 check_completeness_ref
+    的冻结锚点回退防线在真实调用路径上确实生效, 不再是"自己现开一条没人测过的连接"。"""
+    tds = _weekdays("20260801", 20)
+    local_max = tds[-8]              # 域自己的表被静默削尾后现算出的 MAX
+    poisoned_anchor = tds[-3]        # 冻结锚点记得的水位, 晚于 local_max —— 真损坏的证据
+
+    mine_conn = duck_mem()
+    anchor_conn = duck_mem()
+    try:
+        mine_conn.execute("CREATE TABLE canonical_nominal_ohlcv_daily (trade_date VARCHAR)")
+        mine_conn.executemany(
+            "INSERT INTO canonical_nominal_ohlcv_daily VALUES (?)", [(d,) for d in tds]
+        )
+        _mktable(mine_conn, {d: 3 for d in tds if d <= local_max}, table="t_moneyflow")
+
+        anchor_conn.execute(
+            "CREATE TABLE mart_data_source_watermark "
+            "(data_domain TEXT, source_name TEXT, source_tier SMALLINT, last_data_date TEXT)"
+        )
+        anchor_conn.execute(
+            "INSERT INTO mart_data_source_watermark VALUES (?, ?, ?, ?)",
+            ["sync:moneyflow", "tushare", 2, poisoned_anchor],
+        )
+
+        specs = [_mkspec(
+            domain="moneyflow", db="tushare_raw", table="t_moneyflow", grain=["trade_date"],
+            data_start=tds[0],
+            execution_policy_mode="disabled", execution_policy_reason="tushare_sunset_freeze",
+            watermark_table="mart_data_source_watermark",
+            completeness_ref={"ref_domain": "daily", "tolerance": 0, "verified_since": tds[0]},
+        )]
+
+        def conn_for(alias):
+            return {"tushare_raw": mine_conn, "smartmoney": anchor_conn}[alias]
+
+        results, failures = cci.run_checks(specs, conn_for, tds, tds[-1], today=tds[-1])
+        by_key = {(r["check"], r["domain"]): r for r in results}
+
+        got = by_key[("completeness_ref", "moneyflow")]
+        assert got["status"] == "fail_frozen_regression", got
+        assert local_max in got["detail"] and poisoned_anchor in got["detail"], got["detail"]
+        assert ("completeness_ref", "moneyflow") in {(f["check"], f["domain"]) for f in failures}
+    finally:
+        mine_conn.close()
+        anchor_conn.close()
+
+
+def test_run_checks_does_not_open_smartmoney_anchor_conn_for_enabled_domain():
+    """隔离(其它全满足, 只有域未冻结这一条不满足): execution_policy.mode=enabled 的域声明
+    completeness_ref 时, run_checks 不该多开一条它用不到的 smartmoney 锚点连接 —— 用一个
+    记录被请求过哪些 alias 的假 conn_for 断言 smartmoney 从未出现在其中(不能靠让 conn_for
+    抛异常来证明: run_checks 的 _conn 本身就会 except Exception 把任何异常吞成"库不可达",
+    那样即使调用真的发生了, 断言也会因为异常被静默吞掉而误判通过)。"""
+    tds = _weekdays("20260801", 12)
+    mine_conn = duck_mem()
+    requested_aliases: list[str] = []
+    try:
+        mine_conn.execute("CREATE TABLE canonical_nominal_ohlcv_daily (trade_date VARCHAR)")
+        mine_conn.executemany(
+            "INSERT INTO canonical_nominal_ohlcv_daily VALUES (?)",
+            [(d,) for d in tds for _ in range(3)],
+        )
+        _mktable(mine_conn, {d: 3 for d in tds}, table="t_enabled")
+
+        specs = [_mkspec(
+            domain="enabled_dom", db="tushare_raw", table="t_enabled", grain=["trade_date"],
+            data_start=tds[0], execution_policy_mode="enabled",
+            completeness_ref={"ref_domain": "daily", "tolerance": 0, "verified_since": tds[0]},
+        )]
+
+        def conn_for(alias):
+            requested_aliases.append(alias)
+            return {"tushare_raw": mine_conn}[alias]
+
+        results, _ = cci.run_checks(specs, conn_for, tds, tds[-1], today=tds[-1])
+        by_key = {(r["check"], r["domain"]): r for r in results}
+        assert by_key[("completeness_ref", "enabled_dom")]["status"] == "pass", \
+            by_key[("completeness_ref", "enabled_dom")]
+        assert "smartmoney" not in requested_aliases, (
+            "enabled 域不该请求 smartmoney 锚点连接, 实际请求过: " + repr(requested_aliases)
+        )
+    finally:
+        mine_conn.close()
+
+
+def test_run_checks_falls_back_when_smartmoney_conn_unreachable():
+    """隔离(其它全满足, 只有锚点库本身不可达这一条不满足): 冻结域声明了 watermark_table,
+    但 smartmoney 库不可达(写锁/缺文件, 走与其它域 db 连接完全相同的 _conn 缓存 + 异常捕获
+    路径) —— 必须原样退化成"锚点不可用", 落回旧判据(observe_frozen_window), 不得让
+    completeness_ref 因锚点连接失败而 crash 或误判。"""
+    tds = _weekdays("20260801", 20)
+    local_max = tds[-8]
+    mine_conn = duck_mem()
+    try:
+        mine_conn.execute("CREATE TABLE canonical_nominal_ohlcv_daily (trade_date VARCHAR)")
+        mine_conn.executemany(
+            "INSERT INTO canonical_nominal_ohlcv_daily VALUES (?)",
+            [(d,) for d in tds for _ in range(3)],
+        )
+        _mktable(mine_conn, {d: 3 for d in tds if d <= local_max}, table="t_moneyflow")
+
+        specs = [_mkspec(
+            domain="moneyflow", db="tushare_raw", table="t_moneyflow", grain=["trade_date"],
+            data_start=tds[0],
+            execution_policy_mode="disabled", execution_policy_reason="tushare_sunset_freeze",
+            watermark_table="mart_data_source_watermark",
+            completeness_ref={"ref_domain": "daily", "tolerance": 0, "verified_since": tds[0]},
+        )]
+
+        def conn_for(alias):
+            if alias == "smartmoney":
+                raise RuntimeError("Conflicting lock is held")
+            return {"tushare_raw": mine_conn}[alias]
+
+        results, _ = cci.run_checks(specs, conn_for, tds, tds[-1], today=tds[-1])
+        by_key = {(r["check"], r["domain"]): r for r in results}
+        got = by_key[("completeness_ref", "moneyflow")]
+        assert got["status"] == "observe_frozen_window", got
+    finally:
+        mine_conn.close()

@@ -503,6 +503,186 @@ def test_cx4_unknown_domain_still_alerts_no_mapping():
     assert sla._probe_gate(probe.state) == ("NO_QUERY_MAPPING", True)
 
 
+# ── 2026-09-18 (project cut_frozen_domain_verdicts, 实测 watermark_sla_20260918.json) ──
+#
+# 当天 n_alerts=2: industry_dc(DATA_STALE_VS_SLA, 派生自已冻结的 dc_member, 没继承
+# observe_only) 与 sync:baostock_trade_cal(NO_QUERY_MAPPING, 域已从 registry 撤销但
+# watermark 残留行还在)。两条形状不同, 分开修分开测。
+
+def test_baostock_trade_cal_orphan_watermark_is_purged():
+    """域已从 sync_registry.yaml 撤销(grep 全仓零命中), 残留 watermark 行走既有
+
+    allowlist-purge 机制清掉 —— 与 stk_factor_pro 等六个同型, 不新发明判据。"""
+    smart = duck_mem()
+    ensure_source_watermark_schema(smart)
+    upsert_watermark(
+        smart,
+        {
+            "data_domain": "sync:baostock_trade_cal",
+            "source_name": "baostock",
+            "source_tier": 2,
+            "last_data_date": "20260101",
+            "row_count": 1,
+        },
+    )
+    # 活域同批次必须幸存 (隔离用例: 只有目标行被清, 不是整表清空)。
+    upsert_watermark(
+        smart,
+        {
+            "data_domain": "sync:moneyflow",
+            "source_name": "tushare",
+            "source_tier": 2,
+            "last_data_date": "20260828",
+            "row_count": 10,
+        },
+    )
+    purged = sla._purge_retired_watermark_tombs(smart, dry_run=False)
+    assert {row["data_domain"] for row in purged} == {"sync:baostock_trade_cal"}
+    left = {
+        str(row[0])
+        for row in smart.execute("SELECT data_domain FROM mart_data_source_watermark").fetchall()
+    }
+    assert left == {"sync:moneyflow"}
+
+
+def test_baostock_trade_cal_not_in_live_domain_specs():
+    """新墓碑加进 allowlist 前必须先证明它不是活域, 否则会撞
+
+    _purge_retired_watermark_tombs 的 live_keys 保护 (raise RuntimeError)。"""
+    from services.source_watermarks import DOMAIN_SPECS
+
+    live_keys = {(str(s["data_domain"]), str(s["source_name"])) for s in DOMAIN_SPECS}
+    assert ("sync:baostock_trade_cal", "baostock") not in live_keys
+
+
+def test_industry_dc_inherits_observe_only_when_upstream_frozen():
+    """dc_member 冻结时, 派生自它的 industry_dc 必须跟着转 observe_only —— 否则派生面
+
+    会为一个再也不会有新数据的上游永远报 DATA_STALE_VS_SLA。"""
+    queries = {**sla.DATA_SOURCE_QUERIES}
+    registry_queries = {
+        "sync:dc_member": {
+            "db": "tushare_raw",
+            "observe_only": True,
+            "observe_reason": "tushare_sunset_freeze",
+        }
+    }
+    sla._apply_derived_observe_only(queries, registry_queries)
+
+    entry = queries["industry_dc"]
+    assert entry["observe_only"] is True, entry
+    assert "dc_member" in entry["observe_reason"], entry
+    assert "tushare_sunset_freeze" in entry["observe_reason"], entry
+    # 原始查询字段不能丢 —— 这是"改状态不能连带丢功能"的隔离检查。
+    assert entry["query"] == sla.DATA_SOURCE_QUERIES["industry_dc"]["query"]
+
+
+def test_industry_dc_stays_alertable_when_upstream_enabled():
+    """隔离用例: 其它全满足(映射存在、upstream 条目存在), 只有 upstream 未冻结 ——
+
+    派生域必须保持 observe_only=False, 不能只要映射存在就一律放行。"""
+    queries = {**sla.DATA_SOURCE_QUERIES}
+    registry_queries = {"sync:dc_member": {"db": "tushare_raw", "observe_only": False}}
+    sla._apply_derived_observe_only(queries, registry_queries)
+
+    assert queries["industry_dc"].get("observe_only") is False
+    assert "observe_reason" not in queries["industry_dc"]
+
+
+def test_industry_dc_reverts_when_upstream_thaws_same_process():
+    """退出规则: 上游解冻后, 同一进程内再跑一次必须自动改回 False —— 不是只加不减的
+
+    单向开关(否则一次冻结记录就会永远压住这条域的告警, 变成另一种"永远绿")。"""
+    queries = {**sla.DATA_SOURCE_QUERIES}
+    frozen = {"sync:dc_member": {"db": "tushare_raw", "observe_only": True,
+                                 "observe_reason": "tushare_sunset_freeze"}}
+    sla._apply_derived_observe_only(queries, frozen)
+    assert queries["industry_dc"]["observe_only"] is True
+
+    thawed = {"sync:dc_member": {"db": "tushare_raw", "observe_only": False}}
+    sla._apply_derived_observe_only(queries, thawed)
+    assert queries["industry_dc"]["observe_only"] is False
+    assert "observe_reason" not in queries["industry_dc"]
+
+
+def test_apply_derived_observe_only_does_not_mutate_module_constant():
+    """DATA_SOURCE_QUERIES["industry_dc"] 与 queries["industry_dc"] 起初是同一个 dict
+
+    对象(浅拷贝) —— 必须用新 dict 替换而非原地改, 否则会把 observe_only 焊死进模块级
+    常量, 污染同进程内其它调用/测试。"""
+    frozen = {"sync:dc_member": {"db": "tushare_raw", "observe_only": True,
+                                 "observe_reason": "tushare_sunset_freeze"}}
+    queries = {**sla.DATA_SOURCE_QUERIES}
+    sla._apply_derived_observe_only(queries, frozen)
+
+    assert queries["industry_dc"]["observe_only"] is True
+    assert not sla.DATA_SOURCE_QUERIES["industry_dc"].get("observe_only"), (
+        "污染了模块级常量 —— 下一次调用会带着上一次的冻结状态, 与输入无关"
+    )
+
+
+def _direct_call_names_in_function_body(func) -> set[str]:
+    """func 函数体**顶层语句**里直接调用的函数名集合 —— 只看 func_def.body 的直接子
+    语句(``Expr(Call(...))`` / ``Assign(value=Call(...))``), 不递归进任何 If/For/While/
+    Try/With 等控制流节点内部。
+
+    2026-09-18 blocking finding 修复(project cut_frozen_domain_verdicts): 此前两条
+    "wired into main" 测试都是 ``"_x(...)" in inspect.getsource(main)`` 纯子串匹配 ——
+    把调用包进 ``if False:`` 死分支, 文本依旧能被 ``in`` 命中, 测试照样绿(变异实测两次
+    独立验证)。子串匹配的盲区是"文本存在"不等于"会执行到"; 这里改用 AST 只认**函数体的
+    直接语句**, 一旦调用被包进任何嵌套的 if/for/try, 它就不再是 func_def.body 的直接
+    子节点, 检测不到, 从而与"死分支里的调用文本"精确区分开。"""
+    import ast
+    import inspect
+    import textwrap
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
+    func_def = tree.body[0]
+    assert isinstance(func_def, ast.FunctionDef), func_def
+    names: set[str] = set()
+    for stmt in func_def.body:
+        value = None
+        if isinstance(stmt, ast.Expr):
+            value = stmt.value
+        elif isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+            value = stmt.value
+        if isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
+            names.add(value.func.id)
+    return names
+
+
+def test_apply_derived_observe_only_is_wired_into_main():
+    """_apply_derived_observe_only 存在但没接进 main() 等于没用 —— AST 钉住它是 main()
+
+    函数体的一条**顶层直接语句**(不是随便躲在某个死分支里的调用文本), 防止未来重构时
+    函数还在但接线被顺手删掉、或被包进永不执行的分支(同型教训:
+    usage-closure-cannot-be-inferred —— 闭包/接线不能靠人工检查记住, 必须有断言钉住;
+    见 _direct_call_names_in_function_body docstring 里记录的两次独立变异存活证据)。
+    """
+    assert "_apply_derived_observe_only" in _direct_call_names_in_function_body(sla.main), (
+        "main() 函数体的顶层语句里没有直接调用 _apply_derived_observe_only —— 哪怕调用"
+        "文本出现在源码某处(例如被包进 `if False:` 死分支里), 也判定为没接线, "
+        "派生域的 observe_only 永远不会被应用"
+    )
+
+
+def test_industry_dc_real_registry_shape_matches_20260918_audit():
+    """用真实 sync_registry.yaml 复现 09-18 实测形状: dc_member 当前确实是
+
+    execution_policy.mode=disabled, 应用后 industry_dc 确实拿到 observe_only=True。
+    真库/真跑批不在本测试范围内 —— 只读 YAML, 不连 DuckDB。"""
+    registry_queries = sla._sync_registry_queries()
+    dc_member = registry_queries.get("sync:dc_member")
+    assert dc_member is not None, "dc_member 不在 sync_registry.yaml 里 —— 本测试的前提已变"
+    assert dc_member.get("observe_only") is True, (
+        "本测试前提是 dc_member 当前已冻结; 若它被改回活域, 该改的是这个前提而不是断言"
+    )
+
+    queries = {**sla.DATA_SOURCE_QUERIES, **registry_queries}
+    sla._apply_derived_observe_only(queries, registry_queries)
+    assert queries["industry_dc"]["observe_only"] is True
+
+
 def test_verified_probe_empty_and_query_error_fail_closed():
     raw = duck_mem()
     raw.execute("CREATE TABLE raw_probe (ts_code TEXT, trade_date TEXT)")
@@ -652,6 +832,234 @@ def test_reconcile_updates_only_exact_watermark_primary_key_and_clears_unverifie
     assert str(rows[0][3]).startswith("2026-07-15 11:54:54")
     assert tuple(rows[1][i] for i in range(3)) == (2, "20260709", 2)
     assert rows[1][3] is None
+
+
+# ── 冻结域 rollback 门 (2026-09-18 blocking finding 修复, project cut_frozen_domain_verdicts) ──
+#
+# check_continuity_integrity._frozen_watermark_anchor_max 把 mart_data_source_watermark
+# 当作"冻结后不会再被移动"的独立锚点, 但这条可信性此前只是个未验证的假设: 本文件的
+# rollback 分支(727/806 两处既有 observe_only 门唯独漏了这条)对 disabled 域一样会把
+# verified_frontier 现查出的 actual 真实写回 watermark —— 而那个 actual 与
+# check_completeness_ref 的 local_max 同源同险(都现查自域自己那张可能已被静默削尾的
+# 原始表), 于是"冻结锚点"实际上会跟着一起被污染。_reconcile_status_and_apply 补上这道门:
+# rollback + observe_only 时只记录 status, 不调用 _apply_watermark_reconcile; forward 不受
+# 影响(前移不丢失任何已核实的水位信息, 是既有两处门都认可的安全方向)。
+
+def test_reconcile_status_and_apply_blocks_rollback_when_observe_only():
+    """隔离(其它全满足, 只违反"未冻结"这一条): rollback 候选 + observe_only=True
+    —— 不许返回 should_apply=True, 状态改叫 FROZEN_ROLLBACK_OBSERVED 而不是
+    INVALID_WATERMARK_FRONTIER(与 alert 应转 False 的既有两处 OBSERVE 状态同一命名族)。"""
+    status, should_apply = sla._reconcile_status_and_apply("rollback", observe_only=True)
+    assert status == "FROZEN_ROLLBACK_OBSERVED", status
+    assert should_apply is False
+
+
+def test_reconcile_status_and_apply_allows_rollback_when_not_observe_only():
+    """隔离(其它全满足, 只违反"已冻结"这一条): 同样是 rollback 候选, 但域未冻结
+    (enabled 孪生) —— 必须维持修复前的既有行为不变: INVALID_WATERMARK_FRONTIER 且真的写库,
+    证明这道新门的作用域只盖 observe_only 域, 不是把 rollback 整体收紧。"""
+    status, should_apply = sla._reconcile_status_and_apply("rollback", observe_only=False)
+    assert status == "INVALID_WATERMARK_FRONTIER", status
+    assert should_apply is True
+
+
+def test_reconcile_status_and_apply_allows_forward_even_when_observe_only():
+    """隔离(其它全满足, 只违反"是 rollback 方向"这一条): forward 候选即使域已冻结也照样
+    放行 —— 前移不丢失任何已核实的水位信息, 该门只针对 rollback 方向, 不是把冻结域的
+    reconcile 整体锁死。"""
+    status, should_apply = sla._reconcile_status_and_apply("forward", observe_only=True)
+    assert status == "STALE_WATERMARK", status
+    assert should_apply is True
+
+
+def test_reconcile_status_and_apply_none_when_no_candidate():
+    """隔离(其它全满足, 只违反"存在 reconcile 候选"这一条): 无候选(None)时不论
+    observe_only 取何值都必须原样透传 None/不应用, 不能凭空造出一个状态。"""
+    assert sla._reconcile_status_and_apply(None, observe_only=True) == (None, False)
+    assert sla._reconcile_status_and_apply(None, observe_only=False) == (None, False)
+
+
+def _find_if_comparing_name_to_constant(func, var_name: str, constant_value: str):
+    """在 func 源码里找 test **恰好结构等价于** ``var_name == constant_value`` 的 If 节点
+
+    (AST 结构比对, 不是子串匹配), 查不到返回 None。用于区分"这个精确分支确实存在
+    且可执行"与"这段比较文本恰好出现在源码某处"(后者哪怕分支被换成 `if False:` 也不受
+    影响, 见 test_reconcile_status_and_apply_is_wired_into_main 修复背景)。"""
+    import ast
+    import inspect
+    import textwrap
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        test = node.test
+        if (
+            isinstance(test, ast.Compare)
+            and isinstance(test.left, ast.Name) and test.left.id == var_name
+            and len(test.ops) == 1 and isinstance(test.ops[0], ast.Eq)
+            and len(test.comparators) == 1
+            and isinstance(test.comparators[0], ast.Constant)
+            and test.comparators[0].value == constant_value
+        ):
+            return node
+    return None
+
+
+def _find_if_directly_guarding_call(func, call_name: str):
+    """在 func 源码里找**最内层**、其 ``if`` 分支体(真分支, 不含 orelse)直接语句就是
+
+    对 call_name 调用的 If 节点 —— 用于确认某个调用真的被放在一条可读出判断条件的
+    if 分支之内, 而不是仅凭子串匹配"某个含 should_apply 的词在调用之前出现过"
+    (旧测试的写法: `"should_apply" in src[:src.index("_apply_watermark_reconcile(")]`——
+    只要 should_apply 这个词在源码里任何更早的位置出现过就能通过, 与它是否真的守着
+    这次调用无关)。查不到时抛 AssertionError(调用方直接把这当成断言用)。"""
+    import ast
+    import inspect
+    import textwrap
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        for stmt in node.body:
+            if (
+                isinstance(stmt, ast.Expr)
+                and isinstance(stmt.value, ast.Call)
+                and isinstance(stmt.value.func, ast.Name)
+                and stmt.value.func.id == call_name
+            ):
+                return node
+    raise AssertionError(
+        f"{getattr(func, '__qualname__', func)} 源码里找不到直接守着 "
+        f"{call_name}(...) 调用(作为 if 真分支的直接语句)的 if 节点"
+    )
+
+
+def test_reconcile_status_and_apply_is_wired_into_main():
+    """_reconcile_status_and_apply 存在但没接进 main() 等于没用。AST 结构比对钉住两件
+
+    独立的事(2026-09-18 blocking finding 修复, project cut_frozen_domain_verdicts —
+    旧版纯子串匹配对`if False:`包住整段分支的死代码完全免疫不了, 变异实测 48 项全绿):
+    (1) `if reconcile_status == "FROZEN_ROLLBACK_OBSERVED":` 这个精确分支必须作为一条
+    真实可执行的 If 节点存在(不是被替换成 `if False:` 或改写成别的判断), 且分支体内
+    确实把 alert 关掉、绝不触碰 _apply_watermark_reconcile(这条分支存在的意义就是
+    跳过写库); (2) _apply_watermark_reconcile 的真实调用点被一条测试里能读出
+    `should_apply` 字样的 if 条件直接守着(而不是"should_apply 这个词在调用前的源码
+    某处出现过")。两条各自独立失败, 合起来才是"main() 真的按 should_apply 分派"。"""
+    import ast
+
+    observe_if = _find_if_comparing_name_to_constant(
+        sla.main, "reconcile_status", "FROZEN_ROLLBACK_OBSERVED"
+    )
+    assert observe_if is not None, (
+        'main() 里找不到 `if reconcile_status == "FROZEN_ROLLBACK_OBSERVED":` 这个精确'
+        "分支(AST 结构比对) —— 该分支若被替换成 `if False:` 或改写判断条件, 冻结域"
+        "rollback 门就形同虚设"
+    )
+    observe_body_src = "\n".join(ast.unparse(stmt) for stmt in observe_if.body)
+    assert "alert" in observe_body_src and "False" in observe_body_src, observe_body_src
+    assert "_apply_watermark_reconcile" not in observe_body_src, (
+        "FROZEN_ROLLBACK_OBSERVED 分支体内不应该出现 _apply_watermark_reconcile 调用 —— "
+        "这条分支存在的意义就是跳过写库, 与 _apply_watermark_reconcile 的调用点必须互斥"
+    )
+
+    guard_if = _find_if_directly_guarding_call(sla.main, "_apply_watermark_reconcile")
+    guard_src = ast.unparse(guard_if.test)
+    assert "should_apply" in guard_src, (
+        f"_apply_watermark_reconcile 的调用没有被含 should_apply 的 if 条件直接守住 "
+        f"(实际条件: {guard_src!r})"
+    )
+
+
+def test_frozen_domain_rollback_does_not_poison_completeness_ref_anchor():
+    """跨文件回归: update_watermark_sla 的 rollback 门与 check_continuity_integrity 的
+    冻结锚点回退防线是同一个 blocking finding 的两半, 在同一个用例里真实调用两边的函数,
+    不是各自文件内孤立打桩(见 check_continuity_integrity._frozen_watermark_anchor_max
+    docstring "两个脚本口径一致"段落)。
+
+    场景: moneyflow 冻结前最后一次真实同步定格在 20260828; 冻结后原始表被静默削尾,
+    现查 actual 倒退到 20260827 且 verified_complete=True(min_rows_per_batch/
+    batch_completeness 域的真实形状)。若旧代码(无 observe_only 门)对这个 disabled 域
+    仍然真的执行 rollback, mart_data_source_watermark 会被这次 UPDATE 带偏成 20260827,
+    锚点与被削尾后的现算值一起倒退, check_continuity_integrity 就再也测不出这次静默损坏
+    (fail_frozen_regression 需要 anchor_max > local_max 才触发, 两者被一起拉平后条件
+    永远不成立)。本刀修过的门挡住这次 rollback 之后, 锚点保持 20260828 不变,
+    fail_frozen_regression 依然触发。"""
+    import importlib.util
+
+    cci_path = (
+        Path(__file__).resolve().parents[2] / "scripts" / "check_continuity_integrity.py"
+    )
+    cci_spec = importlib.util.spec_from_file_location(
+        "check_continuity_integrity_cross_file_test", cci_path
+    )
+    cci = importlib.util.module_from_spec(cci_spec)
+    assert cci_spec and cci_spec.loader
+    cci_spec.loader.exec_module(cci)
+
+    smart = duck_mem()
+    ensure_source_watermark_schema(smart)
+    frozen_last_data_date = "20260828"   # 域冻结前最后一次真实同步定格的水位
+    upsert_watermark(
+        smart,
+        {
+            "data_domain": "sync:moneyflow",
+            "source_name": "tushare",
+            "source_tier": 2,
+            "last_data_date": frozen_last_data_date,
+            "row_count": 10,
+        },
+    )
+
+    poisoned_actual = "20260827"   # 冻结后原始表被静默削尾, 现查值倒退一天
+    reconcile = sla._watermark_reconcile_direction(
+        frozen_last_data_date, poisoned_actual, verified_complete=True,
+    )
+    assert reconcile == "rollback", "本用例前提: 现算值必须真的倒退, 否则测的不是这个场景"
+
+    status, should_apply = sla._reconcile_status_and_apply(reconcile, observe_only=True)
+    assert status == "FROZEN_ROLLBACK_OBSERVED", status
+    assert should_apply is False
+
+    if should_apply:  # 只在门被绕过(修复前的旧行为)时才会走到这里
+        sla._apply_watermark_reconcile(
+            smart, data_domain="sync:moneyflow", source_name="tushare", source_tier=2,
+            actual_date=poisoned_actual, verified_frontier=None,
+        )
+
+    # check_continuity_integrity 侧: 锚点必须仍是冻结前的真实水位, 没被上面这次
+    # (已被挡住的) rollback 带偏。
+    anchor_max = cci._frozen_watermark_anchor_max(
+        "moneyflow", "mart_data_source_watermark", smart,
+    )
+    assert anchor_max == frozen_last_data_date, (
+        "锚点被 rollback 带偏了 —— observe_only 门没有真的挡住写库"
+    )
+
+    # 端到端: local_max(被削尾后的现算值, 比锚点早一天)配合这个未被污染的锚点,
+    # completeness_ref 必须判 fail_frozen_regression, 不能被静默吸收成 observe。
+    tds = [f"202608{d:02d}" for d in range(20, 32)]
+    mine = duck_mem()
+    mine.execute("create table canonical_nominal_ohlcv_daily (trade_date VARCHAR)")
+    mine.execute("create table mine (trade_date VARCHAR)")
+    for d in tds:
+        mine.execute("insert into canonical_nominal_ohlcv_daily values (?)", [d])
+        if d <= poisoned_actual:
+            mine.execute("insert into mine values (?)", [d])
+
+    spec = {
+        "domain": "moneyflow", "db": "tushare_raw", "table": "mine",
+        "freshness_date_column": "trade_date", "date_param": None,
+        "execution_policy_mode": "disabled", "execution_policy_reason": "tushare_sunset_freeze",
+        "watermark_table": "mart_data_source_watermark",
+        "completeness_ref": {
+            "kind": "same_day_row_count", "ref_domain": "daily",
+            "tolerance": 0, "verified_since": tds[0], "evidence": "test",
+        },
+    }
+    got = cci.check_completeness_ref(mine, spec, tds, tds[-1], anchor_conn=smart)
+    assert got["status"] == "fail_frozen_regression", got
 
 
 # ── SLA 的轴 (2026-08-16) ────────────────────────────────────────────────
