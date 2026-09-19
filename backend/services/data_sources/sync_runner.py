@@ -1139,6 +1139,7 @@ def _fetch_with_retry(
     from services.data_sources.sources.tushare import TuShareAuthorizationError
     from services.data_sources.fetch_verdict import (
         FailureKind,
+        SourceCannotAnswerDateError,
         classify_failure,
         is_hard_stop,
         should_retry_same_channel,
@@ -1159,6 +1160,13 @@ def _fetch_with_retry(
             last_err = "zero_rows"
         except TuShareAuthorizationError:
             raise  # 账户授权是硬阻断；重试同一批只会制造噪音与额外请求
+        except SourceCannotAnswerDateError:
+            # 2026-09-18 (ST 契约 v2 刀3): 源结构性地答不出这一天 (如 ST 派生器的
+            # 名称快照只能回答今天、baostock 水库对没落库的日期没有行) —— 零重试
+            # 零退避原样上抛, 不当成瞬态失败去睡 backoff (F9: 8 个不可答的洞若走
+            # 满 3 次重试 x 退避 5s/30s, 白睡 8×35s)。调用方 (计划器/运行器) 收口
+            # 成 typed unanswerable 结果, 不降级。
+            raise
         except Exception as exc:  # noqa: BLE001 — 重试边界
             last_err = str(exc)[:200]
             # 分层判据 (2026-09-02 刀3): ①供应商错误码/异常属性 → ②异常类 → ③中文文案表。
@@ -2461,9 +2469,20 @@ def _publish_security_day_short_window(
     trade_dates: list[str],
     trigger_mode: TriggerMode | str = "manual",
 ) -> dict[str, Any]:
-    """Publish each authorized trade_date via the formal single-day path."""
+    """Publish each authorized trade_date via the formal single-day path.
+
+    B2 修法 (2026-09-19 返修): typed ``status=="unanswerable"`` 的日子 (源结构性
+    答不出, 见 ``_unanswerable_security_day_outcome``) 之前被这个循环当成"没
+    失败"计入 ``window_days_completed``/``partition_values``、整窗 ``status``
+    仍报 ``ok`` —— 多日窗口把"不可答"悄悄聚合成了"成功"(假通过, 手动 CLI 退出码
+    也是 0)。现在单列到 ``unanswerable_days`` (日期 + reason), 不计入完成、不
+    进 ``partition_values``; 只要窗口里有一天不可答, 整窗 ``status`` 就不是
+    ``ok`` (``partial_unanswerable``, 真失败优先报 ``partial``)。不可答的日子
+    不 break——继续处理窗口里其余的日子 (真失败仍然 break, 因为那是"取数机制
+    本身坏了", 要让中途故障可见)。"""
 
     day_results: list[dict[str, Any]] = []
+    unanswerable_days: list[dict[str, Any]] = []
     total_rows = 0
     total_batches = 0
     failed = 0
@@ -2477,6 +2496,15 @@ def _publish_security_day_short_window(
             trigger_mode=trigger_mode,
         )
         day_results.append(result)
+        if result.get("status") == "unanswerable":
+            unanswerable_days.append(
+                {
+                    "trade_date": trade_date,
+                    "reason": result.get("unanswerable_reason"),
+                    "remedy": result.get("remedy", ""),
+                }
+            )
+            continue
         total_rows += int(result.get("rows") or 0)
         total_batches += int(result.get("batches") or 0)
         day_failed = int(result.get("failed_batches") or 0)
@@ -2492,19 +2520,95 @@ def _publish_security_day_short_window(
         if len(day_results) == 1
         else "accepted_security_day_short_window"
     )
+    if failed:
+        status = "partial"
+    elif unanswerable_days:
+        status = "partial_unanswerable"
+    else:
+        status = "ok"
     return {
         "domain": domain,
-        "status": "ok" if failed == 0 else "partial",
+        "status": status,
         "batches": total_batches,
         "rows": total_rows,
         "failed_batches": failed,
         "publication": publication,
-        "partition_values": [str(r.get("partition_value") or "") for r in day_results if int(r.get("failed_batches") or 0) == 0],
+        "partition_values": [str(r.get("partition_value") or "") for r in day_results if r.get("status") != "unanswerable" and int(r.get("failed_batches") or 0) == 0],
+        "unanswerable_days": unanswerable_days,
         "trade_dates": list(trade_dates),
         "day_results": day_results,
         "last_date": last_ok,
         "window_days_requested": len(trade_dates),
         "window_days_completed": completed_ok,
+    }
+
+
+def _unanswerable_security_day_outcome(
+    domain: str,
+    exc: Any,
+    *,
+    partition: str,
+    publication: str,
+    transport: str,
+) -> dict[str, Any]:
+    """typed 结果, 供源结构性答不出这一天时用 (2026-09-18 ST 契约 v2 刀3).
+
+    ``exc`` 是一个 ``SourceCannotAnswerDateError`` (或其子类, 如
+    ``StockSTUnanswerableError``) —— 不当作降级 (``status`` 不是
+    ``error``/``degraded``), 不开写连接、不写 ``ingest_batch``。计划器/运行器
+    据此不调 ``ctx.degraded``, 只记一条 typed unanswerable 结果。
+    """
+
+    return {
+        "domain": domain,
+        "status": "unanswerable",
+        "batches": 0,
+        "rows": 0,
+        "failed_batches": 0,
+        "unanswerable": True,
+        "unanswerable_reason": getattr(exc, "reason", str(exc)),
+        "remedy": getattr(exc, "remedy", ""),
+        "partition_value": partition,
+        "publication": publication,
+        "transport": transport,
+    }
+
+
+def _persist_baostock_daily_k_evidence(
+    conn: Any, adapter: Any, *, domain: str, partition: str
+) -> dict[str, Any]:
+    """先证据后派生 (红线 4): 把 daily 适配器本次运行里查过的 baostock 行落进
+    ``raw_baostock_daily_k`` 水库, 在派生写入 (daily 的 Tx-A ``BEGIN``) 之前
+    COMMIT/ROLLBACK 完毕 (2026-09-18, ST 契约 v2 刀2)。
+
+    ``adapter`` 没有 ``drain_baostock_daily_k_rows`` (stock_st_derive / tushare
+    等) -> ``not_applicable``。drain 到 0 行 (本次运行没查过 baostock, 或全是
+    负缓存 miss) -> ``ok``/0 行。**水库落库失败绝不得反过来让 daily 分区落不了
+    地** (任务明令) —— 错误原样进返回值, 不改变 daily 分区自身的 status。"""
+
+    drain = getattr(adapter, "drain_baostock_daily_k_rows", None)
+    if drain is None:
+        return {"status": "not_applicable"}
+    try:
+        rows = drain()
+        if not rows:
+            return {"status": "ok", "rows_seen": 0, "rows_inserted": 0, "rows_unchanged": 0}
+        from services.data_sources.baostock_daily_k_reservoir import (
+            record_baostock_daily_k_rows,
+        )
+
+        outcome = record_baostock_daily_k_rows(conn, rows)
+    except Exception as exc:  # rule-compliance: ok evidence=水库落库失败不得反过来让 daily 分区落不了地 (任务明令), 错误原样进结果 JSON
+        log.warning(
+            "baostock_daily_k_reservoir 落库失败 domain=%s partition=%s: %s",
+            domain, partition, exc,
+        )
+        return {"status": "error", "error": str(exc)[:300]}
+    return {
+        "status": "ok",
+        "rows_seen": outcome.rows_seen,
+        "rows_inserted": outcome.rows_inserted,
+        "rows_unchanged": outcome.rows_unchanged,
     }
 
 
@@ -2541,14 +2645,8 @@ def _publish_security_day_accepted_partition(
         ACQUIRE_MODE_PROVIDER_TUSHARE,
         resolve_security_day_acquire,
     )
+    from services.data_sources.fetch_verdict import SourceCannotAnswerDateError
     from services.data_sources.stock_st_runtime import StockStRuntimeError
-
-    acquired = resolve_security_day_acquire(
-        ACQUIRE_MODE_PROVIDER_TUSHARE,
-        domain,
-        trade_date=partition,
-        fetch_rows=_fetch_rows,
-    )
 
     if domain == "daily":
         publication = "accepted_nominal_ohlcv_partition"
@@ -2557,6 +2655,19 @@ def _publish_security_day_accepted_partition(
     else:
         raise SyncWindowError(
             f"domain={domain} is not a security-day accepted publication"
+        )
+
+    try:
+        acquired = resolve_security_day_acquire(
+            ACQUIRE_MODE_PROVIDER_TUSHARE,
+            domain,
+            trade_date=partition,
+            fetch_rows=_fetch_rows,
+        )
+    except SourceCannotAnswerDateError as exc:
+        return _unanswerable_security_day_outcome(
+            domain, exc, partition=partition, publication=publication,
+            transport="land_then_accept",
         )
 
     # Same-day vendor vacuum → typed pending_publish (not failed_batches /
@@ -2641,6 +2752,12 @@ def _publish_security_day_accepted_partition(
 
     conn = _target_conn(spec)
     try:
+        # 2026-09-18 (ST 契约 v2 刀2): 先证据后派生 (红线 4) —— 水库落库在
+        # daily 自己的 land/accept 事务 (Tx-A BEGIN) 之前, 用自己的事务
+        # COMMIT/ROLLBACK 完毕。水库落库失败绝不反过来让 daily 分区落不了地。
+        reservoir_evidence = _persist_baostock_daily_k_evidence(
+            conn, adapter, domain=domain, partition=partition
+        )
         try:
             outcome = publish(conn)
         except (
@@ -2658,6 +2775,7 @@ def _publish_security_day_accepted_partition(
                 "publication": publication,
                 "transport": "land_then_accept",
                 "acquire_mode": acquired.acquire_mode,
+                "baostock_daily_k_reservoir": reservoir_evidence,
             }
     finally:
         conn.close()
@@ -2678,6 +2796,7 @@ def _publish_security_day_accepted_partition(
         "acquire_mode": acquired.acquire_mode,
         "eligible_end": eligibility.eligible_end,
         "eligibility_reason": eligibility.reason,
+        "baostock_daily_k_reservoir": reservoir_evidence,
     }
 
 
@@ -3275,14 +3394,29 @@ def _land_security_day_partition(
             return _fetch_with_retry(adapter, spec, request)
 
         from services.data_sources.nominal_ohlcv_runtime import NominalOhlcvRuntimeError
+        from services.data_sources.fetch_verdict import SourceCannotAnswerDateError
         from services.data_sources.stock_st_runtime import StockStRuntimeError
 
+        reservoir_evidence: dict[str, Any] = {"status": "not_applicable"}
         try:
-            acquired = resolve_security_day_acquire(
-                ACQUIRE_MODE_PROVIDER_TUSHARE,
-                domain,
-                trade_date=partition,
-                fetch_rows=_fetch_rows,
+            try:
+                acquired = resolve_security_day_acquire(
+                    ACQUIRE_MODE_PROVIDER_TUSHARE,
+                    domain,
+                    trade_date=partition,
+                    fetch_rows=_fetch_rows,
+                )
+            except SourceCannotAnswerDateError as exc:
+                return _unanswerable_security_day_outcome(
+                    domain, exc, partition=partition, publication="land_only",
+                    transport="land_only",
+                )
+
+            # 2026-09-18 (ST 契约 v2 刀2): 先证据后派生, acquire 成功之后、
+            # capture_and_land_* 之前 —— 同 _publish_security_day_accepted_
+            # partition 那份先例, 水库落库失败不反过来让 land 落不了地。
+            reservoir_evidence = _persist_baostock_daily_k_evidence(
+                conn, adapter, domain=domain, partition=partition
             )
 
             def _acquired_rows(_params: Mapping[str, Any]):
@@ -3348,6 +3482,7 @@ def _land_security_day_partition(
                 "publication": "land_only",
                 "transport": "land_only",
                 "acquire_mode": ACQUIRE_MODE_PROVIDER_TUSHARE,
+                "baostock_daily_k_reservoir": reservoir_evidence,
             }
     finally:
         conn.close()
@@ -3365,6 +3500,7 @@ def _land_security_day_partition(
         "acquire_mode": ACQUIRE_MODE_PROVIDER_TUSHARE,
         "eligible_end": eligibility.eligible_end,
         "eligibility_reason": eligibility.reason,
+        "baostock_daily_k_reservoir": reservoir_evidence,
     }
 
 
@@ -3438,6 +3574,7 @@ def _run_security_day_transport_window(
         max_dates=None,
     )
     day_results: list[dict[str, Any]] = []
+    unanswerable_days: list[dict[str, Any]] = []
     total_rows = 0
     failed = 0
     last_ok: str | None = None
@@ -3459,7 +3596,16 @@ def _run_security_day_transport_window(
                 trigger_mode=mode,
                 from_local_raw=from_local_raw,
             )
-            if int(land_result.get("failed_batches") or 0) != 0:
+            if land_result.get("status") == "unanswerable":
+                # B2 修法 (2026-09-19 返修): 源结构性答不出这一天时
+                # ``_land_security_day_partition`` 没有开写连接、没有 batch_id
+                # 可 accept——原代码只看 ``failed_batches``(typed unanswerable
+                # 恒为 0), 会走进 accept 分支对 ``land_result["batch_id"]``
+                # 取键崩溃。先于 failed_batches 判断拦掉, 直接把 land_result
+                # 当作这一天的 typed unanswerable 结果, 不再往前走。
+                result = land_result
+                result["transport"] = "land_then_accept"
+            elif int(land_result.get("failed_batches") or 0) != 0:
                 result = land_result
                 result["transport"] = "land_then_accept"
             else:
@@ -3473,6 +3619,17 @@ def _run_security_day_transport_window(
         else:
             raise SyncWindowError(f"unknown security-day transport={transport!r}")
         day_results.append(result)
+        if result.get("status") == "unanswerable":
+            # B2 修法: 不可答的日子不计入完成、不进 partition_values, 也不 break
+            # (取数机制本身没坏, 继续处理窗口里其余的日子; 真失败才 break)。
+            unanswerable_days.append(
+                {
+                    "trade_date": trade_date,
+                    "reason": result.get("unanswerable_reason"),
+                    "remedy": result.get("remedy", ""),
+                }
+            )
+            continue
         total_rows += int(result.get("rows") or 0)
         day_failed = int(result.get("failed_batches") or 0)
         failed += day_failed
@@ -3481,18 +3638,25 @@ def _run_security_day_transport_window(
             completed_ok += 1
         else:
             break
+    if failed:
+        status = "partial"
+    elif unanswerable_days:
+        status = "partial_unanswerable"
+    else:
+        status = "ok"
     return {
         "domain": domain,
-        "status": "ok" if failed == 0 else "partial",
+        "status": status,
         "batches": len(day_results),
         "rows": total_rows,
         "failed_batches": failed,
         "publication": f"security_day_{transport}",
         "transport": transport,
+        "unanswerable_days": unanswerable_days,
         "partition_values": [
             str(r.get("partition_value") or "")
             for r in day_results
-            if int(r.get("failed_batches") or 0) == 0
+            if r.get("status") != "unanswerable" and int(r.get("failed_batches") or 0) == 0
         ],
         "trade_dates": list(trade_dates),
         "day_results": day_results,
@@ -4696,7 +4860,16 @@ def _main_unlocked(
     print(json.dumps(results, ensure_ascii=False, indent=1))
     if any(r.get("status") == "quota_halt" for r in results):
         return 2
-    return 0 if all(r.get("failed_batches") == 0 for r in results) else 1
+    # B2 修法 (2026-09-19 返修): 多日窗口把"这批日子里有几天结构性答不出"聚合
+    # 成 status=="partial_unanswerable" 时 failed_batches 仍是 0 (那不是取数
+    # 机制坏了)——原判据 `all(failed_batches == 0)` 因此看不出来, 手动 CLI 对一
+    # 个有洞的窗口退出码报 0 (假通过)。status=="partial_unanswerable" 也算非
+    # 正常收尾; 其余情形 (含 failed_batches 缺键) 的判据原样保留不变。
+    bad = any(
+        r.get("failed_batches") != 0 or r.get("status") == "partial_unanswerable"
+        for r in results
+    )
+    return 1 if bad else 0
 
 
 def main() -> int:

@@ -124,17 +124,18 @@ domains:
     evidence: "项目地基原则即『K 线有交易 = 在交易，没有 = 不在』。
       实测正向 97.86% (S 型行当日无 K 线)、反向沪深 99.9%。"
 
-  # ── 有替代但源当前不可用 ────────────────────────────────
+  # ── derive: 域源已是本地派生器, 台账 2026-09-18 更正 (原 replace/baostock 与
+  #    注册表实际 source 不符 —— 台账本身写错了替代源名字) ──────────────────
   stock_st:
-    decision: replace
-    replacement: baostock
-    must_by: "2026-09-10"
-    evidence: "baostock 日K接口的 isST 是**四源中唯一的独立 ST 标志位**(非名称前缀猜测)。
-      实测 402 只样本 (202 ST + 200 非 ST) 与 canonical_stock_st_daily **准确率 100.00%**
-      (假阳 0 / 假阴 0)。且同一接口一次调用还同时给 OHLCV/preclose/turn/pe/pb/ps/tradestatus,
-      即 daily + daily_basic + stock_st + suspend_d 四域的核心需求。"
+    decision: derive
+    replacement: stock_st_derive
     status: done
     done_at: "2026-09-01"
+    evidence: "决议 derive 不是 replace: 域源已是本地派生器 stock_st_derive (sync_registry source /
+      formal_boundaries adapter 同名), 它从两个本地水库派生—当天读 raw_tushare_stock_basic 简称前缀
+      (对 canonical 173,413 行历史零漏判、5,563 名称零假阳), 其它日期读 raw_baostock_daily_k 的 isST
+      (baostock query_history_k_data_plus 同接口列, 不支持北交所)。原条目写 replacement: baostock/
+      replace 与注册表实际 source 不符, 2026-09-18 更正; 09-01 起 baostock 未曾是本域的 source。"
 
   # ── freeze (原 accept，2026-09-04 与 accept_outage 合并): 四源均无等价，明确接受断流 ────────────────────
   cyq_perf:

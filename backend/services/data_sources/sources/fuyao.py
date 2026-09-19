@@ -436,6 +436,19 @@ class FuyaoSource:
             return self._fetch_ticker_list(params)
         raise KeyError(f"fuyao: unknown api {api!r}")
 
+    def drain_baostock_daily_k_rows(self) -> list[Any]:
+        """委托给 ``fuyao_daily_k.FuyaoDailyKAdapter.drain_baostock_daily_k_rows``
+        (2026-09-18, ST 契约 v2 刀2)。``_daily_k_adapter`` 是
+        ``fetch_daily_k_dump_rows`` 挂上去的动态属性 (只在本进程曾经调过
+        ``daily_k_dump`` 这个 api 时才存在) —— 不存在时返回 ``[]``, 不强行触发
+        构造 (那会去连真实 baostock/下载器, drain 只该读已经发生过的查询留下的
+        证据副本)。"""
+
+        adapter = getattr(self, "_daily_k_adapter", None)
+        if adapter is None:
+            return []
+        return adapter.drain_baostock_daily_k_rows()
+
     def _fetch_limit_pool(
         self, path: str, params: dict[str, Any]
     ) -> list[dict[str, Any]]:

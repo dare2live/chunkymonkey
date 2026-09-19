@@ -170,6 +170,9 @@ databases:
       - canonical_stk_holdertrade_announcement
       # ingest_batch/accepted_partition 移入顶层 shared_bookkeeping_tables (2026-09-18
       # cut_lineage_drift §2.1) —— 一个参数只在一处定义, 不再在这里留字面量副本。
+      # 2026-09-18 (ST 契约 v2 刀2): 字面量项 (自带 db, 直采最高优先级, 不靠 raw_tushare_*
+      # 通配符猜库) —— baostock 日 K 水库, writer = services/data_sources/baostock_daily_k_reservoir.py。
+      - raw_baostock_daily_k
     notes:
       - raw_tushare_* is replayable compatibility data written by sync_runner.
       - Formal margin tables are permanent evidence under the margin dataset contract; never delete this database as a rebuildable raw mirror.

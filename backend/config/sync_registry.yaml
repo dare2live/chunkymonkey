@@ -336,9 +336,16 @@ domains:
       population_label: provider_response
       usage: evidence_only
     security_day_partition:
-      contract_version: "1"
+      # 2026-09-18 v2: name 可空 + 新增 st_origin (逐行来源)。schema_hash 现算自
+      # stock_st_schema.py (PYTHONPATH=backend python -c "from
+      # services.data_sources.stock_st_schema import SCHEMA_HASH; print(SCHEMA_HASH)"),
+      # 不手抄。生产库执行 restamp_stock_st_contract.py --execute 之前, 全部既有
+      # accepted 分区仍是 v1 戳, 契约戳门 (check_contract_stamp_consistency.py) 对
+      # v2 契约代下报 INFO "尚无该契约代下的 accepted 分区" 而非 FAIL —— 重打完成后
+      # 必须零新增 finding。
+      contract_version: "2"
       coverage_start: "20220104"
-      schema_hash: 5b1c04ad582ebc79265ec077ae35aded40b24cc937372e9dd05d2a0f994273e4
+      schema_hash: 23b49a9d97f4167c87ca723c865d5133437431911804558aa339d5322a67136b
     # 2026-09-01 授权换源 tushare -> stock_st_derive (本地派生, 无网络无账号无限流)。
     # ST 的可观测形态就是简称带 ST/*ST 前缀, 而 stock_basic 域今日已换扶摇并每日返 name,
     # 故 ST 不必向供应商单独取 —— 与 trade_cal 换 calendar_rule 同型 (规则被当数据)。

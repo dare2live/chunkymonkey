@@ -1,35 +1,38 @@
 #!/usr/bin/env python3
-"""nominal_ohlcv 契约升版后的库内重打戳 (一次性迁移工具, dry-run 默认)。
+"""stock_st 契约 v2 升版后的库内重打戳 (一次性迁移工具, dry-run 默认)。
 
-为什么需要它 (2026-09-13):
-  ``security_day_reader.load_accepted_security_day_partition`` 对指针戳做**严格相等**
-  校验 (``accepted_partition_contract_drift``), 而 ``nominal_ohlcv_reader`` 每次读都
-  现算契约。所以契约指纹一变, 1,859 个 accepted 分区当场全部读不出来 —— 指针与
-  canonical 必须跟着重打。``ingest_batch`` 相反: 它是落地那一刻的证据封印
-  (payload_hash 从它派生), **永不重打**。
+为什么需要它, 与 daily 那次 (2026-09-13, ``restamp_nominal_ohlcv_contract.py``)
+同一个理由: ``security_day_reader.load_accepted_security_day_partition`` 对指针戳
+做严格相等校验, 契约指纹一变, 既有 accepted 分区 (1,128+) 当场全部读不出来 ——
+指针与 canonical 必须跟着重打。``ingest_batch`` 相反, 永不重打 (落地证据封印)。
 
-2026-09-18 (ST 契约 v2): 这个脚本的重打机制 (plan/execute/回退) 已经抽成域无关的
-``services/data_sources/security_day_restamp.py`` (``stock_st`` 需要一模一样的
-形状, 复制粘贴会造出两份会漂移的实现)。本文件现在只是构造 daily 自己的
-``RestampTarget`` 并把核心函数原名重新导出 —— 对外符号与行为一律不变
-(``tests/scripts/test_restamp_nominal_ohlcv_contract.py`` 必须一字不改通过)。
-每个函数的完整设计取舍记录 (为什么不硬编码列名/哈希, 为什么不记账, 为什么
-SET NOT NULL 要独立事务, 写后自证五条的理由, --to-v1 回退窗口的语义) 见
-``security_day_restamp.py`` 模块 docstring —— 不在这里复述第二份, 会漂移。
+本文件是薄 CLI: 构造 stock_st 自己的 ``RestampTarget`` 并把
+``services/data_sources/security_day_restamp.py`` 的核心函数原名重新导出。完整
+设计取舍 (为什么不硬编码列名/哈希, 为什么不记账, 为什么 SET NOT NULL 要独立
+事务, 写后自证五条的理由, --to-v1 回退窗口的语义) 见该模块 docstring, 不在这里
+复述第二份。
+
+回填映射的有效期声明 (见 ``stock_st_acquire.yaml`` 与 spec §4.6): ``stock_st_derive
+-> derived_name_prefix`` 只对**重打时刻**已落地的批次成立——今天全部
+``stock_st_derive`` 批次都是名称路径; 双水库上线后, 新落地的 ``stock_st_derive``
+批次逐行给出真实 ``st_origin`` (可能是 ``provider_baostock_isst``), 不经这份
+回填映射 (v2 起 land 阶段就要求逐行给出 ``st_origin``)。表上已有 ``st_origin`` 列
+时, ``plan()`` 不会把该列再放进 ``add_columns``, 因此也不会进回填分支
+(``is_noop`` 覆盖这一路径, 不会把水库来源的行错标成名称路径)。
 
 用法::
 
-    # 1) 先改 nominal_ohlcv_schema.py 与 sync_registry.yaml (schema_hash/contract_version)
+    # 1) 先改 stock_st_schema.py 与 sync_registry.yaml (schema_hash/contract_version)
     # 2) 在生产库副本上验证全流程
-    PYTHONPATH=backend python backend/scripts/restamp_nominal_ohlcv_contract.py \\
+    PYTHONPATH=backend python backend/scripts/restamp_stock_st_contract.py \\
         --db-override /tmp/copy.duckdb --execute
     # 3) 确认无误后对生产库执行
-    PYTHONPATH=backend python backend/scripts/restamp_nominal_ohlcv_contract.py --execute
+    PYTHONPATH=backend python backend/scripts/restamp_stock_st_contract.py --execute
 
-    # 回退到 v1 契约 (仅在"回退窗口"关闭之前安全 —— 第一行 NULL 进 canonical 之前)。
-    PYTHONPATH=backend python backend/scripts/restamp_nominal_ohlcv_contract.py \\
-        --to-v1 --db-override /tmp/copy.duckdb
-    PYTHONPATH=backend python backend/scripts/restamp_nominal_ohlcv_contract.py \\
+    # 回退到 v1 契约 (仅在"回退窗口"关闭之前安全 —— 第一行 name=NULL 进 canonical
+    # 之前; baostock 来源分区一旦落地, --to-v1 会因 null_row_count > 0 拒绝执行,
+    # 必须先删那些分区)。
+    PYTHONPATH=backend python backend/scripts/restamp_stock_st_contract.py \\
         --to-v1 --db-override /tmp/copy.duckdb --execute
 
 退出码: 0 = 成功 (dry-run 或 execute); 非 0 = 计划不可执行 / 断言失败 (已 ROLLBACK)。
@@ -44,20 +47,6 @@ from typing import Sequence
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from services.data_sources.nominal_ohlcv_acquire_rules import (  # noqa: E402
-    load_nominal_ohlcv_acquire_rules,
-)
-from services.data_sources.nominal_ohlcv_contract import (  # noqa: E402
-    load_nominal_ohlcv_contract,
-)
-from services.data_sources.nominal_ohlcv_schema import (  # noqa: E402
-    CANONICAL_TABLE,
-    DATASET_ID,
-    DOMAIN,
-    ENRICHMENT_FIELDS,
-    NON_NULL_NUMERIC_FIELDS,
-    NUMERIC_FIELDS,
-)
 from services.data_sources.security_day_restamp import (  # noqa: E402
     RestampMismatchError,
     RestampPlan,
@@ -74,11 +63,21 @@ from services.data_sources.security_day_restamp import (  # noqa: E402
 )
 from services.data_sources.security_day_restamp import plan as _core_plan  # noqa: E402
 from services.data_sources.security_day_restamp import plan_to_v1 as _core_plan_to_v1  # noqa: E402
+from services.data_sources.stock_st_acquire_rules import (  # noqa: E402
+    load_stock_st_acquire_rules,
+)
+from services.data_sources.stock_st_contract import load_stock_st_contract  # noqa: E402
+from services.data_sources.stock_st_schema import (  # noqa: E402
+    CANONICAL_TABLE,
+    DATASET_ID,
+    DOMAIN,
+    ENRICHMENT_FIELDS,
+)
 from services.writer_lock import writer_lock  # noqa: E402
 
-_ROLLBACK_TARGETS_PATH = ROOT / "backend" / "config" / "nominal_ohlcv_contract_versions.yaml"
+_ROLLBACK_TARGETS_PATH = ROOT / "backend" / "config" / "stock_st_contract_versions.yaml"
 
-assert ENRICHMENT_FIELDS == ("pre_close_origin",)  # 见 RestampTarget 构造的假设前提
+assert ENRICHMENT_FIELDS == ("st_origin",)  # 见 RestampTarget 构造的假设前提
 
 
 def _target() -> RestampTarget:
@@ -86,9 +85,9 @@ def _target() -> RestampTarget:
         dataset_id=DATASET_ID,
         canonical_table=CANONICAL_TABLE,
         schema_fields=tuple(DOMAIN.schema_payload["fields"]),
-        load_contract=load_nominal_ohlcv_contract,
+        load_contract=load_stock_st_contract,
         enrichment_backfill={
-            "pre_close_origin": dict(load_nominal_ohlcv_acquire_rules().backfill_origin_by_source)
+            "st_origin": dict(load_stock_st_acquire_rules().backfill_origin_by_source)
         },
         rollback_targets_path=_ROLLBACK_TARGETS_PATH,
         rollback_version="1",
@@ -119,13 +118,6 @@ def execute_to_v1(con, p: RollbackPlan) -> RollbackPlan:
     return _core_execute_to_v1(con, p)
 
 
-# 回退时"哪些列要删/哪些列要恢复 NOT NULL"由 security_day_restamp.plan_to_v1 通用
-# 反推 (当前 schema 声明可空、表上也可空的列, 减去增补列本身)。daily 场景下这恰好
-# 等于 NUMERIC_FIELDS - NON_NULL_NUMERIC_FIELDS —— 断言这条恒等式仍成立, 而不是
-# 分别维护两份清单 (F14 的教训: 手写清单迟早漏一个)。
-assert set(NUMERIC_FIELDS) - set(NON_NULL_NUMERIC_FIELDS) == {"pre_close", "change", "pct_chg"}
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -137,8 +129,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--to-v1", action="store_true",
-        help="回退到 v1 契约 (目标戳来自 nominal_ohlcv_contract_versions.yaml, 不现算; "
-             "回退窗口: 第一行 NULL 进 canonical 之前)",
+        help="回退到 v1 契约 (目标戳来自 stock_st_contract_versions.yaml, 不现算; "
+             "回退窗口: 第一行 name=NULL 进 canonical 之前)",
     )
     args = parser.parse_args(argv)
 
@@ -158,7 +150,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("\n(dry-run; 加 --execute 才写库)")
             return 0 if rp.executable else 2
 
-        with writer_lock("restamp_nominal_ohlcv_contract"):
+        with writer_lock("restamp_stock_st_contract"):
             con = connect(target, read_only=False)
             try:
                 rp = plan_to_v1(con)
@@ -185,7 +177,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("\n(dry-run; 加 --execute 才写库)")
         return 0 if p.executable else 2
 
-    with writer_lock("restamp_nominal_ohlcv_contract"):
+    with writer_lock("restamp_stock_st_contract"):
         con = connect(target, read_only=False)
         try:
             p = plan(con)

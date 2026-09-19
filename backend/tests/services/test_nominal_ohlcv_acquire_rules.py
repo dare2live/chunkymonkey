@@ -55,7 +55,10 @@ def _minimal_valid_rules() -> dict:
             # 见 test_fuyao_daily_k_adapter.py 那五条各自 mutate 一个字段的用例;
             # 这里只需要一份内部自洽的最小合法值。
             "prefetch_window_days": 15,
-            "baostock_fields": ["date", "code", "close", "preclose", "volume", "tradestatus"],
+            # 2026-09-18 刀2 (ST 契约 v2 双水库) 追加 isST, 与真配置保持一致
+            # (test_a1 之类只测 loader 形状校验, 不测字段取值集本身, 但让这份内联
+            # fixture 跟真配置同步能减少"两份配置各说各话"的漂移面)。
+            "baostock_fields": ["date", "code", "close", "preclose", "volume", "tradestatus", "isST"],
             "exchange_suffix_to_baostock_prefix": {"SH": "sh.", "SZ": "sz."},
             "change_pct_round_digits": 4,
         },

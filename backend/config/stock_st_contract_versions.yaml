@@ -1,0 +1,23 @@
+# stock_st 历史契约版本的哈希三戳登记 —— 一次性历史事实, 供
+# services/data_sources/security_day_restamp.py 的 --to-v1 回退路径读取。
+#
+# 为什么是一份独立配置 (同 nominal_ohlcv_contract_versions.yaml 的理由, 见该文件
+# 模块 docstring): rollback 是灾难恢复场景, 与当前 v2 契约工厂 (stock_st_contract.py)
+# 是完全不同的生命周期关切。当前代码 *就是* v2, 它的契约工厂只会算出 v2 自己的哈希;
+# 要拿到 v1 当初的哈希, 唯一办法是回到契约升版之前的代码现跑一次同一个契约工厂 ——
+# 这件事在这里做一次 (below), 之后任何运行时路径 (脚本或测试) 都不需要再靠 git 历史
+# 回答 "v1 当初哈希是多少"。
+#
+# 下面三个值怎么来的: 2026-09-18 于 fc796e0e (契约升版之前) 现跑
+#   PYTHONPATH=backend python -c "
+#     from services.data_sources.stock_st_contract import load_stock_st_contract
+#     from services.data_sources.stock_st_schema import SCHEMA_HASH
+#     c = load_stock_st_contract()
+#     print(SCHEMA_HASH); print(c.config_hash); print(c.contract_hash)"
+# 与当时 backend/config/sync_registry.yaml:341 的 schema_hash 字面量逐位相同。
+rollback_targets:
+  "1":
+    schema_hash: "5b1c04ad582ebc79265ec077ae35aded40b24cc937372e9dd05d2a0f994273e4"
+    config_hash: "419645d7e0b6c10a49931f777cde59325b7bd9e958b18d17ca6ad2728b8f6c1e"
+    contract_hash: "8e369aae052950d4697cf88daad0937e365fcdf5a070cf0a03e313e91cf94f12"
+    derived_from: "2026-09-18 于 fc796e0e 现跑 stock_st_contract.load_stock_st_contract() (改契约前); schema_hash 与当时 sync_registry.yaml:341 字面量逐位相同"

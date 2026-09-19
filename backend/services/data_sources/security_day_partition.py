@@ -403,6 +403,12 @@ def _validate_provider_row(
         raise SecurityDayValidationError(
             "MISSING_FIELDS", f"missing provider fields: {missing}"
         )
+    # 2026-09-18: 逐行文本可空 (stock_st v2 的 name 列) —— 哪些列可空由 schema 声明,
+    # 不是 domain.text_fields 本身的成员资格决定的 (type/type_name 也在 text_fields
+    # 里但仍是 NOT NULL)。可空性与"是不是文本列"是两个正交的轴。
+    nullable_fields = {
+        str(f["name"]) for f in domain.schema_payload["fields"] if f.get("nullable")
+    }
     out: dict[str, Any] = {}
     for name in domain.provider_fields:
         value = row[name]
@@ -438,7 +444,16 @@ def _validate_provider_row(
                     "INVALID_NUMERIC", f"{name}={value!r}"
                 ) from exc
             continue
-        text = str(value if value is not None else "").strip()
+        if value is None:
+            if name in nullable_fields:
+                out[name] = None
+                continue
+            if name in domain.text_fields:
+                raise SecurityDayValidationError("EMPTY_TEXT", f"{name} cannot be empty")
+            value = ""
+        text = str(value).strip()
+        # "" 仍拒 (即便声明可空): 适配器必须显式传 None 才算"未报告", 传空字符串
+        # 是另一种错误 (供应商给了空值, 不是没给)。
         if not text and name in domain.text_fields:
             raise SecurityDayValidationError("EMPTY_TEXT", f"{name} cannot be empty")
         out[name] = text

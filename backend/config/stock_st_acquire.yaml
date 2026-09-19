@@ -1,0 +1,66 @@
+# stock_st 契约 v2 的逐行来源 (st_origin) 取值集 + 派生器所需的可空/覆盖/回填参数。
+#
+# 为什么这份配置要存在 (业主 09-16 明令: 阈值/日期/窗口/路径模板/名单/映射/时区一律
+# 进 typed YAML, 代码里不留字面量副本):
+#   stock_st 契约升版后, "这一行的 ST 成员资格从哪来" 成了必须逐行回答的问题 ——
+#   同一张 canonical 表里同时躺着 tushare 供应商原始行 (2022-01-04..2026-08-28)、
+#   名称快照派生行 (raw_tushare_stock_basic 简称前缀, 只能回答快照当天) 与 baostock
+#   水库派生行 (raw_baostock_daily_k 的 isST, 只覆盖沪深)。三者的可信度/覆盖范围/
+#   是否报告 name 天差地别, 而这不该硬编码进 stock_st_schema.py 或 stock_st_derive.py
+#   (改一次覆盖范围或加一个来源就要改代码 = 把数据事实当成了程序逻辑)。
+#
+# Fail-closed by construction (project rule 11): 任何未知顶层键 / st_origin 条目缺键 /
+# kind 不在 {provider, derived} / coverage 悬空引用 / backfill_origin_by_source 的值
+# 不是已注册的 st_origin 键 / timezone 不能被 zoneinfo 解析 / attribution_cutoff_local
+# 不是 HH:MM 形状, 一律 ValueError, 从不部分生效、从不静默忽略。
+#
+# ST 没有 "unknown" kind (与 daily 的 pre_close_origin 不同): 一行存在于 canonical 里
+# 就肯定是 ST 成员, "不知道是不是 ST" 的意思就是这一行压根不存在, 不是存在一行标
+# unknown —— 所以 st_origin.*.kind 只有 provider/derived 两种, 没有第三种。
+version: 1
+st_origin:
+  provider_tushare_stock_st:
+    kind: provider
+    reports_name: true
+    coverage: sh_sz_bj
+    note: "2022-01-04..2026-08-28 tushare stock_st 接口原行; 重打脚本按 ingest_batch.source_name=tushare 回填"
+  derived_name_prefix:
+    kind: derived
+    reports_name: true
+    coverage: sh_sz_bj
+    note: "stock_st_derive 名称快照路径: raw_tushare_stock_basic 简称 S?\\*?ST 前缀 (剥 XD/XR/DR); 只能回答快照当天"
+  provider_baostock_isst:
+    kind: provider
+    reports_name: false
+    coverage: sh_sz
+    note: "raw_baostock_daily_k 最新版 payload.isST == isst_true_value; baostock 不给简称 -> name NULL; 不支持北交所"
+coverage:
+  sh_sz_bj: {exchanges: [SH, SZ, BJ]}
+  sh_sz: {exchanges: [SH, SZ]}
+# 原 stock_st_derive.py:68-69 两个模块常量搬进来, 代码里不留副本 (业主 09-16 参数规则)。
+membership_labels:
+  type: ST
+  type_name: 风险警示板
+name_snapshot:
+  table: raw_tushare_stock_basic
+  # built_at (aware UTC, sync_runner 写入) 先转到这个时区再取日期 —— F2 的修法:
+  # 原来直接取 built_at 的 UTC 日期, 会让 CST 00:00-08:00 之间跑的日更把快照归到前一天。
+  timezone: Asia/Shanghai
+  # 当地时间早于此的快照不归属当天 (fail-closed 为不可答, 见 stock_st_derive.py
+  # snapshot_day_for)。沿用消费方 availability_at 的取值, 但是独立的两个参数
+  # (一个说"消费方何时可用分区", 一个说"快照何时算当天的") —— 只是今天恰好同值。
+  attribution_cutoff_local: "09:20"
+reservoir:
+  table: raw_baostock_daily_k
+  isst_field: isST
+  isst_true_value: "1"
+# 重打脚本用; ingest_batch.source_name -> st_origin。历史行落地时契约还是 v1, payload
+# 里没有 st_origin 这一键, 只能按当时是哪个 source_name 写入的一次性回填。
+# 有效期声明: stock_st_derive -> derived_name_prefix 这条映射只对**重打时刻**已落地的
+# 批次成立 —— 今天全部 stock_st_derive 批次都是名称路径; 双水库上线后, 新落地的
+# stock_st_derive 批次逐行给出真实 st_origin (可能是 provider_baostock_isst), 不再
+# 依赖这份回填映射 (它们从不落进 "待回填" 集合, 因为 v2 起 land 阶段就要求逐行给出
+# st_origin, 见 security_day_capture.project_security_day_provider_row)。
+backfill_origin_by_source:
+  tushare: provider_tushare_stock_st
+  stock_st_derive: derived_name_prefix

@@ -131,8 +131,17 @@ dispositions:
   stock_st_derive.stock_st:
     b_share:
       mode: population_disjoint
-      why: "派生自名义 K 线所在股票池 (daily 域已通过 fuyao.daily_k_dump 的
-        population_disjoint 排除 B 股, 见上), 总体本就不含 B 股, 无需二次过滤。"
+      why: "2026-09-18 双水库改写 (ST 契约 v2 刀3), mode 不变: 两条派生路径各自
+        不含 B 股。①名称快照路径读 raw_tushare_stock_basic (本表结构上含 B 股
+        代码), 但对 canonical_stock_st_daily 173,413 行历史逐行核实 0 只曾 ST
+        (stock_st_derive.py 模块 docstring 历史正则实测段) —— 这是经验事实
+        (B 股从未被戴帽), 不是结构保证, 若未来出现 B 股 ST 需要重新评估这条
+        why。②baostock 水库路径只覆盖请求侧显式过滤过的沪深 A 股: 回填命令
+        (ingest_baostock_daily_k_reservoir.py) 与 daily 适配器的请求池均排除
+        900/200(B 股)与北交所, 见 services.universe.is_active_a_share, 水库里
+        结构上不存在 B 股行。不新增 (source, api) 条目: 水库不是按 (source, api)
+        调度的注册域 (spec §3.5), L11 死引用检查按 (source, api) 计数, 水库表名
+        走 database_manifest/data_layers 登记, 不走这份配置。"
 
   # ── aif10 (东财妙想 datacenter, 非 sync_registry 登记路径 —— L11 死引用检查靠
   #    non_registry_sources 认领这三个键, 见文件尾) ─────────────────────────

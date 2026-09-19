@@ -754,6 +754,197 @@ def test_same_miss_across_two_fetch_rows_calls_only_queries_baostock_once(tmp_pa
 
 
 # ---------------------------------------------------------------------------
+# 9b. baostock daily-k reservoir drain (ST 契约 v2 刀2, spec 附录 B4/B6)
+# ---------------------------------------------------------------------------
+
+
+def test_drain_returns_one_reservoir_row_per_code_per_date_then_empties(tmp_path):
+    """假 baostock 源返回 2 码 x 3 日 -> drain() 6 行, 各带 fetched_at/请求窗口/
+    fields; 再 drain 一次 -> []。"""
+
+    ten_d = tmp_path / "10d.parquet"
+    _write_dump_parquet(
+        ten_d,
+        [_dump_row("600000.SH", DAY, close=9.35), _dump_row("000001.SZ", DAY, close=10.0)],
+    )
+    three_dates_600000 = [
+        {"date": "2026-08-30", "code": "sh.600000", "close": "9.30", "preclose": "9.28",
+         "volume": "100", "tradestatus": "1", "isST": "0"},
+        {"date": "2026-09-01", "code": "sh.600000", "close": "9.35", "preclose": "9.30",
+         "volume": "100", "tradestatus": "1", "isST": "0"},
+        {"date": "2026-09-02", "code": "sh.600000", "close": "9.40", "preclose": "9.35",
+         "volume": "100", "tradestatus": "1", "isST": "0"},
+    ]
+    three_dates_000001 = [
+        {"date": "2026-08-30", "code": "sz.000001", "close": "10.0", "preclose": "9.95",
+         "volume": "50", "tradestatus": "1", "isST": "1"},
+        {"date": "2026-09-01", "code": "sz.000001", "close": "10.1", "preclose": "10.0",
+         "volume": "50", "tradestatus": "1", "isST": "1"},
+        {"date": "2026-09-02", "code": "sz.000001", "close": "10.2", "preclose": "10.1",
+         "volume": "50", "tradestatus": "1", "isST": "1"},
+    ]
+    baostock = _FakeBaostockLeg({
+        "sh.600000": three_dates_600000,
+        "sz.000001": three_dates_000001,
+    })
+    adapter, _dl = _adapter(dump_paths={_DummyDumpKinds.DAILY_K_10D: ten_d}, baostock=baostock)
+
+    adapter.fetch_rows(DAY)
+    drained = adapter.drain_baostock_daily_k_rows()
+
+    assert len(drained) == 6
+    by_code_date = {(r.ts_code, r.trade_date): r for r in drained}
+    assert set(by_code_date) == {
+        ("600000.SH", "20260830"), ("600000.SH", "20260901"), ("600000.SH", "20260902"),
+        ("000001.SZ", "20260830"), ("000001.SZ", "20260901"), ("000001.SZ", "20260902"),
+    }
+    for row in drained:
+        assert row.fetched_at is not None
+        assert row.request_start == DAY
+        assert "isST" in row.fields_csv.split(",")
+        assert row.fetch_context == f"daily_adapter:{DAY}"
+
+    # B6: fields 参数 (记录在假 baostock 上) 含 isST
+    assert all("isST" in call["fields"].split(",") for call in baostock.calls)
+
+    assert adapter.drain_baostock_daily_k_rows() == []
+
+
+def test_required_st_codes_supplement_queries_code_missing_from_dump(tmp_path):
+    """B1-c (返修规格逐字对应): 假 dump 只有 600000.SH, required(D) 还要
+    000009.SZ (当天停牌中的 ST 股, 结构上不进 dump) -> 假 baostock 被查到这只
+    代码的 D, drain 出的行含它; 但它**不**出现在这一天的 OHLCV 输出行里 (不伪
+    造停牌股当天的成交)。变异: 去掉停牌补查 (即让
+    ``_supplement_required_st_codes`` 直接返回而不查) -> 本用例红
+    (drained 不再含 000009.SZ)。"""
+
+    ten_d = tmp_path / "10d.parquet"
+    _write_dump_parquet(ten_d, [_dump_row("600000.SH", DAY, close=9.35)])
+    baostock = _FakeBaostockLeg({
+        "sh.600000": [
+            {"date": "2026-09-01", "code": "sh.600000", "close": "9.35", "preclose": "9.30",
+             "volume": "100", "tradestatus": "1", "isST": "0"},
+        ],
+        "sz.000009": [
+            {"date": "2026-09-01", "code": "sz.000009", "close": "5.00", "preclose": "5.00",
+             "volume": "0", "tradestatus": "0", "isST": "1"},
+        ],
+    })
+    required_calls: list[str] = []
+
+    def _required(trade_date: str):
+        required_calls.append(trade_date)
+        return frozenset({"600000.SH", "000009.SZ"}), "ok"
+
+    deps = FuyaoDailyKDeps(
+        downloader=_FakeDownloader({_DummyDumpKinds.DAILY_K_10D: ten_d}),
+        dump_kinds=_DummyDumpKinds,
+        baostock_source=baostock,
+        rules=_rules(),
+        required_st_codes_provider=_required,
+    )
+    adapter = FuyaoDailyKAdapter(lambda: deps)
+
+    page = adapter.build_page(DAY)
+    assert {r["ts_code"] for r in page.rows} == {"600000.SH"}  # 不伪造停牌股当天的成交行
+    assert page.request_meta["st_backfill_supplement"] == {
+        "status": "ok", "codes_required": 2, "codes_missing_from_dump": 1, "codes_queried": 1,
+    }
+    assert required_calls == [DAY]
+
+    drained = adapter.drain_baostock_daily_k_rows()
+    drained_codes = {r.ts_code for r in drained}
+    assert "000009.SZ" in drained_codes  # 补查到的行照常进水库证据
+    supplemented = next(r for r in drained if r.ts_code == "000009.SZ")
+    assert supplemented.payload.get("isST") == "1"
+
+
+def test_required_st_codes_supplement_absent_provider_is_not_configured(tmp_path):
+    """没有注入 ``required_st_codes_provider`` (旧测试的默认构造方式) -> 视同
+    "无额外代码", meta 记 status=not_configured, 不查任何补充代码, 不崩。"""
+
+    ten_d = tmp_path / "10d.parquet"
+    _write_dump_parquet(ten_d, [_dump_row("600000.SH", DAY, close=9.35)])
+    baostock = _FakeBaostockLeg({
+        "sh.600000": [
+            {"date": "2026-09-01", "code": "sh.600000", "close": "9.35", "preclose": "9.30",
+             "volume": "100", "tradestatus": "1", "isST": "0"},
+        ],
+    })
+    adapter, _dl = _adapter(dump_paths={_DummyDumpKinds.DAILY_K_10D: ten_d}, baostock=baostock)
+
+    page = adapter.build_page(DAY)
+    assert page.request_meta["st_backfill_supplement"] == {
+        "status": "not_configured", "codes_required": 0, "codes_missing_from_dump": 0, "codes_queried": 0,
+    }
+
+
+def test_default_required_st_codes_for_date_degrades_on_connection_failure(monkeypatch):
+    """B1 修法: 生产默认实现拿不到只读连接 (无库/测试环境) -> (空集合,
+    'no_connection:<异常类名>'), 不崩、不重试。"""
+
+    from services.data_sources.sources import fuyao_daily_k as mod
+
+    def _boom(_alias):
+        raise RuntimeError("no such database in this sandbox")
+
+    monkeypatch.setattr("services.data_access.resolver.connect_ro", _boom)
+
+    codes, status = mod._default_required_st_codes_for_date(DAY)
+    assert codes == frozenset()
+    assert status == "no_connection:RuntimeError"
+
+
+def test_negative_cache_miss_does_not_produce_reservoir_rows(tmp_path):
+    ten_d = tmp_path / "10d.parquet"
+    _write_dump_parquet(ten_d, [_dump_row("600000.SH", DAY, close=9.35)])
+    baostock = _FakeBaostockLeg({})  # clean empty response — negative cache
+    adapter, _dl = _adapter(dump_paths={_DummyDumpKinds.DAILY_K_10D: ten_d}, baostock=baostock)
+
+    rows = adapter.fetch_rows(DAY)
+    assert rows[0]["pre_close_origin"] == "unknown_reference_unavailable"
+    assert adapter.drain_baostock_daily_k_rows() == []
+
+
+def test_drain_before_ensure_deps_returns_empty_list(tmp_path):
+    """本次运行还没查过 baostock (deps 惰性构造, _baostock_cache 仍是 None) ->
+    drain 返回 [], 不强行触发构造。"""
+
+    deps = _deps(dump_paths={}, baostock=_FakeBaostockLeg())
+    adapter = FuyaoDailyKAdapter(lambda: deps)
+    assert adapter.drain_baostock_daily_k_rows() == []
+
+
+def test_fuyao_source_drain_returns_empty_when_daily_k_dump_never_touched():
+    from services.data_sources.sources.fuyao import FuyaoSource
+
+    source = FuyaoSource()
+    assert source.drain_baostock_daily_k_rows() == []
+
+
+def test_fuyao_source_drain_delegates_to_adapter(monkeypatch, tmp_path):
+    ten_d = tmp_path / "10d.parquet"
+    _write_dump_parquet(ten_d, [_dump_row("600000.SH", DAY, close=9.35)])
+    baostock = _FakeBaostockLeg({
+        "sh.600000": [
+            {"date": "2026-09-01", "code": "sh.600000", "close": "9.35", "preclose": "9.30",
+             "volume": "100", "tradestatus": "1", "isST": "0"},
+        ],
+    })
+    deps = _deps(dump_paths={_DummyDumpKinds.DAILY_K_10D: ten_d}, baostock=baostock)
+    monkeypatch.setattr("services.data_sources.sources.fuyao_daily_k.default_deps", lambda: deps)
+
+    from services.data_sources.sources.fuyao import FuyaoSource
+
+    source = FuyaoSource()
+    source.fetch_raw("daily_k_dump", trade_date=DAY)
+    drained = source.drain_baostock_daily_k_rows()
+    assert len(drained) == 1
+    assert drained[0].ts_code == "600000.SH"
+    assert source.drain_baostock_daily_k_rows() == []
+
+
+# ---------------------------------------------------------------------------
 # 10. output row key set
 # ---------------------------------------------------------------------------
 
@@ -1062,6 +1253,10 @@ def _stock_st_row(ts_code: str = "600000.SH", trade_date: str = "20260901") -> d
         "name": "平安银行",
         "type": "L",
         "type_name": "其他风险警示",
+        # 2026-09-18 v2: st_origin 是 stock_st 的域级增补列, land 阶段就要求逐行给出
+        # (project_security_day_provider_row), 与本节测的 ProviderPage/request_meta
+        # 管道机制本身无关, 只是借用 stock_st DOMAIN 做夹具时必须满足它的契约。
+        "st_origin": "provider_tushare_stock_st",
     }
 
 

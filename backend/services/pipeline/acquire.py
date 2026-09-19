@@ -410,6 +410,160 @@ def _recent_unaccepted_days(
     ]
 
 
+def _plan_formal_on_demand_domain(
+    ctx: PipelineContext, sync_runner, registry: dict, domain: str, conn,
+) -> tuple[list[tuple[str, str, str, str]], list[dict]]:
+    """单域规划: 只读 ``conn`` 算出这个域自己要补的日子 (最新 eligible_end +
+    最近窗口内的洞), 不碰其它域。返回 ``(planned, skip_outcomes)`` ——
+    ``planned`` 是 ``(trade_date, reason, dataset_id, window_label)`` 元组表,
+    ``skip_outcomes`` 是本域在规划阶段就已经收口的 typed 结果 (execution_policy
+    disabled / no_eligible_end / latest_eligible_already_accepted)。
+
+    2026-09-18 (ST 契约 v2 刀3, spec §5.4 point 1): 从"全部域先规划完再一起执行"
+    拆成"逐域 规划→执行"的一部分——这个函数只负责一个域的规划段, 调用方
+    (``_sync_formal_on_demand_security_days``) 在两次调用之间插入执行段, 让
+    daily 执行时灌进水库的行在同一次运行里就能让 stock_st 的规划段看见 (F10)。
+    """
+
+    spec = sync_runner.domain_spec(registry, domain)
+    if spec.get("sync_policy") != "on_demand":
+        raise Tier0AcquireError(
+            f"domain={domain} orchestrator catchup requires sync_policy=on_demand"
+        )
+    policy = sync_runner.execution_policy_for_spec(spec)
+    if policy.mode != "enabled":
+        outcome = {
+            "domain": domain,
+            "action": "skip",
+            "reason": f"execution_policy_{policy.mode}",
+            "policy_reason": policy.reason,
+        }
+        ctx.log(
+            f"formal {domain}: SKIP catchup "
+            f"(execution_policy {policy.mode}/{policy.reason})"
+        )
+        return [], [outcome]
+
+    eligibility = sync_runner.eligible_end_date(spec, trigger_mode="manual")
+    eligible_end = eligibility.eligible_end
+    if eligible_end is None:
+        outcome = {
+            "domain": domain,
+            "action": "skip",
+            "reason": "no_eligible_end",
+            "eligibility_reason": eligibility.reason,
+        }
+        ctx.log(
+            f"formal {domain}: SKIP catchup "
+            f"(no eligible_end; reason={eligibility.reason})"
+        )
+        return [], [outcome]
+
+    dataset_id = _formal_security_day_dataset_id(domain)
+    planned: list[tuple[str, str, str, str]] = []
+    skip_outcomes: list[dict] = []
+    latest_done = _accepted_partition_exists(conn, dataset_id, eligible_end)
+    if latest_done:
+        outcome = {
+            "domain": domain,
+            "action": "skip",
+            "reason": "latest_eligible_already_accepted",
+            "eligible_end": eligible_end,
+            "eligibility_reason": eligibility.reason,
+            "dataset_id": dataset_id,
+        }
+        print(json.dumps(outcome, ensure_ascii=False))
+        skip_outcomes.append(outcome)
+    else:
+        planned.append((eligible_end, str(eligibility.reason), dataset_id, "single_day_incremental"))
+
+    # 最新日之外, 再补最近窗口内的洞。**最新日已就绪也要查** ——
+    # 2026-08-21 实证: 链停跑几天后, 最新日当天拉到了, 而前几天的洞原封不动
+    # 留在那里(daily/stock_st 各缺 4 个交易日), 因为旧逻辑补完最新日就 continue。
+    window = int(spec.get("on_demand_heal_window_days") or FORMAL_ON_DEMAND_HEAL_WINDOW_DAYS)
+    holes = [
+        d
+        for d in _recent_unaccepted_days(
+            conn, dataset_id, eligible_end=eligible_end, window=window,
+            known_empty={
+                str(x).replace("-", "")
+                for x in (spec.get("known_empty_days") or [])
+            },
+        )
+        if d != eligible_end
+    ]
+    for hole in holes:
+        planned.append((hole, "recent_gap_heal", dataset_id, "bounded_gap_heal"))
+    if holes:
+        ctx.log(
+            f"formal {domain}: 最近 {window} 交易日内发现 {len(holes)} 个缺口, "
+            f"自愈补拉 {holes[0]}..{holes[-1]} "
+            f"(更早的洞仍需显式 backfill, 见连续性门)"
+        )
+    return planned, skip_outcomes
+
+
+def _split_answerable_holes(
+    ctx: PipelineContext, sync_runner, spec: dict, domain: str, conn,
+    planned: list[tuple[str, str, str, str]],
+) -> tuple[list[tuple[str, str, str, str]], list[dict]]:
+    """源能力声明 (spec §5.3/5.4 point 2-3): 适配器若声明 ``answerable_dates``
+    (duck-typed, 与 ``fetch_raw`` 同级可选方法), 用它把 ``planned`` 分成"仍要
+    执行"与"typed unanswerable, 直接收口不进执行循环"两组——省掉 F9 那种"重试
+    3 次 x 退避 5s/30s"的白睡。
+
+    没有 ``answerable_dates`` 方法的适配器 (fuyao/tushare/…) = 任何日期都可试,
+    原样进入执行循环, 行为与刀 3 之前完全一致。取适配器或调用
+    ``answerable_dates`` 本身抛异常 → 记一条 warning, **fail-open**: 全部日子
+    仍进入执行循环 (真正的"答不出"会在实际取数时以 typed ``SourceCannotAnswerDateError``
+    收口, 不会因为这一步探测失败而静默漏判)。
+    """
+
+    if not planned:
+        return planned, []
+
+    try:
+        adapter = sync_runner._adapter(str(spec["source"]))
+        probe = getattr(adapter, "answerable_dates", None)
+        if probe is None:
+            return planned, []
+        verdicts = probe([day for day, _, _, _ in planned], conn=conn)
+    except Exception as exc:  # noqa: BLE001 — fail-open, 见函数 docstring
+        ctx.log(
+            f"formal {domain}: answerable_dates 探测失败 ({exc!r}), 按全部可答处理 "
+            "(取数时仍会以 typed unanswerable 收口, 不会静默)"
+        )
+        return planned, []
+
+    executable: list[tuple[str, str, str, str]] = []
+    unanswerable_outcomes: list[dict] = []
+    reason_counts: dict[str, int] = {}
+    for day, reason, dataset_id, window_label in planned:
+        verdict = verdicts.get(day)
+        if verdict is not None and not verdict.answerable:
+            outcome = {
+                "domain": domain,
+                "action": "unanswerable",
+                "trade_date": day,
+                "reason": verdict.reason,
+                "remedy": getattr(verdict, "remedy", "") or "",
+                "dataset_id": dataset_id,
+                "window": window_label,
+            }
+            print(json.dumps(outcome, ensure_ascii=False))
+            unanswerable_outcomes.append(outcome)
+            reason_counts[str(verdict.reason)] = reason_counts.get(str(verdict.reason), 0) + 1
+            continue
+        executable.append((day, reason, dataset_id, window_label))
+
+    if unanswerable_outcomes:
+        ctx.log(
+            f"formal {domain}: {len(unanswerable_outcomes)} 个洞本次无本地源可答 "
+            f"(reason 分布 {reason_counts}), 连续性门会继续报它们"
+        )
+    return executable, unanswerable_outcomes
+
+
 def _sync_formal_on_demand_security_days(ctx: PipelineContext) -> list[dict]:
     """Pull latest eligible formal daily/ST via modular land_then_accept.
 
@@ -423,168 +577,126 @@ def _sync_formal_on_demand_security_days(ctx: PipelineContext) -> list[dict]:
     - wiring bugs (wrong sync_policy) still raise Tier0AcquireError
     Never raises for ordinary domain catchup outcomes (avoids exit-5 kidnap of
     clean/process after drain has already run, and of siblings within this step).
+
+    2026-09-18 (ST 契约 v2 刀3): **逐域 规划→执行**, 不再"全部域先规划完再一起
+    执行" (spec §5.4 point 1) —— daily 规划、执行完, 再规划 stock_st, 这样 daily
+    补洞时顺手灌进 ``raw_baostock_daily_k`` 水库的行, 在同一次运行里就能让
+    stock_st 同一天的洞从"不可答"变"可答" (F10: 旧顺序下两域的规划段共享同一个
+    只读连接、都发生在任何一个域执行之前, daily 那天的水库行还没写入, stock_st
+    规划时看不到)。规划段之后、执行之前, 用 ``answerable_dates`` (若适配器声明)
+    把这一批洞分成"可答"与"typed unanswerable"两组 (point 2-3); 执行循环里
+    ``result.get("unanswerable")`` 收口成 ``action=unanswerable``, 不进
+    ``ctx.degraded`` (point 4)。
     """
 
     from services.data_sources import sync_runner
     from services.duck_adapter import connect
 
     registry = sync_runner.load_registry()
-    # domain, trade_date, reason, dataset_id, window_label
-    planned: list[tuple[str, str, str, str, str]] = []
     outcomes: list[dict] = []
-    conn = connect(ctx.db("tushare_raw"), read_only=True)
-    try:
-        for domain in FORMAL_ON_DEMAND_SECURITY_DAY_DOMAINS:
-            spec = sync_runner.domain_spec(registry, domain)
-            if spec.get("sync_policy") != "on_demand":
-                raise Tier0AcquireError(
-                    f"domain={domain} orchestrator catchup requires sync_policy=on_demand"
-                )
-            policy = sync_runner.execution_policy_for_spec(spec)
-            if policy.mode != "enabled":
-                outcome = {
-                    "domain": domain,
-                    "action": "skip",
-                    "reason": f"execution_policy_{policy.mode}",
-                    "policy_reason": policy.reason,
-                }
-                ctx.log(
-                    f"formal {domain}: SKIP catchup "
-                    f"(execution_policy {policy.mode}/{policy.reason})"
-                )
-                outcomes.append(outcome)
+
+    for domain in FORMAL_ON_DEMAND_SECURITY_DAY_DOMAINS:
+        spec = sync_runner.domain_spec(registry, domain)
+
+        conn = connect(ctx.db("tushare_raw"), read_only=True)
+        try:
+            planned, skip_outcomes = _plan_formal_on_demand_domain(
+                ctx, sync_runner, registry, domain, conn
+            )
+            outcomes.extend(skip_outcomes)
+            if not planned:
                 continue
-            eligibility = sync_runner.eligible_end_date(spec, trigger_mode="manual")
-            eligible_end = eligibility.eligible_end
-            if eligible_end is None:
-                outcome = {
-                    "domain": domain,
-                    "action": "skip",
-                    "reason": "no_eligible_end",
-                    "eligibility_reason": eligibility.reason,
-                }
-                ctx.log(
-                    f"formal {domain}: SKIP catchup "
-                    f"(no eligible_end; reason={eligibility.reason})"
+            executable, unanswerable_outcomes = _split_answerable_holes(
+                ctx, sync_runner, spec, domain, conn, planned
+            )
+            outcomes.extend(unanswerable_outcomes)
+        finally:
+            conn.close()
+
+        for eligible_end, eligibility_reason, dataset_id, window_label in executable:
+            print(
+                json.dumps(
+                    {
+                        "domain": domain,
+                        "action": "land_then_accept",
+                        "eligible_end": eligible_end,
+                        "eligibility_reason": eligibility_reason,
+                        "dataset_id": dataset_id,
+                        "window": window_label,
+                    },
+                    ensure_ascii=False,
                 )
-                outcomes.append(outcome)
-                continue
-            dataset_id = _formal_security_day_dataset_id(domain)
-            latest_done = _accepted_partition_exists(conn, dataset_id, eligible_end)
-            if latest_done:
+            )
+            result = sync_runner.run_domain(
+                domain,
+                start=eligible_end,
+                end=eligible_end,
+                registry=registry,
+                trigger_mode="manual",
+            )
+            failed = int(result.get("failed_batches") or 0)
+            status = str(result.get("status") or "")
+            if result.get("unanswerable"):
                 outcome = {
                     "domain": domain,
-                    "action": "skip",
-                    "reason": "latest_eligible_already_accepted",
-                    "eligible_end": eligible_end,
-                    "eligibility_reason": eligibility.reason,
+                    "action": "unanswerable",
+                    "trade_date": eligible_end,
+                    "reason": result.get("unanswerable_reason"),
+                    "remedy": result.get("remedy", ""),
                     "dataset_id": dataset_id,
+                    "window": window_label,
                 }
                 print(json.dumps(outcome, ensure_ascii=False))
                 outcomes.append(outcome)
-            else:
-                planned.append(
-                    (domain, eligible_end, str(eligibility.reason), dataset_id,
-                     "single_day_incremental")
-                )
-            # 最新日之外, 再补最近窗口内的洞。**最新日已就绪也要查** ——
-            # 2026-08-21 实证: 链停跑几天后, 最新日当天拉到了, 而前几天的洞原封不动
-            # 留在那里(daily/stock_st 各缺 4 个交易日), 因为旧逻辑补完最新日就 continue。
-            window = int(
-                spec.get("on_demand_heal_window_days")
-                or FORMAL_ON_DEMAND_HEAL_WINDOW_DAYS
-            )
-            holes = [
-                d
-                for d in _recent_unaccepted_days(
-                    conn, dataset_id, eligible_end=eligible_end, window=window,
-                    known_empty={
-                        str(x).replace("-", "")
-                        for x in (spec.get("known_empty_days") or [])
-                    },
-                )
-                if d != eligible_end
-            ]
-            for hole in holes:
-                planned.append(
-                    (domain, hole, "recent_gap_heal", dataset_id, "bounded_gap_heal")
-                )
-            if holes:
                 ctx.log(
-                    f"formal {domain}: 最近 {window} 交易日内发现 {len(holes)} 个缺口, "
-                    f"自愈补拉 {holes[0]}..{holes[-1]} "
-                    f"(更早的洞仍需显式 backfill, 见连续性门)"
+                    f"formal {domain}: {eligible_end} 取数时结构性答不出 "
+                    f"(reason={result.get('unanswerable_reason')!r}), 不降级"
                 )
-    finally:
-        conn.close()
-
-    for domain, eligible_end, eligibility_reason, dataset_id, window_label in planned:
-        print(
-            json.dumps(
-                {
+                continue
+            if result.get("pending_publish"):
+                outcome = {
                     "domain": domain,
-                    "action": "land_then_accept",
+                    "action": "pending_publish",
                     "eligible_end": eligible_end,
                     "eligibility_reason": eligibility_reason,
                     "dataset_id": dataset_id,
-                    "window": window_label,
-                },
-                ensure_ascii=False,
+                    "pending_publish_reason": result.get(
+                        "pending_publish_reason",
+                        "same_day_vendor_vacuum",
+                    ),
+                }
+                print(json.dumps(outcome, ensure_ascii=False))
+                outcomes.append(outcome)
+                continue
+            if status != "ok" or failed:
+                outcome = {
+                    "domain": domain,
+                    "action": "failed",
+                    "eligible_end": eligible_end,
+                    "eligibility_reason": eligibility_reason,
+                    "dataset_id": dataset_id,
+                    "status": status,
+                    "failed_batches": failed,
+                    "error": result.get("error"),
+                }
+                print(json.dumps(outcome, ensure_ascii=False, default=str))
+                outcomes.append(outcome)
+                # Domain-local fail-closed: degrade, do not abort siblings / chain.
+                ctx.degraded(
+                    f"formal {domain} land_then_accept failed for {eligible_end}: "
+                    f"status={status!r} failed_batches={failed} "
+                    f"error={result.get('error')!r}"
+                )
+                continue
+            print(json.dumps(result, ensure_ascii=False, default=str))
+            outcomes.append(
+                {
+                    "domain": domain,
+                    "action": "accepted",
+                    "eligible_end": eligible_end,
+                    "dataset_id": dataset_id,
+                }
             )
-        )
-        result = sync_runner.run_domain(
-            domain,
-            start=eligible_end,
-            end=eligible_end,
-            registry=registry,
-            trigger_mode="manual",
-        )
-        failed = int(result.get("failed_batches") or 0)
-        status = str(result.get("status") or "")
-        if result.get("pending_publish"):
-            outcome = {
-                "domain": domain,
-                "action": "pending_publish",
-                "eligible_end": eligible_end,
-                "eligibility_reason": eligibility_reason,
-                "dataset_id": dataset_id,
-                "pending_publish_reason": result.get(
-                    "pending_publish_reason",
-                    "same_day_vendor_vacuum",
-                ),
-            }
-            print(json.dumps(outcome, ensure_ascii=False))
-            outcomes.append(outcome)
-            continue
-        if status != "ok" or failed:
-            outcome = {
-                "domain": domain,
-                "action": "failed",
-                "eligible_end": eligible_end,
-                "eligibility_reason": eligibility_reason,
-                "dataset_id": dataset_id,
-                "status": status,
-                "failed_batches": failed,
-                "error": result.get("error"),
-            }
-            print(json.dumps(outcome, ensure_ascii=False, default=str))
-            outcomes.append(outcome)
-            # Domain-local fail-closed: degrade, do not abort siblings / chain.
-            ctx.degraded(
-                f"formal {domain} land_then_accept failed for {eligible_end}: "
-                f"status={status!r} failed_batches={failed} "
-                f"error={result.get('error')!r}"
-            )
-            continue
-        print(json.dumps(result, ensure_ascii=False, default=str))
-        outcomes.append(
-            {
-                "domain": domain,
-                "action": "accepted",
-                "eligible_end": eligible_end,
-                "dataset_id": dataset_id,
-            }
-        )
     return outcomes
 
 

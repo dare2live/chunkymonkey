@@ -128,6 +128,22 @@ findings:
     recorded: "2026-09-16"
     decision: register
 
+  - id: stock-st-land-from-local-raw-broken
+    asset: "backend/services/data_sources/security_day_capture.py:50 (project_security_day_provider_row 的 missing_enrichment raise)"
+    detector: "backend/services/data_sources/security_day_capture.py:50"
+    escalates_when: >
+      需要用 stock_st 域的 --land-only --from-local-raw 路径从
+      landing_tushare_stock_st 重生成 ST 历史——契约 v2 之后 enrichment_fields
+      包含 st_origin，而 landing_tushare_stock_st 里的历史 raw 行 (契约升版前
+      落地) 没有这一列，project_security_day_provider_row 会对每一行都抛
+      SecurityDayError(..._provider_row_missing_enrichment)，与 daily 那条
+      (daily-land-from-local-raw-broken) 同一形态、同一根因 (v2 起 land 阶段
+      就要求逐行给出增补列)，整条 land-only 重生成路径打不通。历史行改走重打
+      脚本 (restamp_stock_st_contract.py) 按 ingest_batch.source_name 一次性
+      回填 st_origin，不经 land-only 重放。
+    recorded: "2026-09-18"
+    decision: register
+
   - id: market-pulse-null-pct-chg-unknown-count
     asset: "backend/services/market_pulse.py:491-492,692-693"
     detector: none
@@ -281,6 +297,18 @@ findings:
       (fable 09-19 实测 20260831 多算 2、20260903 多算 1, 北交所行一直在算);
       mart 表没有代码列, out_of_scope_rows 门按构造看不见。B 股从水龙头丢行后
       (09-19 刀 B2) 只剩北交所这一半。
+    recorded: "2026-09-19"
+    decision: register
+
+  - id: st-required-codes-delisted-after-prior-partition
+    asset: "backend/services/data_sources/sources/stock_st_derive.py (required_codes_for_date: D 日 K 线沪深码 ∪ 最近一个 < D 的已接受 ST 分区沪深码)"
+    detector: backend/scripts/check_continuity_integrity.py
+    escalates_when: >
+      某只 ST 股在「最近一个已接受 ST 分区」之后退市——baostock 对退市后的日期不再给行,
+      它却仍在 required(D) 里, 于是水库路径对 D 判 reservoir_coverage_incomplete 不可答
+      (不写错数据, 缺口由 continuity 的 stock_st calendar_gaps 报出)。只影响没有当日名称
+      快照、必须走 baostock 水库的日子 (补历史、隔天补跑)。09-19 实测 08-28 分区 202 只
+      沪深 ST 里 5 只窗口内缺 K 线, 全部仍在上市列表 (停牌), 当前不触发。
     recorded: "2026-09-19"
     decision: register
 

@@ -37,6 +37,7 @@ channels 的 typed demotion 里 "这条通道用不了" 的判定精度**完全�
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import Enum
 from typing import Any
 
@@ -59,6 +60,44 @@ class FailureKind(str, Enum):
 
     UNKNOWN = "unknown"
     """判不出。走既有有界重试; 高发 = 该补这个源的 classify 了。"""
+
+
+class SourceCannotAnswerDateError(RuntimeError):
+    """一个本地/派生源结构性地答不出某个具体日期 (2026-09-18, ST 契约 v2 刀3)。
+
+    与上面 ``FailureKind`` 那一整套供应商失败分类**完全不同的一件事**: 那套
+    分类问的是"这次网络/供应商调用失败了, 该不该重试"; 这个异常问的是"压根不该
+    去问 —— 这个源对这一天在结构上就没有答案" (例如 ST 派生器的名称快照路径只能
+    回答"今天", baostock 水库路径对没落库的日期没有行)。二者不可互相替代:
+    把"答不出"误判成"该重试"会造成 F9 那种"退避 3 次 x 每次数十秒白睡"的浪费
+    (`_fetch_with_retry` 对每个不可答的洞都要走完 max_attempts 才认输); 把"该
+    重试的瞬态失败"误判成"答不出"则会把可恢复的抖动永久放弃。
+
+    ``_fetch_with_retry`` (``sync_runner.py``) 在 ``except TuShareAuthorizationError:
+    raise`` 旁加一条 ``except SourceCannotAnswerDateError: raise`` —— **零重试
+    零退避**, 原样上抛给调用方 (计划器/运行器收口成 typed ``unanswerable`` 结果,
+    不降级、不进 ``ctx.degraded``)。
+
+    子类 (如 ``StockSTUnanswerableError``) 应始终携带 ``trade_date`` (未获答案
+    的那一天, YYYYMMDD compact)、``reason`` (机器可读的短原因码, 如
+    ``no_local_source_for_date``) 与 ``remedy`` (给人看的下一步动作建议)。
+
+    ``detail`` (2026-09-19 返修 B1): 可选的机器可读补充结构 (如覆盖判据的
+    缺失数与样例代码), 不塞进 ``reason``/``remedy`` 的自由文本——那两个是给
+    人看的; 需要程序化消费 (日志聚合/告警去重) 的字段放这里, 默认 ``None``
+    (旧调用点不传不受影响)。
+    """
+
+    def __init__(
+        self, *, trade_date: str, reason: str, remedy: str, detail: Mapping[str, Any] | None = None
+    ):
+        self.trade_date = trade_date
+        self.reason = reason
+        self.remedy = remedy
+        self.detail = detail
+        super().__init__(
+            f"trade_date={trade_date} reason={reason} remedy={remedy}"
+        )
 
 
 # ── baostock ──────────────────────────────────────────────────────────────

@@ -58,7 +58,7 @@ def test_detect_stock_st_from_accepted_partitions(tmp_path):
         """
         CREATE TABLE canonical_stock_st_daily (
             trade_date DATE, ts_code VARCHAR, name VARCHAR,
-            type VARCHAR, type_name VARCHAR
+            type VARCHAR, type_name VARCHAR, st_origin VARCHAR NOT NULL
         )
         """
     )
@@ -74,9 +74,9 @@ def test_detect_stock_st_from_accepted_partitions(tmp_path):
     conn.execute(
         """
         INSERT INTO canonical_stock_st_daily VALUES
-          (?, '002656.SZ', '*ST摩登', 'ST', '风险警示板'),
-          (?, '000001.SZ', 'ST甲', 'ST', '风险警示板'),
-          (?, '000001.SZ', 'ST甲', 'ST', '风险警示板')
+          (?, '002656.SZ', '*ST摩登', 'ST', '风险警示板', 'derived_name_prefix'),
+          (?, '000001.SZ', 'ST甲', 'ST', '风险警示板', 'derived_name_prefix'),
+          (?, '000001.SZ', 'ST甲', 'ST', '风险警示板', 'derived_name_prefix')
         """,
         [date(2026, 7, 20), date(2026, 7, 20), date(2026, 7, 21)],
     )
@@ -87,6 +87,61 @@ def test_detect_stock_st_from_accepted_partitions(tmp_path):
     assert out["as_of"] == "20260721"
     assert out["baseline"] == "20260720"
     assert out["tier0_write"] is False
+    assert out["coverage_exchanges_compared"] == ["BJ", "SH", "SZ"]
+    conn.close()
+
+
+def test_detect_stock_st_coverage_intersection_excludes_bj_only_code(tmp_path):
+    """两分区 origins 分别 derived_name_prefix (前一分区, 覆盖沪深京) /
+    provider_baostock_isst (当前分区, 只覆盖沪深) —— 一只 .BJ 只在前者出现时,
+    不得被判成"退出"(它压根不在两分区共同覆盖范围内), coverage_exchanges_compared
+    必须收窄成 ["SH", "SZ"]。"""
+    from datetime import date
+
+    from services.pipeline.state_sensors import detect_stock_st_state_changes
+
+    conn = duckdb.connect(str(tmp_path / "st_coverage.duckdb"))
+    conn.execute(
+        "CREATE TABLE accepted_partition (dataset_id VARCHAR, partition_value VARCHAR)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE canonical_stock_st_daily (
+            trade_date DATE, ts_code VARCHAR, name VARCHAR,
+            type VARCHAR, type_name VARCHAR, st_origin VARCHAR NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO accepted_partition VALUES (?, ?), (?, ?)",
+        [
+            "tier0.security_identity.stock_st_daily",
+            "20260916",
+            "tier0.security_identity.stock_st_daily",
+            "20260917",
+        ],
+    )
+    conn.execute(
+        """
+        INSERT INTO canonical_stock_st_daily VALUES
+          (?, '000001.SZ', 'ST甲', 'ST', '风险警示板', 'derived_name_prefix'),
+          (?, '830001.BJ', 'ST北交', 'ST', '风险警示板', 'derived_name_prefix'),
+          (?, '000001.SZ', NULL, 'ST', '风险警示板', 'provider_baostock_isst')
+        """,
+        [date(2026, 9, 16), date(2026, 9, 16), date(2026, 9, 17)],
+    )
+    out = detect_stock_st_state_changes(conn)
+    assert out["status"] == "ok"
+    assert out["coverage_prev"] == ["BJ", "SH", "SZ"]
+    assert out["coverage_curr"] == ["SH", "SZ"]
+    assert out["coverage_exchanges_compared"] == ["SH", "SZ"]
+    # .BJ 只在前一分区出现, 但不在两分区共同覆盖范围内 -> 不进 entered/exited
+    assert out["exited_n"] == 0
+    assert out["entered_n"] == 0
+    assert not any(item["ts_code"] == "830001.BJ" for item in out["exited_sample"])
+    # name 一边 None (baostock 路径) 一边有值 (名称路径) -> 不计 attr 变化
+    assert out["attr_changed_n"] == 0
+    assert out["changed"] is False
     conn.close()
 
 

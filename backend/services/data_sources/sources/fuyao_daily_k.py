@@ -49,12 +49,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from services.data_sources.baostock_daily_k_reservoir import ReservoirRow
 from services.data_sources.nominal_ohlcv_acquire_rules import (
     NominalOhlcvAcquireRules,
     load_nominal_ohlcv_acquire_rules,
@@ -288,6 +289,10 @@ class _BaostockReferenceCache:
         self._rules = rules
         self._broken = False
         self._by_code: dict[str, dict[str, Mapping[str, Any]]] = {}
+        # 2026-09-18 (ST 契约 v2 刀2): 每次真实 baostock 响应行的证据副本, 供
+        # sync_runner 在 daily 落库时一并落进 raw_baostock_daily_k 水库 (见
+        # drain())。负缓存哨兵 (_BAOSTOCK_REFERENCE_MISS) 不是行, 不进这里。
+        self._pending: list[ReservoirRow] = []
 
     @property
     def broken(self) -> bool:
@@ -317,12 +322,43 @@ class _BaostockReferenceCache:
                 f"拒绝再触网 (code={code}): {exc}"
             ) from exc
 
-    def _absorb(self, code: str, rows: Sequence[Mapping[str, Any]]) -> None:
+    def _absorb(
+        self,
+        ts_code: str,
+        code: str,
+        rows: Sequence[Mapping[str, Any]],
+        *,
+        fetched_at: datetime,
+        request_start: str,
+        request_end: str,
+        fetch_context: str,
+    ) -> None:
         by_date = self._by_code.setdefault(code, {})
         for row in rows:
             compact = str(row.get("date") or "").replace("-", "")
             if compact:
                 by_date[compact] = row
+                self._pending.append(
+                    ReservoirRow(
+                        ts_code=ts_code,
+                        trade_date=compact,
+                        fetched_at=fetched_at,
+                        baostock_code=code,
+                        fields_csv=self._rules.baostock_fields_csv,
+                        payload=dict(row),
+                        fetch_context=fetch_context,
+                        request_start=request_start,
+                        request_end=request_end,
+                    )
+                )
+
+    def drain(self) -> list[ReservoirRow]:
+        """返回并清空本次运行至今积累的证据副本 —— sync_runner 在 daily 一次
+        分区落库之后调用它, 把这些行落进 raw_baostock_daily_k 水库 (§3.3)。
+        再次调用 (没有新增查询) 返回 ``[]``。"""
+
+        pending, self._pending = self._pending, []
+        return pending
 
     def lookup(self, ts_code: str, trade_date: str) -> Mapping[str, Any] | None:
         code = self._to_baostock_code(ts_code)
@@ -335,21 +371,31 @@ class _BaostockReferenceCache:
                 "fuyao daily_k_dump: baostock 会话已在本次运行中失败过一次, 不再重试触网 "
                 f"(ts_code={ts_code})"
             )
+        fetch_context = f"daily_adapter:{trade_date}"
         window_end = _shift_yyyymmdd(trade_date, self._rules.prefetch_window_days)
-        self._absorb(code, self._query(code, trade_date, window_end))
+        self._absorb(
+            ts_code, code, self._query(code, trade_date, window_end),
+            fetched_at=datetime.now(timezone.utc), request_start=trade_date,
+            request_end=window_end, fetch_context=fetch_context,
+        )
         by_date = self._by_code.get(code, {})
         if trade_date in by_date:
             return by_date[trade_date]
         # Prefetch window missed t (e.g. this code has almost no history yet)
         # — degrade to one single-day query before giving up.
-        self._absorb(code, self._query(code, trade_date, trade_date))
+        self._absorb(
+            ts_code, code, self._query(code, trade_date, trade_date),
+            fetched_at=datetime.now(timezone.utc), request_start=trade_date,
+            request_end=trade_date, fetch_context=fetch_context,
+        )
         by_date = self._by_code.setdefault(code, {})
         if trade_date in by_date:
             return by_date[trade_date]
         # 返修 (blocking 发现 #2 修复): 两次查询都确认没有这一行 —— 写负缓存哨兵,
         # 而不是留空(不存在的键在下一次 lookup 里和"还没查过"分不清), 这样同一个
         # (码,日) 的 miss 无论是在同一次 fetch_rows 内(不会发生, 一码一行)还是跨
-        # 一次 sync 运行内的重试/重跑, 都只真正问服务端一次。
+        # 一次 sync 运行内的重试/重跑, 都只真正问服务端一次。负缓存哨兵不是行,
+        # 不进 drain() 的证据副本。
         by_date[trade_date] = _BAOSTOCK_REFERENCE_MISS
         return None
 
@@ -432,6 +478,13 @@ class FuyaoDailyKDeps:
     dump_kinds: Any  # DownloadKind-like: has .DAILY_K / .DAILY_K_10D members
     baostock_source: Any
     rules: NominalOhlcvAcquireRules
+    # B1 修法 (2026-09-19 返修, ST 契约 v2 刀2/3 联动): required(D) 取数——D 日
+    # dump 里缺席但 ST 覆盖判据需要它的沪深代码 (典型: 当天停牌的 ST 股, fuyao
+    # dump 结构上不含无成交行, F4)。``Callable[[str], frozenset[str]]``, 输入
+    # trade_date (compact), 输出 required(D) 代码集合; ``None`` (测试默认) =
+    # "不补查" (与生产默认 :func:`_default_required_st_codes_for_date` 分开,
+    # 后者自开自关只读连接, 拿不到连接时退化为空集合, 不崩)。
+    required_st_codes_provider: Any | None = None
 
 
 class FuyaoDailyKAdapter:
@@ -463,6 +516,7 @@ class FuyaoDailyKAdapter:
             dump_cache=self._dump_cache,
             baostock_cache=self._baostock_cache,
             dump_kinds=deps.dump_kinds,
+            required_st_codes_provider=deps.required_st_codes_provider,
         )
 
     def build_page(self, trade_date: str) -> ProviderPage:
@@ -495,8 +549,19 @@ class FuyaoDailyKAdapter:
             dump_cache=self._dump_cache,
             baostock_cache=self._baostock_cache,
             dump_kinds=deps.dump_kinds,
+            required_st_codes_provider=deps.required_st_codes_provider,
         )
         return ProviderPage(rows=rows, request_meta=meta)
+
+    def drain_baostock_daily_k_rows(self) -> list[ReservoirRow]:
+        """委托给内部 ``_BaostockReferenceCache.drain()``。``_baostock_cache``
+        为 ``None`` 时 (本次运行还没查过 baostock, deps 是惰性构造的) 返回
+        ``[]`` —— 不强行触发 ``_ensure_deps()`` (那会去连真实 baostock/下载器,
+        drain 只该读已经发生过的查询留下的证据副本)。"""
+
+        if self._baostock_cache is None:
+            return []
+        return self._baostock_cache.drain()
 
 
 def _classify_and_fill_reference(
@@ -586,6 +651,46 @@ def _rows_for_date_from_dump(
     return [], None
 
 
+def _supplement_required_st_codes(
+    trade_date: str,
+    *,
+    dump_codes: set[str],
+    baostock_cache: _BaostockReferenceCache,
+    required_st_codes_provider: Any | None,
+) -> dict[str, Any]:
+    """B1 修法 (2026-09-19 返修): dump 结构上不含无成交行 (F4/U7) —— 当天停牌
+    的 ST 股永远不在 ``dump_codes`` 里, daily 顺手灌水库时就永远查不到它的
+    isST, ST 派生器覆盖判据 (``stock_st_derive.required_codes_for_date``) 就
+    永远缺它一行, 假阴漏判。这里对 required(D) 里不在 dump 中的沪深代码也向
+    baostock 查一次 D 这一天——**同一个会话、同一把锁** (复用已传入的
+    ``baostock_cache``, 不新开 ``BaostockSource``, 见 sources/baostock.py 坑5)、
+    **同一套 fields** (``baostock_cache._query`` 恒用 ``rules.baostock_fields_csv``,
+    已含 isST)。查到的行经 ``.lookup()`` 的 ``_absorb()`` 照常进
+    ``baostock_cache._pending``, 随下一次 ``drain()`` 落进水库——不合成任何
+    OHLCV 输出行 (不伪造停牌股当天的成交, 红线 3)。
+
+    没有 provider (测试默认) 或它算不出 required(D) (自己已经 fail-closed 到
+    ``(frozenset(), "no_connection:...")``, 不在这里再包一层 try) → 视同"无额外
+    代码", 只在 meta 里记一句, 不许崩这一天的 daily 落地。"""
+
+    if required_st_codes_provider is None:
+        return {"status": "not_configured", "codes_required": 0, "codes_missing_from_dump": 0, "codes_queried": 0}
+
+    required, status = required_st_codes_provider(trade_date)
+    missing = sorted(frozenset(required) - dump_codes)
+    queried = 0
+    if missing and not baostock_cache.broken:
+        for code in missing:
+            baostock_cache.lookup(code, trade_date)
+            queried += 1
+    return {
+        "status": status,
+        "codes_required": len(required),
+        "codes_missing_from_dump": len(missing),
+        "codes_queried": queried,
+    }
+
+
 def _build_rows_and_meta_for_date(
     trade_date: str,
     *,
@@ -593,6 +698,7 @@ def _build_rows_and_meta_for_date(
     dump_cache: _DumpCache,
     baostock_cache: _BaostockReferenceCache,
     dump_kinds: Any,
+    required_st_codes_provider: Any | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if trade_date < rules.dump_incremental_floor:
         raise FuyaoDailyKError(
@@ -605,6 +711,10 @@ def _build_rows_and_meta_for_date(
         trade_date, rules=rules, dump_cache=dump_cache, dump_kinds=dump_kinds
     )
     if not raw_rows:
+        st_backfill_supplement = _supplement_required_st_codes(
+            trade_date, dump_codes=set(), baostock_cache=baostock_cache,
+            required_st_codes_provider=required_st_codes_provider,
+        )
         return [], {
             "dump_release_key": None,
             "dump_release_tag": None,
@@ -613,6 +723,7 @@ def _build_rows_and_meta_for_date(
             "reference_source": rules.reference_source,
             "unknown_rows_sh_sz": 0,
             "unknown_rows_bj": 0,
+            "st_backfill_supplement": st_backfill_supplement,
         }
 
     # 返修 (blocking 发现 #2 修复): 阈值门逐行累加、超限立即 raise 不再处理剩余行 ——
@@ -638,6 +749,12 @@ def _build_rows_and_meta_for_date(
                     "立即停止不再处理剩余行, 整天拒收不落地 (不许无界放行 NULL)"
                 )
 
+    dump_codes = {str(r["ts_code"]).strip().upper() for r in rows}
+    st_backfill_supplement = _supplement_required_st_codes(
+        trade_date, dump_codes=dump_codes, baostock_cache=baostock_cache,
+        required_st_codes_provider=required_st_codes_provider,
+    )
+
     release_tag, release_key = dump_cache.release_info_for(kind_used)
     meta = {
         "dump_release_key": release_key,
@@ -649,6 +766,7 @@ def _build_rows_and_meta_for_date(
         "reference_source": rules.reference_source,
         "unknown_rows_sh_sz": unknown_rows_sh_sz,
         "unknown_rows_bj": unknown_rows_bj,
+        "st_backfill_supplement": st_backfill_supplement,
     }
     return rows, meta
 
@@ -660,6 +778,7 @@ def _build_rows_for_date(
     dump_cache: _DumpCache,
     baostock_cache: _BaostockReferenceCache,
     dump_kinds: Any,
+    required_st_codes_provider: Any | None = None,
 ) -> list[dict[str, Any]]:
     rows, _meta = _build_rows_and_meta_for_date(
         trade_date,
@@ -667,8 +786,35 @@ def _build_rows_for_date(
         dump_cache=dump_cache,
         baostock_cache=baostock_cache,
         dump_kinds=dump_kinds,
+        required_st_codes_provider=required_st_codes_provider,
     )
     return rows
+
+
+def _default_required_st_codes_for_date(trade_date: str) -> tuple[frozenset[str], str]:
+    """``FuyaoDailyKDeps.required_st_codes_provider`` 的生产默认实现 (B1 修法,
+    2026-09-19 返修): 自开自关只读连接 (与 ``stock_st_derive._DefaultReservoirReader``
+    同型), 复用 ``stock_st_derive.required_codes_for_date`` (同一个判定函数,
+    不重复定义第二套集合运算——B1/B4 教训)。
+
+    拿不到连接 (测试环境 / 库不存在 / 权限问题) → ``(frozenset(), "no_connection:
+    <异常类名>")``, **不许崩**——required(D) 补查是 daily 顺手灌水库的增强功能,
+    它算不出分母不该让 daily 主链路的行落地失败。"""
+
+    try:
+        from services.data_access.resolver import connect_ro
+        from services.data_sources.sources.stock_st_derive import required_codes_for_date
+        from services.data_sources.stock_st_acquire_rules import load_stock_st_acquire_rules
+
+        day = date(int(trade_date[:4]), int(trade_date[4:6]), int(trade_date[6:8]))
+        conn = connect_ro("tushare_raw")
+        try:
+            codes = required_codes_for_date(conn, day, load_stock_st_acquire_rules())
+        finally:
+            conn.close()
+        return codes, "ok"
+    except Exception as exc:  # rule-compliance: ok evidence=required(D)-补查拿不到连接时(测试/无库)按无额外代码处理不许让daily主链路崩
+        return frozenset(), f"no_connection:{type(exc).__name__}"
 
 
 def default_deps(rules: NominalOhlcvAcquireRules | None = None) -> FuyaoDailyKDeps:
@@ -693,6 +839,7 @@ def default_deps(rules: NominalOhlcvAcquireRules | None = None) -> FuyaoDailyKDe
         dump_kinds=dump_kinds(),
         baostock_source=BaostockSource(),
         rules=resolved_rules,
+        required_st_codes_provider=_default_required_st_codes_for_date,
     )
 
 

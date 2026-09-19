@@ -1601,6 +1601,281 @@ def test_formal_hard_fail_degrades_not_raises_and_continues_sibling(
     assert any("formal daily" in msg for msg in ctx.degraded_msgs)
 
 
+# ---------------------------------------------------------------------------
+# C7/C8 (ST 契约 v2 刀3, spec §5.4 / 附录 C7-C8): answerable_dates 源能力探测 +
+# 逐域 规划→执行 顺序。
+# ---------------------------------------------------------------------------
+
+
+def _stock_st_only_registry(*, daily_source="fake_daily", stock_st_source="fake_stock_st"):
+    return {
+        "domains": {
+            "daily": {
+                "domain": "daily",
+                "sync_policy": "on_demand",
+                "source": daily_source,
+                "execution_policy": {"mode": "enabled", "reason": "authorized_manual_generation"},
+            },
+            "stock_st": {
+                "domain": "stock_st",
+                "sync_policy": "on_demand",
+                "source": stock_st_source,
+                "execution_policy": {"mode": "enabled", "reason": "authorized_manual_generation"},
+            },
+        }
+    }
+
+
+def test_c7_answerable_dates_splits_holes_run_domain_called_only_for_answerable(
+    monkeypatch, tmp_path
+):
+    """假 adapter answerable_dates 判 3 洞中 2 不可答: run_domain 只被调 1 次 (那个
+    可答的日子); outcomes 含 2 条 action=='unanswerable'; ctx.degraded 0 次。"""
+    from services.data_sources import sync_runner
+    from services.data_sources.sources.stock_st_derive import DateAnswerability
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(acquire, "FORMAL_ON_DEMAND_SECURITY_DAY_DOMAINS", ("stock_st",))
+    registry = _stock_st_only_registry()
+    # 4 个交易日, eligible_end=20260722; 720/721/722 缺, 719 已接受 -> 3 个洞。
+    _stub_trading_days(monkeypatch, sync_runner, ["20260719", "20260720", "20260721", "20260722"])
+    monkeypatch.setattr(sync_runner, "load_registry", lambda: registry)
+    monkeypatch.setattr(sync_runner, "domain_spec", lambda reg, domain: reg["domains"][domain])
+    monkeypatch.setattr(
+        sync_runner, "eligible_end_date",
+        lambda _spec, **_k: SimpleNamespace(eligible_end="20260722", reason="manual_calendar_eligible"),
+    )
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        sync_runner, "run_domain",
+        lambda domain, **kwargs: calls.append(kwargs["start"])
+        or {"domain": domain, "status": "ok", "failed_batches": 0},
+    )
+
+    class _FakeAdapter:
+        def answerable_dates(self, dates, *, conn):
+            out = {}
+            for d in dates:
+                if d == "20260722":
+                    out[d] = DateAnswerability(True, "baostock_reservoir", None, None)
+                else:
+                    out[d] = DateAnswerability(False, None, "no_local_source_for_date", "fill it")
+            return out
+
+    monkeypatch.setattr(sync_runner, "_adapter", lambda _source: _FakeAdapter())
+    monkeypatch.setattr(
+        "services.duck_adapter.connect",
+        lambda *_a, **_k: _AcceptedExceptConn({"20260720", "20260721", "20260722"}),
+    )
+
+    ctx = PipelineContext(date="20260722", log_path=tmp_path / "run.log")
+    try:
+        outcomes = acquire._sync_formal_on_demand_security_days(ctx)
+    finally:
+        ctx.close()
+
+    assert calls == ["20260722"], "只有可答的那个日子该进 run_domain"
+    unanswerable = [o for o in outcomes if o.get("action") == "unanswerable"]
+    assert {o["trade_date"] for o in unanswerable} == {"20260720", "20260721"}
+    assert all(o["reason"] == "no_local_source_for_date" for o in unanswerable)
+    assert ctx.degraded_msgs == []
+
+
+def test_c7_run_domain_typed_unanswerable_result_does_not_degrade(monkeypatch, tmp_path):
+    """run_domain 本身 (取数时) 返回 status='unanswerable' -> outcome 收口成
+    action=='unanswerable', 不进 ctx.degraded (与 'failed' 分支互斥的另一条路径:
+    取数时才发现答不出, 不是规划阶段 answerable_dates 就已经拦下)。"""
+    from services.data_sources import sync_runner
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(acquire, "FORMAL_ON_DEMAND_SECURITY_DAY_DOMAINS", ("stock_st",))
+    registry = _stock_st_only_registry()
+    _stub_trading_days(monkeypatch, sync_runner, ["20260722"])
+    monkeypatch.setattr(sync_runner, "load_registry", lambda: registry)
+    monkeypatch.setattr(sync_runner, "domain_spec", lambda reg, domain: reg["domains"][domain])
+    monkeypatch.setattr(
+        sync_runner, "eligible_end_date",
+        lambda _spec, **_k: SimpleNamespace(eligible_end="20260722", reason="manual_calendar_eligible"),
+    )
+    monkeypatch.setattr(
+        sync_runner, "run_domain",
+        lambda domain, **kwargs: {
+            "domain": domain, "status": "unanswerable", "failed_batches": 0,
+            "unanswerable": True, "unanswerable_reason": "no_local_source_for_date",
+            "remedy": "ingest_baostock_daily_k_reservoir.py --start 20260722 --end 20260722 --execute",
+        },
+    )
+    # 没有 answerable_dates 方法 -> 规划阶段全部放行, 真正的"答不出"在取数时才暴露。
+    monkeypatch.setattr(sync_runner, "_adapter", lambda _source: object())
+    monkeypatch.setattr(
+        "services.duck_adapter.connect",
+        lambda *_a, **_k: _AcceptedExceptConn({"20260722"}),
+    )
+
+    ctx = PipelineContext(date="20260722", log_path=tmp_path / "run.log")
+    try:
+        outcomes = acquire._sync_formal_on_demand_security_days(ctx)
+    finally:
+        ctx.close()
+
+    assert len(outcomes) == 1
+    assert outcomes[0]["action"] == "unanswerable"
+    assert outcomes[0]["reason"] == "no_local_source_for_date"
+    assert ctx.degraded_msgs == []
+
+
+def test_c7_adapter_without_answerable_dates_plans_all_holes(monkeypatch, tmp_path):
+    """没有 answerable_dates 方法的适配器 (今天的 fuyao/tushare) = 任何日期都可试,
+    3 个洞全部原样进入执行循环, 行为与刀 3 之前完全一致。"""
+    from services.data_sources import sync_runner
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(acquire, "FORMAL_ON_DEMAND_SECURITY_DAY_DOMAINS", ("stock_st",))
+    registry = _stock_st_only_registry()
+    _stub_trading_days(monkeypatch, sync_runner, ["20260719", "20260720", "20260721", "20260722"])
+    monkeypatch.setattr(sync_runner, "load_registry", lambda: registry)
+    monkeypatch.setattr(sync_runner, "domain_spec", lambda reg, domain: reg["domains"][domain])
+    monkeypatch.setattr(
+        sync_runner, "eligible_end_date",
+        lambda _spec, **_k: SimpleNamespace(eligible_end="20260722", reason="manual_calendar_eligible"),
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        sync_runner, "run_domain",
+        lambda domain, **kwargs: calls.append(kwargs["start"])
+        or {"domain": domain, "status": "ok", "failed_batches": 0},
+    )
+    monkeypatch.setattr(sync_runner, "_adapter", lambda _source: object())  # 无 answerable_dates
+    monkeypatch.setattr(
+        "services.duck_adapter.connect",
+        lambda *_a, **_k: _AcceptedExceptConn({"20260720", "20260721", "20260722"}),
+    )
+
+    ctx = PipelineContext(date="20260722", log_path=tmp_path / "run.log")
+    try:
+        outcomes = acquire._sync_formal_on_demand_security_days(ctx)
+    finally:
+        ctx.close()
+
+    assert sorted(calls) == ["20260720", "20260721", "20260722"]
+    assert not any(o.get("action") == "unanswerable" for o in outcomes)
+
+
+def test_c7_answerable_dates_raising_fails_open_with_warning(monkeypatch, tmp_path):
+    """取适配器或调 answerable_dates 本身抛异常 -> fail-open (3 个洞全规划, 全部
+    进执行循环) + 一条 warning 日志, 不会因为探测失败而静默漏判。"""
+    from services.data_sources import sync_runner
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    monkeypatch.setattr(acquire, "FORMAL_ON_DEMAND_SECURITY_DAY_DOMAINS", ("stock_st",))
+    registry = _stock_st_only_registry()
+    _stub_trading_days(monkeypatch, sync_runner, ["20260719", "20260720", "20260721", "20260722"])
+    monkeypatch.setattr(sync_runner, "load_registry", lambda: registry)
+    monkeypatch.setattr(sync_runner, "domain_spec", lambda reg, domain: reg["domains"][domain])
+    monkeypatch.setattr(
+        sync_runner, "eligible_end_date",
+        lambda _spec, **_k: SimpleNamespace(eligible_end="20260722", reason="manual_calendar_eligible"),
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        sync_runner, "run_domain",
+        lambda domain, **kwargs: calls.append(kwargs["start"])
+        or {"domain": domain, "status": "ok", "failed_batches": 0},
+    )
+
+    class _ExplodingAdapter:
+        def answerable_dates(self, dates, *, conn):
+            raise RuntimeError("reservoir table is on fire")
+
+    monkeypatch.setattr(sync_runner, "_adapter", lambda _source: _ExplodingAdapter())
+    monkeypatch.setattr(
+        "services.duck_adapter.connect",
+        lambda *_a, **_k: _AcceptedExceptConn({"20260720", "20260721", "20260722"}),
+    )
+
+    ctx = PipelineContext(date="20260722", log_path=tmp_path / "run.log")
+    try:
+        outcomes = acquire._sync_formal_on_demand_security_days(ctx)
+    finally:
+        ctx.close()
+
+    assert sorted(calls) == ["20260720", "20260721", "20260722"]
+    assert not any(o.get("action") == "unanswerable" for o in outcomes)
+    log_text = Path(ctx.log_path).read_text(encoding="utf-8")
+    assert "answerable_dates 探测失败" in log_text
+    assert "reservoir table is on fire" in log_text
+
+
+def test_c8_daily_write_within_same_run_makes_stock_st_hole_answerable(monkeypatch, tmp_path):
+    """同次顺序 (F10): daily 的 run_domain 桩向假水库写入 D 的行 -> 同一次调用里
+    stock_st 对 D 的洞判可答并被规划执行 (逐域 规划->执行, 不是先全规划后执行)。"""
+    from services.data_sources import sync_runner
+    from services.data_sources.sources.stock_st_derive import DateAnswerability
+    from services.pipeline import acquire
+    from services.pipeline.context import PipelineContext
+
+    registry = _stock_st_only_registry()
+    reservoir_written_for: set[str] = set()
+
+    _stub_trading_days(monkeypatch, sync_runner, ["20260722"])
+    monkeypatch.setattr(sync_runner, "load_registry", lambda: registry)
+    monkeypatch.setattr(sync_runner, "domain_spec", lambda reg, domain: reg["domains"][domain])
+    monkeypatch.setattr(
+        sync_runner, "eligible_end_date",
+        lambda _spec, **_k: SimpleNamespace(eligible_end="20260722", reason="manual_calendar_eligible"),
+    )
+
+    def _run(domain, **kwargs):
+        if domain == "daily":
+            reservoir_written_for.add(kwargs["start"])
+        return {"domain": domain, "status": "ok", "failed_batches": 0}
+
+    monkeypatch.setattr(sync_runner, "run_domain", _run)
+
+    class _StockStAdapter:
+        def answerable_dates(self, dates, *, conn):
+            return {
+                d: (
+                    DateAnswerability(True, "baostock_reservoir", None, None)
+                    if d in reservoir_written_for
+                    else DateAnswerability(False, None, "no_local_source_for_date", "fill it")
+                )
+                for d in dates
+            }
+
+    def _adapter(source_name):
+        if source_name == "fake_daily":
+            return object()  # daily 适配器没有 answerable_dates
+        return _StockStAdapter()
+
+    monkeypatch.setattr(sync_runner, "_adapter", _adapter)
+    monkeypatch.setattr(
+        "services.duck_adapter.connect",
+        lambda *_a, **_k: _AcceptedExceptConn({"20260722"}),
+    )
+
+    ctx = PipelineContext(date="20260722", log_path=tmp_path / "run.log")
+    try:
+        outcomes = acquire._sync_formal_on_demand_security_days(ctx)
+    finally:
+        ctx.close()
+
+    assert "20260722" in reservoir_written_for  # daily 确实先执行过
+    assert any(
+        o.get("domain") == "stock_st" and o.get("action") == "accepted"
+        for o in outcomes
+    ), (
+        "stock_st 的洞应在同一次运行里 (daily 执行之后) 被判可答并执行, "
+        "不该落成 unanswerable —— 若代码退回'先把两域全规划完再执行', "
+        "本断言会变红 (daily 那一步的水库写入此刻还没发生)"
+    )
+
+
 def test_acquire_runs_registry_drain_before_formal_and_despite_formal_hard(
     monkeypatch, tmp_path
 ):

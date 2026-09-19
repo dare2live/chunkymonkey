@@ -56,6 +56,7 @@ blocking_paths:
 - tests/scripts/test_pre_knife_audit.py
 - tests/scripts/test_reland_event_domain.py
 - tests/scripts/test_restamp_nominal_ohlcv_contract.py
+- tests/scripts/test_restamp_stock_st_contract.py
 - tests/scripts/test_run_ci_pytest.py
 - tests/scripts/test_safe_commit.py
 - tests/scripts/test_update_watermark_sla.py
@@ -185,6 +186,7 @@ blocking_paths:
 - tests/services/test_stk_holdertrade_catchup.py
 - tests/services/test_stock_limit_publish_b2.py
 - tests/services/test_stock_moneyflow_publish_b2.py
+- tests/services/test_stock_st_backfill_cut.py
 - tests/services/test_stock_st_derive.py
 - tests/services/test_strategy_lab.py
 - tests/services/test_strategy_lab_serve.py

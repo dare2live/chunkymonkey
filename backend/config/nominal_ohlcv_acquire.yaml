@@ -52,8 +52,11 @@ reference:
   # baostock query_history_k_data_plus 的 fields 参数 (adapter 用 "," 连接后传给
   # sources/baostock.py)。只列适配器实际用到的列: date/code 定位一行, close 与 dump 的
   # close 做一致性比对 (close_tolerance), preclose 是本域要取的值本身, volume/tradestatus
-  # 供 §1 幸存者门 (survivor gate) 判停牌/真漏用, 不在此处多列未用字段。
-  baostock_fields: [date, code, close, preclose, volume, tradestatus]
+  # 供 §1 幸存者门 (survivor gate) 判停牌/真漏用, isST 供 ST 契约 v2 双水库派生器用
+  # (raw_baostock_daily_k 水库路径, 见 stock_st_acquire.yaml reservoir.isst_field ——
+  # 2026-09-18 刀2: daily 域每天已对全池调这个接口, isST 是同一响应行里的另一列, 加进
+  # fields 不多一次调用, 只是多落一列进水库), 不在此处多列未用字段。
+  baostock_fields: [date, code, close, preclose, volume, tradestatus, isST]
   # ts_code 交易所后缀 (与 fuyao dump thscode 同形态) -> baostock query_history_k_data_plus
   # 的 code 前缀。北交所不在这张表里 —— 它结构上就不支持该市场
   # (见 pre_close_origin.unknown_no_reference_bj), 不是"漏配一行"。

@@ -81,7 +81,11 @@ _FORMAL_BOUNDARIES: dict[str, FormalDomainBoundary] = {
     ),
     "stock_st": FormalDomainBoundary(
         # 2026-09-01 授权换源 tushare -> stock_st_derive (本地派生, 无供应商)。
-        # baostock 本是候选但 2026-08-31 被其风控拉黑, 且 ST 本就可由名称前缀派生。
+        # 2026-09-18 契约 v2 (ST 历史补数刀3): 双水库派生, 自己仍不触网——快照当天
+        # 读 raw_tushare_stock_basic 简称前缀 (覆盖沪深京+停牌), 其它日期读
+        # raw_baostock_daily_k 的 isST (daily 适配器顺手灌的水库, 只覆盖沪深)。
+        # 原注释"baostock 被拉黑"已失效 (封禁当时即恢复, 见 project memory) 且不再
+        # 是决策前提——现在 baostock 是本域第二条本地读路径的证据来源, 不是候选源。
         domain="stock_st",
         adapter="stock_st_derive",
         landing_writer="services.data_sources.stock_st_acceptance.land_stock_st_batch",

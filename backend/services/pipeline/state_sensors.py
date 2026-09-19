@@ -92,18 +92,34 @@ def state_change_force_reasons(state_changes: dict[str, Any] | None) -> list[str
     return out
 
 
+def _st_attrs_differ(
+    prev_attrs: tuple[Any, str, str], curr_attrs: tuple[Any, str, str]
+) -> bool:
+    """type/type_name 差异总是算变化; name 一边 None 一边有值**不算**变化 (来源
+    不同不是名字变了, 见 stock_st v2 的 st_origin 逐行来源列)。两边都有 name 时
+    仍按字面比较。"""
+    prev_name, prev_type, prev_type_name = prev_attrs
+    curr_name, curr_type, curr_type_name = curr_attrs
+    if prev_type != curr_type or prev_type_name != curr_type_name:
+        return True
+    if prev_name is None or curr_name is None:
+        return False
+    return prev_name != curr_name
+
+
 def membership_diff(
-    prev_rows: list[tuple[str, str, str, str]],
-    curr_rows: list[tuple[str, str, str, str]],
+    prev_rows: list[tuple[str, Any, str, str]],
+    curr_rows: list[tuple[str, Any, str, str]],
 ) -> dict[str, Any]:
-    """Diff ST membership rows as (ts_code, name, type, type_name)."""
+    """Diff ST membership rows as (ts_code, name, type, type_name). ``name`` may
+    be ``None`` (baostock 水库路径不报告简称, v2 起 name 可空)."""
     prev = {r[0]: r for r in prev_rows}
     curr = {r[0]: r for r in curr_rows}
     entered = sorted(set(curr) - set(prev))
     exited = sorted(set(prev) - set(curr))
     attr_changed: list[str] = []
     for code in sorted(set(prev) & set(curr)):
-        if prev[code][1:] != curr[code][1:]:
+        if _st_attrs_differ(prev[code][1:], curr[code][1:]):
             attr_changed.append(code)
     changed = bool(entered or exited or attr_changed)
     return {
@@ -185,24 +201,26 @@ def detect_stock_st_state_changes(
         }
     curr_p, prev_p = partitions[0], partitions[1]
 
-    def _load(partition: str) -> list[tuple[str, str, str, str]]:
+    def _load(partition: str) -> list[tuple[str, Any, str, str, str]]:
         day = date(int(partition[:4]), int(partition[4:6]), int(partition[6:8]))
         rows = conn.execute(
             f"""
-            SELECT ts_code, name, type, type_name
+            SELECT ts_code, name, type, type_name, st_origin
             FROM {table}
             WHERE trade_date = ?
             """,
             [day],
         ).fetchall()
+        # name 保留 None (不再 str(r[1] or "") 压成 "") —— NULL 是 baostock 水库
+        # 路径的合法值, 压成 "" 会让它被判成"名字变了"(见 _st_attrs_differ)。
         return [
-            (str(r[0]), str(r[1] or ""), str(r[2] or ""), str(r[3] or ""))
+            (str(r[0]), r[1], str(r[2] or ""), str(r[3] or ""), str(r[4] or ""))
             for r in rows
         ]
 
     try:
-        prev_rows = _load(prev_p)
-        curr_rows = _load(curr_p)
+        prev_loaded = _load(prev_p)
+        curr_loaded = _load(curr_p)
     except Exception as exc:
         return {
             "status": "unavailable",
@@ -213,9 +231,29 @@ def detect_stock_st_state_changes(
             "detection": "accepted_partition_membership_diff",
             "tier0_write": False,
         }
+
+    from services.data_sources.stock_st_acquire_rules import (
+        load_stock_st_acquire_rules,
+        partition_coverage,
+    )
+
+    rules = load_stock_st_acquire_rules()
+    coverage_prev = partition_coverage(rules, (r[4] for r in prev_loaded))
+    coverage_curr = partition_coverage(rules, (r[4] for r in curr_loaded))
+    compared = coverage_prev & coverage_curr
+
+    def _exchange(ts_code: str) -> str:
+        return ts_code.split(".")[-1].upper()
+
+    prev_rows = [r[:4] for r in prev_loaded if _exchange(r[0]) in compared]
+    curr_rows = [r[:4] for r in curr_loaded if _exchange(r[0]) in compared]
+
     out = membership_diff(prev_rows, curr_rows)
     out["as_of"] = curr_p
     out["baseline"] = prev_p
+    out["coverage_prev"] = sorted(coverage_prev)
+    out["coverage_curr"] = sorted(coverage_curr)
+    out["coverage_exchanges_compared"] = sorted(compared)
     return out
 
 
