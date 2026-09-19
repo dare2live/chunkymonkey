@@ -27,7 +27,6 @@ backend/services/derive_runtime.py 现有调用保留, 不再改变输出。
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,7 +45,6 @@ TARGET = "price_kline_qfq_tushare"
 SOURCE_RELATION = "tr.canonical_nominal_ohlcv_daily"
 # 真相源起点防护: 真实数据 2019-01-02 起, 此处只是防未来上游误回填更早历史时悄悄扩窗。
 START_DATE = "2019-01-01"
-_COMPACT_SCRIPT = REPO / "backend" / "scripts" / "db_compact.py"
 
 
 def _sql_literal(value: str) -> str:
@@ -186,29 +184,6 @@ def cross_check(conn) -> dict[str, Any]:
     }
 
 
-def compact_market_after_ctas() -> int:
-    """DROP+CTAS 后回收空闲块。只对生产 market 路径生效 (MARKET_DB 被测试重定向时跳过)。"""
-    spec = importlib.util.spec_from_file_location("db_compact", _COMPACT_SCRIPT)
-    assert spec is not None and spec.loader is not None
-    compact = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(compact)
-
-    prod = Path(compact._db_path("market")).resolve()
-    market_path = Path(MARKET_DB)
-    market_path = (market_path if market_path.is_absolute() else (REPO / market_path)).resolve()
-    if market_path != prod:
-        print(f"[compact] skip — MARKET_DB={market_path} != production {prod}", flush=True)
-        return 0
-    rc = int(compact.run("market", execute=True))
-    if rc != 0:
-        return rc
-    bak = prod.with_name(f"{prod.stem}_precompact_bak{prod.suffix}")
-    if bak.exists():
-        bak.unlink()
-        print(f"[compact] removed {bak}", flush=True)
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check-only", action="store_true", help="只对账不重建")
@@ -224,14 +199,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = ap.parse_args(argv)
 
-    rebuilt = False
     detail: dict[str, Any] = {}
     conn = connect(MARKET_DB, read_only=False)
     try:
         conn.execute(f"ATTACH IF NOT EXISTS '{TUSHARE_DB}' AS tr (READ_ONLY)")  # cross_check reads canonical too
         if not args.check_only:
             detail = build_full(conn)
-            rebuilt = True
             print(
                 f"[build] {TARGET}: {detail['rows']:,} 行 | batch_id={detail['batch_id']} | "
                 f"config_hash={detail['config_hash'][:12]}…",
@@ -259,11 +232,9 @@ def main(argv: list[str] | None = None) -> int:
     if not ok:
         return 2
 
-    if rebuilt:
-        crc = compact_market_after_ctas()
-        if crc != 0:
-            print(f"[compact] FAIL rc={crc} — qfq rows OK but free-block residual remains", flush=True)
-            return 3
+    # 死块回收不再是本脚本自己的事: 日更 store 阶段按 backend/config/db_compaction.yaml
+    # 阈值统一压缩所有登记库 (services.pipeline.store.compact_bloated_databases,
+    # cut_db_compaction 2026-09-19) —— 取代原先此处的点状整库压缩调用。
     return 0
 
 

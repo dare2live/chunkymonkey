@@ -43,6 +43,14 @@ def run_store(ctx: PipelineContext) -> None:
         ctx.run_script("backend/scripts/project_factor_family_frontiers.py",
                        degraded_msg="因子族前沿投影重生失败 — frontier_live 门将因投影过期持续 BLOCKED")
 
+    # Step 2.977: 库膨胀治本 (cut_db_compaction 2026-09-19) —— 取代此前散落在
+    # build_price_kline_qfq_tushare.compact_market_after_ctas / institution_profile.
+    # rebuild_all / rally_gt.rebuild 三处各自调用 duckdb_compact.maybe_compact_alias
+    # 的点状压缩。必须排在本函数前面所有写库步骤之后 (含上面两个 subprocess 步骤,
+    # 它们也写库)、system_health 之前 (system_health 组里的 bloat_ratio_* 门要看到
+    # 压缩后的结果)。
+    compact_bloated_databases(ctx)
+
     # Step 2.98: system_health 组运行时自检 (goal.md「治理体系重构」P1.2)。
     #   continuity / residual_hygiene 原本就在这里；grain_uniqueness 是从 commit
     #   路径归位过来的 —— 它查的是库里现有数据与 config 声明的生效性，
@@ -63,6 +71,78 @@ def run_store(ctx: PipelineContext) -> None:
 
     # Step 5: data-health 报告 + outcome-keyed 告警送达
     write_report_and_alert(ctx)
+
+
+def compact_bloated_databases(ctx: PipelineContext) -> list[dict[str, Any]]:
+    """按 backend/config/db_compaction.yaml 阈值统一压缩死块 (cut_db_compaction 2026-09-19)。
+
+    取代此前散落在 3 个写者里的点状压缩——「不管谁造成的死块, 下一次日更都会回收」,
+    而不是每出现一种新的全表 DROP/无 WHERE UPDATE 写法就要求作者记得手动接线。
+
+    dry-run 跳过: 不加载配置、不测空闲块占比、不压缩 (与其它 store 步骤的
+    skip_when_dry 语义一致——dry 模式承诺不写任何东西, 压缩本身就是一种写)。
+
+    单库压缩失败 (returncode != 0) = ``ctx.degraded`` 记录 (库名 + 返回码), 不阻断
+    其余库的检查、也不阻断后续的 system_health 步骤——下一次日更会再试。
+    """
+    if ctx.dry:
+        ctx.log("compact_bloated_databases: dry-run 跳过 (不测/不压缩)")
+        return []
+
+    from services import duckdb_compact
+    from services.db_compaction_rules import DbCompactionConfigError, load_db_compaction_config
+
+    try:
+        cfg = load_db_compaction_config()
+    except DbCompactionConfigError as exc:
+        ctx.degraded(
+            f"db_compaction.yaml 加载失败 — 本次日更未按阈值压缩任何库 ({exc})"
+        )
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for alias in cfg.databases:
+        try:
+            result = duckdb_compact.compact_if_bloated(
+                alias, trigger_free_block_pct=cfg.trigger_free_block_pct
+            )
+        except Exception as exc:  # noqa: BLE001 — 单库压缩异常与非 0 返回码同等对待:
+            # 记账后 continue, 不阻断其余库与后续 system_health (db_compact.run 在
+            # 校验失败 / 视图重建卡死 / 跨连接 read_only 冲突时是 raise 而非返回码,
+            # 见 backend/scripts/db_compact.py 的两处 RuntimeError)。
+            result = {
+                "alias": alias,
+                "free_pct_before": None,
+                "trigger_free_block_pct": cfg.trigger_free_block_pct,
+                "attempted": True,
+                "returncode": None,
+                "size_before_bytes": None,
+                "size_after_bytes": None,
+            }
+            rows.append(result)
+            ctx.degraded(
+                f"db compact 异常: {alias} ({exc}) — 死块未回收, 下次日更再试"
+            )
+            continue
+        rows.append(result)
+        if result["attempted"] and result["returncode"] != 0:
+            ctx.degraded(
+                f"db compact 失败: {alias} (exit {result['returncode']}) — "
+                "死块未回收, 下次日更再试"
+            )
+
+    attempted_n = sum(1 for r in rows if r["attempted"])
+    ok_n = sum(1 for r in rows if r["attempted"] and r["returncode"] == 0)
+    ctx.log(
+        f"compact_bloated_databases: {len(rows)} 库检查 / {attempted_n} 触发压缩 / {ok_n} 成功"
+    )
+
+    if ctx.delta_manifest is None:
+        from .delta_manifest import empty_manifest
+
+        ctx.delta_manifest = empty_manifest(run_date=ctx.date)
+    ctx.delta_manifest["compaction_summary"] = rows
+    return rows
 
 
 def run_system_health_checks(ctx: PipelineContext) -> list[dict[str, Any]]:

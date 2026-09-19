@@ -86,6 +86,7 @@ blocking_paths:
 - tests/services/test_data_deletion_ledger.py
 - tests/services/test_database_manifest.py
 - tests/services/test_dataset_contracts.py
+- tests/services/test_db_compaction_rules.py
 - tests/services/test_dc_member_publish_b1.py
 - tests/services/test_deferred_findings.py
 - tests/services/test_derive_runtime_s5.py

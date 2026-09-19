@@ -35,10 +35,13 @@ invariants:
     why: >-
       08-26 qfq 全表 UPDATE 曾把 market 打到 ~25% free_blocks (claims.yaml 注释); 10% 是
       事故量级不是日常噪音——smartmoney 正常在 0.03%~5% 波动, 离阈值一个数量级, 只在
-      "没做 compact" 这一个动作上红。与 duckdb_compact.COMPACT_FREE_PCT=10.0
-      (backend/services/duckdb_compact.py:18, feature_store 自动 compact 触发线) 是
-      两个语义 (告警线 vs 触发线), 不合并。
-    fix: "PYTHONPATH=backend python backend/scripts/db_compact.py --db smartmoney --execute"
+      "没做 compact" 这一个动作上红。与 backend/config/db_compaction.yaml 的
+      trigger_free_block_pct (日更 store 阶段统一压缩的触发线, 低于本告警线) 是
+      两个语义 (告警线 vs 触发线), 不合并: 本条红 = 日更压缩没跟上。
+    fix: >-
+      PYTHONPATH=backend python backend/scripts/db_compact.py --db smartmoney --execute
+      (下一次日更也会按 backend/config/db_compaction.yaml 阈值自动压缩; 手动跑默认校验
+      通过后自动删 _precompact_bak, 加 --keep-bak 保留)
     kill_when: "smartmoney 拆库/退役时随库一起删"
 
   - id: bloat_ratio_market
@@ -56,7 +59,10 @@ invariants:
     expect: 10
     allow_empty: false
     why: "同 bloat_ratio_smartmoney——本库正是 08-26 那次全表 UPDATE 事故的受害库。"
-    fix: "PYTHONPATH=backend python backend/scripts/db_compact.py --db market --execute"
+    fix: >-
+      PYTHONPATH=backend python backend/scripts/db_compact.py --db market --execute
+      (下一次日更也会按 backend/config/db_compaction.yaml 阈值自动压缩; 手动跑默认校验
+      通过后自动删 _precompact_bak, 加 --keep-bak 保留)
     kill_when: "market 拆库/退役时随库一起删"
 
   - id: bloat_ratio_org_holding
@@ -74,7 +80,10 @@ invariants:
     expect: 10
     allow_empty: false
     why: "同 bloat_ratio_smartmoney; 事故量级阈值, 非日常噪音。"
-    fix: "PYTHONPATH=backend python backend/scripts/db_compact.py --db org_holding --execute"
+    fix: >-
+      PYTHONPATH=backend python backend/scripts/db_compact.py --db org_holding --execute
+      (下一次日更也会按 backend/config/db_compaction.yaml 阈值自动压缩; 手动跑默认校验
+      通过后自动删 _precompact_bak, 加 --keep-bak 保留)
     kill_when: "org_holding 拆库/退役时随库一起删"
 
   - id: bloat_ratio_feature_store
@@ -92,7 +101,10 @@ invariants:
     expect: 10
     allow_empty: false
     why: "同 bloat_ratio_smartmoney; feature_store 已有独立自动 compact 触发线, 本条是告警线。"
-    fix: "PYTHONPATH=backend python backend/scripts/db_compact.py --db feature_store --execute"
+    fix: >-
+      PYTHONPATH=backend python backend/scripts/db_compact.py --db feature_store --execute
+      (下一次日更也会按 backend/config/db_compaction.yaml 阈值自动压缩; 手动跑默认校验
+      通过后自动删 _precompact_bak, 加 --keep-bak 保留)
     kill_when: "feature_store 拆库/退役时随库一起删"
 
   - id: bloat_ratio_tushare_raw
@@ -112,7 +124,10 @@ invariants:
     why: >-
       tushare_raw 是逐日新增写面 (raw_tushare_* 全量镜像), compact 不进日常节奏,
       沿用 moth 原 25% 阈值而非其余库的 10%。
-    fix: "PYTHONPATH=backend python backend/scripts/db_compact.py --db tushare_raw --execute"
+    fix: >-
+      PYTHONPATH=backend python backend/scripts/db_compact.py --db tushare_raw --execute
+      (下一次日更也会按 backend/config/db_compaction.yaml 阈值自动压缩; 手动跑默认校验
+      通过后自动删 _precompact_bak, 加 --keep-bak 保留)
     kill_when: "tushare_raw 拆库/退役时随库一起删"
 
   # ── 6: 日历 serve 投影对 accepted 真相面的忠实性 (替换 moth calendar-floor 等值钉) ──

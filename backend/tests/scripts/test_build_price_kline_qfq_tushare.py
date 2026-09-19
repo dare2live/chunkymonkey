@@ -397,7 +397,9 @@ def test_main_check_only_does_not_rebuild(tmp_path, monkeypatch, capsys) -> None
 def test_main_full_rebuild_from_scratch_returns_zero(tmp_path, monkeypatch) -> None:
     """main(['--from-accepted','--full']) 端到端: 空 market db → 建表 → verdict PASS → rc 0.
 
-    MARKET_DB 重定向到 tmp_path (非生产路径), compact_market_after_ctas 据此自行跳过。
+    MARKET_DB 重定向到 tmp_path (非生产路径)。点状压缩 (compact_market_after_ctas) 已删
+    (cut_db_compaction 2026-09-19) —— 死块回收交给日更 store 阶段统一处理, 本测试只验证
+    build+cross_check 端到端返回 0, 不再涉及任何 compact 分支。
     """
     mod = _load_module()
     raw_db = tmp_path / "raw.duckdb"

@@ -1,0 +1,39 @@
+# db_compaction.yaml — 日更 store 阶段统一压缩阈值 (cut_db_compaction, 2026-09-19)。
+#
+# 单一定义点, 取代此前散落在 3 个写者里的点状压缩 (build_price_kline_qfq_tushare.py 的
+# compact_market_after_ctas / institution_profile.rebuild_all 与 rally_gt.rebuild 各自
+# 调用 duckdb_compact.maybe_compact_alias): 07-23/08-27 两次治本只手动接线了 3 个写者,
+# 之后新增的全表 DROP/无 WHERE UPDATE 写者 (db_lifecycle_delete / security_day_restamp /
+# smartmoney 的多个 publish_fact_* 全量分支等) 都没有被要求接压缩钩子, 直到 09-18
+# smartmoney 被打到 24.0272% free_blocks (data/audit/db_invariants_20260918.json) 才被
+# 发现。本文件之后, 压缩由日更 store 阶段统一按下面的库清单跑, 不再依赖"记得给每个新
+# 写者手动接线"。
+#
+# owner: backend/services/db_compaction_rules.py (loader) +
+#        backend/services/pipeline/store.py::compact_bloated_databases (调用点)。
+
+version: 1
+
+# 触发阈值 (%): 单库空闲块占比 >= 此值就在日更 store 阶段自动压缩。
+# 09-19 实测 (回填结束后只读): smartmoney 0.31% / market 0.40% / tushare_raw 2.43% /
+# org_holding 3.11% / feature_store 1.09% —— 全部 <= 3.2%。5.0 低于
+# db_invariants.yaml 各条 bloat_ratio_* 的 10%/25% 报警线, 给日更之后的
+# system_health 检查留余量: 报警线红了说明"日更压缩没跟上", 不该是日常状态。
+trigger_free_block_pct: 5.0
+
+# 受日更统一压缩的库别名清单 (须在 database_manifest.yaml 里已注册, loader fail-closed
+# 校验)。必须与 backend/config/db_invariants.yaml 里带 bloat_ratio_ 前缀检查覆盖的库
+# 集合相等——见 backend/tests/services/test_db_compaction_rules.py 的集合相等断言,
+# 防止"有报警、没人修"的库再次出现 (09-18 smartmoney 24% 正是这么发生的: db_invariants
+# 后来把断言覆盖面从 1 个库扩到 5 个, 压缩钩子却停在 07-23/08-27 接过线的 3 个写者)。
+databases:
+  - smartmoney
+  - market
+  - org_holding
+  - feature_store
+  - tushare_raw
+
+# 磁盘余量下限 (GB)。db_compact.py 的 ATTACH-copy 整库重写法峰值占用 ≈ old + new,
+# 余量低于此线拒绝压缩, 防止把磁盘写满。从 backend/scripts/db_compact.py 原字面量 10
+# 挪进本配置 (CLAUDE.md #11: 参数进 config, 不留代码里的字面量副本)。
+min_free_disk_gb: 10

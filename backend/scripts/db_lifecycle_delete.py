@@ -10,7 +10,8 @@
   3. 留痕: 每张删除写 mart_data_deletion_record (行数/schema/reason/归档路径/时间) — validation artifacts 不静默消失。
   4. 残留扫描: 删后扫所有 VIEW 定义有无悬挂引用已删表。
 
-dry-run 默认 (列计划 + 跑 live 守护); --execute 才归档+留痕+DROP。DROP 不回收文件块 → 之后须跑 db_compact。
+dry-run 默认 (列计划 + 跑 live 守护); --execute 才归档+留痕+DROP。DROP 不回收文件块 →
+目标库若在 backend/config/db_compaction.yaml 的 databases 清单里, 下一次日更会按阈值自动压缩; 否则 (或急用) 手动跑 db_compact.py。
 
 用法:
   python backend/scripts/db_lifecycle_delete.py --manifest data/audit/historical/lifecycle_delete_manifest_20260614.yaml
@@ -133,7 +134,7 @@ def run(manifest_path: Path, execute: bool, force: bool = False) -> int:
     print(f"\n  待执行: {len(todo)} 表 (drop={len(todo)-n_arch} archive={n_arch})")
 
     if not execute:
-        print("\n  DRY-RUN: --execute 才归档+留痕+DROP。DROP 后须跑 db_compact 回收盘。")
+        print("\n  DRY-RUN: --execute 才归档+留痕+DROP。DROP 后: 目标库在 db_compaction.yaml 清单内则下一次日更按阈值自动压缩, 否则 (或急用) 手动跑 db_compact.py。")
         return 0
 
     conn = duck_connect(str(db), read_only=False)
@@ -222,7 +223,7 @@ def run(manifest_path: Path, execute: bool, force: bool = False) -> int:
             print(f"    VIEW {v} 引用已删 {t}")
     else:
         print("  残留扫描: 0 悬挂视图引用。")
-    print(f"\n  留痕: mart_data_deletion_record (run_id={run_id})。DROP 不回收盘 → 跑 db_compact 缩盘。")
+    print(f"\n  留痕: mart_data_deletion_record (run_id={run_id})。DROP 不回收盘 → 目标库在 db_compaction.yaml 清单内则下一次日更按阈值自动压缩, 否则 (或急用) 手动跑 db_compact.py。")
     return 0 if not errors else 6
 
 

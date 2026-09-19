@@ -55,6 +55,9 @@ def empty_manifest(*, run_date: str) -> dict[str, Any]:
         },
         "process_plan": {},
         "process_outcome": {},
+        # cut_db_compaction (2026-09-19): per-alias compact_if_bloated() records
+        # written by services.pipeline.store.compact_bloated_databases.
+        "compaction_summary": [],
         "stage_timing_s": {},
         "latency_budgets": {},
         "budget_status": {},

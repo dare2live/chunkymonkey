@@ -2469,6 +2469,204 @@ def test_post_acquire_sla_crash_cannot_reuse_same_day_stale_artifact(
     assert any("最终 SLA 失明" in msg for msg in ctx.degraded_msgs)
 
 
+# ── cut_db_compaction (2026-09-19): store 阶段统一压缩钩子 ──────────────────────────
+
+
+def test_compact_bloated_databases_dry_run_skips_entirely(tmp_path, monkeypatch):
+    """A6: dry-run 下不测/不压缩——连配置都不加载。"""
+    from services.pipeline import store
+    from services.pipeline.context import PipelineContext
+
+    calls = {"n": 0}
+
+    def _boom(*_a, **_k):
+        calls["n"] += 1
+        raise RuntimeError("dry-run must not load db_compaction config")
+
+    monkeypatch.setattr("services.db_compaction_rules.load_db_compaction_config", _boom)
+
+    ctx = PipelineContext(dry=True, date="20260101", log_path=tmp_path / "p.log")
+    try:
+        rows = store.compact_bloated_databases(ctx)
+    finally:
+        ctx.close()
+
+    assert rows == []
+    assert calls["n"] == 0
+
+
+def test_compact_bloated_databases_degrades_on_failure_and_continues_to_next_db(
+    monkeypatch, tmp_path
+):
+    """A4: 一个库压缩失败 -> ctx.degraded 记库名+返回码, 不阻断其余库。"""
+    from services.db_compaction_rules import DbCompactionConfig
+    from services.pipeline import store
+    from services.pipeline.context import PipelineContext
+
+    fake_cfg = DbCompactionConfig(
+        version=1,
+        trigger_free_block_pct=5.0,
+        databases=("smartmoney", "market"),
+        min_free_disk_gb=10.0,
+    )
+    monkeypatch.setattr(
+        "services.db_compaction_rules.load_db_compaction_config", lambda: fake_cfg
+    )
+
+    seen = []
+
+    def _fake_compact_if_bloated(alias, *, trigger_free_block_pct):
+        seen.append(alias)
+        if alias == "smartmoney":
+            return {
+                "alias": alias,
+                "free_pct_before": 12.0,
+                "trigger_free_block_pct": trigger_free_block_pct,
+                "attempted": True,
+                "returncode": 7,
+                "size_before_bytes": 1,
+                "size_after_bytes": 1,
+            }
+        return {
+            "alias": alias,
+            "free_pct_before": 0.0,
+            "trigger_free_block_pct": trigger_free_block_pct,
+            "attempted": False,
+            "returncode": None,
+            "size_before_bytes": 1,
+            "size_after_bytes": 1,
+        }
+
+    monkeypatch.setattr(
+        "services.duckdb_compact.compact_if_bloated", _fake_compact_if_bloated
+    )
+
+    ctx = PipelineContext(dry=False, date="20260101", log_path=tmp_path / "p.log")
+    try:
+        rows = store.compact_bloated_databases(ctx)
+    finally:
+        ctx.close()
+
+    assert seen == ["smartmoney", "market"], "第一个库失败不该阻断第二个库"
+    assert len(rows) == 2
+    assert sum(1 for m in ctx.degraded_msgs if "smartmoney" in m and "7" in m) == 1
+    assert not any("market" in m for m in ctx.degraded_msgs)
+    assert ctx.delta_manifest["compaction_summary"] == rows
+
+
+def test_compact_bloated_databases_degrades_on_exception_and_continues_to_next_db(
+    monkeypatch, tmp_path
+):
+    """blocking fix (返修 2026-09-19): compact_if_bloated 对某库抛异常 (非返回非0)
+    时不得让 store 阶段崩溃——记 degraded(库名+异常信息), continue 到下一个库,
+    与非0返回码分支同等对待。隔离用例: 其它全满足 (dry=False, config 正常加载,
+    第二个库正常返回), 只有第一个库的调用本身 raise。
+
+    变异: 把 store.py 里包这段的 try/except 删掉 (裸调用) -> 本用例应从
+    「rows 记两条 + degraded 含异常信息」变红为「未捕获异常向上冒出
+    compact_bloated_databases, pytest 报 RuntimeError 而非断言失败」。
+    """
+    from services.db_compaction_rules import DbCompactionConfig
+    from services.pipeline import store
+    from services.pipeline.context import PipelineContext
+
+    fake_cfg = DbCompactionConfig(
+        version=1,
+        trigger_free_block_pct=5.0,
+        databases=("smartmoney", "market"),
+        min_free_disk_gb=10.0,
+    )
+    monkeypatch.setattr(
+        "services.db_compaction_rules.load_db_compaction_config", lambda: fake_cfg
+    )
+
+    seen = []
+
+    def _fake_compact_if_bloated(alias, *, trigger_free_block_pct):
+        seen.append(alias)
+        if alias == "smartmoney":
+            raise RuntimeError("表 foo sql=NULL 但 3 约束 — 需手动 DDL")
+        return {
+            "alias": alias,
+            "free_pct_before": 0.0,
+            "trigger_free_block_pct": trigger_free_block_pct,
+            "attempted": False,
+            "returncode": None,
+            "size_before_bytes": 1,
+            "size_after_bytes": 1,
+        }
+
+    monkeypatch.setattr(
+        "services.duckdb_compact.compact_if_bloated", _fake_compact_if_bloated
+    )
+
+    ctx = PipelineContext(dry=False, date="20260101", log_path=tmp_path / "p.log")
+    try:
+        rows = store.compact_bloated_databases(ctx)
+    finally:
+        ctx.close()
+
+    assert seen == ["smartmoney", "market"], "第一个库抛异常不该阻断第二个库"
+    assert len(rows) == 2
+    smartmoney_row = next(r for r in rows if r["alias"] == "smartmoney")
+    assert smartmoney_row["attempted"] is True
+    assert smartmoney_row["returncode"] is None
+    assert (
+        sum(
+            1
+            for m in ctx.degraded_msgs
+            if "smartmoney" in m and "需手动 DDL" in m
+        )
+        == 1
+    )
+    assert not any("market" in m for m in ctx.degraded_msgs)
+    assert ctx.delta_manifest["compaction_summary"] == rows
+
+
+def test_compact_bloated_databases_runs_after_write_steps_and_before_system_health(
+    monkeypatch, tmp_path
+):
+    """A5: store 阶段调用顺序——compact_bloated_databases 在两个 subprocess 写库步骤
+    之后、run_system_health_checks 之前 (用调用顺序记录的桩验证)。"""
+    from services.pipeline import store
+    from services.pipeline.context import PipelineContext
+
+    order = []
+
+    def _fake_compact(_ctx):
+        order.append("compact")
+        return []
+
+    def _fake_health(_ctx):
+        order.append("system_health")
+        return []
+
+    monkeypatch.setattr(store, "compact_bloated_databases", _fake_compact)
+    monkeypatch.setattr(store, "run_system_health_checks", _fake_health)
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *_a, **_k: order.append("subprocess") or SimpleNamespace(
+            returncode=0, stdout="", stderr=""
+        ),
+    )
+
+    ctx = PipelineContext(
+        dry=False, skip_sync=False, date="20260101", log_path=tmp_path / "p.log"
+    )
+    try:
+        store.run_store(ctx)
+    finally:
+        ctx.close()
+
+    idx_compact = order.index("compact")
+    idx_health = order.index("system_health")
+    assert idx_compact < idx_health, f"compact 应排在 system_health 之前, got order={order}"
+    assert "subprocess" in order[:idx_compact], (
+        "compact 应排在写库 subprocess 步骤之后 (refresh_source_watermarks / "
+        f"project_factor_family_frontiers), got order={order}"
+    )
+
+
 def test_authorization_probe_uses_configured_socket_timeout_and_restores_it(monkeypatch, tmp_path):
     import socket
 

@@ -549,8 +549,7 @@ def rebuild(conn=None, data_end=None, raw_conn=None) -> dict:
             raw_conn.close()
         if own_conn:
             conn.close()
-    if own_conn:
-        from services.duckdb_compact import maybe_compact_alias
-
-        maybe_compact_alias("feature_store", always=True)
+    # 死块回收不再是本函数自己的事 (cut_db_compaction 2026-09-19): 日更 store 阶段按
+    # backend/config/db_compaction.yaml 阈值统一压缩所有登记库, 见
+    # services.pipeline.store.compact_bloated_databases。
     return stats

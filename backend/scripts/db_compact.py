@@ -5,11 +5,12 @@
 (CTAS 丢 PK = 06-12 db_split_execute 同型坑, 约束 315→1; 仅 NULL-sql 且零约束的表才 CTAS-fallback)。
 ATTACH-copy 法 (无中间 parquet, peak=old+new), 不删生产库 (验证通过才换名, 旧库留 bak)。
 
-dry-run 默认 (列计划 + 对账基线); --execute 才重写 + 验证 + 换名。
+dry-run 默认 (列计划 + 对账基线); --execute 才重写 + 验证 + 换名 + 删 bak (--keep-bak 保留)。
 
 用法:
-  python backend/scripts/db_compact.py --db smartmoney            # dry-run
-  python backend/scripts/db_compact.py --db smartmoney --execute  # 重写紧缩 + 验证 + 换名 (旧库留 _precompact_bak)
+  python backend/scripts/db_compact.py --db smartmoney              # dry-run
+  python backend/scripts/db_compact.py --db smartmoney --execute    # 重写紧缩 + 验证 + 换名, 换名成功后自动删 bak
+  python backend/scripts/db_compact.py --db smartmoney --execute --keep-bak  # 同上但保留 _precompact_bak
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ import yaml
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "backend"))
 
+from services.db_compaction_rules import load_db_compaction_config  # noqa: E402
 from services.duck_adapter import connect as duck_connect  # noqa: E402
 
 MANIFEST = REPO / "backend" / "config" / "database_manifest.yaml"
@@ -41,7 +43,7 @@ def _rel(p: Path) -> Path:
         return p
 
 
-def run(alias: str, execute: bool, drop_bak: bool = False) -> int:
+def run(alias: str, execute: bool, drop_bak: bool = True) -> int:
     src = _db_path(alias)
     # 派生兄弟文件名 (非 hardcode DB 路径; src 来自 database_manifest)
     new = src.with_name(src.stem + "_compact.duckdb")  # rule-compliance: ok evidence=derived from manifest src
@@ -72,10 +74,11 @@ def run(alias: str, execute: bool, drop_bak: bool = False) -> int:
     print(f"  磁盘余量: {free:.0f}G (peak≈old+new≈{sz*2:.0f}G)")
 
     if not execute:
-        print("  DRY-RUN: --execute 重写紧缩 + 验证 + 换名 (旧库留 bak；--drop-bak 换名后删 bak)。")
+        print("  DRY-RUN: --execute 重写紧缩 + 验证 + 换名 (默认换名后自动删 bak；--keep-bak 保留)。")
         return 0
-    if free < 10:
-        print(f"FAIL: 磁盘余量 {free:.0f}G < 10G, 拒绝紧缩", file=sys.stderr)
+    min_free_disk_gb = load_db_compaction_config().min_free_disk_gb
+    if free < min_free_disk_gb:
+        print(f"FAIL: 磁盘余量 {free:.0f}G < {min_free_disk_gb:.0f}G, 拒绝紧缩", file=sys.stderr)
         return 6
     if new.exists():
         print(f"FAIL: {new.name} 已存在, 先删", file=sys.stderr)
@@ -140,9 +143,9 @@ def run(alias: str, execute: bool, drop_bak: bool = False) -> int:
     saved = sz - new_sz
     if drop_bak:
         bak.unlink()
-        print(f"\n  紧缩完成: {sz:.1f}G → {new_sz:.1f}G (省 {saved:.1f}G). 已按 --drop-bak 删除 {bak.name}。")
+        print(f"\n  紧缩完成: {sz:.1f}G → {new_sz:.1f}G (省 {saved:.1f}G). 已删除 {bak.name} (默认行为；--keep-bak 保留)。")
     else:
-        print(f"\n  紧缩完成: {sz:.1f}G → {new_sz:.1f}G (省 {saved:.1f}G). 旧库留 {bak.name} (验证 doctor 后可删)。")
+        print(f"\n  紧缩完成: {sz:.1f}G → {new_sz:.1f}G (省 {saved:.1f}G). 按 --keep-bak 保留 {bak.name} (验证 doctor 后可删)。")
     return 0
 
 
@@ -151,12 +154,12 @@ def main():
     ap.add_argument("--db", default="smartmoney")
     ap.add_argument("--execute", action="store_true", help="真重写 (默认 dry-run)")
     ap.add_argument(
-        "--drop-bak",
+        "--keep-bak",
         action="store_true",
-        help="换名并对账通过后删除 _precompact_bak（不可回滚）",
+        help="换名并对账通过后保留 _precompact_bak（默认自动删除，不可回滚）",
     )
     args = ap.parse_args()
-    sys.exit(run(args.db, args.execute, drop_bak=args.drop_bak))
+    sys.exit(run(args.db, args.execute, drop_bak=not args.keep_bak))
 
 
 if __name__ == "__main__":
