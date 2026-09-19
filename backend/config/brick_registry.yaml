@@ -84,19 +84,10 @@ bricks:
     status: declared
     notes: "S5 derive form; Type A axes; no direction claim"
 
-  # Distinct brick_id from L3 feature_block stock_state_stage_pattern_v1
-  # (same definition_version string is OK; node ids must not collide across layers).
-  tier1_stock_state_stage_pattern_v1:
-    layer: L2
-    kind: primitive
-    depends_on: [accepted_nominal_ohlcv_daily, fact_stock_form_daily]
-    outputs: [StockStateDaily, stock_state_stage, pattern_event]
-    owners:
-      - backend/config/tier12_publish.yaml
-    config_hash: "184d82ed71a15d61768ce001250b8de86efa1aa0e5ae742bfdf5619d5c24fdd4"
-    availability_axis: available_at
-    status: declared
-    notes: "Tier1 base publish (L2); definition_version=stock_state_stage_pattern_v1"
+  # 09-18 tier12 整层退役 (cut_tier12_retire): L2 brick tier1_stock_state_stage_pattern_v1
+  # (accepted-partition StockStateDaily publish, config_hash 184d82ed... 即 ruling
+  # F3 的 tier12 accepted 词汇 hash) 随其唯一 owner tier12_publish.yaml 一并删除;
+  # L3 feature_block stock_state_stage_pattern_v1 (main_rally B1) 不依赖它, 照旧保留。
 
   MarketContextSnapshot:
     layer: L2
@@ -104,7 +95,7 @@ bricks:
     depends_on: [accepted_nominal_ohlcv_daily]
     outputs: [MarketContextSnapshot, market_risk_on, project_board_adv_dec_ratio]
     owners:
-      - backend/config/tier12_publish.yaml
+      - backend/services/institution_follow_b2_measure.py
     config_hash: market_sensing_project_breadth_v0
     availability_axis: available_at
     status: declared
@@ -156,7 +147,7 @@ feature_blocks:
     config_hash: trend_up_or_breakout_v1
     availability_axis: decision_time_visible_only
     status: declared
-    notes: "main_rally B1 FeatureBlock; consumes L2 form (+ Tier1 publish path)"
+    notes: "main_rally B1 FeatureBlock; consumes L2 form (fact_stock_form_daily)"
 
   market_sensing_project_breadth_v0:
     layer: L3

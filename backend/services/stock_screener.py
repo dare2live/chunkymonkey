@@ -26,7 +26,6 @@ from typing import Any
 import yaml
 
 from services import calendar
-from services.form_production_read import overlay_form_rows
 from services.universe import sql_where_active_a_share
 
 _CFG_PATH = Path(__file__).resolve().parent.parent / "config" / "stock_screener.yaml"
@@ -252,10 +251,8 @@ def build_form_stage_screen(
     out_rows: list[dict[str, Any]] = []
     for r in rows:
         rec = dict(zip(cols, r))
+        rec["source"] = "fact_stock_form_daily"
         out_rows.append(rec)
-
-    # Same production-read boundary as dossier F (decision_5b: flip together).
-    out_rows, prod_meta = overlay_form_rows(out_rows, as_of=as_of)
 
     for rec in out_rows:
         rec["stock_name"] = names.get(rec["stock_code"])
@@ -271,7 +268,6 @@ def build_form_stage_screen(
         "reason": "no_stock_matches_filters" if not out_rows else None,
         "count": len(out_rows),
         "truncated": truncated,
-        "production_read": prod_meta,
         "rows": out_rows,
     }
 

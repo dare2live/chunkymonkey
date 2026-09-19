@@ -89,10 +89,6 @@ def _bounded_snapshot(**overrides):
                     },
                 },
             },
-            "tier12_accepted": {
-                "partitions": ["20250429", "20250430"],
-                "artifact_dir": "data/lineage/tier12_publish_batches",
-            },
         },
         "notes": ["test"],
     }

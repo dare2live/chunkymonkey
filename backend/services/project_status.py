@@ -11,9 +11,13 @@
 故本模块**不写任何文件**, 只返回对象; 渲染由调用方负责。
 
 **边界 — 报事实, 不重复裁决**: SLA 是否超标由 `update_watermark_sla.py` 判, 数据是否
-有洞由 `check_continuity_integrity.py` 判, cutover 是否生效由
-`check_cutover_effective.py` 判 (本模块直接复用它, 不重写一套)。这里只做那件没人做的
+有洞由 `check_continuity_integrity.py` 判。这里只做那件没人做的
 事: 把散落的前沿聚到一处并算出**滞后多少个交易日** —— 单一计算点原则。
+
+（09-18 tier12 整层退役 cut_tier12_retire: 本模块曾复用 `check_cutover_effective.py`
+判 cutover 是否生效——那道检查的唯一被检对象 tier12 accepted partition 已整层删除，
+`cutover_effectiveness()` 与 board 的 `cutover_intent` 一并删除，不留永远 unavailable
+的空段。）
 
 **诚实降级**: 任何一段取不到就返回 ``{"status": "unavailable", "reason": ...}``,
 绝不用 0 / 空 / 上次的值冒充。查不了 ≠ 没问题。
@@ -250,16 +254,6 @@ def source_watermarks(limit: int = 12) -> dict[str, Any]:
     }
 
 
-def cutover_effectiveness() -> dict[str, Any]:
-    """复用 P1 的 cutover 生效性检查, 不重写一套判据。"""
-    try:
-        from scripts.check_cutover_effective import evaluate
-
-        return evaluate()
-    except Exception as exc:  # noqa: BLE001
-        return _unavailable(f"cutover_check_failed:{type(exc).__name__}: {exc}"[:160])
-
-
 def gate_distribution() -> dict[str, Any]:
     """门的分组分布 —— goal.md 把「门的实际裁决」也列为 L2 状态。"""
     try:
@@ -276,24 +270,15 @@ def gate_distribution() -> dict[str, Any]:
 
 
 def board_projection() -> dict[str, Any]:
-    """轨道 / cutover **意图** / 禁令 / Phase 裁决 —— 从 config 与 lineage artifact 现查。
-
-    与上面的 ``cutover_effectiveness()`` 成对: 这里是 yaml 声明的意图, 那里是 resolver
-    的实际裁决。两者必须并排出现 —— 只报意图正是 cutover 声明静默失效 13 个交易日的成因。
-    """
+    """轨道 / 禁令 / Phase 裁决 —— 从 config 与 lineage artifact 现查。"""
     try:
         from scripts.agent_board_projection import collect
 
         d = collect()
-        cutovers = d.get("cutovers") or {}
         return {
             "status": "ok",
             "track": (d.get("track") or {}).get("name"),
             "track_status": (d.get("track") or {}).get("status"),
-            "cutover_intent": {
-                name: (body or {}).get("cutover_allowed")
-                for name, body in cutovers.items()
-            },
             "phase_e_overall": (d.get("phase_e") or {}).get("overall_status"),
             "bans": len(d.get("bans") or []),
             "full_render": "scripts/chunkyctl agent-boot",
@@ -322,7 +307,6 @@ def collect_status() -> dict[str, Any]:
         "calendar": cal,
         "accepted_frontier": accepted_frontier(anchor),
         "source_watermarks": source_watermarks(),
-        "cutovers": cutover_effectiveness(),
         "gates": gate_distribution(),
         "board": board_projection(),
         "alerts": alert_flags(),
@@ -366,15 +350,6 @@ def render_text(status: dict[str, Any]) -> str:
             lines.append(f"  - {i['data_domain']}/{i['source_name']} last={i['last_data_date']} "
                          f"fails={i['consecutive_failures']} fallback={i['fallback_active']}")
 
-    cut = status["cutovers"]
-    lines.append("\n## cutover 声明 vs 实际")
-    if cut.get("status") == "unavailable":
-        lines.append(f"- unavailable: {cut.get('reason')}")
-    else:
-        lines.append(f"- overall={cut.get('overall')} trade_date={cut.get('trade_date')}")
-        for f in cut.get("findings", []):
-            lines.append(f"  - [{f.get('status')}] {f.get('check')}: {f.get('detail')}")
-
     gates = status["gates"]
     lines.append("\n## 门分布")
     if gates.get("status") != "ok":
@@ -385,13 +360,12 @@ def render_text(status: dict[str, Any]) -> str:
         lines.append(f"- 运行时自检: {' '.join(gates['runtime_checks'])}")
 
     board = status["board"]
-    lines.append("\n## 轨道 / cutover 意图")
+    lines.append("\n## 轨道")
     if board.get("status") != "ok":
         lines.append(f"- unavailable: {board.get('reason')}")
     else:
         lines.append(f"- track={board['track']} ({board['track_status']}) "
                      f"phase_e={board['phase_e_overall']} 禁令 {board['bans']} 条")
-        lines.append(f"- cutover 意图(yaml): {board['cutover_intent']} — 实际裁决见上一节")
         lines.append(f"- 完整投影: {board['full_render']}")
 
     alerts = status["alerts"]
@@ -417,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
     status = collect_status()
     print(json.dumps(status, ensure_ascii=False, indent=2) if args.json else render_text(status))
     # 退出码恒 0: 本命令**报状态不做裁决**。要裁决去跑对应的门
-    # (continuity / watermark SLA / cutover_effective), 别让 status 变成第二套判定。
+    # (continuity / watermark SLA), 别让 status 变成第二套判定。
     return 0
 
 

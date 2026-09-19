@@ -1,8 +1,13 @@
 """Phase F main_rally DatasetSnapshot freeze (F0).
 
-Freezes accepted nominal K partitions, rally GT table content hashes +
-``rally_gt.yaml`` config hash, and Tier1/2 accepted artifact days. Does not
-rebuild GT, flip cutover, or emit StrategyRelease.
+Freezes accepted nominal K partitions and rally GT table content hashes +
+``rally_gt.yaml`` config hash. Does not rebuild GT or emit StrategyRelease.
+
+09-18 tier12 整层退役 (cut_tier12_retire): tier12 accepted-artifact domain +
+its ``cutover_allowed`` echo dropped — that overlay never had a live day
+(F4 in ruling_tier12.md), so ``cutover_allowed`` on this snapshot is now
+always ``False`` (disclosure-schema field shared with institution_follow_b0;
+main_rally form reads are the single ``fact_stock_form_daily`` truth plane).
 """
 from __future__ import annotations
 
@@ -91,13 +96,6 @@ def _stable_hash(payload: Any) -> str:
 
 def _file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _load_cutover_allowed() -> bool:
-    cfg_path = _repo_root() / "backend" / "config" / "tier12_publish.yaml"
-    payload = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
-    cut = payload.get("consumer_cutover") or {}
-    return bool(cut.get("cutover_allowed"))
 
 
 def _list_accepted_nominal(
@@ -205,17 +203,6 @@ def _hash_gt_table(conn, table: str) -> dict[str, Any]:
     }
 
 
-def _tier12_accepted_partitions(artifact_dir: Path) -> list[str]:
-    parts: list[str] = []
-    if not artifact_dir.is_dir():
-        return parts
-    for path in sorted(artifact_dir.glob("accepted_*.json")):
-        day = _compact_day(path.stem.replace("accepted_", ""))
-        if len(day) == 8:
-            parts.append(day)
-    return parts
-
-
 def freeze_main_rally_dataset_snapshot(
     *,
     nominal_conn=None,
@@ -271,13 +258,10 @@ def freeze_main_rally_dataset_snapshot(
         if not taxonomy:
             taxonomy = str(cfg.get("taxonomy_version") or "")
 
-        artifact_rel = "data/lineage/tier12_publish_batches"
-        tier12_parts = [
-            part
-            for part in _tier12_accepted_partitions(_repo_root() / artifact_rel)
-            if part <= cutoff
-        ]
-        cutover = _load_cutover_allowed()
+        # tier12 accepted-artifact overlay retired 2026-09-18 (cut_tier12_retire):
+        # main_rally form reads are now the single fact_stock_form_daily truth
+        # plane, so this disclosure-schema field is always False.
+        cutover = False
 
         date_set = [a["partition"] for a in accepted]
         nom_content = _stable_hash([a["content_hash"] for a in accepted])
@@ -301,11 +285,6 @@ def freeze_main_rally_dataset_snapshot(
                 # Labels are frozen evidence only — never candidate-generator inputs.
                 "label_tables_not_for_candidates": True,
             },
-            "tier12_accepted": {
-                "partitions": tier12_parts,
-                "artifact_dir": artifact_rel,
-                "definition_version": "stock_state_stage_pattern_v1",
-            },
         }
 
         frozen_at = datetime.now(timezone.utc).isoformat()
@@ -324,8 +303,6 @@ def freeze_main_rally_dataset_snapshot(
             "no_optuna",
             "no_strategy_release",
             f"accepted_nominal_day_count={len(date_set)}",
-            f"tier12_accepted={','.join(tier12_parts)}",
-            f"cutover_allowed_echo={cutover}",
         ]
         notes.extend(str(n) for n in extra_notes if n)
 
@@ -416,27 +393,6 @@ def dataset_snapshot_from_main_rally(
         notes_extra_gt = True
     else:
         notes_extra_gt = False
-
-    tier12 = domains.get("tier12_accepted") or {}
-    if isinstance(tier12, Mapping):
-        parts = [
-            _compact_day(p)
-            for p in (tier12.get("partitions") or ())
-            if len(_compact_day(p)) == 8
-        ]
-        all_dates.extend(parts)
-        content = _stable_hash(parts)
-        config_parts.append(content)
-        content_parts.append(content)
-        if parts:
-            inputs.append(
-                SnapshotInputRef(
-                    dataset_id="tier12.accepted_artifacts",
-                    partitions=tuple(parts),
-                    content_hash=content,
-                    config_hash=content,
-                )
-            )
 
     if not inputs:
         raise ResearchRuntimeError("main_rally snapshot produced no inputs")

@@ -56,9 +56,6 @@ def _write_board(root: pathlib.Path, **overrides) -> None:
         "mart_cutover:\n  cutover_allowed: false\n  expected_window_end: '20260722'\n",
         encoding="utf-8",
     )
-    (cfg / "tier12_publish.yaml").write_text(
-        "consumer_cutover:\n  cutover_allowed: false\n", encoding="utf-8"
-    )
     (root / "goal.md").write_text("## 当前 objective\n- fixture\n", encoding="utf-8")
     for rel, payload in (overrides.get("lineage") or {}).items():
         path = root / "data" / "lineage" / rel
@@ -156,7 +153,7 @@ def test_board_summary_reads_generated_context(tmp_path):
     _write_board(tmp_path)
     section = agent_boot.board_summary(tmp_path)
     assert section["status"] == "ok"
-    assert section["cutover_allowed"] == {"tier12_consumer": False}
+    assert "cutover_allowed" not in section
     assert section["track"]["name"]
 
 

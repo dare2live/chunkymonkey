@@ -299,7 +299,6 @@ def test_sentiment_v2_fields(client):
     assert d3["avg_fd_amount"] == pytest.approx(3000.0) and d3["open_times_total"] == 3
     assert d3["rzrqye"] is None and d3["lhb_count"] is None
     # B-ext sidecar: trust markers without rewriting mart day values.
-    assert body["cutover_allowed"] is False
     scope = body["population_scope"]
     # Fixture latest D[4]=20240108 is outside B-pit window + before margin
     # coverage → both typed EMPTY (normal absence), overall READY.
@@ -323,17 +322,13 @@ def test_sentiment_v2_fields(client):
     assert gate["absence_kind"] == "not_expected"
     assert "typed_empty_not_expected" in gate["notes"]
     assert "no_silent_product_thaw" in gate["notes"]
-    # Phase C: cutover ON (owner opt-in), but this fixture day (20240108) has no
-    # accepted partition → resolver fails closed to legacy scaffold (BLOCKED).
-    t12 = body["tier12_production_read"]
-    assert t12["uses_legacy"] is True
-    assert t12["cutover_allowed"] is False
-    assert t12["status"] == "BLOCKED"
-    assert any("missing_accept" in r for r in t12["reasons"])
-    assert "pulse_ui_attestation" in t12["notes"]
     # 2026-08-14 b_pit 整层退役: 响应不得再带这两个字段(前端类型本来就没声明它们)。
     assert "b_pit_mart_cutover_allowed" not in body
     assert "b_pit_mart_production_read" not in body
+    # 09-18 tier12 整层退役 (cut_tier12_retire): accepted partition 那份第二真相源
+    # 与切换判定一并删除, /sentiment 响应不得再带这两个键。
+    assert "cutover_allowed" not in body
+    assert "tier12_production_read" not in body
     # 广度按其真实来源判 READY —— 不再有「窗外=EMPTY」这种由窗口派生的状态。
     assert by_field["adv_dec_ratio"]["status"] == "READY"
     assert "accepted_canonical" in by_field["adv_dec_ratio"]["reason"]

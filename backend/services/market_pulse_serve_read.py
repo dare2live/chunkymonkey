@@ -5,8 +5,8 @@ display leaf for membership + vendor flow (million-row; not mart-mirrored) and
 B-ext margin shadow probes. Connections go through ``data_access.resolver``;
 table identity comes from ``data_access.yaml`` entities where registered.
 
-Form overlay remains ``resolve_tier12_production_read`` (accepted cutover /
-legacy fact_stock_form_daily). Fail closed on attach/lock — never fabricate rows.
+Form read is the single truth plane ``fact_stock_form_daily`` (no overlay).
+Fail closed on attach/lock — never fabricate rows.
 """
 from __future__ import annotations
 
@@ -16,13 +16,6 @@ from services import market_pulse as mp
 from services.data_access import resolver
 from services.data_access.spec import load_registry
 from services.duck_adapter import connect as duck_connect
-from services.market_pulse_tier12_read import overlay_pulse_form_from_production_read
-from services.tier12_consumer_cutover import resolve_tier12_production_read
-
-# Test hooks: production keeps default artifact/config paths.
-_TIER12_ARTIFACT_ROOT = None
-_TIER12_CUTOVER_CONFIG = None
-_TIER12_CONFIG_PATH = None
 
 _REG = None
 
@@ -191,39 +184,18 @@ def drill_leaf_rows(
     flow_sql: str,
     as_of: str,
 ) -> list[dict[str, Any]]:
-    """成分股叶子: flow annotate + form production-read + limit_list L0."""
+    """成分股叶子: flow annotate + form fact_stock_form_daily + limit_list L0."""
     ann = mp._flow_annotate_sql(cfg, flow_sql, "ts_code")
     lt = mp._clean_num("lim.limit_times")
-    day = "".join(ch for ch in str(as_of) if ch.isdigit())[:8]
-    use_legacy_form = True
-    if len(day) == 8 and day != "99999999":
-        read = resolve_tier12_production_read(
-            day,
-            config=_TIER12_CUTOVER_CONFIG,
-            artifact_root=_TIER12_ARTIFACT_ROOT,
-            config_path=_TIER12_CONFIG_PATH,
-        )
-        use_legacy_form = bool(read.uses_legacy)
-    if use_legacy_form:
-        form_cte = """
-        form AS (
-            SELECT stock_code, form_name, is_breakout_event FROM fact_stock_form_daily
-            WHERE stock_code IN (SELECT substr(ts_code, 1, 6) FROM mem) AND trade_date <= ?
-            QUALIFY ROW_NUMBER() OVER (PARTITION BY stock_code ORDER BY trade_date DESC) = 1
-        )"""
-        form_select = "f.form_name, f.is_breakout_event"
-        form_join = "LEFT JOIN form f ON f.stock_code = substr(m.ts_code, 1, 6)"
-        sql_params = [*mem_params, as_of]
-    else:
-        form_cte = (
-            "form AS (SELECT NULL::VARCHAR AS stock_code, NULL::VARCHAR AS form_name, "
-            "NULL::BOOLEAN AS is_breakout_event WHERE FALSE)"
-        )
-        form_select = (
-            "CAST(NULL AS VARCHAR) AS form_name, CAST(NULL AS BOOLEAN) AS is_breakout_event"
-        )
-        form_join = ""
-        sql_params = list(mem_params)
+    form_cte = """
+    form AS (
+        SELECT stock_code, form_name, is_breakout_event FROM fact_stock_form_daily
+        WHERE stock_code IN (SELECT substr(ts_code, 1, 6) FROM mem) AND trade_date <= ?
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY stock_code ORDER BY trade_date DESC) = 1
+    )"""
+    form_select = "f.form_name, f.is_breakout_event"
+    form_join = "LEFT JOIN form f ON f.stock_code = substr(m.ts_code, 1, 6)"
+    sql_params = [*mem_params, as_of]
     limit_tbl = _tr("limit_list_d")
     rows = conn.execute(
         f"""
@@ -248,14 +220,6 @@ def drill_leaf_rows(
         sql_params,
     ).fetchall()
     rows = [dict(zip(_LEAF_COLS, r)) for r in rows]
-    if len(day) == 8 and day != "99999999" and not use_legacy_form:
-        rows, _ = overlay_pulse_form_from_production_read(
-            rows,
-            day,
-            config=_TIER12_CUTOVER_CONFIG,
-            artifact_root=_TIER12_ARTIFACT_ROOT,
-            config_path=_TIER12_CONFIG_PATH,
-        )
     return rows
 
 

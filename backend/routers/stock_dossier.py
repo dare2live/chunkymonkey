@@ -655,12 +655,6 @@ def _tab_usability(
     lhb_gaps = lhb_seats.get("gaps") or []
     hn_ok = holder_number.get("status") == "ok"
     form_status = "ok" if form else "empty"
-    form_reason = None
-    if form:
-        residuals = form.get("hybrid_residual_fields") or []
-        note = str(form.get("resolver_note") or "")
-        if residuals or "BLOCKED" in note or "legacy/fact" in note:
-            form_reason = "form_read_fact_brick_typed_hybrid"
     if lhb_rows:
         lhb_status, lhb_reason = "ok", None
     elif "lhb_seat_table_absent" in lhb_gaps:
@@ -677,7 +671,7 @@ def _tab_usability(
                 if (observation.get("text") or basic.get("stock_name"))
                 else "overview_bricks_empty",
             },
-            "form": {"status": form_status, "reason": form_reason or (
+            "form": {"status": form_status, "reason": (
                 "form_stage_empty" if form_status == "empty" else None
             )},
             "holders": {
@@ -889,12 +883,6 @@ def dossier(
         gaps.append("stock_name_unknown")
     if holder_number.get("status") != "ok":
         gaps.append(str(holder_number.get("reason") or "holder_number_empty"))
-    if form is not None:
-        note = str(form.get("resolver_note") or "")
-        residuals = form.get("hybrid_residual_fields") or []
-        if residuals or "BLOCKED" in note or "legacy/fact" in note:
-            # Typed honesty — surface still usable on fact brick (not half-dead).
-            gaps.append("form_read_fact_brick_typed_hybrid")
 
     found = bool(basic.get("stock_name") or form or (holders.get("rows")))
     if not found:

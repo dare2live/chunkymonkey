@@ -9,7 +9,7 @@
 3. ``scaffold`` 组在 safe_commit 里走 ``gate_fail`` (由分组决定后果)，而不是
    继续硬编码 ``exit``；always-on 的 ci-surface-drift 不受分组影响仍然阻断。
 
-全部离线：b_pit / tier12 resolver 只读 config + lineage artifact，不连 DB；
+全部离线：只读 config + lineage artifact，不连 DB；
 需要交易日历的那一条用 monkeypatch 顶掉。
 """
 from __future__ import annotations
@@ -22,7 +22,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from scripts import check_cutover_effective as cce
 from scripts.classify_commit_tier import ALL_GATES_ORDERED
 from services import governance_gates as gg
 
@@ -321,63 +320,6 @@ def test_scaffold_fix_entrypoint_exists_for_every_regenerable_artifact() -> None
     assert all(f.from_gate in reg.names_in_group("scaffold") for f in reg.scaffold_fixes)
     chunkyctl = (REPO / "scripts" / "chunkyctl").read_text(encoding="utf-8")
     assert "scaffold-fix)" in chunkyctl
-
-def test_tier12_structural_reason_is_fail_not_warn(monkeypatch) -> None:
-    """2026-08-11 独立审查 finding #3：只有「当天没 accepted」才配叫预期回落。
-
-    `config_hash_mismatch` 这类是 config 与已发布 payload 的结构性不一致，跑多少次
-    日更都不会自愈 —— 与 b_pit 同级，判 FAIL。首版一律判 WARN，等于给一个永久坏掉的
-    cutover 永远贴上「这是预期」的标签。
-    """
-    from types import SimpleNamespace
-
-    def _fake(day, **kwargs):
-        return SimpleNamespace(
-            cutover_allowed=False,
-            status="BLOCKED",
-            source="legacy_scaffold",
-            reasons=("config_hash_mismatch",),
-        )
-
-    monkeypatch.setattr(
-        "services.tier12_consumer_cutover.resolve_tier12_consumer_cutover", _fake
-    )
-    finding = cce._tier12_finding("20260810")
-    assert finding["status"] == cce.STATUS_FAIL
-    assert finding["transient_reason"] is False
-    assert "不会自愈" in finding["detail"]
-
-
-def test_tier12_missing_accept_stays_warn(monkeypatch) -> None:
-    """逐日回落仍必须是 WARN —— 否则天天 FAIL 就是 cry wolf。"""
-    from types import SimpleNamespace
-
-    def _fake(day, **kwargs):
-        return SimpleNamespace(
-            cutover_allowed=False,
-            status="BLOCKED",
-            source="legacy_scaffold",
-            reasons=("missing_accept", "no_accepted_partition_for_day"),
-        )
-
-    monkeypatch.setattr(
-        "services.tier12_consumer_cutover.resolve_tier12_consumer_cutover", _fake
-    )
-    finding = cce._tier12_finding("20260810")
-    assert finding["status"] == cce.STATUS_WARN
-    assert finding["transient_reason"] is True
-
-
-def test_cutover_report_is_unverified_when_calendar_is_unreachable(monkeypatch) -> None:
-    monkeypatch.setattr(cce, "_latest_trade_date", lambda: (None, "calendar_unreachable:X"))
-    report = cce.evaluate()
-    assert report["overall"] == "WARN"
-    assert report["findings"][0]["status"] == cce.STATUS_UNVERIFIED
-
-
-def test_cutover_check_is_registered_as_a_runtime_check() -> None:
-    ids = {c.id for c in gg.load_registry().runtime_checks}
-    assert "cutover_effective" in ids
 
 
 # ── 5. 两条执法路径同源 (2026-08-11 P3 收口发现的 P1 漏洞) ──────────────

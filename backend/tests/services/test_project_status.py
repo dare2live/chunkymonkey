@@ -3,7 +3,7 @@
 锁三件事：
 1. **零文件** —— 现查就是现查，不许偷偷落盘或读缓存；
 2. **诚实降级** —— 每一段要么给数据要么给 `unavailable` + reason，不许用 0/空冒充；
-3. **报事实不做裁决** —— 退出码恒 0，红绿仍归 continuity / SLA / cutover 各自的门。
+3. **报事实不做裁决** —— 退出码恒 0，红绿仍归 continuity / SLA 各自的门。
 
 离线可跑：有库时走真实查询，无库时每段应降级成 unavailable —— 两种情况契约相同。
 """
@@ -16,7 +16,7 @@ from services import project_status as ps
 
 SECTIONS = (
     "calendar", "accepted_frontier", "source_watermarks",
-    "cutovers", "gates", "board", "alerts",
+    "gates", "board", "alerts",
 )
 
 
@@ -143,7 +143,6 @@ def test_render_text_surfaces_unavailable_reasons() -> None:
         "calendar": ps._unavailable("calendar_unreachable:OSError"),
         "accepted_frontier": ps._unavailable("no_database_reachable:{}"),
         "source_watermarks": ps._unavailable("smartmoney_unreachable:OSError"),
-        "cutovers": ps._unavailable("cutover_check_failed:X"),
         "gates": ps._unavailable("gate_registry_unavailable:Y"),
         "board": ps._unavailable("board_projection_failed:W"),
         "alerts": ps._unavailable("flag_dir_unreadable:Z"),
@@ -153,7 +152,6 @@ def test_render_text_surfaces_unavailable_reasons() -> None:
         "calendar_unreachable",
         "no_database_reachable",
         "smartmoney_unreachable",
-        "cutover_check_failed",
         "gate_registry_unavailable",
         "board_projection_failed",
         "flag_dir_unreadable",

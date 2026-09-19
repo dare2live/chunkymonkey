@@ -70,5 +70,12 @@ def test_drill_leaf_via_serve_read_sw():
         by = {r["ts_code"]: r for r in rows}
         assert "600001.SH" in by
         assert by["600001.SH"]["cum_net"] is not None
+        # A1 隔离用例 (cut_tier12_retire): 叶子层 form 逐字等于 fact_stock_form_daily
+        # 夹具最新行(D3 覆盖 D2)，且不含已随 tier12 accepted-partition overlay 一并
+        # 退役的任何键。
+        assert by["600001.SH"]["form_name"] == "温和横盘"
+        assert by["600001.SH"]["is_breakout_event"] is True
+        for _forbidden in ("field_sources", "tier12_form_source", "production_read_status"):
+            assert _forbidden not in by["600001.SH"]
     finally:
         c.close()

@@ -88,9 +88,9 @@ Notes:
                 `--eras` 列时期导航（annotated tag，叙事就在 tag message 里）。
                 git 是唯一原件：不再有必然滞后的人工账本副本。
   status      = L2 运行时状态**单一现查入口** (零文件): accepted 前沿 + 距最近已完成交易日的
-                交易日滞后、源水位、cutover 声明 vs 实际、门分布、告警 flag。`--json` 给 agent。
-                退出码恒 0 —— 它报事实不做裁决; 红绿仍归 continuity / watermark SLA /
-                cutover_effective 各自的门。人工维护的文档禁止再抄这些值, 只许指向本命令。
+                交易日滞后、源水位、门分布、告警 flag。`--json` 给 agent。
+                退出码恒 0 —— 它报事实不做裁决; 红绿仍归 continuity / watermark SLA
+                各自的门。人工维护的文档禁止再抄这些值, 只许指向本命令。
   gates       = 门分布策略 (backend/config/governance_gates.yaml): 无参打印三组分布表;
                 --check 与 classify_commit_tier / safe_commit.sh 门名对账;
                 --run-system-health 手动跑 system_health 组 (daily_update 里自动跑同一份)。

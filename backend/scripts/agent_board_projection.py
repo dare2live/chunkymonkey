@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Agent status board **projection** — 现查, 零文件 (goal.md P2.3)。
 
-从 config / lineage artifact / goal.md 手写段派生当前 track / cutover 意图与实际裁决 /
-Phase D·E 裁决 / 禁令。**投影 only, 永不是执法输入** —— resolver 才是真相。
+从 config / lineage artifact / goal.md 手写段派生当前 track / Phase D·E 裁决 / 禁令。
+**投影 only, 永不是执法输入** —— resolver 才是真相。
+
+09-18 tier12 整层退役 (cut_tier12_retire): 本文件曾投影 tier12 consumer cutover 的
+yaml 意图（`cutovers.tier12_consumer`）——那道 cutover 与它读的 accepted artifact 已
+整层删除，一并删除，不留永远读不到源文件的空段。
 
 2026-08-11 退役了 `BOARD.md` + `data/board/agent_context.json` 两个落盘产物及其
 `agent_board` 漂移门: 它们装的是 L2 状态, 而 L2 契约是「命令现查、零文件、禁人写」。
@@ -22,8 +26,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 REPO = Path(__file__).resolve().parents[2]
 SNAPSHOT_PREFIX = "> Snapshot:"
 ENFORCEMENT_BANNER = (
@@ -32,20 +34,19 @@ ENFORCEMENT_BANNER = (
 )
 
 BANS = [
-    "cutover_allowed=true without strong evidence + explicit yaml",
     "Optuna / E gate loosen / StrategyRelease / margin thaw",
     "mass backfill / plugin bus / second DB / silent cutover",
     "--no-verify / agent self-downgrade of commit tier",
 ]
 
 
-def _next_knives(*, c_on: bool) -> list[str]:
+def _next_knives() -> list[str]:
     """Project near-term knives from goal.md mainline (not A→H research map).
 
     BOARD is projection-only; ``goal.md`` + FOUNDATION/STRATEGY execution plans
-    win on ordering. Cutover yaml only gates opt-in lines when gates are false.
+    win on ordering.
     """
-    knives = [
+    return [
         "FOUNDATION §6 exit + 100% usable MET (no class-A): 残留分类 A/B/C/D (git log --grep foundation_phase6)",
         "STRATEGY: 策略验证范式 (goal.md 北极星 2026-09-02) — 判例查询引擎待建; 旧 B0→B5/RX/holdout 轨逐项退役中 (授权锁已拆)",
         # 2026-09-07 订正: 原写 F1-F8,F10 与「十维」。check_foundation_done.py:41 的
@@ -55,19 +56,6 @@ def _next_knives(*, c_on: bool) -> list[str]:
         "FND-GATE / §15-VERIFY FIXED; org incremental-check-every-run (mass banned)",
         "S7 typed hard-stop wall — no fake COMPAT; Type-B enrichment FIXED",
     ]
-    if not c_on:
-        knives.insert(
-            0,
-            "opt-in tier12 consumer cutover only with strong evidence (yaml still false)",
-        )
-    return knives
-
-
-def _load_yaml(path: Path) -> dict[str, Any]:
-    if not path.is_file():
-        return {}
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    return raw if isinstance(raw, dict) else {}
 
 
 def _load_json(path: Path) -> dict[str, Any] | None:
@@ -96,19 +84,11 @@ def _goal_hand_excerpt(goal_text: str, *, max_chars: int = 1200) -> str:
 
 
 def collect(repo: Path = REPO) -> dict[str, Any]:
-    tier12_path = repo / "backend" / "config" / "tier12_publish.yaml"
-    tier12 = _load_yaml(tier12_path)
-    c_gate = (tier12.get("consumer_cutover") or {}) if tier12 else {}
-
     e_manifest = _load_json(
         repo / "data" / "lineage" / "phase_e_experiment_verdicts" / "manifest.json"
     )
     d_manifest = _load_json(
         repo / "data" / "lineage" / "phase_d_experiment_runs" / "manifest.json"
-    )
-    c_accept = _load_json(
-        repo / "data" / "lineage" / "tier12_publish_batches"
-        / "full_universe_accept_20260717.json"
     )
 
     e_ladder: list[dict[str, Any]] = []
@@ -134,14 +114,10 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
     _now = dt.datetime.now(dt.timezone.utc)  # Phase ψ.5 allowlist: 文档元数据时间戳非 trade_date
     _today_compact = _now.strftime("%Y%m%d")
 
-    # yaml 的 cutover_allowed 是 owner **意图**；实际读面由 resolver 裁决。投影必须
-    # 两者都给，否则窗口走完后看板会继续显示一个已经不生效的 True。
-
     return {
         # 现查后必须声明**输入是否齐全**: 缺 config 时投影会退化成一份「看起来正常
         # 但全是缺省值」的空板 —— 那正是项目禁的「空扫描冒充 PASS」。消费方据此判 error。
         "inputs_present": {
-            "tier12_publish_yaml": tier12_path.is_file(),
             "goal_md": goal_path.is_file(),
         },
         "generated_at": _now.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -151,21 +127,6 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
             "name": "transport_strangler_s1_s7",
             "status": "foundation_solidify_85pct_s7_wall_e0_thin",
             "a_to_h": "post_research_map_only_efgh_appendix",
-        },
-        "cutovers": {
-            "tier12_consumer": {
-                "cutover_allowed": bool(c_gate.get("cutover_allowed", False)),
-                "source": "backend/config/tier12_publish.yaml#consumer_cutover",
-                "accept": {
-                    "decision_date": (c_accept or {}).get("decision_date"),
-                    "stock_row_count": (c_accept or {}).get("stock_row_count"),
-                    "universe_membership_size": (c_accept or {}).get("universe_membership_size"),
-                    "publish_scope": (c_accept or {}).get("publish_scope"),
-                    "published": (c_accept or {}).get("published"),
-                    "content_hash": (c_accept or {}).get("content_hash"),
-                    "status": (c_accept or {}).get("status"),
-                },
-            },
         },
         "phase_d": {
             "summary": (d_manifest or {}).get("summary"),
@@ -180,13 +141,9 @@ def collect(repo: Path = REPO) -> dict[str, Any]:
             "artifact": "data/lineage/phase_e_experiment_verdicts/manifest.json",
         },
         "bans": list(BANS),
-        "next_knives_frozen": _next_knives(
-            c_on=bool(c_gate.get("cutover_allowed", False)),
-        ),
+        "next_knives_frozen": _next_knives(),
         "goal_hand_excerpt": _goal_hand_excerpt(goal_text),
         "sources": [
-            "backend/config/tier12_publish.yaml",
-            "data/lineage/tier12_publish_batches/full_universe_accept_20260717.json",
             "data/lineage/phase_e_experiment_verdicts/manifest.json",
             "data/lineage/phase_d_experiment_runs/manifest.json",
             "goal.md (hand excerpt only)",
@@ -212,17 +169,6 @@ def render_md(d: dict[str, Any]) -> str:
     t = d["track"]
     add(f"- track: `{t['name']}` status=`{t.get('status', 'unknown')}`")
     add(f"- A→H: `{t['a_to_h']}`")
-    add("")
-    add("## Cutovers (yaml 意图 + resolver 实际裁决)")
-    add("")
-    tc = d["cutovers"]["tier12_consumer"]
-    acc = tc["accept"]
-    add(
-        f"- C consumer `cutover_allowed={tc['cutover_allowed']}` "
-        f"(accept {acc.get('decision_date')}: "
-        f"{acc.get('stock_row_count')}/{acc.get('universe_membership_size')} "
-        f"scope={acc.get('publish_scope')} published={acc.get('published')})"
-    )
     add("")
     add("## Phase D runtime (lineage projection)")
     add("")

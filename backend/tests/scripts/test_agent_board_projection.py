@@ -17,36 +17,6 @@ def _strip_snapshot(md: str) -> str:
     )
 
 
-def test_collect_cutovers_reflects_live_yaml() -> None:
-    """collect() must mirror the live yaml gates exactly (no silent
-    override in either direction) — owner opt-in 2026-07-20 flipped both
-    gates true; this must not hardcode a stale false expectation."""
-    data = board.collect(REPO)
-    assert data["enforcement"] == "projection_only_not_truth"
-    tier12_yaml = board._load_yaml(REPO / "backend" / "config" / "tier12_publish.yaml")
-    expected_tier12 = bool((tier12_yaml.get("consumer_cutover") or {}).get("cutover_allowed", False))
-    assert "b_pit_mart" not in data["cutovers"], "已退役的 b_pit cutover 面不得复活"
-    assert data["cutovers"]["tier12_consumer"]["cutover_allowed"] == expected_tier12
-
-
-def _write_legacy_false_repo(tmp_path: Path) -> Path:
-    """Minimal fixture repo with both cutover gates explicit false — pins
-    the LEGACY (pre-opt-in) path independent of live repo cutover state."""
-    cfg = tmp_path / "backend" / "config"
-    cfg.mkdir(parents=True)
-    (cfg / "tier12_publish.yaml").write_text(
-        "consumer_cutover:\n  cutover_allowed: false\n", encoding="utf-8"
-    )
-    return tmp_path
-
-
-def test_collect_cutovers_legacy_false_fixture(tmp_path: Path) -> None:
-    fixture_repo = _write_legacy_false_repo(tmp_path)
-    data = board.collect(fixture_repo)
-    assert data["enforcement"] == "projection_only_not_truth"
-    assert data["cutovers"]["tier12_consumer"]["cutover_allowed"] is False
-
-
 def test_phase_e_ladder_projected() -> None:
     data = board.collect(REPO)
     blocks = {row["block"]: row for row in data["phase_e"]["ladder"]}
@@ -55,6 +25,8 @@ def test_phase_e_ladder_projected() -> None:
     assert blocks["b4"]["verdict"] == "inconclusive"
     assert data["phase_e"]["any_claimable"] is False
     assert data["phase_e"]["strategy_release"] is False
+
+
 def test_board_stable_across_wall_clock_day_rollover(monkeypatch) -> None:
     """跨天不得产生漂移，否则 agent_board 门会每天堵死所有提交。
 
@@ -88,12 +60,6 @@ def test_board_stable_across_wall_clock_day_rollover(monkeypatch) -> None:
     j0 = {k: v for k, v in d0.items() if k != "generated_at"}
     j1 = {k: v for k, v in d1.items() if k != "generated_at"}
     assert j0 == j1, "投影对象跨天漂移 → 同一状态被渲染成两种说法"
-def test_c_accept_row_parity() -> None:
-    acc = board.collect(REPO)["cutovers"]["tier12_consumer"]["accept"]
-    assert acc["decision_date"] == "20260717"
-    assert acc["stock_row_count"] == 4989
-    assert acc["universe_membership_size"] == 4989
-    assert acc["published"] is True
 
 
 def test_phase_d_run_projected() -> None:
@@ -115,14 +81,6 @@ def test_render_marks_generated_and_non_enforcement() -> None:
     assert "Projection only" in md
     assert "现查" in md, "必须标明是现查投影而非落盘文件"
     assert "chunkyctl status" in md, "前沿类问题必须被指向 L2 现查入口"
-
-
-def test_render_marks_legacy_false_fixture(tmp_path: Path) -> None:
-    """render_md must faithfully print whatever collect() resolved — pinned
-    via the LEGACY false fixture so this is independent of live cutover state."""
-    fixture_repo = _write_legacy_false_repo(tmp_path)
-    md = board.render_md(board.collect(fixture_repo))
-    assert "cutover_allowed=False" in md or "cutover_allowed=false" in md
 
 
 def test_projection_writes_no_files(tmp_path: Path, monkeypatch, capsys) -> None:

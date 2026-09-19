@@ -991,8 +991,7 @@ function renderDossierForm(d) {
   const fs = d.form_stage || {}, obs = d.observation || {};
   const zh = obs.axes_zh || [];
   const axes = [["Position 位置", fs.axis_pos], ["Trend 趋势", fs.axis_trend], ["Purity 纯度", fs.axis_purity], ["Volume 量能", fs.axis_vol], ["Vol Regime 波动", fs.axis_volregime]];
-  const prs = fs.production_read_status || "—";
-  el.innerHTML = `<div class="sec-title" style="margin-top:48px">形态轴 · AXES —— as-of ${esc(fs.trade_date || obs.as_of || "—")} · production_read <span class="lamp ${prs === "READY" ? "ok" : "soft"}"><i></i>${esc(prs)}</span></div>
+  el.innerHTML = `<div class="sec-title" style="margin-top:48px">形态轴 · AXES —— as-of ${esc(fs.trade_date || obs.as_of || "—")}</div>
     <div class="axis-grid" style="margin-top:24px">${axes.map(([l, v], i) =>
       `<div class="axis-cell"><div class="a-label">${l}</div><div class="a-val">${esc(v ?? "—")}</div><div class="a-sub">${esc(zh[i] || "")}</div></div>`).join("")}</div>
     <div class="qtable" style="margin-top:32px">

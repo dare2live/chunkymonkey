@@ -145,7 +145,6 @@ def board_summary(repo: Path) -> dict[str, Any]:
 
         board = board_collect(repo)
         track = board["track"]
-        cutovers = board["cutovers"]
         missing = [k for k, ok in (board.get("inputs_present") or {}).items() if not ok]
         if missing:
             # 投影能跑通不等于投影可信：config 缺失时它退化成一份全缺省的空板。
@@ -162,9 +161,6 @@ def board_summary(repo: Path) -> dict[str, Any]:
         "status": "ok",
         "generated_at": board.get("generated_at"),
         "track": track,
-        "cutover_allowed": {
-            "tier12_consumer": (cutovers.get("tier12_consumer") or {}).get("cutover_allowed"),
-        },
         "phase_e_overall": phase_e.get("overall_status"),
         "bans": board.get("bans") or [],
         "next_knives_frozen": board.get("next_knives_frozen") or [],
@@ -194,7 +190,7 @@ def collect(repo: Path = REPO, run: Runner | None = None) -> dict[str, Any]:
         "read_next": [
             "CLAUDE.md (项目规则)",
             "goal.md (目标与判据)",
-            "scripts/chunkyctl status (L2 运行时状态现查: 前沿/滞后/水位/cutover/告警)",
+            "scripts/chunkyctl status (L2 运行时状态现查: 前沿/滞后/水位/告警)",
             "history: `chunkyctl history --grep <term>` / `--eras` (git 即原件)",
         ],
         # Thin §15 reminder (projection only; not a gate).
@@ -251,9 +247,7 @@ def render_text(d: dict[str, Any]) -> str:
     else:
         t = b["track"]
         add(f"- snapshot {b.get('generated_at')} | track `{t.get('name')}` | A→H `{t.get('a_to_h')}`")
-        ca = b["cutover_allowed"]
-        add(f"- cutover_allowed (yaml 意图): "
-            f"tier12_consumer={ca.get('tier12_consumer')} | phase_e={b.get('phase_e_overall')}")
+        add(f"- phase_e={b.get('phase_e_overall')}")
         for ban in b.get("bans") or []:
             add(f"- ban: {ban}")
         for item in b.get("next_knives_frozen") or []:

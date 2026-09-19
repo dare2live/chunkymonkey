@@ -36,7 +36,6 @@ families:
     availability_axis: decision_time_visible_only
     sync_domains: []
     bricks:
-      - tier1_stock_state_stage_pattern_v1
       - stock_state_stage_pattern_v0
     refresh_owner: daily_process
     coverage_start_policy: accepted_frontier

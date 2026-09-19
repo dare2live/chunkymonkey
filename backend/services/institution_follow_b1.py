@@ -5,9 +5,8 @@ Adds one named FeatureBlock on top of B0 bare-K under the same disclosure
 Tier1 stock state (trend=up or breakout) when coverage is sufficient;
 otherwise inconclusive with an explicit coverage reason.
 
-Stock-state loads go through ``load_stock_state_by_day`` →
-``resolve_tier12_production_read`` (cutover gate). Default yaml keeps
-``cutover_allowed=false`` so the live path remains ``fact_stock_form_daily``.
+Stock-state loads go through ``load_stock_state_by_day`` → ``fact_stock_form_daily``
+(single truth plane; tier12 accepted-partition overlay retired 2026-09-18).
 """
 from __future__ import annotations
 

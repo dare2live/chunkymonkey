@@ -6,16 +6,14 @@ Restricts signal-day eligibility to the intersection of (a) B0's
 pivot-confirmed-setup eligible codes and (b) Tier1 stock-state eligible codes
 (``axis_trend=up`` or ``is_breakout_event``) for that signal day.
 
-Stock-state loads go through ``load_stock_state_by_day`` →
-``resolve_tier12_production_read`` (cutover gate) — same production-read
-boundary as institution_follow B1. Default yaml keeps ``cutover_allowed=false``
-so the live path remains the legacy ``fact_stock_form_daily`` scaffold.
-Never reads rally GT/negative label tables; state is Tier1 stock state only.
+Stock-state loads go through ``load_stock_state_by_day`` → ``fact_stock_form_daily``
+(single truth plane; tier12 accepted-partition overlay retired 2026-09-18) —
+same production-read boundary as institution_follow B1. Never reads rally
+GT/negative label tables; state is Tier1 stock state only.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from services.institution_follow_b0_measure import (
@@ -29,11 +27,6 @@ from services.institution_follow_edge_gates import evaluate_accept_edge_gates
 from services.main_rally_b0_measure import (
     eligible_codes_by_signal_day,
     measure_main_rally_b0_paper,
-)
-from services.tier12_consumer_cutover import (
-    Tier12ConsumerCutoverConfig,
-    resolve_tier12_production_read,
-    stock_states_from_accepted_payload,
 )
 
 STOCK_STATE_TABLE = "fact_stock_form_daily"
@@ -253,7 +246,7 @@ def _load_legacy_stock_state_by_day(
     conn,
     days: Sequence[str],
 ) -> dict[str, dict[str, dict[str, Any]]]:
-    """Legacy ``fact_stock_form_daily`` SQL path (pre-cutover scaffold)."""
+    """``fact_stock_form_daily`` SQL path — single truth plane."""
 
     if not days:
         return {}
@@ -292,47 +285,13 @@ def _load_legacy_stock_state_by_day(
 def load_stock_state_by_day(
     conn,
     trading_days: Sequence[str],
-    *,
-    cutover_config: Tier12ConsumerCutoverConfig | Mapping[str, Any] | None = None,
-    artifact_root: Path | str | None = None,
-    config_path: Path | str | None = None,
 ) -> dict[str, dict[str, dict[str, Any]]]:
-    """Load Tier1 state for the window via the Tier1/2 production-read boundary.
-
-    Always calls ``resolve_tier12_production_read`` per day. ACCEPTED_CUTOVER
-    days use accepted stock_states; LEGACY/BLOCKED days stay on
-    ``fact_stock_form_daily`` (fail-closed fallback — not a dual bypass).
-    """
+    """Load Tier1 state for the window off ``fact_stock_form_daily`` (single truth plane)."""
 
     days = sorted({_norm_day(d) for d in trading_days if len(_norm_day(d)) == 8})
     if not days:
         return {}
-
-    art_root = Path(artifact_root) if artifact_root is not None else None
-    out: dict[str, dict[str, dict[str, Any]]] = {d: {} for d in days}
-    legacy_days: list[str] = []
-    for day in days:
-        read = resolve_tier12_production_read(
-            day,
-            config=cutover_config,
-            artifact_root=art_root,
-            config_path=config_path,
-        )
-        if (
-            not read.uses_legacy
-            and read.source == "accepted_partition"
-            and read.accepted_payload is not None
-        ):
-            # CANARY_SCOPED / ACCEPTED_CUTOVER only — never silent JSON.
-            out[day] = stock_states_from_accepted_payload(read.accepted_payload)
-        else:
-            legacy_days.append(day)
-
-    if legacy_days:
-        legacy = _load_legacy_stock_state_by_day(conn, legacy_days)
-        for day, by_code in legacy.items():
-            out[day] = by_code
-    return out
+    return _load_legacy_stock_state_by_day(conn, days)
 
 
 def measure_b1_paper(

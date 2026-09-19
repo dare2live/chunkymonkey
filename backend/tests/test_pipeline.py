@@ -2055,7 +2055,7 @@ def test_post_acquire_sla_replaces_preflight_alert_after_accepted_repair(
 
     def fake_run(cmd, **kwargs):
         # 2026-09-03: 本桩拦的是**全部** subprocess 调用, 不只 update_watermark_sla.py。
-        # store.run_store 的 system_health 自检还会调 check_cutover_effective.py --json-out
+        # store.run_store 的 system_health 自检还会调 check_db_invariants.py --json-out
         # (注意是 --json-out, 不是 --json-output —— 两个脚本参数名本来就不同),
         # 原实现无守卫直接 cmd.index("--json-output") → ValueError: '--json-output' is not in list,
         # 被 store 吞成 "subprocess 异常" 并让本测试红。

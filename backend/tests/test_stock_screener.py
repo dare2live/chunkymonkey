@@ -92,6 +92,15 @@ def test_form_name_filter_matches_and_has_why_sentence():
     assert row["stock_name"] == "甲公司"
     assert "缩量上涨" in row["why"]
     assert "低位" in row["why"]
+    # A1 隔离用例 (cut_tier12_retire): 逐字等于 fact_stock_form_daily 夹具行，
+    # 且不含已随 tier12 accepted-partition overlay 一并退役的任何键。
+    assert row["form_name"] == "缩量上涨"
+    assert row["axis_pos"] == "low"
+    assert row["axis_trend"] == "up"
+    assert row["is_breakout_event"] is True
+    assert row["source"] == "fact_stock_form_daily"
+    for _forbidden in ("field_sources", "tier12_form_source", "production_read_status"):
+        assert _forbidden not in row
 
 
 def test_axis_filter_excludes_non_matching_stock():

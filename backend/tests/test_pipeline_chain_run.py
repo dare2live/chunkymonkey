@@ -379,10 +379,16 @@ def test_m9_stray_newer_mtime_report_does_not_hijack_selection(tmp_path):
     assert result_stray["failed_rule"] == "R2"
 
 
-def test_runtime_check_json_out_paths_extracts_exactly_six(tmp_path):
+def test_runtime_check_json_out_paths_extracts_all_json_out_checks(tmp_path):
+    """09-18 tier12 整层退役 (cut_tier12_retire): cutover_effective 那条 runtime_check
+    连同其 --json-out 一并从登记表删除，清单自动少一条 —— 不许把这个数钉成常量
+    (memory: scalar-cannot-represent-set-completeness)，改比对登记表自己数出的期望数。
+    """
     registry = load_registry()
     rels = chain_run.runtime_check_json_out_paths(registry, date=BASE_DATE)
-    assert len(rels) == 6
+    expected = sum(1 for c in registry.runtime_checks if "--json-out" in c.args)
+    assert len(rels) == expected
+    assert expected > 0
     assert all(BASE_DATE in rel for rel in rels)
     assert all(rel.startswith("data/audit/") for rel in rels)
 

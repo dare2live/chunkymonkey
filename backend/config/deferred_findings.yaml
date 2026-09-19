@@ -91,18 +91,6 @@ findings:
     recorded: "2026-09-16"
     decision: register
 
-  - id: tier12-breadth-null-pct-chg
-    asset: "backend/services/tier12_publish_writer.py:408-430 (_build_market_context，被 :536 write_tier12_batch 调用)"
-    detector: none
-    escalates_when: >
-      backend/scripts/persist_tier12_full_universe_accept.py 或
-      persist_tier12_writer_smoke.py 在某个存在 NULL pct_chg 的交易日上运行——
-      当前实现 `if pct is None: continue` 把 NULL 行从 adv_n/dec_n/flat_n/used
-      计数里静默剔除，market context 信封没有 unknown_n 字段记录被剔除了多少行，
-      READY/UNAVAILABLE 的 trust_status 判定看不出分母已经缩水。
-    recorded: "2026-09-16"
-    decision: register
-
   - id: v-daily-stock-day-stale
     asset: "backend/config/serve_read_views.yaml:75-79 (v_daily_stock_day -> raw_tushare_daily)"
     detector: none

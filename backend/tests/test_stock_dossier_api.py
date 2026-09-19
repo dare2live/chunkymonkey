@@ -151,18 +151,21 @@ def test_dossier_mvp_layers_and_observation():
     assert body["usability"]["tabs"]["moneyflow"]["status"] == "delegated"
     assert body["basic"]["stock_name"] == "贵州茅台"
     assert body["basic"]["industry"]["l3_name"] == "白酒Ⅲ"
+    # A1 隔离用例 (cut_tier12_retire): form_stage 逐字等于 fact_stock_form_daily
+    # 夹具行，且不含已随 tier12 accepted-partition overlay 一并退役的任何键。
     assert body["form_stage"]["form_name"] == "放量下跌"
     assert body["form_stage"]["axis_pos"] == "mid"
+    assert body["form_stage"]["axis_trend"] == "down"
+    assert body["form_stage"]["is_breakout_event"] is False
+    assert body["form_stage"]["source"] == "fact_stock_form_daily"
+    for _forbidden in ("field_sources", "tier12_form_source", "production_read_status"):
+        assert _forbidden not in body["form_stage"]
     assert body["observation"]["version"] == "stock_dossier_obs_v0"
     assert body["observation"]["text"]
     assert "放量下跌" in body["observation"]["text"]
     # Live axis vocabulary (trending/choppy, heavy/shrink/normal) — not clean/mixed/light.
     assert "结构嘈杂" in body["observation"]["text"]
     assert "放量" in body["observation"]["text"]
-    assert body["form_stage"]["source"] in {
-        "fact_stock_form_daily",
-        "accepted_partition+fact_stock_form_daily",
-    }
     assert body["holders"]["report_date"] == "20260331"
     assert len(body["holders"]["rows"]) == 2
     assert "holder_number" in body

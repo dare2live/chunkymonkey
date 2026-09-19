@@ -44,8 +44,8 @@ def run_store(ctx: PipelineContext) -> None:
                        degraded_msg="因子族前沿投影重生失败 — frontier_live 门将因投影过期持续 BLOCKED")
 
     # Step 2.98: system_health 组运行时自检 (goal.md「治理体系重构」P1.2)。
-    #   continuity / residual_hygiene 原本就在这里；grain_uniqueness / cutover_effective
-    #   是从 commit 路径归位过来的 —— 它们查的是库里现有数据与 config 声明的生效性，
+    #   continuity / residual_hygiene 原本就在这里；grain_uniqueness 是从 commit
+    #   路径归位过来的 —— 它查的是库里现有数据与 config 声明的生效性，
     #   与「有没有人恰好提交代码」无关。清单 owner =
     #   backend/config/governance_gates.yaml，本函数不许再手写第二份。
     run_system_health_checks(ctx)

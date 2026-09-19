@@ -53,20 +53,15 @@ def test_live_surface_no_overlap() -> None:
     assert not (nightly & optional_paths)
 
 
-def test_live_blocking_promotes_tier12_and_strategy_runtime_contracts() -> None:
-    """PIT publish and every wired B0/B1/B2/B4 source contract are blocking."""
+def test_live_blocking_promotes_strategy_runtime_contracts() -> None:
+    """Every wired B0/B1/B2/B4 source contract is blocking.
+
+    09-18 tier12 整层退役 (cut_tier12_retire): PIT publish 那份第二真相源与其
+    5 个契约测试文件一并删除，不再在此断言它们必须 blocking。
+    """
     surface = runner.load_surface()
     blocking = set(surface["blocking_paths"])
     nightly = set(surface["nightly_paths"])
-    for path in (
-        "tests/services/test_tier12_publish_contract.py",
-        "tests/services/test_tier12_publish_accept.py",
-        "tests/services/test_tier12_publish_writer.py",
-        "tests/services/test_tier12_publish_scope.py",
-        "tests/services/test_tier12_project_universe.py",
-    ):
-        assert path in blocking, f"tier12 contract must be blocking: {path}"
-        assert path not in nightly
     for path in (
         "tests/services/test_main_rally_b0.py",
         "tests/services/test_institution_follow_b0.py",

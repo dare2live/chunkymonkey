@@ -45,8 +45,10 @@ def test_b5_live_registry_classifies_l2_and_l3() -> None:
     layers = {bid: b.layer for bid, b in reg.bricks.items()}
     assert layers.get("price_kline_qfq_tushare") == "L2"
     assert layers.get("fact_stock_form_daily") == "L2"
-    assert layers.get("tier1_stock_state_stage_pattern_v1") == "L2"
     assert layers.get("MarketContextSnapshot") == "L2"
+    # 09-18 tier12 整层退役 (cut_tier12_retire): accepted-partition StockStateDaily
+    # 那份 L2 brick 随其唯一 owner tier12_publish.yaml 一并删除。
+    assert "tier1_stock_state_stage_pattern_v1" not in reg.bricks
     for fb_id, fb in reg.feature_blocks.items():
         assert fb.layer == "L3", fb_id
     # Known FeatureBlock IDs from services must be registered

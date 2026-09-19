@@ -19,8 +19,7 @@
   GET /api/v3/pulse/flow_stripe mini 温度条纹数据 (v3): 单板块近 N 日逐日净流入序列
   GET /api/v3/pulse/sentiment   情绪温度时序 (涨跌停/炸板率/涨跌比 + v2 连板天梯/晋级率/
                                 秒板/封单/两融/大盘PE换手/龙虎榜, mart_market_pulse_daily);
-                                旁路 population_scope / shadow_reconcile / cutover_allowed
-                                + tier12_production_read（Phase C）
+                                旁路 population_scope / shadow_reconcile
                                 （B-pit mart 门；cutover ON→MART_CUTOVER，窗外/缺影 fail-closed→LEGACY mart；
                                 产品信任：窗外 EMPTY / 窗内缺 UNTRUSTED / 窗内有证 READY；不改 days 数值）
   GET /api/v3/pulse/warnings    退潮预警 (跌出 RS top-N [v3 锁 L1] + 连续静默流出 >= 阈值)
@@ -33,7 +32,7 @@
 dc 叶=moneyflow_dc)。阈值走 config/market_pulse.yaml, 不 hardcode。
 
 S6: drill/members/margin leaf 走 ``market_pulse_serve_read`` (DataAccess registry +
-resolver ATTACH); form/sentiment 走 production_read resolvers。本文件禁内联 raw 表名。
+resolver ATTACH); form 走 fact_stock_form_daily 单一真相面。本文件禁内联 raw 表名。
 """
 from __future__ import annotations
 
@@ -54,14 +53,9 @@ from services.margin_pulse_promote_gate import (
     evaluate_margin_pulse_promote_gate,
     load_margin_pulse_promote_config,
 )
-from services.market_pulse_tier12_read import attest_pulse_tier12_production_read
 
 router = APIRouter()
 
-# Test hooks: production keeps default artifact/config paths.
-_TIER12_ARTIFACT_ROOT = None
-_TIER12_CUTOVER_CONFIG = None
-_TIER12_CONFIG_PATH = None
 # F4: test overrides; production loads margin_pulse_promote.yaml (fail-closed defaults).
 _MARGIN_PROMOTE_CFG = None
 
@@ -523,10 +517,6 @@ def drill(chain: str = mp.CHAIN_SW,
     未知码 → 200 + 空行 (不猜)。top 只作用于顶层列表 (dc 概念 500+ 防爆载)。"""
     _require_chain(chain)
     cfg = _load_cfg()
-    # Keep serve-read tier12 hooks in sync with router test overrides.
-    pulse_serve._TIER12_ARTIFACT_ROOT = _TIER12_ARTIFACT_ROOT
-    pulse_serve._TIER12_CUTOVER_CONFIG = _TIER12_CUTOVER_CONFIG
-    pulse_serve._TIER12_CONFIG_PATH = _TIER12_CONFIG_PATH
     as_of = date or "99999999"
     if chain in mp.DC_CHAINS:
         if code is None:
@@ -602,9 +592,7 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
     对 accepted SSE+SZSE 影子+门标准；serve cutover + promote 消费后 rzrqye 可
     READY（仍 external_aggregate，禁 project_universe / 假 TRUSTED）。breadth
     仅在 B-pit ``MART_CUTOVER`` 证据下 READY（project_universe_pit）；窗外/未到期
-    → typed EMPTY（正常空，同 rzrqye 覆盖前）；窗内应有却缺 → UNTRUSTED。
-    Phase C: ``tier12_production_read`` 经 ``resolve_tier12_production_read``；
-    cutover ON → ACCEPTED_CUTOVER，缺 accept fail-closed → LEGACY。B-pit:
+    → typed EMPTY（正常空，同 rzrqye 覆盖前）；窗内应有却缺 → UNTRUSTED。B-pit:
     cutover ON → MART_CUTOVER，窗外/缺影 fail-closed → LEGACY mart（产品信任层
     窗外=EMPTY，窗内缺=UNTRUSTED）。``days`` 数值不改。
     """
@@ -615,12 +603,6 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
     day_rows = [dict(zip(_SENTIMENT_COLS, r)) for r in rows]
     latest = str(day_rows[-1]["trade_date"]) if day_rows else ""
     cfg = _margin_promote_cfg()
-    tier12 = attest_pulse_tier12_production_read(
-        latest,
-        config=_TIER12_CUTOVER_CONFIG,
-        artifact_root=_TIER12_ARTIFACT_ROOT,
-        config_path=_TIER12_CONFIG_PATH,
-    )
     if latest:
         shadow = _shadow_reconcile_for_day(conn, latest)
         promote_gate = _promote_gate_for_day(conn, latest, shadow)
@@ -667,8 +649,6 @@ def sentiment(days: int = Query(default=120, ge=1, le=2000),
         "population_scope": scope,
         "shadow_reconcile": shadow,
         "promote_gate": promote_gate,
-        "cutover_allowed": bool(tier12.get("cutover_allowed", False)),
-        "tier12_production_read": tier12,
     }
 
 
