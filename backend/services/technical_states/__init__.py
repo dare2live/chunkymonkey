@@ -342,7 +342,6 @@ def rebuild_all(
         codes = [r[0] for r in con.execute("SELECT DISTINCT code FROM _b2_src ORDER BY 1").fetchall()]
         total = _process_codes(con, codes, cal, bench, cfg, lab, seg_thr, wanted_by_code=None)
         con.execute("DROP TABLE IF EXISTS _b2_src")
-        con.execute(f"CREATE INDEX IF NOT EXISTS idx_form_code_date ON {TABLE}(stock_code, trade_date)")
         n, days = con.execute(
             f"SELECT COUNT(*), COUNT(DISTINCT trade_date) FROM {TABLE}").fetchone()
         if own:

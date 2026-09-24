@@ -133,7 +133,6 @@ def rebuild_all(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]:
         con.execute("DROP TABLE IF EXISTS dim_stock_segment_daily")
         where = "d.trade_date >= '" + str(cfg["data_start"]) + "'"
         con.execute(f"CREATE TABLE dim_stock_segment_daily AS {_build_sql(where, cfg)}")
-        con.execute("CREATE INDEX IF NOT EXISTS idx_seg_code_date ON dim_stock_segment_daily(stock_code, trade_date)")
         n, days = con.execute(
             "SELECT COUNT(*), COUNT(DISTINCT trade_date) FROM dim_stock_segment_daily").fetchone()
         if own:

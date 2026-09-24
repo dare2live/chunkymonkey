@@ -616,3 +616,16 @@ def test_rebuild_fails_loud_without_b1_columns(fix_data):
             ts.rebuild_all(conn=con, cfg=CFG)
     finally:
         con.close()
+
+
+def test_rebuild_all_no_helper_index(fix_data):
+    """cut_drop_helper_indexes: fact_stock_form_daily 不带任何 ART 索引 —— 追加后每次
+    CHECKPOINT 整棵索引重写, 实测 ~338MB/次日更空洞, 单股查询中位数与有索引持平 (spec_drop_helper_indexes.md)。
+    变异: 把 CREATE INDEX 加回 rebuild_all → 本用例红。"""
+    con = _load_fixture(fix_data)
+    try:
+        ts.rebuild_all(conn=con, cfg=CFG)
+        n_idx = con.execute("SELECT count(*) FROM duckdb_indexes() WHERE table_name = 'fact_stock_form_daily'").fetchone()[0]
+        assert n_idx == 0
+    finally:
+        con.close()
