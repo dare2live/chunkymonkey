@@ -9,7 +9,16 @@ docstring 本身就是悬空的, 不是并入造成的。
 
 __version__ = "0.1.0"
 
-from .client import AIF10Client, default_client
+from .client import (
+    AIF10ApiError,
+    AIF10BlockedError,
+    AIF10Client,
+    AIF10Error,
+    AIF10NonJsonError,
+    AIF10UnknownCodeError,
+    KNOWN_RESPONSE_CODES,
+    default_client,
+)
 from .registry import REPORTS, REPORT_BY_NAME, get_report, reports_by_module, stats
 from .batch import (
     fetch_all_pages,
@@ -17,6 +26,14 @@ from .batch import (
     fetch_all_pages_sharded,
     iter_pages,
     fetch_report,
+)
+from .pagination import (
+    EASTMONEY_EMPTY_RESULT_CODE,
+    PageLedger,
+    PaginationIntegrityError,
+    PaginationPolicy,
+    STRICT_POLICY_FOR,
+    fetch_pages_strict,
 )
 from .orm import (
     generate_ddl,
@@ -27,7 +44,13 @@ from .orm import (
 
 __all__ = [
     # client
+    "AIF10ApiError",
+    "AIF10BlockedError",
     "AIF10Client",
+    "AIF10Error",
+    "AIF10NonJsonError",
+    "AIF10UnknownCodeError",
+    "KNOWN_RESPONSE_CODES",
     "default_client",
     # registry
     "REPORTS",
@@ -41,6 +64,13 @@ __all__ = [
     "fetch_all_pages_sharded",
     "iter_pages",
     "fetch_report",
+    # pagination (严格引擎, 2026-09-25 刀 A)
+    "EASTMONEY_EMPTY_RESULT_CODE",
+    "PageLedger",
+    "PaginationIntegrityError",
+    "PaginationPolicy",
+    "STRICT_POLICY_FOR",
+    "fetch_pages_strict",
     # orm / DDL
     "generate_ddl",
     "generate_ddl_for_report",

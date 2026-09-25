@@ -145,6 +145,59 @@ def test_miaoxiang_generic_source_error_is_unknown():
     )
 
 
+# ── miaoxiang: aif10 客户端异常 (2026-09-25 刀 A, spec §3.6/§7.4) ───────────
+#
+# 判定顺序写死: ① AIF10BlockedError → HARD_WALL; ② AIF10NonJsonError/
+# AIF10ApiError/AIF10UnknownCodeError/PaginationIntegrityError/
+# MiaoxiangMissingFieldError/MiaoxiangTruncationError → STRUCTURAL; ③
+# TimeoutError/ConnectionError/OSError → TRANSIENT; ④ 其它 (裸 AIF10Error) →
+# UNKNOWN。①②必须在④之前 (全部是 AIF10Error 子类, 顺序颠倒会被父类分支吞掉)。
+
+
+def test_V1_blocked_is_hard_wall():
+    from aif10_scraper.client import AIF10BlockedError
+
+    assert classify_failure(AIF10BlockedError("403"), source="miaoxiang") is FailureKind.HARD_WALL
+
+
+def test_V2_integrity_is_structural():
+    from aif10_scraper.pagination import PaginationIntegrityError
+
+    assert (
+        classify_failure(PaginationIntegrityError("short_page"), source="miaoxiang")
+        is FailureKind.STRUCTURAL
+    )
+
+
+def test_V3_plain_aif10error_unknown():
+    from aif10_scraper.client import AIF10Error
+
+    assert classify_failure(AIF10Error("5xx exhausted"), source="miaoxiang") is FailureKind.UNKNOWN
+
+
+def test_V4_nonjson_is_structural():
+    """N7: 非 JSON (WAF/HTML 页) 只应停这一域 (STRUCTURAL), 不是像真被封那样
+    HARD_WALL 停整条 drain。"""
+    from aif10_scraper.client import AIF10NonJsonError
+
+    assert (
+        classify_failure(AIF10NonJsonError("not json"), source="miaoxiang")
+        is FailureKind.STRUCTURAL
+    )
+
+
+def test_V5_api_and_unknown_code_structural():
+    from aif10_scraper.client import AIF10ApiError, AIF10UnknownCodeError
+
+    assert (
+        classify_failure(AIF10ApiError(9501, "x"), source="miaoxiang") is FailureKind.STRUCTURAL
+    )
+    assert (
+        classify_failure(AIF10UnknownCodeError(7, "x"), source="miaoxiang")
+        is FailureKind.STRUCTURAL
+    )
+
+
 # ── tdxhub: 没有状态码, 只能靠异常类 —— 这就是判据必须分层的理由 ──────────
 
 

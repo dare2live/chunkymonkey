@@ -38,7 +38,17 @@ class FakeClient:
         self.call_count += 1
         if secucode in self.errors:
             raise self.errors[secucode]
-        return self.pages.get(secucode, {"pages": 0, "count": 0, "data": []})
+        return self.pages.get(
+            secucode,
+            {
+                "code": 9201,
+                "message": "返回数据为空",
+                "success": False,
+                "pages": 0,
+                "count": 0,
+                "data": [],
+            },
+        )
 
 
 def _row(secucode: str, code: str, rank: int, holder_name: str = "某机构") -> dict:
@@ -58,7 +68,18 @@ def _row(secucode: str, code: str, rank: int, holder_name: str = "某机构") ->
 
 
 def _page(rows: list[dict], *, count: int | None = None, pages: int = 1) -> dict:
-    return {"pages": pages, "count": count if count is not None else len(rows), "data": rows}
+    # 三键 (code/message/success) 与真实供应商返回包一致 (2026-09-26 返修
+    # fix_holders_A_r3 §主循环追加: 严格引擎经 _code_of() 要求每页必带 code,
+    # 缺键触发 AIF10UnknownCodeError; 与规格 §7.4 处理 test_miaoxiang_adapter.py
+    # _FakeClient 同法, 有数据的页一律 code=0)。
+    return {
+        "code": 0,
+        "message": "ok",
+        "success": True,
+        "pages": pages,
+        "count": count if count is not None else len(rows),
+        "data": rows,
+    }
 
 
 CODES = ["600001", "600002", "600003"]
@@ -142,7 +163,9 @@ def test_truncated_flag_is_surfaced_not_swallowed():
     code = "600001"
     secu = _secu(code)
     # count 远大于单页 landed 行数, pages=1 (无后续页可翻) -> PaginationLandResult.truncated=True
-    # (aif10_scraper.pagination.assess_pagination_land 的判据: landed+tol < expected)
+    # (aif10_scraper.pagination.fetch_pages_strict 的严格判据触发 PaginationIntegrityError,
+    # fetch_pages_for_filters 薄壳捕获后转成 PaginationLandResult(truncated=True, reasons=(exc.reason,));
+    # 具体 reason 不是本用例断言对象, 见 fetch_pages_strict 里 pages/count 一致性检查)
     pages = {secu: _page([_row(secu, code, 1)], count=1000, pages=1)}
     client = FakeClient(pages=pages)
 

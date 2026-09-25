@@ -137,10 +137,13 @@ built_at               (无 — sync_runner 生成)
 =====================  =====================  ==============================
 
 不落 DAILY_RANK (一天内不唯一)。精度: vol 保留妙想精确股数/1e4 (例 131476 股 →
-13.1476), 不截精度。排序: ``_SORT_BY_API["block_trade"]`` =
-("SECURITY_CODE,DEAL_PRICE,DEAL_VOLUME,BUYER_NAME,SELLER_NAME", "1,1,1,1,1")
-(2026-09-11 实测接受)。分页/截断判定复用 ``_fetch_report_day`` (PAGE_SIZE 500,
-MAX_PAGES 20)。
+13.1476), 不截精度。排序: ``config/aif10_pagination.yaml`` 的
+``RPT_DATA_BLOCKTRADE.sort_columns`` =
+"SECURITY_CODE,DEAL_PRICE,DEAL_VOLUME,BUYER_NAME,SELLER_NAME" (2026-09-11 实测
+接受; 2026-09-25 刀 A 起排序/身份/容差/重复策略统一进 YAML, 不再是本文件的
+``_SORT_BY_API`` 字面量)。分页/截断判定复用 ``_fetch_report_day``, 内部走
+``aif10_scraper.pagination.fetch_pages_strict`` 严格引擎 (page_size 来自
+``page_size_for``, MAX_PAGES=20 是本适配器自己的防御上限)。
 
 已知的 grain 内碰撞 (非本 adapter bug, 接线前必读): ``top_inst`` 的 registry
 grain ``[trade_date, ts_code, exalter, side]`` 在东财原始数据里**不总是唯一**——
@@ -171,12 +174,13 @@ TRADE_DIRECTION, RANK) 唯一 (130 块榜每榜 RANK 1..n 连续), 本地当日�
 失败姿态 (fail-closed, 教训: 静默半批比报错更危险):
   - 未知 ``api`` / 传了 ``limit``/``offset``/``page``/``page_size`` (分页仅限
     adapter 内部, 调用方不得指定) -> ``MiaoxiangSourceError``
-  - 分页落地行数 < 供应商声明 count (超容差) -> ``MiaoxiangTruncationError``
-    (复用本仓 ``services/data_sources/pagination_integrity.py`` 的东财 v1
-    100 页硬上限截断判定, 不重新发明)
-  - 分页落地非空但 provider count 缺失/为 0 -> ``MiaoxiangTruncationError``
-    (``assess_paginated_land`` 的 ``expected_count > 0`` 门在 count=0 时不检查,
-    2026-09-11 补的独立判定, 见 ``_fetch_report_day``)
+  - 翻页完整性判据失败 (页长不对/总数漂移/整行重复/身份键缺失或冲突/页数上限等,
+    见 ``aif10_scraper.pagination.PaginationIntegrityError.REASONS`` 的 11 个
+    reason) -> ``MiaoxiangTruncationError`` (2026-09-25 刀 A: 改走
+    ``fetch_pages_strict`` 严格引擎, 不再是本文件自带的分页循环 +
+    ``assess_paginated_land`` 启发式; count=0 但落地非空这类形态现在由引擎的
+    ``raw_rows_ne_count`` 原语通用地捕获, 不再需要 ``_fetch_report_day`` 里单独
+    写的手工守卫)
   - 单行缺必填字段 (top_inst: SECUCODE/TRADE_DATE/OPERATEDEPT_NAME/TRADE_DIRECTION/
     EXPLANATION/RANK; block_trade: SECUCODE/TRADE_DATE/DEAL_PRICE/DEAL_VOLUME/DEAL_AMT/
     BUYER_NAME/SELLER_NAME/SECURITY_TYPE/TRADE_UNIT 之一; top_list: SECUCODE/TRADE_DATE/
@@ -215,10 +219,8 @@ import math
 from datetime import datetime
 from typing import Any, Callable
 
-from services.data_sources.pagination_integrity import (
-    EASTMONEY_V1_MAX_PAGES_PER_QUERY,
-    assess_paginated_land,
-)
+from aif10_scraper.pagination import PaginationIntegrityError, fetch_pages_strict
+from services.data_sources.aif10_pagination_rules import page_size_for, policy_for
 from services.data_sources.vendor_scope import (
     VendorExclusions,
     VendorScopeError,
@@ -242,21 +244,11 @@ API_REPORT_NAMES: dict[str, str] = {
     "top_list": REPORT_TOP_LIST,
 }
 
-# 东财 datacenter v1 单页上限 (实测, 与 aif10_scraper/registry.py 一致); 龙虎榜单日
-# 行数远小于此 (实测 20260825 top_inst 650 行/2 页, top_list 60 行/1 页 @page_size=500),
-# 但仍按同源其它域 (fuyao MAX_PAGES=50) 的防御性上限做法, 防接口异常死循环。
-PAGE_SIZE = 500
+# 2026-09-25 刀 A: 各报表 page_size/排序/身份键/容差/重复策略统一进
+# config/aif10_pagination.yaml (page_size_for/policy_for), 本文件不再自带
+# PAGE_SIZE 字面量与 _SORT_BY_API 表。MAX_PAGES 是本适配器自己的死循环防御上限
+# (不是供应商参数, 不进 YAML), 传给严格引擎当 max_pages_per_query。
 MAX_PAGES = 20
-
-# 排序: 按各报表的自然键全序排序 (2026-09-11 实测妙想接受, 行数不变)。单日行数超过一页 (500)
-# 时, 无序分页有页边界重复/漏行的隐患, 全序排序把它封掉:
-#   block_trade -> (代码, 价, 量, 买方, 卖方); top_inst -> (代码, 理由, 方向, 榜内名次),
-#   后者 2026-09-11 实测 7 个交易日 5,801 行唯一。top_list 沿用已登记排序。
-_SORT_BY_API: dict[str, tuple[str, str]] = {
-    "block_trade": ("SECURITY_CODE,DEAL_PRICE,DEAL_VOLUME,BUYER_NAME,SELLER_NAME", "1,1,1,1,1"),
-    "top_inst": ("SECUCODE,EXPLANATION,TRADE_DIRECTION,RANK", "1,1,1,1"),
-    "top_list": ("SECURITY_CODE,TRADE_DATE", "1,-1"),
-}
 
 _BANNED_CALLER_PAGING_KEYS = frozenset({"limit", "offset", "page", "page_size"})
 
@@ -618,13 +610,7 @@ class MiaoxiangSource:
             ) from exc
         trade_date = compact_trade_date(params.get("trade_date"))
         report_name = API_REPORT_NAMES[name]
-        sort_columns, sort_types = _SORT_BY_API[name]
-        raw_rows = self._fetch_report_day(
-            report_name,
-            trade_date,
-            sort_columns=sort_columns,
-            sort_types=sort_types,
-        )
+        raw_rows = self._fetch_report_day(report_name, trade_date)
         # Vendor-scope exclusion (out-of-scope rows, e.g. B股/EQB — owner ruling
         # 2026-09-12) happens here: after the truncation check inside
         # _fetch_report_day (which must keep comparing the provider's declared
@@ -679,62 +665,33 @@ class MiaoxiangSource:
         self,
         report_name: str,
         trade_date: str,
-        *,
-        sort_columns: str,
-        sort_types: str,
     ) -> list[dict[str, Any]]:
+        """按公告/交易日整市场翻页取一张报表 (2026-09-25 刀 A: 改走严格引擎)。
+
+        排序/身份键/容差/重复策略全部来自 ``aif10_pagination.yaml``
+        (``policy_for``); ``page_size`` 同样来自那份 YAML。``MAX_PAGES``
+        (本适配器自己的死循环防御上限, 不是供应商参数) 传给
+        ``max_pages_per_query`` —— 单日行数远小于它 (实测 top_inst 650 行/2 页,
+        top_list 60 行/1 页), 真出现 ``pages_1 > MAX_PAGES`` 说明供应商这一天
+        的数据量已远超预期, 该报错而不是死循环。
+        """
         client = self._get_client()
         extra_filters = [f"(TRADE_DATE='{_dashed_date(trade_date)}')"]
-        rows: list[dict[str, Any]] = []
-        provider_count = 0
-        for page in range(1, MAX_PAGES + 1):
-            resp = client.get_v1(
+        try:
+            rows, _ledger = fetch_pages_strict(
+                client,
                 report_name,
-                page=page,
-                page_size=PAGE_SIZE,
-                sort_columns=sort_columns,
-                sort_types=sort_types,
+                page_size=page_size_for(report_name),
+                policy=policy_for(report_name),
                 columns="ALL",
                 secucode=None,
                 extra_filters=extra_filters,
+                max_pages_per_query=MAX_PAGES,
             )
-            data = list((resp or {}).get("data") or [])
-            provider_count = int((resp or {}).get("count") or 0)
-            pages_total = int((resp or {}).get("pages") or 0)
-            rows.extend(data)
-            if not data:
-                break
-            if page >= pages_total:
-                break
-        else:
+        except PaginationIntegrityError as exc:
             raise MiaoxiangTruncationError(
-                f"miaoxiang {report_name} {trade_date} exceeded {MAX_PAGES} pages "
-                "without exhausting pagination"
-            )
-        # A missing/zero provider count makes assess_paginated_land's
-        # `expected_count > 0` gate a no-op (pagination_integrity.py:40-49) —
-        # it silently stops checking for truncation instead of treating 0 as
-        # a declared-empty result. Rows landed with count<=0 means the
-        # provider's count field itself is untrustworthy for this response;
-        # a non-empty land in a genuinely empty day (`rows` stays [] and this
-        # branch is skipped) is left alone.
-        if rows and provider_count == 0:
-            raise MiaoxiangTruncationError(
-                f"miaoxiang {report_name} {trade_date}: provider count 缺失或为 0, "
-                f"但落了 {len(rows)} 行"
-            )
-        verdict = assess_paginated_land(
-            expected_count=provider_count,
-            landed_rows=len(rows),
-            page_size=PAGE_SIZE,
-            max_pages_per_query=EASTMONEY_V1_MAX_PAGES_PER_QUERY,
-        )
-        if verdict.truncated:
-            raise MiaoxiangTruncationError(
-                f"miaoxiang {report_name} {trade_date} truncated: "
-                f"{','.join(verdict.reasons)} "
-                f"expected={verdict.expected_count} landed={verdict.landed_rows}"
-            )
+                f"miaoxiang {report_name} {trade_date} {exc.reason}: {exc}"
+            ) from exc
         return rows
 
 
@@ -742,7 +699,6 @@ __all__ = [
     "ALIAS",
     "API_REPORT_NAMES",
     "MAX_PAGES",
-    "PAGE_SIZE",
     "REPORT_BLOCK_TRADE",
     "REPORT_TOP_INST",
     "REPORT_TOP_LIST",

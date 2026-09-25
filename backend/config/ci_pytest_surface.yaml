@@ -69,6 +69,7 @@ blocking_paths:
 - tests/services/test_accepted_schema.py
 - tests/services/test_acquire_bounded_gap_heal.py
 - tests/services/test_adjust_factor.py
+- tests/services/test_aif10_pagination_rules.py
 - tests/services/test_assignment_gap_recon.py
 - tests/services/test_availability.py
 - tests/services/test_baostock_adapter.py
@@ -219,6 +220,8 @@ blocking_paths:
 - tests/services/test_watermark_domain_frontier.py
 - tests/services/test_writer_lock.py
 - tests/test_acquire_active_stock_refresh.py
+- tests/test_aif10_client.py
+- tests/test_aif10_pagination_strict.py
 - tests/test_by_ann_date_equal_day_reprobe.py
 - tests/test_by_ann_date_weekend_coverage.py
 - tests/test_by_trade_date_explicit_start_range.py

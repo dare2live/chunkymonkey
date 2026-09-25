@@ -1,0 +1,78 @@
+# aif10_pagination.yaml — 东财 datacenter (aif10) 每张报表的翻页完整性策略 + holders 按日复核参数。
+# owner: backend/services/data_sources/aif10_pagination_rules.py (loader, fail-closed)。
+# 只描述「按什么排序、什么算一行、允许多大偏差、多久算取全」，不决定跑什么、按什么顺序跑。
+# 供应商协议常量 (返回码 0/9201/9501、100 页上限) 不在这里, 在 aif10_scraper/client.py 与 pagination.py。
+# max_days_per_run 不进这里 (2026-09-25 主循环追加): 跑批预算不是判据 (CLAUDE.md 第 11 条
+# "YAML 只描述检查什么/比较什么, 不决定跑什么、按什么顺序跑"), 刀 B 用代码常量。
+# recheck_floor 也不进这里: 「曝露起点」只有一个事实, 只留 audits.holders_notice_pagination.
+# exposure_start 一个键 (一个事实一个键), 见本刀 §15.2 S6。
+version: 2
+
+reports:
+  RPT_F10_EH_FREEHOLDERS:
+    sort_columns: "END_DATE,SECURITY_CODE,HOLDER_RANK,HOLDER_NAME"
+    sort_types: "-1,1,1,1"
+    identity_columns: [SECURITY_CODE, END_DATE, HOLDER_RANK, HOLDER_NAME]
+    page_size: 500
+    row_tolerance_rows: 0
+    duplicates: error
+    drift_refetch: 1
+    evidence: "2026-09-25 probe_holders_pagination.md §3.2: 唯一排序翻完 2026-08-28 (15 页 7,366 行) / 2026-04-30 (28 页 13,912 行) 各 0 组重复; 默认排序丢 36.4%/47.1% 且落地行数==count。P6 09-19 页内身份键唯一。drift_refetch=1: spec §1.7 D 当天白天仍在进行 (0826 D 早取后又进 643 行), 高峰晚上取 D+1 时 count 在翻页中变化是预期形态, 整日重取一次再判。"
+  RPT_F10_EH_HOLDERS:
+    sort_columns: "END_DATE,SECURITY_CODE,HOLDER_RANK,HOLDER_NAME"
+    sort_types: "-1,1,1,1"
+    identity_columns: [SECURITY_CODE, END_DATE, HOLDER_RANK, HOLDER_NAME]
+    page_size: 500
+    row_tolerance_rows: 0
+    duplicates: error
+    drift_refetch: 0
+    evidence: "backend 零调用方; 无 UPDATE_DATE/NOTICE_DATE 列 (2026-09-25 P2/P7), 不在也不可能在按公告日路径上; 同缺陷排序键一并改 (扫同类)。"
+  RPT_OPERATEDEPT_TRADE:
+    sort_columns: "SECUCODE,EXPLANATION,TRADE_DIRECTION,RANK"
+    sort_types: "1,1,1,1"
+    identity_columns: [SECUCODE, EXPLANATION, TRADE_DIRECTION, RANK]
+    page_size: 500
+    row_tolerance_rows: 0
+    duplicates: error
+    drift_refetch: 0
+    evidence: "sources/miaoxiang.py 头注 2026-09-11 实测 7 个交易日 5,801 行按此四键唯一。"
+  RPT_DAILYBILLBOARD_DETAILSNEW:
+    sort_columns: "SECURITY_CODE,TRADE_DATE,EXPLANATION"
+    sort_types: "1,-1,1"
+    identity_columns: [SECURITY_CODE, TRADE_DATE, EXPLANATION]
+    page_size: 500
+    row_tolerance_rows: 0
+    duplicates: error
+    drift_refetch: 0
+    evidence: "2026-09-25 P8: TRADE_DATE=2026-09-18 58 行, (SECURITY_CODE,TRADE_DATE) 不唯一, 加 EXPLANATION 后唯一, 排序被接受。"
+  RPT_DATA_BLOCKTRADE:
+    sort_columns: "SECURITY_CODE,DEAL_PRICE,DEAL_VOLUME,BUYER_NAME,SELLER_NAME"
+    sort_types: "1,1,1,1,1"
+    identity_columns: []
+    page_size: 500
+    row_tolerance_rows: 0
+    duplicates: allow
+    drift_refetch: 0
+    evidence: "交易所逐笔存在价量买卖全同的独立成交 (memory reference-exchange-block-trade-truth-source, 2026-09-11 沪市 73 行/62 键); 2026-09-25 P9 09-18 85 行 5 键不唯一、整行唯一; 单日 <= 1 页, 跨页并列漂移按构造不可能。DAILY_RANK 能否作唯一键留给 block_trade 自己的刀。"
+  RPT_DMSK_HOLDERS:
+    sort_columns: "NOTICE_DATE,SECURITY_CODE,RANK"
+    sort_types: "-1,1,1"
+    identity_columns: []
+    page_size: 50
+    row_tolerance_rows: 0
+    duplicates: error
+    drift_refetch: 0
+    evidence: "qfii_client._fetch_qfii_aif10 现行排序与 page_size 原样登记; 按 (END_DATE, 持股变动类型, 股票) 过滤后每次几行, 未做身份键实测, 不发明。"
+  # RPT_MAIN_ORGHOLDDETAIL 不登记 (修订 1 N3): 生产 page_size=2000 (org_holding_fetch.py:9) 且不经 policy_for;
+  # 原稿的 allow + 1700 是折算出来的容差, 正是本刀要消灭的那种看不见的丢法。org 走 registry 缺省 STRICT,
+  # 漂移时经薄壳拿 truncated=True 进它自己的 provider_truncated 处置 (§3.3); 登记由 org 的刀在实测后做。
+
+holders_notice_recheck:
+  settle_days: 1
+  evidence: "spec §1.7 (2026-09-25, 15 次实测 + opus 复审 4 例): 按日批次落地时刻相对公告日 D —— D-1 晚 +520/+60, D 早 +310/+50/+643/+290, D 晚 +10/0, D+1 早 (最早 07:40) 及之后 10 个分区全部 0; 故取数日历日 (Asia/Shanghai) >= D+1 视为取全。只覆盖 2026-08, 节假日未测, 由 audit --tail-stats 退出码 3 守。recheck_floor 与 max_days_per_run 不进本节 (2026-09-25 主循环追加): 前者与 audits.holders_notice_pagination.exposure_start 是同一个事实, 只留一个键; 后者是跑批预算不是判据 (CLAUDE.md 第 11 条), 刀 B 用代码常量。"
+
+audits:
+  holders_notice_pagination:
+    exposure_start: "20260701"
+    dup_scan: all_partitions
+    evidence: "按公告日路径最早落地批次 landed_at=2026-07-19 22:17 (ingest_batch, 快照 2026-09-25); 该路径只落 notice_date > 当时水位 的分区; 留一个月余量。dup_scan 全分区: 逐股票路径在旧排序键下同样跨页漂移 (spec §1.8 20200429 601006), 曝露窗口对它不成立。"

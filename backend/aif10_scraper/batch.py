@@ -31,8 +31,10 @@ from typing import Any, Iterator, Callable
 from .client import AIF10Client, default_client
 from .pagination import (
     DEFAULT_MAX_PAGES_PER_QUERY,
-    assess_pagination_land,
+    PaginationPolicy,
+    STRICT_POLICY_FOR,
     fetch_pages_for_filters,
+    fetch_pages_strict,
     plan_security_code_shards,
 )
 from .registry import ReportSpec, get_report
@@ -40,26 +42,7 @@ from .registry import ReportSpec, get_report
 logger = logging.getLogger("aif10_scraper")
 
 
-def fetch_all_pages(
-    report_name: str,
-    *,
-    secucode: str | None = None,
-    page_size: int = 500,
-    max_pages: int = 0,
-    sort_columns: str = "",
-    sort_types: str = "",
-    columns: str = "ALL",
-    extra_filters: list[str] | None = None,
-    extra_params: dict[str, Any] | None = None,
-    client: AIF10Client | None = None,
-    progress_callback: Callable[[int, int, int], None] | None = None,
-) -> list[dict]:
-    """单线程顺序分页拉全量 (v1 接口).
-
-    progress_callback(page, total_pages, rows_so_far): 每页回调.
-    """
-    cli = client or default_client
-    spec = None
+def _resolve_sort(report_name: str, sort_columns: str, sort_types: str) -> tuple[str, str]:
     try:
         spec = get_report(report_name)
         if not sort_columns:
@@ -75,29 +58,52 @@ def fetch_all_pages(
             f"report {report_name!r} 未注册: 取不到 sort_columns/sort_types, "
             f"分页会无序 -> 静默重复/漏行。先在 aif10_scraper.registry 里登记它。"
         ) from exc
+    return sort_columns, sort_types
 
-    rows, land = fetch_pages_for_filters(
+
+def fetch_all_pages(
+    report_name: str,
+    *,
+    secucode: str | None = None,
+    page_size: int = 500,
+    max_pages: int = 0,
+    sort_columns: str = "",
+    sort_types: str = "",
+    columns: str = "ALL",
+    extra_filters: list[str] | None = None,
+    extra_params: dict[str, Any] | None = None,
+    client: AIF10Client | None = None,
+    progress_callback: Callable[[int, int, int], None] | None = None,
+    policy: PaginationPolicy | None = None,
+) -> list[dict]:
+    """单线程顺序分页拉全量 (v1 接口), 严格判据 (2026-09-25 刀 A)。
+
+    ``policy`` 缺省 (``None``) 时用 ``STRICT_POLICY_FOR(registry 排序键)``
+    (容差 0、无身份列、重复即错、不重取) —— 不读 ``aif10_pagination.yaml``,
+    未登记报表的调用方 (org / qfii / Phase A 取数器) 不受影响。任何完整性判据
+    失败都原样抛出 ``PaginationIntegrityError`` (旧版"只打 warning"的那段已删除,
+    静默截断不该只留一行日志)。
+
+    progress_callback(page, total_pages, rows_so_far): 每页回调.
+    """
+    cli = client or default_client
+    sort_columns, sort_types = _resolve_sort(report_name, sort_columns, sort_types)
+    if policy is None:
+        policy = STRICT_POLICY_FOR(sort_columns, sort_types)
+
+    rows, _ledger = fetch_pages_strict(
         cli,
         report_name,
         page_size=page_size,
-        max_pages=max_pages or 0,
-        sort_columns=sort_columns,
-        sort_types=sort_types,
+        policy=policy,
         columns=columns,
         secucode=secucode,
         extra_filters=extra_filters,
         extra_params=extra_params,
-        progress_callback=progress_callback,
+        max_pages=max_pages or 0,
         max_pages_per_query=DEFAULT_MAX_PAGES_PER_QUERY,
+        progress_callback=progress_callback,
     )
-    if land.truncated:
-        logger.warning(
-            "[aif10] %s pagination truncated: %s (expected=%s landed=%s)",
-            report_name,
-            ",".join(land.reasons),
-            land.expected_count,
-            land.landed_rows,
-        )
     return rows
 
 
@@ -116,32 +122,28 @@ def fetch_all_pages_sharded(
     progress_callback: Callable[[int, int, int], None] | None = None,
     max_pages_per_query: int = DEFAULT_MAX_PAGES_PER_QUERY,
     shard_field: str = "SECURITY_CODE",
+    policy: PaginationPolicy | None = None,
 ) -> dict[str, Any]:
     """Paginated fetch with SECURITY_CODE sharding when page-1 count exceeds cap.
+
+    每片走 ``fetch_pages_for_filters`` (薄壳, 固定 STRICT 容差 —— 每片内部必须
+    精确)；``policy`` (缺省 ``STRICT_POLICY_FOR(registry 排序键)``, 不读
+    ``aif10_pagination.yaml``) 只用于合并后的总量比对，容差来自 ``policy.
+    row_tolerance_rows`` 而不是旧版硬编码的 ``0.002``/``500`` 字面量 (已随
+    ``assess_pagination_land`` 一起删除)。
 
     Returns:
         rows, provider_count, fetched_rows, truncated, shard_count, land_reasons
     """
     cli = client or default_client
-    try:
-        spec = get_report(report_name)
-        if not sort_columns:
-            sort_columns = spec.sort_columns
-        if not sort_types:
-            sort_types = spec.sort_types
-    except KeyError as exc:
-        # 并入本仓时改: 原上游是 ``except KeyError: pass``。get_report 失败 -> spec 为 None
-        # -> sort_columns/sort_types 落空 -> 分页**无序**, 同一行可能重复落在两页、另一行
-        # 一页不落。下游按 grain 去重后表现为「静默少数据」而非报错, 撞红线「缺失只能传播
-        # 为缺失」。实测本仓在用的 3 个 report 全部已注册, 这条分支走不到; 走到就该响。
-        raise KeyError(
-            f"report {report_name!r} 未注册: 取不到 sort_columns/sort_types, "
-            f"分页会无序 -> 静默重复/漏行。先在 aif10_scraper.registry 里登记它。"
-        ) from exc
+    sort_columns, sort_types = _resolve_sort(report_name, sort_columns, sort_types)
 
     base = list(extra_filters or [])
     if shard_field != "SECURITY_CODE":
         raise ValueError(f"unsupported shard_field={shard_field!r}")
+
+    if policy is None:
+        policy = STRICT_POLICY_FOR(sort_columns, sort_types)
 
     shard_plans = plan_security_code_shards(
         cli,
@@ -180,15 +182,13 @@ def fetch_all_pages_sharded(
             truncated = True
             reasons.extend(land.reasons)
 
-    merged_land = assess_pagination_land(
-        expected_count=expected_total,
-        landed_rows=len(all_rows),
-        max_pages_per_query=max_pages_per_query,
-        page_size=page_size,
-    )
-    if merged_land.truncated:
+    tolerance = policy.row_tolerance_rows
+    if abs(len(all_rows) - expected_total) > tolerance:
         truncated = True
-        reasons.extend(merged_land.reasons)
+        reasons.append(
+            f"sharded_raw_rows_ne_count landed={len(all_rows)} "
+            f"expected={expected_total} tolerance={tolerance}"
+        )
 
     return {
         "rows": all_rows,

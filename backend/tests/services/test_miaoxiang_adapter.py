@@ -13,15 +13,16 @@ docstring in ``sources/miaoxiang.py`` for the full mapping table and provenance)
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 
 import pytest
 
-from services.data_sources.pagination_integrity import assess_paginated_land
+from aif10_scraper.pagination import PaginationIntegrityError, fetch_pages_strict
+from services.data_sources.aif10_pagination_rules import page_size_for, policy_for
 from services.data_sources.sources.miaoxiang import (
     ALIAS,
     API_REPORT_NAMES,
     MAX_PAGES,
-    PAGE_SIZE,
     REPORT_BLOCK_TRADE,
     REPORT_TOP_INST,
     REPORT_TOP_LIST,
@@ -108,7 +109,15 @@ def _block_trade_raw_row(**overrides) -> dict:
 
 
 class _FakeClient:
-    """Records every call; serves canned per-page responses for one report."""
+    """Records every call; serves canned per-page responses for one report.
+
+    2026-09-25 刀 A: the strict pagination engine (``fetch_pages_strict``)
+    requires every page envelope to carry ``code``/``message``/``success``
+    (matching ``AIF10Client.get_v1``'s real return shape) — a fixture dict
+    that only has ``pages``/``count``/``data`` predates that contract. Rather
+    than touch every preset page dict below (one change, dict bodies
+    untouched, per spec §7.4), inject the defaults here on the way out.
+    """
 
     def __init__(self, pages: list[dict]):
         self._pages = list(pages)
@@ -118,8 +127,12 @@ class _FakeClient:
         self.calls.append({"report_name": report_name, **kwargs})
         idx = len(self.calls) - 1
         if idx >= len(self._pages):
-            return {"pages": len(self._pages), "data": [], "count": 0}
-        return self._pages[idx]
+            page = {"pages": len(self._pages), "data": [], "count": 0}
+        else:
+            page = self._pages[idx]
+        result = {"code": 0, "message": "ok", "success": True}
+        result.update(page)
+        return result
 
 
 class _ExplodingClient:
@@ -561,6 +574,44 @@ def test_top_inst_sort_columns_use_natural_key_order():
     assert call["sort_types"] == "1,1,1,1"
 
 
+def test_M1_fetch_report_day_delegates():
+    """spec §7.4 M1: _SORT_BY_API 已退役, 取数走 aif10_pagination_rules.
+    policy_for/page_size_for; 2 页各 500 行, 取全 1000 行, 排序取自 YAML。"""
+    page_size = page_size_for(REPORT_TOP_INST)
+    rows = [_top_inst_raw_row(RANK=i) for i in range(1, 1001)]
+    client = _FakeClient(
+        [
+            {"pages": 2, "count": 1000, "data": rows[:page_size]},
+            {"pages": 2, "count": 1000, "data": rows[page_size:1000]},
+        ]
+    )
+    src = MiaoxiangSource(client=client)
+    out = src.fetch_raw("top_inst", trade_date="20260825")
+    assert len(out) == 1000
+    assert client.calls[0]["sort_columns"] == policy_for(REPORT_TOP_INST).sort_columns
+
+
+def test_M2_integrity_error_wrapped():
+    """spec §7.4 M2: 页 2 count 漂移 (top_inst drift_refetch=0) ->
+    MiaoxiangTruncationError 消息含 count_drift; _classify_miaoxiang 判
+    STRUCTURAL。"""
+    from services.data_sources.fetch_verdict import FailureKind, _classify_miaoxiang
+
+    page_size = page_size_for(REPORT_TOP_INST)
+    assert policy_for(REPORT_TOP_INST).drift_refetch == 0
+    rows_p1 = [_top_inst_raw_row(RANK=i) for i in range(1, page_size + 1)]
+    client = _FakeClient(
+        [
+            {"pages": 2, "count": 1000, "data": rows_p1},
+            {"pages": 2, "count": 999, "data": [_top_inst_raw_row(RANK=1)]},
+        ]
+    )
+    src = MiaoxiangSource(client=client)
+    with pytest.raises(MiaoxiangTruncationError, match="count_drift") as excinfo:
+        src.fetch_raw("top_inst", trade_date="20260825")
+    assert _classify_miaoxiang(excinfo.value) is FailureKind.STRUCTURAL
+
+
 # ---------------------------------------------------------------------------
 # api dispatch / caller-param rejection
 # ---------------------------------------------------------------------------
@@ -626,7 +677,7 @@ def test_single_page_fetch_returns_mapped_rows_and_stamps_dashed_filter():
     call = client.calls[0]
     assert call["report_name"] == REPORT_TOP_INST
     assert call["page"] == 1
-    assert call["page_size"] == PAGE_SIZE
+    assert call["page_size"] == page_size_for(REPORT_TOP_INST)
     assert call["extra_filters"] == ["(TRADE_DATE='2026-08-25')"]
     assert call["secucode"] is None
     assert call["columns"] == "ALL"
@@ -638,8 +689,8 @@ def test_top_list_uses_its_own_sort_columns():
     src.fetch_raw("top_list", trade_date="20260825")
     call = client.calls[0]
     assert call["report_name"] == REPORT_TOP_LIST
-    assert call["sort_columns"] == "SECURITY_CODE,TRADE_DATE"
-    assert call["sort_types"] == "1,-1"
+    assert call["sort_columns"] == "SECURITY_CODE,TRADE_DATE,EXPLANATION"
+    assert call["sort_types"] == "1,-1,1"
 
 
 # ---------------------------------------------------------------------------
@@ -647,9 +698,17 @@ def test_top_list_uses_its_own_sort_columns():
 # ---------------------------------------------------------------------------
 
 
-def test_multi_page_fetch_accumulates_all_rows_in_page_order():
-    rows_p1 = [_top_inst_raw_row(OPERATEDEPT_NAME=f"dept-{i}") for i in range(2)]
-    rows_p2 = [_top_inst_raw_row(OPERATEDEPT_NAME=f"dept-{i}") for i in range(2, 3)]
+def test_multi_page_fetch_accumulates_all_rows_in_page_order(monkeypatch):
+    """2026-09-25 刀 A: 真实 page_size (YAML 里是 500) 太大, 测多页累积要么造
+    500+ 行夹具要么把 page_size_for 换成小值 —— 后者更便宜, 且仍然走真引擎
+    (``fetch_pages_strict``), 只是喂给它一个小 page_size。"""
+    monkeypatch.setattr(
+        "services.data_sources.sources.miaoxiang.page_size_for", lambda _name: 2
+    )
+    rows_p1 = [
+        _top_inst_raw_row(OPERATEDEPT_NAME=f"dept-{i}", RANK=i + 1) for i in range(2)
+    ]
+    rows_p2 = [_top_inst_raw_row(OPERATEDEPT_NAME="dept-2", RANK=3)]
     client = _FakeClient(
         [
             {"pages": 2, "count": 3, "data": rows_p1},
@@ -665,17 +724,15 @@ def test_multi_page_fetch_accumulates_all_rows_in_page_order():
 
 
 def test_pagination_stops_on_empty_page_even_if_pages_field_lies():
-    """A page returning no data must stop the loop regardless of `pages`."""
-    client = _FakeClient(
-        [
-            {"pages": 5, "count": 1, "data": [_top_inst_raw_row()]},
-            {"pages": 5, "count": 1, "data": []},
-        ]
-    )
+    """2026-09-25 刀 A: 旧版无论 `pages` 声明什么, 一遇到空页就静默停止翻页。
+    严格引擎的答案相反 —— `pages` 与 `count`/`page_size` 对不上本身就是
+    `pages_count_inconsistent`, 立即报错而不是悄悄走完 (旧行为正是本刀要
+    消灭的"总数对/页数骗人也不报错"那一类)。"""
+    client = _FakeClient([{"pages": 5, "count": 1, "data": [_top_inst_raw_row()]}])
     src = MiaoxiangSource(client=client)
-    rows = src.fetch_raw("top_inst", trade_date="20260825")
-    assert len(rows) == 1
-    assert len(client.calls) == 2
+    with pytest.raises(MiaoxiangTruncationError, match="pages_count_inconsistent"):
+        src.fetch_raw("top_inst", trade_date="20260825")
+    assert len(client.calls) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -685,8 +742,13 @@ def test_pagination_stops_on_empty_page_even_if_pages_field_lies():
 
 def test_empty_day_returns_empty_list_without_error():
     """e.g. a day with zero institutional-seat top_inst rows (allow_empty_batch
-    in the registry today) — an empty result is real signal, not a failure."""
-    client = _FakeClient([{"pages": 0, "count": 0, "data": []}])
+    in the registry today) — an empty result is real signal, not a failure.
+
+    2026-09-25 刀 A: 真空必须用东财自己的 9201 码表达 (§1.1), 不能再用
+    ``code=0, count=0`` 这种自造形状 —— 后者在严格引擎下本身就是一处页长/
+    页数矛盾 (第 1 页既不是「唯一页」也没有 page_size 行), 会被判成
+    ``short_page``/``pages_count_inconsistent`` 而不是"合法空"。"""
+    client = _FakeClient([{"pages": 0, "count": 0, "data": [], "code": 9201}])
     src = MiaoxiangSource(client=client)
     rows = src.fetch_raw("top_inst", trade_date="20260825")
     assert rows == []
@@ -699,18 +761,25 @@ def test_empty_day_returns_empty_list_without_error():
 
 def test_truncated_landing_raises_instead_of_returning_partial_rows():
     """Vendor declares count=2000 but reports pages=1 (landed only 100) — a
-    silent-truncation shape this adapter must not swallow."""
+    silent-truncation shape this adapter must not swallow. Under the strict
+    engine `pages=1` failing to equal `ceil(2000/page_size)` is caught before
+    any row-count comparison even runs (`pages_count_inconsistent`)."""
     client = _FakeClient(
         [{"pages": 1, "count": 2000, "data": [_top_inst_raw_row() for _ in range(100)]}]
     )
     src = MiaoxiangSource(client=client)
-    with pytest.raises(MiaoxiangTruncationError, match="truncated"):
+    with pytest.raises(MiaoxiangTruncationError, match="pages_count_inconsistent"):
         src.fetch_raw("top_inst", trade_date="20260825")
 
 
 def test_runaway_pagination_hits_max_pages_and_fails_closed():
-    """`pages` never catches up to the current page and data never empties —
-    must not spin forever; must fail loud, not return a partial silent list."""
+    """2026-09-25 刀 A: a report that would need more pages than this
+    adapter's own defensive ``MAX_PAGES`` cap must fail immediately after
+    page 1 (``page_cap_exceeded``) rather than looping ``MAX_PAGES`` times —
+    the strict engine never issues page 2 once page 1's declared ``pages``
+    already exceeds the cap it was given."""
+    page_size = page_size_for(REPORT_TOP_INST)
+    declared_pages = MAX_PAGES + 5
 
     class _NeverEndingClient:
         def __init__(self):
@@ -718,13 +787,20 @@ def test_runaway_pagination_hits_max_pages_and_fails_closed():
 
         def get_v1(self, report_name, **kwargs):
             self.calls += 1
-            return {"pages": 999, "count": 999999, "data": [_top_inst_raw_row()]}
+            return {
+                "code": 0,
+                "message": "ok",
+                "success": True,
+                "pages": declared_pages,
+                "count": declared_pages * page_size,
+                "data": [_top_inst_raw_row()],
+            }
 
     client = _NeverEndingClient()
     src = MiaoxiangSource(client=client)
-    with pytest.raises(MiaoxiangTruncationError, match="exceeded"):
+    with pytest.raises(MiaoxiangTruncationError, match="page_cap_exceeded"):
         src.fetch_raw("top_inst", trade_date="20260825")
-    assert client.calls == MAX_PAGES
+    assert client.calls == 1
 
 
 # ---------------------------------------------------------------------------
@@ -733,24 +809,20 @@ def test_runaway_pagination_hits_max_pages_and_fails_closed():
 
 
 def test_fetch_report_day_rows_with_zero_count_raises():
-    """assess_paginated_land's `expected_count > 0` gate is a no-op when count
-    is 0/missing (pagination_integrity.py:40-49) — a dedicated check must catch
-    a non-empty land riding on an untrustworthy zero count."""
+    """2026-09-25 刀 A: count=0 但落地非空这类形态现在由引擎的通用原语捕获
+    (这里具体触发的是 pages_count_inconsistent: ceil(0/page_size)=0 != 1),
+    不再需要 ``_fetch_report_day`` 自己写的手工守卫。"""
     client = _FakeClient([{"pages": 1, "count": 0, "data": [_top_inst_raw_row()]}])
     src = MiaoxiangSource(client=client)
     with pytest.raises(MiaoxiangTruncationError):
-        src._fetch_report_day(
-            REPORT_TOP_INST, "20260825", sort_columns="SECUCODE", sort_types="1"
-        )
+        src._fetch_report_day(REPORT_TOP_INST, "20260825")
 
 
 def test_fetch_report_day_empty_zero_count_ok():
-    """A genuinely empty day (0 rows, count 0) is not truncation."""
-    client = _FakeClient([{"pages": 0, "count": 0, "data": []}])
+    """A genuinely empty day (0 rows, count 0, code=9201) is not truncation."""
+    client = _FakeClient([{"pages": 0, "count": 0, "data": [], "code": 9201}])
     src = MiaoxiangSource(client=client)
-    rows = src._fetch_report_day(
-        REPORT_TOP_INST, "20260825", sort_columns="SECUCODE", sort_types="1"
-    )
+    rows = src._fetch_report_day(REPORT_TOP_INST, "20260825")
     assert rows == []
 
 
@@ -758,9 +830,7 @@ def test_fetch_report_day_count_matches_ok():
     row = _top_inst_raw_row()
     client = _FakeClient([{"pages": 1, "count": 1, "data": [row]}])
     src = MiaoxiangSource(client=client)
-    rows = src._fetch_report_day(
-        REPORT_TOP_INST, "20260825", sort_columns="SECUCODE", sort_types="1"
-    )
+    rows = src._fetch_report_day(REPORT_TOP_INST, "20260825")
     assert rows == [row]
 
 
@@ -786,7 +856,17 @@ def test_client_factory_used_lazily_when_no_client_given():
     built = []
 
     def factory():
-        fake = _FakeClient([{"pages": 1, "count": 1, "data": [_top_inst_raw_row()]}])
+        # Two canned pages: the test calls fetch_raw twice on the same lazily
+        # -built client, and the strict engine (unlike the old lenient loop)
+        # treats _FakeClient's "ran out of canned pages" fallback
+        # (pages=1,count=0) as a genuine pages/count mismatch rather than an
+        # implicit empty result.
+        fake = _FakeClient(
+            [
+                {"pages": 1, "count": 1, "data": [_top_inst_raw_row()]},
+                {"pages": 1, "count": 1, "data": [_top_inst_raw_row()]},
+            ]
+        )
         built.append(fake)
         return fake
 
@@ -865,22 +945,33 @@ def test_block_trade_fetch_exclusion_keeps_truncation_check():
     """Truncation must be judged against the rows landed *before* vendor_scope
     exclusion, not after.
 
-    Page 1 (of 1) declares count=1000 and lands exactly 1000 rows in one go —
-    600 EQB + 400 EQA, every row individually valid. Judged against the
-    pre-exclusion land (1000 landed == 1000 expected), this is not truncated
-    at all. Only if vendor_scope exclusion were wrongly moved *before* the
-    truncation check — so the check saw just the 400 surviving EQA rows
-    against a still-1000 expected count — would ``assess_paginated_land`` see
-    400<1000 and fail closed with ``MiaoxiangTruncationError`` (see the
-    companion fact in ``test_truncation_tolerance_flags_post_exclusion_count``
-    below: 400 landed against 1000 expected *is* judged truncated on its own,
-    so this test would go red under that ordering bug)."""
+    2026-09-25 刀 A: under the strict engine, "1 页 1000 行" is itself a
+    ``short_page``/页长错误 (page_size=500 每页至多 500 行), so that shape can
+    no longer isolate "排除必须在完整性判定之后" — it would go red for the
+    wrong reason before exclusion ever runs (memory 形态二: 门问的问题≠它想
+    守的东西). Reshaped to 2 pages × 500 rows (count=1000, mathematically
+    consistent with page_size) — 600 EQB + 400 EQA split across the two
+    pages, every row individually valid. Judged against the pre-exclusion
+    land (1000 landed == 1000 expected, every page exactly page_size), this
+    is not truncated at all. Only if vendor_scope exclusion were wrongly
+    moved *before* the truncation check — so the check saw just the 400
+    surviving EQA rows against a still-1000 expected count — would the
+    engine see 400 raw rows against count=1000 and fail closed with
+    ``raw_rows_ne_count`` (companion fact:
+    ``test_truncation_tolerance_flags_post_exclusion_count`` below)."""
     eqb_rows = [
         _block_trade_raw_row(SECUCODE="900926.SH", SECURITY_TYPE="EQB", TRADE_UNIT="4")
         for _ in range(600)
     ]
     eqa_rows = [_block_trade_raw_row() for _ in range(400)]
-    client = _FakeClient([{"pages": 1, "count": 1000, "data": eqb_rows + eqa_rows}])
+    all_rows = eqb_rows + eqa_rows
+    page_size = page_size_for(REPORT_BLOCK_TRADE)
+    client = _FakeClient(
+        [
+            {"pages": 2, "count": 1000, "data": all_rows[:page_size]},
+            {"pages": 2, "count": 1000, "data": all_rows[page_size:1000]},
+        ]
+    )
     src = MiaoxiangSource(client=client)
 
     rows = src.fetch_raw("block_trade", trade_date="20260827")
@@ -891,19 +982,31 @@ def test_block_trade_fetch_exclusion_keeps_truncation_check():
 
 def test_truncation_tolerance_flags_post_exclusion_count():
     """Standalone fact the ordering test above depends on: judged in
-    isolation, 400 landed rows against a declared count of 1000 *is*
-    truncated under the pagination-integrity tolerance (500-row floor is
-    well below the 600-row shortfall here). This is what makes the previous
-    test able to tell the two orderings apart — if vendor_scope exclusion
-    ran before the truncation check instead of after it, that test's landed
-    count would drop to exactly this 400-vs-1000 shape and raise
-    MiaoxiangTruncationError."""
-    verdict = assess_paginated_land(
-        expected_count=1000,
-        landed_rows=400,
-        page_size=PAGE_SIZE,
+    isolation via the strict engine directly (bypassing the adapter), 400
+    raw rows against a declared ``count`` of 1000 *is* flagged
+    (``raw_rows_ne_count``) even with a generous per-page tolerance — this is
+    what makes the previous test able to tell the two orderings apart. Under
+    ``row_tolerance_rows=0`` (production default for every registered
+    report) this reason is provably unreachable on its own — a page-length
+    violation always fires first (page length exact ⟺ total exact, spec
+    §3.2) — so this fact is demonstrated with an explicit non-zero tolerance
+    that "forgives" individual short pages yet still catches the aggregate
+    shortfall, the same mechanism that would catch "exclusion ran before the
+    truncation check" if it ever regressed."""
+    policy = replace(
+        policy_for(REPORT_BLOCK_TRADE),
+        identity_columns=(),
+        row_tolerance_rows=100,
     )
-    assert verdict.truncated is True
+    client = _FakeClient(
+        [
+            {"pages": 2, "count": 1000, "data": [_block_trade_raw_row() for _ in range(300)]},
+            {"pages": 2, "count": 1000, "data": [_block_trade_raw_row() for _ in range(100)]},
+        ]
+    )
+    with pytest.raises(PaginationIntegrityError) as excinfo:
+        fetch_pages_strict(client, REPORT_BLOCK_TRADE, page_size=500, policy=policy)
+    assert excinfo.value.reason == "raw_rows_ne_count"
 
 
 # ---------------------------------------------------------------------------
@@ -932,26 +1035,34 @@ def test_top_inst_fetch_excludes_b_share_by_secucode_before_clean(caplog):
 
 def test_top_inst_fetch_exclusion_keeps_truncation_check():
     """Same ordering guarantee as ``test_block_trade_fetch_exclusion_keeps_
-    truncation_check`` (L864), scaled the same way: at count=2/landed=2 the
-    500-row ``row_tolerance_min`` floor (pagination_integrity.py:35) can
-    never fire regardless of ordering, so that shape cannot tell the two
-    orderings apart. Page 1 (of 1) declares count=1000 and lands exactly
-    1000 rows — 600 code_exclude-matched B股 (SECUCODE 900xxx.SH) + 400
-    A股, every row individually valid. Judged against the pre-exclusion
-    land (1000 landed == 1000 expected), this is not truncated at all. Only
-    if code_exclude were wrongly moved *before* the truncation check — so
-    the check saw just the 400 surviving A股 rows against a still-1000
-    expected count — would ``assess_paginated_land`` see 400<1000 and fail
-    closed with ``MiaoxiangTruncationError`` (see
-    ``test_truncation_tolerance_flags_post_exclusion_count`` above: 400
-    landed against 1000 expected *is* judged truncated on its own, so this
-    test would go red under that ordering bug)."""
+    truncation_check`` above, reshaped the same way for the strict engine:
+    2 pages × page_size=500 (count=1000) instead of "1 页 1000 行" (which is
+    itself a page-length violation under the strict engine, unrelated to
+    exclusion ordering). top_inst's YAML policy has ``identity_columns=
+    [SECUCODE, EXPLANATION, TRADE_DIRECTION, RANK]`` with ``duplicates:
+    error`` — every row here shares the same (SECUCODE, EXPLANATION,
+    TRADE_DIRECTION) within its group, so ``RANK`` must vary per row or the
+    identity check (not the truncation check this test targets) would fire
+    first. 600 code_exclude-matched B股 (SECUCODE 900xxx.SH) + 400 A股,
+    every row individually valid, distinct RANK throughout. Judged against
+    the pre-exclusion land (1000 landed == 1000 expected, every page exactly
+    page_size), this is not truncated at all. Only if code_exclude were
+    wrongly moved *before* the truncation check — so the check saw just the
+    400 surviving A股 rows against a still-1000 expected count — would the
+    engine see 400 raw rows against count=1000 and fail closed."""
     b_rows = [
-        _top_inst_raw_row(SECUCODE="900925.SH", SECURITY_CODE="900925")
-        for _ in range(600)
+        _top_inst_raw_row(SECUCODE="900925.SH", SECURITY_CODE="900925", RANK=i)
+        for i in range(1, 601)
     ]
-    a_rows = [_top_inst_raw_row() for _ in range(400)]
-    client = _FakeClient([{"pages": 1, "count": 1000, "data": b_rows + a_rows}])
+    a_rows = [_top_inst_raw_row(RANK=i) for i in range(1, 401)]
+    all_rows = b_rows + a_rows
+    page_size = page_size_for(REPORT_TOP_INST)
+    client = _FakeClient(
+        [
+            {"pages": 2, "count": 1000, "data": all_rows[:page_size]},
+            {"pages": 2, "count": 1000, "data": all_rows[page_size:1000]},
+        ]
+    )
     src = MiaoxiangSource(client=client)
 
     rows = src.fetch_raw("top_inst", trade_date="20260825")

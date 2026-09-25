@@ -53,6 +53,47 @@ backend/scripts/{ingest_holders_raw,recon_assignment_gaps,recon_fina_margin}.py
 语义不变；只是从「吞掉且无痕」改成「吞掉并记一行 warning」。`pagination.py` 因此新增
 了模块级 logger。
 
+**2026-09-25 刀 A (aif10 取数纪律, spec_holders_pagination.md, 判据定稿 Fable 5.1) —
+5 处行为改动, 上游没有对应 commit**（十大流通股东日更翻页漏行 + 妙想「真空」与
+「被挡/坏了」分离, 判据: 坐实报告实测按公告日整市场翻页时, 排序不唯一的报表并列
+组会跨页漂移, `landed_rows==count` 全程不变但内容已经丢行/重复 —— 旧版 truncation
+判据 (`assess_pagination_land`) 只比总数, 看不见这种"总数对但内容错"的丢法）:
+
+- **`client.py`**: 东财顶层 `code` 改闭合枚举 `KNOWN_RESPONSE_CODES={0,9201,9501}`；
+  新增 4 个异常类 (`AIF10BlockedError`/`AIF10NonJsonError`/`AIF10ApiError`/
+  `AIF10UnknownCodeError`, 都是 `AIF10Error` 直接子类); `_request_json` 判定顺序
+  写死 (403/429 立即抛不重试、5xx 沿用瞬态重试、400-499 立即抛、其它解析失败抛
+  `AIF10NonJsonError` 而不是并入 5xx 重试); `get_v1` 只有 `code∈{0,9201}` 才以
+  返回值离开客户端, 9501/未知码一律抛出 —— 不经引擎的调用方 (`_provider_
+  newest_update_date`/`probe_period_count`/`_probe_v1`) 因此自动 fail-closed,
+  不再把结构性错误折叠成 `count=0`。
+- **`pagination.py`**: 新增严格翻页引擎 (`PaginationPolicy`/`PageLedger`/
+  `PaginationIntegrityError`/`fetch_pages_strict`) —— 每页精确 `page_size`、
+  末页精确余数、整行重复与身份键冲突按策略处置, 三种"供应商当天还在进行"的
+  漂移形态 (`empty_code_mid_fetch`/`count_drift`/`pages_drift`) 允许整日重取
+  `policy.drift_refetch` 次, 其它 8 种 reason 从不重取。旧版 `assess_pagination_
+  land` 启发式函数与它的 `row_tolerance_ratio=0.002`/`row_tolerance_min=500`
+  字面量整个删除 (判定已按策略做, 不留没有报表登记依据的缺省容差)。
+- **`batch.py`**: `fetch_all_pages`/`fetch_all_pages_sharded` 改抛
+  `PaginationIntegrityError` (旧版"截断只打一行 warning"的分支删除); `fetch_pages_
+  for_filters` 改为薄壳调 `fetch_pages_strict`, 捕获后仍返回 `(已取到的行,
+  PaginationLandResult)` —— 保住两个既有内部调用方 (`ingest_holders_raw.py`/
+  `fetch_all_pages_sharded`) "拿到 truncated 信号自己处置"的契约。刀 B 需要留证据
+  的调用方直接调 `pagination.fetch_pages_strict` 拿 `(rows, PageLedger)`，本刀不
+  为它预留额外的 `batch.py` 入口（施工规格附录第 3 条）。
+- **`registry.py`**: 四条报表的 `sort_columns`/`sort_types` 改成实测唯一排序
+  (`RPT_F10_EH_FREEHOLDERS`/`RPT_F10_EH_HOLDERS` 加 `SECURITY_CODE,HOLDER_NAME`;
+  `RPT_DAILYBILLBOARD_DETAILSNEW` 加 `EXPLANATION`; `RPT_DATA_BLOCKTRADE` 改成
+  与 `aif10_pagination.yaml` 一致的 5 列, 生产上该表适配器读 YAML 不读
+  registry, 这一改在生产是惰性的, 只为不给「registry 非空时必须与 YAML 相等」
+  这条测试开豁免)。
+- **`__init__.py`**: 只加导出 (上面新增的异常类/引擎符号)。
+
+新的判据参数进 `backend/config/aif10_pagination.yaml` (typed, fail-closed
+loader `backend/services/data_sources/aif10_pagination_rules.py`), 不在这里
+重复列; 供应商协议常量 (`KNOWN_RESPONSE_CODES`、`DEFAULT_MAX_PAGES_PER_QUERY=100`、
+`PaginationIntegrityError.REASONS`) 留在代码, 不进 YAML。
+
 **2 处白星符号（U+2B50）→ `[重点]`**（`registry.py` 的 `subname`）
 本项目全局禁 emoji（no_emoji 门）。`subname` 只在 `orm/ddl.py` 生成一行 SQL 注释时用到，
 不参与任何匹配，改字面量无行为影响；上游拿它标「重点报表」的语义用 `[重点]` 保留。

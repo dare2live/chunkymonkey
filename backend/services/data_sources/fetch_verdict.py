@@ -174,16 +174,60 @@ def _classify_fuyao(exc: BaseException) -> FailureKind:
 
 
 def _classify_miaoxiang(exc: BaseException) -> FailureKind:
+    """判定顺序写死 (2026-09-25 刀 A, spec_holders_pagination.md §3.6):
+
+    ① ``AIF10BlockedError`` → HARD_WALL；
+    ② ``AIF10NonJsonError``/``AIF10ApiError``/``AIF10UnknownCodeError``/
+       ``PaginationIntegrityError``/``MiaoxiangMissingFieldError``/
+       ``MiaoxiangTruncationError`` → STRUCTURAL；
+    ③ ``TimeoutError``/``ConnectionError``/``OSError`` → TRANSIENT；
+    ④ 其它 (含裸 ``AIF10Error``: 5xx 耗尽、其它 4xx) → UNKNOWN (不变)。
+    ①② 必须在 ④ 之前判 —— 它们全部是 ``AIF10Error`` 的子类, 顺序颠倒会被
+    ``isinstance`` 落进更宽的分支 (子类被父类吞成 UNKNOWN)。
+
+    这三类客户端异常 (``AIF10BlockedError`` 等) 不一定经
+    ``MiaoxiangTruncationError`` 包一层才到这里 —— ``_fetch_report_day`` 只捕
+    ``PaginationIntegrityError``, 客户端层的异常 (403/429、非 JSON、9501、未知码)
+    原样从 ``fetch_pages_strict`` 冒出, 直到 ``fetch_raw`` 都不会被吞, 所以这里
+    必须能识别它们本身, 不能假设永远是包装过的 ``MiaoxiangTruncationError``。
+
+    过渡行为 (§3.6): HARD_WALL 经 ``_fetch_with_retry`` 变成 ``QuotaExhaustedError``
+    停整条 drain (``sync_runner.py`` "剩 N 域不跑"); top_list/top_inst 之后还排着
+    约 10 个 tushare 域。收窄到"按主机族熔断"是 summary.md 第 7 项 (fable),
+    本刀不做。403/429 仍选 HARD_WALL 的理由: 真被封时继续对同一主机发请求会加重
+    判定, 且停链是响的 (对照 09-18 那次 13 天静默); 是否维持由业主定
+    (§12.10, 改法是把这里的 ① 挪到 ② 的一行)。
+    """
+    from aif10_scraper.client import (
+        AIF10ApiError,
+        AIF10BlockedError,
+        AIF10NonJsonError,
+        AIF10UnknownCodeError,
+    )
+    from aif10_scraper.pagination import PaginationIntegrityError
     from services.data_sources.sources.miaoxiang import (
         MiaoxiangMissingFieldError,
         MiaoxiangTruncationError,
     )
 
-    if isinstance(exc, (MiaoxiangMissingFieldError, MiaoxiangTruncationError)):
+    if isinstance(exc, AIF10BlockedError):
+        return FailureKind.HARD_WALL
+    if isinstance(
+        exc,
+        (
+            AIF10NonJsonError,
+            AIF10ApiError,
+            AIF10UnknownCodeError,
+            PaginationIntegrityError,
+            MiaoxiangMissingFieldError,
+            MiaoxiangTruncationError,
+        ),
+    ):
         return FailureKind.STRUCTURAL
     if isinstance(exc, (TimeoutError, ConnectionError, OSError)):
         return FailureKind.TRANSIENT
-    # MiaoxiangSourceError 覆盖参数错与上游返回异常两种情况, 粒度不足以分档 → UNKNOWN。
+    # 裸 AIF10Error (5xx 耗尽、其它 4xx) 与 MiaoxiangSourceError (参数错/上游返回
+    # 异常两种情况, 粒度不足以分档) → UNKNOWN。
     return FailureKind.UNKNOWN
 
 

@@ -89,8 +89,10 @@ REPORTS: list[ReportSpec] = [
         key=("SECUCODE", "TRADE_DATE", "EXPLANATION"),
         date_field="TRADE_DATE",
         frequency="event",
-        sort_columns="SECURITY_CODE,TRADE_DATE",
-        sort_types="1,-1",
+        # 2026-09-25 P8 实测: (SECURITY_CODE,TRADE_DATE) 在同一 TRADE_DATE 下不唯一
+        # (同股多条上榜理由并列), 加 EXPLANATION 后唯一 (spec_holders_pagination.md §1.3)。
+        sort_columns="SECURITY_CODE,TRADE_DATE,EXPLANATION",
+        sort_types="1,-1,1",
         notes="个股龙虎榜每日明细; chunky lhb_client 实际使用",
     ),
     ReportSpec(
@@ -107,7 +109,12 @@ REPORTS: list[ReportSpec] = [
         key=("SECUCODE", "TRADE_DATE"),
         date_field="TRADE_DATE",
         frequency="event",
-        sort_columns="TRADE_DATE",
+        # 2026-09-25 修订 1 N2: 排序键改成与 aif10_pagination.yaml 一致的 5 列
+        # (生产上 block_trade 适配器读 YAML 不读 registry, 这一改在生产是惰性的;
+        # 改它只为让 L6「registry 非空时必须与 YAML 相等」对每张登记报表都成立,
+        # 不给 L6 开豁免 —— memory: 门的豁免作用域总比意图大)。
+        sort_columns="SECURITY_CODE,DEAL_PRICE,DEAL_VOLUME,BUYER_NAME,SELLER_NAME",
+        sort_types="1,1,1,1,1",
     ),
     ReportSpec(
         name="RPT_MARGIN_STATISTICS_STOCKS",
@@ -162,8 +169,11 @@ REPORTS: list[ReportSpec] = [
         key=("SECUCODE", "END_DATE", "HOLDER_RANK"),
         date_field="END_DATE",
         frequency="quarterly",
-        sort_columns="END_DATE,HOLDER_RANK",
-        sort_types="-1,1",
+        # 2026-09-25 刀 A: 旧排序 (END_DATE,HOLDER_RANK) 在同一 (期,名次) 下有几百只股
+        # 并列, 翻页时供应商内部顺序可漂移 (probe_holders_pagination.md §3.2 机制,
+        # 与 FREEHOLDERS 同缺陷排序键一并改)。加 SECURITY_CODE/HOLDER_NAME 后唯一。
+        sort_columns="END_DATE,SECURITY_CODE,HOLDER_RANK,HOLDER_NAME",
+        sort_types="-1,1,1,1",
     ),
     ReportSpec(
         name="RPT_F10_EH_FREEHOLDERS",
@@ -171,8 +181,13 @@ REPORTS: list[ReportSpec] = [
         key=("SECUCODE", "END_DATE", "HOLDER_RANK"),
         date_field="END_DATE",
         frequency="quarterly",
-        sort_columns="END_DATE,HOLDER_RANK",
-        sort_types="-1,1",
+        # 2026-09-25 刀 A: 坐实报告证明旧排序 (END_DATE,HOLDER_RANK) 按公告日整市场
+        # 翻页时, 同 (期,名次) 并列的几百只股顺序不稳定, 导致跨页重复/漏行 (08-28 丢
+        # 36.4%、04-30 丢 47.1%, 而 landed_rows==count 全程不变 —— 旧判据看不见)。
+        # 加 SECURITY_CODE + HOLDER_NAME 后唯一排序翻完 08-28 (15 页 7,366 行) /
+        # 04-30 (28 页 13,912 行) 各 0 组重复 (spec_holders_pagination.md §1.3/§6)。
+        sort_columns="END_DATE,SECURITY_CODE,HOLDER_RANK,HOLDER_NAME",
+        sort_types="-1,1,1,1",
         notes="项目主用 (流通股口径 alpha)",
     ),
     ReportSpec(
