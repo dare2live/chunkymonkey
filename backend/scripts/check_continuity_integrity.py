@@ -17,8 +17,7 @@ block_trade 20250917 中间空洞) + 根因4 (SLA 只测"最近动过"不测"该
                     (例: 非港股假期的 hsgt 空洞; 「日历外」= 豁免日历外的真缺).
   不停牌股无成交、非交易日无 K 线 ≠ Continuity FAIL — 那些本就不在 expected。
 
-九类检测 (--only 单跑; calendar_today_consistency 不在 --only 枚举内, 只在 run_checks 里对 SSE
-today 记录单跑一次, 结果并入 calendar_horizon 桶):
+九类检测 (--only 单跑; 全部类目均在 --only 枚举内):
   calendar_gaps      日历缺日 (by_trade_date/by_date_range 域): data_start→最新应有交易日逐日对
                      dim_trading_calendar。中间空洞 = FAIL (间歇空响应指纹); 尾部缺日超 SLA = FAIL,
                      未超 = OK。known_empty_days 墓碑排除; gap_tolerance: annotate 降 WARN。
@@ -46,12 +45,18 @@ today 记录单跑一次, 结果并入 calendar_horizon 桶):
                      域逐日行数比对, 偏差 > tolerance = FAIL; 行数相符再验标的集合是否相符 (防
                      "少一只+多一只"互相抵消掩盖真实缺口)。只在 verified_since 之后强制 (判据
                      自身需先被证明恒成立, 早于该日期的差额可能是 vendor 历史覆盖差异非我方缺口)。
-  calendar_horizon   dim_trading_calendar 全局单跑 (非按域): today 之后已登记交易日 < 60 = FAIL
-                     (2026-07-06 从孤儿 data_quality.py 迁入真正接进日常跑批, 语义与 static_staleness
-                     互补——那个测"多久没刷新"往回看, 这个测"还能撑多远"往前看)。
-  calendar_today_consistency  raw_tushare_trade_cal 必须登记 today 的唯一 SSE 开闭市记录, 且
-                     raw 的开闭市状态须与 dim_trading_calendar"只存交易日"的语义一致 (raw→dim
-                     传导断链探针); 结果并入 calendar_horizon 结果桶, 非独立 --only 类目。
+  calendar_horizon   dim_trading_calendar 全局单跑 (非按域): 交易日集合 == 规则推导
+                     [serve_projection_floor, 契约今年年底] 集合相等 (缺/多都算 FAIL, 不比
+                     MAX 不比计数); 今年未在 market_holidays.yaml 配置 = FAIL。阈值进
+                     backend/config/calendar_gate.yaml (backend/services/calendar_gate_rules.py
+                     是唯一定义点)。结果桶名是 preflight/sync 前置门钉住的接口, 不是描述
+                     (2026-09-25 cut_calendar_horizon: 从"today 之后剩余交易日数"标量门换成
+                     集合相等判据——规则推导日历下"还能看多远"不再由供应商决定, 旧标量按构造
+                     每年 10 月归零, 不携带传导/配置信息, git log --grep cut_calendar_horizon)。
+  calendar_next_year 下一年节假日是否已按期录入 market_holidays.yaml, 全局单跑一次: 国务院
+                     办公厅历年 10 月下旬~12 月上旬公布次年安排, warn_from/fail_from 两个月日
+                     进 calendar_gate.yaml; FAIL 走 Step 2.98 degraded + ALERT flag 送达,
+                     不进 preflight 硬门 (硬门只问今年和当年, 见 calendar_horizon)。
 
 判据强度阶梯 (有真相源就用最强的, 没有再退; 44 个域的作者选判据时看这段, 不必读完全文猜):
   completeness_ref   — 与真相域逐日行数 + 标的集合双向对账。最强, 但需要同粒度真相源, 目前仅
@@ -143,7 +148,7 @@ def load_hk_northbound_closed_days(
 
 CHECK_IDS = ("calendar_gaps", "cross_section", "group_freshness",
              "declared_vs_actual", "static_staleness", "cross_section_full",
-             "completeness_ref", "calendar_horizon")
+             "completeness_ref", "calendar_horizon", "calendar_next_year")
 
 
 # ── registry 解析 ─────────────────────────────────────────────────────────
@@ -1300,58 +1305,192 @@ def check_static_staleness(conn, spec: dict, trading_days: list[str], latest_exp
                    f"MAX({probe_col})={mx} 落后 {lag} 交易日 (阈值 {threshold})")
 
 
-# ── 检测 6: 日历前瞻余量 (2026-07-06 从孤儿 data_quality.py 迁入, 真正接进日常跑批) ──
-# 阈值来源 (R1 根因4, 2026-07-03 原始设计): sync_registry.yaml trade_cal 注释 "检查 max(cal_date)
-# > today+30" 从未落码 (静默停摆模式下 watermark 门永绿); 60 交易日 ≈ 3 个月缓冲 — 覆盖 tushare
-# 年度日历发布节奏 (每年 Q4 发次年) + 人工响应期。与 static_staleness 语义互补而非重复:
-# static_staleness 测"多久没刷新"(往回看), 本检测测"已登记的日历还能撑多远"(往前看) ——
-# 即使日历"刚刷新过"也可能只覆盖到未来很浅, 静默限制任何"从今天起数 N 个未来交易日"的运算
-# (embargo/purge 窗口等) 悄悄少算而不报错。
-CALENDAR_HORIZON_MIN_TRADING_DAYS = 60
-_RAW_STATUS_UNCHECKED = object()
-
-
-def check_calendar_horizon(trading_days: list[str], today_iso: str) -> dict:
-    """dim_trading_calendar 里 today 之后仍登记的交易日数 < 60 = FAIL (raw→dim 传导断链
-    或 tushare 未发布次年日历); trading_days 复用 _load_calendar() 已加载的全量升序列表,
-    不重复查库。"""
-    spec = {"domain": "trade_cal", "db": "reference", "table": "dim_trading_calendar"}
-    today = _norm_day(today_iso)
-    normalized_days = sorted({_norm_day(day) for day in trading_days})
-    future_n = len(normalized_days) - bisect_right(normalized_days, today)
-    if future_n < CALENDAR_HORIZON_MIN_TRADING_DAYS:
-        return _result(
-            "calendar_horizon", spec, "fail",
-            f"today={today} 之后仅剩 {future_n} 个已登记交易日 (< {CALENDAR_HORIZON_MIN_TRADING_DAYS})",
-            "跑 services.calendar_builder.build_latest 并核 trade_cal sync (tushare 可能未发布次年日历)")
-    return _result(
-        "calendar_horizon", spec, "pass",
-        f"today={today} 之后剩 {future_n} 个已登记交易日 (阈值 {CALENDAR_HORIZON_MIN_TRADING_DAYS})")
-
-
-def check_calendar_today_consistency(
+# ── 检测 6/7: 日历服务投影完整性 + 下一年节假日录入期限 (2026-09-25 cut_calendar_horizon,
+# 替换旧的标量"日历前瞻余量"门) ──────────────────────────────────────────────
+# 日历换成规则推导 (calendar_rule) 后, "today 之后还剩 N 个已登记交易日" 不再携带任何关于
+# 传导或配置的信息——它是个按构造每年 10 月归零的量 (dim 按 calendar_generation.
+# required_through_rule=observed_year_end 只延伸到观测年年底, 与"供应商还能给多远"无关)。
+# 旧门想守的两件事 (git log -S CALENDAR_HORIZON, 1b94dd7a/fca5531b):
+#   A. 传导链活着 (dim 会随 raw 持续向未来延伸, 断链 = 余量只减不增)
+#   B. 供给侧提前量 (供应商发布次年日历的节奏 + 人的响应期, 保证前瞻运算不静默少算)
+# 规则推导下分别变成:
+#   A' dim_trading_calendar 的交易日集合 == 规则对 [serve_projection_floor, 观测年年底] 的
+#      推导集合 (集合相等, 不比 MAX 不比计数; check_calendar_serve_projection)
+#   A'' 窗口内任一年未在 market_holidays.yaml 配置 -> FAIL (derive_calendar_rows 的
+#      unconfirmed_years, 同一函数覆盖); 配了空列表 (占位误录) 也算未配置——
+#      derive_calendar_rows 自己的 unconfirmed 判据是 `set(holidays)`, 空集合会被当作
+#      "已配置", 这里额外并入判定, 不用幻影行做后续比较
+#   B' 下一年节假日未按期录入 -> WARN/FAIL (两个月日; check_calendar_next_year_entry); 它
+#      走 Step 2.98 degraded + ALERT flag 送达, 不进 preflight 硬门 (硬门只问今年和当年)
+# 参数进 backend/config/calendar_gate.yaml, backend/services/calendar_gate_rules.py 是唯一
+# 定义点, 代码里不留这些值的字面量副本。详见 sandbox/calendar_horizon_20260925/spec_calendar_horizon.md。
+def check_calendar_serve_projection(
     trading_days: list[str],
-    today_iso: str,
-    raw_today_is_open: int | None,
+    now: datetime | None,
+    *,
+    rules: Any,
+    contract: Any,
+    holidays: Any,
 ) -> dict:
-    """SSE raw 必须登记今天，且 raw 开闭市状态须与 dim 的“只存交易日”语义一致。"""
+    """替换旧 check_calendar_horizon。dim_trading_calendar 的交易日集合是否等于规则对
+    [rules.serve_projection_floor, contract.required_through(now)] 的推导集合。
+
+    rules/contract/holidays 由调用方 (run_checks) 注入, 各加载一次; 若某项加载失败, 调用方
+    把捕获到的异常实例原样传入而不是重新抛出——这里只需 isinstance(x, Exception) 判断并转成
+    对应 fail_* 结果, 不崩溃 (preflight 是子进程, crash 与 FAIL 效果一样但没有 JSON)。
+    """
     spec = {"domain": "trade_cal", "db": "reference", "table": "dim_trading_calendar"}
-    today = _norm_day(today_iso)
-    if raw_today_is_open not in (0, 1):
+    if isinstance(contract, Exception):
         return _result(
-            "calendar_horizon", spec, "fail",
-            f"raw_tushare_trade_cal 缺 today={today} 的唯一 SSE 开闭市记录",
-            "在同一 writer lease 下 full-refresh trade_cal，运行 calendar_builder 后重查")
-    dim_has_today = today in {_norm_day(day) for day in trading_days}
-    expected_dim = bool(raw_today_is_open)
-    if dim_has_today != expected_dim:
+            "calendar_horizon", spec, "fail_contract_unavailable",
+            f"注册表 trade_cal 契约不可用: {str(contract)[:200]}",
+            "核对 sync_registry.yaml trade_cal 条目与 calendar_contract 期望值是否漂移")
+    if isinstance(holidays, Exception):
         return _result(
-            "calendar_horizon", spec, "fail",
-            f"today={today} raw_is_open={raw_today_is_open} 但 dim_has_today={int(dim_has_today)}",
-            "运行 services.calendar_builder.build_latest 修复 raw→dim 传导后重查")
+            "calendar_horizon", spec, "fail_rule_config_invalid",
+            f"节假日配置不可读: {str(holidays)[:200]}",
+            "核对 backend/config/market_holidays.yaml 格式")
+    if isinstance(rules, Exception):
+        return _result(
+            "calendar_horizon", spec, "fail_rule_config_invalid",
+            f"calendar_gate.yaml 不可读: {str(rules)[:200]}",
+            "核对 backend/config/calendar_gate.yaml 格式")
+
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo(contract.timezone)
+    effective_now = now if now is not None else datetime.now(tz)
+    today = effective_now.astimezone(tz).date()
+    year_end = contract.required_through(effective_now)
+    floor = rules.serve_projection_floor
+    today_compact = today.strftime("%Y%m%d")
+    floor_compact = floor.strftime("%Y%m%d")
+    year_end_compact = year_end.strftime("%Y%m%d")
+    if floor > year_end:
+        return _result(
+            "calendar_horizon", spec, "fail_rule_config_invalid",
+            f"serve_projection_floor={floor_compact} > 观测年年底={year_end_compact}, 配置自相矛盾",
+            "核对 backend/config/calendar_gate.yaml 的 serve_projection_floor")
+
+    from services.data_sources.sources.calendar_rule import derive_calendar_rows
+
+    rows, unconfirmed = derive_calendar_rows(floor, year_end, holidays)
+    # derive_calendar_rows 的 unconfirmed 只看 `set(holidays)` —— 一个年份哪怕配了空列表
+    # (占位条目, 如 market_holidays.yaml 写 "'2027':" 后面只有注释) 也算"已配置", 会让该年
+    # 全按周末规则推导, 产出约 19 个幻影开市日却不进 unconfirmed (CalendarRuleUnconfirmedYearError
+    # 文档串描述的"幻影日满足门"那一型)。check_calendar_next_year_entry (B') 已经把空列表当
+    # "未配置" (`len(holidays[year]) > 0`); 这里补齐同一判据, 不用幻影行做后续集合比较。
+    # 范围只到 [max(floor.year, today.year), year_end.year] ——不是 [floor.year, year_end.year]
+    # (2026-09-26 blocking 复审: 旧写法从 floor.year 起算, 靠"当前 floor 恰好是 2005, 1990
+    # 天然在窗口外"这件事苟活; calendar_gate.yaml:6 明写"若将来把 dim 回填到 1990, 改这里",
+    # 一旦 floor 改成 19901219, 旧写法会把 market_holidays.yaml 文档承认的合法空表 '1990': []
+    # 也判成误录, 门永远 fail_year_unconfirmed 且 preflight 自修无法清掉它)。今年及未来年份
+    # 的空表才是可疑占位: 现代中国法定节假日安排从无一年为零; 早于今年的空表 (目前唯一已知
+    # 的 1990) 是人工核对供应商历史日历后确认的既成事实, 不该被这条误录守卫回溯重判。
+    misrecorded_empty = sorted(
+        y for y in range(max(floor.year, today.year), year_end.year + 1)
+        if y in holidays and len(holidays[y]) == 0
+    )
+    unconfirmed_or_misrecorded = sorted(set(unconfirmed) | set(misrecorded_empty))
+    if unconfirmed_or_misrecorded:
+        years = ", ".join(str(y) for y in unconfirmed_or_misrecorded)
+        newest = unconfirmed_or_misrecorded[-1]
+        return _result(
+            "calendar_horizon", spec, "fail_year_unconfirmed",
+            f"节假日未配置年份: {years}",
+            f"market_holidays.yaml 加 '{newest}' 条目 (只列工作日中休市的日子, 调休补班"
+            "周末不开市不用列), 然后 `chunkyctl sync --domain trade_cal` "
+            "(或等下一次日更 preflight 自修)")
+
+    derived = {row["cal_date"] for row in rows if row["is_open"] == "1"}
+    dim = set(trading_days)
+    missing = derived - dim
+    extra = dim - derived
+    if not missing and not extra:
+        return _result(
+            "calendar_horizon", spec, "pass",
+            f"dim == 规则推导 [{floor_compact},{year_end_compact}] 共 {len(derived)} 个交易日, "
+            f"today={today_compact}")
+
+    first_missing = min(missing) if missing else None
+    last_missing = max(missing) if missing else None
+    first_extra = min(extra) if extra else None
+    detail = (
+        f"missing={len(missing)} extra={len(extra)} "
+        f"first_missing={first_missing or '-'} last_missing={last_missing or '-'} "
+        f"first_extra={first_extra or '-'} window=[{floor_compact},{year_end_compact}] "
+        f"today={today_compact}")
+    if not extra and missing and min(missing) > max(dim):
+        fix_hint = (
+            f"dim 未延伸到 {year_end_compact}: `chunkyctl sync --domain trade_cal` 发布 "
+            "observed_year_end 代际后 build_latest (日更 Step 2.96); 1 月首次日更 preflight "
+            "会自动做这一步")
+    else:
+        fix_hint = (
+            "dim 与规则不一致: 核对 market_holidays.yaml 改动是否已重发布代际 / dim 是否被"
+            "改写; 重发布代际后 build_latest")
+    return _result("calendar_horizon", spec, "fail_serve_projection_drift", detail, fix_hint)
+
+
+def check_calendar_next_year_entry(
+    now: datetime | None,
+    *,
+    rules: Any,
+    contract: Any,
+    holidays: Any,
+) -> dict:
+    """新增: 下一年节假日是否已按期录入 market_holidays.yaml (替换旧 check_calendar_today_consistency
+    那条读已停更 legacy raw 表的传导断链探针)。FAIL 走 Step 2.98 degraded + ALERT flag
+    送达, 不进 preflight 硬门 (run_checks 里 --only calendar_horizon 与本检测分离, 见 §7.4)。"""
+    spec = {"domain": "trade_cal", "db": "reference", "table": "dim_trading_calendar"}
+    if isinstance(contract, Exception):
+        return _result(
+            "calendar_next_year", spec, "fail_contract_unavailable",
+            f"注册表 trade_cal 契约不可用: {str(contract)[:200]}",
+            "核对 sync_registry.yaml trade_cal 条目与 calendar_contract 期望值是否漂移")
+    if isinstance(holidays, Exception):
+        return _result(
+            "calendar_next_year", spec, "fail_rule_config_invalid",
+            f"节假日配置不可读: {str(holidays)[:200]}",
+            "核对 backend/config/market_holidays.yaml 格式")
+    if isinstance(rules, Exception):
+        return _result(
+            "calendar_next_year", spec, "fail_rule_config_invalid",
+            f"calendar_gate.yaml 不可读: {str(rules)[:200]}",
+            "核对 backend/config/calendar_gate.yaml 格式")
+
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo(contract.timezone)
+    effective_now = now if now is not None else datetime.now(tz)
+    today = effective_now.astimezone(tz).date()
+    next_year = today.year + 1
+    configured = next_year in holidays and len(holidays[next_year]) > 0
+    warn_from = rules.next_year_warn_from
+    fail_from = rules.next_year_fail_from
+    fix_hint = (
+        f"国务院办公厅《关于 {next_year} 年部分节假日安排的通知》(历年 10-25 ~ 12-08 发布) "
+        f"公布后, 在 market_holidays.yaml 加 '{next_year}' 条目; 交易所休市通知 (12 月下旬) "
+        "发布后复核; 无需重发布代际")
+    if configured:
+        return _result(
+            "calendar_next_year", spec, "pass",
+            f"{next_year} 已配置 {len(holidays[next_year])} 条节假日")
+    today_md = (today.month, today.day)
+    if today_md >= fail_from:
+        return _result(
+            "calendar_next_year", spec, "fail_next_year_unconfigured",
+            f"{next_year} 未配置, 已过 fail_from={fail_from[0]:02d}-{fail_from[1]:02d}",
+            fix_hint)
+    if today_md >= warn_from:
+        return _result(
+            "calendar_next_year", spec, "warn_next_year_unconfigured",
+            f"{next_year} 未配置, 已过 warn_from={warn_from[0]:02d}-{warn_from[1]:02d}",
+            fix_hint)
     return _result(
-        "calendar_horizon", spec, "pass",
-        f"today={today} raw_is_open={raw_today_is_open} 与 dim 一致")
+        "calendar_next_year", spec, "pass",
+        f"{next_year} 未配置, 期限 warn {warn_from[0]:02d}-{warn_from[1]:02d} / "
+        f"fail {fail_from[0]:02d}-{fail_from[1]:02d}")
 
 
 # ── 编排 ─────────────────────────────────────────────────────────────────
@@ -1367,9 +1506,11 @@ def run_checks(
     row_dip_ratio: float = ROW_DIP_RATIO_DEFAULT,
     today: str | None = None,
     strict: bool = False,
-    raw_today_is_open: int | None | object = _RAW_STATUS_UNCHECKED,
     now: Any = None,
     full_history: bool = False,
+    calendar_rules: Any = None,
+    calendar_contract: Any = None,
+    calendar_holidays: Any = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """全域五类检测: 返回 (results, failures)。conn_for(db_alias) 可注入 (单测内存库)。
 
@@ -1519,17 +1660,56 @@ def run_checks(
                     c.close()
                 except Exception:  # noqa: BLE001
                     pass
-    # calendar_horizon: 全局单跑一次, 不挂在任一 registry 域上 (直接查 trading_days 已加载的
-    # dim_trading_calendar 全量列表, 不重复连库)。domain 过滤器只在显式指定其他域时跳过。
-    if (only in (None, "calendar_horizon")) and (domain in (None, "trade_cal")):
-        from zoneinfo import ZoneInfo
-        today_iso = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
-        if raw_today_is_open is not _RAW_STATUS_UNCHECKED:
-            results.append(check_calendar_today_consistency(
-                trading_days, today_iso,
-                raw_today_is_open if isinstance(raw_today_is_open, int) else None,
-            ))
-        results.append(check_calendar_horizon(trading_days, today_iso))
+    # calendar_horizon / calendar_next_year: 全局单跑一次, 不挂在任一 registry 域上 (直接查
+    # trading_days 已加载的 dim_trading_calendar 全量列表, 不重复连库)。domain 过滤器只在
+    # 显式指定其他域时跳过。由此按构造得到分离: preflight/ensure_calendar_foundation 用
+    # --only calendar_horizon 只跑 A'+A'' (硬门); Step 2.98 无 --only 时两者都跑, B' (下一年
+    # 未按期录入) 的 FAIL 走 degraded + ALERT flag 送达, 不进 preflight 硬门。
+    if domain in (None, "trade_cal"):
+        run_horizon = only in (None, "calendar_horizon")
+        run_next_year = only in (None, "calendar_next_year")
+        if run_horizon or run_next_year:
+            # 三者各加载一次并可注入 (calendar_rules/calendar_contract/calendar_holidays
+            # 形参, None 走默认 loader), 供测试注入而不 monkeypatch 模块属性。加载失败不抛,
+            # 转成异常实例原样传给 check 函数, 由它们转成对应 fail_* 结果 (preflight 是子
+            # 进程, crash 与 FAIL 效果一样但没有 JSON, 所以一律落成结果行)。
+            contract_value = calendar_contract
+            if contract_value is None:
+                from services.data_sources.calendar_contract import calendar_contract_for_spec
+                from services.data_sources.sync_runner import domain_spec, load_registry
+                try:
+                    contract_value = calendar_contract_for_spec(
+                        domain_spec(load_registry(), "trade_cal"))
+                except ValueError as exc:
+                    contract_value = exc
+            holidays_value = calendar_holidays
+            if holidays_value is None:
+                from services.data_sources.sources.calendar_rule import (
+                    CalendarRuleError,
+                    load_holidays,
+                )
+                try:
+                    holidays_value = load_holidays()
+                except CalendarRuleError as exc:
+                    holidays_value = exc
+            rules_value = calendar_rules
+            if rules_value is None:
+                from services.calendar_gate_rules import (
+                    CalendarGateRulesError,
+                    load_calendar_gate_rules,
+                )
+                try:
+                    rules_value = load_calendar_gate_rules()
+                except CalendarGateRulesError as exc:
+                    rules_value = exc
+            if run_horizon:
+                results.append(check_calendar_serve_projection(
+                    trading_days, now,
+                    rules=rules_value, contract=contract_value, holidays=holidays_value))
+            if run_next_year:
+                results.append(check_calendar_next_year_entry(
+                    now,
+                    rules=rules_value, contract=contract_value, holidays=holidays_value))
     # FAIL 项附下游数据消费方 (2026-08-22 接线) —— 只查 fail, pass/skipped/observe
     # 省这个开销 (且它们本来就没有"坏数据流到哪"这个问题)。统一在这里遍历一遍,
     # 不散进每个 check_* 函数, 只改这一处。
@@ -1617,27 +1797,6 @@ def _load_calendar() -> tuple[list[str], str]:
     return days, _norm_day(latest)
 
 
-def _load_raw_today_status() -> int | None:
-    """读取今日 SSE 开闭市状态；缺失、重复冲突或非法值一律交给硬门 fail closed。"""
-    from zoneinfo import ZoneInfo
-
-    from services.data_access.resolver import connect_ro
-
-    today = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d")  # Phase ψ.5 allowlist: 今日 raw 日历审计，非业务 end_date
-    conn = connect_ro("tushare_raw")
-    try:
-        rows = conn.execute(
-            "SELECT DISTINCT TRY_CAST(TRY_CAST(is_open AS DOUBLE) AS INTEGER) "
-            "FROM raw_tushare_trade_cal WHERE exchange = 'SSE' "
-            "AND REPLACE(CAST(cal_date AS VARCHAR), '-', '') = ?",
-            [today],
-        ).fetchall()
-    finally:
-        conn.close()
-    values = {row[0] for row in rows if row and row[0] in (0, 1)}
-    return values.pop() if len(values) == 1 else None
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="数据连续性/完整性常驻审查 (五类; 任何 FAIL = exit 1)")
     ap.add_argument("--json", action="store_true", help="JSON 输出到 stdout")
@@ -1656,13 +1815,10 @@ def main(argv: list[str] | None = None) -> int:
 
     specs = load_domain_specs()
     trading_days, latest_expected = _load_calendar()
-    raw_today_is_open = _load_raw_today_status() if (
-        args.only in (None, "calendar_horizon") and args.domain in (None, "trade_cal")
-    ) else None
     results, failures = run_checks(
         specs, _default_conn_for, trading_days, latest_expected,
         only=args.only, domain=args.domain, row_dip_ratio=args.row_dip_ratio, strict=args.strict,
-        raw_today_is_open=raw_today_is_open, full_history=args.full_history)
+        full_history=args.full_history)
     overall = overall_status(results, strict=args.strict)
     payload = {"overall": overall, "latest_expected": latest_expected,
                "checks": results, "summary": summarize(results)}

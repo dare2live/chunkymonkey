@@ -9,6 +9,8 @@ run_checks 编排 (only 过滤 / 库不可达 strict) / 告警 flag 写-自愈�
 from __future__ import annotations
 
 import importlib.util
+import inspect
+import json
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -21,6 +23,18 @@ REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "backend"))
 
 from conftest import duck_mem  # noqa: E402
+from services.calendar_gate_rules import (  # noqa: E402
+    CalendarGateRules,
+    CalendarGateRulesError,
+    load_calendar_gate_rules,
+)
+from services.data_sources.calendar_contract import calendar_contract_for_spec  # noqa: E402
+from services.data_sources.sources.calendar_rule import (  # noqa: E402
+    CalendarRuleError,
+    derive_calendar_rows,
+    load_holidays,
+)
+from services.data_sources.sync_runner import domain_spec, load_registry  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location(
     "check_continuity_integrity", REPO / "backend" / "scripts" / "check_continuity_integrity.py")
@@ -60,6 +74,48 @@ def _mktable(conn, days_rows: dict[str, int], iso: bool = False, table: str = "t
         rows += [(f"c{i}", v) for i in range(n)]
     if rows:
         conn.executemany(f"INSERT INTO {table} VALUES (?, ?)", rows)
+
+
+# ── calendar_horizon / calendar_next_year 夹具 (cut_calendar_horizon, 2026-09-25) ──────
+
+def _rules(floor: str, warn: str, fail: str) -> CalendarGateRules:
+    """floor: compact YYYYMMDD; warn/fail: 'MM-DD'。直接构造 (CalendarGateRules 是普通
+    frozen dataclass, 不像 CalendarGenerationContract 那样禁止直接构造)。"""
+    y, m, d = int(floor[:4]), int(floor[4:6]), int(floor[6:8])
+    wm, wd = (int(x) for x in warn.split("-"))
+    fm, fd = (int(x) for x in fail.split("-"))
+    return CalendarGateRules(
+        version=1,
+        serve_projection_floor=date(y, m, d),
+        next_year_warn_from=(wm, wd),
+        next_year_fail_from=(fm, fd),
+    )
+
+
+def _contract():
+    """读真注册表 (与 test_calendar_reader 同法), 不 monkeypatch。"""
+    return calendar_contract_for_spec(domain_spec(load_registry(), "trade_cal"))
+
+
+def _dim_from_rule(floor: date, year_end: date, holidays: dict) -> list[str]:
+    """规则推导 [floor, year_end] 的开市日 compact 升序列表 (纯函数, 不经 fetch_raw)。"""
+    rows, unconfirmed = derive_calendar_rows(floor, year_end, holidays)
+    assert not unconfirmed, f"测试夹具自身配置不全, 缺年份 {unconfirmed}"
+    return sorted(r["cal_date"] for r in rows if r["is_open"] == "1")
+
+
+# 覆盖单年 2026 的最小夹具 (只一个哨兵节假日, 只测集合比对逻辑本身, 不掺节假日推导细节;
+# 不能用空列表——2026-09-26 blocking 修复后空列表在窗口内被判"误录", 见
+# test_serve_projection_current_year_empty_list_is_misrecorded_not_confirmed_fails)。
+_NOW_2026 = datetime(2026, 6, 15, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+_FLOOR_2026 = date(2026, 1, 1)
+_YEAR_END_2026 = date(2026, 12, 31)
+_HOLIDAYS_2026_ONLY: dict[int, set] = {2026: {date(2026, 5, 1)}}
+
+
+def _forbidden_conn(alias: str):
+    """calendar_horizon/calendar_next_year 不挂在任一域上, 不该碰 conn_for。"""
+    raise AssertionError(f"conn_for 不应被调用 (alias={alias})")
 
 
 # ── 检测 1: calendar_gaps ────────────────────────────────────────────────
@@ -1109,74 +1165,392 @@ def test_run_checks_full_pipeline_on_mem_domain():
     assert all(r["status"] == "pass" for r in results)
 
 
-# ── 检测 6: calendar_horizon (2026-07-06 从孤儿 data_quality.py 迁入) ─────
+# ── 检测 6/7: calendar_horizon (换刀, 2026-09-25 cut_calendar_horizon) /
+#    calendar_next_year (新增) ───────────────────────────────────────────
+# 替换旧的"today 之后剩余交易日数"标量门。C1-C7 每条对应规格 §8 表格里"其它全满足只违反
+# 它"的隔离用例; R1/R2 用真配置 (不 monkeypatch) 验证整体不误报/按期 FAIL。
 
-def test_calendar_horizon_red_green():
-    """today 之后已登记交易日 < 60 = FAIL, >= 60 = PASS (阈值边界)。"""
-    today = "20260701"
-    # FAIL: today 之后只有 59 个交易日
-    tds_short = _weekdays("20260401", 60) + _weekdays("20260702", 59)
-    r = cci.check_calendar_horizon(sorted(tds_short), today)
-    assert r["status"] == "fail" and r["check"] == "calendar_horizon"
-    assert "59" in r["detail"]
+def test_serve_projection_missing_one_interior_day_fails():
+    """C1: dim 缺一个窗口中部的交易日 -> fail_serve_projection_drift, missing=1 extra=0。"""
+    dim = _dim_from_rule(_FLOOR_2026, _YEAR_END_2026, _HOLIDAYS_2026_ONLY)
+    hole = dim[len(dim) // 2]
+    dim_missing_one = [d for d in dim if d != hole]
+    rules = _rules("20260101", "11-15", "12-20")
+    r = cci.check_calendar_serve_projection(
+        dim_missing_one, _NOW_2026,
+        rules=rules, contract=_contract(), holidays=_HOLIDAYS_2026_ONLY)
+    assert r["status"] == "fail_serve_projection_drift" and r["check"] == "calendar_horizon"
+    assert "missing=1 extra=0" in r["detail"]
+    assert f"first_missing={hole}" in r["detail"]
 
-    # PASS: today 之后有 61 个交易日
-    tds_ok = _weekdays("20260401", 60) + _weekdays("20260702", 61)
-    r2 = cci.check_calendar_horizon(sorted(tds_ok), today)
-    assert r2["status"] == "pass"
+
+def test_serve_projection_missing_plus_extra_same_count_fails():
+    """C1 附加用例: 缺一天 + 多一天 (计数相等) 也必须红 —— 防止把判据错写成比 len()。"""
+    dim = _dim_from_rule(_FLOOR_2026, _YEAR_END_2026, _HOLIDAYS_2026_ONLY)
+    hole = dim[len(dim) // 2]
+    weekend_extra = "20260103"  # 周六, 不在任何推导开市集合里
+    assert weekend_extra not in dim
+    dim_swapped = sorted([d for d in dim if d != hole] + [weekend_extra])
+    rules = _rules("20260101", "11-15", "12-20")
+    r = cci.check_calendar_serve_projection(
+        dim_swapped, _NOW_2026,
+        rules=rules, contract=_contract(), holidays=_HOLIDAYS_2026_ONLY)
+    assert r["status"] == "fail_serve_projection_drift"
+    assert "missing=1 extra=1" in r["detail"]
 
 
-def test_calendar_horizon_ignores_past_days():
-    """today 及之前的交易日不计入前瞻余量 (bisect_right 语义: today 当天本身不算"之后")。"""
-    today = "20260701"
-    tds = _weekdays("20260401", 60) + [today] + _weekdays("20260702", 60)
-    r = cci.check_calendar_horizon(sorted(tds), today)
+def test_serve_projection_extra_closed_day_fails():
+    """C2: dim 多一个规则休市日 -> fail, missing=0 extra=1 (防判据只查子集不查反向)。"""
+    dim = _dim_from_rule(_FLOOR_2026, _YEAR_END_2026, _HOLIDAYS_2026_ONLY)
+    extra_day = "20260103"  # 周六
+    dim_with_extra = sorted(dim + [extra_day])
+    rules = _rules("20260101", "11-15", "12-20")
+    r = cci.check_calendar_serve_projection(
+        dim_with_extra, _NOW_2026,
+        rules=rules, contract=_contract(), holidays=_HOLIDAYS_2026_ONLY)
+    assert r["status"] == "fail_serve_projection_drift"
+    assert "missing=0 extra=1" in r["detail"]
+    assert f"first_extra={extra_day}" in r["detail"]
+
+
+def test_serve_projection_tail_not_extended_fails_with_republish_hint():
+    """C3: dim 尾部未延伸到观测年年底 -> fail, first_missing=年中截断次日, fix_hint 含"未延伸"。"""
+    now = datetime(2026, 10, 9, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    truncated_dim = _dim_from_rule(_FLOOR_2026, date(2026, 6, 30), _HOLIDAYS_2026_ONLY)
+    rules = _rules("20260101", "11-15", "12-20")
+    r = cci.check_calendar_serve_projection(
+        truncated_dim, now,
+        rules=rules, contract=_contract(), holidays=_HOLIDAYS_2026_ONLY)
+    assert r["status"] == "fail_serve_projection_drift"
+    assert "first_missing=20260701" in r["detail"]
+    assert "未延伸" in r["fix_hint"]
+
+
+def test_serve_projection_truncated_head_fails_against_declared_floor():
+    """C4: dim 被削头 (从 2006 年起), floor 仍声明 2005-01-04 -> fail, first_missing=声明下界
+    (不是 min(dim) 自指——floor 被削头时若拿 min(dim) 当下界, 门会看不见这个缺口)。"""
+    # 每年一个哨兵节假日 (非空), 避免 2026-09-26 blocking 修复后的"空表=误录"判据抢先命中
+    # (本用例要测的是削头, 不是未配置)。
+    holidays_2005_2026 = {y: {date(y, 5, 1)} for y in range(2005, 2027)}
+    full_dim = _dim_from_rule(date(2005, 1, 4), date(2026, 12, 31), holidays_2005_2026)
+    truncated_dim = [d for d in full_dim if d >= "20060104"]
+    rules = _rules("20050104", "11-15", "12-20")
+    r = cci.check_calendar_serve_projection(
+        truncated_dim, _NOW_2026,
+        rules=rules, contract=_contract(), holidays=holidays_2005_2026)
+    assert r["status"] == "fail_serve_projection_drift"
+    assert "first_missing=20050104" in r["detail"]
+
+
+def test_serve_projection_current_year_unconfirmed_fails_named_status():
+    """C5: 当年 (今年) 未在 holidays 里配置 -> fail_year_unconfirmed (精确状态串, 不是
+    startswith("fail")); 不落到集合比对分支 (dim 传空列表也不影响结果)。"""
+    now = datetime(2026, 6, 15, tzinfo=ZoneInfo("Asia/Shanghai"))
+    rules = _rules("20260101", "11-15", "12-20")
+    holidays_missing_current_year = {2025: set()}  # 缺 2026
+    r = cci.check_calendar_serve_projection(
+        [], now, rules=rules, contract=_contract(), holidays=holidays_missing_current_year)
+    assert r["status"] == "fail_year_unconfirmed"
+    assert "2026" in r["detail"]
+
+
+def test_serve_projection_current_year_empty_list_is_misrecorded_not_confirmed_fails():
+    """C5b (2026-09-26 blocking 修复的隔离用例, 其它条件全满足只违反"当年空表不算配置"这
+    一条): 当年在 holidays 里出现了 key 但值是空列表 (占位误录, 如 market_holidays.yaml
+    写 "'2026':" 后面只有注释) —— derive_calendar_rows 自己的 unconfirmed 判据是
+    `set(holidays)`, 空集合也算"已配置", 会把该年整年按周末规则推导成幻影交易日 (每年约
+    19 个) 而不进 unconfirmed。本检测必须额外识别这种情形, 仍判 fail_year_unconfirmed,
+    不落到集合比对分支拿幻影行去跟 dim 比。"""
+    now = datetime(2026, 6, 15, tzinfo=ZoneInfo("Asia/Shanghai"))
+    rules = _rules("20260101", "11-15", "12-20")
+    holidays_current_year_empty = {2026: set()}  # key 存在, 值是空集合 (不是缺失年份)
+    r = cci.check_calendar_serve_projection(
+        [], now, rules=rules, contract=_contract(), holidays=holidays_current_year_empty)
+    assert r["status"] == "fail_year_unconfirmed"
+    assert "2026" in r["detail"]
+
+
+def test_serve_projection_historic_confirmed_empty_year_before_today_is_not_misrecorded():
+    """C5c (2026-09-26 第二轮 blocking 修复的隔离用例, 其它条件全满足只违反"空表误录守卫
+    的年份范围应止于 floor.year 还是 today.year"这一条): market_holidays.yaml 里
+    `'1990': []` 是文档承认的合法史实 (该年日历仅 12-19~12-31, 交易所自身没有节假日概念,
+    见 market_holidays.yaml:32/45), 不是占位误录。calendar_gate.yaml:6 明写"若将来把 dim
+    回填到 1990, 改这里 (floor)"——本用例复现那个将来: floor 改成 19901219, dim 也回填到
+    1990-12-19 起。除 1990 外 [1991,2026] 每年都有一个非空哨兵节假日 (排除"当年/其它年未
+    配置"路径抢先命中), dim 与规则推导逐日一致 (排除集合缺口路径)。旧写法 (misrecorded_empty
+    范围 = [floor.year, year_end.year] = [1990, 2026]) 会把 1990 也纳入检查并判它"误录"
+    (len(holidays[1990])==0) -> fail_year_unconfirmed, 与该空表的文档合法性矛盾, 且
+    preflight 自修 (发布代际 + build_latest) 无法清掉这个 FAIL, daily_update 永久 hard fail。
+    修复后范围止于 max(floor.year, today.year), 1990 早于 today.year (2026) 天然不受这条
+    误录守卫约束 -> 应为 pass。"""
+    floor = date(1990, 12, 19)
+    year_end = date(2026, 12, 31)
+    holidays = {1990: set()}
+    holidays.update({y: {date(y, 5, 1)} for y in range(1991, 2027)})
+    dim = _dim_from_rule(floor, year_end, holidays)
+    rules = _rules("19901219", "11-15", "12-20")
+    r = cci.check_calendar_serve_projection(
+        dim, _NOW_2026, rules=rules, contract=_contract(), holidays=holidays)
     assert r["status"] == "pass"
-    assert "60" in r["detail"]  # today 自己不计入 60 个未来交易日
 
 
-def test_calendar_horizon_normalizes_iso_today_against_compact_days():
-    """生产日历是 compact；ISO today 不能把全部历史日期误算成未来。"""
-    past = _weekdays("20260101", 99)
-    r = cci.check_calendar_horizon(past, "2026-07-15")
-    assert r["status"] == "fail"
-    assert "仅剩 0" in r["detail"]
+def test_calendar_checks_invalid_holidays_config_fail_closed_not_crash():
+    """C6: holidays 加载失败时调用方注入异常实例 (而非重新抛出); 两个桶都必须转成
+    fail_rule_config_invalid, 不崩溃。"""
+    rules = _rules("20260101", "11-15", "12-20")
+    contract = _contract()
+    bad_holidays = CalendarRuleError("boom: market_holidays.yaml 格式非法 (测试注入)")
+
+    r1 = cci.check_calendar_serve_projection(
+        [], _NOW_2026, rules=rules, contract=contract, holidays=bad_holidays)
+    assert r1["status"] == "fail_rule_config_invalid"
+
+    r2 = cci.check_calendar_next_year_entry(
+        _NOW_2026, rules=rules, contract=contract, holidays=bad_holidays)
+    assert r2["status"] == "fail_rule_config_invalid"
 
 
-def test_calendar_today_consistency_requires_raw_row_and_matching_dim_state():
-    future = _weekdays("20260716", 61)
-    missing = cci.check_calendar_today_consistency(future, "2026-07-15", None)
-    assert missing["status"] == "fail"
+# C6 above only exercises the isinstance(x, Exception) branch inside the check_* functions —
+# it hands them a pre-built exception instance directly, bypassing run_checks' own three
+# try/except blocks entirely (contract_value / holidays_value / rules_value 各自的加载 +
+# 捕获). 下面三条各自 monkeypatch 真正的加载函数使其 raise, 不传 calendar_rules/
+# calendar_contract/calendar_holidays (留 None 走 run_checks 默认加载路径), 逐条隔离验证
+# run_checks 自己的接线 (规格 §7.4/§8 C6 点名的这段此前无测试覆盖)。
 
-    mismatch = cci.check_calendar_today_consistency(
-        ["20260715", *future], "2026-07-15", 0
+def test_run_checks_calendar_contract_load_failure_fails_closed_not_crash(monkeypatch):
+    """新增(2026-09-26 blocking 修复): 只让 contract 加载失败 (holidays/rules 走真配置正常
+    加载), 断言 run_checks 自己的 try/except ValueError 接线把异常转成结果行, 不崩溃。"""
+    def _boom(*_a, **_kw):
+        raise ValueError("registry drift (injected)")
+
+    monkeypatch.setattr(
+        "services.data_sources.calendar_contract.calendar_contract_for_spec", _boom)
+    results, _ = cci.run_checks(
+        [], _forbidden_conn, [], "20260101", only=None, now=_NOW_2026)
+    assert len(results) == 2
+    assert all(r["status"] == "fail_contract_unavailable" for r in results), results
+
+
+def test_run_checks_calendar_holidays_load_failure_fails_closed_not_crash(monkeypatch):
+    """新增(2026-09-26 blocking 修复): 只让 holidays 加载失败, 断言 run_checks 自己的
+    try/except CalendarRuleError 接线把异常转成结果行, 不崩溃。"""
+    def _boom(*_a, **_kw):
+        raise CalendarRuleError("boom (injected)")
+
+    monkeypatch.setattr(
+        "services.data_sources.sources.calendar_rule.load_holidays", _boom)
+    results, _ = cci.run_checks(
+        [], _forbidden_conn, [], "20260101", only=None, now=_NOW_2026)
+    assert len(results) == 2
+    assert all(r["status"] == "fail_rule_config_invalid" for r in results), results
+
+
+def test_run_checks_calendar_rules_load_failure_fails_closed_not_crash(monkeypatch):
+    """新增(2026-09-26 blocking 修复): 只让 calendar_gate.yaml 加载失败, 断言 run_checks
+    自己的 try/except CalendarGateRulesError 接线把异常转成结果行, 不崩溃。"""
+    def _boom(*_a, **_kw):
+        raise CalendarGateRulesError("boom (injected)")
+
+    monkeypatch.setattr(
+        "services.calendar_gate_rules.load_calendar_gate_rules", _boom)
+    results, _ = cci.run_checks(
+        [], _forbidden_conn, [], "20260101", only=None, now=_NOW_2026)
+    assert len(results) == 2
+    assert all(r["status"] == "fail_rule_config_invalid" for r in results), results
+
+
+_STD_RULES = _rules("20260101", "11-15", "12-20")
+
+
+def test_next_year_before_warn_from_passes():
+    """C7a: warn_from 前一天 -> pass。"""
+    now = datetime(2026, 11, 14, tzinfo=ZoneInfo("Asia/Shanghai"))
+    r = cci.check_calendar_next_year_entry(
+        now, rules=_STD_RULES, contract=_contract(), holidays={2026: set()})
+    assert r["status"] == "pass" and r["check"] == "calendar_next_year"
+
+
+def test_next_year_on_warn_from_warns():
+    """C7b: warn_from 当天 -> warn_next_year_unconfigured。"""
+    now = datetime(2026, 11, 15, tzinfo=ZoneInfo("Asia/Shanghai"))
+    r = cci.check_calendar_next_year_entry(
+        now, rules=_STD_RULES, contract=_contract(), holidays={2026: set()})
+    assert r["status"] == "warn_next_year_unconfigured"
+
+
+def test_next_year_day_before_fail_from_still_warn():
+    """C7c: fail_from 前一天仍是 warn (不是 fail)。"""
+    now = datetime(2026, 12, 19, tzinfo=ZoneInfo("Asia/Shanghai"))
+    r = cci.check_calendar_next_year_entry(
+        now, rules=_STD_RULES, contract=_contract(), holidays={2026: set()})
+    assert r["status"] == "warn_next_year_unconfigured"
+
+
+def test_next_year_on_fail_from_fails():
+    """C7d: fail_from 当天 -> fail_next_year_unconfigured。"""
+    now = datetime(2026, 12, 20, tzinfo=ZoneInfo("Asia/Shanghai"))
+    r = cci.check_calendar_next_year_entry(
+        now, rules=_STD_RULES, contract=_contract(), holidays={2026: set()})
+    assert r["status"] == "fail_next_year_unconfigured"
+
+
+def test_next_year_configured_passes_regardless_of_date():
+    """C7e: 下一年已配置 (非空) -> pass, 即使 now = fail_from (忽略日期)。"""
+    now = datetime(2026, 12, 20, tzinfo=ZoneInfo("Asia/Shanghai"))
+    r = cci.check_calendar_next_year_entry(
+        now, rules=_STD_RULES, contract=_contract(),
+        holidays={2026: set(), 2027: {date(2027, 1, 1)}})
+    assert r["status"] == "pass"
+    assert "2027" in r["detail"]
+
+
+def test_next_year_empty_list_is_not_configured():
+    """C7f: 下一年配置为空列表 (`[]`) 不算已确认 -> now=fail_from 时仍 fail。"""
+    now = datetime(2026, 12, 20, tzinfo=ZoneInfo("Asia/Shanghai"))
+    r = cci.check_calendar_next_year_entry(
+        now, rules=_STD_RULES, contract=_contract(),
+        holidays={2026: set(), 2027: set()})
+    assert r["status"] == "fail_next_year_unconfigured"
+
+
+def test_next_year_january_does_not_alarm():
+    """C7g: 1 月, next_year(=今年+1) 现实中尚未公布 (国务院历年 10~12 月才公布次年安排,
+    1 月自然未配置) 也不该误报——(1,5) 早于 warn_from, 无论 next_year 算对与否日期比较都
+    不会红; 用消息里的年份数字区分"算对了 today.year+1"与"算成 today.year+2"两种情形。"""
+    now = datetime(2027, 1, 5, tzinfo=ZoneInfo("Asia/Shanghai"))
+    r = cci.check_calendar_next_year_entry(
+        now, rules=_STD_RULES, contract=_contract(), holidays={2026: set()})
+    assert r["status"] == "pass"
+    assert "2028" in r["detail"]
+    assert "2029" not in r["detail"]
+
+
+def test_calendar_checks_only_filter_separates_hard_gate_from_deadline():
+    """C9: run_checks 里 --only calendar_horizon 恰 1 行 (硬门); --only calendar_next_year
+    恰 1 行 (期限); only=None 恰 2 行; domain 指定非 trade_cal 时两者皆 0 行。specs=[] 且
+    conn_for 断言不会被调用 (calendar 桶不挂在任一域上, 不该碰 conn_for)。"""
+    dim = _dim_from_rule(_FLOOR_2026, _YEAR_END_2026, _HOLIDAYS_2026_ONLY)
+    rules = _rules("20260101", "11-15", "12-20")
+    contract = _contract()
+    holidays = _HOLIDAYS_2026_ONLY
+
+    r1, _ = cci.run_checks(
+        [], _forbidden_conn, dim, dim[-1], only="calendar_horizon", now=_NOW_2026,
+        calendar_rules=rules, calendar_contract=contract, calendar_holidays=holidays)
+    assert len(r1) == 1 and r1[0]["check"] == "calendar_horizon"
+
+    r2, _ = cci.run_checks(
+        [], _forbidden_conn, dim, dim[-1], only="calendar_next_year", now=_NOW_2026,
+        calendar_rules=rules, calendar_contract=contract, calendar_holidays=holidays)
+    assert len(r2) == 1 and r2[0]["check"] == "calendar_next_year"
+
+    r3, _ = cci.run_checks(
+        [], _forbidden_conn, dim, dim[-1], only=None, now=_NOW_2026,
+        calendar_rules=rules, calendar_contract=contract, calendar_holidays=holidays)
+    assert len(r3) == 2
+    assert {x["check"] for x in r3} == {"calendar_horizon", "calendar_next_year"}
+
+    r4, _ = cci.run_checks(
+        [], _forbidden_conn, dim, dim[-1], only="calendar_horizon", domain="dom1", now=_NOW_2026,
+        calendar_rules=rules, calendar_contract=contract, calendar_holidays=holidays)
+    assert r4 == [], "显式指定非 trade_cal 的域时, 全局 calendar 检测应跳过"
+
+    r5, _ = cci.run_checks(
+        [], _forbidden_conn, dim, dim[-1], only="calendar_next_year", domain="dom1", now=_NOW_2026,
+        calendar_rules=rules, calendar_contract=contract, calendar_holidays=holidays)
+    assert r5 == []
+
+
+def test_legacy_raw_today_probe_removed_without_tombstone():
+    """C10: 旧探针删干净, 不留 alias/stub。"""
+    assert not hasattr(cci, "_load_raw_today_status")
+    assert not hasattr(cci, "check_calendar_today_consistency")
+    assert not hasattr(cci, "check_calendar_horizon")
+    assert not hasattr(cci, "CALENDAR_HORIZON_MIN_TRADING_DAYS")
+    assert "raw_today_is_open" not in inspect.signature(cci.run_checks).parameters
+    assert "calendar_next_year" in cci.CHECK_IDS
+
+
+def test_main_preflight_cli_contract_unchanged(monkeypatch, capsys):
+    """C11: main() 的 --only calendar_horizon --domain trade_cal --strict --json 接口不变
+    (两个调用方 preflight/sync_preconditions 与两份测试钉住的接口)。日历路径里不再直接
+    开库 (旧 _load_raw_today_status 的那种 connect_ro), 靠断言它被调用就报错来证明。"""
+    rules = load_calendar_gate_rules()
+    holidays = load_holidays()
+    contract = _contract()
+    now = datetime.now(ZoneInfo(contract.timezone))
+    year_end = contract.required_through(now)
+    dim = _dim_from_rule(rules.serve_projection_floor, year_end, holidays)
+    latest = dim[-1]
+
+    monkeypatch.setattr(cci, "load_domain_specs", lambda: [])
+    monkeypatch.setattr(cci, "_load_calendar", lambda: (dim, latest))
+
+    def _raise_connect_ro(*_a, **_kw):
+        raise AssertionError("connect_ro 不该再出现在 calendar_horizon 路径里")
+
+    monkeypatch.setattr("services.data_access.resolver.connect_ro", _raise_connect_ro)
+
+    rc = cci.main(["--only", "calendar_horizon", "--domain", "trade_cal", "--strict", "--json"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    payload = json.loads(out)
+    # blocking 修复(2026-09-26): 此前只断言 checks[0] 是 calendar_horizon, 没断言"恰好 1 行"
+    # ——把 run_checks(only=args.only, ...) 改成 only=None (等于删掉 --only 路由) 也能让
+    # checks[0] 仍是 calendar_horizon (它排在 calendar_next_year 前面), 全量 78 个测试仍然
+    # 全绿地让 --only 静默失效。len(...) == 1 把"--only 恰好只跑这一类"钉到 main() 这一层。
+    assert len(payload["checks"]) == 1, payload["checks"]
+    assert payload["checks"][0]["check"] == "calendar_horizon"
+    assert payload["latest_expected"].isdigit() and len(payload["latest_expected"]) == 8
+
+    broken_dim = [d for d in dim if d != dim[len(dim) // 2]]
+    monkeypatch.setattr(cci, "_load_calendar", lambda: (broken_dim, broken_dim[-1]))
+    rc2 = cci.main(["--only", "calendar_horizon", "--domain", "trade_cal", "--strict", "--json"])
+    assert rc2 == 1
+
+
+def test_real_config_2026_10_09_whole_calendar_check_passes():
+    """R1: 真配置整条 PASS (不 monkeypatch) —— 读真 market_holidays.yaml / calendar_gate.yaml /
+    注册表契约, dim 按同一套真配置推导, 门不该误报。"""
+    rules = load_calendar_gate_rules()
+    holidays = load_holidays()
+    contract = _contract()
+    now = datetime(2026, 10, 9, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    year_end = contract.required_through(now)
+    dim = _dim_from_rule(rules.serve_projection_floor, year_end, holidays)
+
+    results, failures = cci.run_checks(
+        [], _forbidden_conn, dim, dim[-1], only=None, now=now,
     )
-    assert mismatch["status"] == "fail"
+    assert len(results) == 2
+    assert all(r["status"] == "pass" for r in results), results
+    assert cci.overall_status(results) == "PASS"
+    horizon = next(r for r in results if r["check"] == "calendar_horizon")
+    assert "[20050104,20261231]" in horizon["detail"]
 
-    open_ok = cci.check_calendar_today_consistency(
-        ["20260715", *future], "2026-07-15", 1
+
+def test_real_config_fail_from_without_next_year_fails():
+    """R2: 真配置 + now = fail_from 且真配置里没有下一年 -> calendar_next_year FAIL, overall FAIL
+    (不 monkeypatch)。Y = max(已配置年份), Y+1 按定义未配置, 随 YAML 演进仍成立。"""
+    rules = load_calendar_gate_rules()
+    holidays = load_holidays()
+    contract = _contract()
+    max_year = max(holidays)
+    now = datetime(
+        max_year, rules.next_year_fail_from[0], rules.next_year_fail_from[1],
+        10, 0, tzinfo=ZoneInfo("Asia/Shanghai"),
     )
-    closed_ok = cci.check_calendar_today_consistency(future, "2026-07-15", 0)
-    assert open_ok["status"] == closed_ok["status"] == "pass"
+    year_end = contract.required_through(now)
+    dim = _dim_from_rule(rules.serve_projection_floor, year_end, holidays)
 
-
-def test_calendar_horizon_wired_into_run_checks_global_not_per_domain():
-    """run_checks 里 calendar_horizon 全局跑一次 (不随 registry 域数量重复), domain 过滤器
-    传入非 trade_cal 的具体域名时应跳过 (只对该域自己的检测负责)。"""
-    tds = _weekdays("20260401", 5)
-
-    def _fresh(alias):
-        c = duck_mem()
-        _mktable(c, {d: 3 for d in tds})
-        return c
-
-    specs = [_mkspec(domain="dom1"), _mkspec(domain="dom2")]
-    results, _ = cci.run_checks(specs, _fresh, tds, tds[-1], only="calendar_horizon")
-    assert len(results) == 1, "calendar_horizon 应全局只跑一次, 不随域数重复"
-    assert results[0]["domain"] == "trade_cal"
-
-    results2, _ = cci.run_checks(specs, _fresh, tds, tds[-1], only="calendar_horizon", domain="dom1")
-    assert results2 == [], "显式指定非 trade_cal 的域时, 全局 calendar_horizon 应跳过"
+    results, _ = cci.run_checks(
+        [], _forbidden_conn, dim, dim[-1], only=None, now=now,
+    )
+    horizon = next(r for r in results if r["check"] == "calendar_horizon")
+    next_year = next(r for r in results if r["check"] == "calendar_next_year")
+    assert horizon["status"] == "pass"
+    assert next_year["status"] == "fail_next_year_unconfigured"
+    assert cci.overall_status(results) == "FAIL"
 
 
 # ── 2026-09-18 真实 continuity_20260918.json 形状 (project cut_frozen_domain_verdicts) ──

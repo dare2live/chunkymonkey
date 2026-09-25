@@ -16,6 +16,17 @@
 # 维护方式 (每年一次, 约 10 行):
 #   国务院公布次年放假安排后, 在下面加一个年份条目。格式 "YYYYMMDD" (单日) 或
 #   "YYYYMMDD~YYYYMMDD" (连续段), 只列**工作日中休市的那些天**, 周末不用列。
+#   国务院办公厅历年在 10-25 ~ 12-08 之间发布次年安排 (backend/config/calendar_gate.yaml
+#   的注释里有五年发布日期核实记录); calendar_gate.yaml 的 next_year_entry.warn_from/
+#   fail_from 两个月日是 check_continuity_integrity 的 calendar_next_year 检测提醒/拦截
+#   录入期限的阈值, 本文件只管录入内容, 期限阈值改那边不改这里。
+#   录入后不需要重新发布代际 (calendar_builder 的 accepted 代际) ——
+#   1 月第一次日更 preflight 会自动发布新代际并 build_latest (见
+#   check_continuity_integrity.check_calendar_serve_projection 的自愈路径); 只有想立刻
+#   验证才需要手动 chunkyctl sync --domain trade_cal。
+#   交易所 (沪深北) 通常在国务院通知之后、12 月下旬发布休市通知, 是**复核**不是录入前提——
+#   以国务院通知为准先录入, 交易所通知发布后核对是否有交易所自定的差异 (如 2024 年除夕
+#   国务院未列入法定假日而交易所休市)。
 #
 # 空列表 vs 缺失年份 (两者语义**不同**, 不可混淆):
 #   `'1990': []` = **已确认该年无法定节假日**(如 1990 只有 12-19~12-31 共 13 天,

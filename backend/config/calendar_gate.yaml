@@ -1,0 +1,26 @@
+# calendar_gate.yaml — check_continuity_integrity 的日历门参数 (owner: backend/services/calendar_gate_rules.py)
+#
+# serve_projection_floor: reference.dim_trading_calendar 应从哪天起 (含)。calendar_builder 明文不回填
+#   前史 (只插 >= MIN(dim)), 所以下界是一条声明, 不能拿 MIN(dim) 自指 (dim 被削头时门会看不见)。
+#   09-25 实测 dim 首日 2005-01-04, 且 [20050104, 20261231] 集合与规则推导零差异。
+#   若将来把 dim 回填到 1990, 改这里 (契约 coverage_start=19901219 是代际覆盖, 不是 dim 覆盖)。
+#
+# next_year_entry: 「下一年节假日未录入」的 WARN / FAIL 月日 (MM-DD, 按 Asia/Shanghai 当天)。
+#   依据 = 国务院办公厅《关于 X 年部分节假日安排的通知》历年发布日 (WebSearch 2026-09-25 核实):
+#     2022 年安排  2021-10-25  国办发明电〔2021〕11号
+#     2023 年安排  2022-12-08  国办发明电〔2022〕16号   <- 五年最晚
+#     2024 年安排  2023-10-25  国办发明电〔2023〕7号
+#     2025 年安排  2024-11-12  国办发明电〔2024〕12号  (落款 11-10)
+#     2026 年安排  2025-11-04  国办发明电〔2025〕7号
+#     2027 年安排  截至 2026-09-25 未发布
+#   交易所休市通知晚于国务院通知 (2026 年: 沪深北 2025-12-22 同日, 上证公告〔2025〕45号), 是二次核对不是录入前提;
+#   录入以国务院通知为准, 交易所通知发布后复核 (2024 年除夕 02-09 国务院未列入法定假日而交易所休市, 属此类差异)。
+#   warn_from 11-15: 五年里四年此前已发布 (10-25 / 10-25 / 11-04 / 11-12), WARN = 「去查有没有发」。
+#   fail_from 12-20: 五年里五年此前已发布 (最晚 12-08, 留 12 天), 距 1 月首个交易日仍有 >= 7 个交易日;
+#     FAIL 走 Step 2.98 degraded + ALERT flag 送达, 不进 preflight 硬门 (硬门只问今年)。
+#   1 月起 next_year = 下下年, 早于 warn_from, 不会误报。
+version: 1
+serve_projection_floor: "20050104"
+next_year_entry:
+  warn_from: "11-15"
+  fail_from: "12-20"

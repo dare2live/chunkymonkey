@@ -78,6 +78,7 @@ blocking_paths:
 - tests/services/test_calendar_acceptance.py
 - tests/services/test_calendar_contract.py
 - tests/services/test_calendar_frozen_landing_stamp.py
+- tests/services/test_calendar_gate_rules.py
 - tests/services/test_calendar_identity_recon.py
 - tests/services/test_calendar_reader.py
 - tests/services/test_calendar_runtime.py
