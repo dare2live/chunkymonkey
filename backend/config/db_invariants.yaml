@@ -236,7 +236,7 @@ invariants:
       重建认不出旧行, 留本条兜底。
     fix: >-
       PYTHONPATH=backend python backend/scripts/build_price_kline_qfq_tushare.py --full
-      (DROP+CTAS 全量重建, 三列由建表逻辑统一重写)
+      (整建到新文件、校验后原子换名, 三列由建表逻辑统一重写)
     kill_when: "price_kline_qfq_tushare.batch_id/ingested_at/factor_as_of 三列 SET NOT NULL 落地即删"
 
   # ── 9: qfq 用的复权因子与该股 adj_factor 最新值一致 (新收——批3"factor_as_of>=最近
@@ -287,7 +287,7 @@ invariants:
       (末行 close == nominal close, 1e-9) 在写入时刻 fail-closed。
     fix: >-
       PYTHONPATH=backend python backend/scripts/build_price_kline_qfq_tushare.py
-      (DROP+CTAS 全量重建, 锚点由 latest CTE 按每股自己最后一行统一重算)
+      (整建到新文件、校验后原子换名, 锚点由 latest CTE 按每股自己最后一行统一重算)
     kill_when: >-
       price_kline_qfq_tushare 退役 (方案 C: 物理表改 append-only hfq + qfq 降为视图)
       后本条随表一起删——届时"锚点"不再物化, 而是视图查询时算, 该守的变成

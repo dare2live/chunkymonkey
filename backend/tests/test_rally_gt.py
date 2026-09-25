@@ -374,3 +374,29 @@ def test_universe_st_episode_excluded():
         assert codes == ["600001"]
     finally:
         conn.close(); raw.close()
+
+
+def test_w6_rebuild_leaves_no_indexes_on_gt_and_negative_tables():
+    """W6 (cut_qfq_fresh_file_swap, 2026-09-24): 重建后 fact_rally_ground_truth /
+    fact_rally_negative 两表 duckdb_indexes() 计数为 0 (idx_rally_gt_bottom /
+    idx_rally_neg_date 已删 —— fable spec §3 实测: 有/无索引延迟量级相同 [0.12-0.62ms
+    vs 0.12-0.37ms], 唯一读者 main_rally_dataset_snapshot.py 是整表聚合指纹, 不按日期
+    点查; 索引只贡献每次重建的空洞)。
+
+    变异: 在 rally_gt.py 里加回任意一句 CREATE INDEX -> 本用例应转红。
+    """
+    n = 400
+    dates = make_dates(n)
+    rows = _kline_rows("600001", 0.65, n, dates=dates)
+    conn, raw = _mk_env(rows, dates, ["600001"])
+    try:
+        rally_gt.rebuild(conn=conn, data_end=dates[-1].replace("-", ""), raw_conn=raw)
+        gt_rows = conn.execute(f"SELECT count(*) FROM {rally_gt.GT_TABLE}").fetchone()[0]
+        assert gt_rows >= 1  # 前提自检: 真的落库了, 不是空表零索引 (没意义的绿)
+        idx_n = conn.execute(
+            "SELECT count(*) FROM duckdb_indexes() WHERE table_name IN (?, ?)",
+            [rally_gt.GT_TABLE, rally_gt.NEG_TABLE],
+        ).fetchone()[0]
+        assert idx_n == 0
+    finally:
+        conn.close(); raw.close()

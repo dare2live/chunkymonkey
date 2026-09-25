@@ -121,14 +121,15 @@ def compact_bloated_databases(ctx: PipelineContext) -> list[dict[str, Any]]:
             }
             rows.append(result)
             ctx.degraded(
-                f"db compact 异常: {alias} ({exc}) — 死块未回收, 下次日更再试"
+                f"db compact 异常: {alias} ({exc}) — 死块未回收, "
+                "本次遗留的 _compact 中间文件已清, 下次日更会从干净状态重试"
             )
             continue
         rows.append(result)
         if result["attempted"] and result["returncode"] != 0:
             ctx.degraded(
                 f"db compact 失败: {alias} (exit {result['returncode']}) — "
-                "死块未回收, 下次日更再试"
+                "死块未回收, 本次遗留的 _compact 中间文件已清, 下次日更会从干净状态重试"
             )
 
     attempted_n = sum(1 for r in rows if r["attempted"])

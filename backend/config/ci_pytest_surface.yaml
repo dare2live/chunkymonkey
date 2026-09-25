@@ -101,6 +101,7 @@ blocking_paths:
 - tests/services/test_domain_spec_channels.py
 - tests/services/test_dual_plane_faucet.py
 - tests/services/test_duckdb_compact.py
+- tests/services/test_duckdb_file_swap.py
 - tests/services/test_exchange_cell_verdicts.py
 - tests/services/test_factor_family_continuity_gates.py
 - tests/services/test_factor_family_frontier_projection.py

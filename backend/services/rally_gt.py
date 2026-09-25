@@ -273,7 +273,9 @@ def _write_gt(conn, rows: list[dict], maxfwd: int, taxonomy: str, built_at) -> N
         [(r["stock_code"], r["bottom_date"], r["peak_date"], r["gain_to_peak_pct"],
           r["peak_offset_days"], r["base_days"], r["bull_aligned"], r["path_max_dd_pct"],
           True, maxfwd, taxonomy, built_at) for r in rows])
-    conn.execute(f"CREATE INDEX idx_rally_gt_bottom ON {GT_TABLE}(bottom_date)")
+    # 索引已删 (cut_qfq_fresh_file_swap, 2026-09-24, fable spec §3 实测): 有/无索引延迟
+    # 0.12-0.62ms vs 0.12-0.37ms, 唯一读者是整表聚合指纹不按日期点查; 每次重建还多制造一份
+    # 索引块的空洞。
 
 
 def _write_negatives(conn, rows: list[tuple], maxfwd: int, taxonomy: str, built_at) -> None:
@@ -293,7 +295,7 @@ def _write_negatives(conn, rows: list[tuple], maxfwd: int, taxonomy: str, built_
     conn.executemany(
         f"INSERT INTO {NEG_TABLE} VALUES (?,?,?,?,?,?,?,?)",
         [(c, d, b, True, False, maxfwd, taxonomy, built_at) for (c, d, b) in rows])
-    conn.execute(f"CREATE INDEX idx_rally_neg_date ON {NEG_TABLE}(entry_signal_date)")
+    # 索引已删 (cut_qfq_fresh_file_swap, 2026-09-24) —— 理由同上 idx_rally_gt_bottom。
 
 
 def _base_bucket_case(cfg: dict) -> str:

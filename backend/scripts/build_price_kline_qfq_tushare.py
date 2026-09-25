@@ -1,4 +1,4 @@
-"""Build the current TuShare-history qfq (前复权) analysis序列 — 全量 DROP+CTAS。
+"""Build the current TuShare-history qfq (前复权) analysis序列 — 建到新文件后原子换名。
 
 派生 serving/research 面, 非 nominal execution-price truth。每次重建戳
 batch_id/ingested_at/factor_as_of/config_hash。
@@ -13,6 +13,14 @@ batch_id/ingested_at/factor_as_of/config_hash。
     最后一条 canonical K 线的因子行, 致锚定日错位 (600069.SH 等 6 股末行偏离 nominal 达
     89.7%)。自算因子只依赖 canonical 自身, 每只股"最后一行"天然就是它自己的最后一行, 两表
     覆盖范围不同这个前提被消灭, 而非打补丁绕过。
+  - 2026-09-24 (cut_qfq_fresh_file_swap): 同文件 DROP+CTAS+CREATE INDEX 隔日制造
+    ~807MB 空洞 (旧块入 free list, 索引块与表块交错落位让文件永久钉在 2×; 详见
+    sandbox/churn_fix_20260919/spec_derived_rebuild_churn.md §1.1/E1)。改为建到
+    `<live>_build.duckdb`、CTAS 按 (code,date) 聚簇 (`ORDER BY`)、不建索引 (计划器
+    从不选它, E3 EXPLAIN 两种点查均 SEQ_SCAN)、cross_check+free_blocks==0 通过后
+    经 `services.duckdb_file_swap.swap_in_fresh_file` 原子换名。换名前置三道围栏
+    (残留 live.wal / live 指纹在建库期间变了 / live 有活跃写者) 任一不过即拒绝且
+    不动生产文件——旧版"cross_check 不过时新表已经上线"的窗口随之消失。
 
 qfq[t] = nominal[t] × hfq_factor[t] / hfq_factor[该股最后一行]; hfq_factor 定义见
 services.adjust_factor (baostock"涨跌幅复权法": ratio[t]=close[t-1]/pre_close[t], 首日=1,
@@ -35,9 +43,16 @@ from typing import Any
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "backend"))
 
+from services import market_schema  # noqa: E402
 from services.adjust_factor import AdjustFactorConfig, hfq_sql, load_config  # noqa: E402
 from services.duck_adapter import connect  # noqa: E402
+from services.duckdb_file_swap import (  # noqa: E402
+    SwapRefused,
+    file_fingerprint,
+    swap_in_fresh_file,
+)
 from services.universe import sql_where_active_a_share  # noqa: E402
+from services.writer_lock import WriterLockBusyError, writer_lock  # noqa: E402
 
 MARKET_DB = "data/market.duckdb"  # rule-compliance: ok evidence=回测K线库, 一次性 build 脚本
 TUSHARE_DB = str(REPO / "data" / "tushare_raw.duckdb")  # rule-compliance: ok evidence=tushare raw 源库 (ATTACH read-only)
@@ -110,22 +125,31 @@ def build_full(
     batch_id: str | None = None,
     ingested_at: str | None = None,
 ) -> dict[str, Any]:
-    """唯一构建路径: DROP+CTAS+索引 (增量/rewrite 判定已删——实测全量仅 ~4.6s/840MB)。"""
+    """唯一构建路径: DROP+CTAS, 按 (code,date) 物理聚簇, 不建索引。
+
+    2026-09-24: 删掉 CREATE INDEX (计划器从不选它, 只贡献空洞——spec E3/E1);
+    CTAS 加 ORDER BY code,date 换 zone map (单股查询 12ms→2.8ms, 全扫查询更快)。
+    conn 现在总是指向全新的 build 文件 (main() 里的 `<live>_build.duckdb`),
+    DROP IF EXISTS 在新文件里是空操作, 保留只是为了注入连接的测试路径与语义一致。
+    """
     cfg = cfg or load_config()
     built_at = ingested_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     bid = batch_id or _default_batch_id(built_at)
     conn.execute(f"ATTACH IF NOT EXISTS '{TUSHARE_DB}' AS tr (READ_ONLY)")
     conn.execute(f"DROP TABLE IF EXISTS {TARGET}")
     conn.execute(
-        f"CREATE TABLE {TARGET} AS {build_select_sql(cfg, batch_id=bid, ingested_at=built_at)}"
+        f"CREATE TABLE {TARGET} AS "
+        f"SELECT * FROM ({build_select_sql(cfg, batch_id=bid, ingested_at=built_at)}) q "
+        "ORDER BY code, date"
     )
-    conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{TARGET}_cd ON {TARGET}(code, date)")
     n = int(conn.execute(f"SELECT count(*) FROM {TARGET}").fetchone()[0])
     return {"rows": n, "batch_id": bid, "ingested_at": built_at, "config_hash": cfg.config_hash}
 
 
 def cross_check(conn) -> dict[str, Any]:
-    """4 条集合级自完整性检查 (2026-09-08 重写 — 全部比集合/等式, 不比 MAX/COUNT 门面数字)。"""
+    """5 条集合级自完整性检查 (2026-09-08 重写 4 条 — 全部比集合/等式, 不比 MAX/COUNT
+    门面数字; 2026-09-24 补第 5 条 duplicate_grain_n —— 旧 4 条的 qfq_set 用了
+    DISTINCT, 重复行按构造看不见, grain 唯一性此前无人守)。"""
     active_pred = sql_where_active_a_share("ts_code")
 
     # 1) (code,date) 集合恒等于 canonical A股 >= START_DATE 的集合 —— 比集合不比 COUNT,
@@ -174,6 +198,12 @@ def cross_check(conn) -> dict[str, Any]:
                (SELECT strftime(max(trade_date), '%Y-%m-%d') FROM {SOURCE_RELATION})
     """).fetchone()
 
+    # 5) grain 唯一性: (code,date) 重复行数 —— 上面 1) 的 qfq_set 用 DISTINCT 收窄过,
+    #    对重复行是盲的 (同一 (code,date) 出现两行, DISTINCT 后集合看着仍然相等)。
+    duplicate_grain_n = conn.execute(f"""
+        SELECT count(*) - count(DISTINCT (code, date)) FROM {TARGET}
+    """).fetchone()[0]
+
     return {
         "set_missing_in_qfq": int(set_diff[0]),
         "set_extra_in_qfq": int(set_diff[1]),
@@ -181,12 +211,64 @@ def cross_check(conn) -> dict[str, Any]:
         "null_factor_n": int(null_factor_n),
         "qfq_max_date": dates[0],
         "canonical_max_date": dates[1],
+        "duplicate_grain_n": int(duplicate_grain_n),
     }
+
+
+def _cross_check_ok(cc: dict[str, Any]) -> bool:
+    return (
+        cc["set_missing_in_qfq"] == 0
+        and cc["set_extra_in_qfq"] == 0
+        and cc["anchor_close_mismatch_n"] == 0
+        and cc["null_factor_n"] == 0
+        and cc["duplicate_grain_n"] == 0
+        and cc["qfq_max_date"] == cc["canonical_max_date"]
+    )
+
+
+def _print_cross_check(cc: dict[str, Any]) -> bool:
+    print(
+        f"[sanity] set_missing={cc['set_missing_in_qfq']} set_extra={cc['set_extra_in_qfq']} "
+        f"anchor_mismatch={cc['anchor_close_mismatch_n']} null_factor={cc['null_factor_n']} "
+        f"duplicate_grain={cc['duplicate_grain_n']} "
+        f"qfq_max={cc['qfq_max_date']} canonical_max={cc['canonical_max_date']}",
+        flush=True,
+    )
+    ok = _cross_check_ok(cc)
+    print(
+        f"[verdict] {'PASS 自完整性检查通过' if ok else 'REVIEW 集合/锚点/因子/日期/重复行对不齐, 先查再消费'}"
+    )
+    return ok
+
+
+def _copy_secondary_tables(conn) -> None:
+    """从只读 ATTACH 的 prev (=旧 live) 拷贝除 TARGET 外的每张 BASE TABLE。
+
+    原 DDL (含 PK/约束, 如 dim_schema_version 的主键) + 原样行 + 原索引; 不用
+    CTAS (会丢约束, 同 db_compact.py 的既有教训)。TARGET 自己的旧索引 (已删的
+    idx_{TARGET}_cd) 天然被 `table_name != TARGET` 排除, 不会被拷回来。
+    """
+    tables = conn.execute(
+        "SELECT table_name, sql FROM duckdb_tables() "
+        "WHERE database_name = 'prev' AND table_name != ? ORDER BY table_name",
+        [TARGET],
+    ).fetchall()
+    for tname, tsql in tables:
+        if not tsql:
+            raise RuntimeError(f"prev.{tname} 无原 DDL (sql=NULL), 需要手动处理, 不猜测建表")
+        conn.execute(tsql)
+        conn.execute(f'INSERT INTO "{tname}" SELECT * FROM prev."{tname}"')
+        for (isql,) in conn.execute(
+            "SELECT sql FROM duckdb_indexes() WHERE database_name = 'prev' "
+            "AND table_name = ? AND sql IS NOT NULL",
+            [tname],
+        ).fetchall():
+            conn.execute(isql)
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--check-only", action="store_true", help="只对账不重建")
+    ap.add_argument("--check-only", action="store_true", help="只对账不重建 (只读, 不取写锁)")
     ap.add_argument(
         "--full",
         action="store_true",
@@ -199,42 +281,81 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = ap.parse_args(argv)
 
-    detail: dict[str, Any] = {}
-    conn = connect(MARKET_DB, read_only=False)
+    live = Path(MARKET_DB)
+    build = live.with_name(live.stem + "_build.duckdb")  # rule-compliance: ok evidence=从 manifest 路径派生, 同 db_compact.py:49-50
+    build_wal = build.with_name(build.name + ".wal")
+
+    if args.check_only:
+        conn = connect(str(live), read_only=True)
+        try:
+            conn.execute(f"ATTACH IF NOT EXISTS '{TUSHARE_DB}' AS tr (READ_ONLY)")
+            cc = cross_check(conn)
+        finally:
+            conn.close()
+        return 0 if _print_cross_check(cc) else 2
+
+    def _discard_build() -> None:
+        if build_wal.exists():
+            build_wal.unlink()
+        if build.exists():
+            build.unlink()
+
     try:
-        conn.execute(f"ATTACH IF NOT EXISTS '{TUSHARE_DB}' AS tr (READ_ONLY)")  # cross_check reads canonical too
-        if not args.check_only:
-            detail = build_full(conn)
-            print(
-                f"[build] {TARGET}: {detail['rows']:,} 行 | batch_id={detail['batch_id']} | "
-                f"config_hash={detail['config_hash'][:12]}…",
-                flush=True,
-            )
-        cc = cross_check(conn)
-        conn.execute("CHECKPOINT")
-    finally:
-        conn.close()
+        with writer_lock("build_price_kline_qfq_tushare"):
+            # 残留 build/build.wal (上次崩溃产物) 先删——它们只属于本脚本, 谁跑谁清。
+            # 必须在拿到写锁之后才清: 清理前若还没排到队, 可能删掉另一个正持锁写者
+            # 尚未关闭连接的在建 build 文件 (竞态——两个进程都跑本脚本时, 后来者会在
+            # 前者还没写完时删掉它的 build, 导致前者最后 swap 时误判 build_not_closed)。
+            _discard_build()
+            # expected 必须在打开 build 连接、ATTACH prev 之前记 (M1); 拿到写锁之后
+            # 才读, 把"读 live 指纹"与"没人能再抢到写窗口"钉在同一时刻, 收紧竞态窗口。
+            expected = file_fingerprint(live) if live.exists() else None
+            conn = connect(str(build), read_only=False)
+            try:
+                conn.execute(f"ATTACH IF NOT EXISTS '{TUSHARE_DB}' AS tr (READ_ONLY)")
+                detail = build_full(conn)
+                print(
+                    f"[build] {TARGET}: {detail['rows']:,} 行 | batch_id={detail['batch_id']} | "
+                    f"config_hash={detail['config_hash'][:12]}…",
+                    flush=True,
+                )
+                conn.executescript(market_schema.ANALYSIS_KLINE_QFQ_VIEW_DDL)
+                if live.exists():
+                    conn.execute(f"ATTACH '{live}' AS prev (READ_ONLY)")
+                    try:
+                        _copy_secondary_tables(conn)
+                    finally:
+                        conn.execute("DETACH prev")
+                cc = cross_check(conn)
+                conn.execute("CHECKPOINT")
+                fb_row = conn.execute(
+                    "SELECT free_blocks FROM pragma_database_size() WHERE database_name = ?",
+                    [build.stem],
+                ).fetchone()
+                free_blocks = int(fb_row[0]) if fb_row else None
+            finally:
+                conn.close()
 
-    print(
-        f"[sanity] set_missing={cc['set_missing_in_qfq']} set_extra={cc['set_extra_in_qfq']} "
-        f"anchor_mismatch={cc['anchor_close_mismatch_n']} null_factor={cc['null_factor_n']} "
-        f"qfq_max={cc['qfq_max_date']} canonical_max={cc['canonical_max_date']}",
-        flush=True,
-    )
-    ok = (
-        cc["set_missing_in_qfq"] == 0
-        and cc["set_extra_in_qfq"] == 0
-        and cc["anchor_close_mismatch_n"] == 0
-        and cc["null_factor_n"] == 0
-        and cc["qfq_max_date"] == cc["canonical_max_date"]
-    )
-    print(f"[verdict] {'PASS 自完整性检查通过' if ok else 'REVIEW 集合/锚点/因子/日期对不齐, 先查再消费'}")
-    if not ok:
-        return 2
+            ok = _print_cross_check(cc)
+            if not ok or free_blocks != 0:
+                print(f"[swap] SKIPPED free_blocks={free_blocks}, 生产文件未动", flush=True)
+                _discard_build()
+                return 2
 
-    # 死块回收不再是本脚本自己的事: 日更 store 阶段按 backend/config/db_compaction.yaml
-    # 阈值统一压缩所有登记库 (services.pipeline.store.compact_bloated_databases,
-    # cut_db_compaction 2026-09-19) —— 取代原先此处的点状整库压缩调用。
+            try:
+                swap_in_fresh_file(build, live, expected=expected)
+            except SwapRefused as exc:
+                print(
+                    f"[swap] REFUSED reason={exc.reason} detail={exc.detail}, 生产文件未动",
+                    file=sys.stderr,
+                )
+                _discard_build()
+                return 3
+    except WriterLockBusyError as exc:
+        print(f"[build_price_kline_qfq_tushare] LOCK_BUSY: {exc}", file=sys.stderr)
+        return 4
+
+    print(f"[swap] PASS {live} 已原子换名", flush=True)
     return 0
 
 
