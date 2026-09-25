@@ -41,6 +41,7 @@ blocking_paths:
 - tests/scripts/test_db_compact.py
 - tests/scripts/test_db_lifecycle_delete.py
 - tests/scripts/test_db_split_org_holding.py
+- tests/scripts/test_derive_cli_lhb_count.py
 - tests/scripts/test_derive_cli_rally_gt.py
 - tests/scripts/test_dip_scan.py
 - tests/scripts/test_dip_severity.py

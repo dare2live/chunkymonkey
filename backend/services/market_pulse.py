@@ -30,13 +30,17 @@ v2 全市场行新列 (2026-07-02 第一批, 契约=设计文档 "v2 增强设�
     交易所才出值, SSE-only → NULL; 无 accepted 分区日 → NULL (fail closed, 不回退 raw)。
   - mkt_pe / mkt_turnover: raw_tushare_index_dailybasic 取 mkt_valuation_code 行
     (pe_ttm / turnover_rate_f — TTM 口径抗财报季跳变, 自由流通换手贴情绪水位)。
-  - lhb_count / lhb_inst_net: top_list 当日上榜家数 (DISTINCT ts_code, 同股多理由算 1 家) /
-    top_inst 日频席位净买直和。业主口径 (2026-09-11/09-12 批准, fact_top_inst_seat_daily
-    发布面已按此折叠+分类, 见 services.top_inst_seat_publish): D1 同股同日同席位买卖金额完全
-    相同的多榜记录按一笔计 (匿名 [机构专用] 同样处理并注明可能少算); D2 投资者类别行不计入
-    日频指标; D3 日频指标只计单日榜; D4 只算项目股票池内证券 (前缀 60/00/30/68, 排除可转债/
-    北交所/B股)。四条口径合一为 daily_metric_filter_sql() (发布模块拥有, 本文件 import 不
-    复制字面量)。
+  - lhb_count / lhb_inst_net: top_list 当日上榜家数 (DISTINCT ts_code, 同股多理由算 1 家,
+    2026-09-19 cut_lhb_count_universe 起只计项目股票池内证券 —— 复用 services.universe.
+    sql_where_active_a_share 排除可转债/北交所/B股; top_inst 的 D1-D3 是榜单理由折叠/投资者
+    类别行/多日榜的概念, top_list 没有这些维度, 不套用 daily_metric_filter_sql()) / top_inst
+    日频席位净买直和。业主口径 (2026-09-11/09-12 批准, fact_top_inst_seat_daily 发布面已按此
+    折叠+分类, 见 services.top_inst_seat_publish): D1 同股同日同席位买卖金额完全相同的多榜
+    记录按一笔计 (匿名 [机构专用] 同样处理并注明可能少算); D2 投资者类别行不计入日频指标;
+    D3 日频指标只计单日榜; D4 只算项目股票池内证券 (前缀 60/00/30/68, 排除可转债/北交所/
+    B股)。lhb_inst_net 四条口径合一为 daily_metric_filter_sql() (发布模块拥有, 本文件 import
+    不复制字面量); lhb_count 只需要 D4 一条, 直接复用 sql_where_active_a_share。历史落库值的
+    重算见 recompute_lhb_count_history()。
   - strongest_sectors_json: limit_cpt_list 当日最强板块榜整日 JSON (rank 升序;
     885xxx.TI 同花顺码, 禁与 dc/sw 任何链 JOIN — 独立展示卡专用)。
 
@@ -739,9 +743,14 @@ def _market_sql(
         FROM {_tr_entity("index_dailybasic")} WHERE ts_code = {val_code}
     ),
     lhb AS (
-        -- 龙虎榜家数: 同股同日多上榜理由多行 → DISTINCT ts_code 算 1 家。
+        -- 龙虎榜家数: 同股同日多上榜理由多行 → DISTINCT ts_code 算 1 家; 只算项目股票池内
+        -- 证券 (D4 口径, 复用 sql_where_active_a_share, 排除可转债/北交所/B股 —— D1-D3 是
+        -- top_inst 席位表的概念, top_list 无榜单理由折叠/多日榜维度, 不套用
+        -- daily_metric_filter_sql(), 2026-09-19 cut_lhb_count_universe)。
         SELECT trade_date, COUNT(DISTINCT ts_code) AS lhb_count
-        FROM {_tr_entity("top_list")} GROUP BY 1
+        FROM {_tr_entity("top_list")}
+        WHERE {sql_where_active_a_share("ts_code")}
+        GROUP BY 1
     ),
     lhb_inst AS (
         -- 席位净买直和 —— 业主口径 (2026-09-11/09-12 批准): D1 同股同日同席位买卖金额完全相同的
@@ -1569,6 +1578,103 @@ def build_latest(conn=None, cfg: dict[str, Any] | None = None) -> dict[str, Any]
         if transaction_open:
             _rollback_after_failure(con)
         raise
+    finally:
+        if own:
+            con.close()
+
+
+def recompute_lhb_count_history(conn=None, *, dry_run: bool = False) -> dict[str, Any]:
+    """按新口径 (D4: 仅计项目股票池内证券) 重算 mart_market_pulse_daily 已落库的历史
+    lhb_count 列 —— 只 UPDATE 这一列, 按 trade_date 对齐, 其它列原样保留。
+
+    背景 (2026-09-19 cut_lhb_count_universe, fable 09-19 发现 spec_bshare_b2.md §1.3):
+    lhb CTE 在此前版本没有股票池过滤, 已落库的历史行把可转债/北交所/B股也计入了 lhb_count。
+    _market_sql() 改口径后只覆盖新写入的行; build_latest 只在 lookback_late_days 窗口内
+    DELETE+重插, 窗口外的历史行不会自愈。没有用 rebuild_all 补这段历史: 它会重建
+    mart_market_pulse_daily 全部列, 而本刀的施工环境没有生产库/网络访问去核对其它列在重算
+    前后逐行逐列相同 (spec_lhb_count.md §改动 3 要求先证明再执行, 证不出就不做); 只重算单列
+    的窄 UPDATE 不需要这一步 —— 它在构造上就不可能碰其它列。单写者原则: 本函数是
+    market_pulse 模块自己的写者, 不新开一个脚本去 UPDATE 这张表。生产执行时机由主循环决定。
+
+    dry_run (cut_lhb_count_finish, 2026-09-25): True 时用同一条"新口径 vs 已落库值"的
+    差异子查询统计会变的 trade_date 及其新旧值/差, 不执行 UPDATE。own 连接 (``conn`` 为
+    None 时自己打开的连接) 按 ``dry_run`` 决定 read_only —— dry-run 的"不写"因此是连接
+    层面的真约束, 不只是代码分支没有走到 UPDATE 语句这一层弱保证。
+    ``scripts/chunkyctl derive market-pulse-lhb-count`` 默认 dry_run=True, 只有
+    ``--execute`` 才 dry_run=False 且外层包 writer_lock。
+
+    built_at 取舍: 本函数不刷新 MARKET_TABLE 的 built_at 列。built_at 代表"这一行其余
+    指标是什么时候构建的" (build_latest/rebuild_all 写入该行时打的时间戳); 本函数只重算
+    lhb_count 一列, 该行其余指标并没有被重新构建, 刷新 built_at 会谎报"整行刚重建过"。
+    验收判据 (spec_lhb_count.md §改动 3) 本就是"只改 lhb_count 一列, 其它列逐行不变"——
+    built_at 是"其它列"之一, 不刷新是这条判据的必然推论, 不是遗漏。
+    """
+    own = conn is None
+    con = conn or duck_connect(_db("smartmoney"), read_only=dry_run)
+    try:
+        if own:
+            _attach_sources(con)
+        have_market_table = con.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = ?", [MARKET_TABLE]
+        ).fetchone()
+        if not have_market_table:
+            out: dict[str, Any] = (
+                {"dry_run": True, "rows_would_change": 0, "total_delta": 0, "table_missing": True}
+                if dry_run
+                else {"rows_recomputed": 0, "table_missing": True}
+            )
+            logger.info("[market_pulse] recompute_lhb_count_history: %s", out)
+            return out
+        if dry_run:
+            diff_rows = con.execute(f"""
+                SELECT d.trade_date, m.lhb_count AS old_value, lb.lhb_count AS new_value
+                FROM (SELECT DISTINCT trade_date FROM {MARKET_TABLE}) d
+                JOIN {MARKET_TABLE} m ON m.trade_date = d.trade_date
+                LEFT JOIN (
+                    SELECT trade_date, COUNT(DISTINCT ts_code) AS lhb_count
+                    FROM {_tr_entity("top_list")}
+                    WHERE {sql_where_active_a_share("ts_code")}
+                    GROUP BY 1
+                ) lb ON lb.trade_date = d.trade_date
+                WHERE m.lhb_count IS DISTINCT FROM lb.lhb_count
+                ORDER BY d.trade_date
+            """).fetchall()
+            diffs = [
+                {
+                    "trade_date": row[0],
+                    "old_value": row[1],
+                    "new_value": row[2],
+                    "delta": (row[2] or 0) - (row[1] or 0),
+                }
+                for row in diff_rows
+            ]
+            out = {
+                "dry_run": True,
+                "rows_would_change": len(diffs),
+                "total_delta": sum(d["delta"] for d in diffs),
+                "diffs": diffs,
+            }
+            logger.info("[market_pulse] recompute_lhb_count_history: %s", out)
+            return out
+        updated = con.execute(f"""
+            UPDATE {MARKET_TABLE} AS m
+            SET lhb_count = r.lhb_count
+            FROM (
+                SELECT d.trade_date, lb.lhb_count
+                FROM (SELECT DISTINCT trade_date FROM {MARKET_TABLE}) d
+                LEFT JOIN (
+                    SELECT trade_date, COUNT(DISTINCT ts_code) AS lhb_count
+                    FROM {_tr_entity("top_list")}
+                    WHERE {sql_where_active_a_share("ts_code")}
+                    GROUP BY 1
+                ) lb ON lb.trade_date = d.trade_date
+            ) AS r
+            WHERE m.trade_date = r.trade_date AND m.lhb_count IS DISTINCT FROM r.lhb_count
+            RETURNING m.trade_date
+        """).fetchall()
+        out = {"rows_recomputed": len(updated)}
+        logger.info("[market_pulse] recompute_lhb_count_history: %s", out)
+        return out
     finally:
         if own:
             con.close()

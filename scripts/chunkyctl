@@ -35,6 +35,7 @@ Usage:
   scripts/chunkyctl sync --domain daily|stock_st --land-then-accept [--from-local-raw] --start YYYYMMDD --end YYYYMMDD
   scripts/chunkyctl derive qfq|form [--from-accepted] [--allow-legacy-fill: form only] [--rebuild|--check-only]
   scripts/chunkyctl derive rally-gt [--data-end YYYYMMDD]
+  scripts/chunkyctl derive market-pulse-lhb-count [--execute]
   scripts/chunkyctl pipeline acquire|clean|process|store [--force]
   scripts/chunkyctl lineage build | impact <table> | provenance <table> | dead | show <table>
 
@@ -49,6 +50,8 @@ Examples:
   scripts/chunkyctl derive form --allow-legacy-fill
   scripts/chunkyctl derive rally-gt
   scripts/chunkyctl derive rally-gt --data-end 20250531
+  scripts/chunkyctl derive market-pulse-lhb-count
+  scripts/chunkyctl derive market-pulse-lhb-count --execute
 
 Notes:
   agent-boot  = one-page session-start context: git + moth summary + codegraph status + generated board; read-only projection.
@@ -82,6 +85,10 @@ Notes:
                 Thin passthrough to services.rally_gt.rebuild(data_end=...) — Tier3 主升浪
                 ground-truth 三表 (fact_rally_ground_truth/_negative/_strata) 全量重建,
                 DROP 重建 wipeable。--data-end 可选 (默认 holdout_start 前一自然日)。
+                market-pulse-lhb-count = 同样独立分支, 窄重算 mart_market_pulse_daily
+                已落库的历史 lhb_count 列 (cut_lhb_count_finish, 只 UPDATE 这一列, 按
+                trade_date 对齐, 其它列不动)。默认 dry-run: 只统计会变的天数/新旧值/
+                合计差, 不写库; --execute 才写, 写库前取 writer_lock (占用中 exit 3)。
   pipeline    = manually run one declared data stage; full manual chain remains daily_update.sh.
   lineage     = generated dependency projection; impact <table> audits fan-in before delete/migrate.
   history     = 项目历史检索。`--grep <词>` 查逐刀细节（`git log`，可加 `--full` 出正文）；

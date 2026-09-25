@@ -1672,3 +1672,203 @@ def test_project_universe_whitelist_in_nominal_and_leading_sql():
     sql = mp._sector_sql(CFG)
     assert "SUBSTR(i.leading_code, 1, 2) IN" in sql
     assert "SUBSTR(m.con_code, 1, 2) IN" in sql
+
+
+def _replace_top_list(c, rows):
+    """cut_lhb_count_universe 隔离用例专用: 替换 fixture 里 raw_tushare_top_list 的基线
+    三行, 换成 A1/A3 用例自己的行。rows: (trade_date, ts_code, name, reason)。"""
+    c.execute("DELETE FROM tr.raw_tushare_top_list")
+    c.executemany("INSERT INTO tr.raw_tushare_top_list VALUES (?, ?, ?, ?)", rows)
+
+
+def _lhb_count(c, trade_date):
+    row = c.execute(
+        f"SELECT lhb_count FROM {mp.MARKET_TABLE} WHERE trade_date = ?", [trade_date]
+    ).fetchone()
+    return row[0] if row else None
+
+
+def test_lhb_count_pool_prefix_isolated():
+    """cut_lhb_count_universe A1 (spec_lhb_count.md): 同日混入可转债 (11 前缀) / 北交所
+    (.BJ) / 沪深两种 B 股 (90/20 前缀), 项目股票池只认 60/00/30/68 —— 六行里只有
+    600001.SH 与 000002.SZ 在池内, lhb_count 必须是 2 不是 6。"""
+    c = _fixture_conn()
+    try:
+        _replace_top_list(c, [
+            (D[0], "600001.SH", "甲", "日涨幅偏离值达到7%"),
+            (D[0], "000002.SZ", "乙", "日涨幅偏离值达到7%"),
+            (D[0], "830001.BJ", "丙", "日涨幅偏离值达到7%"),
+            (D[0], "900925.SH", "丁", "日涨幅偏离值达到7%"),
+            (D[0], "200017.SZ", "戊", "日涨幅偏离值达到7%"),
+            (D[0], "110001.SH", "己", "日涨幅偏离值达到7%"),
+        ])
+        mp.rebuild_all(conn=c, cfg=CFG)
+        assert _lhb_count(c, D[0]) == 2
+    finally:
+        c.close()
+
+
+def test_recompute_lhb_count_history_only_lhb_count_changes():
+    """cut_lhb_count_universe A3 (spec_lhb_count.md §改动 3): mart 里 D0 的 lhb_count 被
+    手工拨回旧口径遗留的错误值 (旧口径会把源里新多出来的北交所行也算 1 家), 模拟"这行是
+    改口径之前落库的历史行"。recompute_lhb_count_history 必须把它改回新口径值, 且除
+    lhb_count 外, 每个日期的每一列 (含 D0 自己的其它列) 逐行逐列原样不变。"""
+    c = _fixture_conn()
+    try:
+        # 源多一行北交所: 新口径下被过滤 (lhb_count 仍是 2), 旧口径会把它计入 (会是 3)。
+        c.execute(
+            "INSERT INTO tr.raw_tushare_top_list VALUES (?, ?, ?, ?)",
+            [D[0], "830001.BJ", "丙", "日涨幅偏离值达到7%"],
+        )
+        mp.rebuild_all(conn=c, cfg=CFG)
+        assert _lhb_count(c, D[0]) == 2  # 对照组: 证明本次重建走的就是新口径代码路径
+
+        cols = [r[0] for r in c.execute(
+            "SELECT column_name FROM information_schema.columns "
+            f"WHERE table_name = '{mp.MARKET_TABLE}' ORDER BY ordinal_position"
+        ).fetchall()]
+        lhb_idx = cols.index("lhb_count")
+
+        def _snapshot():
+            return {
+                row[0]: row
+                for row in c.execute(
+                    f"SELECT {', '.join(cols)} FROM {mp.MARKET_TABLE} ORDER BY trade_date"
+                ).fetchall()
+            }
+
+        # 手工把 D0 的 lhb_count 拨回旧口径的错误值, 只动这一列一行, 不经过任何
+        # market_pulse 写者 —— 复刻"生产历史表里躺着旧口径值"的现状。
+        c.execute(f"UPDATE {mp.MARKET_TABLE} SET lhb_count = 3 WHERE trade_date = ?", [D[0]])
+        assert _lhb_count(c, D[0]) == 3
+        before = _snapshot()
+
+        out = mp.recompute_lhb_count_history(conn=c)
+        assert out["rows_recomputed"] == 1
+
+        after = _snapshot()
+        assert _lhb_count(c, D[0]) == 2  # 改回新口径值, 不是原样保留旧口径的 3
+        for trade_date, before_row in before.items():
+            after_row = after[trade_date]
+            for i, col in enumerate(cols):
+                if col == "lhb_count":
+                    continue
+                assert after_row[i] == before_row[i], (
+                    f"{trade_date}.{col} changed: {before_row[i]!r} -> {after_row[i]!r}"
+                )
+        for trade_date in D:
+            if trade_date == D[0]:
+                continue
+            assert after[trade_date][lhb_idx] == before[trade_date][lhb_idx]
+    finally:
+        c.close()
+
+
+def test_recompute_lhb_count_history_missing_table_is_noop():
+    """recompute 面对还没建过 mart 表的库 (rebuild_all/build_latest 从未跑过) 必须优雅
+    返回, 不炸 — 与 build_latest 对缺表的处理精神一致 (缺失只能传播为缺失, 不假装重算过)。"""
+    c = duck_mem()
+    c.executescript(_DDL)
+    try:
+        out = mp.recompute_lhb_count_history(conn=c)
+        assert out == {"rows_recomputed": 0, "table_missing": True}
+    finally:
+        c.close()
+
+
+def test_recompute_lhb_count_history_dry_run_reports_diff_without_writing():
+    """cut_lhb_count_finish L1: dry_run=True 只统计会变的天数/新旧值/合计差, 逐行逐列
+    (含 lhb_count 自己) 一个字节都不改 —— 与 A3 用例共用同一套"手工拨回旧口径值"
+    复现手法, 唯一差异是这里断言表内容前后完全相等而不是断言 UPDATE 发生了。"""
+    c = _fixture_conn()
+    try:
+        c.execute(
+            "INSERT INTO tr.raw_tushare_top_list VALUES (?, ?, ?, ?)",
+            [D[0], "830001.BJ", "丙", "日涨幅偏离值达到7%"],
+        )
+        mp.rebuild_all(conn=c, cfg=CFG)
+        assert _lhb_count(c, D[0]) == 2  # 对照组: 本次重建已经是新口径
+
+        cols = [r[0] for r in c.execute(
+            "SELECT column_name FROM information_schema.columns "
+            f"WHERE table_name = '{mp.MARKET_TABLE}' ORDER BY ordinal_position"
+        ).fetchall()]
+
+        def _snapshot():
+            return {
+                row[0]: row
+                for row in c.execute(
+                    f"SELECT {', '.join(cols)} FROM {mp.MARKET_TABLE} ORDER BY trade_date"
+                ).fetchall()
+            }
+
+        # 手工把 D0 拨回旧口径的错误值 3, 复刻"生产历史表里躺着旧口径值"的现状。
+        c.execute(f"UPDATE {mp.MARKET_TABLE} SET lhb_count = 3 WHERE trade_date = ?", [D[0]])
+        before = _snapshot()
+
+        out = mp.recompute_lhb_count_history(conn=c, dry_run=True)
+
+        assert out["dry_run"] is True
+        assert out["rows_would_change"] == 1
+        assert out["total_delta"] == -1  # 2 (新口径) - 3 (手工拨回的旧口径) = -1
+        assert out["diffs"] == [
+            {"trade_date": D[0], "old_value": 3, "new_value": 2, "delta": -1}
+        ]
+
+        after = _snapshot()
+        # duck_adapter.Row 没定义 __eq__ (退化成对象 identity), 整行/整字典比较永远不
+        # 相等 —— 逐列按值比较, 同 A3 用例 (test_recompute_lhb_count_history_only_
+        # lhb_count_changes) 的写法。
+        assert set(after) == set(before)
+        for trade_date, before_row in before.items():
+            after_row = after[trade_date]
+            for i, col in enumerate(cols):
+                assert after_row[i] == before_row[i], (
+                    f"dry_run=True 改动了 {trade_date}.{col}: "
+                    f"{before_row[i]!r} -> {after_row[i]!r}"
+                )
+        assert _lhb_count(c, D[0]) == 3  # 仍是手工拨回的旧值, 没有被 dry-run 悄悄改回来
+    finally:
+        c.close()
+
+
+def test_recompute_lhb_count_history_dry_run_missing_table_is_noop():
+    """dry_run=True 面对还没建过 mart 表的库同样优雅返回, 不炸——与非 dry_run 分支
+    (test_recompute_lhb_count_history_missing_table_is_noop) 隔离覆盖同一个门控条件
+    在 dry_run 分支下的行为, 输出形状仍标 dry_run=True (不是复用非 dry_run 的形状)。"""
+    c = duck_mem()
+    c.executescript(_DDL)
+    try:
+        out = mp.recompute_lhb_count_history(conn=c, dry_run=True)
+        assert out == {
+            "dry_run": True,
+            "rows_would_change": 0,
+            "total_delta": 0,
+            "table_missing": True,
+        }
+    finally:
+        c.close()
+
+
+def test_recompute_lhb_count_history_own_connection_read_only_follows_dry_run(monkeypatch):
+    """cut_lhb_count_finish 复核: docstring 宣称 own 连接 (conn=None 时函数自己打开的连接)
+    按 dry_run 决定 read_only, 是"连接层面的真约束"而不只是没走到 UPDATE 语句这层弱保证。
+    上面所有用例都显式传 conn=c, own 分支 (con = conn or duck_connect(_db(...),
+    read_only=dry_run)) 从未被执行到——这里隔离只测这一个门控条件: 拦截 duck_connect
+    记录调用方收到的 read_only kwarg, 连接建立后立刻抛出停止, 不需要真的打开生产库文件、
+    不需要走完 _attach_sources 之后的查询逻辑。"""
+    calls: list[bool] = []
+
+    def _stop_after_connect(path, **kwargs):
+        calls.append(kwargs.get("read_only"))
+        raise RuntimeError("stop-after-connect: own-connection probe")
+
+    monkeypatch.setattr(mp, "duck_connect", _stop_after_connect)
+
+    with pytest.raises(RuntimeError, match="stop-after-connect"):
+        mp.recompute_lhb_count_history(dry_run=True)
+    assert calls == [True]
+
+    with pytest.raises(RuntimeError, match="stop-after-connect"):
+        mp.recompute_lhb_count_history(dry_run=False)
+    assert calls == [True, False]
