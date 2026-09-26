@@ -313,3 +313,37 @@ findings:
       按 2026-09-26 业主「返修要收敛」的规矩不挡 B1 合入。
     recorded: "2026-09-26"
     decision: register
+
+  - id: dry-report-degraded-msg-points-to-real-evidence
+    asset: "backend/config/governance_gates.yaml runtime_checks[db_invariants, out_of_scope_rows].degraded_msg"
+    detector: none
+    escalates_when: >
+      dry 报告 (data/scratch/dry_run/<D>/data/reports/daily_<D>.json) 的 degraded_msgs 被任何读者当作排查入口:
+      这些消息里的证据指针仍写真实 data/audit/<检查>_<D>.json 路径, 读者顺着指针读到的是真实运行的文件而不是本次 dry 的产物。
+      backend/ 下出现读取 data/scratch/dry_run 的代码时即须修 (cut_dry_isolation 审查待办)。
+    recorded: "2026-09-26"
+    decision: register
+  - id: dry-path-switch-repeated-at-call-sites
+    asset: "backend/services/pipeline/{context,preflight,store,run}.py 各处 `dry_path(...) if dry else REPO / x`"
+    detector: backend/tests/services/test_pipeline_dry_isolation.py
+    escalates_when: >
+      新增第 8 个需要 dry 映射的输出路径, 或 test_pipeline_dry_isolation.py 的 A2 用例漏覆盖某个调用点;
+      届时把判断收成 evidence_paths 里一个 evidence_path(p, *, repo, date, dry), 真实路径只剩一个落点 (cut_dry_isolation 第 4 层建议)。
+    recorded: "2026-09-26"
+    decision: register
+  - id: dry-root-template-not-validated-as-relative
+    asset: "backend/services/pipeline/evidence_paths.py load_pipeline_evidence_paths (dry_run_root_template)"
+    detector: backend/tests/services/test_pipeline_evidence_paths.py
+    escalates_when: >
+      pipeline_evidence_paths.yaml 的 dry_run_root_template 被改成绝对路径、含 ".." 或落在 data/reports / data/audit 之下时,
+      loader 目前只校验含 {date}, 不会 fail-closed, dry 产物可能重新写回真实证据目录。
+    recorded: "2026-09-26"
+    decision: register
+  - id: watermark-sla-opens-smartmoney-rw-under-dry
+    asset: "backend/scripts/update_watermark_sla.py:649 (duck_connect(args.smartmoney_db, read_only=False) 在 --dry-run 下仍以读写方式打开)"
+    detector: none
+    escalates_when: >
+      跑 daily_update --dry 之前 data/*.wal 有残留: 读写打开会 checkpoint, 使 data/smartmoney.duckdb 的 size / mtime 在 dry 下改变;
+      cut_dry_isolation 的 A1 以「无残留 WAL」为环境前提挡住, 前提不成立时 A1 会红在库文件指纹上。
+    recorded: "2026-09-26"
+    decision: register

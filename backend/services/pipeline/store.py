@@ -173,6 +173,14 @@ def run_system_health_checks(ctx: PipelineContext) -> list[dict[str, Any]]:
         return []
 
     def _run(spec: RuntimeCheckSpec, args: list[str]) -> int:
+        # K3: dry=True 时把 --json-out / --json-output / --alert-flag 等参数值改写到 dry
+        # 根 (governance_gates.yaml 里 skip_when_dry=false 的两条 db_invariants /
+        # out_of_scope_rows 在 dry 下仍真跑, 之前会直接命中真实告警旗标路径, 通过时
+        # "自愈"删掉真实降级证据); dry=False 时 args 原样透传, 与本刀之前逐字节相同。
+        if ctx.dry:
+            from .evidence_paths import redirect_runtime_check_args
+
+            args = redirect_runtime_check_args(args, repo=REPO, date=ctx.date)
         # run_script 失败时已按 degraded_msg 记账；此处只把成败转成退出码。
         ok = ctx.run_script(
             spec.script, list(args), degraded_msg=spec.rendered_degraded_msg(date=ctx.date)
@@ -201,12 +209,24 @@ def write_report_and_alert(
     wrapper/UI always have a machine-readable truth object.
     """
     ctx.log("--- Report (data-health + run_outcome) ---")
-    (REPO / "data/reports").mkdir(parents=True, exist_ok=True)
-    (REPO / "data/audit").mkdir(parents=True, exist_ok=True)
     paths = load_pipeline_evidence_paths()
-    report_json = REPO / paths.daily_report_rel(date=ctx.date)
-    preflight_sla_report = REPO / paths.watermark_sla_before_rel(date=ctx.date)
-    sla_report = REPO / paths.watermark_sla_rel(date=ctx.date)
+    report_rel = paths.daily_report_rel(date=ctx.date)
+    sla_before_rel = paths.watermark_sla_before_rel(date=ctx.date)
+    sla_rel = paths.watermark_sla_rel(date=ctx.date)
+    if ctx.dry:
+        # K1: dry 报告/SLA 证据落 dry 根, 不碰同日真实证据文件 (dry_path 已保证父目录存在,
+        # 不需要再手写 mkdir 到真实 data/reports、data/audit 下)。
+        from .evidence_paths import dry_path
+
+        report_json = dry_path(report_rel, repo=REPO, date=ctx.date)
+        preflight_sla_report = dry_path(sla_before_rel, repo=REPO, date=ctx.date)
+        sla_report = dry_path(sla_rel, repo=REPO, date=ctx.date)
+    else:
+        (REPO / "data/reports").mkdir(parents=True, exist_ok=True)
+        (REPO / "data/audit").mkdir(parents=True, exist_ok=True)
+        report_json = REPO / report_rel
+        preflight_sla_report = REPO / sla_before_rel
+        sla_report = REPO / sla_rel
 
     _has_degraded = len(ctx.degraded_msgs) > 0
     outcome_info = derive_run_outcome(
@@ -304,6 +324,12 @@ def _dispatch_by_outcome(
         ctx.log("No notification alerts (sla_warn off)")
         return
 
+    if ctx.dry:
+        # K6: dry 不冒充真实运行发通知 —— 收件人分不出 dry, 必须在这里拦下,
+        # 不能让 dry-run 的合入前检查真的发出邮件/dispatcher 调用。
+        ctx.log("dry: 通知跳过 (dispatcher)")
+        return
+
     # Soft / integrity: observation banner is the single macOS surface.
     dispatch_outcome = (
         OUTCOME_INTEGRITY if outcome == OUTCOME_INTEGRITY else OUTCOME_SOFT_WAITING
@@ -337,10 +363,16 @@ def _soft_banner_marker(ctx: PipelineContext) -> Path:
     """Per-day marker persisting the last soft-outcome signature already notified.
 
     Lives beside DEGRADED_FLAG so tests that isolate the runtime dir isolate it too.
+
+    K2c: dry=True 时挂到 dry 根 —— 之前 dry 跑批会读写真实 marker, 把当天真实运行的
+    观测横幅按"与上次一致"合并吞掉 (读、写、成功时删三处)。dry=False
+    与本刀之前逐字节相同。
     """
     from .context import DEGRADED_FLAG
+    from .evidence_paths import dry_path
 
-    return DEGRADED_FLAG.parent / f"chunkymonkey_soft_banner_{ctx.date}.marker"
+    candidate = DEGRADED_FLAG.parent / f"chunkymonkey_soft_banner_{ctx.date}.marker"
+    return dry_path(candidate, repo=REPO, date=ctx.date) if ctx.dry else candidate
 
 
 def _soft_banner_signature(output: dict[str, Any]) -> str:
@@ -377,8 +409,6 @@ def _outcome_summary_banner(ctx: PipelineContext, output: dict[str, Any]) -> Non
     soft signature must not re-spawn an identical banner. Success clears the marker
     so a later soft change re-notifies once. hard_fail → wrapper owns the banner.
     """
-    from .context import DEGRADED_FLAG
-
     marker = _soft_banner_marker(ctx)
     outcome = str(output.get("run_outcome") or "")
     if outcome == OUTCOME_SUCCESS:
@@ -395,16 +425,22 @@ def _outcome_summary_banner(ctx: PipelineContext, output: dict[str, Any]) -> Non
     if outcome not in {OUTCOME_SOFT_WAITING, OUTCOME_INTEGRITY}:
         return
 
+    # K2a: 读旗标明细走 ctx.degraded_flag_path() (dry=True 时是 dry 根下的旗标), 不再
+    # 直接读模块级 DEGRADED_FLAG —— 原实现在 dry 下会读到真实旗标, PASS 类检查跑完
+    # "自愈"删真实旗标后, 这里读到的明细也跟着假, 且下面的 marker 合并逻辑会把当天
+    # 真实观测横幅悄悄吞掉。只在真正要读明细的这个分支才计算 (success/hard_fail 分支
+    # 不该为了一次不会用到的旗标路径而触碰 dry_path() 的 mkdir 副作用)。
+    flag_path = ctx.degraded_flag_path()
     msgs = (
-        DEGRADED_FLAG.read_text().strip().splitlines()
-        if DEGRADED_FLAG.exists()
+        flag_path.read_text().strip().splitlines()
+        if flag_path.exists()
         else list(ctx.degraded_msgs)
     )
     n = len(msgs) or int(output.get("degraded_total") or 0)
     summary_tag = (
         "INTEGRITY_OBSERVE" if outcome == OUTCOME_INTEGRITY else "SOFT_WAITING"
     )
-    ctx.log(f"{summary_tag} SUMMARY: 本次 {n} 步观测 (明细 {DEGRADED_FLAG}):")
+    ctx.log(f"{summary_tag} SUMMARY: 本次 {n} 步观测 (明细 {flag_path}):")
     for m in msgs:
         ctx.log(f"  {m}")
     sla_hint = ""
@@ -442,20 +478,26 @@ def _outcome_summary_banner(ctx: PipelineContext, output: dict[str, Any]) -> Non
         if outcome == OUTCOME_INTEGRITY
         else "ChunkyMonkey soft_waiting_clock"
     )
+    if ctx.dry:
+        # K6: dry 不发真实 macOS 横幅 —— 收件人分不出是 dry 还是真实运行。
+        ctx.log("dry: 通知跳过 (osascript)")
+    else:
+        try:
+            subprocess.run(
+                [
+                    "osascript",
+                    "-e",
+                    f'display notification "daily_update {label} · {n} 项{sla_hint}, '
+                    f'见 data/reports/daily_{ctx.date}.json" '
+                    f'with title "{title}"',
+                ],
+                capture_output=True,
+            )
+        except Exception:  # noqa: BLE001
+            pass
     try:
-        subprocess.run(
-            [
-                "osascript",
-                "-e",
-                f'display notification "daily_update {label} · {n} 项{sla_hint}, '
-                f'见 data/reports/daily_{ctx.date}.json" '
-                f'with title "{title}"',
-            ],
-            capture_output=True,
-        )
-    except Exception:  # noqa: BLE001
-        pass
-    try:
+        # K2c: marker 写入始终走 (dry 时是 dry 根下的 marker), 让同一天连续 dry 跑批也有
+        # 去重语义；不影响真实 marker (由 _soft_banner_marker 的 dry 映射保证)。
         marker.write_text(signature, encoding="utf-8")
     except OSError:  # noqa: BLE001 — marker 写失败不影响链; 最坏下次软态多弹一条, 不吞真状态
         pass

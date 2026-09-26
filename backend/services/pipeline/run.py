@@ -48,18 +48,29 @@ def _finalize_exit(
     return int(derived["exit_code"])
 
 
-def _write_writer_block_report(run_date: str, exc: WriterLockBusyError) -> Path:
-    """Minimal report when PipelineContext never starts (writer busy)."""
-    reports = REPO / "data/reports"
-    reports.mkdir(parents=True, exist_ok=True)
-    path = reports / f"daily_{run_date}.json"
+def _write_writer_block_report(run_date: str, exc: WriterLockBusyError, *, dry: bool) -> Path:
+    """Minimal report when PipelineContext never starts (writer busy).
+
+    K5: writer 忙时 PipelineContext 从未创建, 没有 ctx 可用, dry 直接从 CLI args 传入。
+    dry=True 时报告落 dry 根 (真实 daily_{D}.json 不受一次被挡的 dry-run 影响),
+    dry_run 字段照实反映 args.dry (K5 变异点: 之前无条件写死 0)。路径模板改用
+    load_pipeline_evidence_paths().daily_report_rel, 不再持有 run.py 自己的字面量副本。
+    """
+    from .evidence_paths import dry_path, load_pipeline_evidence_paths
+
+    report_rel = load_pipeline_evidence_paths().daily_report_rel(date=run_date)
+    if dry:
+        path = dry_path(report_rel, repo=REPO, date=run_date)
+    else:
+        path = REPO / report_rel
+        path.parent.mkdir(parents=True, exist_ok=True)
     info = derive_run_outcome(
         [f"WRITER BLOCK: {exc} (四阶段未启动; exit 2)"],
         hard_exit_code=2,
     )
     payload = {
         "date": run_date,
-        "dry_run": 0,
+        "dry_run": int(dry),
         "scope": "data_foundation (L0/L1/L1k/snapshot)",
         "phase_status": {
             "preflight": "ERR",
@@ -180,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
             return _run_locked(args, run_date, str(lease.lease_id), lease.lock_fd)
     except WriterLockBusyError as exc:
         # 此时 PipelineContext 尚未创建，不能清旧 alert flag/写一份看似启动过的链日志。
-        report = _write_writer_block_report(run_date, exc)
+        report = _write_writer_block_report(run_date, exc, dry=args.dry)
         print(f"WRITER BLOCK: {exc} (四阶段未启动; exit 2)")
         print(f"run_outcome=hard_fail report={report}")
         return 2

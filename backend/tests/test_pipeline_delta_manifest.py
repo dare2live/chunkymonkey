@@ -123,7 +123,10 @@ def test_write_report_includes_delta_manifest(tmp_path, monkeypatch):
     (tmp_path / "data/reports").mkdir(parents=True)
     (tmp_path / "data/audit").mkdir(parents=True)
 
-    ctx = PipelineContext(dry=True, date="20990101", log_path=tmp_path / "t.log")
+    # cut_dry_isolation_20260926 (卡漏项返修 card:§3): 本用例核的是 delta_manifest 字段
+    # 落盘, 与 dry 语义无关——dry=True 现在 (K1) 会把报告改写到 dry 根, 与下面断言的
+    # 真实路径不符 (改动前 dry/真实路径逐字节相同, 当时顺手传 dry=True 看不出区别)。
+    ctx = PipelineContext(dry=False, date="20990101", log_path=tmp_path / "t.log")
     manifest = empty_manifest(run_date="20990101")
     manifest["process_plan"] = plan_process_steps(
         dc_decision={

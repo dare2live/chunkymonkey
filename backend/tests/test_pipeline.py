@@ -470,8 +470,12 @@ def test_context_degraded_and_log(tmp_path, monkeypatch):
     # degraded() 写全局 DEGRADED_FLAG (/tmp/chunkymonkey_ALERT_daily_update_degraded.flag) —
     # 隔离到 tmp_path 防测试污染真实生产告警文件 (2026-06-29 批4发现: 未隔离时 pytest 全量跑
     # 会把测试字面量"步骤X失败"写进真实 alert flag, 误导下次 session 启动检查)。
+    # dry=False (cut_dry_isolation 2026-09-26): 本用例只测普通 degraded()/log() 读写机制,
+    # 不测 dry 映射 (K2a/K2b 见 test_pipeline_dry_isolation.py) —— dry=True 时旗标改走
+    # dry 根 (还需 monkeypatch context.REPO 才不会落到真实仓库), 与这里想钉住的"旗标就是
+    # DEGRADED_FLAG 本身"这条断言无关, 保持 dry=False 与本刀之前逐字节相同。
     monkeypatch.setattr(context, "DEGRADED_FLAG", tmp_path / "alert.flag")
-    ctx = PipelineContext(dry=True, date="20260101", log_path=tmp_path / "t.log")
+    ctx = PipelineContext(dry=False, date="20260101", log_path=tmp_path / "t.log")
     ctx.degraded("步骤X失败")
     assert "步骤X失败" in ctx.degraded_msgs
     ctx.log("普通日志")
@@ -482,14 +486,19 @@ def test_context_degraded_and_log(tmp_path, monkeypatch):
 
 
 def test_default_log_follows_isolated_alert_directory(tmp_path, monkeypatch):
-    """默认日志不得独立钉死 /tmp，否则测试 patch 告警后仍会污染真实运维日志。"""
+    """默认日志不得独立钉死 /tmp，否则测试 patch 告警后仍会污染真实运维日志。
+
+    dry=False (cut_dry_isolation 2026-09-26): 本用例测的是"默认日志目录跟着 DEGRADED_FLAG
+    走"这条通用机制, 与 dry 映射 (K1) 是两回事——dry=True 需另 monkeypatch context.REPO
+    才能不落真实仓库, 与本用例意图无关。
+    """
     from services.pipeline import context
     from services.pipeline.context import PipelineContext
 
     alert = tmp_path / "isolated" / "alert.flag"
     alert.parent.mkdir()
     monkeypatch.setattr(context, "DEGRADED_FLAG", alert)
-    ctx = PipelineContext(dry=True, date="20991231")
+    ctx = PipelineContext(dry=False, date="20991231")
     try:
         assert ctx.log_path == alert.parent / "chunkymonkey_daily_update_20991231.log"
         ctx.degraded("synthetic test failure")
@@ -652,8 +661,10 @@ def test_run_auth_block_degrades_and_still_runs_all_stages(monkeypatch, tmp_path
     钉住 run.py 这一层新语义: 不再硬 exit 3, 不再跳过任何阶段。
     """
     from services.data_sources.sources.tushare import TuShareAuthorizationError
+    from services.pipeline import context as ctx_mod
     from services.pipeline import run as run_mod
     from services.pipeline.context import PipelineContext
+    from services.pipeline.evidence_paths import dry_path
 
     called = []
     monkeypatch.setattr(
@@ -662,6 +673,12 @@ def test_run_auth_block_degrades_and_still_runs_all_stages(monkeypatch, tmp_path
         lambda **kw: PipelineContext(**{**kw, "log_path": tmp_path / "run.log"}),
     )
     monkeypatch.setattr("services.pipeline.context.DEGRADED_FLAG", tmp_path / "flag")
+    # cut_dry_isolation (2026-09-26) K2a/K2b: --dry 是必须的 (本测试 4 个阶段函数虽被
+    # 打桩, run_and_record 仍会真跑 _record_stage_best_effort, dry=False 会真开
+    # data/smartmoney.duckdb 写 mart_pipeline_run_manifest —— 同文件
+    # test_run_no_flags_parses 的注释记过同一个坑)。dry=True 下降级旗标改走 dry 根,
+    # 需要额外 monkeypatch context.REPO 才不会落到真实仓库, flag_text 相应改读 dry_path()。
+    monkeypatch.setattr(ctx_mod, "REPO", tmp_path)
     monkeypatch.setattr(
         run_mod,
         "run_preflight",
@@ -677,9 +694,11 @@ def test_run_auth_block_degrades_and_still_runs_all_stages(monkeypatch, tmp_path
         "四阶段必须全部启动, 一个都不许因授权阻断被跳过"
     )
     log_text = (tmp_path / "run.log").read_text()
-    flag_text = (tmp_path / "flag").read_text()
+    flag_text = dry_path(tmp_path / "flag", repo=tmp_path, date="20260101").read_text()
     assert "auth_denied" in log_text and "authorization_blocked" in log_text
     assert "auth_denied" in flag_text and "authorization_blocked" in flag_text
+    # 真实 (未映射) 旗标路径完全不受 dry 影响 (K2b 核心断言)。
+    assert not (tmp_path / "flag").exists()
     # 反向验证: 降级消息不能带 "AUTH BLOCK" 等 run_outcome._HARD_RE 字样,
     # 否则即便四阶段跑了, run_outcome 仍会把它误判回 hard_fail exit 3。
     assert "AUTH BLOCK" not in log_text.upper().replace("AUTHORIZATION_BLOCKED", "")
@@ -832,7 +851,9 @@ def test_run_calendar_hard_block_skips_all_stages_and_exits_four(monkeypatch, tm
     for name in ("run_acquire", "run_clean", "run_process", "run_store"):
         monkeypatch.setattr(run_mod, name, lambda ctx, _n=name: called.append(_n))
 
-    assert run_mod.main(["--dry", "--date", "20260101"]) == 4
+    # dry=False (cut_dry_isolation 2026-09-26): 本用例测的是日历硬门阻断语义, 与 dry
+    # 无关, 且阻断发生在四阶段启动前, 不会打开真实库, 所以直接去掉 --dry。
+    assert run_mod.main(["--date", "20260101"]) == 4
     assert called == []
     assert "calendar_not_ready" in (tmp_path / "run.log").read_text()
     assert "calendar_not_ready" in (tmp_path / "flag").read_text()
@@ -2317,9 +2338,16 @@ def test_preflight_dry_run_still_probes_auth_and_caches_sanitized_status(monkeyp
 def test_post_acquire_sla_replaces_preflight_alert_after_accepted_repair(
     monkeypatch, tmp_path
 ):
-    """采集前 alert 只是 before 证据；AcceptedPartition 修复后最终报告必须消费 after。"""
+    """采集前 alert 只是 before 证据；AcceptedPartition 修复后最终报告必须消费 after。
+
+    cut_dry_isolation (2026-09-26) K1/A2: dry=True 下这三份证据全部落 dry 根
+    (data/scratch/dry_run/<D>/…)，不再落真实 data/audit|reports 路径——subprocess 收到
+    的 --json-output 现在是 dry 根下的绝对路径 (run_watermark_sla_check 的 dry 分支),
+    fake_run 因此改用 Path(output_arg) 直接判断绝对/相对, 不再无条件拼 cwd。
+    """
     from services.pipeline import context, preflight, store
     from services.pipeline.context import PipelineContext
+    from services.pipeline.evidence_paths import dry_path
 
     monkeypatch.setattr(context, "REPO", tmp_path)
     monkeypatch.setattr(store, "REPO", tmp_path)
@@ -2340,7 +2368,9 @@ def test_post_acquire_sla_replaces_preflight_alert_after_accepted_repair(
             return SimpleNamespace(returncode=0, stdout="", stderr="")
         output_arg = cmd[cmd.index("--json-output") + 1]
         outputs.append(output_arg)
-        output_path = Path(kwargs["cwd"]) / output_arg
+        output_path = Path(output_arg)
+        if not output_path.is_absolute():
+            output_path = Path(kwargs["cwd"]) / output_path
         output_path.parent.mkdir(parents=True, exist_ok=True)
         alert = not accepted["ready"]
         output_path.write_text(
@@ -2371,13 +2401,20 @@ def test_post_acquire_sla_replaces_preflight_alert_after_accepted_repair(
     finally:
         ctx.close()
 
+    dry_root = tmp_path / "data" / "scratch" / "dry_run" / "20260717"
     before = json.loads(
-        (tmp_path / "data/audit/watermark_sla_before_20260717.json").read_text()
+        dry_path(
+            "data/audit/watermark_sla_before_20260717.json", repo=tmp_path, date="20260717"
+        ).read_text()
     )
     after = json.loads(
-        (tmp_path / "data/audit/watermark_sla_20260717.json").read_text()
+        dry_path(
+            "data/audit/watermark_sla_20260717.json", repo=tmp_path, date="20260717"
+        ).read_text()
     )
-    report = json.loads((tmp_path / "data/reports/daily_20260717.json").read_text())
+    report = json.loads(
+        dry_path("data/reports/daily_20260717.json", repo=tmp_path, date="20260717").read_text()
+    )
     assert before["n_alerts"] == 1
     assert after["n_alerts"] == 0
     assert report["sla_summary"]["n_alerts"] == 0
@@ -2385,16 +2422,23 @@ def test_post_acquire_sla_replaces_preflight_alert_after_accepted_repair(
     assert report["phase_status"]["preflight"] == "OK"
     assert report["phase_status"]["post_acquire_sla"] == "OK"
     assert report["phase_status"]["chain"] == "OK"
-    assert outputs == [
-        "data/audit/watermark_sla_before_20260717.json",
-        "data/audit/watermark_sla_20260717.json",
-    ]
+    assert report["dry_run"] == 1
+    assert len(outputs) == 2
+    assert all(Path(o).is_relative_to(dry_root) for o in outputs)
+    # 真实路径完全不受影响 (A1/K1 的核心断言): dry 从来没写过这三份证据。
+    assert not (tmp_path / "data/audit/watermark_sla_before_20260717.json").exists()
+    assert not (tmp_path / "data/audit/watermark_sla_20260717.json").exists()
+    assert not (tmp_path / "data/reports/daily_20260717.json").exists()
 
 
 def test_post_acquire_sla_alert_is_the_final_degraded_verdict(monkeypatch, tmp_path):
-    """Store 重算仍有 alert 时才把 SLA 作为本次最终 degraded 结论。"""
+    """Store 重算仍有 alert 时才把 SLA 作为本次最终 degraded 结论。
+
+    cut_dry_isolation (2026-09-26) K1: dry=True 下报告落 dry 根, 真实路径不受影响。
+    """
     from services.pipeline import context, store
     from services.pipeline.context import PipelineContext
+    from services.pipeline.evidence_paths import dry_path
 
     monkeypatch.setattr(context, "REPO", tmp_path)
     monkeypatch.setattr(store, "REPO", tmp_path)
@@ -2403,7 +2447,9 @@ def test_post_acquire_sla_alert_is_the_final_degraded_verdict(monkeypatch, tmp_p
         if "--json-output" not in cmd:
             return SimpleNamespace(returncode=0, stdout="", stderr="")
         output_arg = cmd[cmd.index("--json-output") + 1]
-        output_path = Path(kwargs["cwd"]) / output_arg
+        output_path = Path(output_arg)
+        if not output_path.is_absolute():
+            output_path = Path(kwargs["cwd"]) / output_path
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(
             json.dumps(
@@ -2428,21 +2474,21 @@ def test_post_acquire_sla_alert_is_the_final_degraded_verdict(monkeypatch, tmp_p
     finally:
         ctx.close()
 
-    report = json.loads((tmp_path / "data/reports/daily_20260717.json").read_text())
+    report = json.loads(
+        dry_path("data/reports/daily_20260717.json", repo=tmp_path, date="20260717").read_text()
+    )
     assert any("post-acquire watermark SLA alert" in msg for msg in ctx.degraded_msgs)
     assert report["sla_warn"] is True
     assert report["phase_status"]["chain"] == "DEGRADED_PARTIAL"
+    assert not (tmp_path / "data/reports/daily_20260717.json").exists()
 
 
-def test_post_acquire_sla_crash_cannot_reuse_same_day_stale_artifact(
-    monkeypatch, tmp_path
-):
-    """checker crash 前先删同日旧 artifact，最终报告不得拿旧绿结果冒充 after。"""
-    from services.pipeline import context, store
+def test_real_run_sla_check_removes_same_day_stale_artifact_before_rerun(monkeypatch, tmp_path):
+    """真实运行: checker crash 前先删同日旧 SLA 证据, 旧绿结果不得冒充本次 (fail-closed)。"""
+    from services.pipeline import context, preflight
     from services.pipeline.context import PipelineContext
 
     monkeypatch.setattr(context, "REPO", tmp_path)
-    monkeypatch.setattr(store, "REPO", tmp_path)
     stale = tmp_path / "data/audit/watermark_sla_20260717.json"
     stale.parent.mkdir(parents=True)
     stale.write_text(json.dumps({"n_alerts": 0, "sources": []}))
@@ -2450,22 +2496,68 @@ def test_post_acquire_sla_crash_cannot_reuse_same_day_stale_artifact(
         "subprocess.run",
         lambda *_a, **_k: SimpleNamespace(returncode=1, stdout="", stderr="boom"),
     )
-    ctx = PipelineContext(
-        dry=True,
-        skip_sync=True,
-        date="20260717",
-        log_path=tmp_path / "pipeline.log",
+    ctx = PipelineContext(dry=False, skip_sync=True, date="20260717", log_path=tmp_path / "pipeline.log")
+    try:
+        rc = preflight.run_watermark_sla_check(ctx, output_rel="data/audit/watermark_sla_20260717.json")
+    finally:
+        ctx.close()
+
+    assert rc != 0
+    assert not stale.exists()
+
+
+def test_dry_run_does_not_clobber_real_stale_sla_evidence_k1(monkeypatch, tmp_path):
+    """K1 隔离用例: dry=True 且日志路径未显式传入(本用例走默认 log_path 计算) —— dry
+    跑批不得覆盖/删除同日已存在的真实 SLA 证据文件; dry 根下另有一份本次产出的新报告。
+
+    改写自旧 test_post_acquire_sla_crash_cannot_reuse_same_day_stale_artifact:
+    旧断言"checker crash 前先删同日旧 artifact"在 dry 修复后不再适用于真实路径——
+    dry 下 run_watermark_sla_check 操作的 output_path 已经是 dry 根下的路径, 从不会碰
+    真实 data/audit/watermark_sla_{D}.json；crash 时 update_watermark_sla.py 自身的
+    stale-artifact 清理仍由 backend/tests/scripts/test_update_watermark_sla.py::
+    test_main_registry_failure_removes_stale_artifact_and_exits_nonzero 覆盖；真实运行下
+    pipeline 层的同日删旧由 test_real_run_sla_check_removes_same_day_stale_artifact_before_rerun 守。
+
+    假如 bug 存在 (dry 路径映射写错/被去掉): 真实 stale 文件会被 unlink 或 sha256 改变。
+    """
+    import hashlib
+
+    from services.pipeline import context, store
+    from services.pipeline.context import PipelineContext
+    from services.pipeline.evidence_paths import dry_path
+
+    monkeypatch.setattr(context, "REPO", tmp_path)
+    monkeypatch.setattr(store, "REPO", tmp_path)
+    stale = tmp_path / "data/audit/watermark_sla_20260717.json"
+    stale.parent.mkdir(parents=True)
+    stale_content = json.dumps({"n_alerts": 0, "sources": [], "marker": "real-stale-0925"})
+    stale.write_text(stale_content)
+    stale_sha_before = hashlib.sha256(stale.read_bytes()).hexdigest()
+
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *_a, **_k: SimpleNamespace(returncode=1, stdout="", stderr="boom"),
     )
+    ctx = PipelineContext(dry=True, skip_sync=True, date="20260717")
     try:
         store.run_store(ctx)
     finally:
         ctx.close()
 
-    report = json.loads((tmp_path / "data/reports/daily_20260717.json").read_text())
-    assert not stale.exists()
-    assert report["phase_status"]["post_acquire_sla"] == "ERR"
-    assert report["phase_status"]["chain"] == "DEGRADED_PARTIAL"
-    assert "sla_summary" not in report
+    # 真实路径 stale 文件在 dry 后 sha256 不变 (核心断言: 没被删也没被覆盖)。
+    assert stale.exists()
+    assert hashlib.sha256(stale.read_bytes()).hexdigest() == stale_sha_before
+    assert stale.read_text() == stale_content
+
+    # dry 根下另有一份本次运行新写的报告 (dry_run=1), 与真实 stale 文件互不相干。
+    dry_report_path = dry_path(
+        "data/reports/daily_20260717.json", repo=tmp_path, date="20260717"
+    )
+    dry_report = json.loads(dry_report_path.read_text())
+    assert dry_report["dry_run"] == 1
+    assert dry_report["phase_status"]["post_acquire_sla"] == "ERR"
+    assert dry_report["phase_status"]["chain"] == "DEGRADED_PARTIAL"
+    assert "sla_summary" not in dry_report
     assert any("最终 SLA 失明" in msg for msg in ctx.degraded_msgs)
 
 

@@ -1,11 +1,15 @@
 # pipeline_evidence_paths.yaml — daily_update 证据文件路径模板 (owner: 本文件)
 #
 # 消费方 (代码读, 不是文档抄):
-#   - backend/services/pipeline/evidence_paths.py   typed loader (唯一读取点)
-#   - backend/services/pipeline/store.py            写 daily_{date}.json / watermark_sla_{date}.json
+#   - backend/services/pipeline/evidence_paths.py   typed loader (唯一读取点) + dry 映射
+#   - backend/services/pipeline/store.py            写 daily_{date}.json / watermark_sla_{date}.json /
+#                                                    runtime check 参数改写 / soft banner marker
 #   - backend/services/pipeline/preflight.py        写 watermark_sla_before_{date}.json
-#   - backend/services/pipeline/context.py          默认日志文件名 chunkymonkey_daily_update_{date}.log
-#   - backend/services/pipeline/chain_run.py         doctor chain_run 节按同一模板选证据
+#   - backend/services/pipeline/context.py          默认日志文件名 chunkymonkey_daily_update_{date}.log /
+#                                                    降级告警旗标读写
+#   - backend/services/pipeline/run.py              writer-block 报告
+#   - backend/services/pipeline/chain_run.py         doctor chain_run 节按同一模板选证据 (只读真实路径,
+#                                                    不认 dry 根 —— dry 产物本来就不该被当成真实运行)
 #
 # 这些模板此前在 store.py/preflight.py/context.py 里各写死一份字面量副本, chain_run 节要按
 # 同一约定选中「D 日证据」时又会抄第三份 —— 这类会随业务/审计目录布局调整的路径模板
@@ -18,9 +22,19 @@
 #
 # daily_update_log_name_template: 只是文件名 (不含目录 —— 目录是运行时 DEGRADED_FLAG.parent,
 # 不是参数)。context.py 写日志与 chain_run.py 的 R3 校验日志路径签名读的都是这一行。
+#
+# dry_run_root_template (cut_dry_isolation 2026-09-26): `--dry` 跑批产出的全部证据/旗标/marker/
+# 日志的唯一根目录模板, 与真实证据目录树完全分离 (data/scratch/ 已在 .gitignore, 不进版本控制)。
+# evidence_paths.dry_path() 是把「相对路径证据」与「/tmp 下的绝对路径证据 (告警旗标/marker/日志)」
+# 映射进这个根下的唯一实现 —— 相对路径原样挂在根下, 绝对路径去掉前导 "/" 后挂在根的 tmp/ 子目录下。
+# dry_run_redirect_args: governance_gates.yaml 的 runtime_checks 里, 取值是路径且 dry=True 时必须
+# 改写指向 dry 根的参数名清单 (--json-out / --json-output 落证据文件, --alert-flag 落告警旗标);
+# 不在这份清单里的参数原样透传。
 version: 1
 
 daily_report_path_template: "data/reports/daily_{date}.json"
 watermark_sla_path_template: "data/audit/watermark_sla_{date}.json"
 watermark_sla_before_path_template: "data/audit/watermark_sla_before_{date}.json"
 daily_update_log_name_template: "chunkymonkey_daily_update_{date}.log"
+dry_run_root_template: "data/scratch/dry_run/{date}"
+dry_run_redirect_args: ["--json-out", "--json-output", "--alert-flag"]

@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .evidence_paths import load_pipeline_evidence_paths
+from .evidence_paths import dry_path, load_pipeline_evidence_paths
 
 REPO = Path(__file__).resolve().parents[3]
 # degraded 告警 flag (session 启动检查 /tmp/chunkymonkey_ALERT_*.flag); 每次链起跑清, 跑完仍存=本次真实降级
@@ -60,8 +60,13 @@ class PipelineContext:
         if self.log_path is None:
             # 日志与告警必须落在同一 runtime 目录。生产默认仍是 /tmp；测试只需隔离
             # DEGRADED_FLAG 即同时隔离默认日志，避免假日期/假阻断污染真实运维证据。
-            self.log_path = DEGRADED_FLAG.parent / load_pipeline_evidence_paths().daily_update_log_name(
+            candidate = DEGRADED_FLAG.parent / load_pipeline_evidence_paths().daily_update_log_name(
                 date=self.date
+            )
+            # K1/K4: dry=True 且未显式传 log_path 时才映射到 dry 根；dry=False 与本刀之前
+            # 逐字节相同 (candidate 原样使用, 不经 dry_path)。
+            self.log_path = (
+                dry_path(candidate, repo=REPO, date=self.date) if self.dry else candidate
             )
         # 追加模式打开日志 (与旧 bash tee -a 一致)
         self._log_fh = open(self.log_path, "a", encoding="utf-8")
@@ -74,19 +79,26 @@ class PipelineContext:
             self._log_fh.write(line + "\n")
             self._log_fh.flush()
 
+    def degraded_flag_path(self) -> Path:
+        """K2a/K2b: dry=True 时降级旗标读/写/reset 全部走这一份映射, 真实旗标不受 dry 影响；
+        dry=False 原样返回模块级 DEGRADED_FLAG (与本刀之前逐字节相同)。store.py 读旗标明细
+        （``_outcome_summary_banner``）复用同一方法, 不再各自持有一份判断。"""
+        return dry_path(DEGRADED_FLAG, repo=REPO, date=self.date) if self.dry else DEGRADED_FLAG
+
     def degraded(self, msg: str) -> None:
         """degraded 级失败: 记录 + 续跑 + 写 flag (链尾汇总送达)。旧 || log WARN 吞错=断流根因。"""
         self.log(f"DEGRADED: {msg}")
         self.degraded_msgs.append(msg)
         try:
-            with open(DEGRADED_FLAG, "a", encoding="utf-8") as f:
+            with open(self.degraded_flag_path(), "a", encoding="utf-8") as f:
                 f.write(f"[{datetime.now().strftime('%F %T')}] {msg}\n")
         except Exception:  # noqa: BLE001 — flag 写失败不能把 degraded 升级成链中断
             pass
 
     def reset_degraded_flag(self) -> None:
-        """链起跑清前次 flag (本次跑完仍存在 = 本次产生的真实降级)。"""
-        DEGRADED_FLAG.unlink(missing_ok=True)
+        """链起跑清前次 flag (本次跑完仍存在 = 本次产生的真实降级)。dry=True 时只清 dry 根下
+        的旗标 (K2a) —— 真实降级告警不能被一次 dry-run 静默清掉。"""
+        self.degraded_flag_path().unlink(missing_ok=True)
 
     # ── 执行助手 ──────────────────────────────────────────────
     def db(self, alias: str) -> str:

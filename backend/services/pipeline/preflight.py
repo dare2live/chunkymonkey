@@ -56,20 +56,32 @@ def ensure_pipeline_sync_ready(ctx: PipelineContext) -> None:
 
 
 def run_watermark_sla_check(ctx: PipelineContext, *, output_rel: str) -> int:
-    """复用唯一 SLA 脚本生成指定时点证据；同日重跑前移除旧文件以 fail closed。"""
+    """复用唯一 SLA 脚本生成指定时点证据；同日重跑前移除旧文件以 fail closed。
+
+    K1: dry=True 时输出改写到 dry 根 (真实 before/after SLA 证据不受 dry 影响);
+    dry=False 分支与本刀之前逐字节相同 (output_rel 原样传给子进程, cwd=REPO 解析)。
+    本函数是 preflight (before) 与 store (post-acquire after) 共用的唯一实现，改一处
+    两个调用点同时生效，不重复一份映射逻辑。
+    """
     import json
     import subprocess
     import sys as _sys
 
     from .context import REPO
+    from .evidence_paths import dry_path
 
-    output_path = REPO / output_rel
+    if ctx.dry:
+        output_path = dry_path(output_rel, repo=REPO, date=ctx.date)
+        json_output_arg = str(output_path)
+    else:
+        output_path = REPO / output_rel
+        json_output_arg = output_rel
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.unlink(missing_ok=True)
     args = [
         "backend/scripts/update_watermark_sla.py",
         "--json-output",
-        output_rel,
+        json_output_arg,
     ]
     if ctx.dry:
         args.insert(1, "--dry-run")

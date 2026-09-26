@@ -170,6 +170,7 @@ blocking_paths:
 - tests/services/test_pagination_integrity.py
 - tests/services/test_periodic_report_calendar.py
 - tests/services/test_phase_e_smoke.py
+- tests/services/test_pipeline_dry_isolation.py
 - tests/services/test_pipeline_evidence_paths.py
 - tests/services/test_population_scope.py
 - tests/services/test_project_status.py

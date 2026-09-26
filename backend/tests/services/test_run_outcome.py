@@ -201,7 +201,11 @@ def test_write_report_includes_run_outcome(tmp_path, monkeypatch):
     monkeypatch.setattr(ctx_mod, "REPO", tmp_path)
     monkeypatch.setattr(ctx_mod, "DEGRADED_FLAG", tmp_path / "degraded.flag")
 
-    ctx = PipelineContext(date="20260722", dry=True, skip_sync=True)
+    # cut_dry_isolation_20260926 (卡漏项返修 card:§3): 本用例核的是 run_outcome 计算与
+    # 报告落盘, 与 dry 语义无关——dry=True 现在会把报告改写到 dry 根 (K1), 之前顺手传
+    # dry=True 只是因为改动前 dry 与真实路径逐字节相同, 不区分。改 dry=False 让断言的
+    # 真实路径与代码实际行为重新对齐, 不改测试意图。
+    ctx = PipelineContext(date="20260722", dry=False, skip_sync=True)
     ctx.degraded_msgs.append("pending_publish daily pre_available_after_zero_rows")
     ctx.degraded_msgs.append("continuity/integrity 审查 FAIL")
 
@@ -240,7 +244,10 @@ def test_soft_banner_coalesces_identical_reclick(tmp_path, monkeypatch):
     monkeypatch.setattr(store_mod.subprocess, "run", _fake_run)
 
     def _one_run() -> str:
-        ctx = PipelineContext(date="20260722", dry=True, skip_sync=True)
+        # cut_dry_isolation_20260926 (卡漏项返修 card:§3): dry=True 现在 (K6) 会让
+        # osascript 调用次数恒为 0, 测不出合并/重新提醒的分叉——本用例要验的正是这个
+        # 分叉逻辑, 与 dry 语义无关, 故用 dry=False。
+        ctx = PipelineContext(date="20260722", dry=False, skip_sync=True)
         # Named soft clock only — coalesce path for soft_waiting_clock.
         ctx.degraded_msgs.append("sync_registry drain 有残余缺口或域错误 (见 log)")
         out = store_mod.write_report_and_alert(ctx)
@@ -274,7 +281,9 @@ def test_soft_banner_renotifies_after_change(tmp_path, monkeypatch):
     monkeypatch.setattr(store_mod.subprocess, "run", _fake_run)
 
     def _run(msgs: list[str]) -> None:
-        ctx = PipelineContext(date="20260722", dry=True, skip_sync=True)
+        # cut_dry_isolation_20260926 (卡漏项返修 card:§3): 同上, dry=False 才能观测到
+        # osascript 调用次数的分叉。
+        ctx = PipelineContext(date="20260722", dry=False, skip_sync=True)
         ctx.degraded_msgs.extend(msgs)
         store_mod.write_report_and_alert(ctx)
         ctx.close()

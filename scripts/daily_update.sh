@@ -12,6 +12,8 @@
 #   bash scripts/daily_update.sh --skip-sync  # 跳采集 (用现有)
 #   bash scripts/daily_update.sh --date 20260708  # 指定 run-date 标签 (透传管线, 防跨午夜错位)
 #   (env override 兼容: DRY=1 / SKIP_SYNC=1 bash scripts/daily_update.sh)
+#   --dry 产物 (报告/SLA证据/降级旗标/soft banner marker/日志) 落在 data/scratch/dry_run/<D>/,
+#   不碰同日真实证据; dry 不发通知 (cut_dry_isolation 2026-09-26)。
 #
 # 运行方式: manual-only。何时可拉由 pipeline preflight + sync_registry.available_after 判定，
 # 不在 wrapper 复制固定时刻。Log: /tmp/chunkymonkey_daily_update_<YYYYMMDD>.log

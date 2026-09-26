@@ -106,6 +106,26 @@ def _isolate_alert_flags(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_dry_run_root(monkeypatch, tmp_path):
+    """dry 产物的根目录由调用点传入的 repo 决定; 用例没把 REPO 换成 tmp 时, 不许写进真实仓库的 dry 根。
+
+    用例自己把 REPO 换成 tmp 的 (验证 dry 映射的那些) 保持原行为。
+    """
+
+    from services.pipeline import evidence_paths
+
+    real_repo = evidence_paths.REPO.resolve()
+    original = evidence_paths.PipelineEvidencePaths.dry_run_root
+
+    def _root(self, *, repo, date):
+        if Path(repo).resolve() == real_repo:
+            return tmp_path / "dry_run_isolated" / date
+        return original(self, repo=repo, date=date)
+
+    monkeypatch.setattr(evidence_paths.PipelineEvidencePaths, "dry_run_root", _root)
+
+
+@pytest.fixture(autouse=True)
 def _real_alert_flag_sentinel():
     """跑前后快照真实 /tmp 告警 flag 集合; 变了就 fail (证明没有代码路径逃过上面的隔离)。"""
 
