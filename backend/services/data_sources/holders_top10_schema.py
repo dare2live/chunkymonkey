@@ -58,7 +58,9 @@ PARTITION_FIELD = "notice_date"
 #   20260818 批次 landing 1,460 行 → canonical 只有 615 行 / **50 只股**(应 146), 持续 17 天
 #   20260828 批次 landing 7,356 行 → canonical **0 行 / 0 只股**(半年报高峰 516 只), 持续 10 天
 #   两个批次 rejection_code 都是 None —— 连拒批码都没有, 静静躺在 LANDED。
-#   更糟: _canonical_has_notice_partition 是 LIMIT 1 存在性检查, 0818 那种半成品日**永不重试**。
+#   更糟: 旧的 MAX(notice_date) 水位判据本身就是一次存在性检查——分区里只要有
+#   任意行就当"取过"了, 0818 那种半成品日**永不重试** (刀 B1 2026-09-26 起改为
+#   账本 settled 判据, 见 services/holders_notice_ledger.py)。
 # 发生率 0.13%(Jul-Sep 日更经手 3,774 个 A 股粒度里 5 个被改期), 每财报季约 3-6 个整天。
 #
 # 为什么不是「跨分区删旧行」: 旧行是**当时可知**不是记错 —— 供应商是 SCD-1(只留最新态,

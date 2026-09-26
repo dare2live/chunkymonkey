@@ -1,49 +1,86 @@
-"""十大流通股东 — 东方财富妙想 aif10 数据源服务 (主源, 2026-06-24).
+"""十大流通股东 — 东方财富妙想 aif10 数据源服务 (主源, 2026-06-24; 刀 B1 重写 2026-09-26).
 
-源决策: git log --grep miaoxiang_aif10_source_decision (用户拍板).
-按新数据模块分层 (获取/清洗/加工/存储 各司其职), 接入 pipeline acquire stage
-(范例 = _sync_institution_survey)。本模块内部亦按阶段分函数:
+源决策: git log --grep miaoxiang_aif10_source_decision (用户拍板)。
+坐实报告: sandbox/p1_specs_20260925/spec_holders_pagination.md (刀 B1, §4)。
 
-  ① 获取 acquire  : _fetch_raw       — aif10 datacenter JSON API 拉某股全期 (纯采集)
+按新数据模块分层 (获取/清洗/加工/存储 各司其职):
+
+  ① 获取 acquire  : _fetch_raw / fetch_holders_notice_day — 分别是按股全史与
+                    按公告日整市场两条采集路径 (后者经严格翻页引擎
+                    aif10_scraper.pagination.fetch_pages_strict)
   ② 清洗 clean    : _clean           — 字段映射 + change 解析 + share_class + K线范围过滤
-  ③ 加工 process  : _derive_exits    — period-diff 推导退出行 (跟踪机构投资周期)
-  ④ 存储 store    : sync_holders_aif10 — formal land→accept → canonical
-                    (fact_top10_holder_period DROPPED 2026-07-26)
+  ③ 加工 process  : diff_notice_day / _derive_exits(_against_canonical) — 差集与退出行派生
+  ④ 存储 store    : sync_holders_aif10（按股全史）/ recheck_notice_day（按日, 日更与回补共用）
 
 历史范围: 跟 K 线周期一致 (price_kline_qfq_tushare 2019-01-02 起) → 只回到覆盖它的
 年报期 20181231; 更早无 K 线无法回测, 不抓 (用户 2026-06-24)。
+
+── 按公告日的观测模型 (刀 B1, spec §4.1 三条规则) ──────────────────────────
+
+1. **每次取数是一个带 landed_at 的观察, 只追加。** canonical 每个 GRAIN
+   (stock_code, report_date, notice_date, holder_set, holder_rank, row_seq,
+   is_exit_row) 是它第一次被接受的观测; 此后任何取数都不更新、不删除观测行
+   (is_exit_row=FALSE)。供应商后来多给的行 (missing) 是新观察, 插进来;
+   供应商后来改了内容的行 (revised) 落 landing 记账, canonical 不动 (保留
+   D 日的原始观测); 供应商后来不给的行 (surplus/moved) 只报不动。
+
+2. **两个时间轴都声明** (红线 1): notice_date (供应商 UPDATE_DATE, 市场可见日;
+   available_at = D 18:00 Asia/Shanghai) 与 ingest_batch.landed_at (我们何时
+   知道)。经 merge_new_grains 写入的 is_exit_row=FALSE 行满足 as-of 承诺:
+   `SELECT ... JOIN ingest_batch ON ingest_batch_id = batch_id WHERE landed_at
+   <= t_known` 在固定 t_known 下不因后续取数而改变已在其中的行的批次归属
+   (B31)。这条承诺**不**延伸到派生行/去重/手动全史替换 —— 退出行在有新观测
+   时会被整组重算替换 (走这条重算路径本身是 as-of 安全的: 它只用
+   notice_date <= D 已公开的证据); B2 dedup_local 与 sync_holders_aif10 的
+   按股全史替换路径各自的删除都记 mart_data_deletion_record, 不在本条承诺
+   覆盖范围内 (opus 复核 U3)。`available_at` 不是"无消费方"的孤儿列 ——
+   institution_follow_b4_measure.py / stock_dossier.py 都读它当市场可见时刻
+   用 (opus 复核 V7, 修订原 docstring 的过度声明)。
+
+3. **派生行可再生** (红线 4 / 契约 origin: derived): 退出行 is_exit_row=TRUE
+   按"批内有新观测行的 (stock_code, report_date) 组"整组重算并替换; 重算只用
+   notice_date <= D 已公开的上一期与那一版 (R4)。没有新观测的组 (held-only,
+   即本次只发现 revised/surplus/dup) 不重算, 旧退出行原样保留。
+
+到期集合改由账本驱动 (services/holders_notice_ledger.py): 「日历
+[exposure_start .. provider_max] 减去已 settled 的日子」取代旧的
+「MAX(notice_date) 水位 + 前向/同日两分支」——失败的日子永远留在到期集合里,
+谁都盖不掉谁 (R1/R3)。
 """
 from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Iterable, Optional
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any, Iterable, Mapping, Optional
+from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 
 log = logging.getLogger(__name__)
 
 
 REPORT_FREE = "RPT_F10_EH_FREEHOLDERS"   # 十大流通股东
-PAGE_SIZE = 500                          # SQL LIMIT-like 单页上限 (东财 datacenter 支持)
 SOURCE = "miaoxiang"                     # provider source tag on canonical rows
 SOURCE_TIER = 1                          # evidence: 2026-06-24 用户裁决 aif10 提主源 (替 tdxhub)
 # K线对齐: price_kline_qfq_tushare 2019-01-02 起 → holder 回到覆盖它的年报 20181231
 DEFAULT_START_PERIOD = "20181231"        # evidence: K线起点 2019-01-02, 不抓更早 (用户 2026-06-24)
 
-HOLDER_COLUMNS = (
-    "stock_code, stock_name, market, report_date, holder_set, "
-    "holder_rank, row_seq, holder_name, holder_name_norm, share_class, "
-    "is_secondary_class, is_exit_row, "
-    "shares_text, shares_approx, shares_precision, hold_amount, "
-    "hold_ratio_float, hold_ratio_total, hold_ratio, "
-    "hold_market_cap, holder_type, share_nature, "
-    "change_status, change_shares_text, change_shares_approx, "
-    "hold_change, hold_change_num, "
-    "notice_date, effective_date, page_update_date, "
-    "source, source_tier, raw_hash, fetched_at, created_at"
+from services.data_sources.aif10_pagination_rules import (  # noqa: E402
+    load_aif10_pagination_rules,
+    page_size_for,
+    policy_for,
 )
-_COL_KEYS = [c.strip() for c in HOLDER_COLUMNS.split(",")]
+from services.holders_notice_catchup import MAX_DUE_DAYS_PER_RUN  # noqa: E402  (V9: 单一定义处)
+
+# 全部在 import 时求值 —— YAML 坏了 import 就炸 (与刀 A §3.5 fail-closed 一致)。
+_RULES = load_aif10_pagination_rules()
+PAGE_SIZE = page_size_for(REPORT_FREE, rules=_RULES)          # 保留名字, ingest_holders_raw.py 导入它
+_POLICY = policy_for(REPORT_FREE, rules=_RULES)
+_RECHECK = _RULES.holders_notice_recheck
+EXPOSURE_START = _RULES.audits["holders_notice_pagination"].exposure_start
 
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -164,7 +201,7 @@ def _drop_vendor_excluded(raw: list[dict]) -> list[dict]:
     return filtered
 
 
-# ── ① 获取 acquire ───────────────────────────────────────────────────
+# ── ① 获取 acquire (按股全史; 手动 backfill 路径, 未改) ───────────────────
 def _fetch_raw(client, symbol: str) -> list[dict]:
     """纯采集: aif10 datacenter 拉某股全期流通股东 (无计算)."""
     from aif10_scraper import fetch_all_pages
@@ -231,7 +268,7 @@ def _clean(raw: list[dict], *, start_period: str) -> list[dict]:
             "notice_date": upd,
             "effective_date": None,
             "page_update_date": upd,
-            # PIT 可用日锚: 披露日(UPDATE_DATE)即可用日 → event_engine 据此算 available date+1
+            # PIT 可用日锚: 披露日(UPDATE_DATE)即可用日 → event_engine 据此算可用日+1
             "availability_source": "page_update_date" if upd else "fetched_at_observed",
             "source": SOURCE,
             "source_tier": SOURCE_TIER,
@@ -254,8 +291,13 @@ def _holder_identity(row: dict) -> str:
 
 
 def _derive_exits(clean_rows: list[dict]) -> list[dict]:
-    """period-diff: 上期在榜/本期不在 = 退出. 跟踪机构投资周期 (用户目的)."""
-    from collections import defaultdict
+    """period-diff: 上期在榜/本期不在 = 退出. 跟踪机构投资周期 (用户目的)。
+
+    只用于**按股全史**路径 (build_rows → sync_holders_aif10): 一次拿到某只股
+    的全部历史期, 在内存里整体 diff, 不查库。按公告日的日更/回补路径走
+    ``_derive_exits_against_canonical`` (对着 canonical 上一期查, 只处理批内
+    真正有新观测的组)。
+    """
     by_period: dict[str, dict] = defaultdict(dict)
     for r in clean_rows:
         by_period[r["report_date"]][_holder_identity(r)] = r
@@ -292,7 +334,7 @@ def _derive_exits(clean_rows: list[dict]) -> list[dict]:
 
 
 def build_rows(client, symbol: str, *, start_period: str = DEFAULT_START_PERIOD) -> list[dict]:
-    """获取→清洗→加工: 返回某股可写 canonical 的全部行 (含退出)."""
+    """获取→清洗→加工: 返回某股可写 canonical 的全部行 (含退出)。按股全史路径专用。"""
     raw = _fetch_raw(client, symbol)
     base = _clean(raw, start_period=start_period)
     if not base:
@@ -317,33 +359,32 @@ def _write_legacy_direct(
     )
 
 
-def _write(conn, rows: list[dict], *, delete_scope: str = "partition",
-           derive_exits_from_canonical: bool = True) -> int:
-    """幂等写: formal land→accept by notice_date (formal_only; no legacy mirror).
+def _write_with_outcome(
+    conn,
+    rows: list[dict],
+    *,
+    delete_scope: str = "partition",
+    derive_exits_from_canonical: bool = True,
+    touched_groups: frozenset = frozenset(),
+    acquire_evidence: Mapping[str, Any],
+):
+    """幂等写: formal land→accept by notice_date (formal_only; no legacy mirror)。
 
-    同一 notice_date 上其他股票不会被抹掉 —— 两种做法结果相同, 代价差 590 倍:
+    返回完整 ``DisclosureDualWriteOutcome`` (含 inserted_rows / held_rows /
+    exit_rows_replaced / batch_ids); ``_write`` 是它的窄接口 (只返回行数,
+    向后兼容既有调用方)。``rows`` 为空时返回 ``None`` (无批次产生)。
 
-    - ``delete_scope="partition"``(默认, 日更): accept 删整个分区, 上游先把分区里
-      其他股票的行读出来拼进批次。日更按公告日全市场拉, 一个批次本就覆盖整天, 代价为零。
-    - ``delete_scope="stocks_in_batch"``(按股回填): accept 只删本批的 stock_code,
-      上游不必重读整个分区。**历史回填必须用这个** —— 2026-09-07 实测: 128,498 次
-      (股,分区) 写入、目标 1,449,322 行, 按 "partition" 做法要实际写 854,850,658 行。
-
-    Enrichment 列随 canonical 走。所有落地路径的收口点, 退出行派生补在这一步
-    (见 ``_derive_exits_against_canonical``): 日更批次天生 is_exit_row=False 由此补上;
-    全量按股重跑路径已在内存算过, no-op 不冲突。
+    ``acquire_evidence`` 必填, 透传进 ``request_json`` (B9; 键不得覆盖
+    ``api``/``notice_date``/``source``, 由 ``disclosure_dual_write`` 校验)。
     """
     if not rows:
-        return 0
-    # 2026-09-07 (fable 审查 Q2, 根因): 按股路径**根本不该**走 canonical 派生。
-    # _derive_exits_against_canonical 的 `covered` 粒度是 (股,期), 而它的设计意图是
-    # 「调用方已经按股整体算过了就别再算」。零退出期 + 首期 (仿真: 24,838 次 = 17.2%)
-    # 因此漏网, 跑去跟 canonical 里的 v2 上一期比 —— 那才是 1,002 只股拒批的根因,
-    # 上一个提交的「跳过 NULL 身份」只是把它的产物扔掉 (守卫, 不是修根因)。
-    # 仿真实测: 按股路径关掉它之后, 输出**一行不差**(canonical 路径在 v2 基线产 0 行、
-    # v3 基线产 0 行 0 skip); 少 24,838 次 ×2 次对 180 万行无索引表的查询。
+        return None
+    # 只有 merge_new_grains 路径 (日更/回补) 才需要按 touched_groups 派生退出;
+    # 按股全史路径 (derive_exits_from_canonical=False) 已经在内存算过 (_derive_exits),
+    # 传空 touched_groups 时本函数不产出任何退出行 (fail-safe 默认, 不是「自动发现」)。
     extra_exits = (
-        _derive_exits_against_canonical(conn, rows) if derive_exits_from_canonical else []
+        _derive_exits_against_canonical(conn, rows, touched_groups=touched_groups)
+        if derive_exits_from_canonical else []
     )
     if extra_exits:
         from services.data_sources.holders_top10_schema import assign_unique_holders_row_seq
@@ -353,10 +394,32 @@ def _write(conn, rows: list[dict], *, delete_scope: str = "partition",
         write_holders_top10_formal_then_mirror,
     )
 
-    outcome = write_holders_top10_formal_then_mirror(
-        conn, rows, delete_scope=delete_scope
+    return write_holders_top10_formal_then_mirror(
+        conn, rows, delete_scope=delete_scope, request_extra=acquire_evidence,
     )
-    return int(outcome.canonical_rows)
+
+
+def _write(
+    conn,
+    rows: list[dict],
+    *,
+    delete_scope: str = "partition",
+    derive_exits_from_canonical: bool = True,
+    touched_groups: frozenset = frozenset(),
+    acquire_evidence: Mapping[str, Any],
+) -> int:
+    """``_write_with_outcome`` 的窄接口: 只返回写入后 canonical 分区行数
+    (既有调用方期望的返回类型不变)。
+    """
+    outcome = _write_with_outcome(
+        conn,
+        rows,
+        delete_scope=delete_scope,
+        derive_exits_from_canonical=derive_exits_from_canonical,
+        touched_groups=touched_groups,
+        acquire_evidence=acquire_evidence,
+    )
+    return int(outcome.canonical_rows) if outcome is not None else 0
 
 
 def accept_holders_top10_partition_from_legacy(conn, notice_date: str):
@@ -377,7 +440,7 @@ def sync_holders_aif10(
     progress_every: int = 200,
     delete_scope: str = "stocks_in_batch",
 ) -> dict:
-    """编排 获取→清洗→加工→存储, formal land→accept → canonical (source='miaoxiang').
+    """编排 获取→清洗→加工→存储, formal land→accept → canonical (source='miaoxiang')。
 
     symbols=None → 全 active universe; 否则只跑指定股 (调试/增量)。
 
@@ -386,6 +449,10 @@ def sync_holders_aif10(
     永远不是某个 notice_date 的完整内容。用 ``"partition"`` 会在写第二只股时把第一只股
     刚写进同一公告日的行删掉, 跑完只剩最后一只 —— 参数留在签名上只为让调用方能显式覆盖,
     不是让它有第二个合理取值。
+
+    这是**唯一**保留的替换路径, 只由 ``ingest_holders_aif10.py --symbols/--backfill``
+    手动触发 —— 替换 = 重观测整只股的全史, 不是日更路径; 日更与回补 (``recheck_notice_day``
+    / ``reland_stock_in_day``) 一律 ``merge_new_grains`` 只增不删 (刀 B1)。
 
     2026-09-07: 本行此前写 ``delete_scope=delete_scope`` 却没有这个参数, 即
     ``NameError``。它没被任何测试抓到, 因为 ``sync_holders_aif10`` 在测试里**只作为
@@ -419,9 +486,13 @@ def sync_holders_aif10(
                 continue
             total_exits += sum(1 for r in rows if r["is_exit_row"])
             # rows 已含该股全史 + _derive_exits 内存派生 (由证据直接推出, 身份完整),
-            # 不需要也不应该再去 canonical 跟上一期 diff —— 见 _write 里的说明。
+            # 不需要也不应该再去 canonical 跟上一期 diff —— 见 _write_with_outcome 说明。
             total_rows += _write(
-                conn, rows, delete_scope=delete_scope, derive_exits_from_canonical=False
+                conn, rows, delete_scope=delete_scope, derive_exits_from_canonical=False,
+                acquire_evidence={
+                    "acquire_path": "by_stock", "run_kind": "backfill",
+                    "observation_kind": "full_history",
+                },
             )
             ok += 1
         except Exception as e:  # noqa: BLE001
@@ -443,85 +514,16 @@ def sync_holders_aif10(
     }
 
 
-class HoldersDuplicateGrainConflictError(RuntimeError):
-    """同去重键两行内容不同(非逐字重复) —— 数据矛盾, 拒绝任选一行落地 (红线3)。"""
+# ── 按公告日整市场取数 (刀 B1; spec §4.2) ─────────────────────────────────
 
 
-def _dedupe_notice_rows_by_grain(rows: list[dict]) -> tuple[list[dict], int]:
-    """折叠 by_notice_date 全市场翻页拉重的逐字重复行 (只用于这条路径, 按股探针 0 组重复).
-
-    根因: 排序键(END_DATE,HOLDER_RANK) 每期数百股并列, PAGE_SIZE=500 翻页边界随机、
-    分页代码无去重 → 同记录跨页拉重(生产库 18,036 行)。去重键 = GRAIN 去掉 row_seq、
-    换回 holder_name: row_seq 由 ``assign_unique_holders_row_seq`` 按到达顺序打号,
-    逐字重复两行会被打成不同 row_seq, 满 GRAIN 反而抓不到; 但不换回 holder_name 的话,
-    同 rank 两个不同持有人的合法并列(row_seq 正为此存在)会被误判成冲突。组内除
-    row_seq 外全同 → 判定重复保留 1 条; 内容不同 → 抛
-    ``HoldersDuplicateGrainConflictError`` 不任选一行。返回 (去重后的行, 去掉的行数)。
-    """
-    from services.data_sources.holders_top10_schema import GRAIN, assign_unique_holders_row_seq
-
-    # 2026-09-08: GRAIN 加了 notice_date(版本轴), 这里同步。**行为不变** ——
-    # 本函数只跑在 by_notice_date 的单日批次上 (fetch_holders_top10_by_notice_date 里
-    # `same_day` 已按 partition 过滤), notice_date 在批内恒定, 加进键不改变任何分组。
-    # 但键必须忠于 GRAIN, 这正是下面那道漂移守卫存在的意义 —— 它今天抓到了我改 GRAIN
-    # 却没回头看这里 (fable 的方案表里也漏了这一处)。
-    expected = {"stock_code", "report_date", "notice_date", "holder_set", "holder_rank",
-                "is_exit_row"}
-    if frozenset(GRAIN) - {"row_seq"} != expected:
-        # GRAIN 定义漂移: fail-closed 而不是悄悄按旧假设去重 (CLAUDE.md §11)。
-        raise RuntimeError(f"holders_top10_schema.GRAIN drifted from {sorted(expected)!r}; "
-                           "_dedupe_notice_rows_by_grain's key must be revisited")
-
-    groups: dict[tuple, list[dict]] = {}
-    order: list[tuple] = []
-    for row in rows:
-        key = (str(row.get("stock_code") or ""), str(row.get("report_date") or ""),
-               str(row.get("notice_date") or ""),
-               str(row.get("holder_set") or ""), int(row.get("holder_rank") or 0),
-               bool(row.get("is_exit_row")), str(row.get("holder_name") or ""))
-        if key not in groups:
-            groups[key] = []
-            order.append(key)
-        groups[key].append(row)
-
-    deduped: list[dict] = []
-    removed = 0
-    for key in order:
-        group = groups[key]
-        baseline = {k: v for k, v in group[0].items() if k != "row_seq"}
-        for other in group[1:]:
-            other_content = {k: v for k, v in other.items() if k != "row_seq"}
-            if other_content != baseline:
-                raise HoldersDuplicateGrainConflictError(
-                    f"grain-key={key!r}: {baseline!r} vs {other_content!r}")
-        deduped.append(group[0])
-        removed += len(group) - 1
-
-    return (assign_unique_holders_row_seq(deduped) if removed else deduped), removed
+@dataclass(frozen=True)
+class NoticeDayFetch:
+    rows: list[dict]
+    ledger: Any  # aif10_scraper.pagination.PageLedger
 
 
-def fetch_holders_top10_by_notice_date(notice_date: str) -> list[dict]:
-    """Full-market by UPDATE_DATE (= notice_date). Formal-shaped acquire for E0 land.
-
-    Evidence 2026-07-21: ``RPT_F10_EH_FREEHOLDERS`` +
-    ``(UPDATE_DATE='YYYY-MM-DD')`` returns ~10–120 provider rows/day
-    (not mass). Preserves provider response except vendor_scope
-    response_exclude (out-of-scope classes, e.g. B股 — 刀 B2, 2026-09-19); no
-    universe exclude (BSE rows stay). Exit rows are process-derived
-    elsewhere — land path returns raw clean only (``is_exit_row=False``).
-    Contrasts by_ts_code per-stock sync.
-
-    Pagination here is unstable at (END_DATE, HOLDER_RANK) ties and duplicates
-    rows across pages — ``_dedupe_notice_rows_by_grain`` collapses those first.
-
-    2026-09-19 note (spec_bshare_b2.md §2.3, [T3] unverified inference #3):
-    if a given notice_date's provider rows are *entirely* a range-outside
-    category, exclusion here can leave 0 rows for that day. The forward-fill
-    caller (``holders_notice_catchup.py``) already has an ``empty_partitions``
-    branch for exactly this shape (nothing to land, watermark unmoved, that
-    day re-probed next run) — accepted as idempotent and low-volume (≤~120
-    rows/day at this endpoint), not wired into a separate code path here.
-    """
+def _validate_notice_date(notice_date: str) -> str:
     digits = "".join(ch for ch in str(notice_date or "") if ch.isdigit())
     if len(digits) < 8:
         raise ValueError(f"notice_date must be YYYYMMDD; got {notice_date!r}")
@@ -530,64 +532,106 @@ def fetch_holders_top10_by_notice_date(notice_date: str) -> list[dict]:
         datetime.strptime(part, "%Y%m%d")
     except ValueError as exc:
         raise ValueError(f"notice_date must be YYYYMMDD; got {notice_date!r}") from exc
-    iso = f"{part[:4]}-{part[4:6]}-{part[6:8]}"
-    from aif10_scraper import default_client, fetch_all_pages
+    return part
 
-    raw = fetch_all_pages(
+
+def fetch_holders_notice_day(notice_date: str, *, client) -> NoticeDayFetch:
+    """按公告日整市场翻页取一天 (严格引擎, 唯一入口, 与 ``sources/miaoxiang.py``
+    同一姿态)。``client`` 必填 (N9: 脚本/调用方必须显式构造客户端, 不许悄悄退回
+    某个默认单例)。
+
+    完整性判定 (总行数=去重后行数=供应商声明总数、翻页中途漂移整日重取一次)
+    发生在引擎**内部**, 在 ``_drop_vendor_excluded`` 与 ``_clean`` 之前
+    (B2_integrity_judged_before_exclusion_and_clean): 供应商声明的总数在
+    B股排除/K线范围过滤之前就必须精确对上, 排除/过滤是引擎判完之后的下一步,
+    不能反过来靠"排除后数字对上了"掩盖翻页本身漏行。
+    """
+    from aif10_scraper.pagination import fetch_pages_strict
+
+    part = _validate_notice_date(notice_date)
+    iso = f"{part[:4]}-{part[4:6]}-{part[6:8]}"
+
+    raw, ledger = fetch_pages_strict(
+        client,
         REPORT_FREE,
         page_size=PAGE_SIZE,
-        max_pages=0,
+        policy=_POLICY,
         extra_filters=[f"(UPDATE_DATE='{iso}')"],
-        client=default_client,
-    ) or []
-    raw = _drop_vendor_excluded(raw)
-    cleaned = _clean(raw, start_period=DEFAULT_START_PERIOD)
+    )
+    filtered = _drop_vendor_excluded(raw)
+    cleaned = _clean(filtered, start_period=DEFAULT_START_PERIOD)
     same_day = [row for row in cleaned if row.get("notice_date") == part]
-    deduped, removed = _dedupe_notice_rows_by_grain(same_day)
-    if removed:
-        print(f"holders_aif10: by_notice_date={part} dropped {removed} paged-duplicate rows")
-    return deduped
+    return NoticeDayFetch(rows=same_day, ledger=ledger)
 
 
-def _provider_newest_update_date(
-    client, *, since_yyyymmdd: str | None = None
-) -> Optional[str]:
-    """Newest provider UPDATE_DATE as YYYYMMDD (1-row probe). None if empty/error.
+_DAILY_CLIENT = None  # lazy module-level singleton (惰性, 避免 import 时建 requests.Session)
 
-    Eastmoney datacenter returns 0 rows with empty filter; bound the sort probe
-    with UPDATE_DATE>= floor derived from DEFAULT_START_PERIOD (measured 2026-07-22).
+
+def _daily_client():
+    global _DAILY_CLIENT
+    if _DAILY_CLIENT is None:
+        from aif10_scraper import AIF10Client
+
+        _DAILY_CLIENT = AIF10Client(retry=3, rate_limit=1.6, timeout=20)
+    return _DAILY_CLIENT
+
+
+def fetch_holders_top10_by_notice_date(notice_date: str) -> list[dict]:
+    """Full-market by UPDATE_DATE (= notice_date)。保留给 ``disclosure_transport.py``
+    (provider land-only CLI 路径) 与既有测试用; 生产日更/回补一律走
+    :func:`fetch_holders_notice_day` 并显式传 client (N9)。"""
+    return fetch_holders_notice_day(notice_date, client=_daily_client()).rows
+
+
+class HoldersProviderProbeError(RuntimeError):
+    """探针失败: 不是"code 0 且有行", 或早报的日期超出合理上界 (T5) ——
+    fail-closed, 不吞异常继续跑到期集合 (R2)。``AIF10BlockedError`` 不在此列,
+    原样上抛 (调用方据此整条 sync 停止)。"""
+
+
+def _provider_newest_update_date(client) -> str:
+    """探针取供应商最新 UPDATE_DATE (YYYYMMDD)。
+
+    只接受"code 0 且有行"; 客户端抛出的任何异常 (含 ``code=9501`` 的
+    ``AIF10ApiError``、未知码的 ``AIF10UnknownCodeError``) 都转型
+    ``HoldersProviderProbeError``, 除了 ``AIF10BlockedError`` 原样上抛
+    (R2, B8/B8b)。结果超出上海今天 + 2 天视为不可信 (T5: 长假前供应商偶发
+    提前打未来日期), 同样抛 ``HoldersProviderProbeError`` (B8c)。
     """
-    digits = "".join(ch for ch in str(since_yyyymmdd or DEFAULT_START_PERIOD) if ch.isdigit())
-    if len(digits) < 8:
-        digits = DEFAULT_START_PERIOD
-    since_iso = f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+    from aif10_scraper import AIF10BlockedError
+
+    since_iso = f"{EXPOSURE_START[:4]}-{EXPOSURE_START[4:6]}-{EXPOSURE_START[6:8]}"
     try:
         r = client.get_v1(
             REPORT_FREE,
             page=1,
             page_size=1,
-            filter_expr=f"(UPDATE_DATE>='{since_iso}')",  # rule-compliance: ok evidence=DEFAULT_START_PERIOD floor; empty filter returns 0 (measured 20260722)
+            filter_expr=f"(UPDATE_DATE>='{since_iso}')",  # rule-compliance: ok evidence=EXPOSURE_START floor; empty filter returns 0 (measured 20260722)
             extra_params={"sortColumns": "UPDATE_DATE", "sortTypes": "-1"},
         )
-    except Exception:  # noqa: BLE001 — probe only; caller must not mass-rewrite
-        return None
-    data = r.get("data") or []
+    except AIF10BlockedError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — 探针只认"成功", 其余一律转型 fail-closed
+        raise HoldersProviderProbeError(f"{type(exc).__name__}: {exc}") from exc
+    data = (r or {}).get("data") or []
     if not data:
-        return None
+        raise HoldersProviderProbeError("provider probe returned no rows (code!=0 already raised above)")
     raw = str(data[0].get("UPDATE_DATE") or "").strip()
     digits = "".join(ch for ch in raw if ch.isdigit())
-    return digits[:8] if len(digits) >= 8 else None
+    if len(digits) < 8:
+        raise HoldersProviderProbeError(f"provider probe UPDATE_DATE unparsable: {raw!r}")
+    provider_max = digits[:8]
+    today_shanghai = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    upper_bound = (today_shanghai + timedelta(days=2)).strftime("%Y%m%d")
+    if provider_max > upper_bound:
+        raise HoldersProviderProbeError(
+            f"provider probe UPDATE_DATE={provider_max} exceeds upper bound "
+            f"{upper_bound} (今天+2, T5)"
+        )
+    return provider_max
 
 
 CANONICAL_TABLE = "canonical_top10_float_holders_period"
-
-# Re-export provider forward fill (+ retired catchup stubs for test imports).
-from services.holders_notice_catchup import (  # noqa: E402
-    NOTICE_PARTITION_CATCHUP_MAX,
-    catchup_missing_holders_notice_partitions,
-    land_holders_notice_partitions_forward,
-    list_missing_notice_partitions_from_fact,
-)
 
 
 def _table_present(conn, name: str) -> bool:
@@ -600,6 +644,257 @@ def _table_present(conn, name: str) -> bool:
     except Exception:  # noqa: BLE001
         return False
 
+
+# ── 本地索引与差集 (刀 B1 重写; spec §4.2) ────────────────────────────────
+
+_LOCAL_OBSERVATION_COLUMNS = (
+    "stock_code", "report_date", "holder_set", "holder_rank", "row_seq",
+    "holder_name", "holder_code", "is_holder_org", "hold_ratio_float",
+    "shares_approx", "change_status", "hold_change_num", "holder_type",
+    "share_class",
+)
+
+# 观测列 (revised 判定用; spec §4.1 表): 六个观测列逐一比, 本地 is_holder_org
+# 为 NULL (v2 遗留行, 身份未记录) 时再比 holder_code/is_holder_org, 否则也比
+# (身份修订也是修订)。
+_OBSERVATION_COLUMNS = (
+    "hold_ratio_float", "shares_approx", "change_status", "hold_change_num",
+    "holder_type", "share_class",
+)
+_FLOAT_OBSERVATION_COLUMNS = frozenset({"hold_ratio_float"})
+
+
+def _holder_key(row: Mapping[str, Any]) -> tuple[str, str, int, str]:
+    return (
+        str(row.get("stock_code") or ""),
+        str(row.get("report_date") or ""),
+        int(row.get("holder_rank") or 0),
+        str(row.get("holder_name") or ""),
+    )
+
+
+@dataclass(frozen=True)
+class LocalRow:
+    row_seq: int
+    holder_name: str
+    holder_code: Optional[str]
+    is_holder_org: Optional[bool]
+    hold_ratio_float: Optional[float]
+    shares_approx: Optional[int]
+    change_status: Optional[str]
+    hold_change_num: Optional[float]
+    holder_type: Optional[str]
+    share_class: Optional[str]
+
+
+@dataclass(frozen=True)
+class LocalIndex:
+    by_key: Mapping[tuple, tuple[LocalRow, ...]]
+    group_max_seq: Mapping[tuple, int]
+
+
+def _local_observation_index(conn, notice_date: str, *, stock_code: str | None = None) -> LocalIndex:
+    """一次查询取某个 notice_date 分区当前的非退出观测行, 按 :func:`_holder_key` 建索引。
+
+    ``stock_code`` 非空时只取该股 (``reland_stock_in_day`` 按股回补用)。
+    """
+    query = (
+        f"SELECT {', '.join(_LOCAL_OBSERVATION_COLUMNS)} FROM {CANONICAL_TABLE} "
+        "WHERE notice_date = ? AND is_exit_row = FALSE"
+    )
+    params: list[Any] = [notice_date]
+    if stock_code is not None:
+        query += " AND stock_code = ?"
+        params.append(stock_code)
+    query += " ORDER BY row_seq"
+    rows = conn.execute(query, params).fetchall() if _table_present(conn, CANONICAL_TABLE) else []
+
+    by_key: dict[tuple, list[LocalRow]] = defaultdict(list)
+    group_max_seq: dict[tuple, int] = {}
+    for r in rows:
+        (stock, report, holder_set, holder_rank, row_seq, holder_name, holder_code,
+         is_holder_org, hold_ratio_float, shares_approx, change_status,
+         hold_change_num, holder_type, share_class) = r
+        key = (str(stock), str(report), int(holder_rank), str(holder_name))
+        by_key[key].append(
+            LocalRow(
+                row_seq=int(row_seq), holder_name=str(holder_name), holder_code=holder_code,
+                is_holder_org=is_holder_org, hold_ratio_float=hold_ratio_float,
+                shares_approx=shares_approx, change_status=change_status,
+                hold_change_num=hold_change_num, holder_type=holder_type, share_class=share_class,
+            )
+        )
+        gkey = (str(stock), str(report), str(holder_set), int(holder_rank), False)
+        group_max_seq[gkey] = max(group_max_seq.get(gkey, 0), int(row_seq))
+    return LocalIndex(
+        by_key={k: tuple(v) for k, v in by_key.items()},
+        group_max_seq=group_max_seq,
+    )
+
+
+def _local_keys_elsewhere(conn, notice_date: str, keys: Iterable[tuple]) -> frozenset:
+    """一次查询: 给定键集合里, 哪些键在**另一个** notice_date 下也存在 (moved 判定)。"""
+    keys = list(keys)
+    if not keys or not _table_present(conn, CANONICAL_TABLE):
+        return frozenset()
+    stock_codes = sorted({k[0] for k in keys})
+    marks = ", ".join("?" for _ in stock_codes)
+    rows = conn.execute(
+        f"""
+        SELECT stock_code, report_date, holder_rank, holder_name
+          FROM {CANONICAL_TABLE}
+         WHERE notice_date != ? AND is_exit_row = FALSE
+           AND stock_code IN ({marks})
+        """,
+        [notice_date, *stock_codes],
+    ).fetchall()
+    elsewhere = {(str(r[0]), str(r[1]), int(r[2]), str(r[3])) for r in rows}
+    return frozenset(k for k in keys if k in elsewhere)
+
+
+def _floats_equal(a, b) -> bool:
+    if a is None or b is None:
+        return a is None and b is None
+    return abs(float(a) - float(b)) < 1e-9
+
+
+def _observation_differs(prov_row: Mapping[str, Any], local_row: LocalRow) -> bool:
+    """六个观测列逐一比; 浮点容差 1e-9, 两边都 None 视为同。本地 is_holder_org
+    为 NULL (v2 遗留行) 时不比身份列, 否则也比 (身份修订也是修订)。"""
+    for field in _OBSERVATION_COLUMNS:
+        prov_value = prov_row.get(field)
+        local_value = getattr(local_row, field)
+        if field in _FLOAT_OBSERVATION_COLUMNS:
+            if not _floats_equal(prov_value, local_value):
+                return True
+        elif (prov_value or None) != (local_value or None):
+            return True
+    if local_row.is_holder_org is not None:
+        if (prov_row.get("holder_code") or None) != (local_row.holder_code or None):
+            return True
+        if prov_row.get("is_holder_org") != local_row.is_holder_org:
+            return True
+    return False
+
+
+@dataclass(frozen=True)
+class NoticeDayDiff:
+    notice_date: str
+    provider_rows: tuple[dict, ...]
+    local_rows: int
+    local_keys: frozenset
+    missing_keys: frozenset
+    revised_keys: frozenset
+    surplus_keys: frozenset
+    moved_keys: frozenset
+    dup_groups: int
+    dup_rows: int
+    touched_groups: frozenset
+    missing_stocks: frozenset
+    partial_stocks: frozenset
+
+
+def diff_notice_day(
+    provider_rows: list[dict], local: LocalIndex, *, keys_elsewhere: Iterable[tuple]
+) -> NoticeDayDiff:
+    """四种"事后"形态的差集 (spec §4.1 表): missing / revised / surplus(+moved) / dup。
+
+    ``prov`` 按 :func:`_holder_key` 建索引, 键数必须等于行数 —— 引擎已经在
+    ``fetch_holders_notice_day`` 里保证了供应商声明的身份键唯一, 违反 (即清洗后
+    出现"清洗后键不唯一", 例如两个原始名字只差首尾空白) 是数据矛盾, 抛
+    ``RuntimeError`` (V14: 调用方归为账本 ``failed reason=clean_key_collision``,
+    只让这一天失败, 不拖垮其它日期)。
+    """
+    prov: dict[tuple, dict] = {}
+    for row in provider_rows:
+        key = _holder_key(row)
+        if key in prov:
+            raise RuntimeError(f"diff_notice_day: 清洗后键不唯一 (clean_key_collision): {key!r}")
+        prov[key] = row
+
+    local_keys = frozenset(local.by_key.keys())
+    prov_keys = frozenset(prov.keys())
+
+    missing_keys = prov_keys - local_keys
+    revised_keys = frozenset(
+        k for k in (prov_keys & local_keys) if _observation_differs(prov[k], local.by_key[k][0])
+    )
+    surplus_keys = local_keys - prov_keys
+    moved_keys = surplus_keys & frozenset(keys_elsewhere)
+
+    dup_groups = 0
+    dup_rows = 0
+    for rows_at_key in local.by_key.values():
+        if len(rows_at_key) > 1:
+            dup_groups += 1
+            dup_rows += len(rows_at_key) - 1
+
+    touched_groups = frozenset((k[0], k[1]) for k in missing_keys)
+
+    local_stocks = {k[0] for k in local_keys}
+    missing_by_stock: dict[str, int] = defaultdict(int)
+    for k in missing_keys:
+        missing_by_stock[k[0]] += 1
+    missing_stocks = frozenset(s for s in missing_by_stock if s not in local_stocks)
+    partial_stocks = frozenset(s for s in missing_by_stock if s in local_stocks)
+
+    notice_date = ""
+    if provider_rows:
+        notice_date = str(provider_rows[0].get("notice_date") or "")
+
+    return NoticeDayDiff(
+        notice_date=notice_date,
+        provider_rows=tuple(provider_rows),
+        local_rows=sum(len(v) for v in local.by_key.values()),
+        local_keys=local_keys,
+        missing_keys=missing_keys,
+        revised_keys=revised_keys,
+        surplus_keys=surplus_keys,
+        moved_keys=moved_keys,
+        dup_groups=dup_groups,
+        dup_rows=dup_rows,
+        touched_groups=touched_groups,
+        missing_stocks=missing_stocks,
+        partial_stocks=partial_stocks,
+    )
+
+
+def _rows_to_land(
+    diff: NoticeDayDiff, provider_rows_by_key: Mapping[tuple, dict], local: LocalIndex
+) -> list[dict]:
+    """missing 行按组续号 (同组内按 holder_name 排序, 从 ``group_max_seq`` 之后接续);
+    revised 行沿用本地已有的 row_seq (让 accept 按 GRAIN 判定"已存在"而持有)。
+
+    **不**调用 ``assign_unique_holders_row_seq`` —— 它从 1 重编号, 会让同名次的
+    新持有人撞上已有 row_seq (B25)。
+    """
+    out: list[dict] = []
+
+    by_group: dict[tuple, list[tuple[str, tuple]]] = defaultdict(list)
+    for key in diff.missing_keys:
+        stock_code, report_date, holder_rank, holder_name = key
+        row = provider_rows_by_key[key]
+        holder_set = str(row.get("holder_set") or "")
+        group = (stock_code, report_date, holder_set, holder_rank, False)
+        by_group[group].append((holder_name, key))
+
+    for group, members in by_group.items():
+        members.sort(key=lambda item: item[0])
+        base_seq = local.group_max_seq.get(group, 0)
+        for offset, (_holder_name, key) in enumerate(members, start=1):
+            row = dict(provider_rows_by_key[key])
+            row["row_seq"] = base_seq + offset
+            out.append(row)
+
+    for key in diff.revised_keys:
+        row = dict(provider_rows_by_key[key])
+        row["row_seq"] = local.by_key[key][0].row_seq
+        out.append(row)
+
+    return out
+
+
+# ── 退出行派生 (按日路径; 只对 touched_groups 重算, B26/B26b/B27) ─────────
 
 # 退出派生因「上一期身份未记录」而跳过的记录。规则 12: 运行时计数不写进手写文件,
 # 但也不能只活在 log 里 —— 调用方要能拿到它并放进自己的 result dict。
@@ -663,56 +958,49 @@ def take_exit_derive_skips() -> list[dict]:
     return out
 
 
-def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
-    """日更单日落地退出派生: 查 canonical 该股上一期名单做 period-diff, 只查本批
-    (stock_code,report_date), 不做全市场重扫(避免 26M 行放大重演); 跳过批次里已自带
-    退出行的组合(全量按股重跑路径已在内存用 holder_new 算过, 更准)。
+def _derive_exits_against_canonical(
+    conn, rows: list[dict], *, touched_groups: frozenset = frozenset()
+) -> list[dict]:
+    """按日路径的退出派生: 只对 ``touched_groups`` (批内真正有新观测行 GRAIN 的组,
+    即 diff 的 ``missing_keys`` 所在组) 重算; held-only 的组 (本次批次里这个
+    (股,期) 一行新观测都没有, 只有 revised/无关行) **不**重算, 旧退出行原样保留
+    (B26b —— 一次只发现修订/撤回的取数不该让整组持有人突然被判"退出")。
 
-    2026-09-07 修两处, 都是 canonical 拿到 holder_code 之后才可能修的:
+    组内"今天还在"的判据 = 批内该组非退出行 ∪ canonical 该组
+    ``notice_date = D`` (本批的公告日) 的非退出行 (B26: 一行迟到的行不能让
+    同组已经在 canonical 里的其它九个持有人都被判退出 —— 它们不在本批 ``rows``
+    里, 只在 canonical 里)。code 与 name 分开记两个集合, 不并成单一
+    "code-or-name" token (B17c 返修): 同一组在不同批次里可能混着两种身份口径
+    写法 —— D 分区里若这个机构是 v2 遗留行 (``holder_code`` 为 NULL, 身份当时
+    只记了名字), 而它在上一期是带 ``holder_code`` 的 v3/v4 行, 上一期持有人
+    只要 code 或 name 任一还在今天出现过就不算退出, 不靠两边身份口径一致。
 
-    1. **退出行曾经带着别人的 code**(数据污染, 本次回填实测 21,453 行 = 带码退出行的
-       11.2%)。原实现 ``e = dict(template)`` 拿当期**第一行**做模板, 之后只覆盖
-       holder_name, 于是 holder_code / is_holder_org 留着模板行的值 ——
-       「胡利平」因此挂上了香港中央结算的码 10671586, 那个码下面一度挂着 172 种名字
-       (含中信证券、高瓴资本、以及一个自然人)。
-       canonical 此前不存 code 时这个模板复制无害; 加了 code 之后它变成污染路径。
-       现在退出者带**自己的** code/is_holder_org, 从 canonical 上一期原样取。
-
-    2. **改名防护**。原 docstring 写「canonical 不存 HOLDER_CODE, 比对只能按 holder_name,
-       没有 holder_new 的改名防护」—— 那句话在 2026-09-07 之前是对的。现在按
-       ``COALESCE(holder_code, holder_name)`` 比对(与内存路径 ``_holder_identity`` 同口径),
-       机构改名不再被记成「退出 + 新进」两条假事件。实测同一 code 用过多个名字的有 4,467 个。
+    上一期 = ``notice_date <= D`` 的最近一期**与那一版** (R4, B17/B17b):
+    先按 ``report_date < 当前 AND notice_date <= D`` 找最近的 ``(report_date,
+    notice_date)`` 组合, 再按这**三键**精确取那一版的持有人 —— 不是"该
+    report_date 下所有版本的并集" (旧 bug: 一个 report_date 有多版时会把 D
+    之后才公开的重述版也算进来, 见 B17b)。``batch_prev`` (同批双期) 逻辑保留。
     """
-    if not rows:
+    if not rows or not touched_groups:
         return []
-    covered = {(str(r.get("stock_code") or ""), str(r.get("report_date") or ""))
-               for r in rows if r.get("is_exit_row")}
-    by_stock_period: dict[tuple, list[dict]] = {}
+    by_stock_period: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    notice_by_group: dict[tuple[str, str], str] = {}
     for r in rows:
+        if r.get("is_exit_row"):
+            continue
         key = (str(r.get("stock_code") or ""), str(r.get("report_date") or ""))
-        if not r.get("is_exit_row") and key[0] and key[1] and key not in covered:
-            by_stock_period.setdefault(key, []).append(r)
+        if key not in touched_groups:
+            continue
+        by_stock_period[key].append(r)
+        nd = str(r.get("notice_date") or "")
+        if nd:
+            notice_by_group[key] = nd
     if not by_stock_period or not _table_present(conn, CANONICAL_TABLE):
         return []
     # 一次性查清楚 CARRY_FIELDS 是否都是 canonical 真实列 —— 不通过就 fail-closed
     # 抛出去, 不进下面的循环让 SELECT 对每个命中的 (股,期) 重复炸 BinderException。
     _assert_carry_fields_in_canonical(conn)
 
-    # 2026-09-08: hold_ratio_float / shares_approx (CARRY_FIELDS)
-    # 从 null_fields 里移出去 —— 它们要带出上一期的值, 不置空。
-    #
-    # 内存路径 _derive_exits (`e = dict(prev_row)`) 一直是原样带出的; canonical 路径置空
-    # 是 2026-09-06 引入本函数时的疏漏(提交信息没提要改这几个字段的语义, null_fields 也没留理由),
-    # 不是深思后的重新裁决 —— 结果是同一种派生行两套语义, 在回填边界日翻转。
-    #
-    # 「退出行的持股比例」有明确含义: **退出前最后一次真实披露的比例**, 是历史事实,
-    # 只用过去数据不违红线 1; 也不是红线 3 管的那种缺失(红线 3 管「该观测到却没观测到」,
-    # 而退出行本身是派生行, 它这几个字段的定义就是「上一期值」)。
-    # 置 0 会撒谎(暗示比例真是 0); 置 NULL 对唯一的消费方是静默降级 ——
-    # stock_dossier.py:389-396 注释明文写着契约「hold_ratio_float = 上期在榜占比(最后已知)」,
-    # 界面会从有数字变空白。只有原样带出同时满足「不撒谎」与「消费方能用」。
-    # 核实过没有消费方把它当「当期真实持仓」加总: institution_follow_b4_measure.py:202
-    # 在打分前就把 is_exit_row 整体剔除; institution_profile.py:265 只透传不做运算。
     null_fields = ("share_class", "shares_text", "shares_precision",
                    "hold_ratio_total", "hold_ratio",
                    "change_shares_text", "change_shares_approx",
@@ -720,28 +1008,52 @@ def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
     derived: list[dict] = []
     fetched_at = _utc_now()
     for (stock_code, report_date), cur_rows in by_stock_period.items():
+        cur_nd = notice_by_group.get((stock_code, report_date))
+
+        # cur_identities: 批内该组非退出行 ∪ canonical 该组 notice_date=D 的非退出行。
+        # 分开记 code 与 name 两个集合, 不并成单一 "code-or-name" token (返修
+        # blocking finding, B17c): 同一 (股,期) 组在不同 notice_date 批次里可能
+        # 混着两种身份口径写法 —— D 分区里这个机构若是 v2 遗留行 (holder_code 为
+        # NULL, 身份当时只记了名字), 而它在上一期是带 holder_code 的 v3/v4 行,
+        # 单一 token 比较 ("C1" vs "甲") 永远对不上, 会把仍在榜的机构误判成
+        # gone。改成: 上一期持有人只要 code 或 name 任一还在今天出现过就不算退出。
+        canon_cur_rows: list[tuple] = []
+        if cur_nd:
+            canon_cur_rows = conn.execute(
+                f"SELECT holder_name, holder_code FROM {CANONICAL_TABLE} "
+                "WHERE stock_code=? AND report_date=? AND notice_date=? AND is_exit_row=FALSE",
+                [stock_code, report_date, cur_nd],
+            ).fetchall()
+        cur_codes = {
+            str(r.get("holder_code")) for r in cur_rows if r.get("holder_code")
+        } | {str(c[1]) for c in canon_cur_rows if c[1]}
+        cur_names = {
+            str(r.get("holder_name")) for r in cur_rows if r.get("holder_name")
+        } | {str(c[0]) for c in canon_cur_rows if c[0]}
+
+        # 上一期: notice_date <= D (cur_nd) 的最近 (report_date, notice_date) 组合。
         prev = conn.execute(
-            f"SELECT MAX(report_date) FROM {CANONICAL_TABLE} WHERE stock_code=? "
-            "AND is_exit_row=FALSE AND report_date<?", [stock_code, report_date]).fetchone()
-        db_prev = prev[0] if prev else None
+            f"SELECT report_date, notice_date FROM {CANONICAL_TABLE} WHERE stock_code=? "
+            "AND is_exit_row=FALSE AND report_date<? AND notice_date<=? "
+            "ORDER BY report_date DESC, notice_date DESC LIMIT 1",
+            [stock_code, report_date, cur_nd],
+        ).fetchone()
+        db_prev_period, db_prev_notice = (prev[0], prev[1]) if prev else (None, None)
 
         # 2026-09-08: 同批双期链式派生。
         # 上面那句只看 **canonical 已接受**的上一期, 完全看不到同一批次里更早的那期。
         # 年报 + 一季报同日披露时(staging 实测 15,881 个 (股,UPDATE_DATE) 对同日双期,
         # 约 2,500/年, 占相邻期对 10.8%), 后一期永远拿 canonical 里更老的那期当基准,
         # 于是「上一期在榜、本期不在」的那些持有人的退出被整个吞掉。
-        # 复现: canonical 有 20230930{A,B}, 批次含 20231231{A,C} + 20240331{A,B}
-        #   修前 -> [(20231231,B)]          20240331 拿 20230930 当基准, C 的退出被吞
-        #   修后 -> [(20231231,B), (20240331,C)]
         batch_prev = max(
             (k[1] for k in by_stock_period
              if k[0] == stock_code and k[1] < report_date),
             default=None,
         )
-        use_batch = batch_prev is not None and (db_prev is None or batch_prev > db_prev)
-        prev_period = batch_prev if use_batch else db_prev
+        use_batch = batch_prev is not None and (db_prev_period is None or batch_prev > db_prev_period)
+        prev_period = batch_prev if use_batch else db_prev_period
         if not prev_period:
-            continue  # 该股没有更早的期(库里和批内都没有), 没有基准可 diff
+            continue  # 该股在 D 之前没有已公开的更早期(库里和批内都没有), 没有基准可 diff
 
         if use_batch:
             # 批内那期的行自带身份与持仓字段, 不必回查表(它还没落库)。
@@ -751,11 +1063,12 @@ def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
                 for r in by_stock_period[(stock_code, prev_period)]
             ]
         else:
+            # R4/B17b: 按"三键"精确取那一版, 不是该 report_date 下所有版本的并集。
             prev_rows = conn.execute(
                 f"SELECT DISTINCT holder_name, holder_code, is_holder_org, "
                 f"{', '.join(CARRY_FIELDS)} FROM {CANONICAL_TABLE} "
-                "WHERE stock_code=? AND report_date=? AND is_exit_row=FALSE",
-                [stock_code, prev_period]).fetchall()
+                "WHERE stock_code=? AND report_date=? AND notice_date=? AND is_exit_row=FALSE",
+                [stock_code, db_prev_period, db_prev_notice]).fetchall()
         # 身份键与内存路径 _holder_identity 同口径: 有 code 用 code, 没有退回 name。
         prev_by_identity = {
             (str(r[1]) if r[1] else str(r[0])): {
@@ -766,30 +1079,17 @@ def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
             }
             for r in prev_rows if r and r[0]
         }
-        cur_identities = {
-            str(r.get("holder_code") or "") or str(r.get("holder_name") or "")
-            for r in cur_rows
-        }
-        gone = sorted(set(prev_by_identity) - cur_identities)
+        gone = sorted(
+            identity for identity, src in prev_by_identity.items()
+            if not (
+                (src["holder_code"] and src["holder_code"] in cur_codes)
+                or (src["holder_name"] and src["holder_name"] in cur_names)
+            )
+        )
         # 上一期是 v2 遗留行时 is_holder_org 为 NULL(当时这一列不存在, 身份未记录)。
         # 造不出合规的 v3 退出行 —— accept 侧要求它必须是 bool (INVALID_HOLDER_ORG_FLAG)。
-        # 三条路只有跳过是诚实的:
-        #   放宽校验 -> 让「身份未判的行」重新能写进来, 正是那道门要挡的;
-        #   按名字猜 org/个人 -> 红线 3 禁止 (缺失不许填,不许 fallback);
-        #   跳过 -> 少一条**派生**行, 而派生物可从证据重生成 (红线 4)。
-        # 计数不静默: 回填期间上一期几乎都是 v2, 跳过量应当很大且随回填推进归零;
-        # 2026-09-08 更正解读: 非 0 **不等于**「有 v2 行没被覆盖到」。
-        # 真机制是 accept 侧 DELETE 按 notice_date=partition 划范围, 供应商把同一
-        # (股,期) 改派到别的公告日时, 旧行留在一个此后任何批次都不会再落地的分区里 ——
-        # 那不是「没轮到覆盖」, 是这条 DELETE 的作用域结构性够不到它, 且日更也会触发,
-        # 不是回填期独有的历史欠账。(notice_date 已于 2026-09-08 进 GRAIN, 两版现在共存
-        # 不再互相挡路; 但旧版身份未记录时仍会走到这里被跳过。)
-        # 非 0 时该查的是「该 identity 在 canonical 里是否横跨多个 notice_date」,
-        # 而不是假设「该刷一遍了」。
         skipped_unknown = [i for i in gone if prev_by_identity[i]["is_holder_org"] is None]
         if skipped_unknown:
-            # 计数也回传给调用方: 只写 log 时它是静默的 —— 回填脚本与 ingest CLI 都没有
-            # logging.basicConfig, root 停在 WARNING, 这行一个字都打不出来 (fable 审查 Q3 末)。
             _EXIT_DERIVE_SKIPS.append(
                 {"stock_code": stock_code, "report_date": report_date,
                  "prev_period": prev_period, "n": len(skipped_unknown)}
@@ -810,12 +1110,8 @@ def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
             e.update(dict.fromkeys(null_fields))
             e.update({
                 "holder_name": src["holder_name"], "holder_name_norm": src["holder_name"],
-                # 退出者带**自己的**身份, 不是模板行的 —— 模板只提供 stock/notice 这类
-                # 与持有人无关的字段。2026-09-07 之前这三行不存在, 于是退出行继承了
-                # cur_rows[0] 的 code, 实测污染 21,453 行。
                 "holder_code": src["holder_code"],
                 "is_holder_org": src["is_holder_org"],
-                # 退出前最后一次真实披露的持仓, 见上方 null_fields 处的裁决。
                 **{f: src[f] for f in CARRY_FIELDS},
                 "holder_new": identity,
                 "report_date": report_date, "is_exit_row": True,
@@ -832,8 +1128,8 @@ def _derive_exits_against_canonical(conn, rows: list[dict]) -> list[dict]:
 def formal_holders_watermark(conn) -> tuple[Optional[str], str]:
     """Freshness watermark for holders = **formal accepted notice frontier**.
 
-    SSOT = ``canonical_top10_float_holders_period.notice_date``. Legacy fact
-    plane retired 2026-07-26 — no fallback.
+    只作展示 (T3: 到期集合不再由它驱动) —— SSOT = ``canonical_top10_float_holders_period.notice_date``。
+    Legacy fact plane retired 2026-07-26 — no fallback.
 
     Returns ``(watermark_yyyymmdd_or_none, watermark_source)``.
     """
@@ -847,10 +1143,8 @@ def formal_holders_watermark(conn) -> tuple[Optional[str], str]:
 
 
 def _net_new_notice_since(conn, pre_wm: Optional[str]) -> tuple[int, int]:
-    """Split ops counters: net-new notice rows / partitions since ``pre_wm``.
+    """展示计数: 本轮跑之前的水位 ``pre_wm`` 之后新增了多少行/分区。
 
-    Honest net-new plane on the formal canonical frontier: rows whose
-    ``notice_date > pre_wm``, and the distinct notice partitions they touch.
     Returns ``(net_new_notice_rows, notice_partitions_touched)``.
     """
     if not _table_present(conn, CANONICAL_TABLE):
@@ -867,209 +1161,369 @@ def _net_new_notice_since(conn, pre_wm: Optional[str]) -> tuple[int, int]:
     return int(row[0] or 0), int(row[1] or 0)
 
 
-def _yyyymmdd_to_iso(yyyymmdd: str) -> str:
-    digits = "".join(ch for ch in str(yyyymmdd or "") if ch.isdigit())
-    if len(digits) < 8:
-        raise ValueError(f"expected YYYYMMDD, got {yyyymmdd!r}")
-    part = digits[:8]
-    return f"{part[:4]}-{part[4:6]}-{part[6:8]}"
+# ── 按公告日的日更循环 + 按股回补 (刀 B1; spec §4.2) ───────────────────────
 
 
-def _local_stock_codes_for_notice_date(conn, notice_date: str) -> set[str]:
-    """Formal-canonical codes already landed for ``notice_date`` (YYYYMMDD).
-
-    Empty when canonical absent — fail-closed to treat all provider codes as
-    missing so same-day sparse probe still runs.
-    """
-    if not _table_present(conn, CANONICAL_TABLE):
-        return set()
-    digits = "".join(ch for ch in str(notice_date or "") if ch.isdigit())
-    if len(digits) < 8:
-        return set()
-    rows = conn.execute(
-        f"""
-        SELECT DISTINCT stock_code
-          FROM {CANONICAL_TABLE}
-         WHERE notice_date = ?
-        """,
-        [digits[:8]],
-    ).fetchall()
-    return {str(r[0]) for r in rows if r and r[0]}
-
-
-def _incremental_skip_result(
-    *,
-    wm: Optional[str],
-    wm_source: str,
-    provider_max: Optional[str],
-    since_date: str,
-    skip_reason: str,
+def recheck_notice_day(
+    conn, notice_date: str, *, client, run_kind: str, write: bool, now_fn
 ) -> dict:
-    return {
-        "ok": 0,
-        "fail": 0,
-        "rows_written": 0,
-        "exit_rows": 0,
-        "affected_stocks": 0,
-        "net_new_notice_rows": 0,
-        "notice_partitions_touched": 0,
-        "rewrite_amplification_rows": 0,
-        "watermark": wm,
-        "watermark_source": wm_source,
-        "provider_max_update_date": provider_max,
-        "since_date": since_date,
-        "skipped": True,
-        "skip_reason": skip_reason,
-        "errors": [],
-    }
+    """日更、按日回补、dry-run 共用的唯一步骤 (spec §4.2)。
 
-
-def _notice_row_stock_codes(rows: list[dict]) -> list[str]:
-    codes: set[str] = set()
-    for row in rows:
-        code = str(row.get("stock_code") or "").strip()
-        if code:
-            codes.add(code)
-    return sorted(codes)
-
-
-def sync_holders_aif10_incremental(
-    conn, *, start_period: str = DEFAULT_START_PERIOD,
-    fallback_since: str = DEFAULT_START_PERIOD,
-) -> dict:
-    """日常增量: canonical notice frontier + exact-day ``UPDATE_DATE='YYYY-MM-DD'``.
-
-    Formal acquire grain is by_notice_date (MASTER §5.7 / disclosure_transport).
-    Daily path never selects stocks via ``UPDATE_DATE>=`` then per-stock full
-    history — that rewrite lands every historical notice partition as a full-day
-    snapshot (2026-08-26: 538 names → 26M landing rows). Per-stock full history
-    stays on explicit ``ingest_holders_aif10.py --symbols/--backfill`` only.
-
-    - ``provider_max < wm`` → skip ``watermark_unchanged``
-    - ``provider_max == wm`` → exact-day by_notice; skip if local codes cover
-      provider codes; else re-land that one notice_date
-    - ``provider_max > wm`` → ``land_holders_notice_partitions_forward`` only
-    - empty canonical / unknown provider_max → skip no-mass (no bootstrap rewrite)
+    1. 取数 (``fetch_holders_notice_day``);
+    2. 与本地做差集 (``diff_notice_day``);
+    3. ``day.rows`` 为空 → outcome ``empty``; 否则按差集续号落地
+       (``_rows_to_land``), 非空且 ``write`` 时 ``merge_new_grains`` 写入,
+       outcome ``complete``;
+    4. ``write=True`` 才 ``append_ledger`` (``fetched_at`` 必须 tz-aware);
+       ``write=False``: 不写库、不写账本、不落 landing (S2, dry-run);
+    5. 异常分层: ``AIF10BlockedError`` → 账本 ``failed reason="blocked"``
+       (仅 ``write=True``) 后原样上抛; 其它任何异常 (含清洗后键冲突
+       ``clean_key_collision`` 与 accept 拒批变成的 ``DisclosureDualWriteError``)
+       → 账本 ``failed reason=<类名或原因>``, 返回 ``{"error": ...}``, 调用方
+       append 进 errors 并继续下一天 (重试由到期集合保证)。
     """
-    del start_period  # daily path does not per-stock fetch; kept so callers stay stable
-    from aif10_scraper import default_client
-    client = default_client
-    from services.data_sources.frontier_decision import decide_frontier
+    from aif10_scraper import AIF10BlockedError
+    from services.holders_notice_ledger import LedgerRow, append_ledger, ensure_holders_notice_ledger
 
-    wm, wm_source = formal_holders_watermark(conn)
-    since_date = _yyyymmdd_to_iso(wm or fallback_since)
-    provider_max = _provider_newest_update_date(client)
-    frontier = decide_frontier(
-        axis="notice_date",
-        local_max=wm,
-        target_max=provider_max,
+    nd = _validate_notice_date(notice_date)
+    if write:
+        # dry-run (write=False) 可能拿到 read_only=True 的连接 (S2) —— DDL 会炸,
+        # 且 dry-run 本来就不许有任何写副作用, 所以只在 write=True 时才建表。
+        ensure_holders_notice_ledger(conn)
+
+    def _failed(reason: str, **ledger_extra: Any) -> None:
+        if write:
+            append_ledger(
+                conn,
+                LedgerRow(
+                    ledger_id=uuid4().hex, notice_date=nd, fetched_at=now_fn(),
+                    run_kind=run_kind, scope="day", outcome="failed",
+                    reason=str(reason)[:200], **ledger_extra,
+                ),
+            )
+
+    try:
+        day = fetch_holders_notice_day(nd, client=client)
+    except AIF10BlockedError:
+        _failed("blocked")
+        raise
+    except Exception as exc:  # noqa: BLE001 — 取数层任何失败都归 failed, 由到期集合下次重试
+        _failed(type(exc).__name__)
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+    local = _local_observation_index(conn, nd)
+    local_rows_before = sum(len(v) for v in local.by_key.values())
+
+    try:
+        keys_elsewhere = _local_keys_elsewhere(conn, nd, local.by_key.keys())
+        diff = diff_notice_day(day.rows, local, keys_elsewhere=keys_elsewhere)
+    except RuntimeError as exc:
+        # V14 (spec §17.3): 清洗后键不唯一 → clean_key_collision, 只让这一天失败,
+        # 其它日期继续 (归入 failed reason, 不中断整次日更)。
+        _failed(
+            "clean_key_collision",
+            count_declared=day.ledger.count_declared,
+            pages_declared=day.ledger.pages_declared,
+            raw_rows=day.ledger.raw_rows,
+            unique_rows=day.ledger.unique_rows,
+            passes=day.ledger.passes,
+            local_rows_before=local_rows_before,
+        )
+        return {"error": f"clean_key_collision: {exc}"}
+
+    ledger_common = dict(
+        count_declared=day.ledger.count_declared,
+        pages_declared=day.ledger.pages_declared,
+        raw_rows=day.ledger.raw_rows,
+        unique_rows=day.ledger.unique_rows,
+        passes=day.ledger.passes,
+        local_rows_before=local_rows_before,
+        missing_rows=len(diff.missing_keys),
+        revised_rows=len(diff.revised_keys),
+        surplus_rows=len(diff.surplus_keys),
+        moved_rows=len(diff.moved_keys),
+        dup_rows=diff.dup_rows,
     )
-    if frontier.outcome == "skip_behind":
-        print(
-            f"holders_aif10: skip watermark_unchanged wm={wm} "
-            f"provider_max={provider_max} source={wm_source}"
-        )
-        return _incremental_skip_result(
-            wm=wm,
-            wm_source=wm_source,
-            provider_max=provider_max,
-            since_date=since_date,
-            skip_reason="watermark_unchanged",
-        )
-    if frontier.outcome == "equal_day_population_gap":
-        same_day_iso = _yyyymmdd_to_iso(wm)
-        day_rows = fetch_holders_top10_by_notice_date(wm)
-        provider_codes = _notice_row_stock_codes(day_rows)
-        local_codes = _local_stock_codes_for_notice_date(conn, wm)
-        missing = [code for code in provider_codes if code not in local_codes]
-        if not missing:
-            print(
-                f"holders_aif10: skip same_day_coverage_complete wm={wm} "
-                f"provider_max={provider_max} provider_codes={len(provider_codes)} "
-                f"source={wm_source}"
+
+    if not day.rows:
+        if write:
+            append_ledger(
+                conn,
+                LedgerRow(
+                    ledger_id=uuid4().hex, notice_date=nd, fetched_at=now_fn(),
+                    run_kind=run_kind, scope="day", outcome="empty",
+                    rows_inserted=0, held_rows=0, exit_rows_replaced=0,
+                    **ledger_common,
+                ),
             )
-            out = _incremental_skip_result(
-                wm=wm,
-                wm_source=wm_source,
-                provider_max=provider_max,
-                since_date=same_day_iso,
-                skip_reason="same_day_coverage_complete",
-            )
-            out["same_day_provider_codes"] = len(provider_codes)
-            out["same_day_missing_codes"] = 0
-            return out
-        print(
-            f"holders_aif10: same-day late-filer by_notice "
-            f"missing={len(missing)}/{len(provider_codes)} "
-            f"wm={wm} provider_max={provider_max}"
-        )
-        written = _write(conn, day_rows)
-        net_new_rows, notice_parts = _net_new_notice_since(conn, wm)
         return {
-            "ok": 1 if written else 0,
-            "fail": 0,
-            "rows_written": written,
-            "exit_rows": 0,
-            "affected_stocks": 0,
-            "net_new_notice_rows": net_new_rows,
-            "notice_partitions_touched": notice_parts,
-            "rewrite_amplification_rows": 0,
-            "watermark": wm,
-            "watermark_source": wm_source,
-            "provider_max_update_date": provider_max,
-            "since_date": same_day_iso,
-            "same_day_sparse": True,
-            "same_day_provider_codes": len(provider_codes),
-            "same_day_missing_codes": len(missing),
-            "errors": [],
+            "outcome": "empty", "notice_date": nd, "rows_inserted": 0,
+            "held_rows": 0, "exit_rows_replaced": 0, "diff": diff, **ledger_common,
         }
-    if not wm:
-        print(
-            "holders_aif10: skip empty_canonical_no_mass "
-            "(explicit ingest --backfill, not daily per-stock)"
-        )
-        return _incremental_skip_result(
-            wm=wm,
-            wm_source=wm_source,
-            provider_max=provider_max,
-            since_date=since_date,
-            skip_reason="empty_canonical_no_mass",
-        )
-    if not provider_max:
-        print(
-            f"holders_aif10: skip provider_max_unknown_no_mass wm={wm} "
-            f"source={wm_source}"
-        )
-        return _incremental_skip_result(
-            wm=wm,
-            wm_source=wm_source,
-            provider_max=provider_max,
-            since_date=since_date,
-            skip_reason="provider_max_unknown_no_mass",
-        )
-    print(
-        f"holders_aif10: advance by_notice wm={wm} provider_max={provider_max} "
-        f"source={wm_source}"
-    )
-    forward = land_holders_notice_partitions_forward(
-        conn, from_exclusive=wm, to_inclusive=provider_max
-    )
-    net_new_rows, notice_parts = _net_new_notice_since(conn, wm)
-    landed = list(forward.get("landed_partitions") or [])
-    errors = list(forward.get("errors") or [])
-    return {
-        "ok": len(landed),
-        "fail": len(errors),
-        "rows_written": 0,
-        "exit_rows": 0,
-        "affected_stocks": 0,
-        "net_new_notice_rows": net_new_rows,
-        "notice_partitions_touched": notice_parts,
-        "rewrite_amplification_rows": 0,
-        "watermark": wm,
-        "watermark_source": wm_source,
-        "provider_max_update_date": provider_max,
-        "since_date": since_date,
-        "errors": errors,
-        "notice_partition_forward": forward,
+
+    rows = _rows_to_land(diff, {_holder_key(r): r for r in day.rows}, local)
+    acquire_evidence = {
+        "acquire_path": "by_notice_date",
+        "run_kind": run_kind,
+        "observation_kind": "delta_vs_canonical",
+        "sort_columns": day.ledger.sort_columns,
+        "provider_count": day.ledger.count_declared,
+        "pages": day.ledger.pages_declared,
+        "raw_rows": day.ledger.raw_rows,
+        "unique_rows": day.ledger.unique_rows,
+        "passes": day.ledger.passes,
+        "rows_new": len(diff.missing_keys),
+        "rows_revised": len(diff.revised_keys),
     }
+
+    rows_inserted = held_rows = exit_rows_replaced = 0
+    batch_ids: tuple[str, ...] = ()
+    if rows and write:
+        try:
+            outcome = _write_with_outcome(
+                conn, rows, delete_scope="merge_new_grains",
+                derive_exits_from_canonical=True, touched_groups=diff.touched_groups,
+                acquire_evidence=acquire_evidence,
+            )
+        except AIF10BlockedError:
+            _failed("blocked", **ledger_common)
+            raise
+        except Exception as exc:  # noqa: BLE001 — 含 accept 拒批变成的 DisclosureDualWriteError
+            _failed(type(exc).__name__, **ledger_common)
+            return {"error": f"{type(exc).__name__}: {exc}"}
+        if outcome is not None:
+            rows_inserted = int(outcome.inserted_rows)
+            held_rows = int(outcome.held_rows)
+            exit_rows_replaced = int(outcome.exit_rows_replaced)
+            batch_ids = tuple(outcome.batch_ids)
+
+    if write:
+        append_ledger(
+            conn,
+            LedgerRow(
+                ledger_id=uuid4().hex, notice_date=nd, fetched_at=now_fn(),
+                run_kind=run_kind, scope="day", outcome="complete",
+                rows_inserted=rows_inserted, held_rows=held_rows,
+                exit_rows_replaced=exit_rows_replaced,
+                batch_ids=",".join(batch_ids) if batch_ids else None,
+                **ledger_common,
+            ),
+        )
+    return {
+        "outcome": "complete", "notice_date": nd, "rows_inserted": rows_inserted,
+        "held_rows": held_rows, "exit_rows_replaced": exit_rows_replaced,
+        "batch_ids": batch_ids, "diff": diff, **ledger_common,
+    }
+
+
+def reland_stock_in_day(
+    conn, notice_date: str, symbol: str, *, client, write: bool, now_fn
+) -> dict:
+    """按股回补一天 (B2 ``by_stock`` 用; 定义留在本文件因为它复用日更同一套
+    差集/写入机制 —— B2 依赖 B1 的 ``diff_notice_day``/``_rows_to_land``/
+    ``_write_with_outcome``/账本, spec §4.0)。
+
+    ``_fetch_raw`` → ``_drop_vendor_excluded`` → ``_clean`` → 只留
+    ``notice_date == nd``, 对该股在 ``nd`` 的本地行做同一个 ``diff_notice_day``,
+    只落 ``missing ∪ revised``, ``merge_new_grains``; 账本 ``scope='stock',
+    stock_code=symbol``。
+    """
+    from aif10_scraper import AIF10BlockedError
+    from services.holders_notice_ledger import LedgerRow, append_ledger, ensure_holders_notice_ledger
+
+    nd = _validate_notice_date(notice_date)
+    symbol = str(symbol or "").strip()
+    if not symbol:
+        raise ValueError("reland_stock_in_day: symbol must be non-empty")
+    if write:
+        ensure_holders_notice_ledger(conn)
+
+    def _failed(reason: str) -> None:
+        if write:
+            append_ledger(
+                conn,
+                LedgerRow(
+                    ledger_id=uuid4().hex, notice_date=nd, fetched_at=now_fn(),
+                    run_kind="reland", scope="stock", stock_code=symbol,
+                    outcome="failed", reason=str(reason)[:200],
+                ),
+            )
+
+    try:
+        raw = _fetch_raw(client, symbol)
+    except AIF10BlockedError:
+        _failed("blocked")
+        raise
+    except Exception as exc:  # noqa: BLE001
+        _failed(type(exc).__name__)
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+    cleaned = _clean(raw, start_period=DEFAULT_START_PERIOD)
+    day_rows = [row for row in cleaned if row.get("notice_date") == nd]
+
+    local = _local_observation_index(conn, nd, stock_code=symbol)
+    local_rows_before = sum(len(v) for v in local.by_key.values())
+
+    try:
+        keys_elsewhere = _local_keys_elsewhere(conn, nd, local.by_key.keys())
+        diff = diff_notice_day(day_rows, local, keys_elsewhere=keys_elsewhere)
+    except RuntimeError as exc:
+        _failed("clean_key_collision")
+        return {"error": f"clean_key_collision: {exc}"}
+
+    ledger_common = dict(
+        local_rows_before=local_rows_before,
+        missing_rows=len(diff.missing_keys),
+        revised_rows=len(diff.revised_keys),
+        surplus_rows=len(diff.surplus_keys),
+        moved_rows=len(diff.moved_keys),
+        dup_rows=diff.dup_rows,
+    )
+
+    rows_inserted = held_rows = exit_rows_replaced = 0
+    batch_ids: tuple[str, ...] = ()
+    outcome_kind = "complete" if day_rows else "empty"
+
+    if day_rows:
+        rows = _rows_to_land(diff, {_holder_key(r): r for r in day_rows}, local)
+        if rows and write:
+            acquire_evidence = {
+                "acquire_path": "by_stock",
+                "run_kind": "reland",
+                "observation_kind": "by_stock_delta",
+                "rows_new": len(diff.missing_keys),
+                "rows_revised": len(diff.revised_keys),
+            }
+            try:
+                outcome = _write_with_outcome(
+                    conn, rows, delete_scope="merge_new_grains",
+                    derive_exits_from_canonical=True, touched_groups=diff.touched_groups,
+                    acquire_evidence=acquire_evidence,
+                )
+            except AIF10BlockedError:
+                _failed("blocked")
+                raise
+            except Exception as exc:  # noqa: BLE001
+                _failed(type(exc).__name__)
+                return {"error": f"{type(exc).__name__}: {exc}"}
+            if outcome is not None:
+                rows_inserted = int(outcome.inserted_rows)
+                held_rows = int(outcome.held_rows)
+                exit_rows_replaced = int(outcome.exit_rows_replaced)
+                batch_ids = tuple(outcome.batch_ids)
+
+    if write:
+        append_ledger(
+            conn,
+            LedgerRow(
+                ledger_id=uuid4().hex, notice_date=nd, fetched_at=now_fn(),
+                run_kind="reland", scope="stock", stock_code=symbol,
+                outcome=outcome_kind, rows_inserted=rows_inserted, held_rows=held_rows,
+                exit_rows_replaced=exit_rows_replaced,
+                batch_ids=",".join(batch_ids) if batch_ids else None,
+                **ledger_common,
+            ),
+        )
+    return {
+        "outcome": outcome_kind, "notice_date": nd, "stock_code": symbol,
+        "rows_inserted": rows_inserted, "held_rows": held_rows,
+        "exit_rows_replaced": exit_rows_replaced, "diff": diff, **ledger_common,
+    }
+
+
+def sync_holders_aif10_incremental(conn, *, now_fn=None) -> dict:
+    """日常增量 (刀 B1 重写): 账本驱动的到期集合, 取代 MAX(notice_date) 水位。
+
+    五步: ``ensure_holders_notice_ledger`` → 探针 (``_provider_newest_update_date``,
+    fail-closed) → ``plan_due_notice_days`` (账本 settled 集合的补集, floor 守卫
+    抛 ``HoldersLedgerFloorError``) → 逐日 ``recheck_notice_day(...,
+    run_kind="daily", write=True)`` (经 ``run_due_notice_days`` 循环体, blocked
+    直接冒出停止, 其它错误 append 进 errors 继续) → 汇总。
+
+    结果 dict 键: ``watermark, watermark_source``(``formal_holders_watermark``,
+    只作展示), ``net_new_notice_rows, notice_partitions_touched, errors,
+    provider_max_update_date, due_days, rechecked, landed_partitions,
+    empty_partitions, failed_partitions, settled_after_run, rows_inserted,
+    rows_revised_recorded``; ``skipped=True`` 时 ``skip_reason ∈
+    {"nothing_due", "provider_probe_failed"}``。
+    """
+    from aif10_scraper import AIF10BlockedError
+    from services.holders_notice_catchup import plan_due_notice_days, run_due_notice_days
+    from services.holders_notice_ledger import ensure_holders_notice_ledger, settled_notice_days
+
+    if now_fn is None:
+        now_fn = lambda: datetime.now(timezone.utc)  # noqa: E731
+
+    client = _daily_client()
+    ensure_holders_notice_ledger(conn)
+
+    pre_wm, wm_source = formal_holders_watermark(conn)
+
+    def _base_result(**overrides: Any) -> dict:
+        base = {
+            "watermark": pre_wm,
+            "watermark_source": wm_source,
+            "net_new_notice_rows": 0,
+            "notice_partitions_touched": 0,
+            "errors": [],
+            "provider_max_update_date": None,
+            "due_days": 0,
+            "rechecked": 0,
+            "landed_partitions": 0,
+            "empty_partitions": 0,
+            "failed_partitions": 0,
+            "settled_after_run": 0,
+            "rows_inserted": 0,
+            "rows_revised_recorded": 0,
+        }
+        base.update(overrides)
+        return base
+
+    try:
+        provider_max = _provider_newest_update_date(client)
+    except AIF10BlockedError:
+        raise
+    except HoldersProviderProbeError as exc:
+        return _base_result(
+            errors=[f"probe:{exc}"], skipped=True, skip_reason="provider_probe_failed",
+        )
+
+    due = plan_due_notice_days(
+        conn,
+        provider_max=provider_max,
+        settle_days=_RECHECK.settle_days,
+        floor=EXPOSURE_START,
+        max_days=MAX_DUE_DAYS_PER_RUN,
+    )
+
+    if not due:
+        wm, wm_source_now = formal_holders_watermark(conn)
+        net_new_rows, notice_parts = _net_new_notice_since(conn, pre_wm)
+        return _base_result(
+            watermark=wm, watermark_source=wm_source_now,
+            net_new_notice_rows=net_new_rows, notice_partitions_touched=notice_parts,
+            provider_max_update_date=provider_max,
+            skipped=True, skip_reason="nothing_due",
+        )
+
+    loop_result = run_due_notice_days(conn, due, client=client, run_kind="daily", now_fn=now_fn)
+
+    wm, wm_source_now = formal_holders_watermark(conn)
+    net_new_rows, notice_parts = _net_new_notice_since(conn, pre_wm)
+    settled_after = settled_notice_days(conn, settle_days=_RECHECK.settle_days)
+    settled_after_run = sum(1 for d in due if d in settled_after)
+
+    return _base_result(
+        watermark=wm, watermark_source=wm_source_now,
+        net_new_notice_rows=net_new_rows, notice_partitions_touched=notice_parts,
+        errors=loop_result["errors"],
+        provider_max_update_date=provider_max,
+        due_days=len(due),
+        rechecked=len(due),
+        landed_partitions=len(loop_result["landed_partitions"]),
+        empty_partitions=len(loop_result["empty_partitions"]),
+        failed_partitions=len(loop_result["failed_partitions"]),
+        settled_after_run=settled_after_run,
+        rows_inserted=loop_result["rows_inserted"],
+        rows_revised_recorded=loop_result["rows_revised_recorded"],
+    )

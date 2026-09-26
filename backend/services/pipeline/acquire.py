@@ -145,12 +145,21 @@ def _sync_holders_aif10(ctx) -> None:
     conn = get_conn()
     try:
         result = sync_holders_aif10_incremental(conn)
+        # 2026-09-26 刀 B1: 账本驱动的到期集合取代 MAX(notice_date) 水位 +
+        # 前向/同日两分支, result 的键随之换了一套 (T9) —— 不保留假兼容键,
+        # 旧模型的两个展示键已经从 result 里消失, 这里不再读它们。
         print(
             f"holders_aif10: watermark={result.get('watermark')} "
             f"net_new={result.get('net_new_notice_rows', 0)} "
             f"parts={result.get('notice_partitions_touched', 0)} "
-            f"rewrite_amp={result.get('rewrite_amplification_rows', 0)} "
-            f"forward={result.get('notice_partition_forward', {}).get('landed_partitions', [])} "
+            f"due={result.get('due_days', 0)} rechecked={result.get('rechecked', 0)} "
+            f"landed={result.get('landed_partitions', 0)} "
+            f"empty={result.get('empty_partitions', 0)} "
+            f"failed={result.get('failed_partitions', 0)} "
+            f"settled={result.get('settled_after_run', 0)} "
+            f"rows_inserted={result.get('rows_inserted', 0)} "
+            f"rows_revised={result.get('rows_revised_recorded', 0)} "
+            f"skipped={result.get('skipped', False)} "
             f"errors={result.get('errors', [])[:3]}"
         )
         errors = list(result.get("errors") or [])

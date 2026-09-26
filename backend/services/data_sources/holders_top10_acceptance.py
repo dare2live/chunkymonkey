@@ -76,6 +76,12 @@ class HoldersTop10AcceptanceOutcome:
     row_count: int = 0
     content_hash: str | None = None
     rejection_code: str | None = None
+    # merge_new_grains 专用 (B1; 其它两种 delete_scope 恒为 0): 本批新增的观测
+    # 行数 / 已存在 (GRAIN 命中) 因而只持有不写的行数 / 因组内出现新观测而重算
+    # 替换掉的旧退出行数。
+    inserted_rows: int = 0
+    held_rows: int = 0
+    exit_rows_replaced: int = 0
 
 
 def _require_handoff(
@@ -685,16 +691,23 @@ def accept_holders_top10_batch(
     - ``"stocks_in_batch"``(按股回填路径): 只删本批次涉及的 stock_code。
       按股回填时一个批次只含一只股, 用 ``"partition"`` 会把同一公告日其他股票的行一起抹掉,
       跑完 5,212 只之后每个分区只剩最后写的那一只。
+    - ``"merge_new_grains"``(日更 / 回补路径, 刀 B1): 观测行只增不删 —— 批内
+      GRAIN 已存在的行只持有(不 UPDATE、不 DELETE、不动 ``ingest_batch_id``),
+      不存在的行插入; 派生行(退出行)只对批内有新观测的 ``(stock_code,
+      report_date)`` 组重算并整组替换, 没有新观测的组(held-only)一概不碰 ——
+      "供应商后来给的东西"从"替换我们 D 日的观测"变成"带取数时间的新观察"
+      (spec_holders_pagination.md §4.1 模型规则 1)。
 
-    2026-09-07 加。此前只有 ``"partition"`` 一种行为, 而 ``org_holding`` 早已有
-    ``merge_grains`` 与 ``canonical_delete_scope='report_dates_in_batch'`` 两级控制 ——
-    这是一个域没跟上另一个域的改进, 不是普遍缺陷 (``margin`` 按 trade_date 删没问题,
+    2026-09-07 加 ``stocks_in_batch``。此前只有 ``"partition"`` 一种行为, 而
+    ``org_holding`` 早已有 ``merge_grains`` 与
+    ``canonical_delete_scope='report_dates_in_batch'`` 两级控制 —— 这是一个域
+    没跟上另一个域的改进, 不是普遍缺陷 (``margin`` 按 trade_date 删没问题,
     一个交易日就是一个批次的完整内容)。
     """
-    if delete_scope not in {"partition", "stocks_in_batch"}:
+    if delete_scope not in {"partition", "stocks_in_batch", "merge_new_grains"}:
         raise HoldersTop10AcceptanceError(
             f"unknown delete_scope={delete_scope!r}; "
-            "allowed={'partition', 'stocks_in_batch'}"
+            "allowed={'partition', 'stocks_in_batch', 'merge_new_grains'}"
         )
 
     contract = _require_handoff(contract, handoff)
@@ -751,8 +764,6 @@ def accept_holders_top10_batch(
     except HoldersTop10ValidationError as exc:
         return _reject(conn, batch_id, code=exc.code, detail=exc.detail)
 
-    content_hash = _canonical_content_hash(canonical)
-    row_count = len(canonical)
     observed_at = _aware(batch["observed_at"], "observed_at")
     accepted_at = datetime.now(timezone.utc)
     if accepted_at < available_at:
@@ -760,6 +771,25 @@ def accept_holders_top10_batch(
     field_names = [str(f["name"]) for f in SCHEMA_CONTRACT["fields"]]
     insert_cols = ", ".join(field_names)
     placeholders = ", ".join("?" for _ in field_names)
+
+    if delete_scope == "merge_new_grains":
+        return _accept_merge_new_grains(
+            conn,
+            batch_id=batch_id,
+            partition=partition,
+            canonical=canonical,
+            contract=contract,
+            observed_at=observed_at,
+            available_at=available_at,
+            accepted_at=accepted_at,
+            field_names=field_names,
+            insert_cols=insert_cols,
+            placeholders=placeholders,
+            after_step=after_step,
+        )
+
+    content_hash = _canonical_content_hash(canonical)
+    row_count = len(canonical)
     values = [tuple(row[name] for name in field_names) for row in canonical]
 
     conn.execute("BEGIN TRANSACTION")
@@ -850,6 +880,198 @@ def accept_holders_top10_batch(
         partition_value=partition,
         row_count=row_count,
         content_hash=content_hash,
+    )
+
+
+def _accept_merge_new_grains(
+    conn,
+    *,
+    batch_id: str,
+    partition: str,
+    canonical: tuple[dict[str, Any], ...],
+    contract: HoldersTop10Contract,
+    observed_at: datetime,
+    available_at: datetime,
+    accepted_at: datetime,
+    field_names: list[str],
+    insert_cols: str,
+    placeholders: str,
+    after_step: Callable[[str], None] | None,
+) -> HoldersTop10AcceptanceOutcome:
+    """``delete_scope="merge_new_grains"`` (刀 B1): 只增不删 + 组级退出重算。
+
+    1. 批内观测行 (``is_exit_row=False``): GRAIN 在 canonical 里不存在 -> 插入;
+       存在且 ``holder_name`` 相同 -> 持有 (不 UPDATE、不 DELETE, ``ingest_batch_id``
+       不动); 存在但 ``holder_name`` 不同 -> ``ROW_SEQ_COLLISION`` (写方续号出错,
+       fail-closed, B25b)。
+    2. 批内退出行 (``is_exit_row=True``): 它们的 ``(stock_code, report_date)``
+       必须包含于 touched (= 本批真正插入了新观测行的组) -- 否则
+       ``EXIT_GROUP_NOT_TOUCHED`` (B27): 写方只该对有新观测的组派生, 不许对
+       held-only 组重派生退出。通过后, 先删掉 touched 组在本分区已有的旧退出行,
+       再插入批内退出行; ``exit_rows_replaced`` = 删除数。
+    3. 指针整分区现算 (``partition_pointer_stats``), 与 ``stocks_in_batch`` 同理。
+    """
+    observation_rows = [row for row in canonical if not row["is_exit_row"]]
+    exit_candidate_rows = [row for row in canonical if row["is_exit_row"]]
+
+    affected_stocks = sorted({str(row["stock_code"]) for row in canonical})
+    existing_grain_holder: dict[tuple[Any, ...], str] = {}
+    if affected_stocks:
+        marks = ", ".join("?" for _ in affected_stocks)
+        existing_rows = conn.execute(
+            f"SELECT {', '.join(GRAIN)}, holder_name FROM {CANONICAL_TABLE} "
+            f"WHERE notice_date = ? AND stock_code IN ({marks})",
+            [partition, *affected_stocks],
+        ).fetchall()
+        # zip() 而不是切片索引 existing_row[:len(GRAIN)] —— 部分连接封装的 Row
+        # 类型 (如 services.duck_adapter.Row) 只实现了按 int/str 单键取值,
+        # 不支持切片, 会抛 KeyError(slice(...))。
+        row_field_order = list(GRAIN) + ["holder_name"]
+        for existing_row in existing_rows:
+            mapped = dict(zip(row_field_order, existing_row, strict=True))
+            key = tuple(mapped[name] for name in GRAIN)
+            existing_grain_holder[key] = str(mapped["holder_name"])
+
+    to_insert_observation: list[dict[str, Any]] = []
+    held_rows = 0
+    for row in observation_rows:
+        key = tuple(row[name] for name in GRAIN)
+        if key in existing_grain_holder:
+            if existing_grain_holder[key] == row["holder_name"]:
+                held_rows += 1
+                continue
+            return _reject(
+                conn,
+                batch_id,
+                code="ROW_SEQ_COLLISION",
+                detail=(
+                    f"grain={key!r} 已存在但 holder_name 不同: "
+                    f"existing={existing_grain_holder[key]!r} batch={row['holder_name']!r}"
+                ),
+            )
+        to_insert_observation.append(row)
+
+    touched = {
+        (str(row["stock_code"]), str(row["report_date"])) for row in to_insert_observation
+    }
+    exit_pairs = {
+        (str(row["stock_code"]), str(row["report_date"])) for row in exit_candidate_rows
+    }
+    untouched_exit_pairs = sorted(exit_pairs - touched)
+    if untouched_exit_pairs:
+        return _reject(
+            conn,
+            batch_id,
+            code="EXIT_GROUP_NOT_TOUCHED",
+            detail=f"批内退出行涉及未被新观测触及的组: {untouched_exit_pairs!r}",
+        )
+
+    rows_to_insert = to_insert_observation + exit_candidate_rows
+
+    conn.execute("BEGIN TRANSACTION")
+    try:
+        exit_rows_replaced = 0
+        if touched:
+            touched_list = sorted(touched)
+            conditions = " OR ".join(
+                "(stock_code = ? AND report_date = ?)" for _ in touched_list
+            )
+            params: list[Any] = [partition]
+            for stock_code, report_date in touched_list:
+                params.extend([stock_code, report_date])
+            exit_rows_replaced = int(
+                conn.execute(
+                    f"SELECT COUNT(*) FROM {CANONICAL_TABLE} "
+                    f"WHERE notice_date = ? AND is_exit_row AND ({conditions})",
+                    params,
+                ).fetchone()[0]
+                or 0
+            )
+            conn.execute(
+                f"DELETE FROM {CANONICAL_TABLE} "
+                f"WHERE notice_date = ? AND is_exit_row AND ({conditions})",
+                params,
+            )
+        _call(after_step, "after_canonical_delete")
+        if rows_to_insert:
+            values = [tuple(row[name] for name in field_names) for row in rows_to_insert]
+            conn.executemany(
+                f"INSERT INTO {CANONICAL_TABLE} ({insert_cols}) VALUES ({placeholders})",
+                values,
+            )
+        _call(after_step, "after_canonical_insert")
+        # 分区由多次 delta 批次拼成, 指针必须描述合并后的整个分区。
+        row_count, content_hash = partition_pointer_stats(conn, partition)
+        conn.execute(
+            f"""
+            INSERT INTO {ACCEPTED_TABLE} (
+                dataset_id, partition_value, batch_id, contract_version,
+                contract_hash, config_hash, row_count, content_hash,
+                observed_at, available_at, accepted_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (dataset_id, partition_value) DO UPDATE SET
+                batch_id = excluded.batch_id,
+                contract_version = excluded.contract_version,
+                contract_hash = excluded.contract_hash,
+                config_hash = excluded.config_hash,
+                row_count = excluded.row_count,
+                content_hash = excluded.content_hash,
+                observed_at = excluded.observed_at,
+                available_at = excluded.available_at,
+                accepted_at = excluded.accepted_at
+            """,
+            [
+                DATASET_ID,
+                partition,
+                batch_id,
+                contract.contract_version,
+                contract.contract_hash,
+                contract.config_hash,
+                row_count,
+                content_hash,
+                observed_at,
+                available_at,
+                accepted_at,
+            ],
+        )
+        # merge 模式的 canonical_row_count 口径 = 本批插入 + 插入的退出行数
+        # (不是 stocks_in_batch 那种整分区口径, V12 已知两种口径不同, 各自 docstring 声明)。
+        canonical_row_count = len(rows_to_insert)
+        conn.execute(
+            f"""
+            UPDATE {INGEST_BATCH_TABLE}
+               SET status = 'ACCEPTED',
+                   validated_at = CURRENT_TIMESTAMP,
+                   accepted_at = ?,
+                   canonical_row_count = ?,
+                   canonical_hash = ?,
+                   rejection_code = NULL,
+                   rejection_detail = NULL
+             WHERE batch_id = ?
+            """,
+            [accepted_at, canonical_row_count, content_hash, batch_id],
+        )
+        _call(after_step, "after_accept_update")
+        conn.execute("COMMIT")
+    except Exception as primary_error:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception as rollback_error:
+            primary_error.add_note(
+                "ROLLBACK failed; connection state is unknown: "
+                f"{type(rollback_error).__name__}: {str(rollback_error)[:300]}"
+            )
+        raise
+    _call(after_step, "after_accept_commit")
+    return HoldersTop10AcceptanceOutcome(
+        status="ACCEPTED",
+        batch_id=batch_id,
+        partition_value=partition,
+        row_count=row_count,
+        content_hash=content_hash,
+        inserted_rows=len(to_insert_observation),
+        held_rows=held_rows,
+        exit_rows_replaced=exit_rows_replaced,
     )
 
 

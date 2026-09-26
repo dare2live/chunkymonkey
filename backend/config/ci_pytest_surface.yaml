@@ -126,6 +126,7 @@ blocking_paths:
 - tests/services/test_holder_research_class.py
 - tests/services/test_holdernumber_assist.py
 - tests/services/test_holders_landing_retention.py
+- tests/services/test_holders_notice_ledger.py
 - tests/services/test_holders_top10_acceptance.py
 - tests/services/test_holders_top10_schema.py
 - tests/services/test_index_daily_publish_b2.py

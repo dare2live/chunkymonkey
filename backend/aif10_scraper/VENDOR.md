@@ -34,6 +34,13 @@ backend/services/{holders_aif10,org_holding_aif10,org_holding_fetch,qfii_client}
 backend/services/data_sources/{moneyflow_recon.py,sources/miaoxiang.py} /
 backend/scripts/{ingest_holders_raw,recon_assignment_gaps,recon_fina_margin}.py
 
+**2026-09-26 追加 (刀 B1)**: `holders_aif10.fetch_holders_notice_day`（按公告日
+整市场日更/回补的唯一取数入口）直接调 `pagination.fetch_pages_strict`，与
+`sources/miaoxiang.py` 同一姿态 —— 不经 `batch.fetch_all_pages`（见
+spec_holders_pagination.md §4.2）。`holders_aif10.py` 里仍有一条独立路径
+(`_fetch_raw`/`build_rows`，按股全史手动 backfill 用) 走 `batch.fetch_all_pages`，
+两条路径服务不同用途，互不替代。
+
 ## 与上游的差异（重新同步上游时必须先读这节）
 
 并入当天改了 7 处 `except ...: pass`（rule_compliance 门抓出来的）。**这些是行为改动，

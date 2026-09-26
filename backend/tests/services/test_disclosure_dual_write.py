@@ -20,6 +20,7 @@ from services.data_sources.disclosure_dual_write import (
     write_stk_holdertrade_formal_then_mirror,
 )
 from services.data_sources.holders_top10_schema import (
+    CANONICAL_ROW_FIELDS as HOLDERS_CANONICAL_ROW_FIELDS,
     CANONICAL_TABLE as HOLDERS_CANONICAL,
     COMPATIBILITY_TABLE as HOLDERS_LEGACY,
     PROVIDER_FIELDS as HOLDERS_FIELDS,
@@ -376,6 +377,102 @@ def test_holders_per_stock_merge_does_not_wipe_other_stock(conn) -> None:
         ).fetchall()
     }
     assert codes == {"600519", "000001"}
+
+
+# ── request_extra / merge_new_grains (刀 B1) ─────────────────────────────
+
+
+def test_holders_request_extra_merges_into_request_json(conn) -> None:
+    import json
+
+    outcome = write_holders_top10_formal_then_mirror(
+        conn,
+        [_holders_row(holder_rank=1, holder_name="甲")],
+        observed_at=OBSERVED_HOLDERS,
+        available_at=OBSERVED_HOLDERS,
+        delete_scope="merge_new_grains",
+        request_extra={"acquire_path": "by_notice_date", "run_kind": "daily",
+                        "rows_new": 1, "rows_revised": 0},
+    )
+    assert outcome.status == "ACCEPTED"
+    assert outcome.inserted_rows == 1
+    request_json = conn.execute(
+        "SELECT request_json FROM ingest_batch WHERE batch_id = ?",
+        [outcome.batch_ids[0]],
+    ).fetchone()[0]
+    request = json.loads(request_json)
+    # 固定三键仍在, 且没被 request_extra 覆盖。
+    assert request["api"] == "RPT_F10_EH_FREEHOLDERS"
+    assert request["notice_date"] == PARTITION_HOLDERS
+    assert request["source"] == "miaoxiang"
+    assert request["acquire_path"] == "by_notice_date"
+    assert request["rows_new"] == 1
+
+
+def test_holders_request_extra_cannot_override_fixed_keys(conn) -> None:
+    with pytest.raises(DisclosureDualWriteError, match="request_extra"):
+        write_holders_top10_formal_then_mirror(
+            conn,
+            [_holders_row(holder_rank=1, holder_name="甲")],
+            observed_at=OBSERVED_HOLDERS,
+            available_at=OBSERVED_HOLDERS,
+            delete_scope="merge_new_grains",
+            request_extra={"source": "someone_else"},
+        )
+    # 冲突在 land 之前拒绝, 表甚至从未被 ensure_holders_top10_acceptance_schema
+    # 建过 (没有任何写副作用发生到那一步)。
+    tables = {
+        r[0] for r in conn.execute(
+            "SELECT table_name FROM information_schema.tables"
+        ).fetchall()
+    }
+    assert HOLDERS_CANONICAL not in tables
+
+
+def test_holders_merge_new_grains_skips_partition_readback(conn) -> None:
+    """merge_new_grains 不读回分区其它股票拼进批次 (B4b, 红线 4): 与
+    delete_scope="partition" (默认) 对照 —— 后者必须读回, 前者绝不读。"""
+    write_holders_top10_formal_then_mirror(
+        conn,
+        [_holders_row(stock_code="600519", holder_name="甲")],
+        observed_at=OBSERVED_HOLDERS,
+        available_at=OBSERVED_HOLDERS,
+        delete_scope="merge_new_grains",
+    )
+
+    calls: list[str] = []
+    real_execute = conn.execute
+
+    def spy(sql, *a, **k):
+        calls.append(sql)
+        return real_execute(sql, *a, **k)
+
+    conn.execute = spy
+    try:
+        write_holders_top10_formal_then_mirror(
+            conn,
+            [_holders_row(stock_code="000001", holder_name="乙")],
+            observed_at=OBSERVED_HOLDERS,
+            available_at=OBSERVED_HOLDERS,
+            delete_scope="merge_new_grains",
+        )
+    finally:
+        conn.execute = real_execute
+
+    # 用整分区读回查询自己的 SELECT 列清单 (", ".join(CANONICAL_ROW_FIELDS)) 做指纹,
+    # 而不是子串 "stock_code" —— CANONICAL_ROW_FIELDS[0] 本身就是 "stock_code",
+    # 所以任何一条选出该分区行的 SQL (包括不构成 B4b 违规的 partition_pointer_stats,
+    # 它选的是 _HASH_FIELDS 不是 CANONICAL_ROW_FIELDS) 文本里都恒含这个子串, 按旧写法
+    # 这个过滤器永远是空列表, 与有没有真的整分区读回无关 (变异验证见施工记录)。
+    readback_select_list = ", ".join(HOLDERS_CANONICAL_ROW_FIELDS)
+    readback = [
+        c for c in calls
+        if f"FROM {HOLDERS_CANONICAL}" in c and "WHERE" in c and "notice_date" in c
+        and readback_select_list in c
+    ]
+    assert readback == []
+    codes = {r[0] for r in conn.execute(f"SELECT stock_code FROM {HOLDERS_CANONICAL}").fetchall()}
+    assert codes == {"600519", "000001"}  # 两只股都在 (只增不删), 即使没读回拼批次
 
 
 def _approx_row(row: tuple) -> tuple:

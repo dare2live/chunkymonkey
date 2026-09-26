@@ -64,7 +64,9 @@
 #   各有自己的重复契约, 这两个键对它们无意义: trade_cal (_publish_trade_cal_accepted_generation)、
 #   daily / stock_st (AUTHORIZED_SHORT_WINDOW_DOMAINS → _publish_security_day_accepted_partition)、
 #   margin (dataset_contract.writer=margin_acceptance)、holders_top10 / org_holding (aif10 writer,
-#   自带 row_seq + _dedupe_notice_rows_by_grain)。
+#   自带 row_seq; holders_top10 按公告日的完整性判据在严格翻页引擎内部, 见
+#   aif10_scraper.pagination.fetch_pages_strict, 刀 B1 2026-09-26 起按日路径不再
+#   在批内做任何折叠去重)。
 
 version: 1
 

@@ -299,3 +299,17 @@ findings:
       沪深 ST 里 5 只窗口内缺 K 线, 全部仍在上市列表 (停牌), 当前不触发。
     recorded: "2026-09-19"
     decision: register
+
+  - id: holders-b1-test-strength-gaps
+    asset: "backend/tests/test_holders_aif10.py; backend/tests/services/test_holders_notice_ledger.py; backend/services/holders_notice_ledger.py (settle_stats)"
+    detector: none
+    escalates_when: >
+      任一项变成生产上的错数或停摆时升级: (1) sync 层没有用例守「AIF10BlockedError 从
+      sync_holders_aif10_incremental 抛出、acquire 的 ctx.step 记 degraded」—— 现行生产路径已核实会上抛
+      (run_due_notice_days 原样 raise, sync 不捕获, acquire.py ctx.step degraded_msg="holders aif10 sync 失败"),
+      缺的只是回归用例 (红线变异 M26 存活); (2) settle_stats 的 settle_lag_days 按 UTC 日历日算, 与 settled
+      用的上海日历日口径不一致, 只影响 audit 统计展示不影响 settled 判定; (3) settle_stats 用例未在 UTC 会话下
+      参数化 (M1c 存活); (4) 退出行派生上一期查询的 report_date<? 过滤无用例钉住。四项均为测试强度或展示口径,
+      按 2026-09-26 业主「返修要收敛」的规矩不挡 B1 合入。
+    recorded: "2026-09-26"
+    decision: register

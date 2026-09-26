@@ -28,6 +28,10 @@ class DisclosureDualWriteOutcome:
     legacy_rows_written: int
     batch_ids: tuple[str, ...]
     rejection_code: str | None = None
+    # holders_top10 delete_scope="merge_new_grains" 专用 (刀 B1); 其它域/模式恒为 0。
+    inserted_rows: int = 0
+    held_rows: int = 0
+    exit_rows_replaced: int = 0
 
 
 class DisclosureDualWriteError(RuntimeError):
@@ -104,12 +108,19 @@ def write_holders_top10_formal_then_mirror(
     mirror: Callable[[Any, list[dict[str, Any]]], int] | None = None,
     enable_legacy_mirror: bool = False,
     delete_scope: str = "partition",
+    request_extra: Mapping[str, Any] | None = None,
 ) -> DisclosureDualWriteOutcome:
     """Publish by notice_date; ``delete_scope`` 见 accept_holders_top10_batch。
 
     2026-09-07: docstring 原文写「stock-merge」, 而实现是整分区 DELETE ——
     声明与实现不一致, 按股回填会把同一公告日其他股票抹掉。现在 stock-merge
     是 delete_scope="stocks_in_batch" 才有的行为, 默认仍是整分区。
+
+    ``request_extra`` (刀 B1, B9/B11): 取数证据键, 合入 landing 的
+    ``request_json``。键不得覆盖固定的三键 ``api`` / ``notice_date`` /
+    ``source`` —— 冲突抛 ``DisclosureDualWriteError`` (fail-closed, 不静默
+    覆盖证据)。``request_json`` 只含行的哈希不受影响 (``row_hash`` 只含行本身,
+    spec_holders_pagination.md §1.5)。
     """
 
     from services.data_sources.disclosure_transport import (
@@ -121,6 +132,16 @@ def write_holders_top10_formal_then_mirror(
         CANONICAL_TABLE,
         SOURCE,
     )
+
+    extra = dict(request_extra or {})
+    fixed_keys = {"api", "notice_date", "source"}
+    overridden = fixed_keys & set(extra)
+    if overridden:
+        raise DisclosureDualWriteError(
+            "holders_top10",
+            reason="request_extra_overrides_fixed_key",
+            detail=f"request_extra 不得覆盖固定键 {sorted(overridden)!r}",
+        )
 
     material = [dict(row) for row in rows]
     if not material:
@@ -153,23 +174,30 @@ def write_holders_top10_formal_then_mirror(
     stocks.discard("")
     batch_ids: list[str] = []
     canonical_total = 0
+    inserted_total = 0
+    held_total = 0
+    exit_replaced_total = 0
 
     for partition, provider_rows in sorted(by_partition.items()):
         event_at = available_at or observed_at or _default_event_instant(partition)
-        # 同一 notice_date 上别的股票不能被抹掉。两种做法, 结果相同代价差 590 倍:
+        # 同一 notice_date 上别的股票不能被抹掉。三种做法:
         #
         #   delete_scope="partition"(默认): accept 删整个分区, 所以这里必须先把分区里
         #     **其他股票**的行读出来拼进批次, 否则它们会随 DELETE 消失。
         #   delete_scope="stocks_in_batch": accept 只删本批涉及的 stock_code,
         #     其他股票的行原地不动 —— 这里就不必读、不必拼、不必重新落地一遍。
+        #   delete_scope="merge_new_grains"(刀 B1, 日更/回补路径): accept 只增不删,
+        #     绝不会 DELETE 掉别的股票 —— 同样不必读、不必拼 (B4b: merge 模式
+        #     必须不读 canonical 回灌 landing, 红线 4 派生只能向下不能反向喂数据)。
         #
-        # 2026-09-07 实测这个代价: 按股回填 128,498 次 (股,分区) 写入, 目标 1,449,322 行,
-        # 而按 "partition" 做法实际要写 854,850,658 行 —— **放大 590 倍**
-        # (最大的分区有 1,421 只股, 写其中每一只都要把整个分区重拼一遍)。
-        # 这就是 canonical 历史回填一直做不了的真正原因; 它不是正确性问题
-        # (上面那段合并让结果一直是对的), 是写放大。
+        # 2026-09-07 实测 partition 相对 stocks_in_batch 的代价: 按股回填
+        # 128,498 次 (股,分区) 写入, 目标 1,449,322 行, 而按 "partition" 做法
+        # 实际要写 854,850,658 行 —— **放大 590 倍** (最大的分区有 1,421 只股,
+        # 写其中每一只都要把整个分区重拼一遍)。这就是 canonical 历史回填一直
+        # 做不了的真正原因; 它不是正确性问题(上面那段合并让结果一直是对的),
+        # 是写放大。
         others: list[dict[str, Any]] = []
-        if delete_scope != "stocks_in_batch":
+        if delete_scope == "partition":
             try:
                 existing = conn.execute(
                     f"""
@@ -197,13 +225,16 @@ def write_holders_top10_formal_then_mirror(
             observed_at=event_at,
             available_at=event_at,
             batch_id=batch_id,
-            request={"api": API, "notice_date": partition, "source": SOURCE},
+            request={"api": API, "notice_date": partition, "source": SOURCE, **extra},
             holders_delete_scope=delete_scope,
         )
         _require_accepted("holders_top10", outcome)
         # Prefer accepted/skipped batch_id (may differ from freshly minted uuid).
         batch_ids.append(str(getattr(outcome, "batch_id", None) or batch_id))
         canonical_total = max(canonical_total, int(outcome.row_count or 0))
+        inserted_total += int(getattr(outcome, "inserted_rows", 0) or 0)
+        held_total += int(getattr(outcome, "held_rows", 0) or 0)
+        exit_replaced_total += int(getattr(outcome, "exit_rows_replaced", 0) or 0)
 
     mirror_fn = _resolve_mirror(
         enable_legacy_mirror=enable_legacy_mirror,
@@ -218,6 +249,9 @@ def write_holders_top10_formal_then_mirror(
         canonical_rows=canonical_total,
         legacy_rows_written=int(legacy_n),
         batch_ids=tuple(batch_ids),
+        inserted_rows=inserted_total,
+        held_rows=held_total,
+        exit_rows_replaced=exit_replaced_total,
     )
 
 

@@ -663,3 +663,163 @@ def test_same_grain_republished_on_later_notice_date_coexists(conn) -> None:
         [DATASET_ID, later],
     ).fetchone()
     assert tuple(new_ptr) == (1,), new_ptr
+
+
+# ── delete_scope="merge_new_grains" (刀 B1; spec_holders_pagination.md §4.3) ──
+#
+# 与上面所有既有用例共用同一批 land/accept 原语, 只是 delete_scope 换了一个
+# 值 —— "partition"/"stocks_in_batch" 两条既有代码路径一字不动 (B30 静态钉住
+# 契约常量不变已经证明改动没有碰到 _HASH_FIELDS / GRAIN)。
+
+
+def _land_accept_merge(conn, rows, *, partition, batch_id, observed=OBSERVED):
+    contract = load_holders_top10_contract()
+    handed = propagate_disclosure_execution_contract("holders_top10", contract)
+    batch = HoldersTop10LandingBatch(
+        batch_id=batch_id,
+        partition_value=partition,
+        observed_at=observed,
+        available_at=observed,
+        rows=rows,
+        request={"api": "RPT_F10_EH_FREEHOLDERS", "notice_date": partition},
+    )
+    land_holders_top10_batch(conn, batch, handed, handoff=handed)
+    return accept_holders_top10_batch(
+        conn, batch.batch_id, handed, handoff=handed, delete_scope="merge_new_grains"
+    )
+
+
+def test_delete_scope_closed_set_rejects_unknown_value(conn) -> None:
+    """delete_scope 是闭合集合 {"partition","stocks_in_batch","merge_new_grains"} ——
+    未登记的值 fail-closed, 不静默当某个已知值处理。"""
+    contract = load_holders_top10_contract()
+    handed = propagate_disclosure_execution_contract("holders_top10", contract)
+    batch = HoldersTop10LandingBatch(
+        batch_id=f"holders_top10:{PARTITION}:bogus-scope",
+        partition_value=PARTITION,
+        observed_at=OBSERVED,
+        available_at=OBSERVED,
+        rows=[_row()],
+        request={"api": "RPT_F10_EH_FREEHOLDERS", "notice_date": PARTITION},
+    )
+    land_holders_top10_batch(conn, batch, handed, handoff=handed)
+    with pytest.raises(HoldersTop10AcceptanceError, match="delete_scope"):
+        accept_holders_top10_batch(
+            conn, batch.batch_id, handed, handoff=handed, delete_scope="bogus"
+        )
+
+
+def test_merge_new_grains_inserts_new_and_holds_existing(conn) -> None:
+    first = _land_accept_merge(
+        conn, [_row(holder_rank=1, holder_name="甲")],
+        partition=PARTITION, batch_id=f"holders_top10:{PARTITION}:m1",
+    )
+    assert first.status == "ACCEPTED"
+    assert first.inserted_rows == 1
+    assert first.held_rows == 0
+
+    later_observed = datetime(2026, 4, 29, 19, 0, tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(
+        timezone.utc
+    )
+    second = _land_accept_merge(
+        conn,
+        [_row(holder_rank=1, holder_name="甲"), _row(holder_rank=2, holder_name="乙")],
+        partition=PARTITION, batch_id=f"holders_top10:{PARTITION}:m2",
+        observed=later_observed,
+    )
+    assert second.status == "ACCEPTED"
+    assert second.inserted_rows == 1  # 只有「乙」是新 GRAIN
+    assert second.held_rows == 1      # 「甲」已存在, 持有不写
+
+    first_batch_id_after = conn.execute(
+        f"SELECT ingest_batch_id FROM {CANONICAL_TABLE} "
+        "WHERE stock_code='600519' AND holder_name='甲'"
+    ).fetchone()[0]
+    assert first_batch_id_after == first.batch_id  # 「甲」的 batch 归属没被第二批改掉
+
+
+def test_merge_new_grains_row_seq_collision_rejects(conn) -> None:
+    """同 GRAIN (含 row_seq) 已存在但 holder_name 不同 -> ROW_SEQ_COLLISION,
+    canonical 不变 (B25b)。"""
+    _land_accept_merge(
+        conn, [_row(holder_rank=1, holder_name="甲")],
+        partition=PARTITION, batch_id=f"holders_top10:{PARTITION}:c1",
+    )
+    outcome = _land_accept_merge(
+        conn, [_row(holder_rank=1, holder_name="乙")],
+        partition=PARTITION, batch_id=f"holders_top10:{PARTITION}:c2",
+    )
+    assert outcome.status == "REJECTED"
+    assert outcome.rejection_code == "ROW_SEQ_COLLISION"
+    names = {
+        r[0] for r in conn.execute(
+            f"SELECT holder_name FROM {CANONICAL_TABLE} WHERE stock_code='600519'"
+        ).fetchall()
+    }
+    assert names == {"甲"}
+
+
+def test_merge_new_grains_exit_group_not_touched_rejects(conn) -> None:
+    """批内退出行的组没有任何 GRAIN 不存在的观测行 -> EXIT_GROUP_NOT_TOUCHED
+    (B27): 写方只该对有新观测的组派生。"""
+    _land_accept_merge(
+        conn,
+        [_row(holder_rank=1, holder_name="甲"), _row(holder_rank=2, holder_name="乙")],
+        partition=PARTITION, batch_id=f"holders_top10:{PARTITION}:e1",
+    )
+    later_observed = datetime(2026, 4, 29, 19, 0, tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(
+        timezone.utc
+    )
+    exit_row = _row(holder_rank=2, holder_name="乙", is_exit_row=True)
+    outcome = _land_accept_merge(
+        conn, [exit_row], partition=PARTITION, batch_id=f"holders_top10:{PARTITION}:e2",
+        observed=later_observed,
+    )
+    assert outcome.status == "REJECTED"
+    assert outcome.rejection_code == "EXIT_GROUP_NOT_TOUCHED"
+
+
+def test_merge_new_grains_touched_group_allows_exit_replacement(conn) -> None:
+    """对照: 组里确有新观测行时, 批内退出行正常通过并整组替换 (B26)。"""
+    _land_accept_merge(
+        conn,
+        [_row(holder_rank=1, holder_name="甲"), _row(holder_rank=2, holder_name="乙")],
+        partition=PARTITION, batch_id=f"holders_top10:{PARTITION}:g1",
+    )
+    later_observed = datetime(2026, 4, 29, 19, 0, tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(
+        timezone.utc
+    )
+    outcome = _land_accept_merge(
+        conn,
+        [_row(holder_rank=3, holder_name="丙"),
+         _row(holder_rank=2, holder_name="乙", is_exit_row=True)],
+        partition=PARTITION, batch_id=f"holders_top10:{PARTITION}:g2",
+        observed=later_observed,
+    )
+    assert outcome.status == "ACCEPTED", outcome.rejection_code
+    assert outcome.inserted_rows == 1
+    assert outcome.exit_rows_replaced == 0  # 之前没有旧退出行, 这次是新插入
+
+
+def test_merge_new_grains_pointer_matches_canonical(conn) -> None:
+    """B28: 指针整分区现算, 与 partition_pointer_stats 复算的行数一致
+    (db_invariants.holders_pointer_rowcount_matches_canonical 的判据)。"""
+    _land_accept_merge(
+        conn, [_row(holder_rank=1, holder_name="甲")],
+        partition=PARTITION, batch_id=f"holders_top10:{PARTITION}:p1",
+    )
+    later_observed = datetime(2026, 4, 29, 19, 0, tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(
+        timezone.utc
+    )
+    _land_accept_merge(
+        conn, [_row(holder_rank=2, holder_name="乙")],
+        partition=PARTITION, batch_id=f"holders_top10:{PARTITION}:p2",
+        observed=later_observed,
+    )
+    actual = conn.execute(
+        f"SELECT COUNT(*) FROM {CANONICAL_TABLE} WHERE notice_date=?", [PARTITION]
+    ).fetchone()[0]
+    pointer = conn.execute(
+        f"SELECT row_count FROM {ACCEPTED_TABLE} WHERE partition_value=?", [PARTITION]
+    ).fetchone()[0]
+    assert pointer == actual == 2

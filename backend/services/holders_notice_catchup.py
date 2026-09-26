@@ -1,127 +1,98 @@
-"""Holders notice_date forward fill — announcement axis, not report_period.
+"""Holders 到期分区规划 + 循环体 (刀 B1 重写; spec_holders_pagination.md §4.5)。
 
-Companion to ``holders_aif10`` incremental. From-fact catchup retired with
-``fact_top10_holder_period`` DROP (2026-07-26). Remaining path = provider
-forward by ``UPDATE_DATE`` day land. Never by_ts_code mass or org invent.
+到期集合驱动改为账本 (``services/holders_notice_ledger.py``): 「日历
+[exposure_start .. provider_max] 减去已 settled 的日子」, 取代旧的
+「MAX(notice_date) 水位 + 前向 / 同日两分支」。旧的按事实表 catchup 与几个
+仅供其调用的辅助函数随本刀整体删除, 不留墓碑 (CLAUDE.md 第 17 条)。
+
+``MAX_DUE_DAYS_PER_RUN`` 是本文件的唯一定义处 (V9: 一个事实一个地方) ——
+``services/holders_aif10.py`` 从这里 import, 不再各自重复一份字面量 40。
 
 Evidence: ``git log --grep holders_ann_date_axis`` ·
-``git log --grep holders_fact_retire``.
+``git log --grep holders_fact_retire`` ·
+``sandbox/p1_specs_20260925/spec_holders_pagination.md`` §4.4/§4.5。
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from typing import Any, Callable
 
-NOTICE_PARTITION_CATCHUP_MAX = 40  # eng_gov ≤40d / max partitions per run
-CANONICAL_TABLE = "canonical_top10_float_holders_period"
-
-
-def _table_present(conn, name: str) -> bool:
-    try:
-        r = conn.execute(
-            "SELECT 1 FROM information_schema.tables WHERE table_name = ? LIMIT 1",
-            [name],
-        ).fetchone()
-        return r is not None
-    except Exception:  # noqa: BLE001
-        return False
+MAX_DUE_DAYS_PER_RUN = 40  # eng_gov ≤40d / max notice-day partitions per run
 
 
-def list_missing_notice_partitions_from_fact(
-    conn, *, limit: int = NOTICE_PARTITION_CATCHUP_MAX
-) -> list[str]:
-    """Retired with fact DROP — always empty."""
-    del conn, limit
-    return []
-
-
-def catchup_missing_holders_notice_partitions(
-    conn, *, max_partitions: int = NOTICE_PARTITION_CATCHUP_MAX
-) -> dict:
-    """Retired: from-fact accept path removed with ``fact_top10_holder_period``."""
-    del conn, max_partitions
-    return {
-        "missing_partitions": [],
-        "repaired_partitions": [],
-        "errors": [],
-        "catchup_source": "retired_local_fact_notice",
-        "catchup_law": "holders_compat_retired",
-        "retired": True,
-    }
-
-
-def _canonical_has_notice_partition(conn, notice_date: str) -> bool:
-    digits = "".join(ch for ch in str(notice_date or "") if ch.isdigit())
-    if len(digits) < 8 or not _table_present(conn, CANONICAL_TABLE):
-        return False
-    part = digits[:8]
-    row = conn.execute(
-        f"SELECT 1 FROM {CANONICAL_TABLE} WHERE notice_date = ? LIMIT 1",
-        [part],
-    ).fetchone()
-    return row is not None
-
-
-def land_holders_notice_partitions_forward(
+def plan_due_notice_days(
     conn,
     *,
-    from_exclusive: str,
-    to_inclusive: str,
-    max_partitions: int = NOTICE_PARTITION_CATCHUP_MAX,
-) -> dict:
-    """Forward fill: full-market by UPDATE_DATE/notice_date for absent days."""
-    from services.holders_aif10 import _write, fetch_holders_top10_by_notice_date
+    provider_max: str,
+    settle_days: int,
+    floor: str,
+    max_days: int = MAX_DUE_DAYS_PER_RUN,
+) -> list[str]:
+    """薄壳: 到期规划的真正机制在 ``services.holders_notice_ledger``
+    (账本 settled / floor 守卫, §4.4); 本函数只是日更/回补两条路径共用的入口。
+    """
+    from services.holders_notice_ledger import plan_due_notice_days as _plan_from_ledger
 
-    start = "".join(ch for ch in str(from_exclusive or "") if ch.isdigit())[:8]
-    end = "".join(ch for ch in str(to_inclusive or "") if ch.isdigit())[:8]
-    if len(start) != 8 or len(end) != 8 or end <= start or max_partitions <= 0:
-        return {
-            "landed_partitions": [],
-            "empty_partitions": [],
-            "errors": [],
-            "catchup_source": "provider_by_notice_date",
-        }
-    d0 = datetime.strptime(start, "%Y%m%d") + timedelta(days=1)
-    d1 = datetime.strptime(end, "%Y%m%d")
-    landed: list[str] = []
-    empty: list[str] = []
+    return _plan_from_ledger(
+        conn,
+        provider_max=provider_max,
+        settle_days=settle_days,
+        floor=floor,
+        max_days=max_days,
+    )
+
+
+def run_due_notice_days(
+    conn,
+    due: list[str],
+    *,
+    client: Any,
+    run_kind: str,
+    now_fn: Callable[[], Any],
+) -> dict:
+    """到期日期逐日执行的循环体 (§4.2 日更第 4 步的循环体; 供日更与 B2
+    ``by_day`` 共用)。
+
+    ``AIF10BlockedError`` 直接冒出并停止 (B6: 被封当次不再继续后面的日期,
+    已完成的日期不撤销); 其它任何异常都由 ``recheck_notice_day`` 自己捕获、
+    记账本 ``failed``、以 ``{"error": ...}`` 形式返回, 这里只是把它收进
+    ``errors`` 继续下一天 (重试由到期集合自身保证, R3)。
+    """
+    from services.holders_aif10 import recheck_notice_day
+
+    landed_partitions: list[str] = []
+    empty_partitions: list[str] = []
+    failed_partitions: list[str] = []
     errors: list[str] = []
-    while d0 <= d1 and len(landed) < max_partitions:
-        nd = d0.strftime("%Y%m%d")
-        d0 += timedelta(days=1)
-        if _canonical_has_notice_partition(conn, nd):
-            continue
-        try:
-            rows = fetch_holders_top10_by_notice_date(nd)
-        except Exception as exc:  # noqa: BLE001
-            if len(errors) < 20:
-                errors.append(f"{nd}:{type(exc).__name__}:{str(exc)[:80]}")
-            continue
-        if not rows:
-            empty.append(nd)
-            continue
-        try:
-            _write(conn, rows)
-            landed.append(nd)
-        except Exception as exc:  # noqa: BLE001
-            if len(errors) < 20:
-                errors.append(f"{nd}:write:{type(exc).__name__}:{str(exc)[:80]}")
-    if landed or errors:
-        print(
-            f"holders_aif10: forward by_notice "
-            f"landed={len(landed)} empty={len(empty)} errors={len(errors)} "
-            f"range=({start},{end}]"
+    rows_inserted = 0
+    rows_revised_recorded = 0
+
+    for notice_date in due:
+        outcome = recheck_notice_day(
+            conn, notice_date, client=client, run_kind=run_kind, write=True, now_fn=now_fn
         )
+        if "error" in outcome:
+            failed_partitions.append(notice_date)
+            errors.append(f"{notice_date}:{outcome['error']}")
+            continue
+        if outcome.get("outcome") == "empty":
+            empty_partitions.append(notice_date)
+        else:
+            landed_partitions.append(notice_date)
+        rows_inserted += int(outcome.get("rows_inserted") or 0)
+        rows_revised_recorded += int(outcome.get("revised_rows") or 0)
+
     return {
-        "landed_partitions": landed,
-        "empty_partitions": empty,
+        "landed_partitions": landed_partitions,
+        "empty_partitions": empty_partitions,
+        "failed_partitions": failed_partitions,
         "errors": errors,
-        "catchup_source": "provider_by_notice_date",
+        "rows_inserted": rows_inserted,
+        "rows_revised_recorded": rows_revised_recorded,
     }
 
 
 __all__ = [
-    "NOTICE_PARTITION_CATCHUP_MAX",
-    "catchup_missing_holders_notice_partitions",
-    "land_holders_notice_partitions_forward",
-    "list_missing_notice_partitions_from_fact",
+    "MAX_DUE_DAYS_PER_RUN",
+    "plan_due_notice_days",
+    "run_due_notice_days",
 ]

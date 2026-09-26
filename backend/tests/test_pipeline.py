@@ -2898,7 +2898,6 @@ def test_sync_holders_aif10_degrades_when_result_has_errors(monkeypatch, tmp_pat
             "watermark": "20260904",
             "net_new_notice_rows": 0,
             "notice_partitions_touched": 0,
-            "rewrite_amplification_rows": 0,
             "errors": [
                 "20260910:write:BinderException:Binder Error: Referenced column "
                 '"hold_amount" not found in FROM clause!'
@@ -2927,7 +2926,6 @@ def test_sync_holders_aif10_no_degrade_when_result_errors_empty(monkeypatch, tmp
             "watermark": "20260917",
             "net_new_notice_rows": 12,
             "notice_partitions_touched": 1,
-            "rewrite_amplification_rows": 0,
             "errors": [],
         },
     )
