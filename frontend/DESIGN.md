@@ -10,14 +10,14 @@
 
 ## 1. 设计原点
 
-项目两件大事：**数据底座**（获取→清洗→加工→入库→完整性/连续性检查）与**策略验证**（在其上做研究）。
+项目两件大事：**数据底座**（获取→清洗→加工→入库→完整性/连续性检查）与**公司投资档案**（在其上回答一家公司在某一天可见的证据与历史分布，见 `../goal.md`）。
 前端因此分三个空间，而不是市面产品那种满屏平铺：
 
 | 空间 | 定位 | 气质 |
 |---|---|---|
 | FOUNDATION · 底座 | 管理向：数据的整体、局部、流程、健康 | 工程台账，如实、可下钻 |
-| LAB · 实验室 | 研究向：实验、消融、发布门、快照封存 | 判决文书，克制 |
-| INSIGHT · 洞察 | 应用向：底座与研究的只读消费投影 | 简单直观，设计巧妙 |
+| LAB · 实验室 | 研究向：实验、消融、发布门、快照封存（旧策略验证框架，暂停维护，页面保留） | 判决文书，克制 |
+| INSIGHT · 洞察 | 应用向：底座与档案的只读消费投影 | 简单直观，设计巧妙 |
 
 每个标签是**独立 HTML 页**，URL 为 `/app/<space>/<tab>.html`。页头空间钮 + 标签栏是共享铬
 （`js/core.js`），不是把整站塞进一个 hash 路由。跨页跳转靠 `data-nav` + 可选
@@ -86,6 +86,8 @@
 已删除：`foundation/run.html`（运行回放）、`foundation/gates.html`（门与健康百科）。运行时告警并进日更页；commit-gate 百科不进观察面。
 
 ### LAB
+本空间暂停维护（`../goal.md` 边界）：页面与端点保留不删，不新增页面与功能。
+
 | 页 | 文件 | 端点 |
 |---|---|---|
 | 实验总览 | `lab/overview.html` | `GET /api/v3/lab/status` · `GET /api/v3/lab/packages` · `GET /api/v3/lab/experiments` |
@@ -98,10 +100,10 @@
 读研究工件与冻结清单的**压缩投影**（lineage JSON 里的分区清单不下发）。
 判决永不被 UI 美化。`claimable` 恒为 false；没有 `StrategyRelease`。
 
-**三层不许混称**（契约 §8）：画像 / episode α ≠ 跟随 spec 纸面 ≠ E/F 消融梯子。
+**三层不许混称**：画像 / episode α ≠ 跟随 spec 纸面 ≠ E/F 消融梯子。
 主升浪页只展示 setup 纸面 + F 消融；full-episode 是能力空态。
 公式页只展示 frozen hash + 合成烟测/单名 pointer；全宇宙 B5 / 吸收是能力空态。
-§9 发布门：观察面**不重放** pit-audit / 泄漏反证；核不到的门标 unknown，禁止把打样稿的绿灯写成现查通过。
+发布门：观察面**不重放** pit-audit / 泄漏反证；核不到的门标 unknown，禁止把打样稿的绿灯写成现查通过。
 后端不可达时实验室**不**回落到过期判决数字 —— typed empty，写明能力空态。
 
 ### INSIGHT
@@ -116,6 +118,8 @@
 | 个股档案 | `insight/dossier.html` | 列表 `stock/list`；详情 `stock/{code}/dossier` · `stock/{code}/kline` · `decision/moneyflow/stock/{code}` · `decision/intersection/stock/{code}` |
 | 机构席位 | `insight/inst.html` | `inst/profiles` · `inst/profiles/{holder}` · `inst/signals` |
 | 观察账本 | `insight/paper.html` | `paper/portfolio` · `paper/nav` |
+
+暂停维护（`../goal.md` 边界，页面保留不删、不新增功能）：盘中简报、形态选股、观察账本，以及市场快照里的短线情绪块（连板天梯、炸板率、最强板块）。
 
 **跳转闭环**：板块下钻叶子 → 个股档案；个股档案机构面 → 机构席位 `?holder=` 自动展开（即使该户不在本页前 500 排名表）；机构 episode 行 / 披露事件流行 → 个股档案或席位展开；消融行 → `lab/expdetail.html?family=&block=`。任何一面都不许是死路。
 个股 `code` 截 6 位数字；板块 `code` 保留供应商后缀（申万 `801230.SI`、东财 `BKxxxx.DC`），不得按股票规则截前 6 位。

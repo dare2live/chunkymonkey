@@ -10,8 +10,8 @@
 ## 数据
 4. 依赖只向下：派生 ← 接受 ← 证据，每层可从下一层重生成；反向喂数据即错。
 5. 能由「已注册域 + 公开规则」推导的，不注册取数域；推导物锁规则有效期，过期 fail 不 warn。
-6. 一张表一个 writer；同一 DuckDB 文件的写串行——单写者，并发写真会写坏文件；审计默认 `read_only=True`。
-7. 不按加工阶段拆库；拆库只因写锁 / retention / owner 冲突；land→accept 在同一文件内原子完成。版本是列或分区，不是 `v2` 表名。
+6. 一张表一个 writer；同一 DuckDB 文件的写串行——单写者，并发写真会写坏文件；跨进程读与写互斥，长写任务期间不开库；用新文件替换活库只经 `backend/services/duckdb_file_swap.py` 的 `swap_in_fresh_file`，换文件时原样搬运同住表不算第二个写者；表的约束与索引只由该表 writer 的 DDL 定义；审计默认 `read_only=True`。
+7. 库文件按维护单元与更新频率划分，不按加工阶段拆：每个库文件日更后空闲块与死行按构造为 0，靠写法而不是事后压缩；整表重建只走「建到新文件 → 校验 → 原子换名」；land→accept 在同一文件内原子完成；版本是列或分区，不是 `v2` 表名。
 8. 分类成员是数据不是 YAML；不同体系名称相同不等于等价；观点类（vendor_view）数据标体系名，不跨体系、不跨层级加总。
 9. 展示只消费 accepted / 已发布面，不读 landing、不静默 legacy fill；输入 stale / unknown 时不伪造分数，标 unknown。
 10. 先看供应商给了什么轴，再决定增量怎么做；轴不支持的增量形态不靠算力硬凑（禁 by-date invent、禁 count 未变全量重拉）。
@@ -26,4 +26,5 @@
 15. `manual_only`：不装 cron / launchd / 隐藏触发器；数据更新只走 `bash scripts/daily_update.sh --date YYYYMMDD` 或 `scripts/chunkyctl sync --domain X`。
 16. 提交只走 `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "<msg>"`；显式 stage 文件，不 `git add .`；不动他人未提交改动，不 revert / stage / commit 他人工作。
 17. 探索只在 `sandbox/`；删东西不留墓碑 / stub / renamed-dead；测试不 mock 掉被测的 calendar / universe / population 门。
-18. 清缓存不递归 `.venv/` / `node_modules/`——TinyShare SDK 是版本化 `.pyc`（2026-09-10 tushare 退役后本条删）。
+18. 清缓存不递归 `.venv/` / `node_modules/`——`.venv` 里有只以版本化 `.pyc` 发布的包，删了即坏。
+19. 每段代码为一个目的而写，目的达到即合入：方案阶段写清目的与验收判据（可观测结果、预期数字）、影响面、与现有代码的重复或矛盾、边界情况、关键条件的测试计划；施工后的审查按功能→冲突→重复矛盾→简洁的顺序，只核「验收判据是否达成、有没有方案未声明的冲突」，简洁性只记待办，不按轮数停，挖出方案没覆盖的问题就回头补方案；给业主看的样品只修误导性错数就交。

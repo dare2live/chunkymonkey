@@ -74,10 +74,8 @@ fork of record，唯一真相。不再 re-vendor。理由是分叉已经既成�
 收窄 5 处 except、`print` 加守卫、ext parser 不再补日期 —— **上游一个测试都没红**。
 也就是那条 wall-clock K 线路径在上游从来没有测试覆盖。
 
-**待办(不在本次范围)**: `tdxhub.holders`(2,786 行, 已并入)是上游按「十大流通股东最新
-增量主源」写的, 配套 harness 是上游 `scripts/holders_universe_{fetch,consolidate}.py` 与
-`holders_e2e_verify.py`。要用它得走本仓的 DB 边界 / PIT / universe 门, 是一次真接入,
-不是拷文件。
+`tdxhub.holders`(2,786 行) 已随整包并入, 本仓不调用: 十大股东按公告日取数走妙想
+（`backend/services/holders_aif10.py`）。
 
 ## 消费方
 
@@ -93,8 +91,9 @@ fork of record，唯一真相。不再 re-vendor。理由是分叉已经既成�
 **删 `k()` / `ohlc()` / `get_k_data()`**（`quotes.py`）
 `get_k_data` 用**本机当前时间**到目标日期的天数算 K 线 offset, 再按「非交易日大概是
 全年的 1/3」这两个常数(2.8 / 3.5)把日历天折成交易天。撞两条红线: 交易日只从
-`services.calendar` 取, 且不许拿比例猜节假日。本仓的未复权日 K 走
-`tdxhub_kline_recon.fetch_unadjusted_bars`(count 按协议算的精确值), 整包内也只有
+`services.calendar` 取, 且不许拿比例猜节假日。本仓的日 K 取数走扶摇 dump（`sync_registry.yaml` 的
+`daily` 域 `source: fuyao`）, `tdxhub_kline_recon.fetch_unadjusted_bars` 只剩核对脚本
+`backend/scripts/recon_tdxhub_kline.py` 在用; 整包内也只有
 `ohlc -> k -> get_k_data` 这一条链且链头无人调用, 所以整条删。连带的四个只服务这条链
 的辅助函数(`_parse_date` / `_date_distance` / `_record_date` / `_normalise_k_records`)一并删。
 

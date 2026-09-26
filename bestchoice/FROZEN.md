@@ -2,7 +2,7 @@
 
 > 状态：`FROZEN_CHALLENGER`
 > 原冻结日：2026-05-24
-> 边界复核：2026-07-16
+> 边界复核：2026-09-26
 
 本文件是 `bestchoice/` 的唯一边界与证据清单。项目级权威仍是
 `../CLAUDE.md` 和 `../goal.md`；本子树没有独立 goal、agent、handoff、
@@ -71,4 +71,4 @@ research/incremental/drift DuckDB，已从活动证据中删除。上述 candida
 4. 以上三步之后，本证据包只作为 `casebook` 的只读公式源（`load_formula_engine` 经 sha256 校验导入）；
    不做消融、不做 holdout、不产出 verdict——判例引擎按格报历史阶梯，格内先例不足报先例不足。
 
-Tier 0 与分类契约未闭合前，不启动大规模公式搜索。
+判例引擎信号层暂停维护（`../goal.md` 边界），不新增公式、不做公式搜索；项目本身也不做寻优。

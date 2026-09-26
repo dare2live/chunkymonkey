@@ -1,7 +1,7 @@
 # BestChoice frozen challenger
 
-BestChoice 不是可运行应用、生产策略或独立数据平台；它是 ChunkyMonkey
-Tier 3 的冻结公式 challenger 证据包。
+BestChoice 不是可运行应用、生产策略或独立数据平台；它是判例引擎信号层
+（暂停维护，见 `../goal.md` 边界）的冻结公式源证据包。
 
 当前只保留：
 
@@ -11,7 +11,7 @@ Tier 3 的冻结公式 challenger 证据包。
 - `analysis/` 下最小、不可变的历史机器证据。
 
 边界、hash、证据含义和重新接入条件只看 [FROZEN.md](FROZEN.md)。主项目的
-现行研究规则以 `../CLAUDE.md` 为准。
+现行规则以 `../CLAUDE.md` 与 `../goal.md` 为准。
 
 窄验证（不读取市场库、不启动研究任务）：
 
