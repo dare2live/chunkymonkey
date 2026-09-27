@@ -273,7 +273,7 @@ fi
 
 # 2.9 Staged/worktree parity —— 必须排在**所有**读 worktree 的门之前。
 #
-# 为什么存在: ci_pytest 门刻意拿 live worktree 跑测试(见 Step 3.4 注释: 测试需要 repo 的
+# 为什么存在: ci_pytest 门刻意拿 live worktree 跑测试(测试需要 repo 的
 # pytest.ini 与 fixture)。这意味着**它对「工作树 ≠ 索引」结构性失明** —— 跑的是你手上的
 # 版本, 提交的是索引里的版本。已经咬过两次(2026-08-11 `26b1d6901` 的 history_cli 声明落空、
 # 同日 `92f98f6e5` 带着已在本地修好的红测试上线, CI 红)。两次都是同一个动作:
@@ -331,62 +331,41 @@ else
     echo "[commit-tier] skip rule_compliance (tier=$COMMIT_TIER)"
 fi
 
-# 3.35 Always-on: ci_pytest_surface classification drift.
-# Binding (2026-07-21×3 + 2026-07-20×2 CI red): public CI always runs
-# test_ci_pytest_surface_drift, but L1 docs commits skipped ci_pytest locally —
-# so an unclassified test_*.py left on main kept every subsequent push red until
-# someone fixed the yaml. Cheap always-on check closes that loop for all tiers.
-echo
-echo "=== Step 3.35: CI pytest surface classification (always-on) ==="
-if [[ ! -f "backend/tests/scripts/test_ci_pytest_surface_drift.py" ]]; then
-    echo "ERROR: missing backend/tests/scripts/test_ci_pytest_surface_drift.py"
-    exit 3
-fi
-if ! (
-    PYTHONPATH=backend "$PY" -m pytest \
-        backend/tests/scripts/test_ci_pytest_surface_drift.py \
-        -p no:cacheprovider --tb=line -q
-); then
-    echo
-    echo "ERROR: ci_pytest_surface drift — tracked test_*.py 未登记到 blocking/nightly/optional。"
-    echo "正解: 把新测试写入 backend/config/ci_pytest_surface.yaml 对应列表 (optional 须带 reason)。"
-    echo "此门对 L1 也强制: public CI 不论 commit tier 都会跑 drift test。"
-    exit 3
-fi
-echo "[ci-surface-drift] PASS (always-on; L1 included)"
-
-# 3.4 Offline CI pytest surface (L2/L3 only; same blocking list as public CI).
-# Owner: backend/config/ci_pytest_surface.yaml + backend/scripts/run_ci_pytest.py.
-# Binding finding (2026-07-20): safe_commit previously ran zero pytest locally, so
-# stale assertions only exploded on public CI. This gate closes that gap without
-# changing accept/PIT/cutover semantics. L1 docs commits skip full blocking suite
-# (surface classification still runs in 3.35 above).
-# Gate redesign #1 (2026-07-21): L2/L3 + CI run `--tier blocking` only
-# (nightly_paths stay async; do not expand to full 985 here).
+# 3.4 Offline CI pytest surface (L2/L3 only; same expression as public CI).
+# 只跑 git 索引里的测试文件: 未跟踪文件不能决定别人的提交能不能过 (红线 16), 已跟踪的新测试
+# 自动生效。逐个传文件、不传目录: 传目录时 pytest 会预加载 test* 子目录里未跟踪的 conftest。
 echo
 echo "=== Step 3.4: CI pytest surface (L2/L3 blocking) ==="
 if gate_enabled ci_pytest; then
-if [[ ! -f "$STAGED_BACKEND/scripts/run_ci_pytest.py" ]]; then
-    echo "ERROR: staged snapshot 缺 run_ci_pytest.py；L2/L3 不得跳过 CI 同面 pytest。"
+CI_PYTEST_FILES=()
+while IFS= read -r ci_pytest_f; do
+    CI_PYTEST_FILES+=("$ci_pytest_f")
+done < <(git ls-files -- ':(glob)backend/tests/**/test_*.py')
+if [[ ${#CI_PYTEST_FILES[@]} -eq 0 ]]; then
+    echo "ERROR: git 索引里没有测试文件 — 拒绝把 pytest 零参数退回目录扫描。"
     gate_fail ci_pytest 3
-elif [[ ! -f "$STAGED_BACKEND/config/ci_pytest_surface.yaml" ]]; then
-    echo "ERROR: staged snapshot 缺 ci_pytest_surface.yaml；L2/L3 不得跳过 CI 同面 pytest。"
+else
+CI_PYTEST_MISSING=()
+# 上面的空判是第一道; 这里是第二道: bash 3.2 在 set -u 下展开空数组会报 unbound variable,
+# 而脚本开头的 EXIT trap 会把这类崩溃吞成 exit 0 —— arr[@]+ 让空数组安全展开成零词。
+for ci_pytest_f in "${CI_PYTEST_FILES[@]+"${CI_PYTEST_FILES[@]}"}"; do
+    [[ -f "$ci_pytest_f" ]] || CI_PYTEST_MISSING+=("$ci_pytest_f")
+done
+if [[ ${#CI_PYTEST_MISSING[@]} -gt 0 ]]; then
+    echo "ERROR: 已跟踪测试文件在工作区缺失 (未 git rm): ${CI_PYTEST_MISSING[*]}"
     gate_fail ci_pytest 3
-# Run against the live worktree (tests need repo pytest.ini + fixtures). Paths
-# come only from the staged SSOT yaml via the staged runner — never a hand list.
 elif ! (
-    CHUNKYMONKEY_REPO="$(pwd)" \
-    CI_PYTEST_SURFACE="$STAGED_BACKEND/config/ci_pytest_surface.yaml" \
-    PYTHONPATH=backend "$PY" "$STAGED_BACKEND/scripts/run_ci_pytest.py" \
-        --tier blocking -p no:cacheprovider --tb=line -q
+    PYTHONPATH=backend "$PY" -m pytest "${CI_PYTEST_FILES[@]+"${CI_PYTEST_FILES[@]}"}" \
+        -p no:cacheprovider --tb=line -q
 ); then
     echo
-    echo "ERROR: CI pytest blocking surface 红 — 本地 L2/L3 必须与 public CI 同面绿。"
-    echo "正解: 修失败测试, 或把路径从 blocking_paths 移到 nightly_paths / ci_test_optional(带 reason)。"
+    echo "ERROR: pytest 红 — 本地 L2/L3 必须与 public CI 同面绿。"
+    echo "正解: 修失败测试；要排除的测试加 marker (pytest.ini addopts 的 -m 子句)。"
     echo "勿 --no-verify 绕; 勿改 accept/PIT/cutover 门去洗绿。"
     gate_fail ci_pytest 3
 else
-    echo "[ci-pytest] PASS (blocking surface = .github/workflows/ci.yml)"
+    echo "[ci-pytest] PASS (${#CI_PYTEST_FILES[@]} tracked files)"
+fi
 fi
 else
     echo "[commit-tier] skip ci_pytest (tier=$COMMIT_TIER)"

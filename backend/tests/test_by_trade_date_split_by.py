@@ -200,8 +200,9 @@ def test_production_margin_business_start_has_one_config_owner():
     ``{"BSE": "20230213"}`` (v2 状态: BSE 于该日起纳入)。2026-07-23/24 的 Knife 1a/1b
     (commit e6b3e44c5 / 0f5af7e80) 把 margin 冻结到 v3 (SSE+SZSE only, 缺 BSE 传输通道,
     需 contract v3+ 才能重新纳入)——production registry 现在 required_groups_since={},
-    这是设计决定不是漂移, 原样断言从那天起就应该红, 只因本文件在 ci_test_optional 里没人
-    看见。真正该守的不变量不是"BSE 那个具体日期", 而是: **required_groups_since 里出现的
+    这是设计决定不是漂移, 原样断言从那天起就应该红, 只因本文件在旧的按文件登记表排除
+    名单里没人看见 (登记表已于 09-26 退役)。真正该守的不变量不是"BSE 那个具体日期", 而是:
+    **required_groups_since 里出现的
     每个场内市场都必须是 margin_population_scope.MARGIN_ACCEPTED_VENUE_IDS (唯一真相源)
     已接受的场内市场**——已被那道门整体禁止的市场不许在这里留一个"从某天起必需"的悬空声明,
     那本身就是两个 config owner 打架。这样锚定后, 无论将来 BSE 是继续冻结还是在 contract v4+

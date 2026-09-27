@@ -345,7 +345,7 @@ def test_main_exit_codes_and_json(tmp_path: Path, capsys: pytest.CaptureFixture)
 
 
 def test_real_services_tree_has_no_frozen_stamp_comparisons() -> None:
-    """跑在真实 backend/services/ 树上的门牙 (ci_pytest_surface 收录的那道)。
+    """跑在真实 backend/services/ 树上的门牙 (git 索引已跟踪测试面收录的那道)。
 
     2026-09-02 撰写本测试时, backend/services/ 下已知还留有本门要抓的活体违规
     (docstring 里点名的 calendar_reader / calendar_acceptance / margin_acceptance

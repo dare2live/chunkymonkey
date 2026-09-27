@@ -21,8 +21,8 @@ from services.pipeline import acquire
 from services.pipeline.context import PipelineContext
 
 # 2026-09-06: 原先这里手搓了一个 _FakeCtx。它必然漂移 —— PipelineContext 后来长出
-# delta_manifest, 假件没跟, 于是本文件长期红着; 而它不在 ci_pytest_surface.yaml 里,
-# 所以没人看见。改用**真 PipelineContext**(全默认值 dataclass, 直接可造),
+# delta_manifest, 假件没跟, 于是本文件长期红着; 而它不在旧的按文件登记表里 (登记表
+# 已于 09-26 退役), 所以没人看见。改用**真 PipelineContext**(全默认值 dataclass, 直接可造),
 # 从此它不可能再落后于被测类。
 
 

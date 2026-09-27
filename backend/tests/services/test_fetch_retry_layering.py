@@ -6,8 +6,8 @@
 
 背景: 改动前 `_fetch_with_retry` 在 CI 里几乎没有覆盖 —— 仅有的两处引用
 (test_sync_runner_integrity.py / test_security_day_transport_modularity.py)
-都落在 ci_pytest_surface.yaml 的 `ci_test_optional` 里 (2026-07-20 起 75 个文件被排除,
-六周未提升)。决定停链与否的热路径没有 CI 覆盖, 本身就是该补的缺口。
+都落在旧的按文件登记表的排除名单里 (2026-07-20 起 75 个文件被排除, 六周未提升; 登记表
+已于 09-26 退役)。决定停链与否的热路径没有 CI 覆盖, 本身就是该补的缺口。
 """
 
 from __future__ import annotations

@@ -145,8 +145,8 @@ commit_gates:
     group: diff_correctness
     checks: "与 public CI 同面的 blocking pytest"
     why: "这次改动是否打破现有契约 —— 典型的 diff 正确性。"
-    object: "backend/tests/**/test_*.py, backend/config/ci_pytest_surface.yaml"
-    invariant: "ci_pytest_surface.yaml 的 blocking_paths 与 public CI 同面全绿"
+    object: "backend/tests/**/test_*.py"
+    invariant: "git 索引里的已跟踪 test_*.py 与 public CI 同面全绿"
     kill_when: "keep_forever: 只要还用 pytest 就要防契约破坏未经检测合入主干"
     paradigm: engineering
 
@@ -352,7 +352,7 @@ runtime_checks:
       F6 accept breadth)报出真实数据缺口。2026-08-14 从 commit 路径移来: 实测该脚本全量
       39.2s 而 --skip-live 仅 0.37s, 即 83% 的 moth 开销花在这两个 DuckDB 探测上, 而它们
       查的是「数据地基够不够」不是「这次 diff 对不对」—— 受害时刻是跑日更, 门就该装在日更里。
-      commit 路径仍跑静态契约面 —— 入口是 .github/workflows/ci.yml:72 (实读确认)。
+      commit 路径仍跑静态契约面 —— 入口是 .github/workflows/ci.yml 的 Population and calendar static gates 步。
       2026-09-07 订正: 原写「moth 的 foundation-done-f1-f10 带 --skip-live」,
       而 .moth/assertions/claims.yaml 与 .moth/profile.yaml 里都没有这个 assertion pack
       (grep 命中 0)。指着一个不存在的执法点, 会让人以为 commit 路径有它其实没有。

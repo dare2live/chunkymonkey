@@ -483,7 +483,7 @@ def test_reconcile_marks_stale_or_ambiguous_landing_nonrecoverable(conn):
     # 的是声明身份 (contract_version, writer_id) 是否仍等于现算契约, 见
     # margin_acceptance.prove_current_landed_margin_batch。本测试原先改 contract_hash 模拟
     # stale, 那条路径在生产代码里已不再判 stale, 测试从 2026-09-02 起对着已作废的旧行为断言而
-    # 静默不跑 (ci_test_optional)。改判声明身份不一致, 与生产语义对齐。
+    # 静默不跑 (旧的按文件登记表排除名单, 已于 09-26 退役)。改判声明身份不一致, 与生产语义对齐。
     conn.execute(
         "UPDATE ingest_batch SET contract_version='0' "
         "WHERE batch_id='stale-unresolved'"

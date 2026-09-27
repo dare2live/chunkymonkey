@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -12,6 +14,13 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SAFE_COMMIT = REPO_ROOT / "scripts" / "safe_commit.sh"
 MOTH_INVARIANTS_GATE = REPO_ROOT / "backend" / "scripts" / "check_moth_invariants.py"
+
+
+@pytest.fixture(autouse=True)
+def _no_outer_safe_commit_env(monkeypatch):
+    """外层 safe_commit 的开关不许漏进沙箱里嵌套的 safe_commit; 需要的用例自己显式设置。"""
+    for name in ("SAFE_COMMIT_DRY_RUN", "SAFE_COMMIT_NO_PUSH"):
+        monkeypatch.delenv(name, raising=False)
 
 
 def _run(cmd: list[str], cwd: Path, **kwargs) -> subprocess.CompletedProcess[str]:
@@ -89,18 +98,24 @@ def _make_repo_with_staged_python(tmp_path: Path) -> Path:
         "import json\n"
         "print(json.dumps({'tier':'L3','gates':["
         "'staged_worktree_parity','doc_allowlist','brick_registry','legacy_raw_plane','moth','moth_invariants','rule_compliance',"
-        "'sandbox_isolation','serve_read_layer','calendar_usage',"
+        "'ci_pytest','sandbox_isolation','serve_read_layer','calendar_usage',"
         "'population_contract','dead_references',"
         "'grain_uniqueness','continuity','no_emoji','config_refs','tushare_sunset'],"
         "'reasons':['fixture_l3'],'paths':[]}))\n",
     )
-    # 2026-08-11: agent_board 门随 BOARD.md 退役(P2.3); no_emoji / doc_runtime_state 新登记。
-    # always-on 的 ci-surface-drift 不看 tier, 沙箱必须真有这个测试文件, 否则 Step 3.35
-    # 直接 exit 3 —— 这正是本文件长期 25 例全红的根因(全死在门体系之前, 与被测逻辑无关)。
+    # ci_pytest 必须在上面的 gates 列表里, 否则分级会跳过 Step 3.4, 什么都测不到。Step 3.4 对 live worktree 跑
+    # git 索引里的已跟踪 test_*.py, 所以沙箱必须真有至少一个能收集到的测试。
     _write(
-        repo / "backend" / "tests" / "scripts" / "test_ci_pytest_surface_drift.py",
-        "def test_stub():\n    assert True\n",
+        repo / "backend" / "tests" / "scripts" / "test_fixture_smoke.py",
+        "def test_fixture_smoke():\n    assert True\n",
     )
+    # Step 3.4 用 "$(pwd)/.venv/bin/python3"(存在时优先, 见文件头 PY 解析)跑嵌套 pytest ——
+    # 沙箱本身没有真 venv, 不给这个符号链接会让嵌套 pytest 落到 PATH 上任意一个 python3,
+    # 那个解释器不一定装了 pytest/本仓依赖, 结果因宿主机 PATH 不同而漂移。指向运行本测试
+    # 自己的解释器 (sys.executable), 保证嵌套 pytest 一定可用且版本确定。
+    venv_bin = repo / ".venv" / "bin"
+    venv_bin.mkdir(parents=True, exist_ok=True)
+    (venv_bin / "python3").symlink_to(sys.executable)
     _write(repo / "backend" / "scripts" / "check_no_emoji.py", "raise SystemExit(0)\n")
     # gate_policy 不可用时 safe_commit 走 fail-closed(全阻断) —— 沙箱给最小实现, 让
     # 分组语义(scaffold=warn / system_health=skip)在测试里也真的生效。
@@ -196,6 +211,27 @@ def _safe_commit(repo: Path, message: str) -> subprocess.CompletedProcess[str]:
 def _safe_commit_no_push(repo: Path, message: str) -> subprocess.CompletedProcess[str]:
     env = _success_codegraph_env(repo, SAFE_COMMIT_NO_PUSH="1")
     return _run(["bash", "scripts/safe_commit.sh", message], repo, env=env)
+
+
+def _tracked_test_files(repo: Path) -> list[str]:
+    """与 Step 3.4 同一条 pathspec, 独立算一遍文件列表 —— 不重打 safe_commit.sh 那行,
+
+    只是在测试里单独观测 git 索引状态, 好在跑 pytest 之外单独取 pytest 自己的退出码
+    (safe_commit 的 gate_fail 把它统一改写成 exit 3)。
+    """
+    result = _run(["git", "ls-files", "--", ":(glob)backend/tests/**/test_*.py"], repo)
+    return [line for line in result.stdout.splitlines() if line]
+
+
+def _direct_pytest_run(repo: Path, *extra_args: str) -> subprocess.CompletedProcess[str]:
+    """独立于 safe_commit, 对 git 索引记录的测试文件直接跑一次 pytest, 拿它自己的退出码。"""
+    files = _tracked_test_files(repo)
+    return _run(
+        [sys.executable, "-m", "pytest", *files, *extra_args,
+         "-p", "no:cacheprovider", "--tb=line", "-q"],
+        repo,
+        env={**os.environ, "PYTHONPATH": "backend"},
+    )
 
 
 @pytest.mark.parametrize(
@@ -410,4 +446,170 @@ def test_moth_blocking_invariant_failure_blocks_commit(tmp_path: Path) -> None:
     )
     assert result.returncode != 0, "blocking 不变量失败必须阻断提交"
     assert "calendar-floor" in result.stdout, "必须点名是哪条不变量"
+
+
+# ── ci_pytest 门直接对 git 索引里的已跟踪 test_*.py 跑 pytest。四个用例都各自独立记 pytest 与 safe_commit 两个
+# 进程的退出码 —— safe_commit 的 gate_fail 统一改写成 exit 3, 从它的返回码反推不出
+# pytest 真实是 1 / 2 / 5 中的哪个。
+
+
+def test_ci_pytest_gate_passes_when_suite_is_green(tmp_path: Path) -> None:
+    """A4 用例 1 (正常): 已跟踪测试全部通过 —— pytest 0, safe_commit 0。"""
+    repo = _make_repo_with_staged_python(tmp_path)
+
+    pytest_result = _direct_pytest_run(repo)
+    assert pytest_result.returncode == 0, pytest_result.stdout
+
+    result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: APPROVE")
+    assert result.returncode == 0, result.stdout
+    assert "=== Step 3.4" in result.stdout
+    assert re.search(r"\b1 passed\b", result.stdout), result.stdout
+    assert "[ci-pytest] PASS" in result.stdout
+    assert "skip ci_pytest" not in result.stdout
+
+
+def test_ci_pytest_gate_blocks_on_failing_test(tmp_path: Path) -> None:
+    """A4 用例 2 (stub 写 assert False): pytest 1, safe_commit 非 0。"""
+    repo = _make_repo_with_staged_python(tmp_path)
+    _write(
+        repo / "backend" / "tests" / "scripts" / "test_fixture_smoke.py",
+        "def test_fixture_smoke():\n    assert False\n",
+    )
+
+    pytest_result = _direct_pytest_run(repo)
+    assert pytest_result.returncode == 1, pytest_result.stdout
+
+    result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: APPROVE")
+    assert result.returncode == 3, result.stdout
+    assert "[ci-pytest] PASS" not in result.stdout
+    assert "pytest 红" in result.stdout
+
+
+def test_ci_pytest_gate_blocks_on_zero_collected(tmp_path: Path) -> None:
+    """A4 用例 3 / K1 隔离用例: 已跟踪文件存在但收集到 0 个测试函数 —— pytest 5,
+    safe_commit 非 0。
+
+    K1: safe_commit 判定 ci_pytest 只按「pytest 退出码非 0」, 没有把 5(pytest 的
+    「一个测试都没收集到」) 单独放过 —— 否则一次「零测试」的提交(路径写错、marker 把
+    整批测试都排除掉) 会被悄悄放行。用没有任何 test_ 函数的文件触发, 不删掉整个
+    backend/tests(目录不存在时行为不一样, 抓不到这条 K)。
+    """
+    repo = _make_repo_with_staged_python(tmp_path)
+    _write(
+        repo / "backend" / "tests" / "scripts" / "test_fixture_smoke.py",
+        "# 故意不含任何 test_ 函数 —— pytest 应收集到 0 个测试\n",
+    )
+
+    pytest_result = _direct_pytest_run(repo)
+    assert pytest_result.returncode == 5, pytest_result.stdout
+
+    result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: APPROVE")
+    assert result.returncode == 3, result.stdout
+    assert "[ci-pytest] PASS" not in result.stdout
+
+
+def test_ci_pytest_gate_blocks_on_collection_syntax_error(tmp_path: Path) -> None:
+    """A4 用例 4 (stub 语法错误): pytest 2, safe_commit 非 0。"""
+    repo = _make_repo_with_staged_python(tmp_path)
+    _write(
+        repo / "backend" / "tests" / "scripts" / "test_fixture_smoke.py",
+        "def test_broken(:\n    assert True\n",
+    )
+
+    pytest_result = _direct_pytest_run(repo)
+    assert pytest_result.returncode == 2, pytest_result.stdout
+
+    result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: APPROVE")
+    assert result.returncode == 3, result.stdout
+    assert "[ci-pytest] PASS" not in result.stdout
+
+
+def test_ci_pytest_gate_untracked_hazards_never_decide_commit(tmp_path: Path) -> None:
+    """A7 (K4a/K4b/K4c 的证据用例): 未跟踪的危险物挡不住提交, 已暂存的新文件会被跑到。
+
+    沙箱里同时放入: 未跟踪 test_stray.py(assert False); 两个未跟踪目录
+    test_wip/conftest.py 与 wip/conftest.py(都 import 不存在的模块); 嵌套未跟踪
+    scripts/test_deep/conftest.py; 已暂存未提交的 test_new_staged.py(assert True)。
+
+    K4a(git ls-files 换成 find)会把 test_stray 收进来; K4b(换成 git ls-tree HEAD)
+    会漏掉 test_new_staged; K4c(传目录而不是文件)会让 pytest 提前预加载
+    test_wip/conftest.py 崩溃 —— 三个变异分别在下面三条断言里的一条上变红。
+    """
+    repo = _make_repo_with_staged_python(tmp_path)
+    _write(repo / "backend" / "tests" / "test_stray.py", "def test_stray():\n    assert False\n")
+    _write(repo / "backend" / "tests" / "test_wip" / "conftest.py", "import not_yet_written_module\n")
+    _write(repo / "backend" / "tests" / "wip" / "conftest.py", "import not_yet_written_module\n")
+    _write(
+        repo / "backend" / "tests" / "scripts" / "test_deep" / "conftest.py",
+        "import not_yet_written_module\n",
+    )
+    _write(repo / "backend" / "tests" / "test_new_staged.py", "def test_new_staged():\n    assert True\n")
+    assert _run(["git", "add", "backend/tests/test_new_staged.py"], repo).returncode == 0
+    status = _run(["git", "status", "--short"], repo).stdout
+    assert "A  backend/tests/test_new_staged.py" in status, status
+    assert "?? backend/tests/test_stray.py" in status, status
+
+    # 先用独立的(与 safe_commit 本身脱钩的)_direct_pytest_run 确认夹具本身没搭错:
+    # 用「正确」的 git ls-files 算法, 已暂存的 test_new_staged 真的会被收进来且通过。
+    # 这一步不构成 K4a/b/c 的证据 —— 它固定用正确算法, 测不出 safe_commit.sh 自己的漂移。
+    # -rA (不是 -v): -v 与固定传入的 -q 叠加会互相抵消, 退回不带节点 id 的 per-file 摘要;
+    # -rA 不受这个影响, 始终给出「PASSED <nodeid>」这一行。
+    direct = _direct_pytest_run(repo, "-rA")
+    assert direct.returncode == 0, direct.stdout
+    assert "backend/tests/test_new_staged.py::test_new_staged" in direct.stdout, direct.stdout
+    assert re.search(r"\b2 passed\b", direct.stdout), direct.stdout
+
+    # 下面这段才是 K4a/b/c 的证据: 断言点全部落在 safe_commit.sh 自己跑出来的 result.stdout
+    # 上, 不是上面独立算出来的 direct.stdout —— 否则变异只改了 safe_commit.sh, 观测点却
+    # 换了一条自己重新算的路径, 三个变异一个都测不出来。
+    # 沙箱跟踪测试函数数(test_fixture_smoke 1 个) + 本用例新增已暂存的 1 个(test_new_staged) = 2。
+    result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: APPROVE")
+    assert result.returncode == 0, result.stdout
+    assert "[ci-pytest] PASS" in result.stdout
+    assert re.search(r"\b2 passed\b", result.stdout), result.stdout
+    assert "test_stray" not in result.stdout, result.stdout
+    assert "not_yet_written_module" not in result.stdout, result.stdout
+
+
+def test_ci_pytest_gate_blocks_on_empty_tracked_index(tmp_path: Path) -> None:
+    """A8 / K3 隔离用例: git 索引里跟踪的 test_*.py 一个都没有 —— 必须阻断, 不许让
+    pytest 零参数退回 pytest.ini 的 testpaths 去扫目录(那样会把一个未跟踪但会通过的
+    文件悄悄收进来, 表现成绿, 但没人告诉过它这是可信的)。
+
+    隔离: 沙箱另加一份带 `testpaths = backend/tests` 的 pytest.ini(K3 的 bug 恰好
+    靠这个才会被放行), 唯一变量是把全部已跟踪测试文件 git rm 掉, 换一个未跟踪、会
+    通过的文件。
+    """
+    repo = _make_repo_with_staged_python(tmp_path)
+    _write(repo / "pytest.ini", "[pytest]\ntestpaths = backend/tests\n")
+    tracked = _tracked_test_files(repo)
+    assert tracked, "fixture 前提: 沙箱本该至少有一个已跟踪测试文件"
+    for f in tracked:
+        assert _run(["git", "rm", "-q", f], repo).returncode == 0
+    assert _tracked_test_files(repo) == []
+    _write(repo / "backend" / "tests" / "test_untracked_ok.py", "def test_untracked_ok():\n    assert True\n")
+
+    result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: APPROVE")
+    assert result.returncode == 3, result.stdout
+    assert "git 索引里没有测试文件" in result.stdout, result.stdout
+    assert "test_untracked_ok" not in result.stdout, result.stdout
+
+
+def test_ci_pytest_gate_blocks_on_tracked_file_missing_from_worktree(tmp_path: Path) -> None:
+    """A9: 一个已跟踪测试文件在工作区被删掉, 但没有 `git rm`(`git status` 显示 ` D`)。
+
+    不许用 `[[ -f ]]` 过滤掉后悄悄跳过它再判空 —— 那会变成静默少跑; 门自己必须点名
+    是哪个路径缺失, 不是转述 pytest 的 usage 报错文案。
+    """
+    repo = _make_repo_with_staged_python(tmp_path)
+    tracked = _tracked_test_files(repo)
+    assert tracked, "fixture 前提: 沙箱本该至少有一个已跟踪测试文件"
+    target = tracked[0]
+    (repo / target).unlink()
+    status = _run(["git", "status", "--short"], repo).stdout
+    assert f" D {target}" in status, status
+
+    result = _safe_commit_no_push(repo, "test audit\nCodex-Reviewed: APPROVE")
+    assert result.returncode == 3, result.stdout
+    assert target in result.stdout, result.stdout
 

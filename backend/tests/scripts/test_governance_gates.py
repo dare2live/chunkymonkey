@@ -7,7 +7,7 @@
 2. ``system_health`` 组从 commit 路径摘掉之后**真的有人接手** —— 每道都挂在
    ``runtime_checks`` 上，且 daily_update 的 store 阶段真的会跑；
 3. ``scaffold`` 组在 safe_commit 里走 ``gate_fail`` (由分组决定后果)，而不是
-   继续硬编码 ``exit``；always-on 的 ci-surface-drift 不受分组影响仍然阻断。
+   继续硬编码 ``exit``。
 
 全部离线：只读 config + lineage artifact，不连 DB；
 需要交易日历的那一条用 monkeypatch 顶掉。
@@ -299,14 +299,6 @@ def test_gates_use_gate_fail_instead_of_hardcoded_exit() -> None:
     expected = set(reg.gate_names)
     assert expected <= called, f"仍在硬编码 exit 的门: {sorted(expected - called)}"
     assert called <= set(reg.gate_names)
-
-
-def test_always_on_ci_surface_drift_stays_blocking() -> None:
-    """它不在 19 门里，也不受分组影响 —— 是 diff 正确性的 always-on 底线。"""
-    text = SAFE_COMMIT.read_text(encoding="utf-8")
-    block = text.split("Step 3.35")[1].split("Step 3.4")[0]
-    assert "gate_fail" not in block
-    assert "exit 3" in block
 
 
 def test_scaffold_fix_entrypoint_exists_for_every_regenerable_artifact() -> None:

@@ -347,3 +347,34 @@ findings:
       cut_dry_isolation 的 A1 以「无残留 WAL」为环境前提挡住, 前提不成立时 A1 会红在库文件指纹上。
     recorded: "2026-09-26"
     decision: register
+  - id: safe-commit-exit-trap-swallows-crash
+    asset: "scripts/safe_commit.sh (开头的 trap 'rm -rf \"$STAGED_INDEX_DIR\"' EXIT)"
+    detector: none
+    escalates_when: >
+      macOS 自带 bash 3.2 下 safe_commit.sh 任何一步因 set -u / set -e 崩溃时, EXIT trap 执行后脚本退出码被重置为 0:
+      调用方看到「成功」, 实际后续门与 git commit 都没执行 (cut_gate1b 施工实测)。Step 3.4 已用空判 + arr[@]+ 规避;
+      其它步骤出现类似崩溃、或有自动化只看 safe_commit 退出码判成功时即须修 (trap 里保存并以原退出码 exit)。
+    recorded: "2026-09-27"
+    decision: register
+  - id: tracked-tests-pathspec-duplicated
+    asset: "scripts/safe_commit.sh Step 3.4 与 .github/workflows/ci.yml Run offline tests 各写一份 ':(glob)backend/tests/**/test_*.py'"
+    detector: none
+    escalates_when: >
+      两份字面量任一被改而另一份没跟着改 (本地门与 CI 收集面分叉)。门禁精简刀 3 做本地单一入口时收成一处。
+    recorded: "2026-09-27"
+    decision: register
+  - id: tracked-tests-non-ascii-path-quoting
+    asset: "scripts/safe_commit.sh Step 3.4 (git ls-files 文本输出)"
+    detector: none
+    escalates_when: >
+      backend/tests 下出现文件名含非 ASCII 字符或空格的测试文件: git ls-files 默认把非 ASCII 路径加引号转义,
+      门会把它误报成「工作区缺失」; ci.yml 的 $(...) 不加引号还会按空格拆词。改法: git -c core.quotepath=off ls-files -z + read -d ''。
+    recorded: "2026-09-27"
+    decision: register
+  - id: marker-exclusion-test-misses-class-marks
+    asset: "backend/tests/scripts/test_pytest_marker_exclusion.py (_collect_mark_names)"
+    detector: backend/tests/scripts/test_pytest_marker_exclusion.py
+    escalates_when: >
+      三个 optional 测试文件中任一改用类装饰器标记 (@pytest.mark.realdb class TestX): 该测试只认模块级 pytestmark 与函数装饰器, 会误报缺标记。
+    recorded: "2026-09-27"
+    decision: register
